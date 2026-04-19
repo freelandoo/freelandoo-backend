@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:/Users/Alex/Documents/Antigravity/freelandoo/freelandoo backend/\" status)",
+      "Bash(git -C \"c:/Users/Alex/Documents/Antigravity/freelandoo/freelandoo backend/\" remote -v)",
+      "Bash(git -C \"c:/Users/Alex/Documents/Antigravity/freelandoo/freelandoo backend/\" log --oneline -5)",
+      "Bash(git -C \"c:/Users/Alex/Documents/Antigravity/freelandoo/freelandoo backend/\" remote set-url origin https://github.com/freelandoo/freelandoo-backend.git)",
+      "Bash(git -C \"c:/Users/Alex/Documents/Antigravity/freelandoo/freelandoo backend/\" push -u origin main)",
+      "Bash(git -C \"c:/Users/Alex/Documents/Antigravity/freelandoo/freelandoo backend/\" push --force origin main)",
+      "Bash(cp -r creators-views-main/src .)",
+      "Bash(cp creators-views-main/index.js .)",
+      "Bash(cp creators-views-main/package.json .)",
+      "Bash(cp creators-views-main/package-lock.json .)",
+      "Bash(cp creators-views-main/eslint.config.js .)",
+      "Bash(powershell -Command \"Remove-Item -Path 'c:/Users/Alex/Documents/Antigravity/freelandoo/freelandoo backend/creators-views-main' -Recurse -Force\")",
+      "Bash(git rm *)",
+      "Bash(git add *)"
+    ]
+  }
+}
