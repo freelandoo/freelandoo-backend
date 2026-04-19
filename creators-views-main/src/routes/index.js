@@ -1,0 +1,49 @@
+const authRoutes = require("./auth.routes");
+const addressRoutes = require("./address.routes");
+const socialMediaRoutes = require("./socialmedia.routes");
+const usersRoutes = require("./users.routes");
+const searchRoutes = require("./search.routes");
+const paymentRoutes = require("./payments.routes");
+const roleRoutes = require("./roles.routes");
+const legalDocumentsRoutes = require("./legalDocuments.routes");
+const profileRoutes = require("./profile.routes");
+const categoryRoutes = require("./category.routes");
+const socialMediaPublicRoutes = require("./socialmediaPublic.routes");
+const portfolioRoutes = require("./portfolio.routes");
+const couponRoutes = require("./coupon.routes");
+const itensRoutes = require("./itens.routes");
+const checkoutRoutes = require("./checkout.routes");
+const orderRoutes = require("./order.routes");
+const affiliateRoutes = require("./affiliate.routes");
+const affiliateAdminRoutes = require("./affiliateAdmin.routes");
+const machineRoutes = require("./machine.routes");
+const machineAdminRoutes = require("./machineAdmin.routes");
+const couponAdminRoutes = require("./couponAdmin.routes");
+
+module.exports = (app) => {
+  app.get("/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  app.use("/auth", authRoutes);
+  app.use("/address", addressRoutes);
+  app.use("/users", usersRoutes);
+  app.use("/payments", paymentRoutes);
+  app.use("/search", searchRoutes);
+  app.use("/role", roleRoutes);
+  app.use("/legalDocuments", legalDocumentsRoutes);
+  app.use("/profile", profileRoutes);
+  app.use("/profile/:id_profile/social-media", socialMediaRoutes);
+  app.use("/profile/:id_profile/portfolio", portfolioRoutes);
+  app.use("/categories", categoryRoutes);
+  app.use("/social-media", socialMediaPublicRoutes);
+  app.use("/coupon", couponRoutes);
+  app.use("/itens", itensRoutes);
+  app.use("/checkout", checkoutRoutes);
+  app.use("/order", orderRoutes);
+  app.use("/me/affiliate", affiliateRoutes);
+  app.use("/admin/affiliate", affiliateAdminRoutes);
+  app.use("/machines", machineRoutes);
+  app.use("/admin", machineAdminRoutes);
+  app.use("/admin/coupons", couponAdminRoutes);
+};

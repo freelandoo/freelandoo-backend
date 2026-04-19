@@ -1,0 +1,31 @@
+const AuthService = require("../services/AuthService");
+const { sendServiceResult } = require("../utils/sendServiceResult");
+
+class AuthController {
+  static async signup(req, res) {
+    const result = await AuthService.signup(req.body);
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async signin(req, res) {
+    const result = await AuthService.signin(req.body);
+    return sendServiceResult(res, result, 200);
+  }
+
+  static async activate(req, res) {
+    const result = await AuthService.activate(req.query);
+    return sendServiceResult(res, result, 200);
+  }
+
+  static async forgotPassword(req, res) {
+    const result = await AuthService.forgotPassword(req.body);
+    return sendServiceResult(res, result, 200);
+  }
+
+  static async resetPassword(req, res) {
+    const result = await AuthService.resetPassword(req.body);
+    return sendServiceResult(res, result, 200);
+  }
+}
+
+module.exports = AuthController;
