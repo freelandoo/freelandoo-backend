@@ -140,8 +140,8 @@ class AuthService {
 
     const client = await pool.connect();
 
-    const STATUS_EMAIL_PENDENTE = "b238836d-7c84-4200-9d3e-81601b37c9bd";
-    const STATUS_EMAIL_VERIFICADO = "d0c6b0e1-e56f-4171-b6ca-35a05271fb14";
+    const STATUS_EMAIL_PENDENTE = 7;
+    const STATUS_EMAIL_VERIFICADO = 8;
 
     return runWithLogs(
       log,
