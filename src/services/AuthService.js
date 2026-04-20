@@ -23,7 +23,7 @@ class AuthService {
       () => ({ email: normalizeEmail(payload.email) || null }),
       async () => {
         try {
-          const { nome, senha, data_nascimento, sexo } = payload;
+          const { nome, senha, data_nascimento, sexo, id_category } = payload;
           const email = normalizeEmail(payload.email);
 
           if (!nome || !email || !senha || !data_nascimento) {
@@ -49,6 +49,14 @@ class AuthService {
             sexo: sexo || null,
             ativo: false,
           });
+
+          if (id_category) {
+            await client.query(
+              `INSERT INTO tb_profile (id_user, id_category, display_name, is_active)
+               VALUES ($1, $2, $3, false)`,
+              [user.id_user, id_category, nome]
+            );
+          }
 
           const token = crypto.randomBytes(32).toString("hex");
           const expiresAt = new Date();
