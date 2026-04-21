@@ -7,6 +7,11 @@ class AuthController {
     return sendServiceResult(res, result, 201);
   }
 
+  static async checkUsername(req, res) {
+    const result = await AuthService.checkUsername({ username: req.query.u || req.query.username });
+    return res.status(200).json(result);
+  }
+
   static async signin(req, res) {
     const result = await AuthService.signin(req.body);
     return sendServiceResult(res, result, 200);

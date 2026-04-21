@@ -8,6 +8,7 @@ module.exports = {
         tu.id_user,
         tu.avatar,
         tu.nome,
+        tu.username,
         tu.data_nascimento,
         EXTRACT(YEAR FROM AGE(CURRENT_DATE, tu.data_nascimento)) AS idade,
         tu.sexo,
@@ -15,6 +16,8 @@ module.exports = {
         tu.telefone,
         tu.ativo,
         tu.bio,
+        tu.estado,
+        tu.municipio,
         
         -- Roles (nível do user)
         COALESCE(r.roles, '[]'::jsonb) AS roles,
@@ -125,6 +128,7 @@ module.exports = {
 
     const allowed = [
       "nome",
+      "username",
       "data_nascimento",
       "sexo",
       "telefone",
@@ -154,7 +158,7 @@ module.exports = {
       UPDATE tb_user
       SET ${fields.join(", ")}
       WHERE id_user = $${index}
-      RETURNING id_user, nome, data_nascimento, sexo, bio, estado, municipio, id_nicho
+      RETURNING id_user, nome, username, data_nascimento, sexo, bio, estado, municipio, id_nicho
       `,
       values
     );

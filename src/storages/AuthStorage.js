@@ -7,20 +7,28 @@ class AuthStorage {
     return r.rowCount ? r.rows[0].id_user : null;
   }
 
+  static async findUserIdByUsername(client, username) {
+    const r = await client.query(
+      "SELECT id_user FROM tb_user WHERE LOWER(username) = $1 LIMIT 1",
+      [username]
+    );
+    return r.rowCount ? r.rows[0].id_user : null;
+  }
+
   static async createUser(
     client,
-    { nome, email, senhaHash, data_nascimento, sexo, ativo }
+    { nome, username, email, senhaHash, data_nascimento, sexo, estado, municipio, ativo }
   ) {
     const r = await client.query(
       `
       INSERT INTO tb_user
-        (nome, email, senha, data_nascimento, sexo, ativo)
+        (nome, username, email, senha, data_nascimento, sexo, estado, municipio, ativo)
       VALUES
-        ($1, $2, $3, $4, $5, $6)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING
-        id_user, nome, email, created_at
+        id_user, nome, username, email, estado, municipio, created_at
       `,
-      [nome, email, senhaHash, data_nascimento, sexo, ativo]
+      [nome, username, email, senhaHash, data_nascimento, sexo, estado, municipio, ativo]
     );
     return r.rows[0];
   }

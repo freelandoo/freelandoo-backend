@@ -10,11 +10,21 @@ const {
   sendPasswordResetEmail,
 } = require("./mailService");
 const normalizeEmail = require("../utils/normalizeEmail");
+const { validateUsername, normalizeUsername } = require("../utils/validateUsername");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("AuthService");
 
 class AuthService {
+  static async checkUsername(payload) {
+    const v = validateUsername(payload?.username);
+    if (!v.ok) {
+      return { available: false, reason: v.error };
+    }
+    const exists = await AuthStorage.findUserIdByUsername(pool, v.username);
+    return { available: !exists, username: v.username };
+  }
+
   static async signup(payload) {
     const client = await pool.connect();
     return runWithLogs(
@@ -25,6 +35,8 @@ class AuthService {
         try {
           const { nome, senha, data_nascimento, sexo, id_category } = payload;
           const email = normalizeEmail(payload.email);
+          const estado = payload.estado ? String(payload.estado).trim().toUpperCase() : null;
+          const municipio = payload.municipio ? String(payload.municipio).trim() : null;
 
           if (!nome || !email || !senha || !data_nascimento) {
             return {
@@ -32,9 +44,20 @@ class AuthService {
             };
           }
 
+          const usernameCheck = validateUsername(payload.username);
+          if (!usernameCheck.ok) {
+            return { error: "Nome de usuário inválido", reason: usernameCheck.error };
+          }
+          const username = usernameCheck.username;
+
           const exists = await AuthStorage.findUserIdByEmail(client, email);
           if (exists) {
             return { error: "Email já cadastrado" };
+          }
+
+          const usernameTaken = await AuthStorage.findUserIdByUsername(client, username);
+          if (usernameTaken) {
+            return { error: "Este nome de usuário já está em uso", reason: "username_taken" };
           }
 
           const senhaHash = await bcrypt.hash(senha, 10);
@@ -43,18 +66,21 @@ class AuthService {
 
           const user = await AuthStorage.createUser(client, {
             nome,
+            username,
             email,
             senhaHash,
             data_nascimento,
             sexo: sexo || null,
+            estado,
+            municipio,
             ativo: false,
           });
 
           if (id_category) {
             await client.query(
-              `INSERT INTO tb_profile (id_user, id_category, display_name, is_active)
-               VALUES ($1, $2, $3, false)`,
-              [user.id_user, id_category, nome]
+              `INSERT INTO tb_profile (id_user, id_category, display_name, estado, municipio, is_active)
+               VALUES ($1, $2, $3, $4, $5, false)`,
+              [user.id_user, id_category, nome, estado, municipio]
             );
           }
 
