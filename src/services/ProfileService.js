@@ -12,18 +12,41 @@ class ProfileService {
       () => ({ id_user: user?.id_user }),
       async () => {
         const id_user = user.id_user;
-        const { id_category, display_name, bio, avatar_url, estado, municipio } =
-          payload;
+        const {
+          id_machine,
+          id_category,
+          display_name,
+          bio,
+          avatar_url,
+          estado,
+          municipio,
+        } = payload;
 
-        if (!id_user || !id_category || !display_name) {
+        if (!id_user || !id_machine || !id_category || !display_name) {
           return {
-            error: "Campos obrigatórios: id_user, id_category, display_name",
+            error:
+              "Campos obrigatórios: id_user, id_machine, id_category, display_name",
           };
         }
 
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+
+          const catRow = await client.query(
+            `SELECT id_machine, is_active FROM public.tb_category WHERE id_category = $1 LIMIT 1`,
+            [id_category]
+          );
+          if (!catRow.rowCount || !catRow.rows[0].is_active) {
+            await client.query("ROLLBACK");
+            return { error: "Profissão não encontrada ou inativa" };
+          }
+          if (Number(catRow.rows[0].id_machine) !== Number(id_machine)) {
+            await client.query("ROLLBACK");
+            return {
+              error: "A profissão selecionada não pertence à máquina escolhida",
+            };
+          }
 
           const profile = await ProfileStorage.createProfile(client, {
             id_user,
