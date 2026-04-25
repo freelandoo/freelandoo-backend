@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const routes = require("./routes");
+const webhooksRoutes = require("./routes/webhooks.routes");
 const { createLogger } = require("./utils/logger");
 
 const appLog = createLogger("app");
@@ -42,6 +43,11 @@ const corsOptions = {
 
 app.use("/storage", express.static(path.join(__dirname, "..", "storage")));
 app.use(cors(corsOptions));
+
+// Webhooks precisam do body raw (verificação de assinatura Stripe).
+// Montado ANTES do express.json() pra não ser consumido.
+app.use("/webhooks", webhooksRoutes);
+
 app.use(express.json());
 
 app.use((req, res, next) => {

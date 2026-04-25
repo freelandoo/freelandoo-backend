@@ -139,6 +139,19 @@ class CouponStorage {
     };
   }
 
+  static async setStripeIds(conn, id_coupon, { stripe_coupon_id, stripe_promotion_code_id }) {
+    const result = await conn.query(
+      `UPDATE public.tb_coupon
+       SET stripe_coupon_id         = $2,
+           stripe_promotion_code_id = $3,
+           updated_at               = NOW()
+       WHERE id_coupon = $1
+       RETURNING id_coupon, stripe_coupon_id, stripe_promotion_code_id`,
+      [id_coupon, stripe_coupon_id, stripe_promotion_code_id]
+    );
+    return result.rows[0] || null;
+  }
+
   static async findByCode(conn, code) {
     const result = await conn.query(
       `
