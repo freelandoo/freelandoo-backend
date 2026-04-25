@@ -22,6 +22,7 @@ const machineAdminRoutes = require("./machineAdmin.routes");
 const couponAdminRoutes = require("./couponAdmin.routes");
 const bookingRoutes = require("./booking.routes");
 const bookingPublicRoutes = require("./bookingPublic.routes");
+const profilePublicRoutes = require("./profilePublic.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -52,4 +53,5 @@ module.exports = (app) => {
   app.use("/admin/coupons", couponAdminRoutes);
   app.use("/profile", bookingRoutes);
   app.use("/public/profile", bookingPublicRoutes);
+  app.use("/public/creator", profilePublicRoutes);
 };

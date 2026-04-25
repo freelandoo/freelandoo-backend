@@ -78,6 +78,93 @@ class ProfileService {
     );
   }
 
+  /**
+   * Resolve perfil público pelo handle (username) e profession_slug.
+   * Retorna mesmo payload que getById + city_slug e is_paid para canonicalização
+   * server-side. Não faz checagem de visibilidade — o caller decide se renderiza
+   * ou retorna 404 (rota SEO renderiza só se publicado).
+   */
+  static async getPublicByHandle(params) {
+    return runWithLogs(
+      log,
+      "getPublicByHandle",
+      () => ({
+        handle: params?.handle,
+        profession_slug: params?.profession_slug,
+      }),
+      async () => {
+        const handle = String(params?.handle || "").replace(/^@/, "").trim();
+        const profession_slug = String(params?.profession_slug || "").trim();
+        if (!handle || !profession_slug) {
+          return { error: "handle e profession_slug são obrigatórios" };
+        }
+
+        const profile =
+          await ProfileStorage.getPublicProfileByHandleAndProfession(pool, {
+            handle,
+            profession_slug,
+          });
+        if (!profile) return { error: "Perfil não encontrado" };
+
+        const subcategories = await ProfileStorage.listSubcategoriesByProfile(
+          pool,
+          profile.id_profile
+        );
+        const statuses = await ProfileStorage.listStatusesByProfile(
+          pool,
+          profile.id_profile
+        );
+        const social_media = await ProfileStorage.listSocialMediaByProfile(
+          pool,
+          profile.id_profile
+        );
+
+        const is_published =
+          !!profile.is_paid && !!profile.is_visible && !profile.deleted_at;
+
+        return {
+          profile: {
+            ...profile,
+            subcategories,
+            statuses,
+            social_media,
+            is_published,
+          },
+        };
+      }
+    );
+  }
+
+  /**
+   * Resolve só pelo handle quando a URL não traz profession_slug. Retorna o
+   * perfil "principal" (mais recente, publicado, ou primeiro disponível).
+   * Usado para fallback quando alguém acessa apenas /@handle.
+   */
+  static async resolveCanonicalByHandle(params) {
+    return runWithLogs(
+      log,
+      "resolveCanonicalByHandle",
+      () => ({ handle: params?.handle }),
+      async () => {
+        const handle = String(params?.handle || "").replace(/^@/, "").trim();
+        if (!handle) return { error: "handle é obrigatório" };
+
+        const profiles = await ProfileStorage.listPublicProfilesByHandle(
+          pool,
+          handle
+        );
+        if (!profiles.length) return { error: "Perfil não encontrado" };
+
+        // Prefere perfil publicado (paid + visible); fallback no primeiro
+        const canonical =
+          profiles.find((p) => p.is_paid && p.is_visible && !p.deleted_at) ||
+          profiles[0];
+
+        return { profile: canonical };
+      }
+    );
+  }
+
   static async getById(params) {
     return runWithLogs(
       log,

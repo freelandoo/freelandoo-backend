@@ -27,6 +27,16 @@ class AuthController {
     return sendServiceResult(res, result, 200);
   }
 
+  static async resendActivation(req, res) {
+    const result = await AuthService.resendActivation(req.user);
+    return sendServiceResult(res, result, 200);
+  }
+
+  static async changeEmail(req, res) {
+    const result = await AuthService.changeEmail(req.user, req.body);
+    return sendServiceResult(res, result, 200);
+  }
+
   static async resetPassword(req, res) {
     const result = await AuthService.resetPassword(req.body);
     return sendServiceResult(res, result, 200);

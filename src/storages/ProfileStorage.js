@@ -25,8 +25,10 @@ class ProfileStorage {
     SELECT
       p.id_profile,
       p.id_user,
+      u.username,
       p.id_category,
       c.desc_category,
+      c.profession_slug,
       c.id_machine,
       m.slug AS machine_slug,
       m.name AS machine_name,
@@ -39,8 +41,14 @@ class ProfileStorage {
       p.created_at,
       p.updated_at,
       p.estado,
-      p.municipio
+      p.municipio,
+      EXISTS (
+        SELECT 1 FROM public.tb_profile_subscription ps
+         WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
+      ) AS is_paid
     FROM public.tb_profile p
+    JOIN public.tb_user u
+      ON u.id_user = p.id_user
     JOIN public.tb_category c
       ON c.id_category = p.id_category
     LEFT JOIN public.tb_machine m
@@ -51,6 +59,90 @@ class ProfileStorage {
       [id_profile]
     );
     return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * Resolve perfil público pelo (handle, profession_slug). Usado pelas URLs SEO
+   * /[profession]/[city]/@[handle]. Retorna o perfil mesmo se não-publicado;
+   * o caller decide se exibe (publicado) ou retorna 404.
+   */
+  static async getPublicProfileByHandleAndProfession(
+    conn,
+    { handle, profession_slug }
+  ) {
+    const r = await conn.query(
+      `
+    SELECT
+      p.id_profile,
+      p.id_user,
+      u.username,
+      p.id_category,
+      c.desc_category,
+      c.profession_slug,
+      c.id_machine,
+      m.slug AS machine_slug,
+      m.name AS machine_name,
+      p.display_name,
+      p.bio,
+      p.avatar_url,
+      p.is_active,
+      p.is_visible,
+      p.deleted_at,
+      p.created_at,
+      p.updated_at,
+      p.estado,
+      p.municipio,
+      EXISTS (
+        SELECT 1 FROM public.tb_profile_subscription ps
+         WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
+      ) AS is_paid
+    FROM public.tb_profile p
+    JOIN public.tb_user u
+      ON u.id_user = p.id_user
+    JOIN public.tb_category c
+      ON c.id_category = p.id_category
+    LEFT JOIN public.tb_machine m
+      ON m.id_machine = c.id_machine
+    WHERE lower(u.username) = lower($1)
+      AND lower(c.profession_slug) = lower($2)
+    LIMIT 1
+    `,
+      [handle, profession_slug]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * Lista todos os perfis (id_profile, profession_slug) de um usuário pelo handle.
+   * Usado quando precisamos descobrir o perfil canônico ao receber só o @handle.
+   */
+  static async listPublicProfilesByHandle(conn, handle) {
+    const r = await conn.query(
+      `
+    SELECT
+      p.id_profile,
+      c.profession_slug,
+      c.desc_category,
+      p.municipio,
+      p.estado,
+      p.is_visible,
+      p.deleted_at,
+      EXISTS (
+        SELECT 1 FROM public.tb_profile_subscription ps
+         WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
+      ) AS is_paid
+    FROM public.tb_profile p
+    JOIN public.tb_user u
+      ON u.id_user = p.id_user
+    JOIN public.tb_category c
+      ON c.id_category = p.id_category
+    WHERE lower(u.username) = lower($1)
+      AND p.deleted_at IS NULL
+    ORDER BY p.created_at DESC
+    `,
+      [handle]
+    );
+    return r.rows;
   }
 
   static async setVisibility(conn, id_profile, is_visible) {

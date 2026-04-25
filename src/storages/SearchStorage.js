@@ -33,6 +33,7 @@ module.exports = {
         pro.municipio,
         ca.id_category,
         ca.desc_category AS category,
+        ca.profession_slug,
 
         -- MACHINE
         m.id_machine,
@@ -41,6 +42,7 @@ module.exports = {
 
         -- USER DONO DO PROFILE
         tu.id_user,
+        tu.username,
         tu.nome AS user_nome,
         tu.avatar AS user_avatar,
 
