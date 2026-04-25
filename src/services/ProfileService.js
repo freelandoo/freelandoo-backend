@@ -29,6 +29,11 @@ class ProfileService {
           };
         }
 
+        const bioStr = bio ? String(bio).trim() : "";
+        if (bioStr.length > 200) {
+          return { error: "A bio deve ter no máximo 200 caracteres." };
+        }
+
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
@@ -214,6 +219,13 @@ class ProfileService {
         const { id_profile } = params;
         if (!id_profile || !UUID_RE.test(id_profile))
           return { error: "id_profile inválido" };
+
+        if (Object.prototype.hasOwnProperty.call(payload, "bio")) {
+          const bioStr = payload.bio ? String(payload.bio).trim() : "";
+          if (bioStr.length > 200) {
+            return { error: "A bio deve ter no máximo 200 caracteres." };
+          }
+        }
 
         const hasAnyField = [
           "id_category",
