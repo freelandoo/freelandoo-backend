@@ -1,10 +1,41 @@
 const db = require("../databases");
 const CouponStorage = require("../storages/CouponStorage");
 const CouponDiscountResolver = require("./CouponDiscountResolver");
+const StripeService = require("./StripeService");
 const { generateCouponCode } = require("../utils/couponCode");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CouponService");
+
+async function syncCouponToStripe(coupon) {
+  try {
+    const stripeCoupon = await StripeService.createCoupon({
+      discount_type: coupon.discount_type,
+      discount_value: coupon.value,
+      max_redemptions: coupon.max_uses || null,
+      expires_at: coupon.expires_at || null,
+      name: `Freelandoo ${coupon.code}`,
+    });
+    const promo = await StripeService.createPromotionCode({
+      coupon: stripeCoupon.id,
+      code: coupon.code,
+      expires_at: coupon.expires_at || null,
+      max_redemptions: coupon.max_uses || null,
+    });
+    await CouponStorage.setStripeIds(db, coupon.id_coupon, {
+      stripe_coupon_id: stripeCoupon.id,
+      stripe_promotion_code_id: promo.id,
+    });
+    return { stripe_coupon_id: stripeCoupon.id, stripe_promotion_code_id: promo.id };
+  } catch (err) {
+    log.error("syncCouponToStripe.fail", {
+      id_coupon: coupon.id_coupon,
+      code: coupon.code,
+      message: err?.message,
+    });
+    throw err;
+  }
+}
 
 class CouponService {
   static validateCreatePayload(payload) {
@@ -151,7 +182,9 @@ class CouponService {
           is_active: true,
         };
 
-        return await CouponStorage.create(db, createPayload);
+        const coupon = await CouponStorage.create(db, createPayload);
+        const stripeIds = await syncCouponToStripe(coupon);
+        return { ...coupon, ...stripeIds };
       }
     );
   }

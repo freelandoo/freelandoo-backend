@@ -1,14 +1,9 @@
 const pool = require("../databases");
 const CheckoutStorage = require("../storages/CheckoutStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
-const { MercadoPagoConfig, Preference } = require("mercadopago");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,
-});
 
 const { createLogger, runWithLogs } = require("../utils/logger");
 const log = createLogger("CheckoutService");
@@ -472,97 +467,17 @@ class CheckoutService {
           coupon,
           subtotal_cents: subtotal,
           total_cents: total,
-          payment_provider: "MERCADO_PAGO",
+          payment_provider: null,
           id_profile,
-        });
-
-        const paymentData = await CheckoutService.createMercadoPagoPreference({
-          order: result.order,
-          checkoutItem,
-          user,
-        });
-
-        const updatedOrder = await CheckoutStorage.updateOrderPayment(pool, {
-          id_order: result.order.id_order,
-          payment_provider: "MERCADO_PAGO",
-          payment_provider_ref: paymentData.preferenceId,
-          payment_url: paymentData.checkoutUrl,
-          expires_at: paymentData.expiresAt,
         });
 
         return {
           message: "Order criada com sucesso",
-          order: updatedOrder,
+          order: result.order,
           order_item: result.order_item,
           order_coupon: result.order_coupon,
           checkout: result.checkout,
-          payment: {
-            provider: "MERCADO_PAGO",
-            preferenceId: paymentData.preferenceId,
-            checkoutUrl: paymentData.checkoutUrl,
-            sandboxUrl: paymentData.sandboxUrl,
-            expiresAt: paymentData.expiresAt,
-          },
-        };
-      }
-    );
-  }
-
-  static async createMercadoPagoPreference({ order, checkoutItem, user }) {
-    return runWithLogs(
-      log,
-      "createMercadoPagoPreference",
-      () => ({
-        id_order: order?.id_order,
-        id_item: checkoutItem?.id_item,
-        id_user: user?.id_user,
-      }),
-      async () => {
-        if (!process.env.MP_ACCESS_TOKEN) {
-          throw new Error("MP_ACCESS_TOKEN não configurado");
-        }
-
-        const front = String(process.env.FRONTEND_URL || "").replace(/\/$/, "");
-        const base = String(process.env.BASE_URL || "").replace(/\/$/, "");
-
-        const preference = new Preference(mpClient);
-
-        const unitPrice = Number(order.total_cents || 0) / 100;
-
-        const response = await preference.create({
-          body: {
-            items: [
-              {
-                id: String(checkoutItem.id_item),
-                title: checkoutItem.item_name_snapshot,
-                quantity: Number(checkoutItem.quantity || 1),
-                unit_price: unitPrice,
-                currency_id: order.currency || "BRL",
-              },
-            ],
-            external_reference: String(order.id_order),
-            notification_url: `${base}/payments/webhooks/mercadopago`,
-            back_urls: {
-              success: `${front}/payment/success?order=${order.id_order}`,
-              failure: `${front}/payment/failure?order=${order.id_order}`,
-              pending: `${front}/payment/pending?order=${order.id_order}`,
-            },
-            auto_return: "approved",
-            payer: {
-              name: user.name || undefined,
-              email: user.email || undefined,
-            },
-          },
-        });
-
-        return {
-          preferenceId: response?.id || response?.body?.id || null,
-          checkoutUrl: response?.init_point || response?.body?.init_point || null,
-          sandboxUrl:
-            response?.sandbox_init_point ||
-            response?.body?.sandbox_init_point ||
-            null,
-          expiresAt: null,
+          payment: null,
         };
       }
     );

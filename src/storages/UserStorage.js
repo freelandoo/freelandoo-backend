@@ -58,24 +58,32 @@ module.exports = {
         WHERE us.id_user = tu.id_user
       ) s ON TRUE
 
-      -- perfis (multi-perfil) + redes sociais + status do perfil
+      -- perfis (multi-perfil) + redes sociais + status do perfil + assinatura
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(
           jsonb_build_object(
             'id_profile', pro.id_profile,
             'display_name', pro.display_name,
+            'id_category', pro.id_category,
             'category', ca.desc_category,
+            'id_machine', ca.id_machine,
+            'machine_slug', m.slug,
+            'machine_name', m.name,
             'bio', pro.bio,
             'avatar_url', pro.avatar_url,
             'estado', pro.estado,
             'municipio', pro.municipio,
+            'is_active', pro.is_active,
             'redes_sociais', COALESCE(sm.redes_sociais, '[]'::jsonb),
-            'statuses',      COALESCE(ps.statuses,      '[]'::jsonb)
+            'statuses',      COALESCE(ps.statuses,      '[]'::jsonb),
+            'subscription',  sub.subscription,
+            'is_published',  COALESCE(sub.is_paid, FALSE)
           )
-          ORDER BY pro.id_profile
+          ORDER BY pro.created_at DESC
         ) AS profiles
         FROM tb_profile pro
         JOIN tb_category ca ON ca.id_category = pro.id_category
+        LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
 
         -- redes sociais do profile (filhas)
         LEFT JOIN LATERAL (
@@ -109,6 +117,33 @@ module.exports = {
           JOIN tb_status st ON st.id_status = pps.id_status
           WHERE pps.id_profile = pro.id_profile
         ) ps ON TRUE
+
+        -- assinatura mais relevante do perfil + flag de "publicado"
+        LEFT JOIN LATERAL (
+          SELECT
+            jsonb_build_object(
+              'id_subscription', psub.id_subscription,
+              'status', psub.status,
+              'amount_cents', psub.amount_cents,
+              'currency', psub.currency,
+              'current_period_start', psub.current_period_start,
+              'current_period_end', psub.current_period_end,
+              'paid_at', psub.paid_at,
+              'canceled_at', psub.canceled_at
+            ) AS subscription,
+            (psub.status = 'active') AS is_paid
+          FROM tb_profile_subscription psub
+          WHERE psub.id_profile = pro.id_profile
+          ORDER BY
+            CASE psub.status
+              WHEN 'active'   THEN 0
+              WHEN 'past_due' THEN 1
+              WHEN 'pending'  THEN 2
+              ELSE 3
+            END,
+            psub.created_at DESC
+          LIMIT 1
+        ) sub ON TRUE
 
         WHERE pro.id_user = tu.id_user
       ) p ON TRUE
