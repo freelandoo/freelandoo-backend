@@ -27,6 +27,15 @@ class ProfileController {
     return sendServiceResult(res, result);
   }
 
+  static async setVisibility(req, res) {
+    const result = await ProfileService.setVisibility(
+      req.user,
+      req.params,
+      req.body
+    );
+    return sendServiceResult(res, result);
+  }
+
   static async setStatus(req, res) {
     const result = await ProfileService.setStatus(
       req.user,

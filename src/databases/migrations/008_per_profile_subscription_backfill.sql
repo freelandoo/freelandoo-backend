@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS public.tb_subscription_backfill_log (
 
 DO $bf$
 DECLARE
-  v_fee_paid_id UUID;
+  v_fee_paid_id INTEGER;
   v RECORD;
   v_target_profile UUID;
 BEGIN

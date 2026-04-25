@@ -27,10 +27,15 @@ class ProfileStorage {
       p.id_user,
       p.id_category,
       c.desc_category,
+      c.id_machine,
+      m.slug AS machine_slug,
+      m.name AS machine_name,
       p.display_name,
       p.bio,
       p.avatar_url,
       p.is_active,
+      p.is_visible,
+      p.deleted_at,
       p.created_at,
       p.updated_at,
       p.estado,
@@ -38,12 +43,46 @@ class ProfileStorage {
     FROM public.tb_profile p
     JOIN public.tb_category c
       ON c.id_category = p.id_category
+    LEFT JOIN public.tb_machine m
+      ON m.id_machine = c.id_machine
     WHERE p.id_profile = $1
     LIMIT 1
     `,
       [id_profile]
     );
     return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async setVisibility(conn, id_profile, is_visible) {
+    const r = await conn.query(
+      `
+      UPDATE public.tb_profile
+         SET is_visible = $2,
+             updated_at = NOW()
+       WHERE id_profile = $1
+         AND deleted_at IS NULL
+      RETURNING *
+      `,
+      [id_profile, !!is_visible]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async softDeleteProfile(conn, id_profile) {
+    const r = await conn.query(
+      `
+      UPDATE public.tb_profile
+         SET deleted_at = NOW(),
+             is_active  = FALSE,
+             is_visible = FALSE,
+             updated_at = NOW()
+       WHERE id_profile = $1
+         AND deleted_at IS NULL
+      RETURNING id_profile
+      `,
+      [id_profile]
+    );
+    return r.rowCount > 0;
   }
 
   static async listProfilesByUser(conn, id_user) {
@@ -133,6 +172,7 @@ class ProfileStorage {
     ) smq ON true
 
     WHERE p.id_user = $1
+      AND p.deleted_at IS NULL
     ORDER BY p.created_at DESC
     `,
       [id_user]

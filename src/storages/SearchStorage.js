@@ -96,20 +96,20 @@ module.exports = {
       WHERE
         tu.ativo = true
         AND pro.is_active = true
+        AND pro.is_visible = true
+        AND pro.deleted_at IS NULL
 
         -- Máquina desativada nunca aparece publicamente.
         -- Perfis sem máquina (id_machine NULL) só aparecem quando nenhum
         -- filtro de máquina/profissão é aplicado.
         AND (m.is_active IS NULL OR m.is_active = TRUE)
 
-        -- Só mostra perfis com anuidade paga (fee_paid).
+        -- Só mostra perfis com assinatura ativa.
         AND EXISTS (
           SELECT 1
-          FROM tb_profile_status pps_fee
-          JOIN tb_status st_fee
-            ON st_fee.id_status = pps_fee.id_status
-          WHERE pps_fee.id_profile = pro.id_profile
-            AND st_fee.desc_status = 'fee_paid'
+          FROM tb_profile_subscription psub_pub
+          WHERE psub_pub.id_profile = pro.id_profile
+            AND psub_pub.status = 'active'
         )
 
         -- Filtros geográficos
