@@ -17,6 +17,16 @@ class ProfileController {
     return sendServiceResult(res, result);
   }
 
+  static async getPublicByHandle(req, res) {
+    const result = await ProfileService.getPublicByHandle(req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async resolveCanonicalByHandle(req, res) {
+    const result = await ProfileService.resolveCanonicalByHandle(req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async update(req, res) {
     const result = await ProfileService.update(req.user, req.params, req.body);
     return sendServiceResult(res, result);
