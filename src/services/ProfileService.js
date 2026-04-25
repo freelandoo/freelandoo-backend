@@ -288,7 +288,12 @@ class ProfileService {
             return { error: "Você não tem permissão para alterar este perfil" };
           }
 
-          const ok = await ProfileStorage.disableProfile(client, id_profile);
+          if (profile.deleted_at) {
+            await client.query("ROLLBACK");
+            return { error: "Perfil já foi removido" };
+          }
+
+          const ok = await ProfileStorage.softDeleteProfile(client, id_profile);
           if (!ok) {
             await client.query("ROLLBACK");
             return { error: "Perfil não encontrado" };
@@ -317,6 +322,80 @@ class ProfileService {
 
         const profiles = await ProfileStorage.listProfilesByUser(pool, id_user);
         return { profiles };
+      }
+    );
+  }
+
+  static async setVisibility(user, params, payload) {
+    return runWithLogs(
+      log,
+      "setVisibility",
+      () => ({
+        id_user: user?.id_user,
+        id_profile: params?.id_profile,
+        is_visible: payload?.is_visible,
+      }),
+      async () => {
+        const { id_profile } = params;
+        const { is_visible } = payload || {};
+
+        if (!id_profile) return { error: "id_profile é obrigatório" };
+        if (typeof is_visible !== "boolean") {
+          return { error: "is_visible deve ser boolean" };
+        }
+
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          const profile = await ProfileStorage.getProfileById(client, id_profile);
+          if (!profile || profile.deleted_at) {
+            await client.query("ROLLBACK");
+            return { error: "Perfil não encontrado" };
+          }
+          if (String(profile.id_user) !== String(user.id_user)) {
+            await client.query("ROLLBACK");
+            return { error: "Você não tem permissão para alterar este perfil" };
+          }
+
+          if (is_visible) {
+            const subRes = await client.query(
+              `SELECT 1 FROM tb_profile_subscription
+                WHERE id_profile = $1 AND status = 'active' LIMIT 1`,
+              [id_profile]
+            );
+            if (subRes.rowCount === 0) {
+              await client.query("ROLLBACK");
+              return {
+                error:
+                  "Para tornar o perfil visível é necessário ter uma assinatura ativa",
+              };
+            }
+          }
+
+          const updated = await ProfileStorage.setVisibility(
+            client,
+            id_profile,
+            is_visible
+          );
+          if (!updated) {
+            await client.query("ROLLBACK");
+            return { error: "Perfil não encontrado" };
+          }
+
+          await client.query("COMMIT");
+          return {
+            message: is_visible
+              ? "Perfil agora está visível nas buscas"
+              : "Perfil agora está invisível nas buscas",
+            profile: updated,
+          };
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
       }
     );
   }

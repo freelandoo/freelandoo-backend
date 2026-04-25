@@ -74,10 +74,13 @@ module.exports = {
             'estado', pro.estado,
             'municipio', pro.municipio,
             'is_active', pro.is_active,
+            'is_visible', pro.is_visible,
+            'deleted_at', pro.deleted_at,
             'redes_sociais', COALESCE(sm.redes_sociais, '[]'::jsonb),
             'statuses',      COALESCE(ps.statuses,      '[]'::jsonb),
             'subscription',  sub.subscription,
-            'is_published',  COALESCE(sub.is_paid, FALSE)
+            'is_paid',       COALESCE(sub.is_paid, FALSE),
+            'is_published',  (COALESCE(sub.is_paid, FALSE) AND pro.is_visible AND pro.deleted_at IS NULL)
           )
           ORDER BY pro.created_at DESC
         ) AS profiles
@@ -146,6 +149,7 @@ module.exports = {
         ) sub ON TRUE
 
         WHERE pro.id_user = tu.id_user
+          AND pro.deleted_at IS NULL
       ) p ON TRUE
 
       WHERE tu.id_user = $1

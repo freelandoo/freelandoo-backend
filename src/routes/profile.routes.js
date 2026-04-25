@@ -26,4 +26,11 @@ router.post(
   authMiddleware,
   asyncHandler(ProfileController.setStatus)
 );
+
+router.patch(
+  "/:id_profile/visibility",
+  authMiddleware,
+  asyncHandler(ProfileController.setVisibility)
+);
+
 module.exports = router;
