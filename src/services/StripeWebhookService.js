@@ -3,6 +3,7 @@ const StripeService = require("./StripeService");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const BookingService = require("./BookingService");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("StripeWebhookService");
@@ -170,9 +171,21 @@ async function processEvent(event) {
   }
 
   switch (event.type) {
-    case "checkout.session.completed":
-      await handleCheckoutCompleted(pool, event.data.object);
+    case "checkout.session.completed": {
+      const session = event.data.object;
+      const meta = session.metadata || {};
+      if (meta.type === "booking_deposit") {
+        // Booking deposit payment
+        const paymentIntentId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id || null;
+        await BookingService.confirmBookingFromWebhook(session.id, paymentIntentId);
+      } else {
+        // Subscription checkout
+        await handleCheckoutCompleted(pool, session);
+      }
       break;
+    }
     case "invoice.payment_succeeded":
     case "invoice.paid":
       await handleInvoicePaid(pool, event.data.object);
