@@ -11,6 +11,12 @@ router.get(
   asyncHandler(BookingController.getAvailableSlots)
 );
 
+// ─── Público: dados completos da semana ─────────────────────────────
+router.get(
+  "/:id_profile/calendar/week",
+  asyncHandler(BookingController.getWeekData)
+);
+
 // ─── Público: criar booking ────────────────────────────────────────
 router.post(
   "/:id_profile/bookings",

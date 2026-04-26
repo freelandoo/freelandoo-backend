@@ -250,6 +250,75 @@ class BookingAvailabilityService {
 
     return { slots };
   }
+
+  // ─── Público: dados da semana inteira ───────────────────────────────
+  // Retorna availableSlots (por dia) + events (bookings ativos) entre weekStart e weekEnd.
+  static async getWeekData(id_profile, weekStart, weekEnd, { ownerView = false } = {}) {
+    if (!weekStart || !weekEnd) return { error: "weekStart e weekEnd são obrigatórios" };
+
+    const profile = await ProfileStorage.getProfileById(pool, id_profile);
+    if (!profile) return { error: "Perfil não encontrado" };
+    if (!ownerView) {
+      if (profile.deleted_at) return { error: "Perfil não encontrado" };
+      if (!profile.is_visible) return { error: "Perfil indisponível" };
+    }
+
+    const settings = await BookingSettingsStorage.get(pool, id_profile);
+    const allowBooking = !!(settings && settings.allow_booking);
+
+    // Datas (YYYY-MM-DD) dentro do range, inclusive
+    const dates = [];
+    const cursor = new Date(weekStart + "T12:00:00Z");
+    const end = new Date(weekEnd + "T12:00:00Z");
+    while (cursor <= end) {
+      dates.push(cursor.toISOString().substring(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    const availableSlots = [];
+
+    if (allowBooking || ownerView) {
+      for (const dateStr of dates) {
+        const r = await this.getAvailableSlots(id_profile, dateStr);
+        availableSlots.push({ date: dateStr, slots: r.slots || [] });
+      }
+    } else {
+      for (const dateStr of dates) availableSlots.push({ date: dateStr, slots: [] });
+    }
+
+    // Eventos = bookings ativos da semana
+    const bookings = await BookingStorage.getActiveBookingsInRange(pool, id_profile, weekStart, weekEnd);
+    const events = bookings.map(b => {
+      let status = "confirmed";
+      if (b.status === "pending_payment" || b.payment_status === "pending") status = "pending_payment";
+      else if (b.status === "confirmed") status = "confirmed";
+      const dateStr = (b.booking_date instanceof Date)
+        ? b.booking_date.toISOString().substring(0, 10)
+        : String(b.booking_date).substring(0, 10);
+      return {
+        id: String(b.id),
+        title: ownerView
+          ? (b.client_name || "Reservado")
+          : "Reservado",
+        start: `${dateStr}T${String(b.start_time).substring(0, 8)}`,
+        end: `${dateStr}T${String(b.end_time).substring(0, 8)}`,
+        status,
+        meta: ownerView ? {
+          serviceName: b.service_name_snapshot,
+          clientName: b.client_name,
+          bookingId: b.id,
+        } : undefined,
+      };
+    });
+
+    return {
+      weekStart,
+      weekEnd,
+      allowBooking,
+      availableSlots,
+      events,
+    };
+  }
 }
 
 module.exports = BookingAvailabilityService;

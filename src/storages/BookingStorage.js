@@ -95,6 +95,23 @@ class BookingStorage {
   }
 
   /**
+   * Busca bookings ativos para um intervalo de datas em um perfil (semana).
+   */
+  static async getActiveBookingsInRange(conn, id_profile, start_date, end_date) {
+    const r = await conn.query(
+      `SELECT id, booking_date, start_time, end_time, status, payment_status,
+              service_name_snapshot, client_name
+       FROM public.tb_profile_bookings
+       WHERE id_profile = $1
+         AND booking_date BETWEEN $2 AND $3
+         AND status NOT IN ('canceled','expired')
+       ORDER BY booking_date, start_time`,
+      [id_profile, start_date, end_date]
+    );
+    return r.rows;
+  }
+
+  /**
    * Lista bookings de todos os perfis de um usuário (para dashboard do dono).
    */
   static async listByOwner(conn, owner_user_id, { limit = 50, offset = 0 } = {}) {
@@ -144,17 +161,32 @@ class BookingStorage {
    * Tenta reservar um slot usando SELECT FOR UPDATE para evitar race condition.
    * Retorna true se o slot está livre, false se já ocupado.
    */
-  static async lockAndCheckSlot(conn, id_profile, booking_date, start_time) {
+  static async lockAndCheckSlot(conn, id_profile, booking_date, start_time, end_time) {
+    // Sem end_time: comportamento antigo (compat) — checa apenas start exato.
+    if (!end_time) {
+      const r = await conn.query(
+        `SELECT id FROM public.tb_profile_bookings
+         WHERE id_profile = $1
+           AND booking_date = $2
+           AND start_time = $3
+           AND status NOT IN ('canceled','expired')
+         FOR UPDATE`,
+        [id_profile, booking_date, start_time]
+      );
+      return r.rowCount === 0;
+    }
+    // Com end_time: detecta overlap [start_time, end_time) com qualquer booking ativo do dia.
     const r = await conn.query(
       `SELECT id FROM public.tb_profile_bookings
        WHERE id_profile = $1
          AND booking_date = $2
-         AND start_time = $3
          AND status NOT IN ('canceled','expired')
+         AND start_time < $4
+         AND end_time   > $3
        FOR UPDATE`,
-      [id_profile, booking_date, start_time]
+      [id_profile, booking_date, start_time, end_time]
     );
-    return r.rowCount === 0; // true = slot livre
+    return r.rowCount === 0;
   }
 
   /**
