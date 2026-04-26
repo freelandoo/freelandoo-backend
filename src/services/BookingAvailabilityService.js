@@ -258,9 +258,14 @@ class BookingAvailabilityService {
 
     const profile = await ProfileStorage.getProfileById(pool, id_profile);
     if (!profile) return { error: "Perfil não encontrado" };
-    if (!ownerView) {
-      if (profile.deleted_at) return { error: "Perfil não encontrado" };
-      if (!profile.is_visible) return { error: "Perfil indisponível" };
+
+    // Em modo público: se perfil não está apto, devolve estrutura válida com allowBooking=false
+    // (evita erro 4xx que faria a UI mostrar "agendamento desabilitado" como se fosse falha).
+    if (!ownerView && (profile.deleted_at || !profile.is_visible)) {
+      return {
+        weekStart, weekEnd, allowBooking: false,
+        availableSlots: [], events: [],
+      };
     }
 
     const settings = await BookingSettingsStorage.get(pool, id_profile);
