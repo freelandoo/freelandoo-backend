@@ -66,6 +66,36 @@ class BookingController {
     return sendServiceResult(res, result);
   }
 
+  // ─── Público: dados da semana ────────────────────────────────────
+  static async getWeekData(req, res) {
+    const result = await BookingAvailabilityService.getWeekData(
+      req.params.id_profile,
+      req.query.weekStart,
+      req.query.weekEnd,
+      { ownerView: false }
+    );
+    return sendServiceResult(res, result);
+  }
+
+  // ─── Owner: dados da semana (inclui bookings do dono) ────────────
+  static async getOwnerWeekData(req, res) {
+    const { id_profile } = req.params;
+    const ProfileStorage = require("../storages/ProfileStorage");
+    const pool = require("../databases");
+    const profile = await ProfileStorage.getProfileById(pool, id_profile);
+    if (!profile) return sendServiceResult(res, { error: "Perfil não encontrado" });
+    if (String(profile.id_user) !== String(req.user.id_user)) {
+      return sendServiceResult(res, { error: "Sem permissão" });
+    }
+    const result = await BookingAvailabilityService.getWeekData(
+      id_profile,
+      req.query.weekStart,
+      req.query.weekEnd,
+      { ownerView: true }
+    );
+    return sendServiceResult(res, result);
+  }
+
   // ─── Público: criar booking ──────────────────────────────────────
   static async createPublicBooking(req, res) {
     const result = await BookingService.createPublicBooking(req.params.id_profile, req.body);

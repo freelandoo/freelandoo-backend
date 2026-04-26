@@ -79,10 +79,10 @@ class BookingService {
     try {
       await client.query("BEGIN");
 
-      const slotFree = await BookingStorage.lockAndCheckSlot(client, id_profile, booking_date, start_time);
+      const slotFree = await BookingStorage.lockAndCheckSlot(client, id_profile, booking_date, start_time, end_time);
       if (!slotFree) {
         await client.query("ROLLBACK");
-        return { error: "Horário já reservado. Escolha outro horário." };
+        return { error: "Horário indisponível: a duração do serviço sobrepõe outro agendamento." };
       }
 
       // Criar checkout session no Stripe

@@ -53,4 +53,11 @@ router.get(
   asyncHandler(BookingController.listProfileBookings)
 );
 
+// ─── Owner: dados da semana ────────────────────────────────────────
+router.get(
+  "/:id_profile/calendar/week",
+  authMiddleware,
+  asyncHandler(BookingController.getOwnerWeekData)
+);
+
 module.exports = router;
