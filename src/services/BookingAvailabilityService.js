@@ -147,12 +147,6 @@ class BookingAvailabilityService {
     if (profile.deleted_at) return { error: "Perfil não encontrado" };
     if (!profile.is_visible) return { error: "Perfil indisponível" };
 
-    // Verificar se o perfil tem assinatura ativa
-    const settings = await BookingSettingsStorage.get(pool, id_profile);
-    if (!settings || !settings.allow_booking) {
-      return { slots: [], message: "Agenda indisponível" };
-    }
-
     const targetDate = new Date(dateStr + "T12:00:00Z");
     const weekday = targetDate.getUTCDay(); // 0=dom, 6=sab
     const today = new Date();
@@ -259,17 +253,10 @@ class BookingAvailabilityService {
     const profile = await ProfileStorage.getProfileById(pool, id_profile);
     if (!profile) return { error: "Perfil não encontrado" };
 
-    // Em modo público: se perfil não está apto, devolve estrutura válida com allowBooking=false
-    // (evita erro 4xx que faria a UI mostrar "agendamento desabilitado" como se fosse falha).
+    // Em modo público: se perfil não está apto, devolve estrutura vazia (sem erro).
     if (!ownerView && (profile.deleted_at || !profile.is_visible)) {
-      return {
-        weekStart, weekEnd, allowBooking: false,
-        availableSlots: [], events: [],
-      };
+      return { weekStart, weekEnd, availableSlots: [], events: [] };
     }
-
-    const settings = await BookingSettingsStorage.get(pool, id_profile);
-    const allowBooking = !!(settings && settings.allow_booking);
 
     // Datas (YYYY-MM-DD) dentro do range, inclusive
     const dates = [];
@@ -281,14 +268,9 @@ class BookingAvailabilityService {
     }
 
     const availableSlots = [];
-
-    if (allowBooking || ownerView) {
-      for (const dateStr of dates) {
-        const r = await this.getAvailableSlots(id_profile, dateStr);
-        availableSlots.push({ date: dateStr, slots: r.slots || [] });
-      }
-    } else {
-      for (const dateStr of dates) availableSlots.push({ date: dateStr, slots: [] });
+    for (const dateStr of dates) {
+      const r = await this.getAvailableSlots(id_profile, dateStr);
+      availableSlots.push({ date: dateStr, slots: r.slots || [] });
     }
 
     // Eventos = bookings ativos da semana
@@ -316,13 +298,7 @@ class BookingAvailabilityService {
       };
     });
 
-    return {
-      weekStart,
-      weekEnd,
-      allowBooking,
-      availableSlots,
-      events,
-    };
+    return { weekStart, weekEnd, availableSlots, events };
   }
 }
 
