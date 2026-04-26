@@ -250,6 +250,7 @@ class ProfileStorage {
             'profile_url', psm.url,
             'id_follower_range', psm.id_follower_range,
             'follower_range', fr.follower_range,
+            'phone_number_normalized', psm.phone_number_normalized,
             'is_active', psm.is_active
           )
           ORDER BY smt.desc_social_media_type
@@ -438,6 +439,7 @@ class ProfileStorage {
       psm.url AS profile_url,
       psm.id_follower_range,
       fr.follower_range,
+      psm.phone_number_normalized,
       psm.is_active
     FROM public.tb_profile_social_media psm
     JOIN public.tb_social_media_type smt

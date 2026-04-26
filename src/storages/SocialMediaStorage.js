@@ -36,14 +36,14 @@ class SocialMediaStorage {
    */
   static async upsertProfileSocialMedia(
     conn,
-    { id_profile, id_social_media_type, url, id_follower_range }
+    { id_profile, id_social_media_type, url, id_follower_range, phone_number_normalized }
   ) {
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile_social_media
-        (id_profile, id_social_media_type, url, id_follower_range, is_active)
+        (id_profile, id_social_media_type, url, id_follower_range, phone_number_normalized, is_active)
       VALUES
-        ($1, $2, $3, $4, true)
+        ($1, $2, $3, $4, $5, true)
       ON CONFLICT (id_profile, id_social_media_type)
       DO UPDATE SET
         url = COALESCE(EXCLUDED.url, public.tb_profile_social_media.url),
@@ -51,15 +51,17 @@ class SocialMediaStorage {
           WHEN EXCLUDED.id_follower_range IS NULL THEN public.tb_profile_social_media.id_follower_range
           ELSE EXCLUDED.id_follower_range
         END,
+        phone_number_normalized = COALESCE(EXCLUDED.phone_number_normalized, public.tb_profile_social_media.phone_number_normalized),
         is_active = true
       RETURNING
-        id_profile_social_media, id_profile, id_social_media_type, url, id_follower_range, is_active
+        id_profile_social_media, id_profile, id_social_media_type, url, id_follower_range, phone_number_normalized, is_active
       `,
       [
         id_profile,
         id_social_media_type,
         url ?? null, // se undefined, vai null, e COALESCE preserva url
         id_follower_range === undefined ? null : id_follower_range,
+        phone_number_normalized ?? null,
       ]
     );
     return r.rows[0];
@@ -87,6 +89,10 @@ class SocialMediaStorage {
       fields.push(`is_active = $${idx++}`);
       values.push(payload.is_active);
     }
+    if (has("phone_number_normalized")) {
+      fields.push(`phone_number_normalized = $${idx++}`);
+      values.push(payload.phone_number_normalized);
+    }
 
     if (fields.length === 0) return null;
 
@@ -97,7 +103,7 @@ class SocialMediaStorage {
       WHERE id_profile = $1
         AND id_social_media_type = $2
       RETURNING
-        id_profile_social_media, id_profile, id_social_media_type, url, id_follower_range, is_active
+        id_profile_social_media, id_profile, id_social_media_type, url, id_follower_range, phone_number_normalized, is_active
       `,
       values
     );
