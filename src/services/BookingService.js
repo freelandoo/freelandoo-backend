@@ -1,6 +1,5 @@
 const pool = require("../databases");
 const BookingStorage = require("../storages/BookingStorage");
-const BookingSettingsStorage = require("../storages/BookingSettingsStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
@@ -30,12 +29,6 @@ class BookingService {
     // Verificar assinatura ativa
     const sub = await ProfileSubscriptionStorage.findActiveByProfile(pool, id_profile);
     if (!sub) return { error: "Perfil não disponível para agendamento" };
-
-    // Verificar settings
-    const settings = await BookingSettingsStorage.get(pool, id_profile);
-    if (!settings || !settings.allow_booking) {
-      return { error: "Agendamento não habilitado para este perfil" };
-    }
 
     // Validar data não no passado
     const targetDate = new Date(booking_date + "T23:59:59Z");
