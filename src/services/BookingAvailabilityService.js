@@ -127,18 +127,14 @@ class BookingAvailabilityService {
     if (!profile) return { error: "Perfil não encontrado" };
     if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
 
-    const deposit_amount = parseInt(body.deposit_amount, 10);
-    if (isNaN(deposit_amount) || deposit_amount < 1000) {
-      return { error: "Valor do sinal deve ser no mínimo R$ 10,00 (1000 centavos)" };
+    // deposit_amount foi aposentado — checkout usa price_amount do serviço.
+    // Aceita apenas allow_booking. Mantém deposit_amount legacy intocado quando não enviado.
+    const payload = { id_profile };
+    if (Object.prototype.hasOwnProperty.call(body || {}, "allow_booking")) {
+      payload.allow_booking = !!body.allow_booking;
     }
 
-    const saved = await BookingSettingsStorage.upsert(pool, {
-      id_profile,
-      deposit_amount,
-      platform_fee_amount: 1000, // fixo R$10
-      currency: "BRL",
-      allow_booking: body.allow_booking ?? false,
-    });
+    const saved = await BookingSettingsStorage.upsert(pool, payload);
     return { settings: saved };
   }
 
