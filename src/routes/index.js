@@ -23,6 +23,8 @@ const couponAdminRoutes = require("./couponAdmin.routes");
 const bookingRoutes = require("./booking.routes");
 const bookingPublicRoutes = require("./bookingPublic.routes");
 const profilePublicRoutes = require("./profilePublic.routes");
+const profileServiceRoutes = require("./profileService.routes");
+const profileServicePublicRoutes = require("./profileServicePublic.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -52,6 +54,8 @@ module.exports = (app) => {
   app.use("/admin", machineAdminRoutes);
   app.use("/admin/coupons", couponAdminRoutes);
   app.use("/profile", bookingRoutes);
+  app.use("/profile/:id_profile/services", profileServiceRoutes);
   app.use("/public/profile", bookingPublicRoutes);
+  app.use("/public/profile", profileServicePublicRoutes);
   app.use("/public/creator", profilePublicRoutes);
 };
