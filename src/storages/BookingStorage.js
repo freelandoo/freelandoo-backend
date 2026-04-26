@@ -112,9 +112,25 @@ class BookingStorage {
    */
   static async listByProfile(conn, id_profile, { limit = 50, offset = 0 } = {}) {
     const r = await conn.query(
-      `SELECT * FROM public.tb_profile_bookings
-       WHERE id_profile = $1
-       ORDER BY booking_date DESC, start_time DESC
+      `SELECT
+         b.*,
+         u.id_user                       AS client_user_id,
+         cp.id_profile                   AS client_profile_id,
+         cp.display_name                 AS client_profile_display_name
+       FROM public.tb_profile_bookings b
+       LEFT JOIN public.tb_user u
+         ON LOWER(u.email) = LOWER(b.client_email)
+       LEFT JOIN LATERAL (
+         SELECT id_profile, display_name
+         FROM public.tb_profile
+         WHERE id_user = u.id_user
+           AND deleted_at IS NULL
+           AND is_active = TRUE
+         ORDER BY created_at ASC
+         LIMIT 1
+       ) cp ON TRUE
+       WHERE b.id_profile = $1
+       ORDER BY b.created_at DESC
        LIMIT $2 OFFSET $3`,
       [id_profile, limit, offset]
     );
