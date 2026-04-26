@@ -3,6 +3,7 @@ const BookingStorage = require("../storages/BookingStorage");
 const BookingSettingsStorage = require("../storages/BookingSettingsStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
+const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
 const StripeService = require("./StripeService");
 const { createLogger } = require("../utils/logger");
 
@@ -15,7 +16,7 @@ class BookingService {
    * Público: cria booking + Stripe checkout session para pagamento do sinal.
    */
   static async createPublicBooking(id_profile, body) {
-    const { client_name, client_email, client_whatsapp, booking_date, start_time } = body;
+    const { client_name, client_email, client_whatsapp, booking_date, start_time, id_profile_service } = body;
 
     if (!client_name || !client_email || !booking_date || !start_time) {
       return { error: "Campos obrigatórios: client_name, client_email, booking_date, start_time" };
@@ -42,20 +43,34 @@ class BookingService {
       return { error: "Não é possível agendar em data passada" };
     }
 
-    // Calcular valores
-    const deposit_amount = settings.deposit_amount;
-    const professional_amount = deposit_amount - PLATFORM_FEE_CENTS;
+    // Resolver serviço (se enviado): usa price_amount + duration_minutes do serviço
+    let service = null;
+    if (id_profile_service != null) {
+      service = await ProfileServiceStorage.getById(pool, Number(id_profile_service));
+      if (!service || String(service.id_profile) !== String(id_profile) || !service.is_active) {
+        return { error: "Serviço não encontrado ou inativo" };
+      }
+    }
 
-    // Calcular end_time com base na duração
+    // Valor cobrado: prioriza preço do serviço; fallback ao deposit_amount legacy
+    const charge_amount = service ? service.price_amount : settings.deposit_amount;
+    if (charge_amount < PLATFORM_FEE_CENTS) {
+      return { error: "Valor do serviço inferior à taxa mínima da plataforma" };
+    }
+    const professional_amount = charge_amount - PLATFORM_FEE_CENTS;
+
+    // Calcular end_time com base na duração do serviço, ou da regra semanal, ou default 60
     const [sh, sm] = start_time.split(":").map(Number);
-    // Obter duração do slot da regra semanal ou default 60
-    const weekday = new Date(booking_date + "T12:00:00Z").getUTCDay();
-    const { rows } = await pool.query(
-      `SELECT slot_duration_minutes FROM public.tb_profile_availability_rules
-       WHERE id_profile = $1 AND weekday = $2 LIMIT 1`,
-      [id_profile, weekday]
-    );
-    const duration = rows[0]?.slot_duration_minutes || 60;
+    let duration = service?.duration_minutes;
+    if (!duration) {
+      const weekday = new Date(booking_date + "T12:00:00Z").getUTCDay();
+      const { rows } = await pool.query(
+        `SELECT slot_duration_minutes FROM public.tb_profile_availability_rules
+         WHERE id_profile = $1 AND weekday = $2 LIMIT 1`,
+        [id_profile, weekday]
+      );
+      duration = rows[0]?.slot_duration_minutes || 60;
+    }
     const endMin = sh * 60 + sm + duration;
     const end_time = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
 
@@ -72,16 +87,19 @@ class BookingService {
 
       // Criar checkout session no Stripe
       const frontendUrl = process.env.FRONTEND_URL || "https://freelandoo.com";
+      const productName = service
+        ? `${service.name} — ${profile.display_name}`
+        : `Sinal de agendamento — ${profile.display_name}`;
       const session = await StripeService.client().checkout.sessions.create({
         mode: "payment",
         line_items: [{
           price_data: {
             currency: "brl",
             product_data: {
-              name: `Sinal de agendamento — ${profile.display_name}`,
+              name: productName,
               description: `${booking_date} às ${start_time}`,
             },
-            unit_amount: deposit_amount,
+            unit_amount: charge_amount,
           },
           quantity: 1,
         }],
@@ -95,9 +113,14 @@ class BookingService {
           start_time,
           client_name,
           client_email,
-          deposit_amount: String(deposit_amount),
+          charge_amount: String(charge_amount),
           platform_fee: String(PLATFORM_FEE_CENTS),
           professional_amount: String(professional_amount),
+          ...(service ? {
+            id_profile_service: String(service.id_profile_service),
+            service_name: service.name,
+            service_price_amount: String(service.price_amount),
+          } : {}),
         },
       });
 
@@ -111,10 +134,13 @@ class BookingService {
         booking_date,
         start_time,
         end_time,
-        deposit_amount,
+        deposit_amount: charge_amount,
         platform_fee_amount: PLATFORM_FEE_CENTS,
         professional_amount,
         stripe_checkout_session_id: session.id,
+        id_profile_service: service ? service.id_profile_service : null,
+        service_name_snapshot: service ? service.name : null,
+        service_price_amount: service ? service.price_amount : null,
       });
 
       await client.query("COMMIT");

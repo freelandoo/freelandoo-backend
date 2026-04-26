@@ -3,20 +3,23 @@ class BookingStorage {
     id_profile, profile_owner_user_id, client_name, client_email, client_whatsapp,
     booking_date, start_time, end_time,
     deposit_amount, platform_fee_amount, professional_amount,
-    stripe_checkout_session_id
+    stripe_checkout_session_id,
+    id_profile_service = null, service_name_snapshot = null, service_price_amount = null,
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_bookings
         (id_profile, profile_owner_user_id, client_name, client_email, client_whatsapp,
          booking_date, start_time, end_time,
          deposit_amount, platform_fee_amount, professional_amount,
-         stripe_checkout_session_id, status, payment_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending_payment','pending')
+         stripe_checkout_session_id, status, payment_status,
+         id_profile_service, service_name_snapshot, service_price_amount)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending_payment','pending',$13,$14,$15)
        RETURNING *`,
       [id_profile, profile_owner_user_id, client_name, client_email, client_whatsapp,
        booking_date, start_time, end_time,
        deposit_amount, platform_fee_amount, professional_amount,
-       stripe_checkout_session_id]
+       stripe_checkout_session_id,
+       id_profile_service, service_name_snapshot, service_price_amount]
     );
     return r.rows[0];
   }
