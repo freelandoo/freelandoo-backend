@@ -1,4 +1,6 @@
 const ProfileService = require("../services/ProfileService");
+const UploadProfileAvatarService = require("../services/profile/UploadProfileAvatarService");
+const pool = require("../databases");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class ProfileController {
@@ -53,6 +55,17 @@ class ProfileController {
       req.body
     );
     return sendServiceResult(res, result);
+  }
+
+  static async uploadAvatar(req, res) {
+    const { id_user } = req.user;
+    const result = await UploadProfileAvatarService.execute({
+      db: pool,
+      id_user,
+      params: req.params,
+      file: req.file,
+    });
+    return res.status(200).json(result);
   }
 }
 
