@@ -83,6 +83,12 @@ class BookingService {
       const productName = service
         ? `${service.name} — ${profile.display_name}`
         : `Sinal de agendamento — ${profile.display_name}`;
+      const formatBRL = (cents) => `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
+      const [yyyy, mm, dd] = booking_date.split("-");
+      const dateLabel = `${dd}/${mm}/${yyyy}`;
+      const description = service
+        ? `Reserva: ${dateLabel} às ${start_time} (${service.duration_minutes} min). Sinal de ${formatBRL(charge_amount)} para confirmar o horário com ${profile.display_name}.`
+        : `Reserva: ${dateLabel} às ${start_time}. Sinal de ${formatBRL(charge_amount)} para confirmar o horário com ${profile.display_name}.`;
       const session = await StripeService.client().checkout.sessions.create({
         mode: "payment",
         line_items: [{
@@ -90,7 +96,7 @@ class BookingService {
             currency: "brl",
             product_data: {
               name: productName,
-              description: `${booking_date} às ${start_time}`,
+              description,
             },
             unit_amount: charge_amount,
           },
@@ -99,6 +105,11 @@ class BookingService {
         customer_email: client_email,
         success_url: `${frontendUrl}/agendamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${frontendUrl}/freelancer/${id_profile}?booking=canceled`,
+        custom_text: {
+          submit: {
+            message: `Este pagamento é o sinal que confirma a sua reserva de ${dateLabel} às ${start_time}. Após a aprovação, o horário fica bloqueado pela duração do serviço. Taxa Freelandoo: ${formatBRL(PLATFORM_FEE_CENTS)}.`,
+          },
+        },
         metadata: {
           type: "booking_deposit",
           profile_id: id_profile,
