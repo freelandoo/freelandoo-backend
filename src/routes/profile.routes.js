@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const ProfileController = require("../controllers/ProfileController");
+const uploadAvatar = require("../middlewares/uploadAvatar");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -31,6 +32,13 @@ router.patch(
   "/:id_profile/visibility",
   authMiddleware,
   asyncHandler(ProfileController.setVisibility)
+);
+
+router.post(
+  "/:id_profile/avatar",
+  authMiddleware,
+  uploadAvatar.single("avatar"),
+  asyncHandler(ProfileController.uploadAvatar)
 );
 
 module.exports = router;
