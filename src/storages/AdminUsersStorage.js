@@ -8,7 +8,8 @@ module.exports = {
         tu.email,
         tu.estado,
         tu.municipio,
-        tu.ativo,
+        -- ativo: usuário só é ativo se tiver pelo menos um perfil ativo+visível+não deletado
+        COALESCE(profiles_agg.has_active_profile, FALSE) AS ativo,
         tu.is_admin,
         tu.created_at,
 
@@ -46,6 +47,7 @@ module.exports = {
       LEFT JOIN LATERAL (
         SELECT
           COUNT(*)::int AS profiles_count,
+          BOOL_OR(pro.is_active AND pro.is_visible AND pro.deleted_at IS NULL) AS has_active_profile,
           jsonb_agg(
             jsonb_build_object(
               'id_profile',               pro.id_profile,
