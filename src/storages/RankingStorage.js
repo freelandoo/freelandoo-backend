@@ -31,10 +31,17 @@ module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   async recordVisit(db, { id_profile, id_user, visitor_ip }) {
     if (id_user) {
+      // Deduplicação diária: verifica se já registrou visita hoje
+      const exists = await db.query(
+        `SELECT 1 FROM profile_visits
+          WHERE id_profile = $1 AND id_user = $2
+            AND visited_at >= CURRENT_DATE AND visited_at < CURRENT_DATE + INTERVAL '1 day'
+          LIMIT 1`,
+        [id_profile, id_user]
+      );
+      if (exists.rows.length > 0) return;
       await db.query(
-        `INSERT INTO profile_visits (id_profile, id_user, visitor_ip)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (id_profile, id_user, DATE(visited_at)) DO NOTHING`,
+        `INSERT INTO profile_visits (id_profile, id_user, visitor_ip) VALUES ($1, $2, $3)`,
         [id_profile, id_user, visitor_ip]
       );
     } else {
