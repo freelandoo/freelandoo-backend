@@ -8,6 +8,7 @@ const router = Router();
 // Públicos
 router.post("/visit", asyncHandler(RankingController.recordVisit));
 router.get("/ratings/:id_profile", asyncHandler(RankingController.getRatings));
+router.get("/public/profile/:id_profile", asyncHandler(RankingController.getPublicProfilePosition));
 router.get("/public/machine/:id_machine", asyncHandler(RankingController.getTopByMachine));
 router.get("/public/general", asyncHandler(RankingController.getTopGeneral));
 
