@@ -3,6 +3,7 @@ const StripeService = require("./StripeService");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const AffiliateStorage = require("../storages/AffiliateStorage");
 const BookingService = require("./BookingService");
 const { createLogger } = require("../utils/logger");
 
@@ -37,6 +38,17 @@ async function applyProfileActivation(conn, { id_profile, id_user }) {
       id_status: feePaidId,
       created_by: id_user,
     });
+  }
+
+  // Registra afiliado automaticamente se ainda não existir
+  const existing = await AffiliateStorage.getAffiliateByUserId(conn, id_user);
+  if (!existing) {
+    await AffiliateStorage.upsertAffiliate(conn, {
+      id_user,
+      status: "ACTIVE",
+      created_by: id_user,
+    });
+    log.info("affiliate.auto_registered", { id_user });
   }
 }
 
