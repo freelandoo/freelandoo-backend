@@ -17,8 +17,9 @@ CREATE INDEX IF NOT EXISTS idx_profile_visits_profile_date
   ON public.profile_visits (id_profile, visited_at DESC);
 
 -- Evita contagem duplicada do mesmo usuário autenticado no mesmo dia
-CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_visits_user_daily
-  ON public.profile_visits (id_profile, id_user, DATE(visited_at))
+-- (deduplicação feita na camada de aplicação; índice apenas para busca)
+CREATE INDEX IF NOT EXISTS idx_profile_visits_user
+  ON public.profile_visits (id_profile, id_user)
   WHERE id_user IS NOT NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────────
