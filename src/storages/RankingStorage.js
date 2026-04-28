@@ -110,14 +110,18 @@ module.exports = {
     return r.rows;
   },
 
-  // Verifica se o usuário tem assinatura ativa em qualquer perfil (pode avaliar)
-  async userHasActiveSub(db, { id_user }) {
+  // Permite avaliação apenas se o usuário tem booking PAGO com este perfil.
+  // Correlação por email — booking não armazena id_user do cliente.
+  async userHasPaidBookingForProfile(db, { id_user, id_profile }) {
     const r = await db.query(
-      `SELECT 1 FROM tb_profile_subscription psu
-         JOIN tb_profile pro ON pro.id_profile = psu.id_profile
-        WHERE pro.id_user = $1 AND psu.status = 'active'
+      `SELECT 1
+         FROM tb_profile_bookings b
+         JOIN tb_user u ON LOWER(u.email) = LOWER(b.client_email)
+        WHERE b.id_profile = $1
+          AND u.id_user = $2
+          AND b.payment_status = 'paid'
         LIMIT 1`,
-      [id_user]
+      [id_profile, id_user]
     );
     return r.rows.length > 0;
   },

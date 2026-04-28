@@ -16,6 +16,7 @@ router.get("/public/general", asyncHandler(RankingController.getTopGeneral));
 router.post("/like", authMiddleware, asyncHandler(RankingController.toggleLike));
 router.get("/likes/:id_profile", authMiddleware, asyncHandler(RankingController.getLikedItems));
 router.post("/rating", authMiddleware, asyncHandler(RankingController.upsertRating));
+router.get("/can-rate/:id_profile", authMiddleware, asyncHandler(RankingController.canRate));
 router.post("/heartbeat", authMiddleware, asyncHandler(RankingController.heartbeat));
 router.get("/engagement/:id_profile", authMiddleware, asyncHandler(RankingController.getEngagement));
 
