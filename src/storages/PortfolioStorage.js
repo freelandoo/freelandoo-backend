@@ -221,7 +221,7 @@ class PortfolioStorage {
     return r.rowCount ? r.rows[0] : null;
   }
 
-  static async listItemsWithMediaPublic(conn, id_profile) {
+  static async listItemsWithMediaPublic(conn, id_profile, id_user_viewer = null) {
     const r = await conn.query(
       `
       SELECT
@@ -234,6 +234,9 @@ class PortfolioStorage {
         i.sort_order,
         i.created_at,
         i.updated_at,
+
+        COALESCE(lq.likes_count, 0) AS likes_count,
+        COALESCE(lme.liked, false) AS liked_by_me,
 
         COALESCE(mq.media, '[]'::jsonb) AS media
       FROM public.tb_profile_portfolio_item i
@@ -252,6 +255,18 @@ class PortfolioStorage {
         WHERE m.id_portfolio_item = i.id_portfolio_item
           AND m.is_active = true
       ) mq ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS likes_count
+          FROM public.portfolio_likes pl
+         WHERE pl.id_portfolio_item = i.id_portfolio_item
+      ) lq ON true
+      LEFT JOIN LATERAL (
+        SELECT TRUE AS liked
+          FROM public.portfolio_likes pl
+         WHERE pl.id_portfolio_item = i.id_portfolio_item
+           AND pl.id_user = $2::uuid
+         LIMIT 1
+      ) lme ON $2::uuid IS NOT NULL
       WHERE i.id_profile = $1
         AND i.is_active = true
       ORDER BY
@@ -259,7 +274,7 @@ class PortfolioStorage {
         i.sort_order DESC,
         i.created_at DESC
       `,
-      [id_profile]
+      [id_profile, id_user_viewer]
     );
 
     return r.rows;

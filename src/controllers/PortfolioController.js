@@ -5,7 +5,10 @@ const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class PortfolioController {
   static async listPublic(req, res) {
-    const result = await PortfolioService.listPublic(req.params);
+    const result = await PortfolioService.listPublic({
+      ...req.params,
+      id_user_viewer: req.user?.id_user ?? null,
+    });
     return sendServiceResult(res, result);
   }
 

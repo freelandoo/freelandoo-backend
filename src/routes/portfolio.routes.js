@@ -1,12 +1,13 @@
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
+const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const PortfolioController = require("../controllers/PortfolioController");
 const uploadPortfolioMedia = require("../middlewares/uploadPortfolioMedia");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router({ mergeParams: true });
 
-router.get("/", asyncHandler(PortfolioController.listPublic));
+router.get("/", optionalAuthMiddleware, asyncHandler(PortfolioController.listPublic));
 
 router.post("/", authMiddleware, asyncHandler(PortfolioController.createItem));
 router.patch(

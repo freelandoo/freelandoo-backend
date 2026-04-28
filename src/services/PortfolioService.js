@@ -62,7 +62,8 @@ class PortfolioService {
 
         const items = await PortfolioStorage.listItemsWithMediaPublic(
           pool,
-          id_profile
+          id_profile,
+          params?.id_user_viewer ?? null
         );
         return { items };
       }
