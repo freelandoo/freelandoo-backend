@@ -24,6 +24,7 @@ const adminUsersRoutes = require("./adminUsers.routes");
 const bookingRoutes = require("./booking.routes");
 const bookingPublicRoutes = require("./bookingPublic.routes");
 const profilePublicRoutes = require("./profilePublic.routes");
+const portfolioPublicRoutes = require("./portfolioPublic.routes");
 const profileServiceRoutes = require("./profileService.routes");
 const profileServicePublicRoutes = require("./profileServicePublic.routes");
 const rankingRoutes = require("./ranking.routes");
@@ -62,6 +63,7 @@ module.exports = (app) => {
   app.use("/public/profile", bookingPublicRoutes);
   app.use("/public/profile", profileServicePublicRoutes);
   app.use("/public/creator", profilePublicRoutes);
+  app.use("/public", portfolioPublicRoutes);
   app.use("/ranking", rankingRoutes);
   app.use("/admin", adminRankingRoutes);
 };
