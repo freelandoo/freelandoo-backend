@@ -129,6 +129,12 @@ async function deactivatePromotionCode(promotionCodeId) {
   }
 }
 
+async function cancelSubscription(stripeSubscriptionId) {
+  return client().subscriptions.update(stripeSubscriptionId, {
+    cancel_at_period_end: true,
+  });
+}
+
 module.exports = {
   client,
   createAnnualProductAndPrice,
@@ -139,4 +145,5 @@ module.exports = {
   createCoupon,
   createPromotionCode,
   deactivatePromotionCode,
+  cancelSubscription,
 };

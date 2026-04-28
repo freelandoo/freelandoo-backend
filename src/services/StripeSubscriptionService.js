@@ -177,8 +177,51 @@ async function getMySubscriptions(user) {
   return { subscriptions };
 }
 
+/**
+ * POST /stripe/subscription/cancel
+ * Agenda cancelamento ao fim do período vigente (cancel_at_period_end).
+ * body: { id_subscription }
+ */
+async function cancelSubscriptionForUser(user, body) {
+  return runWithLogs(
+    log,
+    "cancelSubscriptionForUser",
+    () => ({ id_user: user.id_user, id_subscription: body?.id_subscription }),
+    async () => {
+      const id_subscription = body?.id_subscription;
+      if (!id_subscription) throw new ServiceError("id_subscription é obrigatório", 400);
+
+      const { rows } = await pool.query(
+        `SELECT * FROM public.tb_profile_subscription
+         WHERE id_subscription = $1 AND id_user = $2 LIMIT 1`,
+        [id_subscription, user.id_user]
+      );
+      const sub = rows[0];
+      if (!sub) throw new ServiceError("Assinatura não encontrada", 404);
+      if (sub.status !== "active") throw new ServiceError("Apenas assinaturas ativas podem ser canceladas", 409);
+      if (!sub.stripe_subscription_id) throw new ServiceError("Assinatura sem ID Stripe", 400);
+      if (sub.canceled_at) throw new ServiceError("Cancelamento já agendado", 409);
+
+      const stripeSub = await StripeService.cancelSubscription(sub.stripe_subscription_id);
+
+      const cancelAt = stripeSub.cancel_at
+        ? new Date(stripeSub.cancel_at * 1000)
+        : sub.current_period_end;
+
+      await ProfileSubscriptionStorage.updateBySubscriptionId(
+        pool,
+        sub.stripe_subscription_id,
+        { canceled_at: cancelAt }
+      );
+
+      return { ok: true, cancel_at: cancelAt };
+    }
+  );
+}
+
 module.exports = {
   ServiceError,
   createSessionForUser,
   getMySubscriptions,
+  cancelSubscriptionForUser,
 };

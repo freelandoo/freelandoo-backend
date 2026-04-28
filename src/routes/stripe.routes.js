@@ -17,4 +17,10 @@ router.get(
   asyncHandler(StripeController.getMySubscriptions)
 );
 
+router.post(
+  "/subscription/cancel",
+  authMiddleware,
+  asyncHandler(StripeController.cancelSubscription)
+);
+
 module.exports = router;

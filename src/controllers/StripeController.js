@@ -36,6 +36,18 @@ class StripeController {
     }
   }
 
+  static async cancelSubscription(req, res) {
+    try {
+      const result = await StripeSubscriptionService.cancelSubscriptionForUser(
+        req.user,
+        req.body || {}
+      );
+      return res.json(result);
+    } catch (err) {
+      return handleError(res, err);
+    }
+  }
+
   /**
    * POST /webhooks/stripe
    * Espera req.body como Buffer (express.raw).

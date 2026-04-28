@@ -3,6 +3,8 @@ const GetMeService = require("../services/user/GetMeService");
 const GetCreatorService = require("../services/user/GetCreatorService");
 const UpdateMeService = require("../services/user/UpdateMeService");
 const UpdateAvatarService = require("../services/user/UpdateAvatarService");
+const DeleteMeService = require("../services/user/DeleteMeService");
+const ExportMeService = require("../services/user/ExportMeService");
 
 class UserController {
   static async me(req, res) {
@@ -35,6 +37,20 @@ class UserController {
       file: req.file,
     });
     return res.json(updated);
+  }
+
+  static async deleteMe(req, res) {
+    const { id_user } = req.user;
+    const result = await DeleteMeService.execute({ db: pool, id_user });
+    return res.json(result);
+  }
+
+  static async exportMe(req, res) {
+    const { id_user } = req.user;
+    const data = await ExportMeService.execute({ db: pool, id_user });
+    res.setHeader("Content-Disposition", `attachment; filename="freelandoo-dados-${id_user}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    return res.json(data);
   }
 }
 
