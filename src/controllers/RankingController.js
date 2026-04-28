@@ -41,8 +41,11 @@ module.exports = {
     if (!id_profile || !rating) return res.status(400).json({ error: "id_profile e rating obrigatórios" });
     if (rating < 1 || rating > 5) return res.status(400).json({ error: "rating deve ser entre 1 e 5" });
 
-    const canRate = await RankingStorage.userHasActiveSub(pool, { id_user: req.user.id_user });
-    if (!canRate) return res.status(403).json({ error: "Apenas usuários com assinatura ativa podem avaliar" });
+    const canRate = await RankingStorage.userHasPaidBookingForProfile(pool, {
+      id_user: req.user.id_user,
+      id_profile,
+    });
+    if (!canRate) return res.status(403).json({ error: "Apenas clientes com agendamento pago podem avaliar" });
 
     const result = await RankingStorage.upsertRating(pool, {
       id_profile,
@@ -51,6 +54,16 @@ module.exports = {
       comment,
     });
     return res.json(result);
+  },
+
+  // GET /ranking/can-rate/:id_profile (autenticado)
+  async canRate(req, res) {
+    const { id_profile } = req.params;
+    const allowed = await RankingStorage.userHasPaidBookingForProfile(pool, {
+      id_user: req.user.id_user,
+      id_profile,
+    });
+    return res.json({ can_rate: allowed });
   },
 
   // GET /ranking/ratings/:id_profile  (público)
