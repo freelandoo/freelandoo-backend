@@ -172,7 +172,6 @@ module.exports = {
        FROM tb_profile pro
        JOIN tb_profile_subscription psub ON psub.id_profile = pro.id_profile AND psub.status = 'active'
        JOIN tb_user tu ON tu.id_user = pro.id_user
-       WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
 
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt
@@ -201,6 +200,8 @@ module.exports = {
           WHERE uot.id_user = pro.id_user
             AND uot.date >= CURRENT_DATE - ($6 || ' days')::int
        ) o ON TRUE
+
+       WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
 
        ON CONFLICT (id_profile) DO UPDATE SET
          total_points    = EXCLUDED.total_points,
@@ -264,8 +265,27 @@ module.exports = {
        WHERE pr.id_profile = sub.id_profile
     `);
 
+    await db.query(`UPDATE ranking_config SET last_recalculated_at = NOW() WHERE id = 1`);
+
     const count = await db.query(`SELECT COUNT(*) FROM profile_ranking`);
     return { updated: parseInt(count.rows[0].count, 10) };
+  },
+
+  // Recálculo automático: roda só se passou period_days desde o último
+  async runScheduledRecalculate(db) {
+    const cfg = await this.getConfig(db);
+    if (!cfg || !cfg.is_enabled) return { skipped: true, reason: "disabled" };
+
+    const periodDays = cfg.period_days ?? 30;
+    if (cfg.last_recalculated_at) {
+      const r = await db.query(
+        `SELECT (NOW() - $1::timestamptz) >= ($2 || ' days')::interval AS due`,
+        [cfg.last_recalculated_at, periodDays]
+      );
+      if (!r.rows[0]?.due) return { skipped: true, reason: "not-due" };
+    }
+
+    return await this.recalculate(db);
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -295,6 +315,34 @@ module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   // RANKINGS PÚBLICOS (home e admin)
   // ──────────────────────────────────────────────────────────────────────────
+  // Posição pública de um perfil (pra botão "Ranking" no card)
+  async getPublicProfilePosition(db, { id_profile }) {
+    const r = await db.query(
+      `SELECT
+         pr.position_general,
+         pr.position_machine,
+         pr.position_city,
+         pr.position_profession,
+         pr.total_points,
+         pr.avg_rating,
+         pr.ratings_count,
+         pr.visits_count,
+         pr.likes_count,
+         pro.municipio,
+         pro.estado,
+         m.name AS machine_name,
+         m.slug AS machine_slug,
+         ca.desc_category AS specialty
+       FROM tb_profile pro
+       LEFT JOIN profile_ranking pr ON pr.id_profile = pro.id_profile
+       LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
+       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+       WHERE pro.id_profile = $1 AND pro.deleted_at IS NULL`,
+      [id_profile]
+    );
+    return r.rows[0] ?? null;
+  },
+
   async getTopByMachine(db, { id_machine, machine_slug, limit = 5 }) {
     const r = await db.query(
       `SELECT

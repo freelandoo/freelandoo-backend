@@ -91,6 +91,14 @@ module.exports = {
     });
   },
 
+  // GET /ranking/public/profile/:id_profile (público — pra botão Ranking no card)
+  async getPublicProfilePosition(req, res) {
+    const { id_profile } = req.params;
+    const data = await RankingStorage.getPublicProfilePosition(pool, { id_profile });
+    if (!data) return res.status(404).json({ error: "Perfil não encontrado" });
+    return res.json(data);
+  },
+
   // GET /ranking/public/machine/:slug  (público — aceita slug ou id numérico)
   async getTopByMachine(req, res) {
     const { id_machine } = req.params;
