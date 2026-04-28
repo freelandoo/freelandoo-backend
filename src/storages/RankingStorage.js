@@ -198,7 +198,7 @@ module.exports = {
          SELECT COALESCE(SUM(uot.minutes_online), 0)::int AS mins
            FROM user_online_time uot
           WHERE uot.id_user = pro.id_user
-            AND uot.date >= CURRENT_DATE - ($6 || ' days')::int
+            AND uot.date >= CURRENT_DATE - $6::int
        ) o ON TRUE
 
        WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
