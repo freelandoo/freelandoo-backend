@@ -178,6 +178,49 @@ class PortfolioStorage {
   }
 
   // --------- Reads ----------
+  // Item público com perfil dono (pra preview de compartilhamento)
+  static async getPublicItemWithProfile(conn, id_portfolio_item) {
+    const r = await conn.query(
+      `
+      SELECT
+        i.id_portfolio_item,
+        i.id_profile,
+        i.title,
+        i.description,
+        i.project_url,
+        i.created_at,
+        pro.display_name AS profile_display_name,
+        pro.username     AS profile_username,
+        pro.profession_slug,
+        pro.municipio    AS profile_municipio,
+        COALESCE(mq.media, '[]'::jsonb) AS media
+      FROM public.tb_profile_portfolio_item i
+      JOIN public.tb_profile pro ON pro.id_profile = i.id_profile
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'id_portfolio_media', m.id_portfolio_media,
+            'media_url', m.media_url,
+            'media_type', m.media_type,
+            'thumbnail_url', m.thumbnail_url,
+            'sort_order', m.sort_order
+          )
+          ORDER BY m.sort_order, m.created_at
+        ) AS media
+        FROM public.tb_profile_portfolio_media m
+        WHERE m.id_portfolio_item = i.id_portfolio_item
+          AND m.is_active = true
+      ) mq ON true
+      WHERE i.id_portfolio_item = $1
+        AND i.is_active = true
+        AND pro.deleted_at IS NULL
+      LIMIT 1
+      `,
+      [id_portfolio_item]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
   static async getItemWithMedia(conn, id_portfolio_item) {
     const r = await conn.query(
       `

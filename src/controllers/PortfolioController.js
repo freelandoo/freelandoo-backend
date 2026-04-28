@@ -1,9 +1,19 @@
 const PortfolioService = require("../services/PortfolioService");
+const PortfolioStorage = require("../storages/PortfolioStorage");
 const UploadPortfolioMediaService = require("../services/portfolio/UploadPortfolioMediaService");
 const pool = require("../databases");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class PortfolioController {
+  static async getPublicItem(req, res) {
+    const item = await PortfolioStorage.getPublicItemWithProfile(
+      pool,
+      req.params.id_portfolio_item
+    );
+    if (!item) return res.status(404).json({ error: "Item não encontrado" });
+    return res.json(item);
+  }
+
   static async listPublic(req, res) {
     const result = await PortfolioService.listPublic({
       ...req.params,
