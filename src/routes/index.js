@@ -26,6 +26,8 @@ const bookingPublicRoutes = require("./bookingPublic.routes");
 const profilePublicRoutes = require("./profilePublic.routes");
 const profileServiceRoutes = require("./profileService.routes");
 const profileServicePublicRoutes = require("./profileServicePublic.routes");
+const rankingRoutes = require("./ranking.routes");
+const adminRankingRoutes = require("./adminRanking.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -60,4 +62,6 @@ module.exports = (app) => {
   app.use("/public/profile", bookingPublicRoutes);
   app.use("/public/profile", profileServicePublicRoutes);
   app.use("/public/creator", profilePublicRoutes);
+  app.use("/ranking", rankingRoutes);
+  app.use("/admin", adminRankingRoutes);
 };
