@@ -20,6 +20,7 @@ const affiliateAdminRoutes = require("./affiliateAdmin.routes");
 const machineRoutes = require("./machine.routes");
 const machineAdminRoutes = require("./machineAdmin.routes");
 const couponAdminRoutes = require("./couponAdmin.routes");
+const adminUsersRoutes = require("./adminUsers.routes");
 const bookingRoutes = require("./booking.routes");
 const bookingPublicRoutes = require("./bookingPublic.routes");
 const profilePublicRoutes = require("./profilePublic.routes");
@@ -53,6 +54,7 @@ module.exports = (app) => {
   app.use("/machines", machineRoutes);
   app.use("/admin", machineAdminRoutes);
   app.use("/admin/coupons", couponAdminRoutes);
+  app.use("/admin", adminUsersRoutes);
   app.use("/profile", bookingRoutes);
   app.use("/profile/:id_profile/services", profileServiceRoutes);
   app.use("/public/profile", bookingPublicRoutes);
