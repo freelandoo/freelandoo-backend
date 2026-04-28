@@ -93,9 +93,11 @@ class ProfileSubscriptionStorage {
 
   static async listByUser(conn, id_user) {
     const { rows } = await conn.query(
-      `SELECT * FROM public.tb_profile_subscription
-       WHERE id_user = $1
-       ORDER BY created_at DESC`,
+      `SELECT ps.*, p.display_name AS profile_name
+       FROM public.tb_profile_subscription ps
+       LEFT JOIN public.tb_profile p ON p.id_profile = ps.id_profile
+       WHERE ps.id_user = $1
+       ORDER BY ps.created_at DESC`,
       [id_user]
     );
     return rows;
