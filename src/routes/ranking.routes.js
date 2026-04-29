@@ -11,6 +11,8 @@ router.get("/ratings/:id_profile", asyncHandler(RankingController.getRatings));
 router.get("/public/profile/:id_profile", asyncHandler(RankingController.getPublicProfilePosition));
 router.get("/public/machine/:id_machine", asyncHandler(RankingController.getTopByMachine));
 router.get("/public/general", asyncHandler(RankingController.getTopGeneral));
+router.get("/public/clans/general", asyncHandler(RankingController.getTopClansGeneral));
+router.get("/public/clans/machine/:id_machine", asyncHandler(RankingController.getTopClansByMachine));
 
 // Autenticados (opcionalmente autenticado para visitas com user_id)
 router.post("/like", authMiddleware, asyncHandler(RankingController.toggleLike));

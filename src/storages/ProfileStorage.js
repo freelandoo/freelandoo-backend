@@ -36,6 +36,7 @@ class ProfileStorage {
       p.bio,
       p.avatar_url,
       p.is_active,
+      p.is_clan,
       p.is_visible,
       p.deleted_at,
       p.created_at,
@@ -86,6 +87,7 @@ class ProfileStorage {
       p.bio,
       p.avatar_url,
       p.is_active,
+      p.is_clan,
       p.is_visible,
       p.deleted_at,
       p.created_at,
@@ -125,6 +127,7 @@ class ProfileStorage {
       c.desc_category,
       p.municipio,
       p.estado,
+      p.is_clan,
       p.is_visible,
       p.deleted_at,
       EXISTS (

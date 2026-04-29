@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const ProfileStorage = require("../storages/ProfileStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
+const ClanStorage = require("../storages/ClanStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PortfolioService");
@@ -9,6 +10,36 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const has = (obj, k) => Object.prototype.hasOwnProperty.call(obj || {}, k);
+
+/**
+ * Verifica permissão de edição de portfólio considerando clans.
+ * - Perfil normal: só dono (id_user)
+ * - Clan + mode='add': qualquer membro
+ * - Clan + mode='modify': só owner do clan
+ * Retorna { error } se bloqueado, ou null se ok.
+ */
+async function checkPortfolioAccess(conn, profile, user, mode) {
+  if (!profile.is_clan) {
+    if (String(profile.id_user) !== String(user.id_user)) {
+      return { error: "Você não tem permissão para alterar este perfil" };
+    }
+    return null;
+  }
+  const membership = await ClanStorage.getUserMembership(
+    conn,
+    profile.id_profile,
+    user.id_user
+  );
+  if (!membership) {
+    return { error: "Apenas membros do clan podem editar o portfólio" };
+  }
+  if (mode === "modify" && membership.role !== "owner") {
+    return {
+      error: "Apenas o dono do clan pode editar ou remover itens do portfólio",
+    };
+  }
+  return null;
+}
 
 function normalizeNonEmptyString(value, fieldName) {
   if (value === undefined) return undefined;
@@ -116,15 +147,15 @@ class PortfolioService {
     try {
       await client.query("BEGIN");
 
-      // ownership
       const profile = await ProfileStorage.getProfileById(client, id_profile);
       if (!profile) {
         await client.query("ROLLBACK");
         return { error: "Perfil não encontrado" };
       }
-      if (String(profile.id_user) !== String(user.id_user)) {
+      const accessErr = await checkPortfolioAccess(client, profile, user, "add");
+      if (accessErr) {
         await client.query("ROLLBACK");
-        return { error: "Você não tem permissão para alterar este perfil" };
+        return accessErr;
       }
 
       const item = await PortfolioStorage.createItem(client, {
@@ -266,15 +297,15 @@ class PortfolioService {
     try {
       await client.query("BEGIN");
 
-      // ownership (via profile)
       const profile = await ProfileStorage.getProfileById(client, id_profile);
       if (!profile) {
         await client.query("ROLLBACK");
         return { error: "Perfil não encontrado" };
       }
-      if (String(profile.id_user) !== String(user.id_user)) {
+      const accessErr = await checkPortfolioAccess(client, profile, user, "modify");
+      if (accessErr) {
         await client.query("ROLLBACK");
-        return { error: "Você não tem permissão para alterar este perfil" };
+        return accessErr;
       }
 
       // garante que o item pertence ao perfil
@@ -353,9 +384,10 @@ class PortfolioService {
         await client.query("ROLLBACK");
         return { error: "Perfil não encontrado" };
       }
-      if (String(profile.id_user) !== String(user.id_user)) {
+      const accessErr = await checkPortfolioAccess(client, profile, user, "modify");
+      if (accessErr) {
         await client.query("ROLLBACK");
-        return { error: "Você não tem permissão para alterar este perfil" };
+        return accessErr;
       }
 
       const belongs = await PortfolioStorage.itemBelongsToProfile(
@@ -431,9 +463,10 @@ class PortfolioService {
         await client.query("ROLLBACK");
         return { error: "Perfil não encontrado" };
       }
-      if (String(profile.id_user) !== String(user.id_user)) {
+      const accessErr = await checkPortfolioAccess(client, profile, user, "add");
+      if (accessErr) {
         await client.query("ROLLBACK");
-        return { error: "Você não tem permissão para alterar este perfil" };
+        return accessErr;
       }
 
       const belongs = await PortfolioStorage.itemBelongsToProfile(
@@ -498,9 +531,10 @@ class PortfolioService {
         await client.query("ROLLBACK");
         return { error: "Perfil não encontrado" };
       }
-      if (String(profile.id_user) !== String(user.id_user)) {
+      const accessErr = await checkPortfolioAccess(client, profile, user, "modify");
+      if (accessErr) {
         await client.query("ROLLBACK");
-        return { error: "Você não tem permissão para alterar este perfil" };
+        return accessErr;
       }
 
       const belongs = await PortfolioStorage.itemBelongsToProfile(

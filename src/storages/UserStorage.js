@@ -64,9 +64,10 @@ module.exports = {
           jsonb_build_object(
             'id_profile', pro.id_profile,
             'display_name', pro.display_name,
+            'is_clan', pro.is_clan,
             'id_category', pro.id_category,
             'category', ca.desc_category,
-            'id_machine', ca.id_machine,
+            'id_machine', COALESCE(ca.id_machine, pro.id_machine),
             'machine_slug', m.slug,
             'machine_name', m.name,
             'bio', pro.bio,
@@ -85,8 +86,8 @@ module.exports = {
           ORDER BY pro.created_at DESC
         ) AS profiles
         FROM tb_profile pro
-        JOIN tb_category ca ON ca.id_category = pro.id_category
-        LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+        LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
+        LEFT JOIN tb_machine m ON m.id_machine = COALESCE(ca.id_machine, pro.id_machine)
 
         -- redes sociais do profile (filhas)
         LEFT JOIN LATERAL (

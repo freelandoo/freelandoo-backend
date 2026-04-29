@@ -5,6 +5,7 @@ const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage
 const ProfileStorage = require("../storages/ProfileStorage");
 const AffiliateStorage = require("../storages/AffiliateStorage");
 const BookingService = require("./BookingService");
+const ClanService = require("./ClanService");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("StripeWebhookService");
@@ -192,6 +193,14 @@ async function processEvent(event) {
           ? session.payment_intent
           : session.payment_intent?.id || null;
         await BookingService.confirmBookingFromWebhook(session.id, paymentIntentId);
+      } else if (meta.type === "clan_slot") {
+        const paymentIntentId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id || null;
+        await ClanService.confirmSlotPurchaseFromWebhook(
+          session.id,
+          paymentIntentId
+        );
       } else {
         // Subscription checkout
         await handleCheckoutCompleted(pool, session);
