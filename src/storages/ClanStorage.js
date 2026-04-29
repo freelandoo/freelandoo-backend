@@ -150,8 +150,13 @@ class ClanStorage {
         p.created_at,
         p.updated_at,
         EXISTS (
-          SELECT 1 FROM public.tb_profile_subscription ps
-           WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
+          SELECT 1
+            FROM public.tb_clan_member cm
+            JOIN public.tb_profile_subscription ps
+              ON ps.id_profile = cm.id_member_profile
+           WHERE cm.id_clan_profile = p.id_profile
+             AND cm.role = 'owner'
+             AND ps.status = 'active'
         ) AS is_paid
       FROM public.tb_profile p
       LEFT JOIN public.tb_machine m ON m.id_machine = p.id_machine
@@ -347,9 +352,11 @@ class ClanStorage {
       `
       SELECT
         p.id_profile,
+        p.id_user,
         p.display_name,
         p.avatar_url,
         u.username,
+        u.avatar AS user_avatar,
         c.desc_category,
         EXISTS (
           SELECT 1 FROM public.tb_profile_subscription ps

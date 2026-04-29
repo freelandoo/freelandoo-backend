@@ -97,15 +97,20 @@ module.exports = {
     return r.rows[0];
   },
 
-  async getRatings(db, { id_profile }) {
+  async getRatings(db, { id_profile, profile_ids }) {
+    const ids = profile_ids && profile_ids.length ? profile_ids : [id_profile];
     const r = await db.query(
-      `SELECT pr.id, pr.rating, pr.comment, pr.rated_at,
-              tu.nome AS user_nome, tu.avatar AS user_avatar
+      `SELECT pr.id, pr.id_profile, pr.rating, pr.comment, pr.rated_at,
+              tu.nome AS user_nome, tu.avatar AS user_avatar,
+              target.display_name AS target_display_name,
+              target_user.username AS target_username
          FROM profile_ratings pr
          JOIN tb_user tu ON tu.id_user = pr.id_user
-        WHERE pr.id_profile = $1
+         JOIN tb_profile target ON target.id_profile = pr.id_profile
+         JOIN tb_user target_user ON target_user.id_user = target.id_user
+        WHERE pr.id_profile = ANY($1::uuid[])
         ORDER BY pr.rated_at DESC`,
-      [id_profile]
+      [ids]
     );
     return r.rows;
   },

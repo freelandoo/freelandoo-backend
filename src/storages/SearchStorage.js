@@ -50,8 +50,13 @@ module.exports = {
         AND clan.is_visible = TRUE
         AND (m.is_active IS NULL OR m.is_active = TRUE)
         AND EXISTS (
-          SELECT 1 FROM tb_profile_subscription psub
-           WHERE psub.id_profile = clan.id_profile AND psub.status = 'active'
+          SELECT 1
+            FROM tb_clan_member cm
+            JOIN tb_profile_subscription psub
+              ON psub.id_profile = cm.id_member_profile
+           WHERE cm.id_clan_profile = clan.id_profile
+             AND cm.role = 'owner'
+             AND psub.status = 'active'
         )
         AND ($1::text IS NULL OR clan.estado = $1)
         AND ($2::text IS NULL OR clan.municipio ILIKE $2)

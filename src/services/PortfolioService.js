@@ -91,6 +91,19 @@ class PortfolioService {
         if (!id_profile || !UUID_RE.test(id_profile))
           return { error: "id_profile inválido" };
 
+        const profile = await ProfileStorage.getProfileById(pool, id_profile);
+        if (profile?.is_clan) {
+          const members = await ClanStorage.listMembers(pool, id_profile);
+          const memberIds = members.map((m) => m.id_member_profile);
+          const items = await PortfolioStorage.listAggregatedItemsForClanPublic(
+            pool,
+            id_profile,
+            memberIds,
+            params?.id_user_viewer ?? null
+          );
+          return { items };
+        }
+
         const items = await PortfolioStorage.listItemsWithMediaPublic(
           pool,
           id_profile,

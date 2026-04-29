@@ -266,6 +266,83 @@ class PortfolioStorage {
     return r.rowCount ? r.rows[0] : null;
   }
 
+  /**
+   * Lista agregada de portfólio para clan (clan próprio + cada membro).
+   * Cada item carrega autor (display_name/username/avatar) e flag indicando
+   * se veio do clan ou de um membro. Usado pra renderizar badge "Clan/Membro"
+   * no portfólio público do clan.
+   */
+  static async listAggregatedItemsForClanPublic(
+    conn,
+    id_clan_profile,
+    member_profile_ids,
+    id_user_viewer = null
+  ) {
+    const ids = [id_clan_profile, ...(member_profile_ids ?? [])];
+    const r = await conn.query(
+      `
+      SELECT
+        i.id_portfolio_item,
+        i.id_profile,
+        i.title,
+        i.description,
+        i.project_url,
+        i.is_featured,
+        i.sort_order,
+        i.created_at,
+        i.updated_at,
+
+        COALESCE(lq.likes_count, 0) AS likes_count,
+        COALESCE(lme.liked, false) AS liked_by_me,
+
+        COALESCE(mq.media, '[]'::jsonb) AS media,
+
+        pro.display_name AS author_display_name,
+        pro.avatar_url   AS author_avatar_url,
+        tu.username      AS author_username,
+        (i.id_profile = $1::uuid) AS is_clan_self
+      FROM public.tb_profile_portfolio_item i
+      JOIN public.tb_profile pro ON pro.id_profile = i.id_profile
+      JOIN public.tb_user tu ON tu.id_user = pro.id_user
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'id_portfolio_media', m.id_portfolio_media,
+            'media_url', m.media_url,
+            'media_type', m.media_type,
+            'thumbnail_url', m.thumbnail_url,
+            'sort_order', m.sort_order
+          )
+          ORDER BY m.sort_order, m.created_at
+        ) AS media
+        FROM public.tb_profile_portfolio_media m
+        WHERE m.id_portfolio_item = i.id_portfolio_item
+          AND m.is_active = true
+      ) mq ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS likes_count
+          FROM public.portfolio_likes pl
+         WHERE pl.id_portfolio_item = i.id_portfolio_item
+      ) lq ON true
+      LEFT JOIN LATERAL (
+        SELECT TRUE AS liked
+          FROM public.portfolio_likes pl
+         WHERE pl.id_portfolio_item = i.id_portfolio_item
+           AND pl.id_user = $2::uuid
+         LIMIT 1
+      ) lme ON $2::uuid IS NOT NULL
+      WHERE i.id_profile = ANY($3::uuid[])
+        AND i.is_active = true
+      ORDER BY
+        i.is_featured DESC,
+        i.sort_order DESC,
+        i.created_at DESC
+      `,
+      [id_clan_profile, id_user_viewer, ids]
+    );
+    return r.rows;
+  }
+
   static async listItemsWithMediaPublic(conn, id_profile, id_user_viewer = null) {
     const r = await conn.query(
       `
