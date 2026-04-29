@@ -171,12 +171,13 @@ class ClanStorage {
   static async listClansOfUser(conn, id_user) {
     const r = await conn.query(
       `
-      SELECT DISTINCT
+      SELECT
         p.id_profile,
         p.display_name,
         p.avatar_url,
         p.is_visible,
         p.deleted_at,
+        p.created_at,
         m.slug AS machine_slug,
         m.name AS machine_name,
         cm_self.role AS my_role,
