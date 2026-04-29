@@ -189,13 +189,15 @@ class PortfolioStorage {
         i.description,
         i.project_url,
         i.created_at,
-        pro.display_name AS profile_display_name,
-        pro.username     AS profile_username,
-        pro.profession_slug,
-        pro.municipio    AS profile_municipio,
+        pro.display_name  AS profile_display_name,
+        tu.username       AS profile_username,
+        ca.profession_slug,
+        pro.municipio     AS profile_municipio,
         COALESCE(mq.media, '[]'::jsonb) AS media
       FROM public.tb_profile_portfolio_item i
       JOIN public.tb_profile pro ON pro.id_profile = i.id_profile
+      JOIN public.tb_user tu ON tu.id_user = pro.id_user
+      LEFT JOIN public.tb_category ca ON ca.id_category = pro.id_category
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(
           jsonb_build_object(
