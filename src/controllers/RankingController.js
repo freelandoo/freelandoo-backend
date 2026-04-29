@@ -132,6 +132,29 @@ module.exports = {
     return res.json(rows);
   },
 
+  // GET /ranking/public/clans/general (público — top clans)
+  async getTopClansGeneral(req, res) {
+    const limit = Math.min(parseInt(req.query.limit ?? "20", 10), 50);
+    const rows = await RankingStorage.getTopClansGeneral(pool, {
+      limit,
+      municipio: req.query.municipio || null,
+    });
+    return res.json(rows);
+  },
+
+  // GET /ranking/public/clans/machine/:id_machine
+  async getTopClansByMachine(req, res) {
+    const { id_machine } = req.params;
+    const limit = Math.min(parseInt(req.query.limit ?? "10", 10), 50);
+    const isNumeric = /^\d+$/.test(id_machine);
+    const rows = await RankingStorage.getTopClansByMachine(pool, {
+      id_machine: isNumeric ? parseInt(id_machine, 10) : null,
+      machine_slug: isNumeric ? null : id_machine,
+      limit,
+    });
+    return res.json(rows);
+  },
+
   // ──────────────────────────────────── ADMIN ────────────────────────────────
 
   // GET /admin/rankings

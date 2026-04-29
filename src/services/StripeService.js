@@ -68,6 +68,48 @@ async function createSubscriptionCheckoutSession({
   return session;
 }
 
+/**
+ * Cria checkout session em modo `payment` (one-time). Usado para compras
+ * pontuais como vagas de clan (R$50 cada).
+ */
+async function createOneTimeCheckoutSession({
+  amount_cents,
+  currency = "BRL",
+  productName,
+  customerEmail,
+  customerId,
+  clientReferenceId,
+  successUrl,
+  cancelUrl,
+  metadata,
+}) {
+  const stripe = client();
+
+  const params = {
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: String(currency).toLowerCase(),
+          product_data: { name: productName },
+          unit_amount: amount_cents,
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    client_reference_id: clientReferenceId,
+    metadata: metadata || {},
+    payment_intent_data: { metadata: metadata || {} },
+  };
+
+  if (customerId) params.customer = customerId;
+  else if (customerEmail) params.customer_email = customerEmail;
+
+  return stripe.checkout.sessions.create(params);
+}
+
 async function retrieveSession(sessionId) {
   return client().checkout.sessions.retrieve(sessionId, {
     expand: ["subscription", "customer", "total_details.breakdown.discounts"],
@@ -139,6 +181,7 @@ module.exports = {
   client,
   createAnnualProductAndPrice,
   createSubscriptionCheckoutSession,
+  createOneTimeCheckoutSession,
   retrieveSession,
   retrieveSubscription,
   constructWebhookEvent,

@@ -126,14 +126,28 @@ module.exports = class UploadPortfolioMediaService {
     try {
       await client.query("BEGIN");
 
-      // ownership do perfil
+      // ownership do perfil — clans permitem qualquer membro adicionar mídia
       const profile = await ProfileStorage.getProfileById(client, id_profile);
       if (!profile) {
         const err = new Error("Perfil não encontrado");
         err.statusCode = 404;
         throw err;
       }
-      if (String(profile.id_user) !== String(id_user)) {
+      if (profile.is_clan) {
+        const ClanStorage = require("../../storages/ClanStorage");
+        const membership = await ClanStorage.getUserMembership(
+          client,
+          id_profile,
+          id_user
+        );
+        if (!membership) {
+          const err = new Error(
+            "Apenas membros do clan podem enviar mídia"
+          );
+          err.statusCode = 403;
+          throw err;
+        }
+      } else if (String(profile.id_user) !== String(id_user)) {
         const err = new Error(
           "Você não tem permissão para alterar este perfil"
         );

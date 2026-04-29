@@ -206,6 +206,7 @@ module.exports = {
        ) o ON TRUE
 
        WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
+         AND pro.is_clan = FALSE
 
        ON CONFLICT (id_profile) DO UPDATE SET
          total_points    = EXCLUDED.total_points,
@@ -216,6 +217,44 @@ module.exports = {
          online_minutes  = EXCLUDED.online_minutes,
          updated_at      = NOW()`,
       [wv, wl, wr, wo, maxOnline, periodDays]
+    );
+
+    // Pass 2 — ranking de clans = soma agregada das métricas de seus membros
+    await db.query(
+      `INSERT INTO profile_ranking
+         (id_profile, total_points, visits_count, likes_count, ratings_count, avg_rating, online_minutes, updated_at)
+       SELECT
+         clan.id_profile,
+         COALESCE(SUM(mr.visits_count), 0)  * $1
+           + COALESCE(SUM(mr.likes_count), 0) * $2
+           + COALESCE(SUM(mr.avg_rating * mr.ratings_count), 0) * $3
+           + COALESCE(SUM(mr.online_minutes), 0) * $4 AS total_points,
+         COALESCE(SUM(mr.visits_count), 0)::int   AS visits_count,
+         COALESCE(SUM(mr.likes_count), 0)::int    AS likes_count,
+         COALESCE(SUM(mr.ratings_count), 0)::int  AS ratings_count,
+         CASE
+           WHEN COALESCE(SUM(mr.ratings_count), 0) > 0
+             THEN (SUM(mr.avg_rating * mr.ratings_count)::numeric / SUM(mr.ratings_count))::numeric(4,2)
+           ELSE 0
+         END AS avg_rating,
+         COALESCE(SUM(mr.online_minutes), 0)::int AS online_minutes,
+         NOW()
+       FROM tb_profile clan
+       LEFT JOIN tb_clan_member cm ON cm.id_clan_profile = clan.id_profile
+       LEFT JOIN profile_ranking mr ON mr.id_profile = cm.id_member_profile
+       WHERE clan.is_clan = TRUE
+         AND clan.deleted_at IS NULL
+         AND clan.is_visible = TRUE
+       GROUP BY clan.id_profile
+       ON CONFLICT (id_profile) DO UPDATE SET
+         total_points    = EXCLUDED.total_points,
+         visits_count    = EXCLUDED.visits_count,
+         likes_count     = EXCLUDED.likes_count,
+         ratings_count   = EXCLUDED.ratings_count,
+         avg_rating      = EXCLUDED.avg_rating,
+         online_minutes  = EXCLUDED.online_minutes,
+         updated_at      = NOW()`,
+      [wv, wl, wr, wo]
     );
 
     // Ranking geral
@@ -229,16 +268,19 @@ module.exports = {
        WHERE pr.id_profile = sub.id_profile
     `);
 
-    // Ranking por máquina
+    // Ranking por máquina (clans têm id_machine direto; perfis comuns via category)
     await db.query(`
       UPDATE profile_ranking pr
          SET position_machine = sub.pos
         FROM (
           SELECT pro.id_profile,
-                 ROW_NUMBER() OVER (PARTITION BY ca.id_machine ORDER BY pr2.total_points DESC) AS pos
+                 ROW_NUMBER() OVER (
+                   PARTITION BY COALESCE(ca.id_machine, pro.id_machine)
+                   ORDER BY pr2.total_points DESC
+                 ) AS pos
             FROM profile_ranking pr2
             JOIN tb_profile pro ON pro.id_profile = pr2.id_profile
-            JOIN tb_category ca ON ca.id_category = pro.id_category
+            LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
         ) sub
        WHERE pr.id_profile = sub.id_profile
     `);
@@ -397,6 +439,71 @@ module.exports = {
        ORDER BY pr.position_general ASC NULLS LAST
        LIMIT $1`,
       [limit]
+    );
+    return r.rows;
+  },
+
+  /**
+   * Top clans (filtra is_clan = TRUE; usa pro.id_machine direto). Equivalente
+   * ao getTopByMachine mas só clans.
+   */
+  async getTopClansByMachine(db, { id_machine, machine_slug, limit = 10 }) {
+    const r = await db.query(
+      `SELECT
+         pro.id_profile,
+         pro.display_name,
+         pro.avatar_url,
+         pro.municipio,
+         pro.estado,
+         m.name AS machine_name,
+         m.slug AS machine_slug,
+         pr.total_points,
+         pr.avg_rating,
+         pr.visits_count,
+         pr.likes_count,
+         pr.position_machine,
+         (SELECT COUNT(*)::int FROM tb_clan_member cm WHERE cm.id_clan_profile = pro.id_profile) AS members_count
+       FROM profile_ranking pr
+       JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       LEFT JOIN tb_machine m ON m.id_machine = pro.id_machine
+       WHERE pro.is_clan = TRUE
+         AND pro.deleted_at IS NULL
+         AND pro.is_visible = TRUE
+         AND ($1::int  IS NULL OR pro.id_machine = $1)
+         AND ($3::text IS NULL OR m.slug = $3)
+       ORDER BY pr.position_machine ASC NULLS LAST, pr.total_points DESC
+       LIMIT $2`,
+      [id_machine ? parseInt(id_machine, 10) : null, limit, machine_slug || null]
+    );
+    return r.rows;
+  },
+
+  async getTopClansGeneral(db, { limit = 20, municipio } = {}) {
+    const r = await db.query(
+      `SELECT
+         pro.id_profile,
+         pro.display_name,
+         pro.avatar_url,
+         pro.municipio,
+         pro.estado,
+         m.name AS machine_name,
+         m.slug AS machine_slug,
+         pr.total_points,
+         pr.avg_rating,
+         pr.visits_count,
+         pr.likes_count,
+         pr.position_general,
+         (SELECT COUNT(*)::int FROM tb_clan_member cm WHERE cm.id_clan_profile = pro.id_profile) AS members_count
+       FROM profile_ranking pr
+       JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       LEFT JOIN tb_machine m ON m.id_machine = pro.id_machine
+       WHERE pro.is_clan = TRUE
+         AND pro.deleted_at IS NULL
+         AND pro.is_visible = TRUE
+         AND ($2::text IS NULL OR pro.municipio ILIKE $2)
+       ORDER BY pr.total_points DESC NULLS LAST
+       LIMIT $1`,
+      [limit, municipio ? `%${municipio}%` : null]
     );
     return r.rows;
   },

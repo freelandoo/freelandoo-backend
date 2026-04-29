@@ -29,6 +29,8 @@ const profileServiceRoutes = require("./profileService.routes");
 const profileServicePublicRoutes = require("./profileServicePublic.routes");
 const rankingRoutes = require("./ranking.routes");
 const adminRankingRoutes = require("./adminRanking.routes");
+const clanRoutes = require("./clan.routes");
+const clanPublicRoutes = require("./clanPublic.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -66,4 +68,6 @@ module.exports = (app) => {
   app.use("/public", portfolioPublicRoutes);
   app.use("/ranking", rankingRoutes);
   app.use("/admin", adminRankingRoutes);
+  app.use("/clans", clanRoutes);
+  app.use("/public/clans", clanPublicRoutes);
 };
