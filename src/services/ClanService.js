@@ -5,7 +5,9 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ClanService");
 
-const REQUIRED_ONLINE_MINUTES = 10 * 60; // 10 horas
+// Regra das 10h temporariamente desabilitada (set para 0 libera todos).
+// Para reativar, voltar para 10 * 60.
+const REQUIRED_ONLINE_MINUTES = 0;
 
 class ClanService {
   /**
