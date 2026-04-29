@@ -3,6 +3,8 @@ const BookingStorage = require("../storages/BookingStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
+const ClanStorage = require("../storages/ClanStorage");
+const ClanEarningSplitStorage = require("../storages/ClanEarningSplitStorage");
 const StripeService = require("./StripeService");
 const { createLogger } = require("../utils/logger");
 
@@ -223,7 +225,60 @@ class BookingService {
       return null;
     }
     log.info("booking.confirmed", { bookingId: booking.id, sessionId });
+    try {
+      await BookingService.recordClanSplitForBooking(booking);
+    } catch (err) {
+      log.error("booking.clan_split.fail", { bookingId: booking.id, error: err.message });
+    }
     return booking;
+  }
+
+  /**
+   * Se o booking pertence a um perfil-clan, registra splits em
+   * tb_clan_earning_split (1 row por membro participante).
+   * Idempotente: se já houver split pra esse booking, faz no-op.
+   */
+  static async recordClanSplitForBooking(booking) {
+    if (!booking) return null;
+    const profile = await ProfileStorage.getProfileById(pool, booking.id_profile);
+    if (!profile || !profile.is_clan) return null;
+
+    const already = await ClanEarningSplitStorage.existsForBooking(pool, booking.id);
+    if (already) return null;
+
+    let memberIds = [];
+    if (booking.id_profile_service != null) {
+      memberIds = await ProfileServiceStorage.getMemberIds(pool, booking.id_profile_service);
+    }
+    if (memberIds.length === 0) {
+      const all = await ClanStorage.listMembers(pool, booking.id_profile);
+      memberIds = all.map((m) => m.id_member_profile);
+    }
+    if (memberIds.length === 0) return null;
+
+    const gross = Number(booking.professional_amount) || 0;
+    if (gross <= 0) return null;
+
+    const N = memberIds.length;
+    const per = Math.floor(gross / N);
+    const remainder = gross - per * N;
+    const member_amounts = memberIds.map((id_member_profile, idx) => ({
+      id_member_profile,
+      amount_cents: per + (idx === 0 ? remainder : 0),
+    }));
+
+    const rows = await ClanEarningSplitStorage.createBookingSplits(pool, {
+      id_clan_profile: booking.id_profile,
+      source_id: String(booking.id),
+      gross_amount_cents: gross,
+      member_amounts,
+    });
+    log.info("booking.clan_split.created", {
+      bookingId: booking.id,
+      members: rows.length,
+      per,
+    });
+    return rows;
   }
 }
 

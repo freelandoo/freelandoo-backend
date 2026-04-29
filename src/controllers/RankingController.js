@@ -67,9 +67,22 @@ module.exports = {
   },
 
   // GET /ranking/ratings/:id_profile  (público)
+  // Para clans, agrega ratings do clan + cada membro.
   async getRatings(req, res) {
     const { id_profile } = req.params;
-    const ratings = await RankingStorage.getRatings(pool, { id_profile });
+    const profCheck = await pool.query(
+      `SELECT is_clan FROM tb_profile WHERE id_profile = $1 AND deleted_at IS NULL`,
+      [id_profile]
+    );
+    let profile_ids;
+    if (profCheck.rows[0]?.is_clan) {
+      const memberRows = await pool.query(
+        `SELECT id_member_profile FROM tb_clan_member WHERE id_clan_profile = $1`,
+        [id_profile]
+      );
+      profile_ids = [id_profile, ...memberRows.rows.map((r) => r.id_member_profile)];
+    }
+    const ratings = await RankingStorage.getRatings(pool, { id_profile, profile_ids });
     return res.json(ratings);
   },
 

@@ -50,10 +50,10 @@ class ProfileStorage {
     FROM public.tb_profile p
     JOIN public.tb_user u
       ON u.id_user = p.id_user
-    JOIN public.tb_category c
+    LEFT JOIN public.tb_category c
       ON c.id_category = p.id_category
     LEFT JOIN public.tb_machine m
-      ON m.id_machine = c.id_machine
+      ON m.id_machine = COALESCE(c.id_machine, p.id_machine)
     WHERE p.id_profile = $1
     LIMIT 1
     `,
