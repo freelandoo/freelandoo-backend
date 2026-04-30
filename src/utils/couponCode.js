@@ -17,6 +17,17 @@ function generateCouponCode(user) {
   return `${namePart}-${idPart}`;
 }
 
+const MANUAL_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sem 0/O/1/I para legibilidade
+
+function generateManualCouponCode() {
+  let suffix = "";
+  for (let i = 0; i < 6; i++) {
+    suffix += MANUAL_CHARS[Math.floor(Math.random() * MANUAL_CHARS.length)];
+  }
+  return `FREE-${suffix}`;
+}
+
 module.exports = {
   generateCouponCode,
+  generateManualCouponCode,
 };

@@ -16,10 +16,12 @@ class CouponStorage {
         expires_at,
         created_by,
         updated_by,
-        is_active
+        is_active,
+        is_manual,
+        created_by_admin_id
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
       )
       RETURNING
         id_coupon,
@@ -38,7 +40,9 @@ class CouponStorage {
         created_by,
         updated_at,
         updated_by,
-        is_active
+        is_active,
+        is_manual,
+        created_by_admin_id
       `,
       [
         data.code,
@@ -48,13 +52,15 @@ class CouponStorage {
         data.max_discount_cents,
         data.min_order_cents,
         data.value,
-        data.owner_user_id,
-        data.max_uses,
-        data.applies_to_item_id,
-        data.expires_at,
+        data.owner_user_id ?? null,
+        data.max_uses ?? null,
+        data.applies_to_item_id ?? null,
+        data.expires_at ?? null,
         data.created_by,
         data.updated_by,
-        data.is_active,
+        data.is_active ?? true,
+        data.is_manual ?? false,
+        data.created_by_admin_id ?? null,
       ]
     );
 

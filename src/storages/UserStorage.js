@@ -67,6 +67,8 @@ module.exports = {
             'is_clan', pro.is_clan,
             'id_category', pro.id_category,
             'category', ca.desc_category,
+            'profession_slug', ca.profession_slug,
+            'sub_profile_slug', pro.sub_profile_slug,
             'id_machine', COALESCE(ca.id_machine, pro.id_machine),
             'machine_slug', m.slug,
             'machine_name', m.name,

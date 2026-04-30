@@ -7,12 +7,17 @@ class ProfileStorage {
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile
-        (id_user, id_category, display_name, bio, avatar_url, estado, municipio)
+        (id_user, id_category, display_name, bio, avatar_url, estado, municipio, sub_profile_slug)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7)
+        ($1, $2, $3, $4, $5, $6, $7,
+          COALESCE(
+            (SELECT profession_slug FROM public.tb_category WHERE id_category = $2),
+            'clan'
+          )
+        )
       RETURNING
         id_profile, id_user, id_category, display_name, bio, avatar_url,
-        estado, municipio, is_active, created_at, updated_at
+        estado, municipio, sub_profile_slug, is_active, created_at, updated_at
       `,
       [id_user, id_category, display_name, bio, avatar_url, estado, municipio]
     );
@@ -29,6 +34,7 @@ class ProfileStorage {
       p.id_category,
       c.desc_category,
       c.profession_slug,
+      p.sub_profile_slug,
       c.id_machine,
       m.slug AS machine_slug,
       m.name AS machine_name,
@@ -80,6 +86,7 @@ class ProfileStorage {
       p.id_category,
       c.desc_category,
       c.profession_slug,
+      p.sub_profile_slug,
       c.id_machine,
       m.slug AS machine_slug,
       m.name AS machine_name,
@@ -124,6 +131,7 @@ class ProfileStorage {
     SELECT
       p.id_profile,
       c.profession_slug,
+      p.sub_profile_slug,
       c.desc_category,
       p.municipio,
       p.estado,
@@ -288,6 +296,13 @@ class ProfileStorage {
     if (has("id_category")) {
       fields.push(`id_category = $${idx++}`);
       values.push(payload.id_category); // pode ser number
+      // Sincroniza sub_profile_slug com a nova categoria (mantém 'clan' se id_category=null)
+      fields.push(
+        `sub_profile_slug = COALESCE(
+          (SELECT profession_slug FROM public.tb_category WHERE id_category = $${idx - 1}),
+          'clan'
+        )`
+      );
     }
 
     if (has("display_name")) {
