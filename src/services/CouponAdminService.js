@@ -1,8 +1,13 @@
 const db = require("../databases");
 const CouponAdminStorage = require("../storages/CouponAdminStorage");
+const CouponStorage = require("../storages/CouponStorage");
 const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateService = require("./AffiliateService");
 const { resolve: resolveDiscount } = require("./CouponDiscountResolver");
+const { generateManualCouponCode } = require("../utils/couponCode");
+const { createLogger } = require("../utils/logger");
+
+const log = createLogger("CouponAdminService");
 
 class ServiceError extends Error {
   constructor(message, status = 400) {
@@ -118,6 +123,52 @@ async function searchCoupon(code) {
   };
 }
 
+// ───────── Cupom manual (criado pelo admin, sem afiliado) ─────────
+async function createManualCoupon(actor, body) {
+  const { discount_type, discount_value, max_discount_cents, min_order_cents, max_uses, expires_at } =
+    body || {};
+
+  if (!["percent", "amount"].includes(discount_type)) {
+    throw new ServiceError("discount_type deve ser 'percent' ou 'amount'", 400);
+  }
+
+  const value = Number(discount_value);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new ServiceError("discount_value deve ser um número > 0", 400);
+  }
+  if (discount_type === "percent" && value > 100) {
+    throw new ServiceError("discount_value percentual deve estar entre 0 e 100", 400);
+  }
+
+  const code = body.code
+    ? String(body.code).toUpperCase().trim()
+    : generateManualCouponCode();
+
+  const existing = await CouponStorage.findByCode(db, code);
+  if (existing) throw new ServiceError(`Código '${code}' já existe`, 409);
+
+  const coupon = await CouponStorage.create(db, {
+    code,
+    discount_type,
+    scope: "order",
+    apply_mode: "manual",
+    value,
+    max_discount_cents: max_discount_cents != null && max_discount_cents !== "" ? Number(max_discount_cents) : null,
+    min_order_cents: min_order_cents != null && min_order_cents !== "" ? Number(min_order_cents) : 0,
+    owner_user_id: null,
+    max_uses: max_uses != null && max_uses !== "" ? Number(max_uses) : null,
+    applies_to_item_id: null,
+    expires_at: expires_at || null,
+    created_by: actor.id_user,
+    updated_by: actor.id_user,
+    is_active: true,
+    is_manual: true,
+    created_by_admin_id: actor.id_user,
+  });
+
+  return coupon;
+}
+
 // ───────── Override de desconto por cupom ─────────
 async function upsertDiscountOverride(actor, id_coupon, body) {
   if (!id_coupon) throw new ServiceError("id_coupon obrigatório", 400);
@@ -160,6 +211,7 @@ module.exports = {
   getCommissionSettings,
   createCommissionSettings,
   searchCoupon,
+  createManualCoupon,
   upsertDiscountOverride,
   deleteDiscountOverride,
   upsertCommissionOverride,

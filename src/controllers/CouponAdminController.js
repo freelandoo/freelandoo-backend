@@ -53,6 +53,16 @@ class CouponAdminController {
     }
   }
 
+  // Cupom manual
+  static async createManualCoupon(req, res) {
+    try {
+      const coupon = await CouponAdminService.createManualCoupon(req.user, req.body || {});
+      return res.status(201).json(coupon);
+    } catch (err) {
+      return handleError(res, err);
+    }
+  }
+
   // Busca cupom
   static async searchCoupon(req, res) {
     try {

@@ -32,6 +32,9 @@ router.post(
   asyncHandler(CouponAdminController.createCommissionSettings)
 );
 
+// Cupom manual (criado pelo admin, sem afiliado)
+router.post("/manual", ...admin, asyncHandler(CouponAdminController.createManualCoupon));
+
 // Busca cupom específico
 router.get("/search", ...admin, asyncHandler(CouponAdminController.searchCoupon));
 
