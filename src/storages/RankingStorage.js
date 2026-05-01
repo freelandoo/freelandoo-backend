@@ -408,7 +408,7 @@ module.exports = {
          pro.avatar_url,
          pro.municipio,
          pro.estado,
-         pro.username,
+         u.username,
          pro.sub_profile_slug,
          ca.desc_category AS specialty,
          ca.profession_slug,
@@ -422,6 +422,7 @@ module.exports = {
          pr.position_city
        FROM profile_ranking pr
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       JOIN tb_user u ON u.id_user = pro.id_user
        JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
        WHERE pro.deleted_at IS NULL
@@ -445,7 +446,7 @@ module.exports = {
          pro.avatar_url,
          pro.municipio,
          pro.estado,
-         pro.username,
+         u.username,
          pro.sub_profile_slug,
          ca.desc_category AS specialty,
          ca.profession_slug,
@@ -459,6 +460,7 @@ module.exports = {
          pr.position_profession
        FROM profile_ranking pr
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       JOIN tb_user u ON u.id_user = pro.id_user
        JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
        WHERE pro.deleted_at IS NULL
@@ -478,7 +480,7 @@ module.exports = {
          pro.avatar_url,
          pro.municipio,
          pro.estado,
-         pro.username,
+         u.username,
          pro.sub_profile_slug,
          ca.desc_category AS specialty,
          ca.profession_slug,
@@ -492,6 +494,7 @@ module.exports = {
          pr.position_machine
        FROM profile_ranking pr
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       JOIN tb_user u ON u.id_user = pro.id_user
        JOIN tb_category ca ON ca.id_category = pro.id_category
        JOIN tb_machine m ON m.id_machine = ca.id_machine
        WHERE pro.deleted_at IS NULL
@@ -512,7 +515,7 @@ module.exports = {
          pro.avatar_url,
          pro.municipio,
          pro.estado,
-         pro.username,
+         u.username,
          pro.sub_profile_slug,
          ca.desc_category AS specialty,
          ca.profession_slug,
@@ -526,6 +529,7 @@ module.exports = {
          pr.position_general
        FROM profile_ranking pr
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       JOIN tb_user u ON u.id_user = pro.id_user
        JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
        WHERE pro.deleted_at IS NULL
@@ -625,6 +629,7 @@ module.exports = {
          pr.updated_at
        FROM profile_ranking pr
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       JOIN tb_user u ON u.id_user = pro.id_user
        JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
        WHERE ($1::text IS NULL OR m.slug = $1)
