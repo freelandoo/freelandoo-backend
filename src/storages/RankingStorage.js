@@ -224,16 +224,20 @@ module.exports = {
       [wv, wl, wr, wo, maxOnline, periodDays]
     );
 
-    // Pass 2 — ranking de clans = soma agregada das métricas de seus membros
+    // Pass 2 — pontuação do clan = média simples dos total_points dos membros
+    // (SUM(member.total_points) / COUNT(membros do clan)). Métricas auxiliares
+    // (visits/likes/ratings_count/online_minutes) seguem somadas como info; a
+    // avg_rating é média ponderada pelo número de avaliações de cada membro.
     await db.query(
       `INSERT INTO profile_ranking
          (id_profile, total_points, visits_count, likes_count, ratings_count, avg_rating, online_minutes, updated_at)
        SELECT
          clan.id_profile,
-         COALESCE(SUM(mr.visits_count), 0)  * $1
-           + COALESCE(SUM(mr.likes_count), 0) * $2
-           + COALESCE(SUM(mr.avg_rating * mr.ratings_count), 0) * $3
-           + COALESCE(SUM(mr.online_minutes), 0) * $4 AS total_points,
+         CASE
+           WHEN COUNT(cm.id_member_profile) > 0
+             THEN (COALESCE(SUM(mr.total_points), 0)::numeric / COUNT(cm.id_member_profile))
+           ELSE 0
+         END AS total_points,
          COALESCE(SUM(mr.visits_count), 0)::int   AS visits_count,
          COALESCE(SUM(mr.likes_count), 0)::int    AS likes_count,
          COALESCE(SUM(mr.ratings_count), 0)::int  AS ratings_count,
@@ -258,8 +262,7 @@ module.exports = {
          ratings_count   = EXCLUDED.ratings_count,
          avg_rating      = EXCLUDED.avg_rating,
          online_minutes  = EXCLUDED.online_minutes,
-         updated_at      = NOW()`,
-      [wv, wl, wr, wo]
+         updated_at      = NOW()`
     );
 
     // Ranking geral
@@ -401,35 +404,82 @@ module.exports = {
    * Top N por (municipio, estado). Considera só perfis vivos com ranking calc.
    */
   async getTopByCity(db, { municipio, estado, limit = 10 }) {
+    // Inclui perfis cuja municipio/estado bate, e clans cujo qualquer membro
+    // tem essa cidade. Position é computada on-the-fly (ranking por cidade
+    // não pode ser pré-calculado para clans, que aparecem em N cidades).
     const r = await db.query(
-      `SELECT
-         pro.id_profile,
-         pro.display_name,
-         pro.avatar_url,
-         pro.municipio,
-         pro.estado,
-         u.username,
-         pro.sub_profile_slug,
-         ca.desc_category AS specialty,
-         ca.profession_slug,
-         m.slug AS machine_slug,
-         m.name AS machine_name,
-         pr.total_points,
-         pr.avg_rating,
-         pr.ratings_count,
-         pr.visits_count,
-         pr.likes_count,
-         pr.position_city
-       FROM profile_ranking pr
-       JOIN tb_profile pro ON pro.id_profile = pr.id_profile
-       JOIN tb_user u ON u.id_user = pro.id_user
-       JOIN tb_category ca ON ca.id_category = pro.id_category
-       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
-       WHERE pro.deleted_at IS NULL
-         AND lower(pro.municipio) = lower($1)
-         AND lower(pro.estado) = lower($2)
-       ORDER BY pr.position_city ASC NULLS LAST
-       LIMIT $3`,
+      `WITH base AS (
+         SELECT
+           pro.id_profile,
+           pro.display_name,
+           pro.avatar_url,
+           pro.municipio,
+           pro.estado,
+           u.username,
+           pro.sub_profile_slug,
+           ca.desc_category AS specialty,
+           ca.profession_slug,
+           m.slug AS machine_slug,
+           m.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           FALSE AS is_clan,
+           NULL::int AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+         JOIN tb_user u ON u.id_user = pro.id_user
+         JOIN tb_category ca ON ca.id_category = pro.id_category
+         LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+         WHERE pro.deleted_at IS NULL
+           AND pro.is_clan = FALSE
+           AND lower(pro.municipio) = lower($1)
+           AND lower(pro.estado) = lower($2)
+         UNION ALL
+         SELECT
+           clan.id_profile,
+           clan.display_name,
+           clan.avatar_url,
+           clan.municipio,
+           clan.estado,
+           ou.username,
+           NULL AS sub_profile_slug,
+           NULL AS specialty,
+           NULL AS profession_slug,
+           mc.slug AS machine_slug,
+           mc.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           TRUE AS is_clan,
+           (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile clan ON clan.id_profile = pr.id_profile
+         LEFT JOIN tb_machine mc ON mc.id_machine = clan.id_machine
+         JOIN tb_clan_member ocm
+           ON ocm.id_clan_profile = clan.id_profile AND ocm.role = 'owner'
+         JOIN tb_profile op ON op.id_profile = ocm.id_member_profile
+         JOIN tb_user ou ON ou.id_user = op.id_user
+         WHERE clan.is_clan = TRUE
+           AND clan.deleted_at IS NULL
+           AND clan.is_visible = TRUE
+           AND EXISTS (
+             SELECT 1 FROM tb_clan_member cmf
+             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+             WHERE cmf.id_clan_profile = clan.id_profile
+               AND lower(mpf.municipio) = lower($1)
+               AND lower(mpf.estado)    = lower($2)
+           )
+       )
+       SELECT *,
+              ROW_NUMBER() OVER (ORDER BY total_points DESC NULLS LAST, display_name) AS position_city
+         FROM base
+        ORDER BY position_city
+        LIMIT $3`,
       [municipio, estado, limit]
     );
     return r.rows;
@@ -440,33 +490,77 @@ module.exports = {
    */
   async getTopByProfession(db, { profession_slug, limit = 10 }) {
     const r = await db.query(
-      `SELECT
-         pro.id_profile,
-         pro.display_name,
-         pro.avatar_url,
-         pro.municipio,
-         pro.estado,
-         u.username,
-         pro.sub_profile_slug,
-         ca.desc_category AS specialty,
-         ca.profession_slug,
-         m.slug AS machine_slug,
-         m.name AS machine_name,
-         pr.total_points,
-         pr.avg_rating,
-         pr.ratings_count,
-         pr.visits_count,
-         pr.likes_count,
-         pr.position_profession
-       FROM profile_ranking pr
-       JOIN tb_profile pro ON pro.id_profile = pr.id_profile
-       JOIN tb_user u ON u.id_user = pro.id_user
-       JOIN tb_category ca ON ca.id_category = pro.id_category
-       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
-       WHERE pro.deleted_at IS NULL
-         AND lower(ca.profession_slug) = lower($1)
-       ORDER BY pr.position_profession ASC NULLS LAST
-       LIMIT $2`,
+      `WITH base AS (
+         SELECT
+           pro.id_profile,
+           pro.display_name,
+           pro.avatar_url,
+           pro.municipio,
+           pro.estado,
+           u.username,
+           pro.sub_profile_slug,
+           ca.desc_category AS specialty,
+           ca.profession_slug,
+           m.slug AS machine_slug,
+           m.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           FALSE AS is_clan,
+           NULL::int AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+         JOIN tb_user u ON u.id_user = pro.id_user
+         JOIN tb_category ca ON ca.id_category = pro.id_category
+         LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+         WHERE pro.deleted_at IS NULL
+           AND pro.is_clan = FALSE
+           AND lower(ca.profession_slug) = lower($1)
+         UNION ALL
+         SELECT
+           clan.id_profile,
+           clan.display_name,
+           clan.avatar_url,
+           clan.municipio,
+           clan.estado,
+           ou.username,
+           NULL AS sub_profile_slug,
+           NULL AS specialty,
+           $1::text AS profession_slug,
+           mc.slug AS machine_slug,
+           mc.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           TRUE AS is_clan,
+           (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile clan ON clan.id_profile = pr.id_profile
+         LEFT JOIN tb_machine mc ON mc.id_machine = clan.id_machine
+         JOIN tb_clan_member ocm
+           ON ocm.id_clan_profile = clan.id_profile AND ocm.role = 'owner'
+         JOIN tb_profile op ON op.id_profile = ocm.id_member_profile
+         JOIN tb_user ou ON ou.id_user = op.id_user
+         WHERE clan.is_clan = TRUE
+           AND clan.deleted_at IS NULL
+           AND clan.is_visible = TRUE
+           AND EXISTS (
+             SELECT 1 FROM tb_clan_member cmf
+             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+             JOIN tb_category caf ON caf.id_category = mpf.id_category
+             WHERE cmf.id_clan_profile = clan.id_profile
+               AND lower(caf.profession_slug) = lower($1)
+           )
+       )
+       SELECT *,
+              ROW_NUMBER() OVER (ORDER BY total_points DESC NULLS LAST, display_name) AS position_profession
+         FROM base
+        ORDER BY position_profession
+        LIMIT $2`,
       [profession_slug, limit]
     );
     return r.rows;
@@ -474,34 +568,80 @@ module.exports = {
 
   async getTopByMachine(db, { id_machine, machine_slug, limit = 5 }) {
     const r = await db.query(
-      `SELECT
-         pro.id_profile,
-         pro.display_name,
-         pro.avatar_url,
-         pro.municipio,
-         pro.estado,
-         u.username,
-         pro.sub_profile_slug,
-         ca.desc_category AS specialty,
-         ca.profession_slug,
-         m.slug AS machine_slug,
-         m.name AS machine_name,
-         pr.total_points,
-         pr.avg_rating,
-         pr.ratings_count,
-         pr.visits_count,
-         pr.likes_count,
-         pr.position_machine
-       FROM profile_ranking pr
-       JOIN tb_profile pro ON pro.id_profile = pr.id_profile
-       JOIN tb_user u ON u.id_user = pro.id_user
-       JOIN tb_category ca ON ca.id_category = pro.id_category
-       JOIN tb_machine m ON m.id_machine = ca.id_machine
-       WHERE pro.deleted_at IS NULL
-         AND ($1::int IS NULL OR ca.id_machine = $1)
-         AND ($3::text IS NULL OR m.slug = $3)
-       ORDER BY pr.position_machine ASC NULLS LAST
-       LIMIT $2`,
+      `WITH base AS (
+         SELECT
+           pro.id_profile,
+           pro.display_name,
+           pro.avatar_url,
+           pro.municipio,
+           pro.estado,
+           u.username,
+           pro.sub_profile_slug,
+           ca.desc_category AS specialty,
+           ca.profession_slug,
+           m.slug AS machine_slug,
+           m.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           FALSE AS is_clan,
+           NULL::int AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+         JOIN tb_user u ON u.id_user = pro.id_user
+         JOIN tb_category ca ON ca.id_category = pro.id_category
+         JOIN tb_machine m ON m.id_machine = ca.id_machine
+         WHERE pro.deleted_at IS NULL
+           AND pro.is_clan = FALSE
+           AND ($1::int IS NULL OR ca.id_machine = $1)
+           AND ($3::text IS NULL OR m.slug = $3)
+         UNION ALL
+         SELECT
+           clan.id_profile,
+           clan.display_name,
+           clan.avatar_url,
+           clan.municipio,
+           clan.estado,
+           ou.username,
+           NULL AS sub_profile_slug,
+           NULL AS specialty,
+           NULL AS profession_slug,
+           mc.slug AS machine_slug,
+           mc.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           TRUE AS is_clan,
+           (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile clan ON clan.id_profile = pr.id_profile
+         LEFT JOIN tb_machine mc ON mc.id_machine = clan.id_machine
+         JOIN tb_clan_member ocm
+           ON ocm.id_clan_profile = clan.id_profile AND ocm.role = 'owner'
+         JOIN tb_profile op ON op.id_profile = ocm.id_member_profile
+         JOIN tb_user ou ON ou.id_user = op.id_user
+         WHERE clan.is_clan = TRUE
+           AND clan.deleted_at IS NULL
+           AND clan.is_visible = TRUE
+           AND EXISTS (
+             SELECT 1 FROM tb_clan_member cmf
+             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+             JOIN tb_category caf ON caf.id_category = mpf.id_category
+             JOIN tb_machine  mf  ON mf.id_machine  = caf.id_machine
+             WHERE cmf.id_clan_profile = clan.id_profile
+               AND ($1::int  IS NULL OR caf.id_machine = $1)
+               AND ($3::text IS NULL OR mf.slug = $3)
+           )
+       )
+       SELECT *,
+              ROW_NUMBER() OVER (ORDER BY total_points DESC NULLS LAST, display_name) AS position_machine
+         FROM base
+        ORDER BY position_machine
+        LIMIT $2`,
       [id_machine ? parseInt(id_machine, 10) : null, limit, machine_slug || null]
     );
     return r.rows;
