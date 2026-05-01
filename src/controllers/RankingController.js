@@ -145,6 +145,29 @@ module.exports = {
     return res.json(rows);
   },
 
+  // GET /ranking/public/city?municipio=...&estado=...  (público)
+  async getTopByCity(req, res) {
+    const municipio = String(req.query.municipio || "").trim();
+    const estado = String(req.query.estado || "").trim();
+    const limit = Math.min(parseInt(req.query.limit ?? "10", 10), 20);
+    if (!municipio || !estado) {
+      return res.status(400).json({ error: "municipio e estado obrigatórios" });
+    }
+    const rows = await RankingStorage.getTopByCity(pool, { municipio, estado, limit });
+    return res.json(rows);
+  },
+
+  // GET /ranking/public/profession/:profession_slug  (público)
+  async getTopByProfession(req, res) {
+    const { profession_slug } = req.params;
+    const limit = Math.min(parseInt(req.query.limit ?? "10", 10), 20);
+    if (!profession_slug) {
+      return res.status(400).json({ error: "profession_slug obrigatório" });
+    }
+    const rows = await RankingStorage.getTopByProfession(pool, { profession_slug, limit });
+    return res.json(rows);
+  },
+
   // GET /ranking/public/clans/general (público — top clans)
   async getTopClansGeneral(req, res) {
     const limit = Math.min(parseInt(req.query.limit ?? "20", 10), 50);

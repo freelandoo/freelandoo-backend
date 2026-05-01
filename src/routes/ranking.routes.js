@@ -11,6 +11,8 @@ router.get("/ratings/:id_profile", asyncHandler(RankingController.getRatings));
 router.get("/public/profile/:id_profile", asyncHandler(RankingController.getPublicProfilePosition));
 router.get("/public/machine/:id_machine", asyncHandler(RankingController.getTopByMachine));
 router.get("/public/general", asyncHandler(RankingController.getTopGeneral));
+router.get("/public/city", asyncHandler(RankingController.getTopByCity));
+router.get("/public/profession/:profession_slug", asyncHandler(RankingController.getTopByProfession));
 router.get("/public/clans/general", asyncHandler(RankingController.getTopClansGeneral));
 router.get("/public/clans/machine/:id_machine", asyncHandler(RankingController.getTopClansByMachine));
 
