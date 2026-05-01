@@ -4,7 +4,14 @@ const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
 
-// GET /public/creator/:handle/:profession_slug → resolve perfil específico
+// GET /public/creator/:handle/:profession_slug/:sub_profile_slug → resolve sub-perfil específico
+router.get(
+  "/:handle/:profession_slug/:sub_profile_slug",
+  asyncHandler(ProfileController.getPublicByHandle)
+);
+
+// GET /public/creator/:handle/:profession_slug → resolve perfil canônico (mais recente)
+//   da categoria; usado como fallback de URLs antigas (3 segmentos).
 router.get(
   "/:handle/:profession_slug",
   asyncHandler(ProfileController.getPublicByHandle)

@@ -74,32 +74,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tb_category_profession_slug_lower
   ON public.tb_category (lower(profession_slug));
 
 -- =============================================================================
--- 6. UNIQUE (id_user, id_category) em tb_profile (apenas perfis não deletados)
+-- 6. (Histórico) UNIQUE (id_user, id_category) — REMOVIDO em mig 021
 -- =============================================================================
--- Necessário para que (handle, profession_slug) resolva 1 único perfil.
--- Se houver duplicatas, o índice falha — emitimos NOTICE e abortamos com instrução.
-DO $$
-DECLARE
-  v_dup_count INT;
-BEGIN
-  SELECT COUNT(*) INTO v_dup_count
-    FROM (
-      SELECT id_user, id_category
-        FROM public.tb_profile
-       WHERE deleted_at IS NULL
-       GROUP BY id_user, id_category
-      HAVING COUNT(*) > 1
-    ) d;
-
-  IF v_dup_count > 0 THEN
-    RAISE EXCEPTION
-      'Migration 011 abortada: existem % par(es) (id_user, id_category) duplicados em tb_profile não-deletado. '
-      'Resolva manualmente (soft-delete os duplicados extras) antes de rodar esta migration novamente. '
-      'Query para inspecionar: SELECT id_user, id_category, COUNT(*) FROM tb_profile WHERE deleted_at IS NULL GROUP BY 1,2 HAVING COUNT(*) > 1;',
-      v_dup_count;
-  END IF;
-END $$;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tb_profile_user_category_active
-  ON public.tb_profile (id_user, id_category)
-  WHERE deleted_at IS NULL;
+-- Originalmente esta mig criava um índice único (id_user, id_category) WHERE
+-- deleted_at IS NULL para garantir que (handle, profession_slug) identificasse
+-- 1 único perfil. A partir do redesign de sub-perfis (mig 021), múltiplos
+-- perfis por categoria são permitidos e desempatados via sub_profile_slug.
+-- Mantemos esta mig sem operação no bloco 6 para evitar abort idempotente.
+DROP INDEX IF EXISTS idx_tb_profile_user_category_active;

@@ -1,25 +1,66 @@
+const { slugify } = require("../utils/slug");
+
 class ProfileStorage {
+  /**
+   * Resolve um sub_profile_slug único para o usuário a partir do display_name.
+   * Aplica sufixo numérico (-2, -3, ...) em caso de colisão com perfis vivos
+   * do mesmo usuário. Ignora `excludeProfileId` (usado em update).
+   */
+  static async resolveUniqueSubProfileSlug(
+    conn,
+    { id_user, display_name, excludeProfileId = null }
+  ) {
+    let base = slugify(display_name);
+    if (!base || base.length < 2) base = "perfil";
+    if (base.length > 75) base = base.substring(0, 75);
+
+    const params = [id_user];
+    let exclusionClause = "";
+    if (excludeProfileId) {
+      params.push(excludeProfileId);
+      exclusionClause = `AND id_profile <> $2`;
+    }
+
+    const r = await conn.query(
+      `SELECT sub_profile_slug
+         FROM public.tb_profile
+        WHERE id_user = $1
+          AND deleted_at IS NULL
+          ${exclusionClause}`,
+      params
+    );
+    const taken = new Set(r.rows.map((row) => row.sub_profile_slug));
+
+    if (!taken.has(base)) return base;
+    for (let i = 2; i < 10000; i++) {
+      const candidate = `${base}-${i}`;
+      if (!taken.has(candidate)) return candidate;
+    }
+    // fallback improvável
+    return `${base}-${Date.now()}`;
+  }
+
   // CREATE
   static async createProfile(
     conn,
     { id_user, id_category, display_name, bio, avatar_url, estado, municipio }
   ) {
+    const sub_profile_slug = await ProfileStorage.resolveUniqueSubProfileSlug(
+      conn,
+      { id_user, display_name }
+    );
+
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile
         (id_user, id_category, display_name, bio, avatar_url, estado, municipio, sub_profile_slug)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7,
-          COALESCE(
-            (SELECT profession_slug FROM public.tb_category WHERE id_category = $2),
-            'clan'
-          )
-        )
+        ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING
         id_profile, id_user, id_category, display_name, bio, avatar_url,
         estado, municipio, sub_profile_slug, is_active, created_at, updated_at
       `,
-      [id_user, id_category, display_name, bio, avatar_url, estado, municipio]
+      [id_user, id_category, display_name, bio, avatar_url, estado, municipio, sub_profile_slug]
     );
     return r.rows[0];
   }
@@ -69,13 +110,15 @@ class ProfileStorage {
   }
 
   /**
-   * Resolve perfil público pelo (handle, profession_slug). Usado pelas URLs SEO
-   * /[profession]/[city]/@[handle]. Retorna o perfil mesmo se não-publicado;
-   * o caller decide se exibe (publicado) ou retorna 404.
+   * Resolve perfil público pelo (handle, profession_slug, sub_profile_slug).
+   * Usado pela URL SEO /[profession]/[city]/@[handle]/[subProfile].
+   * Se `sub_profile_slug` for null/undefined, cai em modo legado: retorna
+   * o perfil canônico (mais recente) que casa só com (handle, profession_slug).
+   * Retorna o perfil mesmo se não-publicado; caller decide se exibe ou 404.
    */
   static async getPublicProfileByHandleAndProfession(
     conn,
-    { handle, profession_slug }
+    { handle, profession_slug, sub_profile_slug = null }
   ) {
     const r = await conn.query(
       `
@@ -114,9 +157,12 @@ class ProfileStorage {
       ON m.id_machine = c.id_machine
     WHERE lower(u.username) = lower($1)
       AND lower(c.profession_slug) = lower($2)
+      AND p.deleted_at IS NULL
+      AND ($3::text IS NULL OR lower(p.sub_profile_slug) = lower($3))
+    ORDER BY p.created_at DESC
     LIMIT 1
     `,
-      [handle, profession_slug]
+      [handle, profession_slug, sub_profile_slug]
     );
     return r.rowCount ? r.rows[0] : null;
   }
@@ -296,18 +342,27 @@ class ProfileStorage {
     if (has("id_category")) {
       fields.push(`id_category = $${idx++}`);
       values.push(payload.id_category); // pode ser number
-      // Sincroniza sub_profile_slug com a nova categoria (mantém 'clan' se id_category=null)
-      fields.push(
-        `sub_profile_slug = COALESCE(
-          (SELECT profession_slug FROM public.tb_category WHERE id_category = $${idx - 1}),
-          'clan'
-        )`
-      );
     }
 
     if (has("display_name")) {
       fields.push(`display_name = $${idx++}`);
       values.push(payload.display_name); // pode ser null se você quiser permitir
+
+      // Ressincroniza sub_profile_slug com o novo display_name (resolução de
+      // colisão por id_user — ignora o próprio perfil em edição).
+      const owner = await conn.query(
+        `SELECT id_user FROM public.tb_profile WHERE id_profile = $1`,
+        [id_profile]
+      );
+      if (owner.rowCount > 0) {
+        const newSlug = await ProfileStorage.resolveUniqueSubProfileSlug(conn, {
+          id_user: owner.rows[0].id_user,
+          display_name: payload.display_name,
+          excludeProfileId: id_profile,
+        });
+        fields.push(`sub_profile_slug = $${idx++}`);
+        values.push(newSlug);
+      }
     }
 
     if (has("bio")) {
