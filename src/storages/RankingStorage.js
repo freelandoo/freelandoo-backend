@@ -370,7 +370,9 @@ module.exports = {
   // RANKINGS PÚBLICOS (home e admin)
   // ──────────────────────────────────────────────────────────────────────────
   // Posição pública de um perfil (pra botão "Ranking" no card).
-  // Para clans, máquina vem direto de pro.id_machine (clan não tem categoria).
+  // Para clans, máquina vem direto de pro.id_machine, e profession/specialty
+  // vêm da categoria do subperfil OWNER (clan não tem categoria própria, mas
+  // o dono determina a "profissão de referência" pra navegação no modal).
   async getPublicProfilePosition(db, { id_profile }) {
     const r = await db.query(
       `SELECT
@@ -389,14 +391,19 @@ module.exports = {
          COALESCE(ca.id_machine, pro.id_machine) AS id_machine,
          COALESCE(mc.name, mp.name) AS machine_name,
          COALESCE(mc.slug, mp.slug) AS machine_slug,
-         ca.id_category,
-         ca.profession_slug,
-         ca.desc_category AS specialty
+         COALESCE(ca.id_category, oca.id_category) AS id_category,
+         COALESCE(ca.profession_slug, oca.profession_slug) AS profession_slug,
+         COALESCE(ca.desc_category, oca.desc_category) AS specialty
        FROM tb_profile pro
        LEFT JOIN profile_ranking pr ON pr.id_profile = pro.id_profile
        LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine mc ON mc.id_machine = ca.id_machine
        LEFT JOIN tb_machine mp ON mp.id_machine = pro.id_machine
+       -- Owner do clan (se for clan): pega categoria/profissão do subperfil dono.
+       LEFT JOIN tb_clan_member ocm
+         ON pro.is_clan = TRUE AND ocm.id_clan_profile = pro.id_profile AND ocm.role = 'owner'
+       LEFT JOIN tb_profile op ON op.id_profile = ocm.id_member_profile
+       LEFT JOIN tb_category oca ON oca.id_category = op.id_category
        WHERE pro.id_profile = $1 AND pro.deleted_at IS NULL`,
       [id_profile]
     );
