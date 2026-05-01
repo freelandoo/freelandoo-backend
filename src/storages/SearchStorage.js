@@ -58,10 +58,44 @@ module.exports = {
              AND cm.role = 'owner'
              AND psub.status = 'active'
         )
-        AND ($1::text IS NULL OR clan.estado = $1)
-        AND ($2::text IS NULL OR clan.municipio ILIKE $2)
-        AND ($3::int  IS NULL OR clan.id_machine = $3)
-        AND ($4::text IS NULL OR m.slug = $4)
+        -- Filtros geo/máquina batem se QUALQUER membro do clan tem esse atributo.
+        -- Ex.: clan com membros (Diadema, views) e (São Bernardo, limpeza) aparece
+        -- nas 4 buscas (cidade x máquina). Sem filtros, lista todos os clans.
+        AND (
+          $1::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            WHERE cmf.id_clan_profile = clan.id_profile
+              AND mpf.estado = $1
+          )
+        )
+        AND (
+          $2::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            WHERE cmf.id_clan_profile = clan.id_profile
+              AND mpf.municipio ILIKE $2
+          )
+        )
+        AND (
+          $3::int IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            JOIN tb_category caf ON caf.id_category = mpf.id_category
+            WHERE cmf.id_clan_profile = clan.id_profile
+              AND caf.id_machine = $3
+          )
+        )
+        AND (
+          $4::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            JOIN tb_category caf ON caf.id_category = mpf.id_category
+            JOIN tb_machine  mf  ON mf.id_machine  = caf.id_machine
+            WHERE cmf.id_clan_profile = clan.id_profile
+              AND mf.slug = $4
+          )
+        )
         AND ($5::text IS NULL OR clan.display_name ILIKE $5 OR clan.bio ILIKE $5)
       ORDER BY rk.total_points DESC NULLS LAST, clan.display_name ASC
       LIMIT $6 OFFSET $7
@@ -103,6 +137,7 @@ module.exports = {
 
     const result = await db.query(
       `
+      WITH creators AS (
       SELECT
         -- PROFILE
         pro.id_profile,
@@ -130,7 +165,11 @@ module.exports = {
         COALESCE(ps.statuses, '[]'::jsonb) AS profile_statuses,
 
         -- REDES SOCIAIS DO PROFILE
-        COALESCE(sm.redes_sociais, '[]'::jsonb) AS redes_sociais
+        COALESCE(sm.redes_sociais, '[]'::jsonb) AS redes_sociais,
+
+        -- Marcadores de clan
+        FALSE AS is_clan,
+        NULL::int AS members_count
 
       FROM tb_profile pro
       JOIN tb_user tu
@@ -225,8 +264,104 @@ module.exports = {
 
         -- Filtro por slug da máquina (alternativo a id_machine)
         AND ($11::text IS NULL OR m.slug = $11)
-
-      ORDER BY pro.display_name
+      ),
+      clans AS (
+        -- Clans aparecem na vitrine batendo qualquer atributo de seus membros.
+        -- Ex.: clan com membro (Diadema, views, diarista) e (S.Bernardo, limpeza,
+        -- roteirista) entra nas 8 combinações cidade×máquina×profissão. Filtros
+        -- de plataforma ($5) e categoria-texto ($3/$8) são checados via membros
+        -- também, então o filtro casa se algum membro tem o atributo.
+        SELECT
+          clan.id_profile,
+          clan.display_name,
+          clan.bio,
+          clan.avatar_url,
+          clan.estado,
+          clan.municipio,
+          NULL::int AS id_category,
+          NULL::text AS category,
+          NULL::text AS profession_slug,
+          clan.id_machine,
+          mc.slug AS machine_slug,
+          mc.name AS machine_name,
+          owner_user.id_user,
+          owner_user.username,
+          owner_user.nome AS user_nome,
+          owner_user.avatar AS user_avatar,
+          '[]'::jsonb AS profile_statuses,
+          '[]'::jsonb AS redes_sociais,
+          TRUE AS is_clan,
+          (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
+        FROM tb_profile clan
+        JOIN tb_clan_member owner_cm
+          ON owner_cm.id_clan_profile = clan.id_profile AND owner_cm.role = 'owner'
+        JOIN tb_profile owner_p ON owner_p.id_profile = owner_cm.id_member_profile
+        JOIN tb_user owner_user ON owner_user.id_user = owner_p.id_user
+        LEFT JOIN tb_machine mc ON mc.id_machine = clan.id_machine
+        WHERE clan.is_clan = TRUE
+          AND clan.deleted_at IS NULL
+          AND clan.is_visible = TRUE
+          AND EXISTS (
+            SELECT 1 FROM tb_profile_subscription psub
+            WHERE psub.id_profile = owner_cm.id_member_profile
+              AND psub.status = 'active'
+          )
+          AND ($1::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            WHERE cmf.id_clan_profile = clan.id_profile AND mpf.estado = $1
+          ))
+          AND ($2::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            WHERE cmf.id_clan_profile = clan.id_profile AND mpf.municipio ILIKE $2
+          ))
+          AND ($3::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            JOIN tb_category caf ON caf.id_category = mpf.id_category
+            WHERE cmf.id_clan_profile = clan.id_profile AND caf.desc_category ILIKE $3
+          ))
+          AND ($8::text[] IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            JOIN tb_category caf ON caf.id_category = mpf.id_category
+            WHERE cmf.id_clan_profile = clan.id_profile
+              AND caf.desc_category ILIKE ANY($8::text[])
+          ))
+          AND ($4::text IS NULL OR clan.display_name ILIKE $4 OR clan.bio ILIKE $4)
+          AND ($5::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile_social_media psm3
+              ON psm3.id_profile = cmf.id_member_profile AND psm3.is_active = TRUE
+            JOIN tb_social_media_type soty3
+              ON soty3.id_social_media_type = psm3.id_social_media_type
+            WHERE cmf.id_clan_profile = clan.id_profile
+              AND soty3.desc_social_media_type ILIKE $5
+          ))
+          AND ($9::int IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            JOIN tb_category caf ON caf.id_category = mpf.id_category
+            WHERE cmf.id_clan_profile = clan.id_profile AND caf.id_machine = $9
+          ))
+          AND ($10::int IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            WHERE cmf.id_clan_profile = clan.id_profile AND mpf.id_category = $10
+          ))
+          AND ($11::text IS NULL OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            JOIN tb_category caf ON caf.id_category = mpf.id_category
+            JOIN tb_machine mf ON mf.id_machine = caf.id_machine
+            WHERE cmf.id_clan_profile = clan.id_profile AND mf.slug = $11
+          ))
+      )
+      SELECT * FROM creators
+      UNION ALL
+      SELECT * FROM clans
+      ORDER BY display_name
       LIMIT $6 OFFSET $7;
       `,
       [
