@@ -369,7 +369,8 @@ module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   // RANKINGS PÚBLICOS (home e admin)
   // ──────────────────────────────────────────────────────────────────────────
-  // Posição pública de um perfil (pra botão "Ranking" no card)
+  // Posição pública de um perfil (pra botão "Ranking" no card).
+  // Para clans, máquina vem direto de pro.id_machine (clan não tem categoria).
   async getPublicProfilePosition(db, { id_profile }) {
     const r = await db.query(
       `SELECT
@@ -384,16 +385,18 @@ module.exports = {
          pr.likes_count,
          pro.municipio,
          pro.estado,
-         m.id_machine,
-         m.name AS machine_name,
-         m.slug AS machine_slug,
+         pro.is_clan,
+         COALESCE(ca.id_machine, pro.id_machine) AS id_machine,
+         COALESCE(mc.name, mp.name) AS machine_name,
+         COALESCE(mc.slug, mp.slug) AS machine_slug,
          ca.id_category,
          ca.profession_slug,
          ca.desc_category AS specialty
        FROM tb_profile pro
        LEFT JOIN profile_ranking pr ON pr.id_profile = pro.id_profile
        LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
-       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+       LEFT JOIN tb_machine mc ON mc.id_machine = ca.id_machine
+       LEFT JOIN tb_machine mp ON mp.id_machine = pro.id_machine
        WHERE pro.id_profile = $1 AND pro.deleted_at IS NULL`,
       [id_profile]
     );
@@ -467,12 +470,15 @@ module.exports = {
          WHERE clan.is_clan = TRUE
            AND clan.deleted_at IS NULL
            AND clan.is_visible = TRUE
-           AND EXISTS (
-             SELECT 1 FROM tb_clan_member cmf
-             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
-             WHERE cmf.id_clan_profile = clan.id_profile
-               AND lower(mpf.municipio) = lower($1)
-               AND lower(mpf.estado)    = lower($2)
+           AND (
+             (lower(clan.municipio) = lower($1) AND lower(clan.estado) = lower($2))
+             OR EXISTS (
+               SELECT 1 FROM tb_clan_member cmf
+               JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+               WHERE cmf.id_clan_profile = clan.id_profile
+                 AND lower(mpf.municipio) = lower($1)
+                 AND lower(mpf.estado)    = lower($2)
+             )
            )
        )
        SELECT *,
@@ -555,6 +561,7 @@ module.exports = {
              WHERE cmf.id_clan_profile = clan.id_profile
                AND lower(caf.profession_slug) = lower($1)
            )
+           -- (Clan não tem profession própria — só via membros.)
        )
        SELECT *,
               ROW_NUMBER() OVER (ORDER BY total_points DESC NULLS LAST, display_name) AS position_profession
@@ -627,14 +634,21 @@ module.exports = {
          WHERE clan.is_clan = TRUE
            AND clan.deleted_at IS NULL
            AND clan.is_visible = TRUE
-           AND EXISTS (
-             SELECT 1 FROM tb_clan_member cmf
-             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
-             JOIN tb_category caf ON caf.id_category = mpf.id_category
-             JOIN tb_machine  mf  ON mf.id_machine  = caf.id_machine
-             WHERE cmf.id_clan_profile = clan.id_profile
-               AND ($1::int  IS NULL OR caf.id_machine = $1)
-               AND ($3::text IS NULL OR mf.slug = $3)
+           AND (
+             -- Clan bate pela própria máquina OU pela máquina de qualquer membro.
+             (
+               ($1::int  IS NULL OR clan.id_machine = $1)
+               AND ($3::text IS NULL OR mc.slug = $3)
+             )
+             OR EXISTS (
+               SELECT 1 FROM tb_clan_member cmf
+               JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+               JOIN tb_category caf ON caf.id_category = mpf.id_category
+               JOIN tb_machine  mf  ON mf.id_machine  = caf.id_machine
+               WHERE cmf.id_clan_profile = clan.id_profile
+                 AND ($1::int  IS NULL OR caf.id_machine = $1)
+                 AND ($3::text IS NULL OR mf.slug = $3)
+             )
            )
        )
        SELECT *,

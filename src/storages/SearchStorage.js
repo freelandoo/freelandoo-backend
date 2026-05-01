@@ -58,11 +58,11 @@ module.exports = {
              AND cm.role = 'owner'
              AND psub.status = 'active'
         )
-        -- Filtros geo/máquina batem se QUALQUER membro do clan tem esse atributo.
-        -- Ex.: clan com membros (Diadema, views) e (São Bernardo, limpeza) aparece
-        -- nas 4 buscas (cidade x máquina). Sem filtros, lista todos os clans.
+        -- Filtros geo/máquina batem se o clan OU qualquer membro tem o atributo.
+        -- Inclui o próprio clan (clan.estado/municipio/id_machine) como fallback
+        -- pra cobrir casos em que o membro não preencheu a cidade.
         AND (
-          $1::text IS NULL OR EXISTS (
+          $1::text IS NULL OR clan.estado = $1 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile
@@ -70,7 +70,7 @@ module.exports = {
           )
         )
         AND (
-          $2::text IS NULL OR EXISTS (
+          $2::text IS NULL OR clan.municipio ILIKE $2 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile
@@ -78,7 +78,7 @@ module.exports = {
           )
         )
         AND (
-          $3::int IS NULL OR EXISTS (
+          $3::int IS NULL OR clan.id_machine = $3 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             JOIN tb_category caf ON caf.id_category = mpf.id_category
@@ -87,7 +87,7 @@ module.exports = {
           )
         )
         AND (
-          $4::text IS NULL OR EXISTS (
+          $4::text IS NULL OR m.slug = $4 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             JOIN tb_category caf ON caf.id_category = mpf.id_category
@@ -306,12 +306,12 @@ module.exports = {
             WHERE psub.id_profile = owner_cm.id_member_profile
               AND psub.status = 'active'
           )
-          AND ($1::text IS NULL OR EXISTS (
+          AND ($1::text IS NULL OR clan.estado = $1 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile AND mpf.estado = $1
           ))
-          AND ($2::text IS NULL OR EXISTS (
+          AND ($2::text IS NULL OR clan.municipio ILIKE $2 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile AND mpf.municipio ILIKE $2
@@ -339,7 +339,7 @@ module.exports = {
             WHERE cmf.id_clan_profile = clan.id_profile
               AND soty3.desc_social_media_type ILIKE $5
           ))
-          AND ($9::int IS NULL OR EXISTS (
+          AND ($9::int IS NULL OR clan.id_machine = $9 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             JOIN tb_category caf ON caf.id_category = mpf.id_category
@@ -350,7 +350,7 @@ module.exports = {
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile AND mpf.id_category = $10
           ))
-          AND ($11::text IS NULL OR EXISTS (
+          AND ($11::text IS NULL OR mc.slug = $11 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             JOIN tb_category caf ON caf.id_category = mpf.id_category
