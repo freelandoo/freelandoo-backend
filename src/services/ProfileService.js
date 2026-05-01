@@ -96,10 +96,13 @@ class ProfileService {
       () => ({
         handle: params?.handle,
         profession_slug: params?.profession_slug,
+        sub_profile_slug: params?.sub_profile_slug,
       }),
       async () => {
         const handle = String(params?.handle || "").replace(/^@/, "").trim();
         const profession_slug = String(params?.profession_slug || "").trim();
+        const subRaw = String(params?.sub_profile_slug || "").trim();
+        const sub_profile_slug = subRaw.length > 0 ? subRaw : null;
         if (!handle || !profession_slug) {
           return { error: "handle e profession_slug são obrigatórios" };
         }
@@ -108,6 +111,7 @@ class ProfileService {
           await ProfileStorage.getPublicProfileByHandleAndProfession(pool, {
             handle,
             profession_slug,
+            sub_profile_slug,
           });
         if (!profile) return { error: "Perfil não encontrado" };
 
