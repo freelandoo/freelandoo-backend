@@ -381,8 +381,11 @@ module.exports = {
          pr.likes_count,
          pro.municipio,
          pro.estado,
+         m.id_machine,
          m.name AS machine_name,
          m.slug AS machine_slug,
+         ca.id_category,
+         ca.profession_slug,
          ca.desc_category AS specialty
        FROM tb_profile pro
        LEFT JOIN profile_ranking pr ON pr.id_profile = pro.id_profile
@@ -394,6 +397,79 @@ module.exports = {
     return r.rows[0] ?? null;
   },
 
+  /**
+   * Top N por (municipio, estado). Considera só perfis vivos com ranking calc.
+   */
+  async getTopByCity(db, { municipio, estado, limit = 10 }) {
+    const r = await db.query(
+      `SELECT
+         pro.id_profile,
+         pro.display_name,
+         pro.avatar_url,
+         pro.municipio,
+         pro.estado,
+         pro.username,
+         pro.sub_profile_slug,
+         ca.desc_category AS specialty,
+         ca.profession_slug,
+         m.slug AS machine_slug,
+         m.name AS machine_name,
+         pr.total_points,
+         pr.avg_rating,
+         pr.ratings_count,
+         pr.visits_count,
+         pr.likes_count,
+         pr.position_city
+       FROM profile_ranking pr
+       JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       JOIN tb_category ca ON ca.id_category = pro.id_category
+       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+       WHERE pro.deleted_at IS NULL
+         AND lower(pro.municipio) = lower($1)
+         AND lower(pro.estado) = lower($2)
+       ORDER BY pr.position_city ASC NULLS LAST
+       LIMIT $3`,
+      [municipio, estado, limit]
+    );
+    return r.rows;
+  },
+
+  /**
+   * Top N por profession_slug (categoria/profissão).
+   */
+  async getTopByProfession(db, { profession_slug, limit = 10 }) {
+    const r = await db.query(
+      `SELECT
+         pro.id_profile,
+         pro.display_name,
+         pro.avatar_url,
+         pro.municipio,
+         pro.estado,
+         pro.username,
+         pro.sub_profile_slug,
+         ca.desc_category AS specialty,
+         ca.profession_slug,
+         m.slug AS machine_slug,
+         m.name AS machine_name,
+         pr.total_points,
+         pr.avg_rating,
+         pr.ratings_count,
+         pr.visits_count,
+         pr.likes_count,
+         pr.position_profession
+       FROM profile_ranking pr
+       JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+       JOIN tb_category ca ON ca.id_category = pro.id_category
+       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+       WHERE pro.deleted_at IS NULL
+         AND lower(ca.profession_slug) = lower($1)
+       ORDER BY pr.position_profession ASC NULLS LAST
+       LIMIT $2`,
+      [profession_slug, limit]
+    );
+    return r.rows;
+  },
+
   async getTopByMachine(db, { id_machine, machine_slug, limit = 5 }) {
     const r = await db.query(
       `SELECT
@@ -402,9 +478,15 @@ module.exports = {
          pro.avatar_url,
          pro.municipio,
          pro.estado,
+         pro.username,
+         pro.sub_profile_slug,
          ca.desc_category AS specialty,
+         ca.profession_slug,
+         m.slug AS machine_slug,
+         m.name AS machine_name,
          pr.total_points,
          pr.avg_rating,
+         pr.ratings_count,
          pr.visits_count,
          pr.likes_count,
          pr.position_machine
@@ -412,7 +494,8 @@ module.exports = {
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
        JOIN tb_category ca ON ca.id_category = pro.id_category
        JOIN tb_machine m ON m.id_machine = ca.id_machine
-       WHERE ($1::int IS NULL OR ca.id_machine = $1)
+       WHERE pro.deleted_at IS NULL
+         AND ($1::int IS NULL OR ca.id_machine = $1)
          AND ($3::text IS NULL OR m.slug = $3)
        ORDER BY pr.position_machine ASC NULLS LAST
        LIMIT $2`,
@@ -429,11 +512,15 @@ module.exports = {
          pro.avatar_url,
          pro.municipio,
          pro.estado,
+         pro.username,
+         pro.sub_profile_slug,
          ca.desc_category AS specialty,
+         ca.profession_slug,
          m.name AS machine_name,
          m.slug AS machine_slug,
          pr.total_points,
          pr.avg_rating,
+         pr.ratings_count,
          pr.visits_count,
          pr.likes_count,
          pr.position_general
@@ -441,6 +528,7 @@ module.exports = {
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
        JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+       WHERE pro.deleted_at IS NULL
        ORDER BY pr.position_general ASC NULLS LAST
        LIMIT $1`,
       [limit]
