@@ -8,6 +8,8 @@ const router = Router();
 const admin = [authMiddleware, roleMiddleware("Administrator")];
 
 router.get("/machines", ...admin, asyncHandler(MachineAdminController.listAll));
+router.post("/machines", ...admin, asyncHandler(MachineAdminController.create));
+router.delete("/machines/:id_machine", ...admin, asyncHandler(MachineAdminController.remove));
 router.patch("/machines/:id_machine", ...admin, asyncHandler(MachineAdminController.update));
 router.patch(
   "/machines/:id_machine/status",

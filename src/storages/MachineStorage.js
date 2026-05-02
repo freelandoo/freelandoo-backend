@@ -13,6 +13,8 @@ class MachineStorage {
         color_ring,
         color_accent,
         color_text,
+        description,
+        icon_name,
         is_active
       FROM public.tb_machine
       WHERE ($1::boolean = TRUE) OR (is_active = TRUE)
@@ -84,6 +86,8 @@ class MachineStorage {
         m.color_ring,
         m.color_accent,
         m.color_text,
+        m.description,
+        m.icon_name,
         m.is_active,
         COALESCE(
           jsonb_agg(
@@ -124,6 +128,55 @@ class MachineStorage {
     return rows[0] || null;
   }
 
+  static async createMachine(conn, { fields }) {
+    const cols = [
+      "slug",
+      "name",
+      "display_order",
+      "color_from",
+      "color_to",
+      "color_glow",
+      "color_ring",
+      "color_accent",
+      "color_text",
+      "description",
+      "icon_name",
+      "is_active",
+    ];
+    const colNames = [];
+    const placeholders = [];
+    const values = [];
+    let i = 0;
+    for (const c of cols) {
+      if (Object.prototype.hasOwnProperty.call(fields, c)) {
+        colNames.push(c);
+        placeholders.push(`$${++i}`);
+        values.push(fields[c]);
+      }
+    }
+    const { rows } = await conn.query(
+      `
+      INSERT INTO public.tb_machine (${colNames.join(", ")})
+      VALUES (${placeholders.join(", ")})
+      RETURNING *
+      `,
+      values
+    );
+    return rows[0] || null;
+  }
+
+  static async deleteMachine(conn, id_machine) {
+    const { rows } = await conn.query(
+      `
+      DELETE FROM public.tb_machine
+       WHERE id_machine = $1
+      RETURNING *
+      `,
+      [id_machine]
+    );
+    return rows[0] || null;
+  }
+
   static async updateMachine(conn, { id_machine, fields }) {
     const allowed = [
       "name",
@@ -134,6 +187,8 @@ class MachineStorage {
       "color_ring",
       "color_accent",
       "color_text",
+      "description",
+      "icon_name",
     ];
     const sets = [];
     const values = [id_machine];
