@@ -62,8 +62,11 @@ async function updateMachine(actor, id_machine, body) {
   const fields = {};
   if (body.name != null) fields.name = String(body.name).trim();
   if (body.display_order != null) fields.display_order = Number(body.display_order);
-  for (const k of ["color_from", "color_to", "color_glow", "color_ring", "color_accent", "color_text"]) {
+  for (const k of ["color_from", "color_to", "color_glow", "color_ring", "color_accent", "color_text", "icon_name"]) {
     if (body[k] != null) fields[k] = String(body[k]);
+  }
+  if (body.description !== undefined) {
+    fields.description = body.description == null ? null : String(body.description).trim() || null;
   }
 
   const after = await MachineStorage.updateMachine(pool, { id_machine, fields });
@@ -78,6 +81,76 @@ async function updateMachine(actor, id_machine, body) {
   });
 
   return after;
+}
+
+function slugify(input) {
+  return String(input || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
+async function createMachine(actor, body) {
+  const name = String(body?.name || "").trim();
+  if (!name) throw new ServiceError("name obrigatório", 400);
+
+  let slug = String(body?.slug || "").trim() || slugify(name);
+  slug = slugify(slug);
+  if (!slug) throw new ServiceError("slug inválido", 400);
+
+  const existing = await MachineStorage.getMachineBySlug(pool, slug);
+  if (existing) throw new ServiceError("Slug já existe", 409);
+
+  const fields = {
+    slug,
+    name,
+    display_order: Number.isFinite(Number(body?.display_order))
+      ? Number(body.display_order)
+      : 99,
+    is_active: body?.is_active === false ? false : true,
+  };
+  for (const k of ["color_from", "color_to", "color_glow", "color_ring", "color_accent", "color_text", "icon_name"]) {
+    if (body?.[k] != null) fields[k] = String(body[k]);
+  }
+  if (body?.description != null) {
+    const d = String(body.description).trim();
+    if (d) fields.description = d;
+  }
+
+  const row = await MachineStorage.createMachine(pool, { fields });
+
+  await MachineStorage.writeAudit(pool, {
+    entity: "machine",
+    entity_id: row.id_machine,
+    action: "create",
+    after_state: row,
+    actor_user_id: actor.id_user,
+  });
+
+  return row;
+}
+
+async function deleteMachine(actor, id_machine, { reason } = {}) {
+  const before = await MachineStorage.getMachineById(pool, id_machine);
+  if (!before) throw new ServiceError("Máquina não encontrada", 404);
+
+  const deleted = await MachineStorage.deleteMachine(pool, id_machine);
+
+  await MachineStorage.writeAudit(pool, {
+    entity: "machine",
+    entity_id: id_machine,
+    action: "delete",
+    before_state: before,
+    after_state: null,
+    reason: reason || null,
+    actor_user_id: actor.id_user,
+  });
+
+  return deleted;
 }
 
 async function addCategory(actor, id_machine, { desc_category }) {
@@ -146,6 +219,8 @@ module.exports = {
   // admin
   setMachineStatus,
   updateMachine,
+  createMachine,
+  deleteMachine,
   addCategory,
   updateCategory,
 };

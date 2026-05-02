@@ -37,6 +37,30 @@ class MachineAdminController {
     }
   }
 
+  static async create(req, res) {
+    try {
+      const row = await MachineService.createMachine(req.user, req.body || {});
+      return res.status(201).json(row);
+    } catch (err) {
+      return handleError(res, err);
+    }
+  }
+
+  static async remove(req, res) {
+    try {
+      const id_machine = Number(req.params.id_machine);
+      if (!Number.isFinite(id_machine)) {
+        return res.status(400).json({ error: "id_machine inválido" });
+      }
+      const row = await MachineService.deleteMachine(req.user, id_machine, {
+        reason: req.body?.reason,
+      });
+      return res.json(row);
+    } catch (err) {
+      return handleError(res, err);
+    }
+  }
+
   static async update(req, res) {
     try {
       const id_machine = Number(req.params.id_machine);
