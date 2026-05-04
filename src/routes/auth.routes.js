@@ -8,6 +8,7 @@ const router = Router();
 router.post("/signup", asyncHandler(AuthController.signup));
 router.get("/check-username", asyncHandler(AuthController.checkUsername));
 router.post("/signin", asyncHandler(AuthController.signin));
+router.post("/google-signin", asyncHandler(AuthController.googleSignin));
 router.get("/activate", asyncHandler(AuthController.activate));
 router.post(
   "/resend-activation",

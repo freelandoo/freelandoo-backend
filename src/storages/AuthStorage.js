@@ -33,6 +33,73 @@ class AuthStorage {
     return r.rows[0];
   }
 
+  static async findUserByGoogleSub(db, googleSub) {
+    const r = await db.query(
+      `SELECT id_user, nome, email, ativo, google_sub
+         FROM tb_user
+        WHERE google_sub = $1
+        LIMIT 1`,
+      [googleSub]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async findUserForGoogleByEmail(db, email) {
+    const r = await db.query(
+      `SELECT id_user, nome, email, ativo, google_sub
+         FROM tb_user
+        WHERE LOWER(TRIM(email)) = $1
+        LIMIT 1`,
+      [email]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async linkGoogleSub(db, id_user, googleSub) {
+    await db.query(
+      `UPDATE tb_user SET google_sub = $2, ativo = TRUE WHERE id_user = $1`,
+      [id_user, googleSub]
+    );
+  }
+
+  static async createGoogleUser(client, { nome, username, email, googleSub }) {
+    const r = await client.query(
+      `
+      INSERT INTO tb_user
+        (nome, username, email, ativo, google_sub)
+      VALUES
+        ($1, $2, $3, TRUE, $4)
+      RETURNING id_user, nome, username, email, ativo
+      `,
+      [nome, username, email, googleSub]
+    );
+    return r.rows[0];
+  }
+
+  static async generateUniqueUsernameFromEmail(client, email) {
+    const base = String(email || "")
+      .split("@")[0]
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9_.-]+/g, "")
+      .replace(/^[._-]+|[._-]+$/g, "")
+      .slice(0, 24) || "user";
+
+    let candidate = base;
+    let suffix = 0;
+    while (true) {
+      const taken = await this.findUserIdByUsername(client, candidate);
+      if (!taken) return candidate;
+      suffix += 1;
+      candidate = `${base.slice(0, 24 - String(suffix).length)}${suffix}`.slice(0, 30);
+      if (suffix > 9999) {
+        candidate = `${base.slice(0, 20)}${Math.floor(Math.random() * 100000)}`.slice(0, 30);
+        return candidate;
+      }
+    }
+  }
+
   static async findUserAuthByEmail(db, email) {
     const r = await db.query(
       `
