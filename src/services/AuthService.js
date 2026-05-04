@@ -2,9 +2,12 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { OAuth2Client } = require("google-auth-library");
 const pool = require("../databases");
 
 const AuthStorage = require("../storages/AuthStorage");
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const {
   sendActivationEmail,
   sendPasswordResetEmail,
@@ -206,6 +209,106 @@ class AuthService {
             email_verified: !!user.ativo,
           },
         };
+      }
+    );
+  }
+
+  static async googleSignin(payload) {
+    return runWithLogs(
+      log,
+      "googleSignin",
+      () => ({}),
+      async () => {
+        const credential = payload?.credential || payload?.id_token;
+        if (!credential) {
+          return { error: "Credential do Google é obrigatório" };
+        }
+        if (!process.env.GOOGLE_CLIENT_ID) {
+          return { error: "GOOGLE_CLIENT_ID não configurado no servidor", status: 500 };
+        }
+
+        let ticket;
+        try {
+          ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID,
+          });
+        } catch (err) {
+          log.warn("googleSignin.invalid_token", { message: err.message });
+          return { error: "Credencial inválida ou expirada" };
+        }
+
+        const gp = ticket.getPayload();
+        if (!gp || !gp.sub || !gp.email) {
+          return { error: "Resposta do Google incompleta" };
+        }
+        if (!gp.email_verified) {
+          return { error: "Email do Google não está verificado" };
+        }
+
+        const email = normalizeEmail(gp.email);
+        const googleSub = String(gp.sub);
+        const fullName =
+          (gp.name && gp.name.trim()) ||
+          [gp.given_name, gp.family_name].filter(Boolean).join(" ").trim() ||
+          email.split("@")[0];
+
+        const client = await pool.connect();
+        try {
+          // 1) Já existe user com esse google_sub?
+          let user = await AuthStorage.findUserByGoogleSub(client, googleSub);
+
+          // 2) Não — tenta achar por email e linkar
+          if (!user) {
+            user = await AuthStorage.findUserForGoogleByEmail(client, email);
+            if (user) {
+              await AuthStorage.linkGoogleSub(client, user.id_user, googleSub);
+              user.google_sub = googleSub;
+              user.ativo = true;
+            }
+          }
+
+          // 3) Não existe — cria novo
+          if (!user) {
+            await client.query("BEGIN");
+            try {
+              const username = await AuthStorage.generateUniqueUsernameFromEmail(
+                client,
+                email
+              );
+              user = await AuthStorage.createGoogleUser(client, {
+                nome: fullName,
+                username,
+                email,
+                googleSub,
+              });
+              await client.query("COMMIT");
+            } catch (err) {
+              await client.query("ROLLBACK");
+              throw err;
+            }
+          }
+
+          const token = jwt.sign(
+            { id_user: user.id_user, email },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
+          );
+
+          return {
+            message: "Login com Google realizado com sucesso",
+            token,
+            email_verified: true,
+            user: {
+              id_user: user.id_user,
+              nome: user.nome,
+              email,
+              email_verified: true,
+            },
+          };
+        } finally {
+          client.release();
+        }
       }
     );
   }

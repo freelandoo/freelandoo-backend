@@ -17,6 +17,11 @@ class AuthController {
     return sendServiceResult(res, result, 200);
   }
 
+  static async googleSignin(req, res) {
+    const result = await AuthService.googleSignin(req.body);
+    return sendServiceResult(res, result, 200);
+  }
+
   static async activate(req, res) {
     const result = await AuthService.activate(req.query);
     return sendServiceResult(res, result, 200);
