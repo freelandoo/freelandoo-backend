@@ -55,23 +55,65 @@ module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   // LIKES
   // ──────────────────────────────────────────────────────────────────────────
-  async toggleLike(db, { id_portfolio_item, id_profile, id_user }) {
-    const existing = await db.query(
-      `SELECT id FROM portfolio_likes WHERE id_portfolio_item = $1 AND id_user = $2`,
-      [id_portfolio_item, id_user]
-    );
-    if (existing.rows.length > 0) {
-      await db.query(
-        `DELETE FROM portfolio_likes WHERE id_portfolio_item = $1 AND id_user = $2`,
+  async toggleLike(pool, { id_portfolio_item, id_profile, id_user }) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const existing = await client.query(
+        `SELECT id FROM portfolio_likes
+          WHERE id_portfolio_item = $1 AND id_user = $2`,
         [id_portfolio_item, id_user]
       );
-      return { liked: false };
+
+      let delta;
+      let liked;
+      if (existing.rows.length > 0) {
+        await client.query(
+          `DELETE FROM portfolio_likes
+            WHERE id_portfolio_item = $1 AND id_user = $2`,
+          [id_portfolio_item, id_user]
+        );
+        delta = -1;
+        liked = false;
+      } else {
+        await client.query(
+          `INSERT INTO portfolio_likes (id_portfolio_item, id_profile, id_user)
+           VALUES ($1, $2, $3)`,
+          [id_portfolio_item, id_profile, id_user]
+        );
+        delta = 1;
+        liked = true;
+      }
+
+      // Mantém likes_count e engagement_score em sync com o feed (slice 2A).
+      // GREATEST evita underflow se houver drift entre tb_profile_portfolio_item
+      // e portfolio_likes.
+      const upd = await client.query(
+        `UPDATE tb_profile_portfolio_item
+            SET likes_count = GREATEST(likes_count + $2, 0),
+                engagement_score =
+                    GREATEST(likes_count + $2, 0) * 1
+                  + shares_count          * 3
+                  + profile_clicks_count  * 4
+                  + whatsapp_clicks_count * 6
+                  + social_clicks_count   * 2
+          WHERE id_portfolio_item = $1
+          RETURNING likes_count`,
+        [id_portfolio_item, delta]
+      );
+
+      await client.query("COMMIT");
+      return {
+        liked,
+        likes_count: upd.rows[0]?.likes_count ?? null,
+      };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
     }
-    await db.query(
-      `INSERT INTO portfolio_likes (id_portfolio_item, id_profile, id_user) VALUES ($1, $2, $3)`,
-      [id_portfolio_item, id_profile, id_user]
-    );
-    return { liked: true };
   },
 
   async getLikedItems(db, { id_profile, id_user }) {
