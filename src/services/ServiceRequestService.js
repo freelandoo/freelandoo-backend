@@ -89,7 +89,7 @@ class ServiceRequestService {
           await client.query("ROLLBACK");
           return { error: "Resposta não encontrada" };
         }
-        if (resp.status !== "PRO_ACCEPTED") {
+        if (!["PENDING", "PRO_ACCEPTED"].includes(resp.status)) {
           await client.query("ROLLBACK");
           return { error: "Resposta não está disponível para finalização" };
         }
@@ -116,7 +116,7 @@ class ServiceRequestService {
       if (String(req.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
       const resp = await ServiceRequestStorage.getResponseById(pool, id_response);
       if (!resp || String(resp.id_request) !== String(id_request)) return { error: "Resposta não encontrada" };
-      if (resp.status !== "PRO_ACCEPTED") return { error: "Resposta não pode ser rejeitada" };
+      if (!["PENDING", "PRO_ACCEPTED"].includes(resp.status)) return { error: "Resposta não pode ser rejeitada" };
       const updated = await ServiceRequestStorage.userRejectResponse(pool, id_response);
       return { response: updated };
     });
@@ -131,8 +131,13 @@ class ServiceRequestService {
       const p = own.profile;
       if (p.is_clan) return { error: "Mural de clan será disponibilizado na próxima slice" };
       if (!p.is_paid || !p.is_visible) return { error: "Perfil precisa estar ativo e visível" };
-      const items = await ServiceRequestStorage.listMuralForProfile(pool, p);
-      return { requests: items, items };
+      // Expira PENDING > 6h antes de listar — abre a O.S. de novo pra todos
+      await ServiceRequestStorage.expireOldPending(pool);
+      const [items, conversations] = await Promise.all([
+        ServiceRequestStorage.listMuralForProfile(pool, p),
+        ServiceRequestStorage.listConversationsForProfile(pool, id_profile),
+      ]);
+      return { requests: items, items, conversations };
     });
   }
 
@@ -143,10 +148,12 @@ class ServiceRequestService {
       const id_profile = body?.id_profile;
       const action = body?.action;
       if (!isUuid(id_profile)) return { error: "id_profile inválido" };
-      if (action !== "accept" && action !== "reject") return { error: "action inválido" };
+      if (!["open", "accept", "reject"].includes(action)) return { error: "action inválido" };
       const own = await loadOwnedProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
       const p = own.profile;
+      // Expira PENDING > 6h antes de checar request — pode liberar a vaga
+      await ServiceRequestStorage.expireOldPending(pool);
       const req = await ServiceRequestStorage.getRequestById(pool, id_request);
       if (!req) return { error: "Solicitação não encontrada" };
       if (req.status !== "OPEN") {
@@ -164,12 +171,17 @@ class ServiceRequestService {
         }
       }
       const existing = await ServiceRequestStorage.getResponseByPair(pool, id_request, id_profile);
-      if (existing && existing.status !== "PRO_ACCEPTED" && existing.status !== "PRO_REJECTED") {
+      if (existing && ["USER_REJECTED", "FINALIZED", "CLOSED_OTHER_WON"].includes(existing.status)) {
         return { error: "Resposta já encerrada" };
       }
-      const resp = action === "accept"
-        ? await ServiceRequestStorage.upsertResponseAccept(pool, { id_request, id_profile })
-        : await ServiceRequestStorage.upsertResponseReject(pool, { id_request, id_profile });
+      let resp;
+      if (action === "open") {
+        resp = await ServiceRequestStorage.upsertResponsePending(pool, { id_request, id_profile });
+      } else if (action === "accept") {
+        resp = await ServiceRequestStorage.upsertResponseAccept(pool, { id_request, id_profile });
+      } else {
+        resp = await ServiceRequestStorage.upsertResponseReject(pool, { id_request, id_profile });
+      }
       return { response: resp };
     });
   }

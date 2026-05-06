@@ -72,13 +72,36 @@ class ServiceRequestStorage {
     return r.rows[0] || null;
   }
 
+  static async upsertResponsePending(conn, { id_request, id_profile }) {
+    // Abre o chat sem comprometimento. Só cria PENDING se não existir
+    // resposta — não rebaixa PRO_ACCEPTED nem ressuscita rejeitadas.
+    const r = await conn.query(
+      `INSERT INTO public.tb_service_request_response
+         (id_request, id_profile, status)
+       VALUES ($1, $2, 'PENDING')
+       ON CONFLICT (id_request, id_profile) DO NOTHING
+       RETURNING *`,
+      [id_request, id_profile]
+    );
+    if (r.rows[0]) return r.rows[0];
+    // já existia — devolve a existente
+    const existing = await conn.query(
+      `SELECT * FROM public.tb_service_request_response
+        WHERE id_request = $1 AND id_profile = $2`,
+      [id_request, id_profile]
+    );
+    return existing.rows[0];
+  }
+
   static async upsertResponseAccept(conn, { id_request, id_profile }) {
+    // Aceita: PENDING ou novo → PRO_ACCEPTED. Não toca em status terminais.
     const r = await conn.query(
       `INSERT INTO public.tb_service_request_response
          (id_request, id_profile, status, pro_accepted_at)
        VALUES ($1, $2, 'PRO_ACCEPTED', NOW())
        ON CONFLICT (id_request, id_profile) DO UPDATE
          SET status = 'PRO_ACCEPTED', pro_accepted_at = NOW()
+        WHERE tb_service_request_response.status IN ('PENDING','PRO_ACCEPTED')
        RETURNING *`,
       [id_request, id_profile]
     );
@@ -92,17 +115,28 @@ class ServiceRequestStorage {
        VALUES ($1, $2, 'PRO_REJECTED', NOW())
        ON CONFLICT (id_request, id_profile) DO UPDATE
          SET status = 'PRO_REJECTED', pro_rejected_at = NOW()
+        WHERE tb_service_request_response.status IN ('PENDING','PRO_ACCEPTED')
        RETURNING *`,
       [id_request, id_profile]
     );
     return r.rows[0];
   }
 
+  // Expira PENDING > 6h DELETANDO. Mensagens caem em cascade — chat fica
+  // disponível pra outros sub-perfis novamente. Lazy: chamar antes de listar mural.
+  static async expireOldPending(conn) {
+    await conn.query(
+      `DELETE FROM public.tb_service_request_response
+        WHERE status = 'PENDING'
+          AND created_at < NOW() - INTERVAL '6 hours'`
+    );
+  }
+
   static async userRejectResponse(conn, id_response) {
     const r = await conn.query(
       `UPDATE public.tb_service_request_response
           SET status = 'USER_REJECTED', user_rejected_at = NOW()
-        WHERE id_response = $1 AND status = 'PRO_ACCEPTED'
+        WHERE id_response = $1 AND status IN ('PENDING','PRO_ACCEPTED')
         RETURNING *`,
       [id_response]
     );
@@ -113,7 +147,7 @@ class ServiceRequestStorage {
     const r = await conn.query(
       `UPDATE public.tb_service_request_response
           SET status = 'FINALIZED', finalized_at = NOW()
-        WHERE id_response = $1 AND status = 'PRO_ACCEPTED'
+        WHERE id_response = $1 AND status IN ('PENDING','PRO_ACCEPTED')
         RETURNING *`,
       [id_response]
     );
@@ -126,7 +160,7 @@ class ServiceRequestStorage {
           SET status = 'CLOSED_OTHER_WON'
         WHERE id_request = $1
           AND id_response <> $2
-          AND status = 'PRO_ACCEPTED'
+          AND status IN ('PENDING','PRO_ACCEPTED')
         RETURNING id_response`,
       [id_request, id_response_excluded]
     );
@@ -161,6 +195,46 @@ class ServiceRequestStorage {
     return r.rows;
   }
 
+  // ---------- Conversations (chat ativo do sub-perfil) ----------
+  static async listConversationsForProfile(conn, id_profile) {
+    // PENDING + PRO_ACCEPTED do próprio sub-perfil. Inclui última mensagem
+    // e contagem de não-lidas (mensagens do USER após pro_last_read_at).
+    const r = await conn.query(
+      `SELECT
+         resp.id_response,
+         resp.id_request,
+         resp.status,
+         resp.created_at,
+         req.description,
+         req.estado,
+         req.municipio,
+         u.username AS user_name,
+         (SELECT content FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1) AS last_message,
+         (SELECT created_at FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1) AS last_message_at,
+         (SELECT COUNT(*) FROM public.tb_service_request_message msg
+            WHERE msg.id_response = resp.id_response
+              AND msg.sender = 'USER'
+              AND (resp.pro_last_read_at IS NULL OR msg.created_at > resp.pro_last_read_at))::int AS unread_count
+         FROM public.tb_service_request_response resp
+         JOIN public.tb_service_request req ON req.id_request = resp.id_request
+         JOIN public.tb_user u ON u.id_user = req.id_user
+        WHERE resp.id_profile = $1
+          AND resp.status IN ('PENDING','PRO_ACCEPTED')
+        ORDER BY COALESCE(
+          (SELECT created_at FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1),
+          resp.created_at
+        ) DESC`,
+      [id_profile]
+    );
+    return r.rows;
+  }
+
   // ---------- Mural ----------
   static async listMuralForProfile(conn, profile) {
     // profile: { id_profile, id_machine, id_category, municipio, is_clan }
@@ -184,7 +258,7 @@ class ServiceRequestStorage {
           AND r.id_machine = $2
           AND r.id_category = $3
           AND (r.municipio IS NULL OR r.municipio = $4)
-          AND (resp.id_response IS NULL OR resp.status = 'PRO_ACCEPTED')
+          AND resp.id_response IS NULL
         ORDER BY r.created_at DESC`,
       [profile.id_profile, profile.id_machine, profile.id_category, profile.municipio || null]
     );
@@ -215,7 +289,7 @@ class ServiceRequestStorage {
          JOIN public.tb_service_request_message msg
            ON msg.id_response = resp.id_response
         WHERE resp.id_profile = $1
-          AND resp.status = 'PRO_ACCEPTED'
+          AND resp.status IN ('PENDING','PRO_ACCEPTED')
           AND msg.sender = 'USER'
           AND (resp.pro_last_read_at IS NULL OR msg.created_at > resp.pro_last_read_at)`,
       [id_profile]
@@ -236,8 +310,11 @@ class ServiceRequestStorage {
           AND msg.sender = 'PRO'
           AND (resp.user_last_read_at IS NULL OR msg.created_at > resp.user_last_read_at)
         WHERE r.id_user = $1
-          AND resp.status IN ('PRO_ACCEPTED','FINALIZED')
-          AND (resp.user_last_read_at IS NULL OR msg.id_message IS NOT NULL)`,
+          AND resp.status IN ('PENDING','PRO_ACCEPTED','FINALIZED')
+          AND (
+            (resp.status = 'PRO_ACCEPTED' AND resp.user_last_read_at IS NULL)
+            OR msg.id_message IS NOT NULL
+          )`,
       [id_user]
     );
     return r.rows[0].n;
