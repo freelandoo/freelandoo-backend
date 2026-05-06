@@ -132,7 +132,7 @@ class ServiceRequestService {
       if (p.is_clan) return { error: "Mural de clan será disponibilizado na próxima slice" };
       if (!p.is_paid || !p.is_visible) return { error: "Perfil precisa estar ativo e visível" };
       const items = await ServiceRequestStorage.listMuralForProfile(pool, p);
-      return { items };
+      return { requests: items, items };
     });
   }
 
