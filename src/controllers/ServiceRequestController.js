@@ -41,7 +41,9 @@ class ServiceRequestController {
   static async respond(req, res) {
     const result = await ServiceRequestService.respond(req.user, req.params.id, req.body || {});
     if (result && result.error && result.status === 409) {
-      return res.status(409).json({ error: result.error });
+      const body = { error: result.error };
+      if (result.locked_by_other) body.locked_by_other = true;
+      return res.status(409).json(body);
     }
     return sendServiceResult(res, result);
   }

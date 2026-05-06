@@ -72,6 +72,20 @@ class ServiceRequestStorage {
     return r.rows[0] || null;
   }
 
+  // Resposta ativa (não-terminal) atual da O.S. — qualquer sub-perfil.
+  // Garante a regra: só um sub-perfil pode estar negociando por vez.
+  static async getActiveResponseByRequest(conn, id_request) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_service_request_response
+        WHERE id_request = $1
+          AND status IN ('PENDING','PRO_ACCEPTED')
+        ORDER BY created_at ASC
+        LIMIT 1`,
+      [id_request]
+    );
+    return r.rows[0] || null;
+  }
+
   static async upsertResponsePending(conn, { id_request, id_profile }) {
     // Abre o chat sem comprometimento. Só cria PENDING se não existir
     // resposta — não rebaixa PRO_ACCEPTED nem ressuscita rejeitadas.
