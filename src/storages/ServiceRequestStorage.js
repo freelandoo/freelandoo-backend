@@ -224,15 +224,20 @@ class ServiceRequestStorage {
   }
 
   static async countUserUnreadChats(conn, id_user) {
+    // Conta responses que merecem destaque para o user:
+    //  (a) aceitação nova ainda não vista (user_last_read_at IS NULL)
+    //  (b) há mensagem do PRO posterior ao último user_last_read_at
     const r = await conn.query(
-      `SELECT COUNT(*)::int AS n
+      `SELECT COUNT(DISTINCT resp.id_response)::int AS n
          FROM public.tb_service_request r
          JOIN public.tb_service_request_response resp ON resp.id_request = r.id_request
-         JOIN public.tb_service_request_message msg ON msg.id_response = resp.id_response
+         LEFT JOIN public.tb_service_request_message msg
+           ON msg.id_response = resp.id_response
+          AND msg.sender = 'PRO'
+          AND (resp.user_last_read_at IS NULL OR msg.created_at > resp.user_last_read_at)
         WHERE r.id_user = $1
           AND resp.status IN ('PRO_ACCEPTED','FINALIZED')
-          AND msg.sender = 'PRO'
-          AND (resp.user_last_read_at IS NULL OR msg.created_at > resp.user_last_read_at)`,
+          AND (resp.user_last_read_at IS NULL OR msg.id_message IS NOT NULL)`,
       [id_user]
     );
     return r.rows[0].n;
