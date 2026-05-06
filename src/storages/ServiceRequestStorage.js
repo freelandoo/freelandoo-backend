@@ -169,6 +169,7 @@ class ServiceRequestStorage {
       `SELECT
          r.*,
          u.username,
+         u.username AS user_name,
          m.name AS machine_name,
          c.desc_category AS category_name,
          resp.id_response AS my_response_id,
