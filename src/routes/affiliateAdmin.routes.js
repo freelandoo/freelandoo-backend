@@ -29,10 +29,15 @@ router.get("/audit", ...admin, asyncHandler(AffiliateAdminController.listAudit))
 router.post("/conversions/:id_conversion/resolve-dispute", ...admin, asyncHandler(AffiliateAdminController.resolveDispute));
 
 // Payouts
+router.get("/payouts/summary", ...admin, asyncHandler(AffiliateAdminController.payoutsSummary));
 router.get("/payouts/eligible", ...admin, asyncHandler(AffiliateAdminController.listEligible));
 router.get("/payouts", ...admin, asyncHandler(AffiliateAdminController.listBatches));
 router.post("/payouts", ...admin, asyncHandler(AffiliateAdminController.createBatch));
 router.get("/payouts/:id_batch", ...admin, asyncHandler(AffiliateAdminController.getBatch));
 router.patch("/payouts/:id_batch/status", ...admin, asyncHandler(AffiliateAdminController.updateBatchStatus));
+
+// Painel admin afiliados — detalhes + atalho 1-clique
+router.get("/:id_affiliate/conversions", ...admin, asyncHandler(AffiliateAdminController.listAffiliateConversions));
+router.post("/:id_affiliate/pay-now", ...admin, asyncHandler(AffiliateAdminController.payConversionsNow));
 
 module.exports = router;

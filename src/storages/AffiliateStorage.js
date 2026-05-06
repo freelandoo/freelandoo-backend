@@ -628,6 +628,105 @@ class AffiliateStorage {
     return rows[0] || null;
   }
 
+  /**
+   * Resumo de comissões por afiliado para o painel de pagamento.
+   * Retorna uma linha por afiliado com:
+   *   - red_cents: APPROVED, paid_at IS NULL, approved_at < NOW() - threshold_days
+   *   - green_cents: APPROVED, paid_at IS NULL, approved_at >= NOW() - threshold_days
+   *   - paid_cents: PAID
+   *   - oldest_unpaid_at: approved_at mais antigo entre os não pagos (para destaque)
+   * threshold_days default = 20 (sinaliza vencendo o prazo de 30 dias).
+   */
+  static async summaryByAllAffiliates(conn, { threshold_days = 20 } = {}) {
+    const { rows } = await conn.query(
+      `
+      SELECT
+        a.id_affiliate,
+        a.status AS affiliate_status,
+        a.is_active,
+        u.id_user,
+        u.name AS user_name,
+        u.email AS user_email,
+        COALESCE(SUM(
+          CASE
+            WHEN c.status = 'APPROVED'
+             AND c.paid_at IS NULL
+             AND COALESCE(c.approved_at, c.created_at) < NOW() - ($1 || ' days')::interval
+            THEN c.commission_cents ELSE 0
+          END
+        ), 0)::int AS red_cents,
+        COALESCE(SUM(
+          CASE
+            WHEN c.status = 'APPROVED'
+             AND c.paid_at IS NULL
+             AND COALESCE(c.approved_at, c.created_at) >= NOW() - ($1 || ' days')::interval
+            THEN c.commission_cents ELSE 0
+          END
+        ), 0)::int AS green_cents,
+        COALESCE(SUM(CASE WHEN c.status = 'PAID' THEN c.commission_cents ELSE 0 END), 0)::int AS paid_cents,
+        MIN(
+          CASE
+            WHEN c.status = 'APPROVED' AND c.paid_at IS NULL
+            THEN COALESCE(c.approved_at, c.created_at)
+          END
+        ) AS oldest_unpaid_at,
+        COUNT(*) FILTER (WHERE c.status = 'APPROVED' AND c.paid_at IS NULL)::int AS unpaid_count
+      FROM tb_affiliate a
+      INNER JOIN tb_user u ON u.id_user = a.id_user
+      LEFT  JOIN tb_affiliate_conversion c ON c.id_affiliate = a.id_affiliate
+      WHERE a.is_active = TRUE
+      GROUP BY a.id_affiliate, a.status, a.is_active, u.id_user, u.name, u.email
+      HAVING
+        COALESCE(SUM(CASE WHEN c.status IN ('APPROVED','PAID') THEN c.commission_cents ELSE 0 END), 0) > 0
+      ORDER BY red_cents DESC, green_cents DESC, user_name ASC
+      `,
+      [String(threshold_days)]
+    );
+    return rows;
+  }
+
+  /**
+   * Conversões detalhadas de um afiliado para o modal.
+   * Aceita filtros opcionais de data (from/to ISO) e busca livre (q) que casa com cupom, order id ou nome do afiliado.
+   */
+  static async listConversionsForAffiliate(conn, id_affiliate, { from = null, to = null, q = null } = {}) {
+    const where = [`c.id_affiliate = $1`];
+    const values = [id_affiliate];
+    let i = 1;
+    if (from) { where.push(`COALESCE(c.approved_at, c.created_at) >= $${++i}`); values.push(from); }
+    if (to)   { where.push(`COALESCE(c.approved_at, c.created_at) <= $${++i}`); values.push(to); }
+    if (q)    {
+      i += 1;
+      values.push(`%${q}%`);
+      where.push(`(UPPER(cp.code) LIKE UPPER($${i}) OR c.id_order::text ILIKE $${i} OR c.id_conversion::text ILIKE $${i})`);
+    }
+    const { rows } = await conn.query(
+      `
+      SELECT
+        c.id_conversion,
+        c.id_order,
+        c.id_payout_item,
+        c.status,
+        c.commission_cents,
+        c.commission_base_cents,
+        c.order_total_cents,
+        c.discount_cents,
+        c.created_at,
+        c.approved_at,
+        c.eligible_at,
+        c.paid_at,
+        cp.code AS coupon_code
+      FROM tb_affiliate_conversion c
+      INNER JOIN tb_coupon cp ON cp.id_coupon = c.id_coupon
+      WHERE ${where.join(" AND ")}
+      ORDER BY COALESCE(c.approved_at, c.created_at) DESC
+      LIMIT 500
+      `,
+      values
+    );
+    return rows;
+  }
+
   // ───────────────────────── Payouts ─────────────────────────
   static async listEligibleConversions(conn, id_affiliate) {
     const { rows } = await conn.query(

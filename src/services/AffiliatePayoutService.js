@@ -8,6 +8,71 @@ class ServiceError extends Error {
   }
 }
 
+async function summaryByAffiliate({ threshold_days } = {}) {
+  const days = Number.isFinite(parseInt(threshold_days, 10)) ? parseInt(threshold_days, 10) : 20;
+  const items = await AffiliateStorage.summaryByAllAffiliates(pool, { threshold_days: days });
+  return { threshold_days: days, items };
+}
+
+async function listConversionsForAffiliate(id_affiliate, { from, to, q } = {}) {
+  if (!id_affiliate) throw new ServiceError("id_affiliate obrigatório", 400);
+  const affiliate = await AffiliateStorage.getAffiliateById(pool, id_affiliate);
+  if (!affiliate) throw new ServiceError("Afiliado não encontrado", 404);
+  const items = await AffiliateStorage.listConversionsForAffiliate(pool, id_affiliate, { from, to, q });
+  return { affiliate, items };
+}
+
+/**
+ * Marca uma lista de conversões como pagas, criando um batch PAID em uma transação.
+ * Atalho usado pelo painel admin de afiliados (1 clique = lote pago).
+ */
+async function payConversionsNow(actor, { id_affiliate, conversion_ids, notes = null }) {
+  if (!id_affiliate) throw new ServiceError("id_affiliate obrigatório", 400);
+  if (!Array.isArray(conversion_ids) || conversion_ids.length === 0) {
+    throw new ServiceError("conversion_ids vazio", 400);
+  }
+  const affiliate = await AffiliateStorage.getAffiliateById(pool, id_affiliate);
+  if (!affiliate) throw new ServiceError("Afiliado não encontrado", 404);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const batch = await AffiliateStorage.createPayoutBatch(client, {
+      id_affiliate,
+      period_start: null,
+      period_end: today,
+      conversion_ids,
+      pix_key_snapshot: affiliate.pix_key || null,
+      notes,
+      created_by: actor.id_user,
+    });
+    const after = await AffiliateStorage.markBatchStatus(client, {
+      id_batch: batch.id_batch,
+      status: "PAID",
+      receipt_url: null,
+      paid_by: actor.id_user,
+    });
+    await AffiliateStorage.setConversionsPaidForBatch(client, batch.id_batch);
+    await AffiliateStorage.writeAudit(client, {
+      entity: "affiliate_payout_batch",
+      entity_id: batch.id_batch,
+      action: "pay_now",
+      after_state: after,
+      reason: notes,
+      actor_user_id: actor.id_user,
+    });
+    await client.query("COMMIT");
+    return after;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    if (err.status) throw err;
+    throw new ServiceError(err.message || "Erro ao marcar como pago", 500);
+  } finally {
+    client.release();
+  }
+}
+
 async function listEligible(id_affiliate) {
   if (!id_affiliate) throw new ServiceError("id_affiliate obrigatório", 400);
   const affiliate = await AffiliateStorage.getAffiliateById(pool, id_affiliate);
@@ -138,4 +203,7 @@ module.exports = {
   listBatches,
   getBatch,
   markStatus,
+  summaryByAffiliate,
+  listConversionsForAffiliate,
+  payConversionsNow,
 };

@@ -152,6 +152,37 @@ class AffiliateAdminController {
     } catch (err) { return handleError(res, err); }
   }
 
+  // Painel "Afiliados" — resumo por afiliado (red/green/paid)
+  static async payoutsSummary(req, res) {
+    try {
+      const data = await AffiliatePayoutService.summaryByAffiliate(req.query || {});
+      return res.json(data);
+    } catch (err) { return handleError(res, err); }
+  }
+
+  // Conversões detalhadas de um afiliado para o modal
+  static async listAffiliateConversions(req, res) {
+    try {
+      const data = await AffiliatePayoutService.listConversionsForAffiliate(
+        req.params.id_affiliate,
+        req.query || {}
+      );
+      return res.json(data);
+    } catch (err) { return handleError(res, err); }
+  }
+
+  // Atalho 1-clique: marca conversões como pagas (cria batch + status=PAID)
+  static async payConversionsNow(req, res) {
+    try {
+      const result = await AffiliatePayoutService.payConversionsNow(req.user, {
+        id_affiliate: req.params.id_affiliate,
+        conversion_ids: (req.body && req.body.conversion_ids) || [],
+        notes: req.body && req.body.notes,
+      });
+      return res.status(201).json(result);
+    } catch (err) { return handleError(res, err); }
+  }
+
   static async updateBatchStatus(req, res) {
     try {
       const batch = await AffiliatePayoutService.markStatus(
