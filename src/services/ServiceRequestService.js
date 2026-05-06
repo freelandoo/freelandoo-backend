@@ -174,6 +174,16 @@ class ServiceRequestService {
       if (existing && ["USER_REJECTED", "FINALIZED", "CLOSED_OTHER_WON"].includes(existing.status)) {
         return { error: "Resposta já encerrada" };
       }
+      // Lock por O.S.: só um sub-perfil pode estar negociando por vez.
+      const active = await ServiceRequestStorage.getActiveResponseByRequest(pool, id_request);
+      if (active && String(active.id_profile) !== String(id_profile)) {
+        const err = {
+          error: "Alguém já respondeu a essa solicitação, aguarde.",
+          locked_by_other: true,
+        };
+        err.status = 409;
+        return err;
+      }
       let resp;
       if (action === "open") {
         resp = await ServiceRequestStorage.upsertResponsePending(pool, { id_request, id_profile });
