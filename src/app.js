@@ -72,8 +72,16 @@ app.use((err, req, res, next) => {
     return next(err);
   }
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || "Erro interno no servidor";
+  const isUploadError =
+    err.name === "MulterError" ||
+    ["Formato nao aceito", "Tipo de arquivo nao permitido"].some((msg) =>
+      String(err.message || "").includes(msg)
+    );
+  const statusCode = err.statusCode || (isUploadError ? 400 : 500);
+  const message =
+    err.code === "LIMIT_FILE_SIZE"
+      ? "Arquivo muito grande para upload."
+      : err.message || "Erro interno no servidor";
 
   if (statusCode >= 500) {
     appLog.error("error_handler", {
