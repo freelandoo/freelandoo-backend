@@ -5,8 +5,22 @@ const dbLog = createLogger("db");
 
 const useSsl = process.env.DATABASE_SSL === "true";
 
+function normalizeConnectionString(connectionString) {
+  if (!useSsl || !connectionString) return connectionString;
+  try {
+    const url = new URL(connectionString);
+    url.searchParams.delete("sslmode");
+    url.searchParams.delete("sslcert");
+    url.searchParams.delete("sslkey");
+    url.searchParams.delete("sslrootcert");
+    return url.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: normalizeConnectionString(process.env.DATABASE_URL),
   ...(useSsl
     ? {
         ssl: {

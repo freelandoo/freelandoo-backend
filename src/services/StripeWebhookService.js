@@ -4,6 +4,7 @@ const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStora
 const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const AffiliateStorage = require("../storages/AffiliateStorage");
+const AffiliateConversionService = require("./AffiliateConversionService");
 const BookingService = require("./BookingService");
 const ClanService = require("./ClanService");
 const { createLogger } = require("../utils/logger");
@@ -74,19 +75,28 @@ async function handleCheckoutCompleted(conn, session) {
     ? await StripeService.retrieveSubscription(subscriptionId)
     : null;
 
-  await ProfileSubscriptionStorage.updateBySessionId(conn, session.id, {
-    status: "active",
-    stripe_subscription_id: subscriptionId,
-    stripe_customer_id: customerId,
-    paid_at: new Date(),
-    current_period_start: toTimestamp(subscription?.current_period_start),
-    current_period_end: toTimestamp(subscription?.current_period_end),
-    raw_event: session,
-  });
+  const updatedSubscription = await ProfileSubscriptionStorage.updateBySessionId(
+    conn,
+    session.id,
+    {
+      status: "active",
+      stripe_subscription_id: subscriptionId,
+      stripe_customer_id: customerId,
+      paid_at: new Date(),
+      current_period_start: toTimestamp(subscription?.current_period_start),
+      current_period_end: toTimestamp(subscription?.current_period_end),
+      raw_event: session,
+    }
+  );
 
   await applyProfileActivation(conn, {
     id_profile: row.id_profile,
     id_user: row.id_user,
+  });
+
+  await AffiliateConversionService.createFromProfileSubscription(conn, {
+    subscription: updatedSubscription || row,
+    session,
   });
 }
 
