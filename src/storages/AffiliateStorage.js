@@ -223,7 +223,7 @@ class AffiliateStorage {
         cp.code AS coupon_code,
         o.status AS order_status,
         o.paid_at AS order_paid_at,
-        u.name AS affiliate_name
+        u.nome AS affiliate_name
       FROM tb_affiliate_conversion c
       INNER JOIN tb_coupon cp ON cp.id_coupon = c.id_coupon
       INNER JOIN tb_order  o  ON o.id_order = c.id_order
@@ -275,7 +275,7 @@ class AffiliateStorage {
       values.push(filters.status);
     }
     if (filters.q) {
-      where.push(`(u.name ILIKE $${++i} OR u.email ILIKE $${i})`);
+      where.push(`(u.nome ILIKE $${++i} OR u.email ILIKE $${i})`);
       values.push(`%${filters.q}%`);
     }
 
@@ -297,7 +297,7 @@ class AffiliateStorage {
       `
       SELECT
         a.*,
-        u.name  AS user_name,
+        u.nome  AS user_name,
         u.email AS user_email,
         agg.commission_total_cents,
         agg.conversions_count
@@ -637,7 +637,10 @@ class AffiliateStorage {
    *   - oldest_unpaid_at: approved_at mais antigo entre os não pagos (para destaque)
    * threshold_days default = 20 (sinaliza vencendo o prazo de 30 dias).
    */
-  static async summaryByAllAffiliates(conn, { threshold_days = 20 } = {}) {
+  static async summaryByAllAffiliates(conn, { threshold_days = 20, from = null, to = null } = {}) {
+    // Filtros de data são aplicados sobre a data efetiva da comissão
+    // (approved_at quando existe, senão created_at). Se passados, restringem o
+    // join: comissões fora do período não entram em nenhum dos totais.
     const { rows } = await conn.query(
       `
       SELECT
@@ -645,7 +648,7 @@ class AffiliateStorage {
         a.status AS affiliate_status,
         a.is_active,
         u.id_user,
-        u.name AS user_name,
+        u.nome AS user_name,
         u.email AS user_email,
         COALESCE(SUM(
           CASE
@@ -673,14 +676,17 @@ class AffiliateStorage {
         COUNT(*) FILTER (WHERE c.status = 'APPROVED' AND c.paid_at IS NULL)::int AS unpaid_count
       FROM tb_affiliate a
       INNER JOIN tb_user u ON u.id_user = a.id_user
-      LEFT  JOIN tb_affiliate_conversion c ON c.id_affiliate = a.id_affiliate
+      LEFT  JOIN tb_affiliate_conversion c
+             ON c.id_affiliate = a.id_affiliate
+            AND ($2::timestamptz IS NULL OR COALESCE(c.approved_at, c.created_at) >= $2::timestamptz)
+            AND ($3::timestamptz IS NULL OR COALESCE(c.approved_at, c.created_at) <= $3::timestamptz)
       WHERE a.is_active = TRUE
-      GROUP BY a.id_affiliate, a.status, a.is_active, u.id_user, u.name, u.email
+      GROUP BY a.id_affiliate, a.status, a.is_active, u.id_user, u.nome, u.email
       HAVING
         COALESCE(SUM(CASE WHEN c.status IN ('APPROVED','PAID') THEN c.commission_cents ELSE 0 END), 0) > 0
       ORDER BY red_cents DESC, green_cents DESC, user_name ASC
       `,
-      [String(threshold_days)]
+      [String(threshold_days), from, to]
     );
     return rows;
   }

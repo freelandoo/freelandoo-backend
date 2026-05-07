@@ -8,10 +8,16 @@ class ServiceError extends Error {
   }
 }
 
-async function summaryByAffiliate({ threshold_days } = {}) {
+async function summaryByAffiliate({ threshold_days, from, to } = {}) {
   const days = Number.isFinite(parseInt(threshold_days, 10)) ? parseInt(threshold_days, 10) : 20;
-  const items = await AffiliateStorage.summaryByAllAffiliates(pool, { threshold_days: days });
-  return { threshold_days: days, items };
+  const fromIso = from ? new Date(from) : null;
+  const toIso = to ? new Date(to) : null;
+  const items = await AffiliateStorage.summaryByAllAffiliates(pool, {
+    threshold_days: days,
+    from: fromIso && !Number.isNaN(fromIso.getTime()) ? fromIso.toISOString() : null,
+    to: toIso && !Number.isNaN(toIso.getTime()) ? toIso.toISOString() : null,
+  });
+  return { threshold_days: days, from: from || null, to: to || null, items };
 }
 
 async function listConversionsForAffiliate(id_affiliate, { from, to, q } = {}) {
