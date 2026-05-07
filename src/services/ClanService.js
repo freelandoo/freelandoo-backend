@@ -1,7 +1,24 @@
 const pool = require("../databases");
 const ClanStorage = require("../storages/ClanStorage");
+const PortfolioStorage = require("../storages/PortfolioStorage");
 const StripeService = require("./StripeService");
 const { createLogger, runWithLogs } = require("../utils/logger");
+
+async function assertClanOwner(conn, id_clan_profile, id_user) {
+  const r = await conn.query(
+    `SELECT mp.id_user
+       FROM public.tb_clan_member cm
+       JOIN public.tb_profile mp ON mp.id_profile = cm.id_member_profile
+      WHERE cm.id_clan_profile = $1 AND cm.role = 'owner'
+      LIMIT 1`,
+    [id_clan_profile]
+  );
+  if (!r.rowCount) return { error: "Clan sem dono definido" };
+  if (String(r.rows[0].id_user) !== String(id_user)) {
+    return { error: "Apenas o dono do clan pode realizar esta ação" };
+  }
+  return { ok: true };
+}
 
 const log = createLogger("ClanService");
 
@@ -1065,6 +1082,100 @@ class ClanService {
           required_minutes: REQUIRED_ONLINE_MINUTES,
           current_minutes: minutes,
         };
+      }
+    );
+  }
+
+  /**
+   * Oculta um post do feed publico do clan. O post permanece intacto no
+   * portfolio do membro (origem). So o dono do clan pode ocultar.
+   */
+  static async hidePost(user, params) {
+    return runWithLogs(
+      log,
+      "hidePost",
+      () => ({ id_user: user?.id_user, id_clan: params?.id_clan_profile }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_clan_profile = params?.id_clan_profile;
+        const id_portfolio_item = params?.id_portfolio_item;
+        const reason = params?.reason || null;
+        if (!id_clan_profile || !id_portfolio_item) {
+          return { error: "id_clan_profile e id_portfolio_item são obrigatórios" };
+        }
+
+        const ownerCheck = await assertClanOwner(pool, id_clan_profile, user.id_user);
+        if (ownerCheck.error) return ownerCheck;
+
+        // Valida que o post pertence ao clan ou a um de seus membros
+        const members = await ClanStorage.listMembers(pool, id_clan_profile);
+        const validProfiles = new Set([
+          id_clan_profile,
+          ...members.map((m) => m.id_member_profile),
+        ]);
+        const r = await pool.query(
+          `SELECT id_profile FROM public.tb_profile_portfolio_item WHERE id_portfolio_item = $1 LIMIT 1`,
+          [id_portfolio_item]
+        );
+        if (!r.rowCount) return { error: "Post não encontrado" };
+        if (!validProfiles.has(String(r.rows[0].id_profile))) {
+          return { error: "Post não pertence a este clan" };
+        }
+
+        const row = await PortfolioStorage.hideClanPost(pool, {
+          id_clan_profile,
+          id_portfolio_item,
+          hidden_by_user: user.id_user,
+          reason,
+        });
+        return { hidden: row };
+      }
+    );
+  }
+
+  static async unhidePost(user, params) {
+    return runWithLogs(
+      log,
+      "unhidePost",
+      () => ({ id_user: user?.id_user, id_clan: params?.id_clan_profile }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_clan_profile = params?.id_clan_profile;
+        const id_portfolio_item = params?.id_portfolio_item;
+        if (!id_clan_profile || !id_portfolio_item) {
+          return { error: "id_clan_profile e id_portfolio_item são obrigatórios" };
+        }
+
+        const ownerCheck = await assertClanOwner(pool, id_clan_profile, user.id_user);
+        if (ownerCheck.error) return ownerCheck;
+
+        const removed = await PortfolioStorage.unhideClanPost(pool, {
+          id_clan_profile,
+          id_portfolio_item,
+        });
+        return { removed };
+      }
+    );
+  }
+
+  static async listHiddenPosts(user, params) {
+    return runWithLogs(
+      log,
+      "listHiddenPosts",
+      () => ({ id_user: user?.id_user, id_clan: params?.id_clan_profile }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_clan_profile = params?.id_clan_profile;
+        if (!id_clan_profile) return { error: "id_clan_profile é obrigatório" };
+
+        const ownerCheck = await assertClanOwner(pool, id_clan_profile, user.id_user);
+        if (ownerCheck.error) return ownerCheck;
+
+        const items = await PortfolioStorage.listHiddenItemsForClan(
+          pool,
+          id_clan_profile
+        );
+        return { items };
       }
     );
   }

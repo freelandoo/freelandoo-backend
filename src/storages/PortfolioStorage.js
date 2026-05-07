@@ -59,17 +59,36 @@ class PortfolioStorage {
       thumbnail_url,
       sort_order,
       created_by,
+      metadata = {},
     }
   ) {
+    const mediaMetadata = metadata || {};
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile_portfolio_media
-        (id_portfolio_item, media_url, media_type, thumbnail_url, sort_order, created_by)
+        (
+          id_portfolio_item,
+          media_url,
+          media_type,
+          thumbnail_url,
+          sort_order,
+          created_by,
+          original_filename,
+          mime_type,
+          width,
+          height,
+          size_bytes,
+          duration_seconds,
+          storage_key,
+          metadata
+        )
       VALUES
-        ($1, $2, $3, $4, $5, $6)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING
         id_portfolio_media, id_portfolio_item, media_url, media_type,
-        thumbnail_url, sort_order, created_at, is_active
+        thumbnail_url, sort_order, created_at, is_active,
+        original_filename, mime_type, width, height, size_bytes,
+        duration_seconds, storage_key, metadata
       `,
       [
         id_portfolio_item,
@@ -78,6 +97,14 @@ class PortfolioStorage {
         thumbnail_url,
         sort_order,
         created_by,
+        mediaMetadata.original_filename || null,
+        mediaMetadata.mime_type || null,
+        mediaMetadata.width || null,
+        mediaMetadata.height || null,
+        mediaMetadata.size_bytes || null,
+        mediaMetadata.duration_seconds || null,
+        mediaMetadata.storage_key || null,
+        mediaMetadata,
       ]
     );
     return r.rows[0];
@@ -205,7 +232,11 @@ class PortfolioStorage {
             'media_url', m.media_url,
             'media_type', m.media_type,
             'thumbnail_url', m.thumbnail_url,
-            'sort_order', m.sort_order
+            'sort_order', m.sort_order,
+            'width', m.width,
+            'height', m.height,
+            'size_bytes', m.size_bytes,
+            'mime_type', m.mime_type
           )
           ORDER BY m.sort_order, m.created_at
         ) AS media
@@ -248,6 +279,10 @@ class PortfolioStorage {
             'media_type', m.media_type,
             'thumbnail_url', m.thumbnail_url,
             'sort_order', m.sort_order,
+            'width', m.width,
+            'height', m.height,
+            'size_bytes', m.size_bytes,
+            'mime_type', m.mime_type,
             'is_active', m.is_active,
             'created_at', m.created_at
           )
@@ -311,7 +346,11 @@ class PortfolioStorage {
             'media_url', m.media_url,
             'media_type', m.media_type,
             'thumbnail_url', m.thumbnail_url,
-            'sort_order', m.sort_order
+            'sort_order', m.sort_order,
+            'width', m.width,
+            'height', m.height,
+            'size_bytes', m.size_bytes,
+            'mime_type', m.mime_type
           )
           ORDER BY m.sort_order, m.created_at
         ) AS media
@@ -333,6 +372,12 @@ class PortfolioStorage {
       ) lme ON $2::uuid IS NOT NULL
       WHERE i.id_profile = ANY($3::uuid[])
         AND i.is_active = true
+        AND NOT EXISTS (
+          SELECT 1
+            FROM public.tb_clan_hidden_post h
+           WHERE h.id_clan_profile = $1::uuid
+             AND h.id_portfolio_item = i.id_portfolio_item
+        )
       ORDER BY
         i.is_featured DESC,
         i.sort_order DESC,
@@ -341,6 +386,67 @@ class PortfolioStorage {
       [id_clan_profile, id_user_viewer, ids]
     );
     return r.rows;
+  }
+
+  // --------- Clan hidden posts ----------
+  static async hideClanPost(conn, { id_clan_profile, id_portfolio_item, hidden_by_user, reason = null }) {
+    const r = await conn.query(
+      `
+      INSERT INTO public.tb_clan_hidden_post
+        (id_clan_profile, id_portfolio_item, hidden_by_user, reason)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (id_clan_profile, id_portfolio_item) DO UPDATE
+        SET hidden_at = NOW(),
+            hidden_by_user = EXCLUDED.hidden_by_user,
+            reason = EXCLUDED.reason
+      RETURNING id_clan_profile, id_portfolio_item, hidden_at
+      `,
+      [id_clan_profile, id_portfolio_item, hidden_by_user, reason]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async unhideClanPost(conn, { id_clan_profile, id_portfolio_item }) {
+    const r = await conn.query(
+      `
+      DELETE FROM public.tb_clan_hidden_post
+       WHERE id_clan_profile = $1
+         AND id_portfolio_item = $2
+       RETURNING id_clan_profile, id_portfolio_item
+      `,
+      [id_clan_profile, id_portfolio_item]
+    );
+    return r.rowCount > 0;
+  }
+
+  static async listHiddenItemsForClan(conn, id_clan_profile) {
+    const r = await conn.query(
+      `
+      SELECT
+        h.id_portfolio_item,
+        h.hidden_at,
+        h.reason,
+        i.id_profile,
+        i.title,
+        pro.display_name AS author_display_name
+      FROM public.tb_clan_hidden_post h
+      JOIN public.tb_profile_portfolio_item i ON i.id_portfolio_item = h.id_portfolio_item
+      JOIN public.tb_profile pro ON pro.id_profile = i.id_profile
+      WHERE h.id_clan_profile = $1
+      ORDER BY h.hidden_at DESC
+      `,
+      [id_clan_profile]
+    );
+    return r.rows;
+  }
+
+  static async isPostHiddenInClan(conn, { id_clan_profile, id_portfolio_item }) {
+    const r = await conn.query(
+      `SELECT 1 FROM public.tb_clan_hidden_post
+        WHERE id_clan_profile = $1 AND id_portfolio_item = $2 LIMIT 1`,
+      [id_clan_profile, id_portfolio_item]
+    );
+    return r.rowCount > 0;
   }
 
   static async listItemsWithMediaPublic(conn, id_profile, id_user_viewer = null) {
@@ -369,7 +475,11 @@ class PortfolioStorage {
             'media_url', m.media_url,
             'media_type', m.media_type,
             'thumbnail_url', m.thumbnail_url,
-            'sort_order', m.sort_order
+            'sort_order', m.sort_order,
+            'width', m.width,
+            'height', m.height,
+            'size_bytes', m.size_bytes,
+            'mime_type', m.mime_type
           )
           ORDER BY m.sort_order, m.created_at
         ) AS media

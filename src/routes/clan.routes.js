@@ -89,4 +89,21 @@ router.get(
   asyncHandler(ClanController.listSlotPurchases)
 );
 
+// Hidden posts (owner-only)
+router.get(
+  "/:id_profile/hidden-posts",
+  authMiddleware,
+  asyncHandler(ClanController.listHiddenPosts)
+);
+router.post(
+  "/:id_profile/hidden-posts/:id_portfolio_item",
+  authMiddleware,
+  asyncHandler(ClanController.hidePost)
+);
+router.delete(
+  "/:id_profile/hidden-posts/:id_portfolio_item",
+  authMiddleware,
+  asyncHandler(ClanController.unhidePost)
+);
+
 module.exports = router;
