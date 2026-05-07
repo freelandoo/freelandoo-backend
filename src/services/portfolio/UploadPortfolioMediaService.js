@@ -94,8 +94,10 @@ module.exports = class UploadPortfolioMediaService {
       throw err;
     }
 
-    // thumbnail_url opcional (não aceita string vazia)
+    // thumbnail_url opcional (não aceita string vazia).
+    // Se o body trouxer um valor explícito, prevalece sobre a extração automática.
     let thumbnail_url = null;
+    let thumbnail_url_explicit = false;
     if (has(body, "thumbnail_url")) {
       const t = normalizeNonEmptyString(body.thumbnail_url, "thumbnail_url");
       if (t?.error) {
@@ -104,6 +106,7 @@ module.exports = class UploadPortfolioMediaService {
         throw err;
       }
       thumbnail_url = t; // string ou null
+      thumbnail_url_explicit = true;
     }
 
     // sort_order opcional
@@ -171,25 +174,35 @@ module.exports = class UploadPortfolioMediaService {
       const processedFile = await processPortfolioMedia(file, media_type);
       const finalMediaType = processedFile.mediaMetadata?.media_type || media_type;
 
-      // upload no R2
+      // upload no R2 (thumbnail extraída automaticamente sobe junto, se houver)
       const uploaded = await uploadPortfolioMediaToR2({
         id_profile,
         id_portfolio_item,
         file: processedFile,
       });
 
+      const final_thumbnail_url = thumbnail_url_explicit
+        ? thumbnail_url
+        : uploaded.thumbnail_url || null;
+
       // salva no banco
       const media = await PortfolioStorage.addMedia(client, {
         id_portfolio_item,
         media_url: uploaded.url,
         media_type: finalMediaType,
-        thumbnail_url,
+        thumbnail_url: final_thumbnail_url,
         sort_order,
         created_by: id_user,
         metadata: {
           ...processedFile.mediaMetadata,
           storage_key: uploaded.key,
           public_url: uploaded.url,
+          ...(uploaded.thumbnail_key
+            ? {
+                thumbnail_storage_key: uploaded.thumbnail_key,
+                thumbnail_public_url: uploaded.thumbnail_url,
+              }
+            : {}),
         },
       });
 

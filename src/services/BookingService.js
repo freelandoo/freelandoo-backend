@@ -38,17 +38,17 @@ class BookingService {
       return { error: "Não é possível agendar em data passada" };
     }
 
-    // Resolver serviço (se enviado): usa price_amount + duration_minutes do serviço
-    let service = null;
-    if (id_profile_service != null) {
-      service = await ProfileServiceStorage.getById(pool, Number(id_profile_service));
-      if (!service || String(service.id_profile) !== String(id_profile) || !service.is_active) {
-        return { error: "Serviço não encontrado ou inativo" };
-      }
+    // Resolver serviço: hoje todo booking público exige um serviço cadastrado.
+    if (id_profile_service == null) {
+      return { error: "Selecione um serviço para agendar" };
+    }
+    const service = await ProfileServiceStorage.getById(pool, Number(id_profile_service));
+    if (!service || String(service.id_profile) !== String(id_profile) || !service.is_active) {
+      return { error: "Serviço não encontrado ou inativo" };
     }
 
-    // Valor cobrado: prioriza preço do serviço; fallback ao deposit_amount legacy
-    const charge_amount = service ? service.price_amount : settings.deposit_amount;
+    // Valor cobrado: preço do serviço.
+    const charge_amount = service.price_amount;
     if (charge_amount < PLATFORM_FEE_CENTS) {
       return { error: "Valor do serviço inferior à taxa mínima da plataforma" };
     }

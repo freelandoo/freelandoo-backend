@@ -16,6 +16,8 @@ const MAX_IMAGE_INPUT_BYTES = 30 * MB;
 const MAX_VIDEO_INPUT_BYTES = 100 * MB;
 const MAX_VIDEO_OUTPUT_BYTES = 50 * MB;
 const MIN_IMAGE_DIMENSION = 320;
+const VIDEO_THUMB_MAX_WIDTH = 720;
+const VIDEO_THUMB_QUALITY = 75;
 
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
@@ -259,6 +261,73 @@ function runFfmpeg(args, timeoutMs = 180000) {
   });
 }
 
+async function extractVideoThumbnail(videoPath, tempDir) {
+  const framePath = path.join(tempDir, `thumb-${crypto.randomUUID()}.png`);
+
+  try {
+    await runFfmpeg(
+      [
+        "-y",
+        "-ss",
+        "00:00:01",
+        "-i",
+        videoPath,
+        "-frames:v",
+        "1",
+        "-vf",
+        "thumbnail",
+        "-q:v",
+        "2",
+        framePath,
+      ],
+      30000
+    );
+  } catch {
+    // Vídeo curto demais ou frame único — tenta a partir do primeiro frame.
+    try {
+      await runFfmpeg(
+        [
+          "-y",
+          "-i",
+          videoPath,
+          "-frames:v",
+          "1",
+          "-vf",
+          "thumbnail",
+          "-q:v",
+          "2",
+          framePath,
+        ],
+        30000
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  let raw;
+  try {
+    raw = await fs.readFile(framePath);
+  } catch {
+    return null;
+  }
+
+  const optimized = await sharp(raw)
+    .resize({
+      width: VIDEO_THUMB_MAX_WIDTH,
+      withoutEnlargement: true,
+    })
+    .webp({ quality: VIDEO_THUMB_QUALITY, effort: 4 })
+    .toBuffer({ resolveWithObject: true });
+
+  return {
+    buffer: optimized.data,
+    mimetype: "image/webp",
+    width: optimized.info.width,
+    height: optimized.info.height,
+  };
+}
+
 async function processVideo(file) {
   await assertRealVideo(file);
 
@@ -298,15 +367,41 @@ async function processVideo(file) {
       throw httpError("O video otimizado ficou grande demais. Tente um arquivo menor.");
     }
 
-    return buildProcessedFile(
+    let thumbnail = null;
+    try {
+      thumbnail = await extractVideoThumbnail(outputPath, tempDir);
+    } catch {
+      thumbnail = null;
+    }
+
+    const processed = buildProcessedFile(
       file,
       buffer,
       "video/mp4",
       outputName(file.originalname, "video/mp4"),
       {
         media_type: "video",
+        ...(thumbnail
+          ? {
+              thumbnail_width: thumbnail.width,
+              thumbnail_height: thumbnail.height,
+            }
+          : {}),
       }
     );
+
+    if (thumbnail) {
+      processed.thumbnail = {
+        buffer: thumbnail.buffer,
+        mimetype: thumbnail.mimetype,
+        originalname: outputName(file.originalname, "image/webp"),
+        size: thumbnail.buffer.length,
+        width: thumbnail.width,
+        height: thumbnail.height,
+      };
+    }
+
+    return processed;
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
