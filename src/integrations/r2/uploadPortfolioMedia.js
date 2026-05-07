@@ -47,5 +47,5 @@ module.exports = async function uploadPortfolioMediaToR2({
 
   const url = `${process.env.R2_PUBLIC_URL}/${fileName}`;
   log.info("upload.ok", { key: fileName });
-  return url;
+  return { url, key: fileName };
 };

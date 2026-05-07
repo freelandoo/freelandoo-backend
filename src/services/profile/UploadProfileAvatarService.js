@@ -1,6 +1,7 @@
 const ProfileStorage = require("../../storages/ProfileStorage");
 const uploadProfileAvatarToR2 = require("../../integrations/r2/uploadProfileAvatar");
 const { createLogger } = require("../../utils/logger");
+const { processAvatarImage } = require("../../utils/mediaProcessing");
 
 const log = createLogger("UploadProfileAvatarService");
 
@@ -45,7 +46,8 @@ module.exports = class UploadProfileAvatarService {
         throw err;
       }
 
-      const avatar_url = await uploadProfileAvatarToR2({ id_profile, file });
+      const processedFile = await processAvatarImage(file);
+      const avatar_url = await uploadProfileAvatarToR2({ id_profile, file: processedFile });
       const updated = await ProfileStorage.updateProfile(client, id_profile, { avatar_url });
 
       log.info("execute.ok", { id_profile, avatar_url });

@@ -2,6 +2,7 @@
 const UserStorage = require("../../storages/UserStorage");
 const uploadAvatarToR2 = require("../../integrations/r2/uploadAvatar");
 const { createLogger, runWithLogs } = require("../../utils/logger");
+const { processAvatarImage } = require("../../utils/mediaProcessing");
 
 const log = createLogger("UpdateAvatarService");
 
@@ -18,7 +19,8 @@ module.exports = class UpdateAvatarService {
           throw err;
         }
 
-        const avatarUrl = await uploadAvatarToR2({ id_user, file });
+        const processedFile = await processAvatarImage(file);
+        const avatarUrl = await uploadAvatarToR2({ id_user, file: processedFile });
         const updated = await UserStorage.updateAvatarById(
           db,
           id_user,

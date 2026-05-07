@@ -2,6 +2,7 @@ const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const crypto = require("crypto");
 const r2 = require("../services/r2Client");
 const pool = require("../databases");
+const { processUserMedia } = require("../utils/mediaProcessing");
 
 class UserMediaController {
   static async listMyMedia(req, res) {
@@ -206,19 +207,21 @@ class UserMediaController {
       return res.status(400).json({ error: "Arquivo não enviado" });
     }
 
-    const media_type = req.file.mimetype.startsWith("image/")
+    const processedFile = await processUserMedia(req.file);
+
+    const media_type = processedFile.mimetype.startsWith("image/")
       ? "image"
       : "video";
 
-    const fileExt = req.file.originalname.split(".").pop();
+    const fileExt = processedFile.originalname.split(".").pop();
     const fileName = `user-${id_user}/${media_type}/${crypto.randomUUID()}.${fileExt}`;
 
     await r2.send(
       new PutObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME,
         Key: fileName,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype,
+        Body: processedFile.buffer,
+        ContentType: processedFile.mimetype,
       })
     );
 
@@ -228,6 +231,7 @@ class UserMediaController {
       media_url,
       media_type,
       original_name: req.file.originalname,
+      metadata: processedFile.mediaMetadata,
     });
   }
 }

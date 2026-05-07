@@ -4,6 +4,7 @@ const ProfileStorage = require("../../storages/ProfileStorage");
 const PortfolioStorage = require("../../storages/PortfolioStorage");
 const uploadPortfolioMediaToR2 = require("../../integrations/r2/uploadPortfolioMedia");
 const { createLogger, runWithLogs } = require("../../utils/logger");
+const { processPortfolioMedia } = require("../../utils/mediaProcessing");
 
 const log = createLogger("UploadPortfolioMediaService");
 
@@ -167,21 +168,29 @@ module.exports = class UploadPortfolioMediaService {
         throw err;
       }
 
+      const processedFile = await processPortfolioMedia(file, media_type);
+      const finalMediaType = processedFile.mediaMetadata?.media_type || media_type;
+
       // upload no R2
-      const media_url = await uploadPortfolioMediaToR2({
+      const uploaded = await uploadPortfolioMediaToR2({
         id_profile,
         id_portfolio_item,
-        file,
+        file: processedFile,
       });
 
       // salva no banco
       const media = await PortfolioStorage.addMedia(client, {
         id_portfolio_item,
-        media_url,
-        media_type,
+        media_url: uploaded.url,
+        media_type: finalMediaType,
         thumbnail_url,
         sort_order,
         created_by: id_user,
+        metadata: {
+          ...processedFile.mediaMetadata,
+          storage_key: uploaded.key,
+          public_url: uploaded.url,
+        },
       });
 
       await client.query("COMMIT");
