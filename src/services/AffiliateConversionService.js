@@ -4,6 +4,154 @@ const { createLogger } = require("../utils/logger");
 
 const log = createLogger("AffiliateConversionService");
 
+function toCents(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.round(number)) : fallback;
+}
+
+function getSessionAmounts(session, subscription) {
+  const fallbackSubtotal = toCents(subscription?.amount_cents, 0);
+  const discount_cents = toCents(session?.total_details?.amount_discount, 0);
+  const totalFallback = Math.max(0, fallbackSubtotal - discount_cents);
+  const total_cents = toCents(session?.amount_total, totalFallback);
+  const subtotal_cents = Math.max(
+    toCents(session?.amount_subtotal, fallbackSubtotal),
+    total_cents + discount_cents
+  );
+
+  return { subtotal_cents, total_cents, discount_cents };
+}
+
+async function getOrderCoupon(conn, { id_order, id_coupon }) {
+  const { rows } = await conn.query(
+    `
+    SELECT *
+    FROM tb_order_coupon
+    WHERE id_order = $1
+      AND id_coupon = $2
+    LIMIT 1
+    `,
+    [id_order, id_coupon]
+  );
+  return rows[0] || null;
+}
+
+async function ensureStripeSubscriptionOrder(conn, {
+  subscription,
+  session,
+  coupon,
+  subtotal_cents,
+  total_cents,
+  discount_cents,
+}) {
+  const sessionId =
+    session?.id || subscription?.stripe_checkout_session_id || null;
+  const paid_at = new Date();
+  const currency = String(
+    session?.currency || subscription?.currency || "BRL"
+  ).toUpperCase();
+
+  if (sessionId) {
+    const existing = await conn.query(
+      `
+      SELECT *
+      FROM tb_order
+      WHERE payment_provider = 'stripe'
+        AND payment_provider_ref = $1
+      LIMIT 1
+      `,
+      [sessionId]
+    );
+    const order = existing.rows[0] || null;
+    if (order) {
+      let order_coupon = await getOrderCoupon(conn, {
+        id_order: order.id_order,
+        id_coupon: coupon.id_coupon,
+      });
+      if (!order_coupon) {
+        const createdCoupon = await conn.query(
+          `
+          INSERT INTO tb_order_coupon (
+            id_coupon,
+            id_order,
+            code_snapshot,
+            discount_cents,
+            created_by,
+            updated_by
+          )
+          VALUES ($1, $2, $3, $4, $5, $5)
+          RETURNING *
+          `,
+          [
+            coupon.id_coupon,
+            order.id_order,
+            coupon.code,
+            discount_cents,
+            subscription.id_user,
+          ]
+        );
+        order_coupon = createdCoupon.rows[0];
+      }
+      return { order, order_coupon };
+    }
+  }
+
+  const insertedOrder = await conn.query(
+    `
+    INSERT INTO tb_order (
+      id_user,
+      id_profile,
+      status,
+      subtotal_cents,
+      total_cents,
+      currency,
+      payment_provider,
+      payment_provider_ref,
+      approved_at,
+      paid_at,
+      raw_webhook
+    )
+    VALUES ($1, $2, 'PAID', $3, $4, $5, 'stripe', $6, $7, $7, $8)
+    RETURNING *
+    `,
+    [
+      subscription.id_user,
+      subscription.id_profile || null,
+      subtotal_cents,
+      total_cents,
+      currency,
+      sessionId,
+      paid_at,
+      session || null,
+    ]
+  );
+  const order = insertedOrder.rows[0];
+
+  const insertedCoupon = await conn.query(
+    `
+    INSERT INTO tb_order_coupon (
+      id_coupon,
+      id_order,
+      code_snapshot,
+      discount_cents,
+      created_by,
+      updated_by
+    )
+    VALUES ($1, $2, $3, $4, $5, $5)
+    RETURNING *
+    `,
+    [
+      coupon.id_coupon,
+      order.id_order,
+      coupon.code,
+      discount_cents,
+      subscription.id_user,
+    ]
+  );
+
+  return { order, order_coupon: insertedCoupon.rows[0] };
+}
+
 /**
  * Cria uma conversão (status=PENDING) quando um pedido é confirmado com um
  * cupom cujo dono é afiliado ativo. Silencioso em falhas não-críticas — o
@@ -87,6 +235,144 @@ async function createFromOrder(client, { order, order_coupon, coupon }) {
 }
 
 /**
+ * Stripe subscription checkout does not pass through the legacy checkout table,
+ * so we create a paid internal order + order coupon and then reuse the affiliate
+ * conversion model that the dashboard already reads.
+ */
+async function createFromProfileSubscription(client, { subscription, session }) {
+  try {
+    if (!subscription?.id_coupon) return null;
+
+    const couponRes = await client.query(
+      `
+      SELECT id_coupon, code, owner_user_id
+      FROM tb_coupon
+      WHERE id_coupon = $1
+      LIMIT 1
+      `,
+      [subscription.id_coupon]
+    );
+    const coupon = couponRes.rows[0] || null;
+    if (!coupon?.owner_user_id) return null;
+
+    if (String(coupon.owner_user_id) === String(subscription.id_user)) {
+      log.info("affiliate.conversion.skip.self_purchase", {
+        id_subscription: subscription.id_subscription,
+        id_coupon: coupon.id_coupon,
+      });
+      return null;
+    }
+
+    const affiliate = await AffiliateStorage.getAffiliateByUserId(
+      client,
+      coupon.owner_user_id
+    );
+    if (!affiliate || affiliate.status !== "ACTIVE") return null;
+
+    const rule = await AffiliateRuleResolver.resolve(client, {
+      id_coupon: coupon.id_coupon,
+      at: subscription.paid_at || subscription.created_at || null,
+    });
+    if (!rule) {
+      log.warn("affiliate.conversion.skip.no_settings", {
+        id_subscription: subscription.id_subscription,
+      });
+      return null;
+    }
+
+    const { subtotal_cents, total_cents, discount_cents } = getSessionAmounts(
+      session,
+      subscription
+    );
+
+    const calc = AffiliateRuleResolver.calculate({
+      order_total_cents: subtotal_cents,
+      discount_cents,
+      rule,
+    });
+    if (!calc) {
+      log.info("affiliate.conversion.skip.min_order", {
+        id_subscription: subscription.id_subscription,
+        subtotal_cents,
+        min_order_cents: rule.min_order_cents,
+      });
+      return null;
+    }
+
+    const { order, order_coupon } = await ensureStripeSubscriptionOrder(client, {
+      subscription,
+      session,
+      coupon,
+      subtotal_cents,
+      total_cents,
+      discount_cents,
+    });
+
+    const existing = await AffiliateStorage.getConversionByOrderId(
+      client,
+      order.id_order
+    );
+    if (existing) return existing;
+
+    const conversion = await AffiliateStorage.createConversion(client, {
+      id_affiliate: affiliate.id_affiliate,
+      id_order: order.id_order,
+      id_order_coupon: order_coupon.id_order_coupon,
+      id_coupon: coupon.id_coupon,
+      status: "PENDING",
+      order_total_cents: subtotal_cents,
+      discount_cents,
+      commission_base_cents: calc.base_cents,
+      commission_percent: rule.commission_percent,
+      commission_cents: calc.commission_cents,
+      rule_snapshot: {
+        ...rule.snapshot,
+        source_context: "stripe_subscription",
+        id_subscription: subscription.id_subscription || null,
+        stripe_checkout_session_id:
+          session?.id || subscription.stripe_checkout_session_id || null,
+        stripe_subscription_id:
+          typeof session?.subscription === "string"
+            ? session.subscription
+            : session?.subscription?.id ||
+              subscription.stripe_subscription_id ||
+              null,
+        amount_subtotal_cents: subtotal_cents,
+        amount_total_cents: total_cents,
+      },
+    });
+
+    if (!conversion) {
+      return AffiliateStorage.getConversionByOrderId(client, order.id_order);
+    }
+
+    const approved = await onOrderStatusChange(client, {
+      order,
+      newStatus: "PAID",
+      source: "stripe_webhook",
+      source_event_id: `checkout.session.completed:${session?.id || order.id_order}`,
+      payload: {
+        id_subscription: subscription.id_subscription || null,
+        stripe_checkout_session_id:
+          session?.id || subscription.stripe_checkout_session_id || null,
+      },
+    });
+
+    log.info("affiliate.conversion.created_from_subscription", {
+      id_conversion: approved?.id_conversion || conversion.id_conversion,
+      id_subscription: subscription.id_subscription,
+      id_order: order.id_order,
+      commission_cents: calc.commission_cents,
+    });
+
+    return approved || conversion;
+  } catch (error) {
+    log.error("affiliate.conversion.subscription.fail", error);
+    return null;
+  }
+}
+
+/**
  * Reage a uma mudança de status do pedido propagada pelo webhook MP.
  * - PAID      → APPROVED (eligible_at = paid_at + approval_delay_days)
  * - CANCELED  → REVERSED, exceto se já PAID (nesse caso marca disputed)
@@ -158,4 +444,8 @@ async function onOrderStatusChange(
   }
 }
 
-module.exports = { createFromOrder, onOrderStatusChange };
+module.exports = {
+  createFromOrder,
+  createFromProfileSubscription,
+  onOrderStatusChange,
+};
