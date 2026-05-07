@@ -223,7 +223,12 @@ class AffiliateStorage {
         cp.code AS coupon_code,
         o.status AS order_status,
         o.paid_at AS order_paid_at,
-        u.nome AS affiliate_name
+        u.nome  AS affiliate_name,
+        u.email AS affiliate_email,
+        a.pix_key      AS affiliate_pix_key,
+        a.pix_key_type AS affiliate_pix_key_type,
+        a.legal_name   AS affiliate_legal_name,
+        a.tax_id       AS affiliate_tax_id
       FROM tb_affiliate_conversion c
       INNER JOIN tb_coupon cp ON cp.id_coupon = c.id_coupon
       INNER JOIN tb_order  o  ON o.id_order = c.id_order
