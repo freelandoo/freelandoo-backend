@@ -35,6 +35,7 @@ const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
 const portfolioFeedRoutes = require("./portfolioFeed.routes");
+const entityFollowRoutes = require("./entityFollow.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -78,4 +79,5 @@ module.exports = (app) => {
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);
   app.use("/feed", portfolioFeedRoutes);
+  app.use("/entity-follows", entityFollowRoutes);
 };
