@@ -91,6 +91,30 @@ class ClanController {
     const result = await ClanService.listSlotPurchases(req.user, req.params);
     return sendServiceResult(res, result);
   }
+
+  static async hidePost(req, res) {
+    const result = await ClanService.hidePost(req.user, {
+      id_clan_profile: req.params?.id_profile,
+      id_portfolio_item: req.params?.id_portfolio_item,
+      reason: req.body?.reason,
+    });
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async unhidePost(req, res) {
+    const result = await ClanService.unhidePost(req.user, {
+      id_clan_profile: req.params?.id_profile,
+      id_portfolio_item: req.params?.id_portfolio_item,
+    });
+    return sendServiceResult(res, result);
+  }
+
+  static async listHiddenPosts(req, res) {
+    const result = await ClanService.listHiddenPosts(req.user, {
+      id_clan_profile: req.params?.id_profile,
+    });
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = ClanController;
