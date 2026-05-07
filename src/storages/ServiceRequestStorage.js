@@ -261,7 +261,12 @@ class ServiceRequestStorage {
          m.name AS machine_name,
          c.desc_category AS category_name,
          resp.id_response AS my_response_id,
-         resp.status AS my_response_status
+         resp.status AS my_response_status,
+         (SELECT COUNT(*)::int
+            FROM public.tb_service_request_response resp_all
+           WHERE resp_all.id_request = r.id_request
+             AND resp_all.status IN ('PENDING','PRO_ACCEPTED')
+         ) AS responses_count
          FROM public.tb_service_request r
          JOIN public.tb_user u ON u.id_user = r.id_user
          JOIN public.tb_machine m ON m.id_machine = r.id_machine
