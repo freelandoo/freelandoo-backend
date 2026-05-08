@@ -1,4 +1,5 @@
 const PortfolioEventStorage = require("../../storages/PortfolioEventStorage");
+const XpStorage = require("../../storages/XpStorage");
 const { createLogger, runWithLogs } = require("../../utils/logger");
 
 const log = createLogger("PortfolioEventService");
@@ -98,6 +99,21 @@ class PortfolioEventService {
 
         if (!result.ok && result.reason === "post_not_found") {
           return { status: 404, body: { error: "post não encontrado" } };
+        }
+
+        // XP por compartilhamento ou clique no WhatsApp — session dedup
+        const XP_FEED_EVENTS = {
+          share: "share_received",
+          whatsapp_click: "whatsapp_click",
+        };
+        const xpEventType = XP_FEED_EVENTS[event_type];
+        if (result.ok && result.counted && result.id_profile && xpEventType) {
+          XpStorage.award(db, {
+            id_profile: result.id_profile,
+            event_type: xpEventType,
+            source_type: "portfolio_event",
+            source_id: `${post_id}_${session_id || "anon"}_${event_type}`,
+          }).catch(() => {});
         }
 
         return {

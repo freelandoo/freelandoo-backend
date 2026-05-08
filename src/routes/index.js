@@ -37,6 +37,8 @@ const serviceRequestRoutes = require("./serviceRequest.routes");
 const portfolioFeedRoutes = require("./portfolioFeed.routes");
 const entityFollowRoutes = require("./entityFollow.routes");
 const conversationRoutes = require("./conversation.routes");
+const adminXpRoutes = require("./adminXp.routes");
+const xpRoutes = require("./xp.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -82,4 +84,6 @@ module.exports = (app) => {
   app.use("/feed", portfolioFeedRoutes);
   app.use("/entity-follows", entityFollowRoutes);
   app.use("/conversations", conversationRoutes);
+  app.use("/admin", adminXpRoutes);
+  app.use("/subprofiles", xpRoutes);
 };

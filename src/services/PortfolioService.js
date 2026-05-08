@@ -2,6 +2,7 @@ const pool = require("../databases");
 const ProfileStorage = require("../storages/ProfileStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
 const ClanStorage = require("../storages/ClanStorage");
+const XpStorage = require("../storages/XpStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PortfolioService");
@@ -224,6 +225,14 @@ class PortfolioService {
       }
 
       await client.query("COMMIT");
+
+      // XP por publicar um item no portfólio (fire-and-forget, fora da transação)
+      XpStorage.award(pool, {
+        id_profile,
+        event_type: "post_approved",
+        source_type: "portfolio_item",
+        source_id: item.id_portfolio_item,
+      }).catch(() => {});
 
       // retorna item completo com media[]
       const full = await PortfolioStorage.getItemWithMedia(
