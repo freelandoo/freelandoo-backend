@@ -1,4 +1,7 @@
 // src/storages/RankingStorage.js
+const pool = require("../databases");
+const XpStorage = require("./XpStorage");
+
 module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   // CONFIG
@@ -44,6 +47,14 @@ module.exports = {
         `INSERT INTO profile_visits (id_profile, id_user, visitor_ip) VALUES ($1, $2, $3)`,
         [id_profile, id_user, visitor_ip]
       );
+      // XP por visita ao perfil (autenticado, dedup diário via source_id)
+      const today = new Date().toISOString().slice(0, 10);
+      XpStorage.award(pool, {
+        id_profile,
+        event_type: "profile_visit",
+        source_type: "user_visit",
+        source_id: `${id_user}_${id_profile}_${today}`,
+      }).catch(() => {});
     } else {
       await db.query(
         `INSERT INTO profile_visits (id_profile, visitor_ip) VALUES ($1, $2)`,
@@ -104,6 +115,18 @@ module.exports = {
       );
 
       await client.query("COMMIT");
+
+      // XP por like recebido — fire-and-forget após commit
+      // source_id garante: mesmo usuário só gera XP uma vez por post (sem limite diário)
+      if (liked) {
+        XpStorage.award(pool, {
+          id_profile,
+          event_type: "like_received",
+          source_type: "portfolio_like",
+          source_id: `${id_portfolio_item}_${id_user}`,
+        }).catch(() => {});
+      }
+
       return {
         liked,
         likes_count: upd.rows[0]?.likes_count ?? null,

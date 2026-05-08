@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const EntityFollowStorage = require("../storages/EntityFollowStorage");
+const XpStorage = require("../storages/XpStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("EntityFollowService");
@@ -156,6 +157,18 @@ class EntityFollowService {
           });
 
           await client.query("COMMIT");
+
+          // XP por acompanhamento recebido — somente para subperfis (não clans)
+          // source_id garante que follow/unfollow/follow não duplica XP
+          if (target_type === "profile") {
+            XpStorage.award(pool, {
+              id_profile: target_id,
+              event_type: "follow_received",
+              source_type: "entity_follow",
+              source_id: `${actorRes.actor_id}_${target_id}`,
+            }).catch(() => {});
+          }
+
           return {
             is_following: true,
             follow,

@@ -7,6 +7,7 @@ const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateConversionService = require("./AffiliateConversionService");
 const BookingService = require("./BookingService");
 const ClanService = require("./ClanService");
+const XpStorage = require("../storages/XpStorage");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("StripeWebhookService");
@@ -94,6 +95,14 @@ async function handleCheckoutCompleted(conn, session) {
     id_user: row.id_user,
   });
 
+  // XP por ativação paga — source_id = checkout session para idempotência
+  XpStorage.award(pool, {
+    id_profile: row.id_profile,
+    event_type: "profile_activated",
+    source_type: "stripe_checkout",
+    source_id: session.id,
+  }).catch(() => {});
+
   await AffiliateConversionService.createFromProfileSubscription(conn, {
     subscription: updatedSubscription || row,
     session,
@@ -130,6 +139,16 @@ async function handleInvoicePaid(conn, invoice) {
     id_profile: row.id_profile,
     id_user: row.id_user,
   });
+
+  // XP por renovação anual — apenas subscription_cycle, não a primeira cobrança
+  if (invoice.billing_reason === "subscription_cycle") {
+    XpStorage.award(pool, {
+      id_profile: row.id_profile,
+      event_type: "profile_renewed",
+      source_type: "stripe_invoice",
+      source_id: invoice.id,
+    }).catch(() => {});
+  }
 }
 
 async function handleInvoiceFailed(conn, invoice) {

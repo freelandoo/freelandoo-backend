@@ -1,6 +1,7 @@
 // src/controllers/RankingController.js
 const pool = require("../databases");
 const RankingStorage = require("../storages/RankingStorage");
+const XpStorage = require("../storages/XpStorage");
 
 module.exports = {
   // POST /ranking/visit  (público, sem auth obrigatória)
@@ -53,6 +54,15 @@ module.exports = {
       rating: parseInt(rating, 10),
       comment,
     });
+
+    // XP por avaliação recebida — fonte única por par (perfil, avaliador)
+    XpStorage.award(pool, {
+      id_profile,
+      event_type: "review_received",
+      source_type: "profile_rating",
+      source_id: `${id_profile}_${req.user.id_user}`,
+    }).catch(() => {});
+
     return res.json(result);
   },
 
@@ -91,6 +101,21 @@ module.exports = {
     const cfg = await RankingStorage.getConfig(pool);
     const maxOnline = cfg?.max_online_minutes ?? 120;
     const minutes = await RankingStorage.heartbeat(pool, { id_user: req.user.id_user, max_online_minutes: maxOnline });
+
+    // XP por minuto online — source_id único por (user, data, minuto) evita duplicatas
+    // Award para todos os subperfis ativos do usuário
+    const today = new Date().toISOString().slice(0, 10);
+    XpStorage.getUserActiveProfileIds(pool, req.user.id_user).then((profileIds) => {
+      for (const id_profile of profileIds) {
+        XpStorage.award(pool, {
+          id_profile,
+          event_type: "online_time",
+          source_type: "heartbeat",
+          source_id: `${req.user.id_user}_${today}_min${minutes}`,
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+
     return res.json({ minutes_online_today: minutes });
   },
 

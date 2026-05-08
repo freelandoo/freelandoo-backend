@@ -1,5 +1,7 @@
 const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateRuleResolver = require("./AffiliateRuleResolver");
+const XpStorage = require("../storages/XpStorage");
+const pool = require("../databases");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("AffiliateConversionService");
@@ -409,12 +411,32 @@ async function onOrderStatusChange(
       const paid_at = new Date();
       const eligible_at = new Date(paid_at.getTime() + delay * 86400000);
 
-      return await AffiliateStorage.updateConversionStatus(conn, {
+      const updated = await AffiliateStorage.updateConversionStatus(conn, {
         id_conversion: conversion.id_conversion,
         status: "APPROVED",
         approved_at: paid_at,
         eligible_at,
       });
+
+      // XP para todos os perfis ativos do afiliado (fire-and-forget, fora da transação)
+      try {
+        const affiliate = await AffiliateStorage.getAffiliateById(conn, conversion.id_affiliate);
+        if (affiliate?.id_user) {
+          const profileIds = await XpStorage.getUserActiveProfileIds(pool, affiliate.id_user);
+          for (const id_profile of profileIds) {
+            await XpStorage.award(pool, {
+              id_profile,
+              event_type: "affiliate_sale_confirmed",
+              source_type: "conversion",
+              source_id: conversion.id_conversion,
+            });
+          }
+        }
+      } catch (xpErr) {
+        log.error("affiliate.xp.award.fail", { error: xpErr.message });
+      }
+
+      return updated;
     }
 
     if (newStatus === "CANCELED") {
