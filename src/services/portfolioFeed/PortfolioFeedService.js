@@ -292,6 +292,7 @@ class PortfolioFeedService {
           id_category: filters?.id_category,
           estado: filters?.estado,
           municipio: filters?.municipio,
+          level_min: filters?.level_min,
           exclude_ids: filters?.exclude_ids,
           viewer_id_user: viewer?.id_user || null,
         };

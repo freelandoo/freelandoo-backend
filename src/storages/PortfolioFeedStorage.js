@@ -37,6 +37,7 @@ function buildCandidateQuery(mode) {
       pro.municipio,
       pro.is_clan,
       pro.sub_profile_slug,
+      pro.xp_level,
 
       tu.username,
 
@@ -142,6 +143,7 @@ function buildCandidateQuery(mode) {
       AND ($3::text IS NULL OR pro.estado = $3)
       AND ($4::text IS NULL OR pro.municipio ILIKE $4)
       AND ($5::uuid[] IS NULL OR NOT (ppi.id_portfolio_item = ANY($5::uuid[])))
+      AND ($8::int IS NULL OR pro.xp_level >= $8)
 
       ${newClause}
     ${orderClause}
@@ -159,6 +161,7 @@ function buildParams({
   municipio,
   exclude_ids,
   viewer_id_user,
+  level_min,
   limit,
 }) {
   return [
@@ -169,6 +172,7 @@ function buildParams({
     Array.isArray(exclude_ids) && exclude_ids.length ? exclude_ids : null, // $5
     limit,                                                            // $6
     viewer_id_user || null,                                           // $7
+    Number.isFinite(level_min) ? level_min : null,                     // $8
   ];
 }
 
