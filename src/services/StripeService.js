@@ -120,6 +120,10 @@ async function retrieveSubscription(subscriptionId) {
   return client().subscriptions.retrieve(subscriptionId);
 }
 
+async function retrieveInvoice(invoiceId) {
+  return client().invoices.retrieve(invoiceId);
+}
+
 /**
  * Verifica a assinatura do webhook e devolve o evento parseado.
  * `rawBody` deve ser Buffer (express.raw).
@@ -184,6 +188,7 @@ module.exports = {
   createOneTimeCheckoutSession,
   retrieveSession,
   retrieveSubscription,
+  retrieveInvoice,
   constructWebhookEvent,
   createCoupon,
   createPromotionCode,

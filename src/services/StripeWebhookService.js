@@ -164,6 +164,65 @@ async function handleInvoiceFailed(conn, invoice) {
   });
 }
 
+/**
+ * Reembolso de cobrança Stripe (charge.refunded). Reverte a comissão do afiliado
+ * quando o estorno acontece dentro da janela de holdback (ou ainda não pago).
+ * Se já foi pago, a lógica em onOrderStatusChange marca como disputed.
+ */
+async function handleChargeRefunded(conn, charge) {
+  const paymentIntentId =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : charge.payment_intent?.id || null;
+
+  // Tenta achar a order pela invoice → subscription → session, ou por payment_intent direto.
+  let order = null;
+  if (paymentIntentId) {
+    const byPi = await conn.query(
+      `SELECT * FROM tb_order WHERE payment_provider = 'stripe' AND payment_provider_ref = $1 LIMIT 1`,
+      [paymentIntentId]
+    );
+    order = byPi.rows[0] || null;
+  }
+
+  if (!order && charge.invoice) {
+    const invoiceId = typeof charge.invoice === "string" ? charge.invoice : charge.invoice?.id;
+    let subscriptionId = null;
+    try {
+      const invoice = await StripeService.retrieveInvoice?.(invoiceId);
+      subscriptionId =
+        typeof invoice?.subscription === "string"
+          ? invoice.subscription
+          : invoice?.subscription?.id || null;
+    } catch (err) {
+      log.warn("charge.refunded.invoice_lookup_fail", { invoiceId, error: err.message });
+    }
+    if (subscriptionId) {
+      const sub = await ProfileSubscriptionStorage.findBySubscriptionId(conn, subscriptionId);
+      if (sub?.stripe_checkout_session_id) {
+        const bySession = await conn.query(
+          `SELECT * FROM tb_order WHERE payment_provider = 'stripe' AND payment_provider_ref = $1 LIMIT 1`,
+          [sub.stripe_checkout_session_id]
+        );
+        order = bySession.rows[0] || null;
+      }
+    }
+  }
+
+  if (!order) {
+    log.warn("charge.refunded.order_not_found", { charge_id: charge.id });
+    return;
+  }
+
+  await AffiliateConversionService.onOrderStatusChange(conn, {
+    order,
+    newStatus: "CANCELED",
+    source: "stripe_webhook",
+    source_event_id: `charge.refunded:${charge.id}`,
+    payload: { charge_id: charge.id, amount_refunded: charge.amount_refunded },
+  });
+}
+
 async function handleSubscriptionDeleted(conn, subscription) {
   const row = await ProfileSubscriptionStorage.findBySubscriptionId(
     conn,
@@ -245,6 +304,9 @@ async function processEvent(event) {
       break;
     case "customer.subscription.deleted":
       await handleSubscriptionDeleted(pool, event.data.object);
+      break;
+    case "charge.refunded":
+      await handleChargeRefunded(pool, event.data.object);
       break;
     default:
       log.debug("unhandled.event", { type: event.type });

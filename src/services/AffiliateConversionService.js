@@ -408,14 +408,17 @@ async function onOrderStatusChange(
 
     if (newStatus === "PAID" && conversion.status === "PENDING") {
       const delay = conversion.rule_snapshot?.approval_delay_days ?? 0;
+      const holdback = conversion.rule_snapshot?.holdback_days ?? 8;
       const paid_at = new Date();
       const eligible_at = new Date(paid_at.getTime() + delay * 86400000);
+      const holdback_until = new Date(paid_at.getTime() + holdback * 86400000);
 
       const updated = await AffiliateStorage.updateConversionStatus(conn, {
         id_conversion: conversion.id_conversion,
         status: "APPROVED",
         approved_at: paid_at,
         eligible_at,
+        holdback_until,
       });
 
       // XP para todos os perfis ativos do afiliado (fire-and-forget, fora da transação)
