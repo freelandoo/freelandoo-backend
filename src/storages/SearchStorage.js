@@ -126,6 +126,7 @@ module.exports = {
       id_category,
       machine_slug,
       q,
+      level_min,
       limit,
       offset,
     }
@@ -147,6 +148,7 @@ module.exports = {
         pro.estado,
         pro.municipio,
         pro.sub_profile_slug,
+        pro.xp_level,
         ca.id_category,
         ca.desc_category AS category,
         ca.profession_slug,
@@ -265,6 +267,9 @@ module.exports = {
 
         -- Filtro por slug da máquina (alternativo a id_machine)
         AND ($11::text IS NULL OR m.slug = $11)
+
+        -- Filtro de nível mínimo (xp_level)
+        AND ($12::int IS NULL OR pro.xp_level >= $12)
       ),
       clans AS (
         -- Clans aparecem na vitrine batendo qualquer atributo de seus membros.
@@ -280,6 +285,7 @@ module.exports = {
           clan.estado,
           clan.municipio,
           clan.sub_profile_slug,
+          clan.xp_level,
           NULL::int AS id_category,
           NULL::text AS category,
           NULL::text AS profession_slug,
@@ -359,6 +365,12 @@ module.exports = {
             JOIN tb_machine mf ON mf.id_machine = caf.id_machine
             WHERE cmf.id_clan_profile = clan.id_profile AND mf.slug = $11
           ))
+          -- Filtro de nível mínimo: clan passa se ele próprio ou algum membro atinge.
+          AND ($12::int IS NULL OR clan.xp_level >= $12 OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            WHERE cmf.id_clan_profile = clan.id_profile AND mpf.xp_level >= $12
+          ))
       )
       SELECT * FROM creators
       UNION ALL
@@ -378,6 +390,7 @@ module.exports = {
         Number.isFinite(id_machine) ? id_machine : null,   // $9
         Number.isFinite(id_category) ? id_category : null, // $10
         machine_slug || null,                      // $11
+        Number.isFinite(level_min) ? level_min : null,     // $12
       ]
     );
 
