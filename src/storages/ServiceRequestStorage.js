@@ -249,6 +249,62 @@ class ServiceRequestStorage {
     return r.rows;
   }
 
+  // ---------- Chats do USER (cliente) ----------
+  // Lista flat de responses recebidas pelas O.S. do user, agregando dados
+  // da request, do profile respondente, última mensagem e unread_count.
+  // Inclui apenas responses com chat útil ao user: PENDING/PRO_ACCEPTED/FINALIZED.
+  static async listChatsForUser(conn, id_user) {
+    const r = await conn.query(
+      `SELECT
+         resp.id_response,
+         resp.id_request,
+         resp.id_profile,
+         resp.status AS response_status,
+         resp.created_at AS response_created_at,
+         resp.user_last_read_at,
+         req.status AS request_status,
+         req.description AS request_description,
+         req.estado AS request_estado,
+         req.municipio AS request_municipio,
+         req.id_machine,
+         req.id_category,
+         req.id_response_chosen,
+         m.name AS machine_name,
+         c.desc_category AS category_name,
+         p.display_name,
+         p.avatar_url,
+         p.sub_profile_slug,
+         p.is_clan,
+         u.username,
+         (SELECT content FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1) AS last_message,
+         (SELECT created_at FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1) AS last_message_at,
+         (SELECT COUNT(*) FROM public.tb_service_request_message msg
+            WHERE msg.id_response = resp.id_response
+              AND msg.sender = 'PRO'
+              AND (resp.user_last_read_at IS NULL OR msg.created_at > resp.user_last_read_at))::int AS unread_count
+         FROM public.tb_service_request_response resp
+         JOIN public.tb_service_request req ON req.id_request = resp.id_request
+         JOIN public.tb_profile p ON p.id_profile = resp.id_profile
+         JOIN public.tb_user u ON u.id_user = p.id_user
+         JOIN public.tb_machine m ON m.id_machine = req.id_machine
+         JOIN public.tb_category c ON c.id_category = req.id_category
+        WHERE req.id_user = $1
+          AND resp.status IN ('PENDING','PRO_ACCEPTED','FINALIZED')
+        ORDER BY COALESCE(
+          (SELECT created_at FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1),
+          resp.created_at
+        ) DESC`,
+      [id_user]
+    );
+    return r.rows;
+  }
+
   // ---------- Mural ----------
   static async listMuralForProfile(conn, profile) {
     // profile: { id_profile, id_machine, id_category, municipio, is_clan }

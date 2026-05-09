@@ -13,6 +13,11 @@ class ServiceRequestController {
     return sendServiceResult(res, result);
   }
 
+  static async listMyChats(req, res) {
+    const result = await ServiceRequestService.listMyChats(req.user);
+    return sendServiceResult(res, result);
+  }
+
   static async cancel(req, res) {
     const result = await ServiceRequestService.cancelRequest(req.user, req.params.id);
     return sendServiceResult(res, result);
