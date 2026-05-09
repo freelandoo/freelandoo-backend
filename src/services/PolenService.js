@@ -45,6 +45,11 @@ function walletPayload(wallet, settings, usage) {
       price_profile_boost: settings.price_profile_boost,
       price_clan_highlight: settings.price_clan_highlight,
     },
+    manifestation: {
+      admin_enabled: settings.manifestation_admin_enabled !== false,
+      users_enabled: settings.manifestation_users_enabled !== false,
+      min_xp_level: Number(settings.manifestation_min_xp_level) || 0,
+    },
   };
 }
 
@@ -239,6 +244,7 @@ class PolenService {
       "price_post_boost",
       "price_profile_boost",
       "price_clan_highlight",
+      "manifestation_min_xp_level",
     ];
     const patch = { updated_by: user?.id_user || null };
     for (const key of numeric) {
@@ -249,6 +255,12 @@ class PolenService {
       }
     }
     if (typeof body.is_active === "boolean") patch.is_active = body.is_active;
+    if (typeof body.manifestation_admin_enabled === "boolean") {
+      patch.manifestation_admin_enabled = body.manifestation_admin_enabled;
+    }
+    if (typeof body.manifestation_users_enabled === "boolean") {
+      patch.manifestation_users_enabled = body.manifestation_users_enabled;
+    }
     if (body.rewarded_provider != null) patch.rewarded_provider = String(body.rewarded_provider).slice(0, 60);
     if (body.rewarded_ad_unit_id !== undefined) patch.rewarded_ad_unit_id = body.rewarded_ad_unit_id ? String(body.rewarded_ad_unit_id).slice(0, 180) : null;
     return { settings: await PolenStorage.updateSettings(pool, patch) };

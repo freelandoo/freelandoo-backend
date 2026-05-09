@@ -18,6 +18,9 @@ class PolenStorage {
       "price_post_boost",
       "price_profile_boost",
       "price_clan_highlight",
+      "manifestation_admin_enabled",
+      "manifestation_users_enabled",
+      "manifestation_min_xp_level",
       "rewarded_provider",
       "rewarded_ad_unit_id",
       "updated_by",
@@ -190,6 +193,31 @@ class PolenStorage {
        FROM today_tx`
     );
     return rows[0] || {};
+  }
+
+  static async getUserManifestationEligibility(conn, user_id) {
+    const { rows } = await conn.query(
+      `SELECT
+         EXISTS (
+           SELECT 1
+             FROM public.tb_user_role ur
+             JOIN public.tb_role r ON r.id_role = ur.id_role
+            WHERE ur.id_user = $1
+              AND ur.is_active = TRUE
+              AND r.is_active = TRUE
+              AND r.desc_role = 'Administrator'
+         ) AS is_admin,
+         COALESCE(MAX(COALESCE(p.xp_level, 0)), 0)::int AS max_xp_level
+       FROM public.tb_user u
+       LEFT JOIN public.tb_profile p
+         ON p.id_user = u.id_user
+        AND COALESCE(p.is_clan, FALSE) = FALSE
+        AND p.deleted_at IS NULL
+       WHERE u.id_user = $1
+       GROUP BY u.id_user`,
+      [user_id]
+    );
+    return rows[0] || { is_admin: false, max_xp_level: 0 };
   }
 
   static async activateProfileWithPolens(conn, { user_id, id_profile, amount }) {
