@@ -9,6 +9,7 @@ const auth = [authMiddleware];
 // USER — minhas O.S.
 router.post("/", ...auth, asyncHandler(ServiceRequestController.create));
 router.get("/me", ...auth, asyncHandler(ServiceRequestController.listMine));
+router.get("/me/chats", ...auth, asyncHandler(ServiceRequestController.listMyChats));
 router.post("/:id/cancel", ...auth, asyncHandler(ServiceRequestController.cancel));
 router.post("/:id/finalize-response/:id_response", ...auth, asyncHandler(ServiceRequestController.finalize));
 router.post("/:id/reject-response/:id_response", ...auth, asyncHandler(ServiceRequestController.userReject));

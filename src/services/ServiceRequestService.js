@@ -60,6 +60,42 @@ class ServiceRequestService {
     });
   }
 
+  static async listMyChats(user) {
+    return runWithLogs(log, "listMyChats", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const rows = await ServiceRequestStorage.listChatsForUser(pool, user.id_user);
+      const chats = rows.map((r) => ({
+        id_response: r.id_response,
+        response_status: r.response_status,
+        response_created_at: r.response_created_at,
+        last_message: r.last_message,
+        last_message_at: r.last_message_at,
+        unread_count: r.unread_count,
+        request: {
+          id_request: r.id_request,
+          status: r.request_status,
+          description: r.request_description,
+          estado: r.request_estado,
+          municipio: r.request_municipio,
+          id_machine: r.id_machine,
+          id_category: r.id_category,
+          machine_name: r.machine_name,
+          category_name: r.category_name,
+          id_response_chosen: r.id_response_chosen,
+        },
+        profile: {
+          id_profile: r.id_profile,
+          display_name: r.display_name,
+          avatar_url: r.avatar_url,
+          sub_profile_slug: r.sub_profile_slug,
+          username: r.username,
+          is_clan: r.is_clan,
+        },
+      }));
+      return { chats };
+    });
+  }
+
   static async cancelRequest(user, id_request) {
     return runWithLogs(log, "cancelRequest", () => ({ id_user: user?.id_user, id_request }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
