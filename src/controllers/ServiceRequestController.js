@@ -71,6 +71,11 @@ class ServiceRequestController {
     return sendServiceResult(res, result, 201);
   }
 
+  static async markRead(req, res) {
+    const result = await ServiceRequestService.markRead(req.user, req.params.id_response);
+    return sendServiceResult(res, result);
+  }
+
   // Badges
   static async badgeProfile(req, res) {
     const result = await ServiceRequestService.badgeForProfile(req.user, req.query.id_profile);

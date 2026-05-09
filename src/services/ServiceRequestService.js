@@ -271,6 +271,17 @@ class ServiceRequestService {
     });
   }
 
+  static async markRead(user, id_response) {
+    return runWithLogs(log, "markRead", () => ({ id_user: user?.id_user, id_response }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      if (!isUuid(id_response)) return { error: "id_response inválido" };
+      const ctx = await this._loadResponseContext(id_response, user.id_user);
+      if (ctx.error) return ctx;
+      await ServiceRequestStorage.markRead(pool, id_response, ctx.side);
+      return { ok: true, side: ctx.side };
+    });
+  }
+
   static async _loadResponseContext(id_response, id_user) {
     const resp = await ServiceRequestStorage.getResponseById(pool, id_response);
     if (!resp) return { error: "Resposta não encontrada" };

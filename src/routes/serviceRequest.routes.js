@@ -22,6 +22,7 @@ router.post("/:id/respond", ...auth, asyncHandler(ServiceRequestController.respo
 router.get("/badge", ...auth, asyncHandler(ServiceRequestController.badgeProfile));
 
 // Chat
+router.post("/responses/:id_response/read", ...auth, asyncHandler(ServiceRequestController.markRead));
 router.get("/responses/:id_response/messages", ...auth, asyncHandler(ServiceRequestController.messages));
 router.post("/responses/:id_response/messages", ...auth, asyncHandler(ServiceRequestController.sendMessage));
 
