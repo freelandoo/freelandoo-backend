@@ -8,6 +8,8 @@ const asyncHandler = require("../utils/asyncHandler");
 const router = Router();
 const admin = [authMiddleware, roleMiddleware("Administrator")];
 
+router.get("/dashboard", ...admin, asyncHandler(ManifestationAdminController.dashboard));
+
 // Categories
 router.get("/categories", ...admin, asyncHandler(ManifestationAdminController.listCategories));
 router.post("/categories", ...admin, asyncHandler(ManifestationAdminController.createCategory));
@@ -16,6 +18,7 @@ router.delete("/categories/:id", ...admin, asyncHandler(ManifestationAdminContro
 
 // Products
 router.get("/products", ...admin, asyncHandler(ManifestationAdminController.listProducts));
+router.get("/products/:id/usage", ...admin, asyncHandler(ManifestationAdminController.productUsage));
 router.get("/products/:id", ...admin, asyncHandler(ManifestationAdminController.getProduct));
 router.post(
   "/products",

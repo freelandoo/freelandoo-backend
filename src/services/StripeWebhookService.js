@@ -7,6 +7,7 @@ const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateConversionService = require("./AffiliateConversionService");
 const BookingService = require("./BookingService");
 const ClanService = require("./ClanService");
+const ManifestationService = require("./ManifestationService");
 const XpStorage = require("../storages/XpStorage");
 const { createLogger } = require("../utils/logger");
 
@@ -289,6 +290,8 @@ async function processEvent(event) {
           session.id,
           paymentIntentId
         );
+      } else if (meta.type === "manifestation") {
+        await ManifestationService.confirmStripeSession(session);
       } else {
         // Subscription checkout
         await handleCheckoutCompleted(pool, session);
