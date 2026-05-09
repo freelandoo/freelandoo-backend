@@ -133,6 +133,7 @@ class AffiliateStorage {
       paid_at = null,
       reversal_reason = null,
       disputed = null,
+      holdback_until = null,
     } = data;
 
     const { rows } = await conn.query(
@@ -146,6 +147,7 @@ class AffiliateStorage {
         paid_at         = COALESCE($6, paid_at),
         reversal_reason = COALESCE($7, reversal_reason),
         disputed        = COALESCE($8, disputed),
+        holdback_until  = COALESCE($9, holdback_until),
         updated_at      = NOW()
       WHERE id_conversion = $1
       RETURNING *
@@ -159,6 +161,7 @@ class AffiliateStorage {
         paid_at,
         reversal_reason,
         disputed,
+        holdback_until,
       ]
     );
     return rows[0] || null;
@@ -254,6 +257,7 @@ class AffiliateStorage {
       SELECT
         COALESCE(SUM(CASE WHEN status = 'PENDING'  THEN commission_cents ELSE 0 END), 0)::int AS pending_cents,
         COALESCE(SUM(CASE WHEN status = 'APPROVED' THEN commission_cents ELSE 0 END), 0)::int AS approved_cents,
+        COALESCE(SUM(CASE WHEN status = 'APPROVED' AND holdback_until IS NOT NULL AND holdback_until > NOW() THEN commission_cents ELSE 0 END), 0)::int AS holdback_cents,
         COALESCE(SUM(CASE WHEN status = 'APPROVED' AND eligible_at <= NOW() AND id_payout_item IS NULL THEN commission_cents ELSE 0 END), 0)::int AS eligible_cents,
         COALESCE(SUM(CASE WHEN status = 'PAID'     THEN commission_cents ELSE 0 END), 0)::int AS paid_cents,
         COALESCE(SUM(CASE WHEN status = 'REVERSED' THEN commission_cents ELSE 0 END), 0)::int AS reversed_cents,
@@ -333,6 +337,7 @@ class AffiliateStorage {
       min_order_cents = 0,
       max_commission_cents = null,
       approval_delay_days = 30,
+      holdback_days = 8,
       effective_from = null,
       notes = null,
       created_by = null,
@@ -346,11 +351,12 @@ class AffiliateStorage {
         min_order_cents,
         max_commission_cents,
         approval_delay_days,
+        holdback_days,
         effective_from,
         notes,
         created_by
       )
-      VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()), $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, NOW()), $8, $9)
       RETURNING *
       `,
       [
@@ -359,6 +365,7 @@ class AffiliateStorage {
         min_order_cents,
         max_commission_cents,
         approval_delay_days,
+        holdback_days,
         effective_from,
         notes,
         created_by,
@@ -381,6 +388,7 @@ class AffiliateStorage {
       commission_base,
       max_commission_cents,
       approval_delay_days,
+      holdback_days = null,
       updated_by = null,
     } = data;
 
@@ -392,15 +400,17 @@ class AffiliateStorage {
         commission_base,
         max_commission_cents,
         approval_delay_days,
+        holdback_days,
         created_by,
         updated_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
       ON CONFLICT (id_coupon) DO UPDATE SET
         commission_percent   = EXCLUDED.commission_percent,
         commission_base      = EXCLUDED.commission_base,
         max_commission_cents = EXCLUDED.max_commission_cents,
         approval_delay_days  = EXCLUDED.approval_delay_days,
+        holdback_days        = EXCLUDED.holdback_days,
         updated_by           = EXCLUDED.updated_by,
         updated_at           = NOW(),
         is_active            = TRUE
@@ -412,6 +422,7 @@ class AffiliateStorage {
         commission_base,
         max_commission_cents,
         approval_delay_days,
+        holdback_days,
         updated_by,
       ]
     );
@@ -725,6 +736,7 @@ class AffiliateStorage {
         c.created_at,
         c.approved_at,
         c.eligible_at,
+        c.holdback_until,
         c.paid_at,
         cp.code AS coupon_code
       FROM tb_affiliate_conversion c

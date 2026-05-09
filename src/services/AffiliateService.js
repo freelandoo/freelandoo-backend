@@ -6,6 +6,7 @@ const CouponStorage = require("../storages/CouponStorage");
 const ZERO_AGGREGATES = {
   pending_cents: 0,
   approved_cents: 0,
+  holdback_cents: 0,
   eligible_cents: 0,
   paid_cents: 0,
   reversed_cents: 0,

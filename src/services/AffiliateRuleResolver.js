@@ -34,6 +34,13 @@ async function resolve(conn, { id_coupon, at = null }) {
       ? override.approval_delay_days
       : settings.approval_delay_days;
 
+  const holdback_days =
+    override?.holdback_days != null
+      ? override.holdback_days
+      : settings.holdback_days != null
+        ? settings.holdback_days
+        : 8;
+
   const min_order_cents = settings.min_order_cents || 0;
 
   return {
@@ -41,6 +48,7 @@ async function resolve(conn, { id_coupon, at = null }) {
     commission_base,
     max_commission_cents,
     approval_delay_days,
+    holdback_days,
     min_order_cents,
     snapshot: {
       source: override ? "override" : "global",
@@ -50,6 +58,7 @@ async function resolve(conn, { id_coupon, at = null }) {
       commission_base,
       max_commission_cents,
       approval_delay_days,
+      holdback_days,
       min_order_cents,
       resolved_at: new Date().toISOString(),
     },
