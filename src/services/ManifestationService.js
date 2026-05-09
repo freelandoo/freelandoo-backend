@@ -1,5 +1,8 @@
+const crypto = require("crypto");
 const pool = require("../databases");
 const ManifestationStorage = require("../storages/ManifestationStorage");
+const PolenStorage = require("../storages/PolenStorage");
+const StripeService = require("./StripeService");
 const uploadManifestationBannerToR2 = require("../integrations/r2/uploadManifestationBanner");
 const { slugify } = require("../utils/slug");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -23,6 +26,46 @@ function sanitizeText(value, maxLen) {
   return maxLen ? s.slice(0, maxLen) : s;
 }
 
+function csvCell(value) {
+  if (value == null) return "";
+  const s = Array.isArray(value) ? value.join("; ") : String(value);
+  return /[",\n\r;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function toCsv(rows) {
+  const header = [
+    "username",
+    "display_name",
+    "email",
+    "payment_method",
+    "amount_cents",
+    "amount_polens",
+    "acquired_at",
+    "expires_at",
+    "is_active",
+    "subprofiles_applied",
+  ];
+  const lines = [header.join(",")];
+  for (const row of rows) {
+    const subprofiles = Array.isArray(row.subprofiles_applied)
+      ? row.subprofiles_applied.map((p) => p.display_name || p.id_profile).filter(Boolean)
+      : [];
+    lines.push([
+      row.username,
+      row.display_name,
+      row.email,
+      row.payment_method,
+      row.amount_cents,
+      row.amount_polens,
+      row.acquired_at ? new Date(row.acquired_at).toISOString() : "",
+      row.expires_at ? new Date(row.expires_at).toISOString() : "",
+      row.is_active,
+      subprofiles,
+    ].map(csvCell).join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 class ManifestationService {
   // ---------- Public listing (Slice 4 will consume this) ----------
 
@@ -43,6 +86,171 @@ class ManifestationService {
       const product = await ManifestationStorage.getProductById(pool, id);
       if (!product || !product.is_active) return { error: "Produto não encontrado" };
       return { product };
+    });
+  }
+
+  static async getMine(user, query = {}) {
+    return runWithLogs(log, "getMine", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "NÃ£o autenticado" };
+      const [active, profiles, history] = await Promise.all([
+        ManifestationStorage.getActiveForUser(pool, user.id_user),
+        ManifestationStorage.listOwnedProfilesForApply(pool, user.id_user),
+        ManifestationStorage.listHistoryForUser(pool, user.id_user, {
+          limit: Math.min(Math.max(Number(query.limit) || 20, 1), 100),
+          offset: Math.max(Number(query.offset) || 0, 0),
+        }),
+      ]);
+      const applied = active?.id ? await ManifestationStorage.listAppliedProfileIds(pool, active.id) : [];
+      return { active, applied_profile_ids: applied, profiles, history };
+    });
+  }
+
+  static async checkoutWithPolens(user, body = {}) {
+    return runWithLogs(log, "checkoutWithPolens", () => ({ id_user: user?.id_user, product_id: body?.product_id }), async () => {
+      if (!user?.id_user) return { error: "NÃ£o autenticado" };
+      const product = await ManifestationStorage.getProductById(pool, body.product_id);
+      if (!product || !product.is_active) return { error: "Produto nÃ£o encontrado" };
+      const amount = Number(product.price_polens) || 0;
+      if (amount <= 0) return { error: "Produto sem preÃ§o em PolÃ©ns" };
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const settings = await PolenStorage.getSettings(client);
+        if (!settings?.is_active) {
+          await client.query("ROLLBACK");
+          return { error: "Sistema de PolÃ©ns inativo" };
+        }
+        const reserved = await ManifestationStorage.reserveStock(client, product.id);
+        if (!reserved) {
+          await client.query("ROLLBACK");
+          return { error: "Produto indisponÃ­vel" };
+        }
+        const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
+        const sourceId = `manifestation:${product.id}:${crypto.randomUUID()}`;
+        const debit = await PolenStorage.debit(client, {
+          user_id: user.id_user,
+          wallet_id: wallet.id,
+          amount,
+          type: "spend_manifestation",
+          source: "manifestation",
+          source_id: sourceId,
+          metadata: { product_id: product.id, product_name: product.name },
+        });
+        if (!debit) {
+          await client.query("ROLLBACK");
+          return { error: "Saldo insuficiente" };
+        }
+        await ManifestationStorage.deactivateActiveForUser(client, user.id_user);
+        const manifestation = await ManifestationStorage.createUserManifestation(client, {
+          user_id: user.id_user,
+          product_id: product.id,
+          duration_days: product.duration_days,
+          payment_method: "polens",
+          amount_polens: amount,
+        });
+        await client.query("COMMIT");
+        return { manifestation, wallet: debit.wallet, transaction: debit.transaction };
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    });
+  }
+
+  static async createStripeCheckout(user, body = {}) {
+    return runWithLogs(log, "createStripeCheckout", () => ({ id_user: user?.id_user, product_id: body?.product_id }), async () => {
+      if (!user?.id_user) return { error: "NÃ£o autenticado" };
+      const product = await ManifestationStorage.getProductById(pool, body.product_id);
+      if (!product || !product.is_active) return { error: "Produto nÃ£o encontrado" };
+      const amount = Number(product.price_cents) || 0;
+      if (amount <= 0) return { error: "Produto sem preÃ§o em reais" };
+      if (product.stock !== null && Number(product.stock) <= 0) return { error: "Produto indisponÃ­vel" };
+
+      const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
+      const session = await StripeService.createOneTimeCheckoutSession({
+        amount_cents: amount,
+        currency: "BRL",
+        productName: `Manifestação - ${product.name}`,
+        customerEmail: user.email || undefined,
+        clientReferenceId: user.id_user,
+        successUrl: `${frontend}/manifestacao?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${frontend}/manifestacao/${product.id}?checkout=cancel`,
+        metadata: {
+          type: "manifestation",
+          user_id: user.id_user,
+          product_id: product.id,
+        },
+      });
+      return { checkout_url: session.url, session_id: session.id };
+    });
+  }
+
+  static async confirmStripeSession(session) {
+    const meta = session.metadata || {};
+    if (meta.type !== "manifestation") return { ignored: true };
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await ManifestationStorage.getUserManifestationByStripeSession(client, session.id);
+      if (existing) {
+        await client.query("COMMIT");
+        return { manifestation: existing, duplicate: true };
+      }
+      const product = await ManifestationStorage.getProductById(client, meta.product_id);
+      if (!product || !product.is_active) {
+        await client.query("ROLLBACK");
+        return { error: "Produto nÃ£o encontrado" };
+      }
+      const reserved = await ManifestationStorage.reserveStock(client, product.id);
+      if (!reserved) {
+        await client.query("ROLLBACK");
+        return { error: "Produto indisponÃ­vel" };
+      }
+      await ManifestationStorage.deactivateActiveForUser(client, meta.user_id);
+      const paymentIntent =
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id || null;
+      const manifestation = await ManifestationStorage.createUserManifestation(client, {
+        user_id: meta.user_id,
+        product_id: product.id,
+        duration_days: product.duration_days,
+        payment_method: "stripe",
+        stripe_session_id: session.id,
+        stripe_payment_intent: paymentIntent,
+        amount_cents: session.amount_total ?? product.price_cents,
+      });
+      await client.query("COMMIT");
+      return { manifestation };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async setProfileApply(user, profileId, body = {}) {
+    return runWithLogs(log, "setProfileApply", () => ({ id_user: user?.id_user, profileId }), async () => {
+      if (!user?.id_user) return { error: "NÃ£o autenticado" };
+      const active = await ManifestationStorage.getActiveForUser(pool, user.id_user);
+      if (!active) return { error: "VocÃª nÃ£o tem manifestaÃ§Ã£o ativa" };
+      const profile = await ManifestationStorage.getOwnedProfileForApply(pool, {
+        userId: user.id_user,
+        profileId,
+      });
+      if (!profile) return { error: "Perfil nÃ£o encontrado" };
+      if (profile.is_clan) return { error: "ManifestaÃ§Ã£o nÃ£o pode ser aplicada em clans" };
+      const result = await ManifestationStorage.setProfileApplied(pool, {
+        userManifestationId: active.id,
+        profileId,
+        enabled: body.enabled !== false,
+      });
+      const applied = await ManifestationStorage.listAppliedProfileIds(pool, active.id);
+      return { result, applied_profile_ids: applied };
     });
   }
 
@@ -109,6 +317,63 @@ class ManifestationService {
 
   static async adminListProducts() {
     return { products: await ManifestationStorage.listProducts(pool) };
+  }
+
+  static async adminDashboard() {
+    return runWithLogs(log, "adminDashboard", () => ({}), async () => {
+      return { dashboard: await ManifestationStorage.adminDashboard(pool) };
+    });
+  }
+
+  static async adminProductUsage(id, query = {}) {
+    return runWithLogs(log, "adminProductUsage", () => ({ id }), async () => {
+      const product = await ManifestationStorage.getProductById(pool, id);
+      if (!product) return { error: "Produto nÃ£o encontrado" };
+
+      const page = Math.max(1, Number(query.page) || 1);
+      const per_page = Math.min(Math.max(Number(query.per_page) || 20, 1), 100);
+      const q = sanitizeText(query.q, 120) || "";
+      const sort = sanitizeText(query.sort, 40) || "acquired_at";
+      const order = String(query.order || "desc").toLowerCase() === "asc" ? "asc" : "desc";
+      const isCsv = query.format === "csv";
+
+      if (isCsv) {
+        const rows = await ManifestationStorage.listProductUsage(pool, id, {
+          q,
+          limit: 5000,
+          offset: 0,
+          sort,
+          order,
+        });
+        return {
+          product,
+          csv: toCsv(rows),
+          filename: `manifestacao-${product.id}-usage.csv`,
+        };
+      }
+
+      const [total, users] = await Promise.all([
+        ManifestationStorage.countProductUsage(pool, id, { q }),
+        ManifestationStorage.listProductUsage(pool, id, {
+          q,
+          limit: per_page,
+          offset: (page - 1) * per_page,
+          sort,
+          order,
+        }),
+      ]);
+
+      return {
+        product,
+        users,
+        pagination: {
+          page,
+          per_page,
+          total,
+          total_pages: Math.max(1, Math.ceil(total / per_page)),
+        },
+      };
+    });
   }
 
   static async adminGetProduct(id) {

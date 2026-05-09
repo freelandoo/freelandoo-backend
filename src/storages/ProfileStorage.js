@@ -93,7 +93,8 @@ class ProfileStorage {
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
-      ) AS is_paid
+      ) AS is_paid,
+      mq.manifestation
     FROM public.tb_profile p
     JOIN public.tb_user u
       ON u.id_user = p.id_user
@@ -101,6 +102,26 @@ class ProfileStorage {
       ON c.id_category = p.id_category
     LEFT JOIN public.tb_machine m
       ON m.id_machine = COALESCE(c.id_machine, p.id_machine)
+    LEFT JOIN LATERAL (
+      SELECT jsonb_build_object(
+        'id', um.id,
+        'product_id', um.product_id,
+        'banner_url', mp.banner_url,
+        'banner_thumb_url', mp.banner_thumb_url,
+        'tag_label', mp.tag_label,
+        'tag_color', mp.tag_color,
+        'tag_icon', mp.tag_icon,
+        'expires_at', um.expires_at
+      ) AS manifestation
+      FROM public.user_manifestation_profile_apply a
+      JOIN public.user_manifestations um ON um.id = a.user_manifestation_id
+      JOIN public.manifestation_products mp ON mp.id = um.product_id
+      WHERE a.profile_id = p.id_profile
+        AND um.is_active = TRUE
+        AND um.expires_at > NOW()
+        AND COALESCE(p.is_clan, FALSE) = FALSE
+      LIMIT 1
+    ) mq ON TRUE
     WHERE p.id_profile = $1
     LIMIT 1
     `,
@@ -147,7 +168,8 @@ class ProfileStorage {
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
-      ) AS is_paid
+      ) AS is_paid,
+      mq.manifestation
     FROM public.tb_profile p
     JOIN public.tb_user u
       ON u.id_user = p.id_user
@@ -155,6 +177,26 @@ class ProfileStorage {
       ON c.id_category = p.id_category
     LEFT JOIN public.tb_machine m
       ON m.id_machine = c.id_machine
+    LEFT JOIN LATERAL (
+      SELECT jsonb_build_object(
+        'id', um.id,
+        'product_id', um.product_id,
+        'banner_url', mp.banner_url,
+        'banner_thumb_url', mp.banner_thumb_url,
+        'tag_label', mp.tag_label,
+        'tag_color', mp.tag_color,
+        'tag_icon', mp.tag_icon,
+        'expires_at', um.expires_at
+      ) AS manifestation
+      FROM public.user_manifestation_profile_apply a
+      JOIN public.user_manifestations um ON um.id = a.user_manifestation_id
+      JOIN public.manifestation_products mp ON mp.id = um.product_id
+      WHERE a.profile_id = p.id_profile
+        AND um.is_active = TRUE
+        AND um.expires_at > NOW()
+        AND COALESCE(p.is_clan, FALSE) = FALSE
+      LIMIT 1
+    ) mq ON TRUE
     WHERE lower(u.username) = lower($1)
       AND lower(c.profession_slug) = lower($2)
       AND p.deleted_at IS NULL

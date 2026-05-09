@@ -24,6 +24,20 @@ class ManifestationAdminController {
     return sendServiceResult(res, await ManifestationService.adminListProducts());
   }
 
+  static async dashboard(req, res) {
+    return sendServiceResult(res, await ManifestationService.adminDashboard());
+  }
+
+  static async productUsage(req, res) {
+    const result = await ManifestationService.adminProductUsage(req.params.id, req.query || {});
+    if (result?.csv) {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+      return res.status(200).send(result.csv);
+    }
+    return sendServiceResult(res, result);
+  }
+
   static async getProduct(req, res) {
     return sendServiceResult(res, await ManifestationService.adminGetProduct(req.params.id));
   }

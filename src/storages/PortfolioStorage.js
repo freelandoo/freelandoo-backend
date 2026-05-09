@@ -220,11 +220,30 @@ class PortfolioStorage {
         tu.username       AS profile_username,
         ca.profession_slug,
         pro.municipio     AS profile_municipio,
+        mf.manifestation,
         COALESCE(mq.media, '[]'::jsonb) AS media
       FROM public.tb_profile_portfolio_item i
       JOIN public.tb_profile pro ON pro.id_profile = i.id_profile
       JOIN public.tb_user tu ON tu.id_user = pro.id_user
       LEFT JOIN public.tb_category ca ON ca.id_category = pro.id_category
+      LEFT JOIN LATERAL (
+        SELECT jsonb_build_object(
+          'banner_url', mp.banner_url,
+          'banner_thumb_url', mp.banner_thumb_url,
+          'tag_label', mp.tag_label,
+          'tag_color', mp.tag_color,
+          'tag_icon', mp.tag_icon,
+          'expires_at', um.expires_at
+        ) AS manifestation
+        FROM public.user_manifestation_profile_apply a
+        JOIN public.user_manifestations um ON um.id = a.user_manifestation_id
+        JOIN public.manifestation_products mp ON mp.id = um.product_id
+        WHERE a.profile_id = pro.id_profile
+          AND um.is_active = TRUE
+          AND um.expires_at > NOW()
+          AND COALESCE(pro.is_clan, FALSE) = FALSE
+        LIMIT 1
+      ) mf ON TRUE
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(
           jsonb_build_object(
