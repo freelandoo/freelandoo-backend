@@ -281,9 +281,14 @@ async function refundSubscriptionForUser(user, body) {
       // Atualiza DB localmente (webhook confirma depois — idempotente)
       await pool.query(
         `UPDATE public.tb_profile_subscription
-         SET status = 'canceled', canceled_at = NOW(), refunded_at = NOW(), updated_at = NOW()
+         SET status = 'canceled',
+             canceled_at = NOW(),
+             refunded_at = NOW(),
+             stripe_refund_id = $2,
+             stripe_charge_id = $3,
+             updated_at = NOW()
          WHERE id_subscription = $1`,
-        [id_subscription]
+        [id_subscription, refund.id, chargeId]
       );
 
       // Reverte ativação do perfil imediatamente
