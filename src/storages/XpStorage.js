@@ -264,11 +264,55 @@ module.exports = {
     return {
       xp_total,
       xp_level,
+      level: xp_level,
       xp_current_level,
       xp_next_level,
       xp_missing,
       xp_progress_percent,
     };
+  },
+
+  async getXpSummaries(db, profileIds) {
+    const ids = Array.from(new Set((profileIds || []).filter(Boolean)));
+    if (!ids.length) return new Map();
+
+    const settings = await this.getSettings(db);
+    const base = Number(settings?.base_xp_level_1 ?? 5000);
+    const mult = Number(settings?.level_multiplier ?? 1.4);
+
+    const r = await db.query(
+      `SELECT id_profile, COALESCE(xp_total, 0) AS xp_total, COALESCE(xp_level, 0) AS xp_level
+         FROM tb_profile
+        WHERE id_profile = ANY($1::uuid[])
+          AND deleted_at IS NULL`,
+      [ids]
+    );
+
+    const map = new Map();
+    for (const row of r.rows) {
+      const xp_total = Number(row.xp_total ?? 0);
+      const xp_level = Number(row.xp_level ?? 0);
+      const xp_current_level = xpForLevel(xp_level, base, mult);
+      const xp_next_level = xpForLevel(xp_level + 1, base, mult);
+      const range = xp_next_level - xp_current_level;
+      const xp_missing = Math.max(0, xp_next_level - xp_total);
+      const xp_progress_percent =
+        range > 0
+          ? Math.min(100, Math.max(0, Math.round(((xp_total - xp_current_level) / range) * 100)))
+          : 100;
+
+      map.set(String(row.id_profile), {
+        xp_total,
+        xp_level,
+        level: xp_level,
+        xp_current_level,
+        xp_next_level,
+        xp_missing,
+        xp_progress_percent,
+      });
+    }
+
+    return map;
   },
 
   async getXpEvents(db, id_profile, { limit = 20, offset = 0 } = {}) {

@@ -37,10 +37,10 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   bootLog.info("server.listen", { port: PORT });
 
-  // Scheduler diário do ranking: checa se passou period_days desde último recálculo
+  // Scheduler do ranking: checa e recalcula a cada 2 horas.
   const pool = require("./src/databases");
   const RankingStorage = require("./src/storages/RankingStorage");
-  const ONE_HOUR = 60 * 60 * 1000;
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
   const tickRanking = async () => {
     try {
       const result = await RankingStorage.runScheduledRecalculate(pool);
@@ -49,7 +49,7 @@ app.listen(PORT, () => {
       bootLog.error("ranking.scheduler_error", { message: err.message });
     }
   };
-  // Primeira checagem 2 min após o boot, depois 1×/hora
+  // Primeira checagem 2 min após o boot, depois a cada 2 horas.
   setTimeout(tickRanking, 2 * 60 * 1000);
-  setInterval(tickRanking, ONE_HOUR);
+  setInterval(tickRanking, TWO_HOURS);
 });
