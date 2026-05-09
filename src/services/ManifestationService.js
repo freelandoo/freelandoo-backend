@@ -66,6 +66,37 @@ function toCsv(rows) {
   return `${lines.join("\n")}\n`;
 }
 
+async function checkManifestationEligibility(conn, userId) {
+  const settings = await PolenStorage.getSettings(conn);
+  const eligibility = await PolenStorage.getUserManifestationEligibility(conn, userId);
+  const isAdmin = !!eligibility.is_admin;
+  const maxLevel = Number(eligibility.max_xp_level) || 0;
+  const minLevel = Number(settings?.manifestation_min_xp_level) || 0;
+  const adminEnabled = settings?.manifestation_admin_enabled !== false;
+  const usersEnabled = settings?.manifestation_users_enabled !== false;
+
+  if (isAdmin && adminEnabled) {
+    return { ok: true, settings, eligibility: { ...eligibility, max_xp_level: maxLevel } };
+  }
+  if (!usersEnabled) {
+    return {
+      ok: false,
+      settings,
+      eligibility: { ...eligibility, max_xp_level: maxLevel },
+      error: "Manifestação indisponível para usuários no momento",
+    };
+  }
+  if (maxLevel < minLevel) {
+    return {
+      ok: false,
+      settings,
+      eligibility: { ...eligibility, max_xp_level: maxLevel },
+      error: `Manifestação disponível para usuários nível ${minLevel}+`,
+    };
+  }
+  return { ok: true, settings, eligibility: { ...eligibility, max_xp_level: maxLevel } };
+}
+
 class ManifestationService {
   // ---------- Public listing (Slice 4 will consume this) ----------
 
@@ -116,10 +147,15 @@ class ManifestationService {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const settings = await PolenStorage.getSettings(client);
+        const gate = await checkManifestationEligibility(client, user.id_user);
+        const settings = gate.settings;
         if (!settings?.is_active) {
           await client.query("ROLLBACK");
           return { error: "Sistema de PolÃ©ns inativo" };
+        }
+        if (!gate.ok) {
+          await client.query("ROLLBACK");
+          return { error: gate.error, eligibility: gate.eligibility };
         }
         const reserved = await ManifestationStorage.reserveStock(client, product.id);
         if (!reserved) {
@@ -168,6 +204,9 @@ class ManifestationService {
       const amount = Number(product.price_cents) || 0;
       if (amount <= 0) return { error: "Produto sem preÃ§o em reais" };
       if (product.stock !== null && Number(product.stock) <= 0) return { error: "Produto indisponÃ­vel" };
+
+      const gate = await checkManifestationEligibility(pool, user.id_user);
+      if (!gate.ok) return { error: gate.error, eligibility: gate.eligibility };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
       const session = await StripeService.createOneTimeCheckoutSession({
