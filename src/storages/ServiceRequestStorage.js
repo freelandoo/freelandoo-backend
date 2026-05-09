@@ -73,7 +73,7 @@ class ServiceRequestStorage {
   }
 
   // Resposta ativa (não-terminal) atual da O.S. — qualquer sub-perfil.
-  // Garante a regra: só um sub-perfil pode estar negociando por vez.
+  // Mantido para consultas legadas; a regra atual permite múltiplos subperfis.
   static async getActiveResponseByRequest(conn, id_request) {
     const r = await conn.query(
       `SELECT * FROM public.tb_service_request_response
@@ -252,7 +252,7 @@ class ServiceRequestStorage {
   // ---------- Chats do USER (cliente) ----------
   // Lista flat de responses recebidas pelas O.S. do user, agregando dados
   // da request, do profile respondente, última mensagem e unread_count.
-  // Inclui apenas responses com chat útil ao user: PENDING/PRO_ACCEPTED/FINALIZED.
+  // Inclui responses com chat útil ao user, inclusive terminais para histórico cinza.
   static async listChatsForUser(conn, id_user) {
     const r = await conn.query(
       `SELECT
@@ -293,7 +293,14 @@ class ServiceRequestStorage {
          JOIN public.tb_machine m ON m.id_machine = req.id_machine
          JOIN public.tb_category c ON c.id_category = req.id_category
         WHERE req.id_user = $1
-          AND resp.status IN ('PENDING','PRO_ACCEPTED','FINALIZED')
+          AND resp.status IN (
+            'PENDING',
+            'PRO_ACCEPTED',
+            'PRO_REJECTED',
+            'USER_REJECTED',
+            'FINALIZED',
+            'CLOSED_OTHER_WON'
+          )
         ORDER BY COALESCE(
           (SELECT created_at FROM public.tb_service_request_message
             WHERE id_response = resp.id_response
