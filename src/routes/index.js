@@ -41,6 +41,8 @@ const adminXpRoutes = require("./adminXp.routes");
 const xpRoutes = require("./xp.routes");
 const polenRoutes = require("./polen.routes");
 const adminPolenRoutes = require("./adminPolen.routes");
+const manifestationRoutes = require("./manifestation.routes");
+const manifestationAdminRoutes = require("./manifestationAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -90,4 +92,6 @@ module.exports = (app) => {
   app.use("/subprofiles", xpRoutes);
   app.use("/polens", polenRoutes);
   app.use("/admin/polens", adminPolenRoutes);
+  app.use("/manifestations", manifestationRoutes);
+  app.use("/admin/manifestations", manifestationAdminRoutes);
 };
