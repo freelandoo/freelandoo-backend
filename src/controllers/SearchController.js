@@ -14,6 +14,7 @@ class SearchController {
       id_category,
       machine_slug,
       q,
+      level_min,
       limit,
       offset,
     } = req.query;
@@ -26,6 +27,7 @@ class SearchController {
 
     const parsedIdMachine = id_machine != null && id_machine !== "" ? Number(id_machine) : null;
     const parsedIdCategory = id_category != null && id_category !== "" ? Number(id_category) : null;
+    const parsedLevelMin = level_min != null && level_min !== "" ? Number(level_min) : null;
 
     const data = await SearchService.execute({
       db: pool,
@@ -40,6 +42,7 @@ class SearchController {
         id_category: Number.isFinite(parsedIdCategory) ? parsedIdCategory : null,
         machine_slug: machine_slug || null,
         q: q || null,
+        level_min: Number.isFinite(parsedLevelMin) ? parsedLevelMin : null,
       },
       pagination: {
         limit: limit ? Number(limit) : 20,
