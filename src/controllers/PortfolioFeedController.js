@@ -19,9 +19,23 @@ function parseIntOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseLevelMin(raw) {
+  if (raw == null || raw === "") return null;
+  const value = String(raw).trim().toLowerCase();
+  if (!value || value === "all" || value === "todos") return null;
+  const parsed = Number(value);
+  const allowed = new Set([1, 5, 10, 20, 30]);
+  if (!Number.isInteger(parsed) || !allowed.has(parsed)) {
+    const err = new Error("level_min inválido");
+    err.statusCode = 400;
+    throw err;
+  }
+  return parsed;
+}
+
 class PortfolioFeedController {
   static async list(req, res) {
-    const { id_machine, id_category, estado, municipio, exclude_ids, cursor, limit } =
+    const { id_machine, id_category, estado, municipio, level_min, exclude_ids, cursor, limit } =
       req.query;
 
     const data = await PortfolioFeedService.getFeed({
@@ -31,6 +45,7 @@ class PortfolioFeedController {
         id_category: parseIntOrNull(id_category),
         estado: estado ? String(estado).toUpperCase().slice(0, 2) : null,
         municipio: municipio || null,
+        level_min: parseLevelMin(level_min),
         exclude_ids: parseExcludeIds(exclude_ids),
       },
       pagination: {
