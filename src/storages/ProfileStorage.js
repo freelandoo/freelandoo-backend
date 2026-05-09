@@ -113,10 +113,9 @@ class ProfileStorage {
         'tag_icon', mp.tag_icon,
         'expires_at', um.expires_at
       ) AS manifestation
-      FROM public.user_manifestation_profile_apply a
-      JOIN public.user_manifestations um ON um.id = a.user_manifestation_id
+      FROM public.user_manifestations um
       JOIN public.manifestation_products mp ON mp.id = um.product_id
-      WHERE a.profile_id = p.id_profile
+      WHERE um.user_id = p.id_user
         AND um.is_active = TRUE
         AND um.expires_at > NOW()
         AND COALESCE(p.is_clan, FALSE) = FALSE
@@ -188,10 +187,9 @@ class ProfileStorage {
         'tag_icon', mp.tag_icon,
         'expires_at', um.expires_at
       ) AS manifestation
-      FROM public.user_manifestation_profile_apply a
-      JOIN public.user_manifestations um ON um.id = a.user_manifestation_id
+      FROM public.user_manifestations um
       JOIN public.manifestation_products mp ON mp.id = um.product_id
-      WHERE a.profile_id = p.id_profile
+      WHERE um.user_id = p.id_user
         AND um.is_active = TRUE
         AND um.expires_at > NOW()
         AND COALESCE(p.is_clan, FALSE) = FALSE

@@ -261,9 +261,8 @@ class ManifestationStorage {
               FROM public.user_manifestations
              WHERE is_active = TRUE AND expires_at > NOW()) AS active_users,
            (SELECT COUNT(*)::int
-              FROM public.user_manifestation_profile_apply a
-              JOIN public.user_manifestations um ON um.id = a.user_manifestation_id
-              JOIN public.tb_profile p ON p.id_profile = a.profile_id
+              FROM public.user_manifestations um
+              JOIN public.tb_profile p ON p.id_user = um.user_id
              WHERE um.is_active = TRUE
                AND um.expires_at > NOW()
                AND COALESCE(p.is_clan, FALSE) = FALSE
@@ -383,10 +382,8 @@ class ManifestationStorage {
               ) AS subprofiles_applied
          FROM public.user_manifestations um
          JOIN public.tb_user u ON u.id_user = um.user_id
-         LEFT JOIN public.user_manifestation_profile_apply a
-           ON a.user_manifestation_id = um.id
          LEFT JOIN public.tb_profile p
-           ON p.id_profile = a.profile_id
+           ON p.id_user = um.user_id
           AND COALESCE(p.is_clan, FALSE) = FALSE
           AND p.deleted_at IS NULL
         WHERE um.product_id = $1
@@ -455,11 +452,10 @@ class ManifestationStorage {
               p.tag_label,
               p.tag_color,
               p.tag_icon
-         FROM public.user_manifestation_profile_apply a
-         JOIN public.user_manifestations um ON um.id = a.user_manifestation_id
+         FROM public.user_manifestations um
          JOIN public.manifestation_products p ON p.id = um.product_id
-         JOIN public.tb_profile tp ON tp.id_profile = a.profile_id
-        WHERE a.profile_id = $1
+         JOIN public.tb_profile tp ON tp.id_user = um.user_id
+        WHERE tp.id_profile = $1
           AND um.is_active = TRUE
           AND um.expires_at > NOW()
           AND COALESCE(tp.is_clan, FALSE) = FALSE
@@ -491,8 +487,12 @@ class ManifestationStorage {
 
   static async listAppliedProfileIds(conn, userManifestationId) {
     const { rows } = await conn.query(
-      `SELECT profile_id FROM public.user_manifestation_profile_apply
-        WHERE user_manifestation_id = $1`,
+      `SELECT p.id_profile AS profile_id
+         FROM public.user_manifestations um
+         JOIN public.tb_profile p ON p.id_user = um.user_id
+        WHERE um.id = $1
+          AND COALESCE(p.is_clan, FALSE) = FALSE
+          AND p.deleted_at IS NULL`,
       [userManifestationId]
     );
     return rows.map((r) => r.profile_id);
