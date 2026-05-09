@@ -39,6 +39,8 @@ const entityFollowRoutes = require("./entityFollow.routes");
 const conversationRoutes = require("./conversation.routes");
 const adminXpRoutes = require("./adminXp.routes");
 const xpRoutes = require("./xp.routes");
+const polenRoutes = require("./polen.routes");
+const adminPolenRoutes = require("./adminPolen.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -86,4 +88,6 @@ module.exports = (app) => {
   app.use("/conversations", conversationRoutes);
   app.use("/admin", adminXpRoutes);
   app.use("/subprofiles", xpRoutes);
+  app.use("/polens", polenRoutes);
+  app.use("/admin/polens", adminPolenRoutes);
 };
