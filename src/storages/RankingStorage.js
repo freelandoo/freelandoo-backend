@@ -2,13 +2,24 @@
 const pool = require("../databases");
 const XpStorage = require("./XpStorage");
 
+const RANKING_RECALCULATE_LOCK_KEY = 57289154;
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
 module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   // CONFIG
   // ──────────────────────────────────────────────────────────────────────────
   async getConfig(db) {
     const r = await db.query("SELECT * FROM ranking_config WHERE id = 1");
-    return r.rows[0] ?? null;
+    const cfg = r.rows[0] ?? null;
+    if (!cfg) return null;
+    return {
+      ...cfg,
+      recalculation_interval_hours: 2,
+      next_recalculation_at: cfg.last_recalculated_at
+        ? new Date(new Date(cfg.last_recalculated_at).getTime() + TWO_HOURS_MS).toISOString()
+        : null,
+    };
   },
 
   async updateConfig(db, { is_enabled, period_days, weight_visits, weight_likes, weight_ratings, weight_online, max_online_minutes }) {
@@ -216,8 +227,36 @@ module.exports = {
   // RECALCULA RANKING
   // ──────────────────────────────────────────────────────────────────────────
   async recalculate(db) {
+    const client = await db.connect();
+    let locked = false;
+    try {
+      const lock = await client.query(
+        "SELECT pg_try_advisory_lock($1) AS locked",
+        [RANKING_RECALCULATE_LOCK_KEY]
+      );
+      locked = Boolean(lock.rows[0]?.locked);
+      if (!locked) {
+        return {
+          success: false,
+          skipped: true,
+          reason: "already-running",
+          message: "Ranking recalculation already running",
+        };
+      }
+      return await this.recalculateUnlocked(client);
+    } finally {
+      if (locked) {
+        await client.query("SELECT pg_advisory_unlock($1)", [RANKING_RECALCULATE_LOCK_KEY]).catch(() => {});
+      }
+      client.release();
+    }
+  },
+
+  async recalculateUnlocked(db) {
     const cfg = await this.getConfig(db);
-    if (!cfg || !cfg.is_enabled) return { updated: 0 };
+    if (!cfg || !cfg.is_enabled) {
+      return { success: false, skipped: true, reason: "disabled", updated: 0 };
+    }
 
     const periodDays = cfg.period_days ?? 30;
     const wv = cfg.weight_visits ?? 1;
@@ -387,24 +426,71 @@ module.exports = {
     await db.query(`UPDATE ranking_config SET last_recalculated_at = NOW() WHERE id = 1`);
 
     const count = await db.query(`SELECT COUNT(*) FROM profile_ranking`);
-    return { updated: parseInt(count.rows[0].count, 10) };
+    const recalculatedAt = new Date().toISOString();
+    return {
+      success: true,
+      updated: parseInt(count.rows[0].count, 10),
+      entities_processed: parseInt(count.rows[0].count, 10),
+      recalculated_at: recalculatedAt,
+      next_recalculation: new Date(Date.now() + TWO_HOURS_MS).toISOString(),
+    };
   },
 
-  // Recálculo automático: roda só se passou period_days desde o último
+  // Recálculo automático: roda a cada 2 horas, sem recalcular em page load.
   async runScheduledRecalculate(db) {
     const cfg = await this.getConfig(db);
     if (!cfg || !cfg.is_enabled) return { skipped: true, reason: "disabled" };
 
-    const periodDays = cfg.period_days ?? 30;
     if (cfg.last_recalculated_at) {
       const r = await db.query(
-        `SELECT (NOW() - $1::timestamptz) >= ($2 || ' days')::interval AS due`,
-        [cfg.last_recalculated_at, periodDays]
+        `SELECT (NOW() - $1::timestamptz) >= INTERVAL '2 hours' AS due`,
+        [cfg.last_recalculated_at]
       );
       if (!r.rows[0]?.due) return { skipped: true, reason: "not-due" };
     }
 
     return await this.recalculate(db);
+  },
+
+  async attachXpSummaries(db, rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return rows;
+    const summaries = await XpStorage.getXpSummaries(
+      db,
+      rows.map((row) => row.id_profile)
+    );
+    const updated = await db.query(
+      `SELECT MAX(updated_at) AS last_recalculated_at
+         FROM profile_ranking
+        WHERE id_profile = ANY($1::uuid[])`,
+      [rows.map((row) => row.id_profile).filter(Boolean)]
+    );
+    const lastRecalculatedAt = updated.rows[0]?.last_recalculated_at ?? null;
+    return rows.map((row) => {
+      const xp = summaries.get(String(row.id_profile)) || {
+        xp_total: 0,
+        xp_level: 0,
+        level: 0,
+        xp_current_level: 0,
+        xp_next_level: 0,
+        xp_missing: 0,
+        xp_progress_percent: 0,
+      };
+      return {
+        ...row,
+        entity_type: row.is_clan ? "clan" : "profile",
+        entity_id: row.id_profile,
+        ranking_score: row.total_points,
+        ranking_updated_at: row.updated_at ?? lastRecalculatedAt,
+        last_recalculated_at: lastRecalculatedAt,
+        rank_position:
+          row.position_general ??
+          row.position_machine ??
+          row.position_city ??
+          row.position_profession ??
+          null,
+        ...xp,
+      };
+    });
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -560,7 +646,7 @@ module.exports = {
         LIMIT $3`,
       [municipio, estado, limit]
     );
-    return r.rows;
+    return this.attachXpSummaries(db, r.rows);
   },
 
   /**
@@ -642,7 +728,7 @@ module.exports = {
         LIMIT $2`,
       [profession_slug, limit]
     );
-    return r.rows;
+    return this.attachXpSummaries(db, r.rows);
   },
 
   async getTopByMachine(db, { id_machine, machine_slug, limit = 5 }) {
@@ -730,7 +816,7 @@ module.exports = {
         LIMIT $2`,
       [id_machine ? parseInt(id_machine, 10) : null, limit, machine_slug || null]
     );
-    return r.rows;
+    return this.attachXpSummaries(db, r.rows);
   },
 
   async getTopGeneral(db, { limit = 10 }) {
@@ -752,18 +838,20 @@ module.exports = {
          pr.ratings_count,
          pr.visits_count,
          pr.likes_count,
+         pro.is_clan,
+         (SELECT COUNT(*)::int FROM tb_clan_member cm WHERE cm.id_clan_profile = pro.id_profile) AS members_count,
          pr.position_general
        FROM profile_ranking pr
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
        JOIN tb_user u ON u.id_user = pro.id_user
-       JOIN tb_category ca ON ca.id_category = pro.id_category
-       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+       LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
+       LEFT JOIN tb_machine m ON m.id_machine = COALESCE(ca.id_machine, pro.id_machine)
        WHERE pro.deleted_at IS NULL
        ORDER BY pr.position_general ASC NULLS LAST
        LIMIT $1`,
       [limit]
     );
-    return r.rows;
+    return this.attachXpSummaries(db, r.rows);
   },
 
   /**
@@ -798,7 +886,7 @@ module.exports = {
        LIMIT $2`,
       [id_machine ? parseInt(id_machine, 10) : null, limit, machine_slug || null]
     );
-    return r.rows;
+    return this.attachXpSummaries(db, r.rows);
   },
 
   async getTopClansGeneral(db, { limit = 20, municipio } = {}) {
@@ -828,7 +916,7 @@ module.exports = {
        LIMIT $1`,
       [limit, municipio ? `%${municipio}%` : null]
     );
-    return r.rows;
+    return this.attachXpSummaries(db, r.rows);
   },
 
   async getAdminRankings(db, { machine_slug, municipio, id_category, limit = 50, offset = 0 }) {
@@ -842,6 +930,8 @@ module.exports = {
          ca.desc_category AS specialty,
          m.name AS machine_name,
          m.slug AS machine_slug,
+         pro.is_clan,
+         (SELECT COUNT(*)::int FROM tb_clan_member cm WHERE cm.id_clan_profile = pro.id_profile) AS members_count,
          pr.total_points,
          pr.visits_count,
          pr.likes_count,
@@ -856,8 +946,8 @@ module.exports = {
        FROM profile_ranking pr
        JOIN tb_profile pro ON pro.id_profile = pr.id_profile
        JOIN tb_user u ON u.id_user = pro.id_user
-       JOIN tb_category ca ON ca.id_category = pro.id_category
-       LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+       LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
+       LEFT JOIN tb_machine m ON m.id_machine = COALESCE(ca.id_machine, pro.id_machine)
        WHERE ($1::text IS NULL OR m.slug = $1)
          AND ($2::text IS NULL OR pro.municipio ILIKE $2)
          AND ($3::int  IS NULL OR ca.id_category = $3)
@@ -865,6 +955,6 @@ module.exports = {
        LIMIT $4 OFFSET $5`,
       [machine_slug || null, municipio || null, id_category ? parseInt(id_category) : null, limit, offset]
     );
-    return r.rows;
+    return this.attachXpSummaries(db, r.rows);
   },
 };

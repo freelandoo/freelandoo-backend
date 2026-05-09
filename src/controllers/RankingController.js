@@ -238,15 +238,19 @@ module.exports = {
   // PUT /admin/ranking-config
   async adminUpdateConfig(req, res) {
     const { is_enabled, period_days, weight_visits, weight_likes, weight_ratings, weight_online, max_online_minutes } = req.body;
-    const cfg = await RankingStorage.updateConfig(pool, {
+    await RankingStorage.updateConfig(pool, {
       is_enabled, period_days, weight_visits, weight_likes, weight_ratings, weight_online, max_online_minutes,
     });
+    const cfg = await RankingStorage.getConfig(pool);
     return res.json(cfg);
   },
 
   // POST /admin/ranking/recalculate
   async adminRecalculate(req, res) {
     const result = await RankingStorage.recalculate(pool);
+    if (result?.reason === "already-running") {
+      return res.status(409).json(result);
+    }
     return res.json(result);
   },
 };
