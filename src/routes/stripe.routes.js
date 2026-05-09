@@ -23,4 +23,10 @@ router.post(
   asyncHandler(StripeController.cancelSubscription)
 );
 
+router.post(
+  "/subscription/refund",
+  authMiddleware,
+  asyncHandler(StripeController.refundSubscription)
+);
+
 module.exports = router;

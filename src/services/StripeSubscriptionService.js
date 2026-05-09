@@ -2,6 +2,7 @@ const pool = require("../databases");
 const StripeService = require("./StripeService");
 const AnnualFeeSettingsStorage = require("../storages/AnnualFeeSettingsStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
+const ProfileStorage = require("../storages/ProfileStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("StripeSubscriptionService");
@@ -219,9 +220,110 @@ async function cancelSubscriptionForUser(user, body) {
   );
 }
 
+/**
+ * POST /stripe/subscription/refund
+ * Reembolsa integralmente uma assinatura ativa dentro de 7 dias corridos do pagamento.
+ * - Emite refund no Stripe
+ * - Cancela a subscription imediatamente
+ * - Reverte a ativação do perfil
+ * - O webhook charge.refunded cuida da comissão do afiliado
+ * body: { id_subscription }
+ */
+async function refundSubscriptionForUser(user, body) {
+  return runWithLogs(
+    log,
+    "refundSubscriptionForUser",
+    () => ({ id_user: user.id_user, id_subscription: body?.id_subscription }),
+    async () => {
+      const id_subscription = body?.id_subscription;
+      if (!id_subscription) throw new ServiceError("id_subscription é obrigatório", 400);
+
+      const { rows } = await pool.query(
+        `SELECT * FROM public.tb_profile_subscription
+         WHERE id_subscription = $1 AND id_user = $2 LIMIT 1`,
+        [id_subscription, user.id_user]
+      );
+      const sub = rows[0];
+      if (!sub) throw new ServiceError("Assinatura não encontrada", 404);
+      if (sub.status !== "active") {
+        throw new ServiceError("Apenas assinaturas ativas podem ser reembolsadas", 409);
+      }
+      if (sub.refunded_at) throw new ServiceError("Reembolso já processado para esta assinatura", 409);
+      if (!sub.stripe_subscription_id) throw new ServiceError("Assinatura sem ID Stripe", 400);
+      if (!sub.paid_at) throw new ServiceError("Assinatura ainda não foi paga", 409);
+
+      // Verifica janela de 7 dias corridos
+      const diffMs = Date.now() - new Date(sub.paid_at).getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      if (diffDays > 7) {
+        throw new ServiceError("O prazo de 7 dias corridos para reembolso expirou", 409);
+      }
+
+      // Busca invoice mais recente → charge
+      const stripeSub = await StripeService.retrieveSubscription(sub.stripe_subscription_id);
+      const latestInvoiceId =
+        typeof stripeSub.latest_invoice === "string"
+          ? stripeSub.latest_invoice
+          : stripeSub.latest_invoice?.id || null;
+      if (!latestInvoiceId) throw new ServiceError("Invoice não encontrada na assinatura Stripe", 500);
+
+      const invoice = await StripeService.retrieveInvoice(latestInvoiceId);
+      const chargeId =
+        typeof invoice.charge === "string" ? invoice.charge : invoice.charge?.id || null;
+      if (!chargeId) throw new ServiceError("Cobrança não encontrada na invoice", 500);
+
+      // Emite reembolso integral
+      const refund = await StripeService.createRefund(chargeId);
+
+      // Cancela subscription imediatamente no Stripe
+      await StripeService.cancelSubscriptionImmediate(sub.stripe_subscription_id);
+
+      // Atualiza DB localmente (webhook confirma depois — idempotente)
+      await pool.query(
+        `UPDATE public.tb_profile_subscription
+         SET status = 'canceled', canceled_at = NOW(), refunded_at = NOW(), updated_at = NOW()
+         WHERE id_subscription = $1`,
+        [id_subscription]
+      );
+
+      // Reverte ativação do perfil imediatamente
+      if (sub.id_profile) {
+        const conn = await pool.connect();
+        try {
+          const { rows: statusRows } = await conn.query(
+            `SELECT id_status, desc_status FROM public.tb_status
+             WHERE desc_status IN ('fee_paid', 'taxa_pendente')`
+          );
+          const feePaidId = statusRows.find((r) => r.desc_status === "fee_paid")?.id_status;
+          const taxaPendenteId = statusRows.find((r) => r.desc_status === "taxa_pendente")?.id_status;
+
+          if (feePaidId) {
+            await ProfileStorage.deleteProfileStatus(conn, {
+              id_profile: sub.id_profile,
+              id_status: feePaidId,
+            });
+          }
+          if (taxaPendenteId) {
+            await ProfileStorage.insertProfileStatus(conn, {
+              id_profile: sub.id_profile,
+              id_status: taxaPendenteId,
+              created_by: user.id_user,
+            });
+          }
+        } finally {
+          conn.release();
+        }
+      }
+
+      return { ok: true, refund_id: refund.id };
+    }
+  );
+}
+
 module.exports = {
   ServiceError,
   createSessionForUser,
   getMySubscriptions,
   cancelSubscriptionForUser,
+  refundSubscriptionForUser,
 };
