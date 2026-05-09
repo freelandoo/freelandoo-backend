@@ -124,6 +124,17 @@ async function retrieveInvoice(invoiceId) {
   return client().invoices.retrieve(invoiceId);
 }
 
+async function cancelSubscriptionImmediate(stripeSubscriptionId) {
+  return client().subscriptions.cancel(stripeSubscriptionId);
+}
+
+async function createRefund(chargeId) {
+  return client().refunds.create({
+    charge: chargeId,
+    reason: "requested_by_customer",
+  });
+}
+
 /**
  * Verifica a assinatura do webhook e devolve o evento parseado.
  * `rawBody` deve ser Buffer (express.raw).
@@ -189,6 +200,8 @@ module.exports = {
   retrieveSession,
   retrieveSubscription,
   retrieveInvoice,
+  cancelSubscriptionImmediate,
+  createRefund,
   constructWebhookEvent,
   createCoupon,
   createPromotionCode,
