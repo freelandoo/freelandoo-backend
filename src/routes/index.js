@@ -43,6 +43,8 @@ const polenRoutes = require("./polen.routes");
 const adminPolenRoutes = require("./adminPolen.routes");
 const manifestationRoutes = require("./manifestation.routes");
 const manifestationAdminRoutes = require("./manifestationAdmin.routes");
+const polenProductsRoutes = require("./polenProducts.routes");
+const polenProductsAdminRoutes = require("./polenProductsAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -94,4 +96,6 @@ module.exports = (app) => {
   app.use("/admin/polens", adminPolenRoutes);
   app.use("/manifestations", manifestationRoutes);
   app.use("/admin/manifestations", manifestationAdminRoutes);
+  app.use("/polens", polenProductsRoutes);
+  app.use("/admin/polens", polenProductsAdminRoutes);
 };
