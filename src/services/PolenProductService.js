@@ -155,8 +155,8 @@ class PolenProductService {
         productName: `Loja de Polén - ${product.name}`,
         customerEmail: user.email || undefined,
         clientReferenceId: user.id_user,
-        successUrl: `${frontend}/account?polens_checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${frontend}/account?polens_checkout=cancel`,
+        successUrl: `${frontend}/loja-polens?polens_checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${frontend}/loja-polens?polens_checkout=cancel`,
         metadata: {
           type: "polen_purchase",
           user_id: user.id_user,
