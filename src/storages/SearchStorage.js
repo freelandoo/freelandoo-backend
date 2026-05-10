@@ -172,7 +172,15 @@ module.exports = {
 
         -- Marcadores de clan
         FALSE AS is_clan,
-        NULL::int AS members_count
+        NULL::int AS members_count,
+
+        -- Premium ativo (destaque pago)
+        EXISTS (
+          SELECT 1 FROM public.profile_premium pp
+           WHERE pp.profile_id = pro.id_profile
+             AND pp.is_active = TRUE
+             AND (pp.expires_at IS NULL OR pp.expires_at > NOW())
+        ) AS is_premium
 
       FROM tb_profile pro
       JOIN tb_user tu
@@ -299,7 +307,8 @@ module.exports = {
           '[]'::jsonb AS profile_statuses,
           '[]'::jsonb AS redes_sociais,
           TRUE AS is_clan,
-          (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
+          (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count,
+          FALSE AS is_premium
         FROM tb_profile clan
         JOIN tb_clan_member owner_cm
           ON owner_cm.id_clan_profile = clan.id_profile AND owner_cm.role = 'owner'
@@ -375,7 +384,7 @@ module.exports = {
       SELECT * FROM creators
       UNION ALL
       SELECT * FROM clans
-      ORDER BY display_name
+      ORDER BY is_premium DESC, RANDOM()
       LIMIT $6 OFFSET $7;
       `,
       [
