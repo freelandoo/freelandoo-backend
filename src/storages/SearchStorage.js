@@ -381,9 +381,11 @@ module.exports = {
             WHERE cmf.id_clan_profile = clan.id_profile AND mpf.xp_level >= $12
           ))
       )
-      SELECT * FROM creators
-      UNION ALL
-      SELECT * FROM clans
+      SELECT * FROM (
+        SELECT * FROM creators
+        UNION ALL
+        SELECT * FROM clans
+      ) combined
       ORDER BY is_premium DESC, RANDOM()
       LIMIT $6 OFFSET $7;
       `,
