@@ -9,6 +9,7 @@ const BookingService = require("./BookingService");
 const ClanService = require("./ClanService");
 const ManifestationService = require("./ManifestationService");
 const PolenProductService = require("./PolenProductService");
+const PremiumService = require("./PremiumService");
 const XpStorage = require("../storages/XpStorage");
 const { createLogger } = require("../utils/logger");
 
@@ -295,6 +296,8 @@ async function processEvent(event) {
         await ManifestationService.confirmStripeSession(session);
       } else if (meta.type === "polen_purchase") {
         await PolenProductService.confirmStripeSession(session);
+      } else if (meta.type === "premium") {
+        await PremiumService.confirmStripeSession(session);
       } else {
         // Subscription checkout
         await handleCheckoutCompleted(pool, session);
