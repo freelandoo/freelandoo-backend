@@ -1,5 +1,7 @@
 const pool = require("../databases");
 const PolenProductStorage = require("../storages/PolenProductStorage");
+const PolenStorage = require("../storages/PolenStorage");
+const StripeService = require("./StripeService");
 const uploadPolenProductImageToR2 = require("../integrations/r2/uploadPolenProductImage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -127,6 +129,124 @@ class PolenProductService {
       const product = await PolenProductStorage.deleteProduct(pool, id);
       return { product };
     });
+  }
+
+  // ---------- Stripe checkout (público autenticado) ----------
+
+  static async createStripeCheckout(user, body = {}) {
+    return runWithLogs(log, "createStripeCheckout", () => ({
+      id_user: user?.id_user,
+      product_id: body?.product_id,
+    }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const product = await PolenProductStorage.getProductById(pool, body.product_id);
+      if (!product || !product.is_active) return { error: "Produto não encontrado" };
+
+      const amount = Number(product.price_cents) || 0;
+      if (amount <= 0) return { error: "Produto sem preço configurado" };
+
+      const totalPolens = (Number(product.polens_amount) || 0) + (Number(product.bonus_polens) || 0);
+      if (totalPolens <= 0) return { error: "Produto sem Poléns configurados" };
+
+      const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
+      const session = await StripeService.createOneTimeCheckoutSession({
+        amount_cents: amount,
+        currency: "BRL",
+        productName: `Loja de Polén - ${product.name}`,
+        customerEmail: user.email || undefined,
+        clientReferenceId: user.id_user,
+        successUrl: `${frontend}/account?polens_checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${frontend}/account?polens_checkout=cancel`,
+        metadata: {
+          type: "polen_purchase",
+          user_id: user.id_user,
+          product_id: product.id,
+          polens_amount: String(totalPolens),
+        },
+      });
+
+      // Reserva pendente (idempotência via UNIQUE em stripe_session_id).
+      await PolenProductStorage.createPurchase(pool, {
+        user_id: user.id_user,
+        product_id: product.id,
+        status: "pending",
+        amount_cents: amount,
+        stripe_session_id: session.id,
+      });
+
+      return { checkout_url: session.url, session_id: session.id };
+    });
+  }
+
+  static async confirmStripeSession(session) {
+    const meta = session.metadata || {};
+    if (meta.type !== "polen_purchase") return { ignored: true };
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await PolenProductStorage.getPurchaseByStripeSession(client, session.id);
+      if (existing && existing.status === "paid") {
+        await client.query("COMMIT");
+        return { purchase: existing, duplicate: true };
+      }
+
+      const product = await PolenProductStorage.getProductById(client, meta.product_id);
+      if (!product) {
+        await client.query("ROLLBACK");
+        return { error: "Produto não encontrado" };
+      }
+
+      const polensCredit = Number(meta.polens_amount)
+        || ((Number(product.polens_amount) || 0) + (Number(product.bonus_polens) || 0));
+      if (polensCredit <= 0) {
+        await client.query("ROLLBACK");
+        return { error: "Quantidade de Poléns inválida" };
+      }
+
+      const wallet = await PolenStorage.getOrCreateWallet(client, meta.user_id);
+      const paymentIntent = typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id || null;
+
+      const credit = await PolenStorage.credit(client, {
+        user_id: meta.user_id,
+        wallet_id: wallet.id,
+        amount: polensCredit,
+        type: "earn_purchase_stripe",
+        source: "polen_shop",
+        source_id: session.id,
+        metadata: { product_id: product.id, product_name: product.name },
+      });
+
+      let purchase = existing;
+      if (existing) {
+        purchase = await PolenProductStorage.markPurchasePaid(client, existing.id, {
+          polens_credited: polensCredit,
+          stripe_payment_intent: paymentIntent,
+        });
+      } else {
+        const created = await PolenProductStorage.createPurchase(client, {
+          user_id: meta.user_id,
+          product_id: product.id,
+          status: "pending",
+          amount_cents: session.amount_total ?? product.price_cents,
+          stripe_session_id: session.id,
+        });
+        purchase = await PolenProductStorage.markPurchasePaid(client, created.id, {
+          polens_credited: polensCredit,
+          stripe_payment_intent: paymentIntent,
+        });
+      }
+
+      await client.query("COMMIT");
+      return { purchase, wallet: credit.wallet, transaction: credit.transaction };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   static async adminUploadImage(file) {

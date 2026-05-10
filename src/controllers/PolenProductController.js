@@ -9,6 +9,13 @@ class PolenProductController {
   static async getProduct(req, res) {
     return sendServiceResult(res, await PolenProductService.getPublic(req.params.id));
   }
+
+  static async checkout(req, res) {
+    return sendServiceResult(
+      res,
+      await PolenProductService.createStripeCheckout(req.user, { product_id: req.params.id })
+    );
+  }
 }
 
 module.exports = PolenProductController;
