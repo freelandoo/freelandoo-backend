@@ -97,7 +97,14 @@ module.exports = {
       LEFT JOIN LATERAL (
         SELECT
           COUNT(*)::int AS profiles_count,
-          BOOL_OR(pro.is_active AND pro.is_visible AND pro.deleted_at IS NULL) AS has_active_profile,
+          -- "ativo" no admin segue a mesma regra da vitrine pública:
+          -- flags do perfil + assinatura status='active'
+          BOOL_OR(
+            pro.is_active
+            AND pro.is_visible
+            AND pro.deleted_at IS NULL
+            AND COALESCE(psub.sub_status = 'active', FALSE)
+          ) AS has_active_profile,
           jsonb_agg(
             jsonb_build_object(
               'id_profile',               pro.id_profile,
