@@ -89,7 +89,9 @@ class CourseStudentsStorage {
          p.display_name AS profile_display_name,
          p.avatar_url AS profile_avatar_url,
          COALESCE(mc.modules_count, 0)::int AS modules_count,
-         COALESCE(lc.lessons_count, 0)::int AS lessons_count
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count,
+         COALESCE(pl.published_lessons_count, 0)::int AS published_lessons_count,
+         COALESCE(cp.completed_lessons_count, 0)::int AS completed_lessons_count
        FROM public.course_enrollments ce
        INNER JOIN public.courses c ON c.id = ce.course_id
        INNER JOIN public.tb_user owner ON owner.id_user = c.owner_user_id
@@ -104,6 +106,19 @@ class CourseStudentsStorage {
            FROM public.course_lessons
           GROUP BY course_id
        ) lc ON lc.course_id = c.id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS published_lessons_count
+           FROM public.course_lessons
+          WHERE status = 'published'
+          GROUP BY course_id
+       ) pl ON pl.course_id = c.id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS completed_lessons_count
+           FROM public.course_lesson_progress
+          WHERE user_id = $1
+            AND completed_at IS NOT NULL
+          GROUP BY course_id
+       ) cp ON cp.course_id = c.id
        WHERE ce.user_id = $1
          AND ce.status = 'active'
        ORDER BY ce.enrolled_at DESC, ce.created_at DESC`,
