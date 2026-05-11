@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const CoursesController = require("../controllers/CoursesController");
 const CourseLessonsController = require("../controllers/CourseLessonsController");
+const CoursePlayerController = require("../controllers/CoursePlayerController");
 const CourseProgressController = require("../controllers/CourseProgressController");
 const CourseStudentsController = require("../controllers/CourseStudentsController");
 const authMiddleware = require("../middlewares/authMiddleware");
@@ -34,6 +35,10 @@ router.get("/purchased", asyncHandler(CourseStudentsController.listPurchased));
 router.get(
   "/purchased/:courseId/progress",
   asyncHandler(CourseProgressController.getCourseProgress),
+);
+router.get(
+  "/purchased/:courseId/player",
+  asyncHandler(CoursePlayerController.getPlayer),
 );
 router.put(
   "/purchased/:courseId/lessons/:lessonId/progress",
