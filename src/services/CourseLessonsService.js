@@ -11,6 +11,7 @@ const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseModulesStorage = require("../storages/CourseModulesStorage");
 const CourseLessonsStorage = require("../storages/CourseLessonsStorage");
+const uploadCourseVideoToR2 = require("../integrations/r2/uploadCourseVideoToR2");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CourseLessonsService");
@@ -302,6 +303,128 @@ class CourseLessonsService {
         } finally {
           client.release();
         }
+      },
+    );
+  }
+
+  // --------------------------------------------------------------
+  // Vídeo (Slice 7 — upload R2)
+  // --------------------------------------------------------------
+
+  /**
+   * Sobe o arquivo original do vídeo da aula no R2 e atualiza o estado
+   * da aula. Slice 7 deixa em `processing` (Slice 8 chama ffmpeg para
+   * gerar processed_video_url + thumbnail e move para `ready`).
+   *
+   * Mesmo no estado `processing`, `original_video_url` já fica salvo —
+   * o frontend pode mostrar um preview do original enquanto Slice 8 não
+   * estiver implementado.
+   */
+  static async uploadVideo(user, courseId, moduleId, lessonId, file) {
+    return runWithLogs(
+      log,
+      "uploadVideo",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+        lesson_id: lessonId,
+        size: file?.size,
+        mimetype: file?.mimetype,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!lessonId) return { error: "ID da aula inválido" };
+        if (!file?.buffer?.length) return { error: "Arquivo não enviado" };
+
+        const own = await ensureOwnershipAndModule(
+          pool,
+          courseId,
+          moduleId,
+          user.id_user,
+        );
+        if (own.error) return own;
+
+        const existing = await CourseLessonsStorage.getById(pool, lessonId);
+        if (!existing) return { error: "Aula não encontrada" };
+        if (existing.module_id !== moduleId) {
+          return { error: "Aula não pertence a este módulo" };
+        }
+
+        // Marca uploading antes de iniciar o PUT no R2 (visibilidade
+        // se outra aba estiver olhando a aula).
+        await CourseLessonsStorage.updateById(pool, lessonId, {
+          video_status: "uploading",
+        });
+
+        let url;
+        try {
+          const result = await uploadCourseVideoToR2({
+            file,
+            userId: user.id_user,
+            courseId,
+            lessonId,
+          });
+          url = result.url;
+        } catch (err) {
+          await CourseLessonsStorage.updateById(pool, lessonId, {
+            video_status: "error",
+          });
+          return { error: err?.message || "Falha ao subir vídeo" };
+        }
+
+        const updated = await CourseLessonsStorage.updateById(pool, lessonId, {
+          original_video_url: url,
+          // Slice 8 (ffmpeg) muda para 'ready' depois de processar.
+          // Frontend já mostra preview do original enquanto isso.
+          video_status: "processing",
+        });
+        return { lesson: publicLessonShape(updated) };
+      },
+    );
+  }
+
+  /**
+   * "Trocar vídeo" / remover. Limpa URLs e duração, volta para `empty`.
+   * Não deleta o arquivo no R2 (mesma política do resto do projeto —
+   * arquivos órfãos ficam no bucket até limpeza manual).
+   */
+  static async removeVideo(user, courseId, moduleId, lessonId) {
+    return runWithLogs(
+      log,
+      "removeVideo",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+        lesson_id: lessonId,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!lessonId) return { error: "ID da aula inválido" };
+
+        const own = await ensureOwnershipAndModule(
+          pool,
+          courseId,
+          moduleId,
+          user.id_user,
+        );
+        if (own.error) return own;
+
+        const existing = await CourseLessonsStorage.getById(pool, lessonId);
+        if (!existing) return { error: "Aula não encontrada" };
+        if (existing.module_id !== moduleId) {
+          return { error: "Aula não pertence a este módulo" };
+        }
+
+        const updated = await CourseLessonsStorage.updateById(pool, lessonId, {
+          video_status: "empty",
+          original_video_url: null,
+          processed_video_url: null,
+          thumbnail_url: null,
+          duration_seconds: null,
+        });
+        return { lesson: publicLessonShape(updated) };
       },
     );
   }
