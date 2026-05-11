@@ -5,17 +5,26 @@ class CourseModulesStorage {
   static async listByCourse(conn, courseId) {
     const { rows } = await conn.query(
       `SELECT
-         id,
-         course_id,
-         title,
-         description,
-         position,
-         status,
-         created_at,
-         updated_at
-       FROM public.course_modules
-       WHERE course_id = $1
-       ORDER BY position ASC, created_at ASC`,
+         m.id,
+         m.course_id,
+         m.title,
+         m.description,
+         m.position,
+         m.status,
+         m.created_at,
+         m.updated_at,
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count
+       FROM public.course_modules m
+       LEFT JOIN (
+         SELECT module_id, COUNT(*) AS lessons_count
+           FROM public.course_lessons
+          WHERE module_id IN (
+            SELECT id FROM public.course_modules WHERE course_id = $1
+          )
+          GROUP BY module_id
+       ) lc ON lc.module_id = m.id
+       WHERE m.course_id = $1
+       ORDER BY m.position ASC, m.created_at ASC`,
       [courseId],
     );
     return rows;

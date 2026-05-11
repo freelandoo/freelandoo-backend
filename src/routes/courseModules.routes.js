@@ -1,9 +1,13 @@
 const { Router } = require("express");
 const CourseModulesController = require("../controllers/CourseModulesController");
 const asyncHandler = require("../utils/asyncHandler");
+const courseLessonsRoutes = require("./courseLessons.routes");
 
 // mergeParams permite acessar :courseId herdado do router pai (courses.routes.js).
 const router = Router({ mergeParams: true });
+
+// Recurso aninhado: aulas dentro de um módulo (Slice 5).
+router.use("/:moduleId/lessons", courseLessonsRoutes);
 
 router.get("/", asyncHandler(CourseModulesController.list));
 router.post("/", asyncHandler(CourseModulesController.create));

@@ -1,18 +1,22 @@
-// src/services/CourseModulesService.js
+// src/services/CourseLessonsService.js
 //
-// Regras de negócio dos módulos de curso (Slice 4).
-// Authorship é validado contra courses.owner_user_id em cada operação:
-// só o dono do curso pode listar/criar/editar/excluir/reordenar módulos.
+// Regras de negócio das aulas (Slice 5).
+// Validação cruzada em todo acesso:
+//   1) courses.owner_user_id === req.user.id_user
+//   2) module.course_id === :courseId
+//   3) lesson.module_id === :moduleId (em update/delete)
+// Slices futuros (7/8) atualizam video_status/URLs via método dedicado.
 
 const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseModulesStorage = require("../storages/CourseModulesStorage");
+const CourseLessonsStorage = require("../storages/CourseLessonsStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
-const log = createLogger("CourseModulesService");
+const log = createLogger("CourseLessonsService");
 
 const TITLE_MAX_LEN = 160;
-const DESC_MAX_LEN = 500;
+const DESC_MAX_LEN = 20000;
 
 function sanitizeText(value, maxLen) {
   if (value == null) return null;
@@ -26,47 +30,70 @@ function normalizeStatus(value) {
   return ["draft", "published", "hidden"].includes(s) ? s : null;
 }
 
-async function ensureCourseOwnership(conn, courseId, userId) {
+async function ensureOwnershipAndModule(conn, courseId, moduleId, userId) {
   if (!courseId) return { error: "ID do curso inválido" };
+  if (!moduleId) return { error: "ID do módulo inválido" };
+
   const course = await CoursesStorage.getById(conn, courseId);
   if (!course) return { error: "Curso não encontrado" };
   if (course.owner_user_id !== userId) {
     return { error: "Sem permissão para acessar este curso" };
   }
-  return { course };
+
+  const mod = await CourseModulesStorage.getById(conn, moduleId);
+  if (!mod) return { error: "Módulo não encontrado" };
+  if (mod.course_id !== courseId) {
+    return { error: "Módulo não pertence a este curso" };
+  }
+
+  return { course, module: mod };
 }
 
-function publicModuleShape(row) {
+function publicLessonShape(row) {
   if (!row) return null;
   return {
     id: row.id,
     course_id: row.course_id,
+    module_id: row.module_id,
     title: row.title,
     description: row.description,
     position: row.position,
     status: row.status,
-    lessons_count: row.lessons_count ?? 0,
+    video_status: row.video_status,
+    original_video_url: row.original_video_url,
+    processed_video_url: row.processed_video_url,
+    thumbnail_url: row.thumbnail_url,
+    duration_seconds: row.duration_seconds,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
 }
 
-class CourseModulesService {
+class CourseLessonsService {
   // --------------------------------------------------------------
   // Leituras
   // --------------------------------------------------------------
 
-  static async list(user, courseId) {
+  static async list(user, courseId, moduleId) {
     return runWithLogs(
       log,
       "list",
-      () => ({ id_user: user?.id_user, course_id: courseId }),
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+      }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
-        const own = await ensureCourseOwnership(pool, courseId, user.id_user);
+        const own = await ensureOwnershipAndModule(
+          pool,
+          courseId,
+          moduleId,
+          user.id_user,
+        );
         if (own.error) return own;
-        const rows = await CourseModulesStorage.listByCourse(pool, courseId);
-        return { modules: rows.map(publicModuleShape) };
+        const rows = await CourseLessonsStorage.listByModule(pool, moduleId);
+        return { lessons: rows.map(publicLessonShape) };
       },
     );
   }
@@ -75,11 +102,15 @@ class CourseModulesService {
   // Mutações
   // --------------------------------------------------------------
 
-  static async create(user, courseId, body = {}) {
+  static async create(user, courseId, moduleId, body = {}) {
     return runWithLogs(
       log,
       "create",
-      () => ({ id_user: user?.id_user, course_id: courseId }),
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+      }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
 
@@ -91,21 +122,27 @@ class CourseModulesService {
 
         const client = await pool.connect();
         try {
-          const own = await ensureCourseOwnership(client, courseId, user.id_user);
-          if (own.error) return own;
-
-          const position = await CourseModulesStorage.getNextPosition(
+          const own = await ensureOwnershipAndModule(
             client,
             courseId,
+            moduleId,
+            user.id_user,
           );
-          const created = await CourseModulesStorage.create(client, {
+          if (own.error) return own;
+
+          const position = await CourseLessonsStorage.getNextPosition(
+            client,
+            moduleId,
+          );
+          const created = await CourseLessonsStorage.create(client, {
             courseId,
+            moduleId,
             title,
             description,
             position,
             status,
           });
-          return { module: publicModuleShape(created) };
+          return { lesson: publicLessonShape(created) };
         } finally {
           client.release();
         }
@@ -113,7 +150,7 @@ class CourseModulesService {
     );
   }
 
-  static async update(user, courseId, moduleId, body = {}) {
+  static async update(user, courseId, moduleId, lessonId, body = {}) {
     return runWithLogs(
       log,
       "update",
@@ -121,20 +158,26 @@ class CourseModulesService {
         id_user: user?.id_user,
         course_id: courseId,
         module_id: moduleId,
+        lesson_id: lessonId,
       }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
-        if (!moduleId) return { error: "ID do módulo inválido" };
+        if (!lessonId) return { error: "ID da aula inválido" };
 
         const client = await pool.connect();
         try {
-          const own = await ensureCourseOwnership(client, courseId, user.id_user);
+          const own = await ensureOwnershipAndModule(
+            client,
+            courseId,
+            moduleId,
+            user.id_user,
+          );
           if (own.error) return own;
 
-          const existing = await CourseModulesStorage.getById(client, moduleId);
-          if (!existing) return { error: "Módulo não encontrado" };
-          if (existing.course_id !== courseId) {
-            return { error: "Módulo não pertence a este curso" };
+          const existing = await CourseLessonsStorage.getById(client, lessonId);
+          if (!existing) return { error: "Aula não encontrada" };
+          if (existing.module_id !== moduleId) {
+            return { error: "Aula não pertence a este módulo" };
           }
 
           const patch = {};
@@ -151,13 +194,15 @@ class CourseModulesService {
             if (!next) return { error: "Status inválido" };
             patch.status = next;
           }
+          // Campos de vídeo/thumb/duração ficam reservados para Slices 7 e 8
+          // — deliberadamente NÃO expostos ao update genérico aqui.
 
-          const updated = await CourseModulesStorage.updateById(
+          const updated = await CourseLessonsStorage.updateById(
             client,
-            moduleId,
+            lessonId,
             patch,
           );
-          return { module: publicModuleShape(updated) };
+          return { lesson: publicLessonShape(updated) };
         } finally {
           client.release();
         }
@@ -165,7 +210,7 @@ class CourseModulesService {
     );
   }
 
-  static async remove(user, courseId, moduleId) {
+  static async remove(user, courseId, moduleId, lessonId) {
     return runWithLogs(
       log,
       "remove",
@@ -173,23 +218,29 @@ class CourseModulesService {
         id_user: user?.id_user,
         course_id: courseId,
         module_id: moduleId,
+        lesson_id: lessonId,
       }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
-        if (!moduleId) return { error: "ID do módulo inválido" };
+        if (!lessonId) return { error: "ID da aula inválido" };
 
         const client = await pool.connect();
         try {
-          const own = await ensureCourseOwnership(client, courseId, user.id_user);
+          const own = await ensureOwnershipAndModule(
+            client,
+            courseId,
+            moduleId,
+            user.id_user,
+          );
           if (own.error) return own;
 
-          const existing = await CourseModulesStorage.getById(client, moduleId);
-          if (!existing) return { error: "Módulo não encontrado" };
-          if (existing.course_id !== courseId) {
-            return { error: "Módulo não pertence a este curso" };
+          const existing = await CourseLessonsStorage.getById(client, lessonId);
+          if (!existing) return { error: "Aula não encontrada" };
+          if (existing.module_id !== moduleId) {
+            return { error: "Aula não pertence a este módulo" };
           }
 
-          const ok = await CourseModulesStorage.deleteById(client, moduleId);
+          const ok = await CourseLessonsStorage.deleteById(client, lessonId);
           return { deleted: ok };
         } finally {
           client.release();
@@ -198,13 +249,14 @@ class CourseModulesService {
     );
   }
 
-  static async reorder(user, courseId, orderedIds) {
+  static async reorder(user, courseId, moduleId, orderedIds) {
     return runWithLogs(
       log,
       "reorder",
       () => ({
         id_user: user?.id_user,
         course_id: courseId,
+        module_id: moduleId,
         count: Array.isArray(orderedIds) ? orderedIds.length : 0,
       }),
       async () => {
@@ -212,7 +264,6 @@ class CourseModulesService {
         if (!Array.isArray(orderedIds) || !orderedIds.length) {
           return { error: "Lista de ordenação inválida" };
         }
-        // Filtra entradas não-string e duplicatas, mantendo a primeira ocorrência.
         const seen = new Set();
         const cleaned = [];
         for (const id of orderedIds) {
@@ -225,21 +276,28 @@ class CourseModulesService {
 
         const client = await pool.connect();
         try {
-          const own = await ensureCourseOwnership(client, courseId, user.id_user);
+          const own = await ensureOwnershipAndModule(
+            client,
+            courseId,
+            moduleId,
+            user.id_user,
+          );
           if (own.error) return own;
 
-          // Valida que todos os IDs informados pertencem ao curso.
-          const existing = await CourseModulesStorage.listByCourse(client, courseId);
-          const existingIds = new Set(existing.map((m) => m.id));
+          const existing = await CourseLessonsStorage.listByModule(
+            client,
+            moduleId,
+          );
+          const existingIds = new Set(existing.map((l) => l.id));
           for (const id of cleaned) {
             if (!existingIds.has(id)) {
-              return { error: "ID de módulo inválido na lista de ordenação" };
+              return { error: "ID de aula inválido na lista de ordenação" };
             }
           }
 
-          await CourseModulesStorage.setOrder(client, courseId, cleaned);
-          const rows = await CourseModulesStorage.listByCourse(client, courseId);
-          return { modules: rows.map(publicModuleShape) };
+          await CourseLessonsStorage.setOrder(client, moduleId, cleaned);
+          const rows = await CourseLessonsStorage.listByModule(client, moduleId);
+          return { lessons: rows.map(publicLessonShape) };
         } finally {
           client.release();
         }
@@ -248,4 +306,4 @@ class CourseModulesService {
   }
 }
 
-module.exports = CourseModulesService;
+module.exports = CourseLessonsService;

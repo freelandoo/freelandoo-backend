@@ -24,7 +24,8 @@ class CoursesStorage {
          c.published_at,
          c.created_at,
          c.updated_at,
-         COALESCE(mc.modules_count, 0)::int AS modules_count
+         COALESCE(mc.modules_count, 0)::int AS modules_count,
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count
        FROM public.courses c
        LEFT JOIN (
          SELECT course_id, COUNT(*) AS modules_count
@@ -32,6 +33,12 @@ class CoursesStorage {
           WHERE course_id = $1
           GROUP BY course_id
        ) mc ON mc.course_id = c.id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS lessons_count
+           FROM public.course_lessons
+          WHERE course_id = $1
+          GROUP BY course_id
+       ) lc ON lc.course_id = c.id
        WHERE c.id = $1
        LIMIT 1`,
       [id],
@@ -85,7 +92,8 @@ class CoursesStorage {
          c.created_at,
          c.updated_at,
          p.display_name AS profile_display_name,
-         COALESCE(mc.modules_count, 0)::int AS modules_count
+         COALESCE(mc.modules_count, 0)::int AS modules_count,
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count
        FROM public.courses c
        LEFT JOIN public.tb_profile p ON p.id_profile = c.profile_id
        LEFT JOIN (
@@ -93,6 +101,11 @@ class CoursesStorage {
            FROM public.course_modules
           GROUP BY course_id
        ) mc ON mc.course_id = c.id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS lessons_count
+           FROM public.course_lessons
+          GROUP BY course_id
+       ) lc ON lc.course_id = c.id
        WHERE c.owner_user_id = $1
        ORDER BY c.created_at DESC`,
       [ownerUserId],
