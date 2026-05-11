@@ -30,6 +30,16 @@ function normalizeStatus(value) {
   return ["draft", "published", "hidden"].includes(s) ? s : null;
 }
 
+async function ensureCourseOwnership(conn, courseId, userId) {
+  if (!courseId) return { error: "ID do curso inválido" };
+  const course = await CoursesStorage.getById(conn, courseId);
+  if (!course) return { error: "Curso não encontrado" };
+  if (course.owner_user_id !== userId) {
+    return { error: "Sem permissão para acessar este curso" };
+  }
+  return { course };
+}
+
 async function ensureOwnershipAndModule(conn, courseId, moduleId, userId) {
   if (!courseId) return { error: "ID do curso inválido" };
   if (!moduleId) return { error: "ID do módulo inválido" };
@@ -94,6 +104,53 @@ class CourseLessonsService {
         if (own.error) return own;
         const rows = await CourseLessonsStorage.listByModule(pool, moduleId);
         return { lessons: rows.map(publicLessonShape) };
+      },
+    );
+  }
+
+  /**
+   * Lista todas as aulas de um curso (flat). Usado pela sidebar da
+   * página dedicada de edição de aula (Slice 6).
+   */
+  static async listAllByCourse(user, courseId) {
+    return runWithLogs(
+      log,
+      "listAllByCourse",
+      () => ({ id_user: user?.id_user, course_id: courseId }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        const own = await ensureCourseOwnership(pool, courseId, user.id_user);
+        if (own.error) return own;
+        const rows = await CourseLessonsStorage.listByCourse(pool, courseId);
+        return { lessons: rows.map(publicLessonShape) };
+      },
+    );
+  }
+
+  /**
+   * Busca uma aula pelo id, validando que ela pertence ao curso passado.
+   * Não exige saber o module_id na URL — o storage devolve essa info.
+   */
+  static async getOne(user, courseId, lessonId) {
+    return runWithLogs(
+      log,
+      "getOne",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        lesson_id: lessonId,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!lessonId) return { error: "ID da aula inválido" };
+        const own = await ensureCourseOwnership(pool, courseId, user.id_user);
+        if (own.error) return own;
+        const lesson = await CourseLessonsStorage.getById(pool, lessonId);
+        if (!lesson) return { error: "Aula não encontrada" };
+        if (lesson.course_id !== courseId) {
+          return { error: "Aula não pertence a este curso" };
+        }
+        return { lesson: publicLessonShape(lesson) };
       },
     );
   }
