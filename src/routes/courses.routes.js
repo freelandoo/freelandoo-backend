@@ -29,6 +29,7 @@ router.get(
 
 router.get("/", asyncHandler(CoursesController.listMine));
 router.post("/", asyncHandler(CoursesController.create));
+router.get("/purchased", asyncHandler(CourseStudentsController.listPurchased));
 router.get("/:id/students", asyncHandler(CourseStudentsController.list));
 router.get("/:id", asyncHandler(CoursesController.getMineById));
 router.put("/:id", asyncHandler(CoursesController.update));

@@ -46,7 +46,53 @@ function publicSummaryShape(row) {
   };
 }
 
+function publicPurchasedCourseShape(row) {
+  return {
+    enrollment_id: row.enrollment_id,
+    enrolled_at: row.enrolled_at,
+    amount_paid_cents: Number(row.amount_paid_cents || 0),
+    currency: row.currency || "BRL",
+    progress_percent: 0,
+    id: row.id,
+    owner_user_id: row.owner_user_id,
+    profile_id: row.profile_id || null,
+    profile_display_name: row.profile_display_name || null,
+    creator_name: row.profile_display_name || row.owner_name || null,
+    creator_avatar: row.profile_avatar_url || row.owner_avatar || null,
+    title: row.title,
+    slug: row.slug,
+    short_description: row.short_description,
+    description: row.description,
+    cover_url: row.cover_url,
+    price_cents: row.price_cents,
+    status: row.status,
+    feed_post_id: row.feed_post_id || null,
+    published_at: row.published_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    modules_count: row.modules_count ?? 0,
+    lessons_count: row.lessons_count ?? 0,
+    students_count: 0,
+  };
+}
+
 class CourseStudentsService {
+  static async listPurchased(user) {
+    return runWithLogs(
+      log,
+      "listPurchased",
+      () => ({ id_user: user?.id_user }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        const rows = await CourseStudentsStorage.listPurchasedByUser(
+          pool,
+          user.id_user,
+        );
+        return { courses: rows.map(publicPurchasedCourseShape) };
+      },
+    );
+  }
+
   static async list(user, courseId) {
     return runWithLogs(
       log,
