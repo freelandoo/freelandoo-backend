@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const CoursesController = require("../controllers/CoursesController");
 const CourseLessonsController = require("../controllers/CourseLessonsController");
+const CourseStudentsController = require("../controllers/CourseStudentsController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const asyncHandler = require("../utils/asyncHandler");
 const courseModulesRoutes = require("./courseModules.routes");
@@ -28,6 +29,7 @@ router.get(
 
 router.get("/", asyncHandler(CoursesController.listMine));
 router.post("/", asyncHandler(CoursesController.create));
+router.get("/:id/students", asyncHandler(CourseStudentsController.list));
 router.get("/:id", asyncHandler(CoursesController.getMineById));
 router.put("/:id", asyncHandler(CoursesController.update));
 router.delete("/:id", asyncHandler(CoursesController.remove));
