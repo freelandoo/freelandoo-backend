@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const CourseModulesController = require("../controllers/CourseModulesController");
+const uploadAvatar = require("../middlewares/uploadAvatar");
 const asyncHandler = require("../utils/asyncHandler");
 const courseLessonsRoutes = require("./courseLessons.routes");
 
@@ -15,5 +16,13 @@ router.post("/", asyncHandler(CourseModulesController.create));
 router.put("/order", asyncHandler(CourseModulesController.reorder));
 router.put("/:id", asyncHandler(CourseModulesController.update));
 router.delete("/:id", asyncHandler(CourseModulesController.remove));
+
+// Banner do módulo (refactor UX). Reusa o middleware de avatar (JPG/PNG/WebP, 12MB).
+router.post(
+  "/:id/banner",
+  uploadAvatar.single("banner"),
+  asyncHandler(CourseModulesController.uploadBanner),
+);
+router.delete("/:id/banner", asyncHandler(CourseModulesController.removeBanner));
 
 module.exports = router;

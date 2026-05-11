@@ -62,6 +62,31 @@ class CourseModulesController {
       ),
     );
   }
+
+  // POST /me/courses/:courseId/modules/:id/banner   (multipart, field "banner")
+  static async uploadBanner(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseModulesService.uploadBanner(
+        req.user,
+        req.params.courseId,
+        req.params.id,
+        req.file,
+      ),
+    );
+  }
+
+  // DELETE /me/courses/:courseId/modules/:id/banner
+  static async removeBanner(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseModulesService.removeBanner(
+        req.user,
+        req.params.courseId,
+        req.params.id,
+      ),
+    );
+  }
 }
 
 module.exports = CourseModulesController;

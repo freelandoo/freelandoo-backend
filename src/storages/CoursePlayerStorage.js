@@ -21,7 +21,8 @@ class CoursePlayerStorage {
 
   static async listPublishedModules(conn, courseId) {
     const { rows } = await conn.query(
-      `SELECT id, course_id, title, description, position, status, created_at, updated_at
+      `SELECT id, course_id, title, description, banner_url, position, status,
+              created_at, updated_at
          FROM public.course_modules
         WHERE course_id = $1
           AND status = 'published'
@@ -34,10 +35,10 @@ class CoursePlayerStorage {
   static async listPublishedLessonsForUser(conn, courseId, userId) {
     const { rows } = await conn.query(
       `SELECT
-         l.id, l.course_id, l.module_id, l.title, l.description, l.position,
-         l.status, l.video_status, l.original_video_url, l.processed_video_url,
-         l.thumbnail_url, l.duration_seconds, l.created_at, l.updated_at,
-         clp.completed_at
+         l.id, l.course_id, l.module_id, l.title, l.description, l.cover_url,
+         l.position, l.status, l.video_status, l.original_video_url,
+         l.processed_video_url, l.thumbnail_url, l.duration_seconds,
+         l.created_at, l.updated_at, clp.completed_at
        FROM public.course_lessons l
        INNER JOIN public.course_modules m
          ON m.id = l.module_id
