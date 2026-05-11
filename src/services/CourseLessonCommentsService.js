@@ -71,6 +71,12 @@ async function ensureStudentLesson(conn, courseId, lessonId, userId) {
     lessonId,
   );
   if (!lesson) return { error: "Aula não encontrada" };
+  if (lesson.course_status !== "published") {
+    return { error: "Curso não publicado" };
+  }
+  if (lesson.module_status !== "published") {
+    return { error: "Módulo não publicado" };
+  }
   if (lesson.status !== "published") {
     return { error: "Aula não publicada" };
   }

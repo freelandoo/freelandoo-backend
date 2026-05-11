@@ -12,6 +12,7 @@ class CoursePlayerStorage {
        FROM public.courses c
        LEFT JOIN public.tb_profile p ON p.id_profile = c.profile_id
        WHERE c.id = $1
+         AND c.status = 'published'
        LIMIT 1`,
       [courseId],
     );
@@ -38,10 +39,14 @@ class CoursePlayerStorage {
          l.thumbnail_url, l.duration_seconds, l.created_at, l.updated_at,
          clp.completed_at
        FROM public.course_lessons l
+       INNER JOIN public.course_modules m
+         ON m.id = l.module_id
+        AND m.course_id = l.course_id
        LEFT JOIN public.course_lesson_progress clp
          ON clp.lesson_id = l.id
         AND clp.user_id = $2
        WHERE l.course_id = $1
+         AND m.status = 'published'
          AND l.status = 'published'
        ORDER BY l.module_id, l.position ASC, l.created_at ASC`,
       [courseId, userId],

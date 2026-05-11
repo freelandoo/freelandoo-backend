@@ -133,7 +133,7 @@ class CoursePlayerService {
             courseId,
           ),
         ]);
-        if (!course) return { error: "Curso não encontrado" };
+        if (!course) return { error: "Curso não encontrado ou não publicado" };
 
         const publicLessons = lessons.map(lessonShape);
         const lessonMap = new Map();
