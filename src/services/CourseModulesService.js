@@ -7,6 +7,7 @@
 const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseModulesStorage = require("../storages/CourseModulesStorage");
+const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CourseModulesService");
@@ -43,6 +44,7 @@ function publicModuleShape(row) {
     course_id: row.course_id,
     title: row.title,
     description: row.description,
+    banner_url: row.banner_url ?? null,
     position: row.position,
     status: row.status,
     lessons_count: row.lessons_count ?? 0,
@@ -88,6 +90,10 @@ class CourseModulesService {
 
         const description = sanitizeText(body.description, DESC_MAX_LEN);
         const status = normalizeStatus(body.status) || "draft";
+        const bannerUrl =
+          typeof body.banner_url === "string" && body.banner_url.trim()
+            ? body.banner_url.trim()
+            : null;
 
         const client = await pool.connect();
         try {
@@ -102,6 +108,7 @@ class CourseModulesService {
             courseId,
             title,
             description,
+            bannerUrl,
             position,
             status,
           });
@@ -151,6 +158,14 @@ class CourseModulesService {
             if (!next) return { error: "Status inválido" };
             patch.status = next;
           }
+          if (body.banner_url !== undefined) {
+            if (body.banner_url === null) {
+              patch.banner_url = null;
+            } else if (typeof body.banner_url === "string") {
+              const trimmed = body.banner_url.trim();
+              patch.banner_url = trimmed || null;
+            }
+          }
 
           const updated = await CourseModulesStorage.updateById(
             client,
@@ -161,6 +176,81 @@ class CourseModulesService {
         } finally {
           client.release();
         }
+      },
+    );
+  }
+
+  static async uploadBanner(user, courseId, moduleId, file) {
+    return runWithLogs(
+      log,
+      "uploadBanner",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+        size: file?.size,
+        mimetype: file?.mimetype,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!moduleId) return { error: "ID do módulo inválido" };
+        if (!file?.buffer?.length) return { error: "Arquivo não enviado" };
+
+        const own = await ensureCourseOwnership(pool, courseId, user.id_user);
+        if (own.error) return own;
+
+        const existing = await CourseModulesStorage.getById(pool, moduleId);
+        if (!existing) return { error: "Módulo não encontrado" };
+        if (existing.course_id !== courseId) {
+          return { error: "Módulo não pertence a este curso" };
+        }
+
+        let url;
+        try {
+          url = await uploadCourseImageToR2({
+            file,
+            kind: "module-banner",
+            courseId,
+            resourceId: moduleId,
+          });
+        } catch (err) {
+          return { error: err?.message || "Falha ao enviar banner" };
+        }
+
+        const updated = await CourseModulesStorage.updateById(pool, moduleId, {
+          banner_url: url,
+        });
+        return { module: publicModuleShape(updated) };
+      },
+    );
+  }
+
+  static async removeBanner(user, courseId, moduleId) {
+    return runWithLogs(
+      log,
+      "removeBanner",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!moduleId) return { error: "ID do módulo inválido" };
+
+        const own = await ensureCourseOwnership(pool, courseId, user.id_user);
+        if (own.error) return own;
+
+        const existing = await CourseModulesStorage.getById(pool, moduleId);
+        if (!existing) return { error: "Módulo não encontrado" };
+        if (existing.course_id !== courseId) {
+          return { error: "Módulo não pertence a este curso" };
+        }
+
+        const updated = await CourseModulesStorage.updateById(pool, moduleId, {
+          banner_url: null,
+        });
+        return { module: publicModuleShape(updated) };
       },
     );
   }

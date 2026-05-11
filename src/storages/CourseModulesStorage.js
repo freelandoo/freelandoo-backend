@@ -9,6 +9,7 @@ class CourseModulesStorage {
          m.course_id,
          m.title,
          m.description,
+         m.banner_url,
          m.position,
          m.status,
          m.created_at,
@@ -32,7 +33,8 @@ class CourseModulesStorage {
 
   static async getById(conn, id) {
     const { rows } = await conn.query(
-      `SELECT id, course_id, title, description, position, status, created_at, updated_at
+      `SELECT id, course_id, title, description, banner_url, position, status,
+              created_at, updated_at
        FROM public.course_modules
        WHERE id = $1
        LIMIT 1`,
@@ -61,20 +63,33 @@ class CourseModulesStorage {
 
   static async create(
     conn,
-    { courseId, title, description = null, position, status = "draft" },
+    {
+      courseId,
+      title,
+      description = null,
+      bannerUrl = null,
+      position,
+      status = "draft",
+    },
   ) {
     const { rows } = await conn.query(
       `INSERT INTO public.course_modules
-         (course_id, title, description, position, status)
-       VALUES ($1, $2, $3, $4, $5)
+         (course_id, title, description, banner_url, position, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [courseId, title, description, position, status],
+      [courseId, title, description, bannerUrl, position, status],
     );
     return rows[0];
   }
 
   static async updateById(conn, id, patch) {
-    const allowed = new Set(["title", "description", "position", "status"]);
+    const allowed = new Set([
+      "title",
+      "description",
+      "banner_url",
+      "position",
+      "status",
+    ]);
     const sets = [];
     const params = [];
     for (const [key, value] of Object.entries(patch || {})) {

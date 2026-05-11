@@ -5,8 +5,8 @@ class CourseLessonsStorage {
   static async listByModule(conn, moduleId) {
     const { rows } = await conn.query(
       `SELECT
-         id, course_id, module_id, title, description, position, status,
-         video_status, original_video_url, processed_video_url,
+         id, course_id, module_id, title, description, cover_url, position,
+         status, video_status, original_video_url, processed_video_url,
          thumbnail_url, duration_seconds, created_at, updated_at
        FROM public.course_lessons
        WHERE module_id = $1
@@ -19,8 +19,8 @@ class CourseLessonsStorage {
   static async listByCourse(conn, courseId) {
     const { rows } = await conn.query(
       `SELECT
-         id, course_id, module_id, title, description, position, status,
-         video_status, original_video_url, processed_video_url,
+         id, course_id, module_id, title, description, cover_url, position,
+         status, video_status, original_video_url, processed_video_url,
          thumbnail_url, duration_seconds, created_at, updated_at
        FROM public.course_lessons
        WHERE course_id = $1
@@ -33,8 +33,8 @@ class CourseLessonsStorage {
   static async getById(conn, id) {
     const { rows } = await conn.query(
       `SELECT
-         id, course_id, module_id, title, description, position, status,
-         video_status, original_video_url, processed_video_url,
+         id, course_id, module_id, title, description, cover_url, position,
+         status, video_status, original_video_url, processed_video_url,
          thumbnail_url, duration_seconds, created_at, updated_at
        FROM public.course_lessons
        WHERE id = $1
@@ -61,16 +61,17 @@ class CourseLessonsStorage {
       moduleId,
       title,
       description = null,
+      coverUrl = null,
       position,
       status = "draft",
     },
   ) {
     const { rows } = await conn.query(
       `INSERT INTO public.course_lessons
-         (course_id, module_id, title, description, position, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (course_id, module_id, title, description, cover_url, position, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [courseId, moduleId, title, description, position, status],
+      [courseId, moduleId, title, description, coverUrl, position, status],
     );
     return rows[0];
   }
@@ -79,6 +80,7 @@ class CourseLessonsStorage {
     const allowed = new Set([
       "title",
       "description",
+      "cover_url",
       "position",
       "status",
       "video_status",

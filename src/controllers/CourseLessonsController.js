@@ -98,6 +98,34 @@ class CourseLessonsController {
     );
   }
 
+  // POST /me/courses/:courseId/modules/:moduleId/lessons/:id/cover
+  // multipart, field "cover"
+  static async uploadCover(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseLessonsService.uploadCover(
+        req.user,
+        req.params.courseId,
+        req.params.moduleId,
+        req.params.id,
+        req.file,
+      ),
+    );
+  }
+
+  // DELETE /me/courses/:courseId/modules/:moduleId/lessons/:id/cover
+  static async removeCover(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseLessonsService.removeCover(
+        req.user,
+        req.params.courseId,
+        req.params.moduleId,
+        req.params.id,
+      ),
+    );
+  }
+
   static async reorder(req, res) {
     const body = req.body || {};
     const orderedIds = Array.isArray(body.ordered_ids) ? body.ordered_ids : [];

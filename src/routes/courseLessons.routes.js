@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const CourseLessonsController = require("../controllers/CourseLessonsController");
 const uploadCourseVideo = require("../middlewares/uploadCourseVideo");
+const uploadAvatar = require("../middlewares/uploadAvatar");
 const asyncHandler = require("../utils/asyncHandler");
 const courseLessonCommentsRoutes = require("./courseLessonComments.routes");
 const courseLessonMaterialsRoutes = require("./courseLessonMaterials.routes");
@@ -29,5 +30,13 @@ router.post(
   asyncHandler(CourseLessonsController.uploadVideo),
 );
 router.delete("/:id/video", asyncHandler(CourseLessonsController.removeVideo));
+
+// Capa editorial da aula (refactor UX). Field "cover", JPG/PNG/WebP, 12MB.
+router.post(
+  "/:id/cover",
+  uploadAvatar.single("cover"),
+  asyncHandler(CourseLessonsController.uploadCover),
+);
+router.delete("/:id/cover", asyncHandler(CourseLessonsController.removeCover));
 
 module.exports = router;

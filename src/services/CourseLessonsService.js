@@ -13,6 +13,7 @@ const CourseModulesStorage = require("../storages/CourseModulesStorage");
 const CourseLessonsStorage = require("../storages/CourseLessonsStorage");
 const uploadCourseVideoToR2 = require("../integrations/r2/uploadCourseVideoToR2");
 const uploadCourseVideoAssetToR2 = require("../integrations/r2/uploadCourseVideoAssetToR2");
+const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const processCourseVideo = require("../integrations/ffmpeg/processCourseVideo");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -70,6 +71,7 @@ function publicLessonShape(row) {
     module_id: row.module_id,
     title: row.title,
     description: row.description,
+    cover_url: row.cover_url ?? null,
     position: row.position,
     status: row.status,
     video_status: row.video_status,
@@ -179,6 +181,10 @@ class CourseLessonsService {
 
         const description = sanitizeText(body.description, DESC_MAX_LEN);
         const status = normalizeStatus(body.status) || "draft";
+        const coverUrl =
+          typeof body.cover_url === "string" && body.cover_url.trim()
+            ? body.cover_url.trim()
+            : null;
 
         const client = await pool.connect();
         try {
@@ -199,6 +205,7 @@ class CourseLessonsService {
             moduleId,
             title,
             description,
+            coverUrl,
             position,
             status,
           });
@@ -253,6 +260,14 @@ class CourseLessonsService {
             const next = normalizeStatus(body.status);
             if (!next) return { error: "Status inválido" };
             patch.status = next;
+          }
+          if (body.cover_url !== undefined) {
+            if (body.cover_url === null) {
+              patch.cover_url = null;
+            } else if (typeof body.cover_url === "string") {
+              const trimmed = body.cover_url.trim();
+              patch.cover_url = trimmed || null;
+            }
           }
           // Campos de vídeo/thumb/duração ficam reservados para Slices 7 e 8
           // — deliberadamente NÃO expostos ao update genérico aqui.
@@ -434,6 +449,100 @@ class CourseLessonsService {
             lesson: publicLessonShape(updated),
           };
         }
+      },
+    );
+  }
+
+  // --------------------------------------------------------------
+  // Capa editorial (cover_url) — usada nos cards de aula na página do
+  // módulo. Diferente de thumbnail_url, que é o frame gerado pelo
+  // ffmpeg a partir do vídeo. Cover existe antes do vídeo e pode ser
+  // editada/trocada independentemente.
+  // --------------------------------------------------------------
+
+  static async uploadCover(user, courseId, moduleId, lessonId, file) {
+    return runWithLogs(
+      log,
+      "uploadCover",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+        lesson_id: lessonId,
+        size: file?.size,
+        mimetype: file?.mimetype,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!lessonId) return { error: "ID da aula inválido" };
+        if (!file?.buffer?.length) return { error: "Arquivo não enviado" };
+
+        const own = await ensureOwnershipAndModule(
+          pool,
+          courseId,
+          moduleId,
+          user.id_user,
+        );
+        if (own.error) return own;
+
+        const existing = await CourseLessonsStorage.getById(pool, lessonId);
+        if (!existing) return { error: "Aula não encontrada" };
+        if (existing.module_id !== moduleId) {
+          return { error: "Aula não pertence a este módulo" };
+        }
+
+        let url;
+        try {
+          url = await uploadCourseImageToR2({
+            file,
+            kind: "lesson-cover",
+            courseId,
+            resourceId: lessonId,
+          });
+        } catch (err) {
+          return { error: err?.message || "Falha ao enviar capa" };
+        }
+
+        const updated = await CourseLessonsStorage.updateById(pool, lessonId, {
+          cover_url: url,
+        });
+        return { lesson: publicLessonShape(updated) };
+      },
+    );
+  }
+
+  static async removeCover(user, courseId, moduleId, lessonId) {
+    return runWithLogs(
+      log,
+      "removeCover",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        module_id: moduleId,
+        lesson_id: lessonId,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!lessonId) return { error: "ID da aula inválido" };
+
+        const own = await ensureOwnershipAndModule(
+          pool,
+          courseId,
+          moduleId,
+          user.id_user,
+        );
+        if (own.error) return own;
+
+        const existing = await CourseLessonsStorage.getById(pool, lessonId);
+        if (!existing) return { error: "Aula não encontrada" };
+        if (existing.module_id !== moduleId) {
+          return { error: "Aula não pertence a este módulo" };
+        }
+
+        const updated = await CourseLessonsStorage.updateById(pool, lessonId, {
+          cover_url: null,
+        });
+        return { lesson: publicLessonShape(updated) };
       },
     );
   }
