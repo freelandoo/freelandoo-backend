@@ -12,6 +12,8 @@ const CoursesStorage = require("../storages/CoursesStorage");
 const CourseModulesStorage = require("../storages/CourseModulesStorage");
 const CourseLessonsStorage = require("../storages/CourseLessonsStorage");
 const uploadCourseVideoToR2 = require("../integrations/r2/uploadCourseVideoToR2");
+const uploadCourseVideoAssetToR2 = require("../integrations/r2/uploadCourseVideoAssetToR2");
+const processCourseVideo = require("../integrations/ffmpeg/processCourseVideo");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CourseLessonsService");
@@ -312,13 +314,11 @@ class CourseLessonsService {
   // --------------------------------------------------------------
 
   /**
-   * Sobe o arquivo original do vídeo da aula no R2 e atualiza o estado
-   * da aula. Slice 7 deixa em `processing` (Slice 8 chama ffmpeg para
-   * gerar processed_video_url + thumbnail e move para `ready`).
-   *
-   * Mesmo no estado `processing`, `original_video_url` já fica salvo —
-   * o frontend pode mostrar um preview do original enquanto Slice 8 não
-   * estiver implementado.
+   * Sobe o arquivo original do vídeo da aula no R2, padroniza com ffmpeg
+   * em 4:5 (1080x1350, pad preto), gera thumbnail e lê duração — tudo
+   * síncrono dentro da request (Slice 8). Em caso de falha do ffmpeg,
+   * mantém o original_video_url e marca status='error' (o user pode
+   * tentar novamente clicando em Trocar vídeo).
    */
   static async uploadVideo(user, courseId, moduleId, lessonId, file) {
     return runWithLogs(
@@ -351,13 +351,16 @@ class CourseLessonsService {
           return { error: "Aula não pertence a este módulo" };
         }
 
-        // Marca uploading antes de iniciar o PUT no R2 (visibilidade
-        // se outra aba estiver olhando a aula).
+        // Marca uploading antes do PUT no R2 (visibilidade se outra
+        // aba estiver olhando a aula).
         await CourseLessonsStorage.updateById(pool, lessonId, {
           video_status: "uploading",
         });
 
-        let url;
+        // -----------------------------------------------------------
+        // 1) Sobe original
+        // -----------------------------------------------------------
+        let originalUrl;
         try {
           const result = await uploadCourseVideoToR2({
             file,
@@ -365,7 +368,7 @@ class CourseLessonsService {
             courseId,
             lessonId,
           });
-          url = result.url;
+          originalUrl = result.url;
         } catch (err) {
           await CourseLessonsStorage.updateById(pool, lessonId, {
             video_status: "error",
@@ -373,13 +376,64 @@ class CourseLessonsService {
           return { error: err?.message || "Falha ao subir vídeo" };
         }
 
-        const updated = await CourseLessonsStorage.updateById(pool, lessonId, {
-          original_video_url: url,
-          // Slice 8 (ffmpeg) muda para 'ready' depois de processar.
-          // Frontend já mostra preview do original enquanto isso.
+        // Marca processing já com o original salvo — se o ffmpeg falhar,
+        // o usuário ainda pode ver o original.
+        await CourseLessonsStorage.updateById(pool, lessonId, {
           video_status: "processing",
+          original_video_url: originalUrl,
         });
-        return { lesson: publicLessonShape(updated) };
+
+        // -----------------------------------------------------------
+        // 2) Processa com ffmpeg (4:5 + thumb + duração) e sobe assets
+        // -----------------------------------------------------------
+        try {
+          const { processedBuffer, thumbnailBuffer, durationSeconds } =
+            await processCourseVideo({
+              buffer: file.buffer,
+              originalName: file.originalname,
+            });
+
+          const [processedUpload, thumbUpload] = await Promise.all([
+            uploadCourseVideoAssetToR2({
+              kind: "processed",
+              buffer: processedBuffer,
+              userId: user.id_user,
+              courseId,
+              lessonId,
+            }),
+            uploadCourseVideoAssetToR2({
+              kind: "thumb",
+              buffer: thumbnailBuffer,
+              userId: user.id_user,
+              courseId,
+              lessonId,
+            }),
+          ]);
+
+          const updated = await CourseLessonsStorage.updateById(
+            pool,
+            lessonId,
+            {
+              video_status: "ready",
+              processed_video_url: processedUpload.url,
+              thumbnail_url: thumbUpload.url,
+              duration_seconds: durationSeconds,
+            },
+          );
+          return { lesson: publicLessonShape(updated) };
+        } catch (err) {
+          log.error("ffmpeg.failed", { message: err?.message });
+          const updated = await CourseLessonsStorage.updateById(
+            pool,
+            lessonId,
+            { video_status: "error" },
+          );
+          return {
+            error:
+              "Falha ao processar o vídeo. Tente novamente ou envie outro arquivo.",
+            lesson: publicLessonShape(updated),
+          };
+        }
       },
     );
   }
