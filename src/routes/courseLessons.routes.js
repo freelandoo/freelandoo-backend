@@ -2,10 +2,14 @@ const { Router } = require("express");
 const CourseLessonsController = require("../controllers/CourseLessonsController");
 const uploadCourseVideo = require("../middlewares/uploadCourseVideo");
 const asyncHandler = require("../utils/asyncHandler");
+const courseLessonMaterialsRoutes = require("./courseLessonMaterials.routes");
 
 // mergeParams herda :courseId e :moduleId do router pai (courseModules.routes.js
 // monta este sob /:moduleId/lessons).
 const router = Router({ mergeParams: true });
+
+// Materiais de apoio (Slice 9). Renomeia :id → :lessonId no nested.
+router.use("/:lessonId/materials", courseLessonMaterialsRoutes);
 
 router.get("/", asyncHandler(CourseLessonsController.list));
 router.post("/", asyncHandler(CourseLessonsController.create));
