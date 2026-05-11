@@ -25,7 +25,9 @@ class CoursesStorage {
          c.created_at,
          c.updated_at,
          COALESCE(mc.modules_count, 0)::int AS modules_count,
-         COALESCE(lc.lessons_count, 0)::int AS lessons_count
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count,
+         COALESCE(ec.students_count, 0)::int AS students_count,
+         COALESCE(ec.revenue_cents, 0)::int AS revenue_cents
        FROM public.courses c
        LEFT JOIN (
          SELECT course_id, COUNT(*) AS modules_count
@@ -39,6 +41,15 @@ class CoursesStorage {
           WHERE course_id = $1
           GROUP BY course_id
        ) lc ON lc.course_id = c.id
+       LEFT JOIN (
+         SELECT
+           course_id,
+           COUNT(*) FILTER (WHERE status = 'active') AS students_count,
+           SUM(amount_paid_cents) FILTER (WHERE status = 'active') AS revenue_cents
+          FROM public.course_enrollments
+         WHERE course_id = $1
+         GROUP BY course_id
+       ) ec ON ec.course_id = c.id
        WHERE c.id = $1
        LIMIT 1`,
       [id],
@@ -93,7 +104,9 @@ class CoursesStorage {
          c.updated_at,
          p.display_name AS profile_display_name,
          COALESCE(mc.modules_count, 0)::int AS modules_count,
-         COALESCE(lc.lessons_count, 0)::int AS lessons_count
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count,
+         COALESCE(ec.students_count, 0)::int AS students_count,
+         COALESCE(ec.revenue_cents, 0)::int AS revenue_cents
        FROM public.courses c
        LEFT JOIN public.tb_profile p ON p.id_profile = c.profile_id
        LEFT JOIN (
@@ -106,6 +119,14 @@ class CoursesStorage {
            FROM public.course_lessons
           GROUP BY course_id
        ) lc ON lc.course_id = c.id
+       LEFT JOIN (
+         SELECT
+           course_id,
+           COUNT(*) FILTER (WHERE status = 'active') AS students_count,
+           SUM(amount_paid_cents) FILTER (WHERE status = 'active') AS revenue_cents
+          FROM public.course_enrollments
+         GROUP BY course_id
+       ) ec ON ec.course_id = c.id
        WHERE c.owner_user_id = $1
        ORDER BY c.created_at DESC`,
       [ownerUserId],

@@ -89,10 +89,10 @@ function publicCourseShape(row) {
     updated_at: row.updated_at,
     // modules_count populado pelo storage via JOIN (Slice 4).
     // lessons_count populado pelo storage via JOIN (Slice 5).
-    // students_count entra no Slice 11 (compras).
     modules_count: row.modules_count ?? 0,
     lessons_count: row.lessons_count ?? 0,
-    students_count: 0,
+    students_count: row.students_count ?? 0,
+    revenue_cents: row.revenue_cents ?? 0,
   };
 }
 
