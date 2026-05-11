@@ -10,22 +10,29 @@ class CoursesStorage {
   static async getById(conn, id) {
     const { rows } = await conn.query(
       `SELECT
-         id,
-         owner_user_id,
-         profile_id,
-         title,
-         slug,
-         short_description,
-         description,
-         cover_url,
-         price_cents,
-         status,
-         feed_post_id,
-         published_at,
-         created_at,
-         updated_at
-       FROM public.courses
-       WHERE id = $1
+         c.id,
+         c.owner_user_id,
+         c.profile_id,
+         c.title,
+         c.slug,
+         c.short_description,
+         c.description,
+         c.cover_url,
+         c.price_cents,
+         c.status,
+         c.feed_post_id,
+         c.published_at,
+         c.created_at,
+         c.updated_at,
+         COALESCE(mc.modules_count, 0)::int AS modules_count
+       FROM public.courses c
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS modules_count
+           FROM public.course_modules
+          WHERE course_id = $1
+          GROUP BY course_id
+       ) mc ON mc.course_id = c.id
+       WHERE c.id = $1
        LIMIT 1`,
       [id],
     );
@@ -77,9 +84,15 @@ class CoursesStorage {
          c.published_at,
          c.created_at,
          c.updated_at,
-         p.display_name AS profile_display_name
+         p.display_name AS profile_display_name,
+         COALESCE(mc.modules_count, 0)::int AS modules_count
        FROM public.courses c
        LEFT JOIN public.tb_profile p ON p.id_profile = c.profile_id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS modules_count
+           FROM public.course_modules
+          GROUP BY course_id
+       ) mc ON mc.course_id = c.id
        WHERE c.owner_user_id = $1
        ORDER BY c.created_at DESC`,
       [ownerUserId],

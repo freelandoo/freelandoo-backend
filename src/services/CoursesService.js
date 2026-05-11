@@ -87,8 +87,9 @@ function publicCourseShape(row) {
     published_at: row.published_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    // Contadores virão nos slices 4/5/11; por ora ficam zerados.
-    modules_count: 0,
+    // modules_count populado pelo storage via JOIN (Slice 4).
+    // lessons_count e students_count entram em Slices 5 e 11.
+    modules_count: row.modules_count ?? 0,
     lessons_count: 0,
     students_count: 0,
   };
