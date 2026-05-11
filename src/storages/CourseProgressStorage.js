@@ -17,10 +17,22 @@ class CourseProgressStorage {
 
   static async getLessonForProgress(conn, courseId, lessonId) {
     const { rows } = await conn.query(
-      `SELECT id, course_id, module_id, title, status
-         FROM public.course_lessons
-        WHERE id = $1
-          AND course_id = $2
+      `SELECT
+         l.id,
+         l.course_id,
+         l.module_id,
+         l.title,
+         l.status,
+         m.status AS module_status,
+         c.status AS course_status
+         FROM public.course_lessons l
+         INNER JOIN public.course_modules m
+           ON m.id = l.module_id
+          AND m.course_id = l.course_id
+         INNER JOIN public.courses c
+           ON c.id = l.course_id
+        WHERE l.id = $1
+          AND l.course_id = $2
         LIMIT 1`,
       [lessonId, courseId],
     );
@@ -45,10 +57,17 @@ class CourseProgressStorage {
   static async getCourseProgressSummary(conn, userId, courseId) {
     const { rows } = await conn.query(
       `WITH published_lessons AS (
-         SELECT id
-           FROM public.course_lessons
-          WHERE course_id = $2
-            AND status = 'published'
+         SELECT l.id
+           FROM public.course_lessons l
+           INNER JOIN public.course_modules m
+             ON m.id = l.module_id
+            AND m.course_id = l.course_id
+           INNER JOIN public.courses c
+             ON c.id = l.course_id
+          WHERE l.course_id = $2
+            AND c.status = 'published'
+            AND m.status = 'published'
+            AND l.status = 'published'
        ),
        completed_lessons AS (
          SELECT DISTINCT clp.lesson_id
@@ -86,10 +105,17 @@ class CourseProgressStorage {
          l.status,
          clp.completed_at
        FROM public.course_lessons l
+       INNER JOIN public.course_modules m
+         ON m.id = l.module_id
+        AND m.course_id = l.course_id
+       INNER JOIN public.courses c
+         ON c.id = l.course_id
        LEFT JOIN public.course_lesson_progress clp
          ON clp.lesson_id = l.id
         AND clp.user_id = $1
        WHERE l.course_id = $2
+         AND c.status = 'published'
+         AND m.status = 'published'
          AND l.status = 'published'
        ORDER BY l.module_id, l.position ASC, l.created_at ASC`,
       [userId, courseId],
