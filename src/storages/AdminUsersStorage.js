@@ -1,5 +1,55 @@
 // src/storages/AdminUsersStorage.js
 module.exports = {
+  async setAdmin(db, id_user, is_admin) {
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const upd = await client.query(
+        `UPDATE tb_user SET is_admin = $2, updated_at = NOW()
+         WHERE id_user = $1
+         RETURNING id_user, nome, email, is_admin`,
+        [id_user, is_admin]
+      );
+      if (upd.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+
+      const roleRow = await client.query(
+        `SELECT id_role FROM tb_role WHERE desc_role = 'Administrator' LIMIT 1`
+      );
+      if (roleRow.rowCount === 0) {
+        await client.query("ROLLBACK");
+        throw new Error("Role 'Administrator' não encontrada");
+      }
+      const id_role = roleRow.rows[0].id_role;
+
+      if (is_admin) {
+        await client.query(
+          `INSERT INTO tb_user_role (id_user, id_role, is_active)
+           VALUES ($1, $2, TRUE)
+           ON CONFLICT (id_user, id_role) DO UPDATE SET is_active = TRUE`,
+          [id_user, id_role]
+        );
+      } else {
+        await client.query(
+          `UPDATE tb_user_role SET is_active = FALSE
+           WHERE id_user = $1 AND id_role = $2`,
+          [id_user, id_role]
+        );
+      }
+
+      await client.query("COMMIT");
+      return upd.rows[0];
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   async listAllUsers(db) {
     const result = await db.query(`
       SELECT
