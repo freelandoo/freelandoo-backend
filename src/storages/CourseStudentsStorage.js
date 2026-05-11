@@ -58,6 +58,59 @@ class CourseStudentsStorage {
     );
     return rows;
   }
+
+  static async listPurchasedByUser(conn, userId) {
+    const { rows } = await conn.query(
+      `SELECT
+         ce.id AS enrollment_id,
+         ce.course_id,
+         ce.user_id,
+         ce.order_id,
+         ce.amount_paid_cents,
+         ce.currency,
+         ce.status AS enrollment_status,
+         ce.enrolled_at,
+         c.id,
+         c.owner_user_id,
+         c.profile_id,
+         c.title,
+         c.slug,
+         c.short_description,
+         c.description,
+         c.cover_url,
+         c.price_cents,
+         c.status,
+         c.feed_post_id,
+         c.published_at,
+         c.created_at,
+         c.updated_at,
+         owner.nome AS owner_name,
+         owner.avatar AS owner_avatar,
+         p.display_name AS profile_display_name,
+         p.avatar_url AS profile_avatar_url,
+         COALESCE(mc.modules_count, 0)::int AS modules_count,
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count
+       FROM public.course_enrollments ce
+       INNER JOIN public.courses c ON c.id = ce.course_id
+       INNER JOIN public.tb_user owner ON owner.id_user = c.owner_user_id
+       LEFT JOIN public.tb_profile p ON p.id_profile = c.profile_id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS modules_count
+           FROM public.course_modules
+          GROUP BY course_id
+       ) mc ON mc.course_id = c.id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS lessons_count
+           FROM public.course_lessons
+          GROUP BY course_id
+       ) lc ON lc.course_id = c.id
+       WHERE ce.user_id = $1
+         AND ce.status = 'active'
+       ORDER BY ce.enrolled_at DESC, ce.created_at DESC`,
+      [userId],
+    );
+    return rows;
+  }
 }
 
 module.exports = CourseStudentsStorage;
