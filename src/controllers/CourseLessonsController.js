@@ -2,6 +2,26 @@ const CourseLessonsService = require("../services/CourseLessonsService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class CourseLessonsController {
+  // GET /me/courses/:courseId/lessons
+  static async listAllByCourse(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseLessonsService.listAllByCourse(req.user, req.params.courseId),
+    );
+  }
+
+  // GET /me/courses/:courseId/lessons/:lessonId
+  static async getOne(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseLessonsService.getOne(
+        req.user,
+        req.params.courseId,
+        req.params.lessonId,
+      ),
+    );
+  }
+
   static async list(req, res) {
     return sendServiceResult(
       res,
