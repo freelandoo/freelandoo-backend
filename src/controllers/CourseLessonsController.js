@@ -71,6 +71,33 @@ class CourseLessonsController {
     );
   }
 
+  // POST /me/courses/:courseId/modules/:moduleId/lessons/:id/video
+  static async uploadVideo(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseLessonsService.uploadVideo(
+        req.user,
+        req.params.courseId,
+        req.params.moduleId,
+        req.params.id,
+        req.file,
+      ),
+    );
+  }
+
+  // DELETE /me/courses/:courseId/modules/:moduleId/lessons/:id/video
+  static async removeVideo(req, res) {
+    return sendServiceResult(
+      res,
+      await CourseLessonsService.removeVideo(
+        req.user,
+        req.params.courseId,
+        req.params.moduleId,
+        req.params.id,
+      ),
+    );
+  }
+
   static async reorder(req, res) {
     const body = req.body || {};
     const orderedIds = Array.isArray(body.ordered_ids) ? body.ordered_ids : [];

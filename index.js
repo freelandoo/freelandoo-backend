@@ -34,7 +34,7 @@ app.get("/run-migrations-now", async (req, res) => {
 // porta vinda do .env ou fallback
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   bootLog.info("server.listen", { port: PORT });
 
   // Scheduler do ranking: checa e recalcula a cada 2 horas.
@@ -53,3 +53,14 @@ app.listen(PORT, () => {
   setTimeout(tickRanking, 2 * 60 * 1000);
   setInterval(tickRanking, TWO_HOURS);
 });
+
+// Slice 7 (vídeo de curso): uploads até 100MB podem demorar minutos em
+// conexões lentas. Padrão do Node é 0 (sem timeout) em versões recentes
+// mas Express historicamente coloca 120s. Subimos explicitamente para
+// 15 min e desativamos requestTimeout para o body parse não cortar no meio.
+// Railway tem proxy próprio (~5min) — quando virar gargalo, migrar para
+// worker queue / upload direto R2 (presigned).
+server.requestTimeout = 0;
+server.headersTimeout = 16 * 60 * 1000;
+server.keepAliveTimeout = 15 * 60 * 1000;
+server.timeout = 15 * 60 * 1000;
