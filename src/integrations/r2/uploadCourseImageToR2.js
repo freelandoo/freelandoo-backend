@@ -18,7 +18,13 @@ function getFileExt(originalname = "") {
   return (parts.length > 1 ? parts.pop() : "bin").toLowerCase();
 }
 
-const VALID_KINDS = new Set(["module-banner", "lesson-cover"]);
+const VALID_KINDS = new Set(["course-cover", "module-banner", "lesson-cover"]);
+
+const PREFIX_BY_KIND = {
+  "course-cover": "course-covers",
+  "module-banner": "course-module-banners",
+  "lesson-cover": "course-lesson-covers",
+};
 
 module.exports = async function uploadCourseImageToR2({
   file,
@@ -31,8 +37,7 @@ module.exports = async function uploadCourseImageToR2({
   }
   log.info("upload.start", { kind, courseId, resourceId, mimetype: file?.mimetype });
 
-  const prefix =
-    kind === "module-banner" ? "course-module-banners" : "course-lesson-covers";
+  const prefix = PREFIX_BY_KIND[kind];
   const fileExt = getFileExt(file.originalname);
   // Estrutura: prefix/<courseId>/<resourceId>-<random>.<ext>
   // Facilita auditoria/limpeza por curso e descarta arquivo trocado sem
