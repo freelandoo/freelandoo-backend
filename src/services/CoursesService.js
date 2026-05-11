@@ -11,6 +11,7 @@
 
 const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
+const CourseFeedPostsStorage = require("../storages/CourseFeedPostsStorage");
 const { slugify } = require("../utils/slug");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -301,8 +302,25 @@ class CoursesService {
         if (existing.owner_user_id !== user.id_user) {
           return { error: "Sem permissão para excluir este curso" };
         }
-        const ok = await CoursesStorage.deleteById(pool, courseId);
-        return { deleted: ok };
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          if (existing.feed_post_id) {
+            await CourseFeedPostsStorage.archivePortfolioItem(
+              client,
+              existing.feed_post_id,
+              user.id_user,
+            );
+          }
+          const ok = await CoursesStorage.deleteById(client, courseId);
+          await client.query("COMMIT");
+          return { deleted: ok };
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
       },
     );
   }

@@ -21,6 +21,12 @@ function buildCandidateQuery(mode) {
       ppi.id_portfolio_item                                AS post_id,
       ppi.title,
       ppi.description,
+      ppi.project_url,
+      CASE
+        WHEN cfp.course_id IS NOT NULL THEN 'course'
+        ELSE 'portfolio'
+      END                                                  AS source_type,
+      cfp.course_id                                       AS source_course_id,
       ppi.published_at,
       ppi.likes_count,
       ppi.shares_count,
@@ -68,6 +74,8 @@ function buildCandidateQuery(mode) {
     JOIN tb_user    tu        ON tu.id_user      = pro.id_user
     LEFT JOIN tb_category ca  ON ca.id_category  = pro.id_category
     LEFT JOIN tb_machine  m   ON m.id_machine    = COALESCE(ca.id_machine, pro.id_machine)
+    LEFT JOIN course_feed_publications cfp
+      ON cfp.portfolio_item_id = ppi.id_portfolio_item
 
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(
