@@ -47,12 +47,17 @@ function publicSummaryShape(row) {
 }
 
 function publicPurchasedCourseShape(row) {
+  const publishedCount = Number(row.published_lessons_count || 0);
+  const completedCount = Number(row.completed_lessons_count || 0);
   return {
     enrollment_id: row.enrollment_id,
     enrolled_at: row.enrolled_at,
     amount_paid_cents: Number(row.amount_paid_cents || 0),
     currency: row.currency || "BRL",
-    progress_percent: 0,
+    progress_percent:
+      publishedCount > 0 ? Math.round((completedCount / publishedCount) * 100) : 0,
+    completed_lessons_count: completedCount,
+    published_lessons_count: publishedCount,
     id: row.id,
     owner_user_id: row.owner_user_id,
     profile_id: row.profile_id || null,
