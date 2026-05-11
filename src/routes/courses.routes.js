@@ -7,6 +7,7 @@ const CoursePlayerController = require("../controllers/CoursePlayerController");
 const CourseProgressController = require("../controllers/CourseProgressController");
 const CourseStudentsController = require("../controllers/CourseStudentsController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const uploadAvatar = require("../middlewares/uploadAvatar");
 const asyncHandler = require("../utils/asyncHandler");
 const courseModulesRoutes = require("./courseModules.routes");
 
@@ -65,5 +66,13 @@ router.delete("/:id/feed-post", asyncHandler(CourseFeedPostsController.remove));
 router.get("/:id", asyncHandler(CoursesController.getMineById));
 router.put("/:id", asyncHandler(CoursesController.update));
 router.delete("/:id", asyncHandler(CoursesController.remove));
+
+// Capa do curso (banner hero da landing). Multipart, field "cover".
+router.post(
+  "/:id/cover",
+  uploadAvatar.single("cover"),
+  asyncHandler(CoursesController.uploadCover),
+);
+router.delete("/:id/cover", asyncHandler(CoursesController.removeCover));
 
 module.exports = router;

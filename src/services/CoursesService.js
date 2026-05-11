@@ -12,6 +12,7 @@
 const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseFeedPostsStorage = require("../storages/CourseFeedPostsStorage");
+const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const { slugify } = require("../utils/slug");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -284,6 +285,76 @@ class CoursesService {
         } finally {
           client.release();
         }
+      },
+    );
+  }
+
+  // --------------------------------------------------------------
+  // Upload da capa do curso (banner hero da landing). Multipart, R2.
+  // Mantém a coluna cover_url já existente; só altera o transporte
+  // de URL crua → upload direto pelo dono.
+  // --------------------------------------------------------------
+
+  static async uploadCover(user, courseId, file) {
+    return runWithLogs(
+      log,
+      "uploadCover",
+      () => ({
+        id_user: user?.id_user,
+        course_id: courseId,
+        size: file?.size,
+        mimetype: file?.mimetype,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!courseId) return { error: "ID do curso inválido" };
+        if (!file?.buffer?.length) return { error: "Arquivo não enviado" };
+
+        const existing = await CoursesStorage.getById(pool, courseId);
+        if (!existing) return { error: "Curso não encontrado" };
+        if (existing.owner_user_id !== user.id_user) {
+          return { error: "Sem permissão para editar este curso" };
+        }
+
+        let url;
+        try {
+          url = await uploadCourseImageToR2({
+            file,
+            kind: "course-cover",
+            courseId,
+            resourceId: courseId,
+          });
+        } catch (err) {
+          return { error: err?.message || "Falha ao enviar capa" };
+        }
+
+        const updated = await CoursesStorage.updateById(pool, courseId, {
+          cover_url: url,
+        });
+        return { course: publicCourseShape(updated) };
+      },
+    );
+  }
+
+  static async removeCover(user, courseId) {
+    return runWithLogs(
+      log,
+      "removeCover",
+      () => ({ id_user: user?.id_user, course_id: courseId }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!courseId) return { error: "ID do curso inválido" };
+
+        const existing = await CoursesStorage.getById(pool, courseId);
+        if (!existing) return { error: "Curso não encontrado" };
+        if (existing.owner_user_id !== user.id_user) {
+          return { error: "Sem permissão para editar este curso" };
+        }
+
+        const updated = await CoursesStorage.updateById(pool, courseId, {
+          cover_url: null,
+        });
+        return { course: publicCourseShape(updated) };
       },
     );
   }

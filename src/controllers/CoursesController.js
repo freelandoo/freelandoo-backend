@@ -39,6 +39,22 @@ class CoursesController {
       await CoursesService.remove(req.user, req.params.id),
     );
   }
+
+  // POST /me/courses/:id/cover   (multipart, field "cover")
+  static async uploadCover(req, res) {
+    return sendServiceResult(
+      res,
+      await CoursesService.uploadCover(req.user, req.params.id, req.file),
+    );
+  }
+
+  // DELETE /me/courses/:id/cover
+  static async removeCover(req, res) {
+    return sendServiceResult(
+      res,
+      await CoursesService.removeCover(req.user, req.params.id),
+    );
+  }
 }
 
 module.exports = CoursesController;
