@@ -1,7 +1,12 @@
 const pool = require("../databases");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
+const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ClanStorage = require("../storages/ClanStorage");
+const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const r2 = require("./r2Client");
+const uploadServiceMediaToR2 = require("../integrations/r2/uploadServiceMedia");
+const { processPortfolioMedia } = require("../utils/mediaProcessing");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ProfileServiceService");
@@ -80,7 +85,13 @@ class ProfileServiceService {
       const memberMap = own.profile.is_clan
         ? await ProfileServiceStorage.getMemberIdsByServices(pool, ids)
         : new Map();
-      return { services: services.map((s) => enrichService(s, memberMap.get(String(s.id_profile_service)) || [])) };
+      const mediaMap = await ProfileServiceMediaStorage.listByServices(pool, ids);
+      return {
+        services: services.map((s) => ({
+          ...enrichService(s, memberMap.get(String(s.id_profile_service)) || []),
+          media: mediaMap.get(String(s.id_profile_service)) || [],
+        })),
+      };
     });
   }
 
@@ -197,7 +208,129 @@ class ProfileServiceService {
       const memberMap = profile.is_clan
         ? await ProfileServiceStorage.getMemberIdsByServices(pool, ids)
         : new Map();
-      return { services: services.map((s) => enrichService(s, memberMap.get(String(s.id_profile_service)) || [])) };
+      const mediaMap = await ProfileServiceMediaStorage.listByServices(pool, ids);
+      return {
+        services: services.map((s) => ({
+          ...enrichService(s, memberMap.get(String(s.id_profile_service)) || []),
+          media: mediaMap.get(String(s.id_profile_service)) || [],
+        })),
+      };
+    });
+  }
+
+  // ─── Mídias do serviço ──────────────────────────────────────────────
+
+  static async uploadMedia(user, params, file) {
+    return runWithLogs(log, "uploadMedia", () => ({ id_user: user?.id_user, ...params }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const { id_profile, id_profile_service } = params;
+      if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
+      if (!id_profile_service || isNaN(Number(id_profile_service))) return { error: "id_profile_service inválido" };
+
+      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      if (own.error) return { error: own.error };
+
+      const service = await ProfileServiceStorage.getById(pool, Number(id_profile_service));
+      if (!service || String(service.id_profile) !== String(id_profile)) {
+        return { error: "Serviço não encontrado" };
+      }
+
+      if (!file || !file.buffer) return { error: "Arquivo não enviado" };
+
+      const mediaType = (file.mimetype || "").startsWith("video/") ? "video" : "image";
+      const processedFile = await processPortfolioMedia(file, mediaType);
+
+      const r2Result = await uploadServiceMediaToR2({
+        id_profile,
+        id_profile_service: String(id_profile_service),
+        file: processedFile,
+      });
+
+      const meta = processedFile.mediaMetadata || {};
+      const media = await ProfileServiceMediaStorage.create(pool, {
+        id_profile_service: Number(id_profile_service),
+        id_profile,
+        media_url: r2Result.url,
+        media_type: mediaType,
+        thumbnail_url: r2Result.thumbnail_url,
+        storage_key: r2Result.key,
+        thumbnail_key: r2Result.thumbnail_key,
+        original_filename: meta.original_filename || file.originalname,
+        mime_type: meta.mime_type || processedFile.mimetype,
+        width: meta.width || null,
+        height: meta.height || null,
+        size_bytes: meta.size_bytes || processedFile.size || null,
+        duration_seconds: meta.duration_seconds || null,
+        sort_order: 0,
+      });
+
+      return { media };
+    });
+  }
+
+  static async deleteMedia(user, params) {
+    return runWithLogs(log, "deleteMedia", () => ({ id_user: user?.id_user, ...params }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const { id_profile, id_profile_service, id_service_media } = params;
+      if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
+      if (!id_profile_service || isNaN(Number(id_profile_service))) return { error: "id_profile_service inválido" };
+      if (!id_service_media || isNaN(Number(id_service_media))) return { error: "id_service_media inválido" };
+
+      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      if (own.error) return { error: own.error };
+
+      const media = await ProfileServiceMediaStorage.findById(pool, Number(id_service_media));
+      if (!media || String(media.id_profile_service) !== String(id_profile_service)) {
+        return { error: "Mídia não encontrada" };
+      }
+
+      const keysToDelete = [media.storage_key, media.thumbnail_key].filter(Boolean);
+      for (const key of keysToDelete) {
+        try {
+          await r2.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }));
+        } catch (err) {
+          log.warn("deleteMedia.r2_fail", { key, err: err?.message });
+        }
+      }
+
+      await ProfileServiceMediaStorage.remove(pool, Number(id_service_media));
+      return { deleted: true };
+    });
+  }
+
+  static async listMedia(user, params) {
+    return runWithLogs(log, "listMedia", () => ({ id_user: user?.id_user, ...params }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const { id_profile, id_profile_service } = params;
+      if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
+      if (!id_profile_service || isNaN(Number(id_profile_service))) return { error: "id_profile_service inválido" };
+
+      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      if (own.error) return { error: own.error };
+
+      const media = await ProfileServiceMediaStorage.listByService(pool, Number(id_profile_service));
+      return { media };
+    });
+  }
+
+  static async reorderMedia(user, params, body) {
+    return runWithLogs(log, "reorderMedia", () => ({ id_user: user?.id_user, ...params }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const { id_profile, id_profile_service } = params;
+      if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
+      if (!id_profile_service || isNaN(Number(id_profile_service))) return { error: "id_profile_service inválido" };
+
+      const { ordered_ids } = body || {};
+      if (!Array.isArray(ordered_ids) || ordered_ids.length === 0) {
+        return { error: "ordered_ids é obrigatório (array de ids)" };
+      }
+
+      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      if (own.error) return { error: own.error };
+
+      await ProfileServiceMediaStorage.reorder(pool, Number(id_profile_service), ordered_ids);
+      const media = await ProfileServiceMediaStorage.listByService(pool, Number(id_profile_service));
+      return { media };
     });
   }
 }
