@@ -13,7 +13,7 @@ app.get("/run-migrations-now", async (req, res) => {
     const path = require('path');
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
     });
     const dir = path.join(__dirname, 'src', 'databases', 'migrations');
     const client = await pool.connect();
