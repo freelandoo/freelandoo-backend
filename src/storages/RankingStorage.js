@@ -316,6 +316,8 @@ module.exports = {
 
        WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
          AND pro.is_clan = FALSE
+         AND pro.is_user_account = FALSE
+         AND pro.ranking_visible = TRUE
 
        ON CONFLICT (id_profile) DO UPDATE SET
          total_points    = EXCLUDED.total_points,
@@ -596,6 +598,8 @@ module.exports = {
          LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
          WHERE pro.deleted_at IS NULL
            AND pro.is_clan = FALSE
+           AND pro.is_user_account = FALSE
+           AND pro.ranking_visible = TRUE
            AND lower(pro.municipio) = lower($1)
            AND lower(pro.estado) = lower($2)
          UNION ALL
@@ -681,6 +685,8 @@ module.exports = {
          LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
          WHERE pro.deleted_at IS NULL
            AND pro.is_clan = FALSE
+           AND pro.is_user_account = FALSE
+           AND pro.ranking_visible = TRUE
            AND lower(ca.profession_slug) = lower($1)
          UNION ALL
          SELECT
@@ -760,6 +766,8 @@ module.exports = {
          JOIN tb_machine m ON m.id_machine = ca.id_machine
          WHERE pro.deleted_at IS NULL
            AND pro.is_clan = FALSE
+           AND pro.is_user_account = FALSE
+           AND pro.ranking_visible = TRUE
            AND ($1::int IS NULL OR ca.id_machine = $1)
            AND ($3::text IS NULL OR m.slug = $3)
          UNION ALL

@@ -230,6 +230,8 @@ module.exports = {
         AND pro.is_active = true
         AND pro.is_visible = true
         AND pro.deleted_at IS NULL
+        AND pro.is_user_account = FALSE
+        AND pro.showcase_visible = TRUE
 
         -- Máquina desativada nunca aparece publicamente.
         -- Perfis sem máquina (id_machine NULL) só aparecem quando nenhum

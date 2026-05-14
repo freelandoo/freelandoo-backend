@@ -30,7 +30,40 @@ class AuthStorage {
       `,
       [nome, username, email, senhaHash, data_nascimento, sexo, estado, municipio, ativo]
     );
-    return r.rows[0];
+    const user = r.rows[0];
+    await this.ensureUserAccountProfile(client, user.id_user, nome);
+    return user;
+  }
+
+  /**
+   * Garante que existe um perfil-fantasma (is_user_account=TRUE) para o usuário.
+   * Idempotente — usa UNIQUE PARTIAL INDEX uq_tb_profile_user_account.
+   * Reaproveita endpoints de portfólio sem precisar de subperfil profissional.
+   * Trigger fn_user_account_profile_defaults força as flags corretas.
+   */
+  static async ensureUserAccountProfile(client, id_user, display_name) {
+    await client.query(
+      `
+      INSERT INTO public.tb_profile
+        (id_user, id_category, display_name, is_active, is_visible,
+         is_user_account, feed_visible, showcase_visible, ranking_visible)
+      SELECT
+        $1::uuid,
+        COALESCE((SELECT id_category FROM public.tb_category ORDER BY id_category LIMIT 1), 1),
+        $2,
+        TRUE,
+        FALSE,
+        TRUE,
+        TRUE,
+        FALSE,
+        FALSE
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.tb_profile
+         WHERE id_user = $1 AND is_user_account = TRUE
+      )
+      `,
+      [id_user, display_name || "Conta"]
+    );
   }
 
   static async findUserByGoogleSub(db, googleSub) {
@@ -73,7 +106,9 @@ class AuthStorage {
       `,
       [nome, username, email, googleSub]
     );
-    return r.rows[0];
+    const user = r.rows[0];
+    await this.ensureUserAccountProfile(client, user.id_user, nome);
+    return user;
   }
 
   static async generateUniqueUsernameFromEmail(client, email) {

@@ -2,6 +2,55 @@ const { slugify } = require("../utils/slug");
 
 class ProfileStorage {
   /**
+   * Retorna o id_profile do perfil-fantasma (is_user_account=TRUE) do usuário.
+   * Cria automaticamente se ainda não existir (defensivo — backfill da
+   * migration 052 deveria já ter criado para users existentes).
+   */
+  static async getUserAccountProfileId(conn, id_user) {
+    const r = await conn.query(
+      `SELECT id_profile
+         FROM public.tb_profile
+        WHERE id_user = $1 AND is_user_account = TRUE
+        LIMIT 1`,
+      [id_user]
+    );
+    if (r.rowCount) return r.rows[0].id_profile;
+
+    // Fallback: cria sob demanda (display_name do tb_user)
+    const ur = await conn.query(`SELECT nome FROM public.tb_user WHERE id_user = $1`, [id_user]);
+    const nome = ur.rowCount ? ur.rows[0].nome : "Conta";
+    const ins = await conn.query(
+      `INSERT INTO public.tb_profile
+         (id_user, id_category, display_name, is_active, is_visible,
+          is_user_account, feed_visible, showcase_visible, ranking_visible)
+       SELECT
+         $1::uuid,
+         COALESCE((SELECT id_category FROM public.tb_category ORDER BY id_category LIMIT 1), 1),
+         $2,
+         TRUE,
+         FALSE,
+         TRUE,
+         TRUE,
+         FALSE,
+         FALSE
+       WHERE NOT EXISTS (
+         SELECT 1 FROM public.tb_profile
+          WHERE id_user = $1 AND is_user_account = TRUE
+       )
+       RETURNING id_profile`,
+      [id_user, nome]
+    );
+    if (ins.rowCount) return ins.rows[0].id_profile;
+    // Race condition fallback — re-select
+    const r2 = await conn.query(
+      `SELECT id_profile FROM public.tb_profile
+        WHERE id_user = $1 AND is_user_account = TRUE LIMIT 1`,
+      [id_user]
+    );
+    return r2.rows[0]?.id_profile || null;
+  }
+
+  /**
    * Resolve um sub_profile_slug único para o usuário a partir do display_name.
    * Aplica sufixo numérico (-2, -3, ...) em caso de colisão com perfis vivos
    * do mesmo usuário. Ignora `excludeProfileId` (usado em update).
