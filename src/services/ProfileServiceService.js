@@ -237,7 +237,14 @@ class ProfileServiceService {
 
       if (!file || !file.buffer) return { error: "Arquivo não enviado" };
 
-      const mediaType = (file.mimetype || "").startsWith("video/") ? "video" : "image";
+      const mimetype = String(file.mimetype || "").toLowerCase();
+      const mediaType = mimetype.startsWith("image/")
+        ? "image"
+        : mimetype.startsWith("video/")
+          ? "video"
+          : null;
+      if (!mediaType) return { error: "Tipo de arquivo nao permitido" };
+
       const processedFile = await processPortfolioMedia(file, mediaType);
 
       const r2Result = await uploadServiceMediaToR2({
