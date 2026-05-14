@@ -124,11 +124,14 @@ function buildCandidateQuery(mode) {
       AND ppi.is_active = TRUE
       AND tu.ativo      = TRUE
       AND pro.is_active = TRUE
-      AND pro.is_visible = TRUE
+      AND (pro.is_visible = TRUE OR pro.is_user_account = TRUE)
+      AND pro.feed_visible = TRUE
       AND pro.deleted_at IS NULL
       AND (m.is_active IS NULL OR m.is_active = TRUE)
 
       AND (
+        pro.is_user_account = TRUE
+        OR
         (pro.is_clan = FALSE AND EXISTS (
           SELECT 1 FROM tb_profile_subscription psub
           WHERE psub.id_profile = pro.id_profile
