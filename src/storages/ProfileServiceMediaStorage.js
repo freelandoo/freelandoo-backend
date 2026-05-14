@@ -1,4 +1,12 @@
 class ProfileServiceMediaStorage {
+  static normalize(row) {
+    if (!row) return row;
+    return {
+      ...row,
+      url: row.media_url,
+    };
+  }
+
   static async listByService(conn, id_profile_service) {
     const r = await conn.query(
       `SELECT * FROM public.tb_profile_service_media
@@ -6,7 +14,7 @@ class ProfileServiceMediaStorage {
        ORDER BY sort_order ASC, created_at ASC`,
       [id_profile_service]
     );
-    return r.rows;
+    return r.rows.map(ProfileServiceMediaStorage.normalize);
   }
 
   static async listByServices(conn, id_profile_services) {
@@ -21,7 +29,7 @@ class ProfileServiceMediaStorage {
     for (const row of r.rows) {
       const key = String(row.id_profile_service);
       if (!map.has(key)) map.set(key, []);
-      map.get(key).push(row);
+      map.get(key).push(ProfileServiceMediaStorage.normalize(row));
     }
     return map;
   }
@@ -48,7 +56,7 @@ class ProfileServiceMediaStorage {
         sort_order || 0,
       ]
     );
-    return r.rows[0];
+    return ProfileServiceMediaStorage.normalize(r.rows[0]);
   }
 
   static async findById(conn, id_service_media) {
@@ -56,7 +64,7 @@ class ProfileServiceMediaStorage {
       `SELECT * FROM public.tb_profile_service_media WHERE id_service_media = $1 LIMIT 1`,
       [id_service_media]
     );
-    return r.rows[0] || null;
+    return ProfileServiceMediaStorage.normalize(r.rows[0] || null);
   }
 
   static async remove(conn, id_service_media) {
@@ -64,7 +72,7 @@ class ProfileServiceMediaStorage {
       `DELETE FROM public.tb_profile_service_media WHERE id_service_media = $1 RETURNING *`,
       [id_service_media]
     );
-    return r.rows[0] || null;
+    return ProfileServiceMediaStorage.normalize(r.rows[0] || null);
   }
 
   static async reorder(conn, id_profile_service, orderedIds) {
