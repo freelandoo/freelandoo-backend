@@ -34,12 +34,15 @@ CREATE INDEX IF NOT EXISTS idx_tb_profile_visibility_flags
   WHERE deleted_at IS NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 2. Backfill: cria 1 perfil-fantasma por usuário existente sem um
+-- 2. Backfill: cria 1 perfil-fantasma por usuário existente sem um.
+--    sub_profile_slug = "conta-{12 chars do id_user}" para satisfazer o
+--    constraint chk_tb_profile_sub_profile_slug_format (^[a-z0-9]+(-[a-z0-9]+)*$).
 -- ─────────────────────────────────────────────────────────────────────────────
 INSERT INTO public.tb_profile (
   id_user,
   id_category,
   display_name,
+  sub_profile_slug,
   is_active,
   is_visible,
   is_user_account,
@@ -50,7 +53,8 @@ INSERT INTO public.tb_profile (
 SELECT
   u.id_user,
   COALESCE((SELECT id_category FROM public.tb_category ORDER BY id_category LIMIT 1), 1),
-  u.nome,
+  COALESCE(u.nome, 'Conta'),
+  'conta-' || substring(replace(u.id_user::text, '-', ''), 1, 12),
   TRUE,
   FALSE,
   TRUE,
@@ -64,8 +68,7 @@ WHERE NOT EXISTS (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 3. Garantia adicional: perfis-fantasma sempre nascem com flags certas
---   (defensivo — application code também garante; este trigger é fallback)
+-- 3. Trigger: perfis-fantasma sempre nascem com flags corretas (defensivo)
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.fn_user_account_profile_defaults()
 RETURNS TRIGGER AS $$

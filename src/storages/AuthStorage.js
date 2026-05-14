@@ -45,12 +45,13 @@ class AuthStorage {
     await client.query(
       `
       INSERT INTO public.tb_profile
-        (id_user, id_category, display_name, is_active, is_visible,
+        (id_user, id_category, display_name, sub_profile_slug, is_active, is_visible,
          is_user_account, feed_visible, showcase_visible, ranking_visible)
       SELECT
         $1::uuid,
         COALESCE((SELECT id_category FROM public.tb_category ORDER BY id_category LIMIT 1), 1),
         $2,
+        'conta-' || substring(replace($1::text, '-', ''), 1, 12),
         TRUE,
         FALSE,
         TRUE,
@@ -59,7 +60,7 @@ class AuthStorage {
         FALSE
       WHERE NOT EXISTS (
         SELECT 1 FROM public.tb_profile
-         WHERE id_user = $1 AND is_user_account = TRUE
+         WHERE id_user = $1::uuid AND is_user_account = TRUE
       )
       `,
       [id_user, display_name || "Conta"]
