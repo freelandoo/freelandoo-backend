@@ -49,6 +49,7 @@ const premiumRoutes = require("./premium.routes");
 const premiumAdminRoutes = require("./premiumAdmin.routes");
 const coursesRoutes = require("./courses.routes");
 const userAccountPortfolioRoutes = require("./userAccountPortfolio.routes");
+const userPublicRoutes = require("./userPublic.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -106,4 +107,5 @@ module.exports = (app) => {
   app.use("/admin/premium", premiumAdminRoutes);
   app.use("/me/courses", coursesRoutes);
   app.use("/me/portfolio", userAccountPortfolioRoutes);
+  app.use("/public/users", userPublicRoutes);
 };
