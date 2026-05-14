@@ -140,6 +140,7 @@ class ProfileStorage {
       p.updated_at,
       p.estado,
       p.municipio,
+      p.is_user_account,
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
@@ -214,6 +215,7 @@ class ProfileStorage {
       p.updated_at,
       p.estado,
       p.municipio,
+      p.is_user_account,
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'

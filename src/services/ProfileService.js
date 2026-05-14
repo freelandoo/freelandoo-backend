@@ -128,8 +128,11 @@ class ProfileService {
           profile.id_profile
         );
 
-        const is_published =
-          !!profile.is_paid && !!profile.is_visible && !profile.deleted_at;
+        // Perfis user-account são "publicáveis" mesmo sem subscription/is_visible,
+        // mas renderizados em modo simplificado (sem serviços/agenda).
+        const is_published = profile.is_user_account
+          ? !profile.deleted_at
+          : !!profile.is_paid && !!profile.is_visible && !profile.deleted_at;
 
         return {
           profile: {
