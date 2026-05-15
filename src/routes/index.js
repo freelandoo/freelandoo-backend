@@ -51,6 +51,7 @@ const coursesRoutes = require("./courses.routes");
 const userAccountPortfolioRoutes = require("./userAccountPortfolio.routes");
 const userPublicRoutes = require("./userPublic.routes");
 const portfolioCommentRoutes = require("./portfolioComment.routes");
+const storyRoutes = require("./storyRoutes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -110,4 +111,5 @@ module.exports = (app) => {
   app.use("/me/portfolio", userAccountPortfolioRoutes);
   app.use("/public/users", userPublicRoutes);
   app.use("/portfolio", portfolioCommentRoutes);
+  app.use("/me/stories", storyRoutes);
 };
