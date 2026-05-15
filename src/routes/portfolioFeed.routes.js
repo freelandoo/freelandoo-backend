@@ -12,6 +12,12 @@ router.get(
   asyncHandler(PortfolioFeedController.list)
 );
 
+router.get(
+  "/bees",
+  optionalAuthMiddleware,
+  asyncHandler(PortfolioFeedController.listBees)
+);
+
 router.post(
   "/events",
   optionalAuthMiddleware,

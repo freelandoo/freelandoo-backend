@@ -25,17 +25,19 @@ class PortfolioStorage {
       is_featured,
       sort_order,
       created_by,
+      feed_kind,
     }
   ) {
+    const kind = feed_kind === "bees" ? "bees" : "feed";
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile_portfolio_item
-        (id_profile, title, description, project_url, is_featured, sort_order, created_by, updated_by)
+        (id_profile, title, description, project_url, is_featured, sort_order, created_by, updated_by, feed_kind)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $7)
+        ($1, $2, $3, $4, $5, $6, $7, $7, $8)
       RETURNING
         id_portfolio_item, id_profile, title, description, project_url,
-        is_featured, sort_order, created_at, updated_at, is_active
+        is_featured, sort_order, feed_kind, created_at, updated_at, is_active
       `,
       [
         id_profile,
@@ -45,6 +47,7 @@ class PortfolioStorage {
         is_featured,
         sort_order,
         created_by,
+        kind,
       ]
     );
     return r.rows[0];
@@ -215,6 +218,7 @@ class PortfolioStorage {
         i.title,
         i.description,
         i.project_url,
+        i.feed_kind,
         i.created_at,
         pro.display_name  AS profile_display_name,
         tu.username       AS profile_username,
@@ -283,6 +287,7 @@ class PortfolioStorage {
         i.project_url,
         i.is_featured,
         i.sort_order,
+        i.feed_kind,
         i.created_at,
         i.updated_at,
         i.is_active,
@@ -329,9 +334,11 @@ class PortfolioStorage {
     conn,
     id_clan_profile,
     member_profile_ids,
-    id_user_viewer = null
+    id_user_viewer = null,
+    feed_kind = null
   ) {
     const ids = [id_clan_profile, ...(member_profile_ids ?? [])];
+    const kindFilter = feed_kind === "bees" || feed_kind === "feed" ? feed_kind : null;
     const r = await conn.query(
       `
       SELECT
@@ -342,6 +349,7 @@ class PortfolioStorage {
         i.project_url,
         i.is_featured,
         i.sort_order,
+        i.feed_kind,
         i.created_at,
         i.updated_at,
 
@@ -390,6 +398,7 @@ class PortfolioStorage {
       ) lme ON $2::uuid IS NOT NULL
       WHERE i.id_profile = ANY($3::uuid[])
         AND i.is_active = true
+        AND ($4::text IS NULL OR i.feed_kind = $4::text)
         AND NOT EXISTS (
           SELECT 1
             FROM public.tb_clan_hidden_post h
@@ -401,7 +410,7 @@ class PortfolioStorage {
         i.sort_order DESC,
         i.created_at DESC
       `,
-      [id_clan_profile, id_user_viewer, ids]
+      [id_clan_profile, id_user_viewer, ids, kindFilter]
     );
     return r.rows;
   }
@@ -467,7 +476,8 @@ class PortfolioStorage {
     return r.rowCount > 0;
   }
 
-  static async listItemsWithMediaPublic(conn, id_profile, id_user_viewer = null) {
+  static async listItemsWithMediaPublic(conn, id_profile, id_user_viewer = null, feed_kind = null) {
+    const kindFilter = feed_kind === "bees" || feed_kind === "feed" ? feed_kind : null;
     const r = await conn.query(
       `
       SELECT
@@ -478,6 +488,7 @@ class PortfolioStorage {
         i.project_url,
         i.is_featured,
         i.sort_order,
+        i.feed_kind,
         i.created_at,
         i.updated_at,
 
@@ -519,12 +530,13 @@ class PortfolioStorage {
       ) lme ON $2::uuid IS NOT NULL
       WHERE i.id_profile = $1
         AND i.is_active = true
+        AND ($3::text IS NULL OR i.feed_kind = $3::text)
       ORDER BY
         i.is_featured DESC,
         i.sort_order DESC,
         i.created_at DESC
       `,
-      [id_profile, id_user_viewer]
+      [id_profile, id_user_viewer, kindFilter]
     );
 
     return r.rows;

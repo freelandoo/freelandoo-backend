@@ -15,9 +15,13 @@ class PortfolioController {
   }
 
   static async listPublic(req, res) {
+    const rawKind =
+      typeof req.query?.kind === "string" ? req.query.kind.toLowerCase() : null;
+    const feed_kind = rawKind === "bees" || rawKind === "feed" ? rawKind : null;
     const result = await PortfolioService.listPublic({
       ...req.params,
       id_user_viewer: req.user?.id_user ?? null,
+      feed_kind,
     });
     return sendServiceResult(res, result);
   }
