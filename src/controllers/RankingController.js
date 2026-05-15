@@ -2,6 +2,7 @@
 const pool = require("../databases");
 const RankingStorage = require("../storages/RankingStorage");
 const XpStorage = require("../storages/XpStorage");
+const NotificationService = require("../services/NotificationService");
 
 module.exports = {
   // POST /ranking/visit  (público, sem auth obrigatória)
@@ -26,6 +27,15 @@ module.exports = {
       id_profile,
       id_user: req.user.id_user,
     });
+
+    if (result?.liked) {
+      NotificationService.notifyLike({
+        actor_user_id: req.user.id_user,
+        id_portfolio_item,
+        id_profile,
+      }).catch(() => {});
+    }
+
     return res.json(result);
   },
 
