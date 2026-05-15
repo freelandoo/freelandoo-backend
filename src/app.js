@@ -9,11 +9,17 @@ const appLog = createLogger("app");
 
 const app = express();
 
-const allowedOrigins = ["https://v0.dev", "http://localhost:3000"];
+const allowedOrigins = [
+  "https://v0.dev",
+  "http://localhost:3000",
+  "https://freelandoo.com.br",
+  "https://www.freelandoo.com.br",
+];
 
 const allowedOriginPatterns = [
   /^https:\/\/([a-z0-9-]+\.)*v0\.dev$/i,
   /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i,
+  /^https:\/\/([a-z0-9-]+\.)*freelandoo\.com\.br$/i,
 ];
 
 const corsOptions = {
