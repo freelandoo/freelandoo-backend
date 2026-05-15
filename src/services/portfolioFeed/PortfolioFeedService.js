@@ -260,6 +260,7 @@ function shapeRow(row) {
     profile_clicks_count: row.profile_clicks_count,
     whatsapp_clicks_count: row.whatsapp_clicks_count,
     social_clicks_count: row.social_clicks_count,
+    comments_count: row.comments_count ?? 0,
     engagement_score: Number(row.engagement_score) || 0,
     published_at: row.published_at,
     viewer_has_liked: !!row.viewer_has_liked,
