@@ -86,11 +86,16 @@ class PortfolioService {
     return runWithLogs(
       log,
       "listPublic",
-      () => ({ id_profile: params?.id_profile }),
+      () => ({ id_profile: params?.id_profile, feed_kind: params?.feed_kind }),
       async () => {
         const { id_profile } = params;
         if (!id_profile || !UUID_RE.test(id_profile))
           return { error: "id_profile inválido" };
+
+        const feed_kind =
+          params?.feed_kind === "bees" || params?.feed_kind === "feed"
+            ? params.feed_kind
+            : null;
 
         const profile = await ProfileStorage.getProfileById(pool, id_profile);
         if (profile?.is_clan) {
@@ -100,7 +105,8 @@ class PortfolioService {
             pool,
             id_profile,
             memberIds,
-            params?.id_user_viewer ?? null
+            params?.id_user_viewer ?? null,
+            feed_kind
           );
           return { items };
         }
@@ -108,7 +114,8 @@ class PortfolioService {
         const items = await PortfolioStorage.listItemsWithMediaPublic(
           pool,
           id_profile,
-          params?.id_user_viewer ?? null
+          params?.id_user_viewer ?? null,
+          feed_kind
         );
         return { items };
       }
@@ -172,6 +179,8 @@ class PortfolioService {
         return accessErr;
       }
 
+      const feed_kind = payload?.feed_kind === "bees" ? "bees" : "feed";
+
       const item = await PortfolioStorage.createItem(client, {
         id_profile,
         title,
@@ -181,6 +190,7 @@ class PortfolioService {
         sort_order:
           sort_order === undefined || sort_order === null ? 0 : sort_order,
         created_by: user.id_user,
+        feed_kind,
       });
 
       // inserir mídias

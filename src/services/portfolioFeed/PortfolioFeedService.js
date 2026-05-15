@@ -297,6 +297,7 @@ class PortfolioFeedService {
           municipio: filters?.municipio,
           level_min: filters?.level_min,
           exclude_ids: filters?.exclude_ids,
+          feed_kind: filters?.feed_kind === "bees" ? "bees" : "feed",
           viewer_id_user: viewer?.id_user || null,
         };
 

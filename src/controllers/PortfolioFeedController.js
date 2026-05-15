@@ -33,8 +33,8 @@ function parseLevelMin(raw) {
   return parsed;
 }
 
-class PortfolioFeedController {
-  static async list(req, res) {
+function makeFeedHandler(feed_kind) {
+  return async function feedHandler(req, res) {
     const { id_machine, id_category, estado, municipio, level_min, exclude_ids, cursor, limit } =
       req.query;
 
@@ -47,6 +47,7 @@ class PortfolioFeedController {
         municipio: municipio || null,
         level_min: parseLevelMin(level_min),
         exclude_ids: parseExcludeIds(exclude_ids),
+        feed_kind,
       },
       pagination: {
         limit: parseIntOrNull(limit),
@@ -56,7 +57,12 @@ class PortfolioFeedController {
     });
 
     return res.status(200).json(data);
-  }
+  };
+}
+
+class PortfolioFeedController {
+  static list = makeFeedHandler("feed");
+  static listBees = makeFeedHandler("bees");
 }
 
 module.exports = PortfolioFeedController;

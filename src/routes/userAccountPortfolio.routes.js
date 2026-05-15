@@ -24,9 +24,13 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const id_profile = req.userAccountProfileId;
+    const rawKind =
+      typeof req.query?.kind === "string" ? req.query.kind.toLowerCase() : null;
+    const feed_kind = rawKind === "bees" || rawKind === "feed" ? rawKind : null;
     const result = await PortfolioService.listPublic({
       id_profile,
       id_user_viewer: req.user?.id_user ?? null,
+      feed_kind,
     });
     return sendServiceResult(res, result);
   })
