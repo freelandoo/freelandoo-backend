@@ -1,9 +1,61 @@
 const pool = require("../databases");
 const EntityFollowStorage = require("../storages/EntityFollowStorage");
+const UserFollowStorage = require("../storages/UserFollowStorage");
 const XpStorage = require("../storages/XpStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("EntityFollowService");
+
+/**
+ * Reconcilia tb_user_follow após mudança em entity_follows.
+ * Conta quantos entity_follow ATIVOS partem de actors do `follower_user_id`
+ * para o `target_profile_id`. Se >=1 → garante user_follow ativo. Se 0 →
+ * soft-delete o user_follow ativo correspondente.
+ */
+async function reconcileUserFollow(
+  client,
+  { follower_user_id, target_profile_id }
+) {
+  if (!follower_user_id || !target_profile_id) return;
+
+  const { rows } = await client.query(
+    `
+    SELECT EXISTS (
+      SELECT 1
+        FROM public.entity_follows ef
+        LEFT JOIN public.tb_profile fp
+          ON fp.id_profile = ef.follower_id
+         AND ef.follower_type = 'profile'
+        LEFT JOIN public.tb_clan_member cm
+          ON cm.id_clan_profile = ef.follower_id
+         AND cm.role = 'owner'
+         AND ef.follower_type = 'clan'
+        LEFT JOIN public.tb_profile cm_member
+          ON cm_member.id_profile = cm.id_member_profile
+       WHERE ef.target_id = $2
+         AND ef.deleted_at IS NULL
+         AND (
+           (ef.follower_type = 'profile' AND fp.id_user        = $1)
+           OR
+           (ef.follower_type = 'clan'    AND cm_member.id_user = $1)
+         )
+    ) AS has_any
+    `,
+    [follower_user_id, target_profile_id]
+  );
+
+  if (rows[0]?.has_any) {
+    await UserFollowStorage.upsertActive(client, {
+      follower_user_id,
+      target_profile_id,
+    });
+  } else {
+    await UserFollowStorage.softDelete(client, {
+      follower_user_id,
+      target_profile_id,
+    });
+  }
+}
 
 function normalizeEntityParams(source = {}) {
   return {
@@ -151,6 +203,12 @@ class EntityFollowService {
             target_type,
             target_id,
           });
+
+          await reconcileUserFollow(client, {
+            follower_user_id: user.id_user,
+            target_profile_id: target_id,
+          });
+
           const counts = await EntityFollowStorage.counts(client, {
             entity_type: target_type,
             entity_id: target_id,
@@ -223,6 +281,12 @@ class EntityFollowService {
             target_type,
             target_id,
           });
+
+          await reconcileUserFollow(client, {
+            follower_user_id: user.id_user,
+            target_profile_id: target_id,
+          });
+
           const counts = await EntityFollowStorage.counts(client, {
             entity_type: target_type,
             entity_id: target_id,

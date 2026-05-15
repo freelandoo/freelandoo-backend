@@ -70,6 +70,34 @@ function mapStory(row) {
   };
 }
 
+function mapFeedEntry(row) {
+  return {
+    id_profile: row.id_profile,
+    has_unviewed: !!row.has_unviewed,
+    active_count: Number(row.active_count) || 0,
+    last_posted_at: row.last_posted_at,
+    profile: {
+      id_profile: row.id_profile,
+      id_user: row.profile_user_id,
+      display_name: row.profile_display_name,
+      avatar_url: row.profile_avatar_url,
+      is_clan: row.profile_is_clan,
+      username: row.profile_username,
+      sub_profile_slug: row.profile_slug,
+    },
+    machine: row.machine_slug
+      ? {
+          name: row.machine_name,
+          slug: row.machine_slug,
+          color_from: row.machine_color_from,
+          color_to: row.machine_color_to,
+          color_ring: row.machine_color_ring,
+          color_accent: row.machine_color_accent,
+        }
+      : null,
+  };
+}
+
 class StoryService {
   static async createStory(user, { id_profile }, body, file) {
     return runWithLogs(
@@ -201,6 +229,81 @@ class StoryService {
           kind,
         });
         return { items: items.map(mapStory).filter(Boolean) };
+      }
+    );
+  }
+
+  static async getFeed(user, query = {}) {
+    return runWithLogs(
+      log,
+      "getFeed",
+      () => ({ id_user: user?.id_user, kind: query?.kind }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const kind = normalizeKind(query?.kind);
+        if (!kind) return { error: "kind inválido (use 'trampo' ou 'rest')" };
+
+        const rows = await StoryStorage.listFeedForUser(pool, {
+          viewer_user_id: user.id_user,
+          kind,
+        });
+        return { items: rows.map(mapFeedEntry) };
+      }
+    );
+  }
+
+  static async getByProfile(user, params) {
+    return runWithLogs(
+      log,
+      "getByProfile",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_profile = params?.id_profile;
+        if (!id_profile || !UUID_RE.test(id_profile)) {
+          return { error: "id_profile inválido" };
+        }
+
+        const rows = await StoryStorage.listActiveByProfile(pool, {
+          id_profile,
+        });
+        if (rows.length === 0) {
+          return { items: [], viewed_ids: [] };
+        }
+
+        const viewedIds = await StoryStorage.listViewedIds(pool, {
+          id_viewer_user: user.id_user,
+          story_ids: rows.map((r) => r.id_story),
+        });
+
+        return {
+          items: rows.map(mapStory).filter(Boolean),
+          viewed_ids: viewedIds,
+        };
+      }
+    );
+  }
+
+  static async markViewed(user, params) {
+    return runWithLogs(
+      log,
+      "markViewed",
+      () => ({ id_user: user?.id_user, id_story: params?.id_story }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_story = params?.id_story;
+        if (!id_story || !UUID_RE.test(id_story)) {
+          return { error: "id_story inválido" };
+        }
+
+        const story = await StoryStorage.getActiveById(pool, id_story);
+        if (!story) return { error: "Story não encontrada" };
+
+        await StoryStorage.markViewed(pool, {
+          id_story,
+          id_viewer_user: user.id_user,
+        });
+        return { viewed: true, id_story };
       }
     );
   }

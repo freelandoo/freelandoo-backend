@@ -21,6 +21,21 @@ class StoryController {
     const result = await StoryService.deleteMine(req.user, req.params);
     return sendServiceResult(res, result);
   }
+
+  static async getFeed(req, res) {
+    const result = await StoryService.getFeed(req.user, req.query);
+    return sendServiceResult(res, result);
+  }
+
+  static async getByProfile(req, res) {
+    const result = await StoryService.getByProfile(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async markViewed(req, res) {
+    const result = await StoryService.markViewed(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = StoryController;

@@ -52,6 +52,7 @@ const userAccountPortfolioRoutes = require("./userAccountPortfolio.routes");
 const userPublicRoutes = require("./userPublic.routes");
 const portfolioCommentRoutes = require("./portfolioComment.routes");
 const storyRoutes = require("./storyRoutes");
+const storyPublicRoutes = require("./storyPublicRoutes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -112,4 +113,5 @@ module.exports = (app) => {
   app.use("/public/users", userPublicRoutes);
   app.use("/portfolio", portfolioCommentRoutes);
   app.use("/me/stories", storyRoutes);
+  app.use("/stories", storyPublicRoutes);
 };
