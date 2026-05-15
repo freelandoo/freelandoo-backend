@@ -350,6 +350,7 @@ class PortfolioStorage {
         i.is_featured,
         i.sort_order,
         i.feed_kind,
+        i.comments_count,
         i.created_at,
         i.updated_at,
 
@@ -489,6 +490,7 @@ class PortfolioStorage {
         i.is_featured,
         i.sort_order,
         i.feed_kind,
+        i.comments_count,
         i.created_at,
         i.updated_at,
 

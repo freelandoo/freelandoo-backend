@@ -29,9 +29,13 @@ function statusFromServiceError(errorMessage) {
 
 function sendServiceResult(res, result, successStatus = 200) {
   if (result && result.error) {
-    const status = statusFromServiceError(result.error);
+    const status =
+      Number.isInteger(result.statusCode) && result.statusCode >= 400
+        ? result.statusCode
+        : statusFromServiceError(result.error);
     log.warn("response.error", { error: result.error, status });
-    return res.status(status).json(result);
+    // Não exponha statusCode no body — só `error` (e mantém shape antigo).
+    return res.status(status).json({ error: result.error });
   }
   log.debug("response.success", { status: successStatus });
   return res.status(successStatus).json(result);
