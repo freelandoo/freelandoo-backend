@@ -1,4 +1,5 @@
 const pool = require("../databases");
+const NotificationService = require("./NotificationService");
 const ConversationStorage = require("../storages/ConversationStorage");
 const MessageStorage = require("../storages/MessageStorage");
 const EntityFollowStorage = require("../storages/EntityFollowStorage");
@@ -392,6 +393,26 @@ class ConversationService {
           });
 
           await client.query("COMMIT");
+
+          // Notificação fire-and-forget para o outro participante.
+          try {
+            const otherEntityId = await ConversationStorage.otherEntityId(
+              conv,
+              actorRes.actor_id
+            );
+            if (otherEntityId) {
+              NotificationService.notifyMessage({
+                actor_user_id: user.id_user,
+                actor_profile_id: actorRes.actor_id,
+                recipient_profile_id: otherEntityId,
+                id_conversation: conv.id_conversation,
+                content_preview: body,
+              }).catch(() => {});
+            }
+          } catch {
+            /* fire-and-forget */
+          }
+
           return {
             message: mapMessage(message),
             conversation: {

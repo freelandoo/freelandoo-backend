@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const PortfolioCommentStorage = require("../storages/PortfolioCommentStorage");
+const NotificationService = require("./NotificationService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PortfolioCommentService");
@@ -109,6 +110,27 @@ class PortfolioCommentService {
             pool,
             created.id_portfolio_comment,
           );
+
+          // Notificação fire-and-forget — busca o id_profile dono do item.
+          try {
+            const ownerLookup = await pool.query(
+              `SELECT id_profile FROM public.tb_profile_portfolio_item
+                WHERE id_portfolio_item = $1 LIMIT 1`,
+              [id_portfolio_item]
+            );
+            const id_profile = ownerLookup.rows[0]?.id_profile;
+            if (id_profile) {
+              NotificationService.notifyComment({
+                actor_user_id: user.id_user,
+                id_portfolio_item,
+                id_profile,
+                content_preview: trimmed,
+              }).catch(() => {});
+            }
+          } catch {
+            /* fire-and-forget */
+          }
+
           return { comment: full ? shapeRow(full) : null };
         } catch (err) {
           await client.query("ROLLBACK");

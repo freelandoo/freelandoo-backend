@@ -2,6 +2,7 @@ const pool = require("../databases");
 const EntityFollowStorage = require("../storages/EntityFollowStorage");
 const UserFollowStorage = require("../storages/UserFollowStorage");
 const XpStorage = require("../storages/XpStorage");
+const NotificationService = require("./NotificationService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("EntityFollowService");
@@ -226,6 +227,13 @@ class EntityFollowService {
               source_id: `${actorRes.actor_id}_${target_id}`,
             }).catch(() => {});
           }
+
+          // Notificação fire-and-forget (cobre subperfil + clan via owner).
+          NotificationService.notifyFollow({
+            actor_user_id: user.id_user,
+            actor_profile_id: actorRes.actor_id,
+            target_profile_id: target_id,
+          }).catch(() => {});
 
           return {
             is_following: true,
