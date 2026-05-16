@@ -44,7 +44,7 @@ class SupervisionController {
   static async setStatus(req, res) {
     const result = await SupervisionService.setMinorStatus(
       req.user,
-      req.params.id_supervised,
+      req.params.minor_user_id,
       req.body?.status
     );
     return sendServiceResult(res, result, 200);

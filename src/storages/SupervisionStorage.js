@@ -137,17 +137,17 @@ async function getSupervisedByMinor(conn, minorUserId) {
   return r.rows[0] || null;
 }
 
-async function setSupervisedStatus(
+async function setSupervisedStatusByMinor(
   conn,
-  { id_supervised, responsibleUserId, status }
+  { minorUserId, responsibleUserId, status }
 ) {
   const r = await conn.query(
     `UPDATE public.supervised_accounts
         SET status = $3, updated_at = NOW()
-      WHERE id_supervised = $1
+      WHERE minor_user_id = $1
         AND responsible_user_id = $2
       RETURNING *`,
-    [id_supervised, responsibleUserId, status]
+    [minorUserId, responsibleUserId, status]
   );
   return r.rows[0] || null;
 }
@@ -279,7 +279,7 @@ module.exports = {
   createSupervisedAccount,
   listMinorsByResponsible,
   getSupervisedByMinor,
-  setSupervisedStatus,
+  setSupervisedStatusByMinor,
 
   // permissions
   createDefaultPermissions,
