@@ -21,6 +21,7 @@ const {
   calculateAge,
 } = require("../utils/validateSignup");
 const SupervisionService = require("./SupervisionService");
+const { isAdultBirthdate } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("AuthService");
@@ -253,6 +254,18 @@ class AuthService {
         if (!credential) {
           return { error: "Credential do Google é obrigatório" };
         }
+        // Campos opcionais usados quando o login Google é o gateway de
+        // cadastro de um menor: o frontend coleta data + código antes.
+        const dataNascimento =
+          typeof payload?.data_nascimento === "string" &&
+          payload.data_nascimento.trim()
+            ? payload.data_nascimento.trim()
+            : null;
+        const responsibleCode =
+          typeof payload?.responsible_code === "string" &&
+          payload.responsible_code.trim()
+            ? payload.responsible_code.trim().toUpperCase()
+            : null;
         if (!process.env.GOOGLE_CLIENT_ID) {
           return { error: "GOOGLE_CLIENT_ID não configurado no servidor", status: 500 };
         }
@@ -300,6 +313,16 @@ class AuthService {
 
           // 3) Não existe — cria novo
           if (!user) {
+            // Detecta intenção de menoridade pela data informada no frontend.
+            const isMinorSignup =
+              !!dataNascimento && !isAdultBirthdate(dataNascimento);
+            if (isMinorSignup && !responsibleCode) {
+              return {
+                error:
+                  "Conta menor de 18 exige código do responsável. Use /cadastro pelo email para cadastrar.",
+              };
+            }
+
             await client.query("BEGIN");
             try {
               const username = await AuthStorage.generateUniqueUsernameFromEmail(
@@ -311,7 +334,24 @@ class AuthService {
                 username,
                 email,
                 googleSub,
+                dataNascimento,
               });
+
+              // Conta supervisionada: consome código + cria vínculo + permissões
+              // dentro da mesma transação. Se falhar, rollback do user também.
+              if (isMinorSignup) {
+                const consumed = await SupervisionService.consumeInviteForSignup(
+                  client,
+                  { code: responsibleCode, minorUserId: user.id_user }
+                );
+                if (consumed?.error) {
+                  await client.query("ROLLBACK");
+                  return { error: consumed.error };
+                }
+                user.is_minor = true;
+                user.responsible_user_id = consumed?.supervised?.responsible_user_id || null;
+              }
+
               await client.query("COMMIT");
             } catch (err) {
               await client.query("ROLLBACK");
