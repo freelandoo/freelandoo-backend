@@ -117,6 +117,28 @@ class CoursesService {
     );
   }
 
+  /**
+   * Visão pública do curso por slug. Só retorna se status='published'.
+   * Sem auth — usada no link de "curso vinculado" do subperfil.
+   */
+  static async getPublicBySlug(slug) {
+    return runWithLogs(
+      log,
+      "getPublicBySlug",
+      () => ({ slug }),
+      async () => {
+        const normalized = String(slug || "").trim().toLowerCase();
+        if (!normalized) return { error: "slug inválido" };
+        const row = await CoursesStorage.getBySlug(pool, normalized);
+        if (!row) return { error: "Curso não encontrado", status: 404 };
+        if (row.status !== "published") {
+          return { error: "Curso não está publicado", status: 404 };
+        }
+        return { course: publicCourseShape(row) };
+      },
+    );
+  }
+
   static async getMineById(user, courseId) {
     return runWithLogs(
       log,

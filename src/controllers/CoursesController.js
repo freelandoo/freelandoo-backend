@@ -7,6 +7,14 @@ class CoursesController {
     return sendServiceResult(res, await CoursesService.listMine(req.user));
   }
 
+  // GET /courses/public/by-slug/:slug — público (sem auth)
+  static async getPublicBySlug(req, res) {
+    return sendServiceResult(
+      res,
+      await CoursesService.getPublicBySlug(req.params.slug),
+    );
+  }
+
   // GET /me/courses/:id
   static async getMineById(req, res) {
     return sendServiceResult(
