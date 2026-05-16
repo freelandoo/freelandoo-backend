@@ -18,7 +18,9 @@ module.exports = {
         tu.bio,
         tu.estado,
         tu.municipio,
-        
+        tu.is_minor,
+        tu.responsible_user_id,
+
         -- Roles (nível do user)
         COALESCE(r.roles, '[]'::jsonb) AS roles,
 
