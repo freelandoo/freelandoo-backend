@@ -263,6 +263,7 @@ function shapeRow(row) {
     comments_count: row.comments_count ?? 0,
     engagement_score: Number(row.engagement_score) || 0,
     published_at: row.published_at,
+    feed_kind: row.feed_kind === "bees" ? "bees" : "feed",
     viewer_has_liked: !!row.viewer_has_liked,
     public_profile_url,
     whatsapp_url,

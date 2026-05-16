@@ -36,6 +36,7 @@ function buildCandidateQuery(mode) {
       ppi.social_clicks_count,
       ppi.comments_count,
       ppi.engagement_score,
+      ppi.feed_kind,
 
       pro.id_profile,
       pro.display_name,
