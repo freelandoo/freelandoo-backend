@@ -171,7 +171,8 @@ module.exports = class UploadPortfolioMediaService {
         throw err;
       }
 
-      const processedFile = await processPortfolioMedia(file, media_type);
+      const feedKind = await PortfolioStorage.getItemFeedKind(client, id_portfolio_item);
+      const processedFile = await processPortfolioMedia(file, media_type, { feedKind });
       const finalMediaType = processedFile.mediaMetadata?.media_type || media_type;
 
       // upload no R2 (thumbnail extraída automaticamente sobe junto, se houver)

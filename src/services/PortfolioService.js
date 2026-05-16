@@ -58,6 +58,16 @@ function normalizeOptionalUrl(value, fieldName) {
   return norm;
 }
 
+const DESCRIPTION_MAX_CHARS = 3000;
+
+function normalizeDescription(value) {
+  const norm = normalizeNonEmptyString(value, "description");
+  if (norm && typeof norm === "string" && norm.length > DESCRIPTION_MAX_CHARS) {
+    return { error: `Descrição muito longa (máximo ${DESCRIPTION_MAX_CHARS} caracteres)` };
+  }
+  return norm;
+}
+
 function normalizeBoolean(value, fieldName) {
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") return { error: `${fieldName} inválido` };
@@ -140,10 +150,7 @@ class PortfolioService {
     const title = normalizeNonEmptyString(payload?.title, "title");
     if (title?.error) return title;
 
-    const description = normalizeOptionalUrl(
-      payload?.description,
-      "description"
-    );
+    const description = normalizeDescription(payload?.description);
     if (description?.error) return description;
 
     const project_url = normalizeOptionalUrl(
@@ -296,7 +303,7 @@ class PortfolioService {
 
     let description;
     if (has(payload, "description")) {
-      description = normalizeOptionalUrl(payload.description, "description");
+      description = normalizeDescription(payload.description);
       if (description?.error) return description;
     }
 

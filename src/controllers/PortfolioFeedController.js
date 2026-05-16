@@ -33,9 +33,16 @@ function parseLevelMin(raw) {
   return parsed;
 }
 
-function makeFeedHandler(feed_kind) {
+function resolveFeedKind(raw, fallback) {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (value === "feed" || value === "bees") return value;
+  if (value === "all" || value === "todos") return null;
+  return fallback;
+}
+
+function makeFeedHandler(defaultKind) {
   return async function feedHandler(req, res) {
-    const { id_machine, id_category, estado, municipio, level_min, exclude_ids, cursor, limit } =
+    const { id_machine, id_category, estado, municipio, level_min, exclude_ids, cursor, limit, kind } =
       req.query;
 
     const data = await PortfolioFeedService.getFeed({
@@ -47,7 +54,7 @@ function makeFeedHandler(feed_kind) {
         municipio: municipio || null,
         level_min: parseLevelMin(level_min),
         exclude_ids: parseExcludeIds(exclude_ids),
-        feed_kind,
+        feed_kind: resolveFeedKind(kind, defaultKind),
       },
       pagination: {
         limit: parseIntOrNull(limit),
@@ -61,7 +68,9 @@ function makeFeedHandler(feed_kind) {
 }
 
 class PortfolioFeedController {
-  static list = makeFeedHandler("feed");
+  // /feed/portfolio — default agora é misto (feed + bees).
+  static list = makeFeedHandler(null);
+  // /feed/bees — força só bees.
   static listBees = makeFeedHandler("bees");
 }
 

@@ -14,6 +14,14 @@ class PortfolioStorage {
     return r.rowCount > 0;
   }
 
+  static async getItemFeedKind(conn, id_portfolio_item) {
+    const r = await conn.query(
+      `SELECT feed_kind FROM public.tb_profile_portfolio_item WHERE id_portfolio_item = $1 LIMIT 1`,
+      [id_portfolio_item]
+    );
+    return r.rows[0]?.feed_kind || null;
+  }
+
   // --------- Create ----------
   static async createItem(
     conn,
