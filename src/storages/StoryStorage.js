@@ -137,15 +137,23 @@ class StoryStorage {
   static async listFeedForUser(conn, { viewer_user_id, kind }) {
     const { rows } = await conn.query(
       `
-      WITH followed AS (
-        SELECT target_profile_id
+      WITH visible_profiles AS (
+        -- Perfis que o viewer segue
+        SELECT target_profile_id AS id_profile, FALSE AS is_self
           FROM public.tb_user_follow
          WHERE follower_user_id = $1
+           AND deleted_at IS NULL
+        UNION
+        -- Os próprios subperfis do viewer (igual Instagram: sua story aparece primeiro)
+        SELECT id_profile, TRUE AS is_self
+          FROM public.tb_profile
+         WHERE id_user = $1
            AND deleted_at IS NULL
       ),
       active_stories AS (
         SELECT
           s.id_profile,
+          BOOL_OR(vp.is_self) AS is_self,
           BOOL_OR(NOT EXISTS (
             SELECT 1 FROM public.tb_story_view v
              WHERE v.id_story = s.id_story
@@ -154,7 +162,7 @@ class StoryStorage {
           MAX(s.created_at) AS last_posted_at,
           COUNT(*)::int    AS active_count
         FROM public.tb_story s
-        JOIN followed f ON f.target_profile_id = s.id_profile
+        JOIN visible_profiles vp ON vp.id_profile = s.id_profile
         WHERE s.deleted_at IS NULL
           AND s.expires_at > NOW()
           AND s.kind = $2
@@ -162,6 +170,7 @@ class StoryStorage {
       )
       SELECT
         a.id_profile,
+        a.is_self,
         a.has_unviewed,
         a.last_posted_at,
         a.active_count,
@@ -186,7 +195,7 @@ class StoryStorage {
         ON m.id_machine = COALESCE(c.id_machine, p.id_machine)
       WHERE p.deleted_at IS NULL
         AND p.is_active  = TRUE
-      ORDER BY a.has_unviewed DESC, a.last_posted_at DESC
+      ORDER BY a.is_self DESC, a.has_unviewed DESC, a.last_posted_at DESC
       `,
       [viewer_user_id, kind]
     );
