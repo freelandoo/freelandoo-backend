@@ -3,7 +3,10 @@ const NotificationService = require("./NotificationService");
 const ConversationStorage = require("../storages/ConversationStorage");
 const MessageStorage = require("../storages/MessageStorage");
 const EntityFollowStorage = require("../storages/EntityFollowStorage");
-const { assertMinorPermission, isMinorUser } = require("../utils/supervision");
+const {
+  assertMinorPermission,
+  getSupervisionState,
+} = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const ProfileStorage = require("../storages/ProfileStorage");
 
@@ -427,6 +430,36 @@ class ConversationService {
                 id_conversation: conv.id_conversation,
                 content_preview: body,
               }).catch(() => {});
+
+              // Espelho para o responsável quando o destinatário é menor.
+              (async () => {
+                try {
+                  const otherProfile = await ProfileStorage.getProfileById(
+                    pool,
+                    otherEntityId
+                  );
+                  if (otherProfile?.id_user && !otherProfile.is_clan) {
+                    const state = await getSupervisionState(otherProfile.id_user);
+                    if (
+                      state.is_minor &&
+                      state.link_status === "active" &&
+                      state.responsible_user_id
+                    ) {
+                      await NotificationService.notifySupervisedMessage({
+                        minor_user_id: otherProfile.id_user,
+                        minor_profile_id: otherEntityId,
+                        responsible_user_id: state.responsible_user_id,
+                        actor_user_id: user.id_user,
+                        actor_profile_id: actorRes.actor_id,
+                        id_conversation: conv.id_conversation,
+                        content_preview: body,
+                      });
+                    }
+                  }
+                } catch {
+                  /* fire-and-forget */
+                }
+              })();
             }
           } catch {
             /* fire-and-forget */

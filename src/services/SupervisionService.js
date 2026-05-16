@@ -9,9 +9,22 @@
 
 const pool = require("../databases");
 const SupervisionStorage = require("../storages/SupervisionStorage");
+const NotificationService = require("./NotificationService");
 const { generateParentalCode } = require("../utils/parentalCode");
-const { isAdultBirthdate } = require("../utils/supervision");
+const { isAdultBirthdate, getSupervisionState } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
+
+const REQUESTABLE_PERMISSIONS = new Set([
+  "can_view_feed",
+  "can_post_feed",
+  "can_use_bees",
+  "can_watch_courses",
+  "can_sell_courses",
+  "can_message",
+  "can_receive_messages",
+  "can_use_global_chat",
+  "can_use_machine_chat",
+]);
 
 const log = createLogger("SupervisionService");
 
@@ -292,6 +305,56 @@ class SupervisionService {
         );
         if (!updated) return { error: "Vínculo não encontrado" };
         return { supervised: updated };
+      }
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Visão do menor: pedir permissão ao responsável
+  // -------------------------------------------------------------------------
+
+  /**
+   * Menor pede ao responsável para liberar uma chave de permissão. Cria uma
+   * notificação tipada para o responsável (com dedupe parcial via índice).
+   */
+  static async requestPermission(user, body) {
+    return runWithLogs(
+      log,
+      "requestPermission",
+      () => ({ id_user: user?.id_user, key: body?.permission_key }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        const state = await getSupervisionState(user.id_user);
+        if (!state.is_minor) {
+          return { error: "Somente contas supervisionadas podem solicitar" };
+        }
+        if (state.link_status !== "active") {
+          return {
+            error: "Vínculo de supervisão não está ativo",
+            status: 403,
+          };
+        }
+        if (!state.responsible_user_id) {
+          return { error: "Responsável não encontrado" };
+        }
+        const key = String(body?.permission_key || "").trim();
+        if (!REQUESTABLE_PERMISSIONS.has(key)) {
+          return { error: "Chave de permissão inválida" };
+        }
+        const note =
+          typeof body?.note === "string" && body.note.trim()
+            ? body.note.trim().slice(0, 280)
+            : null;
+        const notification = await NotificationService.notifyPermissionRequest({
+          minor_user_id: user.id_user,
+          responsible_user_id: state.responsible_user_id,
+          permission_key: key,
+          note,
+        });
+        return {
+          requested: !!notification,
+          notification: notification || null,
+        };
       }
     );
   }

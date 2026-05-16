@@ -50,6 +50,12 @@ class SupervisionController {
     return sendServiceResult(res, result, 200);
   }
 
+  // Pedido de permissão (menor → responsável)
+  static async requestPermission(req, res) {
+    const result = await SupervisionService.requestPermission(req.user, req.body);
+    return sendServiceResult(res, result, 201);
+  }
+
   // Mensagens supervisionadas (read-only)
   static async listMinorConversations(req, res) {
     const result = await SupervisionService.listMinorConversations(
