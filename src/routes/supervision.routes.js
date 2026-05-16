@@ -39,7 +39,7 @@ router.patch(
   asyncHandler(SupervisionController.updatePermissions)
 );
 router.patch(
-  "/minors/:id_supervised/status",
+  "/minors/:minor_user_id/status",
   authMiddleware,
   asyncHandler(SupervisionController.setStatus)
 );

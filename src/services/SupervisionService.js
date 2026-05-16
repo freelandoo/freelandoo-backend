@@ -272,21 +272,24 @@ class SupervisionService {
     );
   }
 
-  static async setMinorStatus(user, id_supervised, status) {
+  static async setMinorStatus(user, minorUserId, status) {
     return runWithLogs(
       log,
       "setMinorStatus",
-      () => ({ id_user: user?.id_user, id_supervised, status }),
+      () => ({ id_user: user?.id_user, minorUserId, status }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
         if (!["active", "suspended", "revoked"].includes(status)) {
           return { error: "Status inválido" };
         }
-        const updated = await SupervisionStorage.setSupervisedStatus(pool, {
-          id_supervised,
-          responsibleUserId: user.id_user,
-          status,
-        });
+        const updated = await SupervisionStorage.setSupervisedStatusByMinor(
+          pool,
+          {
+            minorUserId,
+            responsibleUserId: user.id_user,
+            status,
+          }
+        );
         if (!updated) return { error: "Vínculo não encontrado" };
         return { supervised: updated };
       }
