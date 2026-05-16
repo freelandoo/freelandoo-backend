@@ -298,6 +298,9 @@ async function processEvent(event) {
         await PolenProductService.confirmStripeSession(session);
       } else if (meta.type === "premium") {
         await PremiumService.confirmStripeSession(session);
+      } else if (meta.type === "course_purchase") {
+        const CoursesService = require("./CoursesService");
+        await CoursesService.confirmStripeSession(session);
       } else {
         // Subscription checkout
         await handleCheckoutCompleted(pool, session);
