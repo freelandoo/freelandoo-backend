@@ -264,6 +264,113 @@ async function getUserMinorFlags(conn, userId) {
   return r.rows[0] || null;
 }
 
+// ---------------------------------------------------------------------------
+// Mensagens supervisionadas — visão read-only do responsável
+// ---------------------------------------------------------------------------
+
+/**
+ * Lista todas as conversas envolvendo qualquer profile do menor.
+ * Retorna uma linha por conversa, com o profile (entity) do menor e o other.
+ */
+async function listMinorConversations(conn, minorUserId) {
+  const r = await conn.query(
+    `
+    WITH minor_profiles AS (
+      SELECT id_profile FROM public.tb_profile
+       WHERE id_user = $1 AND deleted_at IS NULL
+    )
+    SELECT
+      c.id_conversation,
+      c.last_message_at,
+      c.last_message_preview,
+      c.last_message_sender_entity_id,
+      CASE
+        WHEN c.entity_a_id IN (SELECT id_profile FROM minor_profiles)
+          THEN c.entity_a_id
+        ELSE c.entity_b_id
+      END AS minor_entity_id,
+      CASE
+        WHEN c.entity_a_id IN (SELECT id_profile FROM minor_profiles)
+          THEN c.entity_b_id
+        ELSE c.entity_a_id
+      END AS other_entity_id,
+      mp.display_name AS minor_display_name,
+      mp.avatar_url   AS minor_avatar_url,
+      op.display_name AS other_display_name,
+      op.avatar_url   AS other_avatar_url,
+      ou.username     AS other_username
+    FROM public.tb_conversation c
+    LEFT JOIN public.tb_profile mp
+      ON mp.id_profile = CASE
+        WHEN c.entity_a_id IN (SELECT id_profile FROM minor_profiles)
+          THEN c.entity_a_id
+        ELSE c.entity_b_id
+      END
+    LEFT JOIN public.tb_profile op
+      ON op.id_profile = CASE
+        WHEN c.entity_a_id IN (SELECT id_profile FROM minor_profiles)
+          THEN c.entity_b_id
+        ELSE c.entity_a_id
+      END
+    LEFT JOIN public.tb_user ou ON ou.id_user = op.id_user
+    WHERE c.deleted_at IS NULL
+      AND (
+        c.entity_a_id IN (SELECT id_profile FROM minor_profiles)
+        OR c.entity_b_id IN (SELECT id_profile FROM minor_profiles)
+      )
+    ORDER BY c.last_message_at DESC NULLS LAST
+    LIMIT 100
+    `,
+    [minorUserId]
+  );
+  return r.rows;
+}
+
+/**
+ * Lista mensagens de uma conversa específica (read-only). Garante que pelo
+ * menos um dos participantes pertença ao menor.
+ */
+async function listMinorConversationMessages(
+  conn,
+  { minorUserId, idConversation, limit = 100 }
+) {
+  const own = await conn.query(
+    `
+    SELECT 1
+      FROM public.tb_conversation c
+      JOIN public.tb_profile p
+        ON p.id_profile IN (c.entity_a_id, c.entity_b_id)
+     WHERE c.id_conversation = $1
+       AND p.id_user = $2
+       AND c.deleted_at IS NULL
+     LIMIT 1
+    `,
+    [idConversation, minorUserId]
+  );
+  if (own.rowCount === 0) return null;
+
+  const r = await conn.query(
+    `
+    SELECT m.id_message,
+           m.id_conversation,
+           m.sender_entity_id,
+           m.sender_user_id,
+           m.body,
+           m.created_at,
+           sp.display_name AS sender_display_name,
+           sp.avatar_url   AS sender_avatar_url
+      FROM public.tb_message m
+      LEFT JOIN public.tb_profile sp ON sp.id_profile = m.sender_entity_id
+     WHERE m.id_conversation = $1
+       AND m.deleted_at IS NULL
+     ORDER BY m.created_at ASC
+     LIMIT $2
+    `,
+    [idConversation, limit]
+  );
+  return r.rows;
+}
+
 module.exports = {
   DEFAULT_PERMISSIONS,
   PERMISSION_KEYS,
@@ -294,4 +401,8 @@ module.exports = {
   // user flags
   markUserAsMinor,
   getUserMinorFlags,
+
+  // mensagens supervisionadas
+  listMinorConversations,
+  listMinorConversationMessages,
 };

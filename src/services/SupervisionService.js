@@ -296,6 +296,56 @@ class SupervisionService {
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Mensagens supervisionadas — visão read-only do responsável
+  // -------------------------------------------------------------------------
+
+  static async listMinorConversations(user, minorUserId) {
+    return runWithLogs(
+      log,
+      "listMinorConversations",
+      () => ({ id_user: user?.id_user, minorUserId }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        const guard = await SupervisionService.assertOwnsMinor(
+          user.id_user,
+          minorUserId
+        );
+        if (guard) return guard;
+        const conversations = await SupervisionStorage.listMinorConversations(
+          pool,
+          minorUserId
+        );
+        return { conversations };
+      }
+    );
+  }
+
+  static async listMinorConversationMessages(user, minorUserId, idConversation) {
+    return runWithLogs(
+      log,
+      "listMinorConversationMessages",
+      () => ({ id_user: user?.id_user, minorUserId, idConversation }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        const guard = await SupervisionService.assertOwnsMinor(
+          user.id_user,
+          minorUserId
+        );
+        if (guard) return guard;
+        const messages =
+          await SupervisionStorage.listMinorConversationMessages(pool, {
+            minorUserId,
+            idConversation,
+          });
+        if (messages === null) {
+          return { error: "Conversa não pertence ao menor", status: 403 };
+        }
+        return { messages };
+      }
+    );
+  }
+
   static async setMinorMachine(user, minorUserId, idMachine, allowed) {
     return runWithLogs(
       log,

@@ -49,4 +49,16 @@ router.put(
   asyncHandler(SupervisionController.setMachine)
 );
 
+// Mensagens supervisionadas (read-only para o responsável)
+router.get(
+  "/minors/:minor_user_id/conversations",
+  authMiddleware,
+  asyncHandler(SupervisionController.listMinorConversations)
+);
+router.get(
+  "/minors/:minor_user_id/conversations/:id_conversation/messages",
+  authMiddleware,
+  asyncHandler(SupervisionController.listMinorConversationMessages)
+);
+
 module.exports = router;
