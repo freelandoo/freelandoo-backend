@@ -19,6 +19,8 @@ function shapeRow(row) {
     content: row.content,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    likes_count: Number(row.likes_count) || 0,
+    viewer_has_liked: !!row.viewer_has_liked,
     user: {
       username: row.username,
       display_name: row.user_display_name,
@@ -47,6 +49,7 @@ class PortfolioCommentService {
           id_portfolio_item,
           cursor,
           limit: limit + 1, // pega 1 extra pra saber se tem mais
+          viewer_id_user: params?.viewer?.id_user || null,
         });
         const items = rows.slice(0, limit).map(shapeRow);
         const hasMore = rows.length > limit;
@@ -109,6 +112,7 @@ class PortfolioCommentService {
           const full = await PortfolioCommentStorage.getEnrichedById(
             pool,
             created.id_portfolio_comment,
+            user.id_user,
           );
 
           // Notificação fire-and-forget — busca o id_profile dono do item.
@@ -138,6 +142,37 @@ class PortfolioCommentService {
         } finally {
           client.release();
         }
+      },
+    );
+  }
+
+  static async toggleLike({ user, id_portfolio_comment }) {
+    return runWithLogs(
+      log,
+      "toggleLike",
+      () => ({
+        id_user: user?.id_user,
+        id_portfolio_comment,
+      }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
+        if (!id_portfolio_comment || !UUID_RE.test(id_portfolio_comment)) {
+          return { error: "id_portfolio_comment inválido", statusCode: 400 };
+        }
+        const existing = await PortfolioCommentStorage.getById(
+          pool,
+          id_portfolio_comment,
+        );
+        if (!existing) return { error: "Comentário não encontrado", statusCode: 404 };
+
+        const result = await PortfolioCommentStorage.toggleLike(pool, {
+          id_portfolio_comment,
+          id_user: user.id_user,
+        });
+        return {
+          liked: result.liked,
+          likes_count: result.likes_count,
+        };
       },
     );
   }

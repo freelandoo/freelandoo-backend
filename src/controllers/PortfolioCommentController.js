@@ -7,6 +7,15 @@ class PortfolioCommentController {
       id_portfolio_item: req.params.id_portfolio_item,
       cursor: req.query.cursor,
       limit: req.query.limit,
+      viewer: req.user || null,
+    });
+    return sendServiceResult(res, result);
+  }
+
+  static async like(req, res) {
+    const result = await PortfolioCommentService.toggleLike({
+      user: req.user,
+      id_portfolio_comment: req.params.id_portfolio_comment,
     });
     return sendServiceResult(res, result);
   }

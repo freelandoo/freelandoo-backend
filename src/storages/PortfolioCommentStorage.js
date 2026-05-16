@@ -6,9 +6,18 @@ const LIST_QUERY = `
     c.content,
     c.created_at,
     c.updated_at,
+    c.likes_count,
     u.username,
     u.nome AS user_display_name,
-    upa.avatar_url AS user_avatar_url
+    upa.avatar_url AS user_avatar_url,
+    CASE
+      WHEN $4::uuid IS NULL THEN FALSE
+      ELSE EXISTS (
+        SELECT 1 FROM public.tb_portfolio_comment_like cl
+         WHERE cl.id_portfolio_comment = c.id_portfolio_comment
+           AND cl.id_user = $4::uuid
+      )
+    END AS viewer_has_liked
   FROM public.tb_portfolio_comment c
   JOIN public.tb_user u ON u.id_user = c.id_user
   LEFT JOIN public.tb_profile upa
@@ -25,12 +34,14 @@ const PortfolioCommentStorage = {
   /**
    * Lista comentários do item por ordem cronológica reversa (mais novo primeiro).
    * Cursor = ISO timestamp do último item da página anterior.
+   * viewer_id_user opcional — quando informado, retorna viewer_has_liked.
    */
-  async listForItem(db, { id_portfolio_item, cursor = null, limit = 20 }) {
+  async listForItem(db, { id_portfolio_item, cursor = null, limit = 20, viewer_id_user = null }) {
     const r = await db.query(LIST_QUERY, [
       id_portfolio_item,
       cursor || null,
       Math.min(Math.max(limit, 1), 50),
+      viewer_id_user || null,
     ]);
     return r.rows;
   },
@@ -38,7 +49,7 @@ const PortfolioCommentStorage = {
   async getById(db, id_portfolio_comment) {
     const r = await db.query(
       `SELECT id_portfolio_comment, id_portfolio_item, id_user, content,
-              is_active, created_at, updated_at
+              is_active, created_at, updated_at, likes_count
        FROM public.tb_portfolio_comment
        WHERE id_portfolio_comment = $1 AND is_active = TRUE
        LIMIT 1`,
@@ -65,7 +76,7 @@ const PortfolioCommentStorage = {
          (id_portfolio_item, id_user, content)
        VALUES ($1, $2, $3)
        RETURNING id_portfolio_comment, id_portfolio_item, id_user, content,
-                 created_at, updated_at`,
+                 created_at, updated_at, likes_count`,
       [id_portfolio_item, id_user, content]
     );
     return r.rows[0];
@@ -92,7 +103,7 @@ const PortfolioCommentStorage = {
     );
   },
 
-  async getEnrichedById(db, id_portfolio_comment) {
+  async getEnrichedById(db, id_portfolio_comment, viewer_id_user = null) {
     const r = await db.query(
       `SELECT
          c.id_portfolio_comment,
@@ -101,18 +112,81 @@ const PortfolioCommentStorage = {
          c.content,
          c.created_at,
          c.updated_at,
+         c.likes_count,
          u.username,
          u.nome AS user_display_name,
-         upa.avatar_url AS user_avatar_url
+         upa.avatar_url AS user_avatar_url,
+         CASE
+           WHEN $2::uuid IS NULL THEN FALSE
+           ELSE EXISTS (
+             SELECT 1 FROM public.tb_portfolio_comment_like cl
+              WHERE cl.id_portfolio_comment = c.id_portfolio_comment
+                AND cl.id_user = $2::uuid
+           )
+         END AS viewer_has_liked
        FROM public.tb_portfolio_comment c
        JOIN public.tb_user u ON u.id_user = c.id_user
        LEFT JOIN public.tb_profile upa
          ON upa.id_user = c.id_user
         AND upa.is_user_account = TRUE
        WHERE c.id_portfolio_comment = $1`,
-      [id_portfolio_comment]
+      [id_portfolio_comment, viewer_id_user || null]
     );
     return r.rowCount ? r.rows[0] : null;
+  },
+
+  /**
+   * Toggle de like em comentário. Transacional + idempotente:
+   * INSERT ... ON CONFLICT DO NOTHING devolve rowCount=1 quando criou.
+   * Quando rowCount=0, faz DELETE. likes_count é recomputado a partir da
+   * tabela de likes (defensivo contra drift).
+   */
+  async toggleLike(db, { id_portfolio_comment, id_user }) {
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+
+      const ins = await client.query(
+        `INSERT INTO public.tb_portfolio_comment_like (id_portfolio_comment, id_user)
+         VALUES ($1, $2)
+         ON CONFLICT DO NOTHING`,
+        [id_portfolio_comment, id_user]
+      );
+
+      let liked;
+      if (ins.rowCount === 1) {
+        liked = true;
+      } else {
+        const del = await client.query(
+          `DELETE FROM public.tb_portfolio_comment_like
+            WHERE id_portfolio_comment = $1 AND id_user = $2`,
+          [id_portfolio_comment, id_user]
+        );
+        liked = del.rowCount === 0; // caso bizarro: nem criou nem existia
+      }
+
+      const upd = await client.query(
+        `UPDATE public.tb_portfolio_comment c
+            SET likes_count = (
+              SELECT COUNT(*)::INT FROM public.tb_portfolio_comment_like
+               WHERE id_portfolio_comment = c.id_portfolio_comment
+            )
+          WHERE c.id_portfolio_comment = $1
+          RETURNING likes_count`,
+        [id_portfolio_comment]
+      );
+
+      await client.query("COMMIT");
+      return {
+        liked,
+        likes_count: upd.rows[0]?.likes_count ?? 0,
+      };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 };
 
