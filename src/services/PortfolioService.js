@@ -3,6 +3,7 @@ const ProfileStorage = require("../storages/ProfileStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
 const ClanStorage = require("../storages/ClanStorage");
 const XpStorage = require("../storages/XpStorage");
+const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PortfolioService");
@@ -145,6 +146,12 @@ class PortfolioService {
         if (!user?.id_user) return { error: "Não autenticado" };
     if (!id_profile || !UUID_RE.test(id_profile))
       return { error: "id_profile inválido" };
+
+    // Supervisão: post no feed/bees respeita toggle do responsável.
+    const feedKind = payload?.feed_kind === "bees" ? "bees" : "feed";
+    const permKey = feedKind === "bees" ? "can_use_bees" : "can_post_feed";
+    const minorBlock = await assertMinorPermission(user.id_user, permKey);
+    if (minorBlock) return minorBlock;
 
     // valida campos
     const title = normalizeNonEmptyString(payload?.title, "title");

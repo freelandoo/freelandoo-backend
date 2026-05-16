@@ -13,6 +13,7 @@ const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseFeedPostsStorage = require("../storages/CourseFeedPostsStorage");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
+const { assertMinorPermission } = require("../utils/supervision");
 const { slugify } = require("../utils/slug");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -145,6 +146,8 @@ class CoursesService {
       () => ({ id_user: user?.id_user }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
+        const minorBlock = await assertMinorPermission(user.id_user, "can_sell_courses");
+        if (minorBlock) return minorBlock;
 
         const title = sanitizeText(body.title, TITLE_MAX_LEN);
         if (!title) return { error: "Título é obrigatório" };

@@ -6,6 +6,7 @@ const CoursePlayerStorage = require("../storages/CoursePlayerStorage");
 const CourseProgressStorage = require("../storages/CourseProgressStorage");
 const CourseLessonMaterialsStorage = require("../storages/CourseLessonMaterialsStorage");
 const CourseLessonQuestionsStorage = require("../storages/CourseLessonQuestionsStorage");
+const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CoursePlayerService");
@@ -118,6 +119,8 @@ class CoursePlayerService {
       () => ({ id_user: user?.id_user, course_id: courseId, lesson_id: lessonId }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
+        const minorBlock = await assertMinorPermission(user.id_user, "can_watch_courses");
+        if (minorBlock) return minorBlock;
         const own = await ensureActiveEnrollment(pool, user.id_user, courseId);
         if (own.error) return own;
 

@@ -2,6 +2,10 @@
 
 const pool = require("../databases");
 const ChatStorage = require("../storages/ChatStorage");
+const {
+  assertMinorPermission,
+  assertMachineAllowed,
+} = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ChatService");
@@ -99,6 +103,11 @@ class ChatService {
         const type = body?.type === "machine" ? "machine" : body?.type === "global" ? "global" : null;
         if (!type) return { error: "type inválido (use 'global' ou 'machine')" };
 
+        // Supervisão: chats coletivos respeitam toggle do responsável.
+        const permKey = type === "global" ? "can_use_global_chat" : "can_use_machine_chat";
+        const minorBlock = await assertMinorPermission(user.id_user, permKey);
+        if (minorBlock) return minorBlock;
+
         let idMachine = null;
         if (type === "machine") {
           const requested = body?.id_machine != null ? Number(body.id_machine) : null;
@@ -118,6 +127,10 @@ class ChatService {
           // valida machine
           const machine = await ChatStorage.getMachineById(pool, idMachine);
           if (!machine) return { error: "Máquina inválida" };
+
+          // Supervisão: máquina precisa estar liberada para o menor.
+          const machineBlock = await assertMachineAllowed(user.id_user, idMachine);
+          if (machineBlock) return machineBlock;
         }
 
         const client = await pool.connect();
