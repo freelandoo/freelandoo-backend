@@ -50,6 +50,24 @@ class SupervisionController {
     return sendServiceResult(res, result, 200);
   }
 
+  // Mensagens supervisionadas (read-only)
+  static async listMinorConversations(req, res) {
+    const result = await SupervisionService.listMinorConversations(
+      req.user,
+      req.params.minor_user_id
+    );
+    return sendServiceResult(res, result, 200);
+  }
+
+  static async listMinorConversationMessages(req, res) {
+    const result = await SupervisionService.listMinorConversationMessages(
+      req.user,
+      req.params.minor_user_id,
+      req.params.id_conversation
+    );
+    return sendServiceResult(res, result, 200);
+  }
+
   static async setMachine(req, res) {
     const result = await SupervisionService.setMinorMachine(
       req.user,
