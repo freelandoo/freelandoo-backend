@@ -134,6 +134,79 @@ class CoursesStorage {
     return rows;
   }
 
+  /**
+   * Lista cursos PUBLICADOS vinculados a um id_profile específico, com counts
+   * de módulos/aulas. Usado na aba pública "Cursos" do subperfil.
+   */
+  static async listPublicByProfileId(conn, profileId) {
+    const { rows } = await conn.query(
+      `SELECT
+         c.id,
+         c.owner_user_id,
+         c.profile_id,
+         c.title,
+         c.slug,
+         c.short_description,
+         c.description,
+         c.cover_url,
+         c.price_cents,
+         c.status,
+         c.published_at,
+         c.created_at,
+         c.updated_at,
+         p.display_name AS profile_display_name,
+         COALESCE(mc.modules_count, 0)::int AS modules_count,
+         COALESCE(lc.lessons_count, 0)::int AS lessons_count
+       FROM public.courses c
+       LEFT JOIN public.tb_profile p ON p.id_profile = c.profile_id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS modules_count
+           FROM public.course_modules
+          GROUP BY course_id
+       ) mc ON mc.course_id = c.id
+       LEFT JOIN (
+         SELECT course_id, COUNT(*) AS lessons_count
+           FROM public.course_lessons
+          GROUP BY course_id
+       ) lc ON lc.course_id = c.id
+       WHERE c.profile_id = $1
+         AND c.status = 'published'
+       ORDER BY c.published_at DESC NULLS LAST, c.created_at DESC`,
+      [profileId],
+    );
+    return rows;
+  }
+
+  /**
+   * Cria enrollment ativo (idempotente via UNIQUE course_id+user_id).
+   * Retorna o row criado OU o existente.
+   */
+  static async upsertEnrollment(
+    conn,
+    { courseId, userId, amountCents, currency = "BRL" },
+  ) {
+    const { rows } = await conn.query(
+      `INSERT INTO public.course_enrollments
+         (course_id, user_id, amount_paid_cents, currency, status)
+       VALUES ($1, $2, $3, $4, 'active')
+       ON CONFLICT (course_id, user_id) DO UPDATE
+         SET status = 'active', updated_at = NOW()
+       RETURNING *`,
+      [courseId, userId, amountCents, currency],
+    );
+    return rows[0];
+  }
+
+  static async hasActiveEnrollment(conn, courseId, userId) {
+    const { rowCount } = await conn.query(
+      `SELECT 1 FROM public.course_enrollments
+        WHERE course_id = $1 AND user_id = $2 AND status = 'active'
+        LIMIT 1`,
+      [courseId, userId],
+    );
+    return rowCount > 0;
+  }
+
   // ----------------------------------------------------------------
   // Escrita
   // ----------------------------------------------------------------

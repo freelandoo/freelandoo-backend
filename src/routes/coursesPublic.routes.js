@@ -10,4 +10,10 @@ router.get(
   asyncHandler(CoursesController.getPublicBySlug),
 );
 
+// Lista cursos publicados de um subperfil específico — sem auth.
+router.get(
+  "/public/by-profile/:profileId",
+  asyncHandler(CoursesController.listPublicByProfile),
+);
+
 module.exports = router;

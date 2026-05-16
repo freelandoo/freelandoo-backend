@@ -63,6 +63,9 @@ router.get("/:id/students", asyncHandler(CourseStudentsController.list));
 router.get("/:id/feed-post", asyncHandler(CourseFeedPostsController.get));
 router.post("/:id/feed-post", asyncHandler(CourseFeedPostsController.publish));
 router.delete("/:id/feed-post", asyncHandler(CourseFeedPostsController.remove));
+// Checkout Stripe do curso (compra one-time). user_id de req.user.
+router.post("/:id/checkout", asyncHandler(CoursesController.createCheckout));
+
 router.get("/:id", asyncHandler(CoursesController.getMineById));
 router.put("/:id", asyncHandler(CoursesController.update));
 router.delete("/:id", asyncHandler(CoursesController.remove));

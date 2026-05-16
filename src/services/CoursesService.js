@@ -12,6 +12,7 @@
 const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseFeedPostsStorage = require("../storages/CourseFeedPostsStorage");
+const StripeService = require("./StripeService");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const { assertMinorPermission } = require("../utils/supervision");
 const { slugify } = require("../utils/slug");
@@ -112,6 +113,102 @@ class CoursesService {
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
         const rows = await CoursesStorage.listByOwner(pool, user.id_user);
+        return { courses: rows.map(publicCourseShape) };
+      },
+    );
+  }
+
+  /**
+   * Cria sessão Stripe one-time para comprar um curso publicado.
+   * - Bloqueia se user é dono do curso ou já tem enrollment ativo.
+   * - metadata.type='course_purchase' → webhook chama confirmStripeSession.
+   */
+  static async createStripeCheckout(user, courseId) {
+    return runWithLogs(
+      log,
+      "createStripeCheckout",
+      () => ({ id_user: user?.id_user, course_id: courseId }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!courseId) return { error: "course_id inválido" };
+        const course = await CoursesStorage.getById(pool, courseId);
+        if (!course) return { error: "Curso não encontrado", status: 404 };
+        if (course.status !== "published") {
+          return { error: "Curso não está publicado", status: 400 };
+        }
+        if (course.owner_user_id === user.id_user) {
+          return { error: "Você é o dono deste curso", status: 400 };
+        }
+        const already = await CoursesStorage.hasActiveEnrollment(
+          pool,
+          courseId,
+          user.id_user,
+        );
+        if (already) {
+          return { error: "Você já tem acesso a este curso", status: 400 };
+        }
+        const amount = Number(course.price_cents) || 0;
+        if (amount <= 0) {
+          return { error: "Curso sem preço configurado", status: 400 };
+        }
+
+        const frontend = String(
+          process.env.FRONTEND_URL || "https://freelandoo.com",
+        ).replace(/\/$/, "");
+
+        const session = await StripeService.createOneTimeCheckoutSession({
+          amount_cents: amount,
+          currency: "BRL",
+          productName: `Curso - ${course.title}`,
+          customerEmail: user.email || undefined,
+          clientReferenceId: user.id_user,
+          successUrl: `${frontend}/cursos/${course.slug}?course_checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${frontend}/cursos/${course.slug}?course_checkout=cancel`,
+          metadata: {
+            type: "course_purchase",
+            user_id: user.id_user,
+            course_id: course.id,
+            amount_cents: String(amount),
+          },
+        });
+        return { checkout_url: session.url, session_id: session.id };
+      },
+    );
+  }
+
+  /**
+   * Confirma uma sessão Stripe com metadata.type='course_purchase'.
+   * Idempotente via UNIQUE(course_id, user_id) em course_enrollments.
+   */
+  static async confirmStripeSession(session) {
+    const meta = session?.metadata || {};
+    if (meta.type !== "course_purchase") return { ignored: true };
+    const courseId = meta.course_id;
+    const userId = meta.user_id;
+    const amount = Number(meta.amount_cents) || 0;
+    if (!courseId || !userId) {
+      return { error: "Metadata inválido" };
+    }
+    const enrollment = await CoursesStorage.upsertEnrollment(pool, {
+      courseId,
+      userId,
+      amountCents: amount,
+      currency: "BRL",
+    });
+    return { enrollment };
+  }
+
+  /**
+   * Lista cursos publicados vinculados a um subperfil. Sem auth.
+   */
+  static async listPublicByProfile(profileId) {
+    return runWithLogs(
+      log,
+      "listPublicByProfile",
+      () => ({ profileId }),
+      async () => {
+        if (!profileId) return { error: "profileId inválido" };
+        const rows = await CoursesStorage.listPublicByProfileId(pool, profileId);
         return { courses: rows.map(publicCourseShape) };
       },
     );

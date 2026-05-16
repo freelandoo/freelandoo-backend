@@ -15,6 +15,22 @@ class CoursesController {
     );
   }
 
+  // GET /courses/public/by-profile/:profileId — público (sem auth)
+  static async listPublicByProfile(req, res) {
+    return sendServiceResult(
+      res,
+      await CoursesService.listPublicByProfile(req.params.profileId),
+    );
+  }
+
+  // POST /me/courses/:id/checkout — cria sessão Stripe
+  static async createCheckout(req, res) {
+    return sendServiceResult(
+      res,
+      await CoursesService.createStripeCheckout(req.user, req.params.id),
+    );
+  }
+
   // GET /me/courses/:id
   static async getMineById(req, res) {
     return sendServiceResult(
