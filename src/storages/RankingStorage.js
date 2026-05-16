@@ -600,6 +600,7 @@ module.exports = {
            AND pro.is_clan = FALSE
            AND pro.is_user_account = FALSE
            AND pro.ranking_visible = TRUE
+           AND u.is_minor = FALSE
            AND lower(pro.municipio) = lower($1)
            AND lower(pro.estado) = lower($2)
          UNION ALL
@@ -632,6 +633,7 @@ module.exports = {
          WHERE clan.is_clan = TRUE
            AND clan.deleted_at IS NULL
            AND clan.is_visible = TRUE
+           AND ou.is_minor = FALSE
            AND (
              (lower(clan.municipio) = lower($1) AND lower(clan.estado) = lower($2))
              OR EXISTS (
@@ -687,6 +689,7 @@ module.exports = {
            AND pro.is_clan = FALSE
            AND pro.is_user_account = FALSE
            AND pro.ranking_visible = TRUE
+           AND u.is_minor = FALSE
            AND lower(ca.profession_slug) = lower($1)
          UNION ALL
          SELECT
@@ -718,6 +721,7 @@ module.exports = {
          WHERE clan.is_clan = TRUE
            AND clan.deleted_at IS NULL
            AND clan.is_visible = TRUE
+           AND ou.is_minor = FALSE
            AND EXISTS (
              SELECT 1 FROM tb_clan_member cmf
              JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
@@ -768,6 +772,7 @@ module.exports = {
            AND pro.is_clan = FALSE
            AND pro.is_user_account = FALSE
            AND pro.ranking_visible = TRUE
+           AND u.is_minor = FALSE
            AND ($1::int IS NULL OR ca.id_machine = $1)
            AND ($3::text IS NULL OR m.slug = $3)
          UNION ALL
@@ -800,6 +805,7 @@ module.exports = {
          WHERE clan.is_clan = TRUE
            AND clan.deleted_at IS NULL
            AND clan.is_visible = TRUE
+           AND ou.is_minor = FALSE
            AND (
              -- Clan bate pela própria máquina OU pela máquina de qualquer membro.
              (
@@ -855,6 +861,18 @@ module.exports = {
        LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine m ON m.id_machine = COALESCE(ca.id_machine, pro.id_machine)
        WHERE pro.deleted_at IS NULL
+         AND u.is_minor = FALSE
+         AND (
+           pro.is_clan = FALSE
+           OR NOT EXISTS (
+             SELECT 1 FROM tb_clan_member ocm2
+             JOIN tb_profile op2 ON op2.id_profile = ocm2.id_member_profile
+             JOIN tb_user ou2 ON ou2.id_user = op2.id_user
+             WHERE ocm2.id_clan_profile = pro.id_profile
+               AND ocm2.role = 'owner'
+               AND ou2.is_minor = TRUE
+           )
+         )
        ORDER BY pr.position_general ASC NULLS LAST
        LIMIT $1`,
       [limit]
@@ -888,6 +906,14 @@ module.exports = {
        WHERE pro.is_clan = TRUE
          AND pro.deleted_at IS NULL
          AND pro.is_visible = TRUE
+         AND NOT EXISTS (
+           SELECT 1 FROM tb_clan_member ocm3
+           JOIN tb_profile op3 ON op3.id_profile = ocm3.id_member_profile
+           JOIN tb_user ou3 ON ou3.id_user = op3.id_user
+           WHERE ocm3.id_clan_profile = pro.id_profile
+             AND ocm3.role = 'owner'
+             AND ou3.is_minor = TRUE
+         )
          AND ($1::int  IS NULL OR pro.id_machine = $1)
          AND ($3::text IS NULL OR m.slug = $3)
        ORDER BY pr.position_machine ASC NULLS LAST, pr.total_points DESC
@@ -919,6 +945,14 @@ module.exports = {
        WHERE pro.is_clan = TRUE
          AND pro.deleted_at IS NULL
          AND pro.is_visible = TRUE
+         AND NOT EXISTS (
+           SELECT 1 FROM tb_clan_member ocm3
+           JOIN tb_profile op3 ON op3.id_profile = ocm3.id_member_profile
+           JOIN tb_user ou3 ON ou3.id_user = op3.id_user
+           WHERE ocm3.id_clan_profile = pro.id_profile
+             AND ocm3.role = 'owner'
+             AND ou3.is_minor = TRUE
+         )
          AND ($2::text IS NULL OR pro.municipio ILIKE $2)
        ORDER BY pr.total_points DESC NULLS LAST
        LIMIT $1`,
