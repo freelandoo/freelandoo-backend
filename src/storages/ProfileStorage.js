@@ -340,6 +340,7 @@ class ProfileStorage {
       p.estado,
       p.municipio,
       p.is_active,
+      COALESCE(p.is_clan, FALSE) AS is_clan,
       p.created_at,
       p.updated_at,
 
