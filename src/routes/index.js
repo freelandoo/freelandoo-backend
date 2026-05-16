@@ -55,6 +55,7 @@ const storyRoutes = require("./storyRoutes");
 const storyPublicRoutes = require("./storyPublicRoutes");
 const notificationRoutes = require("./notificationRoutes");
 const chatRoutes = require("./chatRoutes");
+const supervisionRoutes = require("./supervision.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -118,4 +119,5 @@ module.exports = (app) => {
   app.use("/stories", storyPublicRoutes);
   app.use("/me/notifications", notificationRoutes);
   app.use("/chat", chatRoutes);
+  app.use("/supervision", supervisionRoutes);
 };
