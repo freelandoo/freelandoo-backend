@@ -18,7 +18,9 @@ const {
   validateEmailFormat,
   validateAge18,
   validatePasswordStrength,
+  calculateAge,
 } = require("../utils/validateSignup");
+const SupervisionService = require("./SupervisionService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("AuthService");
@@ -51,6 +53,7 @@ class AuthService {
             display_name,
             bio,
             avatar_url,
+            responsible_code,
           } = payload;
           const email = normalizeEmail(payload.email);
           const estado = payload.estado ? String(payload.estado).trim().toUpperCase() : null;
@@ -65,8 +68,20 @@ class AuthService {
           const emailCheck = validateEmailFormat(email);
           if (!emailCheck.ok) return { error: emailCheck.error };
 
-          const ageCheck = validateAge18(data_nascimento);
-          if (!ageCheck.ok) return { error: ageCheck.error };
+          // Idade: se ≥18, fluxo normal. Se <18, exige responsible_code
+          // (validado abaixo dentro da transação para evitar race no consumo).
+          const age = calculateAge(data_nascimento);
+          if (age == null) {
+            return { error: "Data de nascimento inválida." };
+          }
+          const isMinorSignup = age < 18;
+          if (isMinorSignup && !responsible_code) {
+            return {
+              error:
+                "Para criar uma conta menor de idade, informe o código do responsável.",
+              reason: "responsible_code_required",
+            };
+          }
 
           const passCheck = validatePasswordStrength(senha);
           if (!passCheck.ok) return { error: passCheck.error };
@@ -117,6 +132,19 @@ class AuthService {
             municipio,
             ativo: false,
           });
+
+          // Conta supervisionada: consome código + cria vínculo + permissões
+          // dentro da mesma transação. Se falhar, rollback do user também.
+          if (isMinorSignup) {
+            const consumed = await SupervisionService.consumeInviteForSignup(
+              client,
+              { code: responsible_code, minorUserId: user.id_user }
+            );
+            if (consumed?.error) {
+              await client.query("ROLLBACK");
+              return { error: consumed.error };
+            }
+          }
 
           if (id_category) {
             await client.query(
@@ -207,6 +235,8 @@ class AuthService {
             nome: user.nome,
             email,
             email_verified: !!user.ativo,
+            is_minor: !!user.is_minor,
+            responsible_user_id: user.responsible_user_id || null,
           },
         };
       }
@@ -304,6 +334,8 @@ class AuthService {
               nome: user.nome,
               email,
               email_verified: true,
+              is_minor: !!user.is_minor,
+              responsible_user_id: user.responsible_user_id || null,
             },
           };
         } finally {
