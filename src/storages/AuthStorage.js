@@ -96,16 +96,19 @@ class AuthStorage {
     );
   }
 
-  static async createGoogleUser(client, { nome, username, email, googleSub }) {
+  static async createGoogleUser(
+    client,
+    { nome, username, email, googleSub, dataNascimento = null }
+  ) {
     const r = await client.query(
       `
       INSERT INTO tb_user
-        (nome, username, email, ativo, google_sub)
+        (nome, username, email, ativo, google_sub, data_nascimento)
       VALUES
-        ($1, $2, $3, TRUE, $4)
-      RETURNING id_user, nome, username, email, ativo
+        ($1, $2, $3, TRUE, $4, $5)
+      RETURNING id_user, nome, username, email, ativo, data_nascimento
       `,
-      [nome, username, email, googleSub]
+      [nome, username, email, googleSub, dataNascimento]
     );
     const user = r.rows[0];
     await this.ensureUserAccountProfile(client, user.id_user, nome);
