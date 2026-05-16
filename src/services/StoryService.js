@@ -73,6 +73,7 @@ function mapStory(row) {
 function mapFeedEntry(row) {
   return {
     id_profile: row.id_profile,
+    is_self: !!row.is_self,
     has_unviewed: !!row.has_unviewed,
     active_count: Number(row.active_count) || 0,
     last_posted_at: row.last_posted_at,
