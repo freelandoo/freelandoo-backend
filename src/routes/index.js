@@ -49,6 +49,7 @@ const premiumRoutes = require("./premium.routes");
 const premiumAdminRoutes = require("./premiumAdmin.routes");
 const coursesRoutes = require("./courses.routes");
 const coursesPublicRoutes = require("./coursesPublic.routes");
+const onboardingRoutes = require("./onboarding.routes");
 const userAccountPortfolioRoutes = require("./userAccountPortfolio.routes");
 const userPublicRoutes = require("./userPublic.routes");
 const portfolioCommentRoutes = require("./portfolioComment.routes");
@@ -122,4 +123,5 @@ module.exports = (app) => {
   app.use("/me/notifications", notificationRoutes);
   app.use("/chat", chatRoutes);
   app.use("/supervision", supervisionRoutes);
+  app.use("/me/onboarding", onboardingRoutes);
 };
