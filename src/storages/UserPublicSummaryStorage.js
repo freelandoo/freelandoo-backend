@@ -12,7 +12,9 @@ class UserPublicSummaryStorage {
       `
       SELECT COUNT(*)::int AS total
         FROM public.tb_profile p
+        JOIN public.tb_user u ON u.id_user = p.id_user
        WHERE p.id_user = $1
+         AND u.is_minor = FALSE
          AND p.deleted_at IS NULL
          AND p.is_active = TRUE
          AND p.is_visible = TRUE

@@ -1,6 +1,10 @@
 const pool = require("../databases");
 const ServiceRequestStorage = require("../storages/ServiceRequestStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const {
+  assertNotMinorForServiceRequest,
+  assertNotMinorForMural,
+} = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ServiceRequestService");
@@ -26,6 +30,8 @@ class ServiceRequestService {
   static async createRequest(user, body) {
     return runWithLogs(log, "createRequest", () => ({ id_user: user?.id_user }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
+      const minorBlock = await assertNotMinorForServiceRequest(user.id_user);
+      if (minorBlock) return minorBlock;
       const id_machine = Number(body?.id_machine);
       const id_category = Number(body?.id_category);
       if (!Number.isInteger(id_machine) || id_machine <= 0) return { error: "id_machine inválido" };
@@ -162,6 +168,8 @@ class ServiceRequestService {
   static async listMural(user, id_profile) {
     return runWithLogs(log, "listMural", () => ({ id_user: user?.id_user, id_profile }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
+      const minorBlock = await assertNotMinorForMural(user.id_user);
+      if (minorBlock) return minorBlock;
       const own = await loadOwnedProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
       const p = own.profile;
@@ -180,6 +188,8 @@ class ServiceRequestService {
   static async respond(user, id_request, body) {
     return runWithLogs(log, "respond", () => ({ id_user: user?.id_user, id_request }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
+      const minorBlock = await assertNotMinorForMural(user.id_user);
+      if (minorBlock) return minorBlock;
       if (!isUuid(id_request)) return { error: "id_request inválido" };
       const id_profile = body?.id_profile;
       const action = body?.action;

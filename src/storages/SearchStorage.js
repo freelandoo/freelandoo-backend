@@ -54,9 +54,12 @@ module.exports = {
             FROM tb_clan_member cm
             JOIN tb_profile_subscription psub
               ON psub.id_profile = cm.id_member_profile
+            JOIN tb_profile op ON op.id_profile = cm.id_member_profile
+            JOIN tb_user ou ON ou.id_user = op.id_user
            WHERE cm.id_clan_profile = clan.id_profile
              AND cm.role = 'owner'
              AND psub.status = 'active'
+             AND ou.is_minor = FALSE
         )
         -- Filtros geo/máquina batem se o clan OU qualquer membro tem o atributo.
         -- Inclui o próprio clan (clan.estado/municipio/id_machine) como fallback
@@ -227,6 +230,7 @@ module.exports = {
 
       WHERE
         tu.ativo = true
+        AND tu.is_minor = FALSE
         AND pro.is_active = true
         AND pro.is_visible = true
         AND pro.deleted_at IS NULL
