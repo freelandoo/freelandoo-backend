@@ -6,6 +6,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const router = Router();
 
 router.get("/", authMiddleware, asyncHandler(AffiliateController.getMe));
+router.get("/share-coupon", authMiddleware, asyncHandler(AffiliateController.getMyShareCoupon));
 router.put("/payout-info", authMiddleware, asyncHandler(AffiliateController.updateMyPayoutInfo));
 router.get("/conversions", authMiddleware, asyncHandler(AffiliateController.listMyConversions));
 
