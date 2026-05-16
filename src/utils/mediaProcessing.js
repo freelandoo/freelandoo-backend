@@ -328,7 +328,7 @@ async function extractVideoThumbnail(videoPath, tempDir) {
   };
 }
 
-async function processVideo(file) {
+async function processVideo(file, options = {}) {
   await assertRealVideo(file);
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "freelandoo-media-"));
@@ -337,7 +337,13 @@ async function processVideo(file) {
 
   try {
     await fs.writeFile(inputPath, file.buffer);
-    const filter = "scale=if(gt(a\\,0.8)\\,trunc(min(iw\\,1080)/2)*2\\,-2):if(gt(a\\,0.8)\\,-2\\,trunc(min(ih\\,1350)/2)*2)";
+    // Quando o vídeo é destinado ao feed clássico (4:5), forçamos crop centrado
+    // para 1080x1350 — independente do aspect ratio original. Bees mantém o
+    // pipeline antigo (escala preservando aspect; aspect vertical é validado em outro lugar).
+    const force45 = options.aspect === "4:5";
+    const filter = force45
+      ? "crop=if(gt(a\\,0.8)\\,trunc(ih*4/5/2)*2\\,iw):if(gt(a\\,0.8)\\,ih\\,trunc(iw*5/4/2)*2),scale=1080:1350"
+      : "scale=if(gt(a\\,0.8)\\,trunc(min(iw\\,1080)/2)*2\\,-2):if(gt(a\\,0.8)\\,-2\\,trunc(min(ih\\,1350)/2)*2)";
 
     await runFfmpeg([
       "-y",
@@ -407,9 +413,13 @@ async function processVideo(file) {
   }
 }
 
-async function processPortfolioMedia(file, mediaType) {
+async function processPortfolioMedia(file, mediaType, options = {}) {
   if (mediaType === "image") return processPostImage(file);
-  if (mediaType === "video") return processVideo(file);
+  if (mediaType === "video") {
+    // feedKind='feed' → vídeo é cropado pra 4:5; 'bees' → mantém vertical.
+    const aspect = options.feedKind === "feed" ? "4:5" : null;
+    return processVideo(file, aspect ? { aspect } : {});
+  }
   throw httpError("Tipo de arquivo nao permitido");
 }
 
