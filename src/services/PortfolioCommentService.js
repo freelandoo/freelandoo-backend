@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const PortfolioCommentStorage = require("../storages/PortfolioCommentStorage");
 const NotificationService = require("./NotificationService");
+const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PortfolioCommentService");
@@ -74,6 +75,8 @@ class PortfolioCommentService {
       }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
+        const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
+        if (minorBlock) return minorBlock;
         if (!id_portfolio_item || !UUID_RE.test(id_portfolio_item)) {
           return { error: "id_portfolio_item inválido", statusCode: 400 };
         }

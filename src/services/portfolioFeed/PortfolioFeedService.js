@@ -1,4 +1,5 @@
 const PortfolioFeedStorage = require("../../storages/PortfolioFeedStorage");
+const { assertMinorPermission } = require("../../utils/supervision");
 const { createLogger, runWithLogs } = require("../../utils/logger");
 const { slugify, buildProfileUrl } = require("../../utils/slug");
 
@@ -283,6 +284,14 @@ class PortfolioFeedService {
         viewer: viewer?.id_user ? "auth" : "anon",
       }),
       async () => {
+        // Supervisão: bloqueia visualização do feed/bees para menor sem toggle.
+        if (viewer?.id_user) {
+          const wantsBees = filters?.feed_kind === "bees";
+          const permKey = wantsBees ? "can_use_bees" : "can_view_feed";
+          const minorBlock = await assertMinorPermission(viewer.id_user, permKey);
+          if (minorBlock) return minorBlock;
+        }
+
         const requestedLimit = Number.isFinite(pagination?.limit)
           ? pagination.limit
           : DEFAULT_LIMIT;

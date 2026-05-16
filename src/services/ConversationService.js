@@ -3,7 +3,9 @@ const NotificationService = require("./NotificationService");
 const ConversationStorage = require("../storages/ConversationStorage");
 const MessageStorage = require("../storages/MessageStorage");
 const EntityFollowStorage = require("../storages/EntityFollowStorage");
+const { assertMinorPermission, isMinorUser } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
+const ProfileStorage = require("../storages/ProfileStorage");
 
 const log = createLogger("ConversationService");
 
@@ -316,6 +318,10 @@ class ConversationService {
           return { error: `Mensagem inválida (máximo ${MAX_BODY_LENGTH} caracteres)` };
         }
 
+        // Supervisão: menor com can_message=FALSE não pode enviar.
+        const minorSendBlock = await assertMinorPermission(user?.id_user, "can_message");
+        if (minorSendBlock) return minorSendBlock;
+
         const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
         const recent = await MessageStorage.countSentByUserSince(pool, {
           id_user: user?.id_user,
@@ -358,6 +364,19 @@ class ConversationService {
             if (String(actorRes.actor_id) === String(targetRes.target_id)) {
               await client.query("ROLLBACK");
               return { error: "Não é possível enviar mensagem para si mesmo" };
+            }
+            // Supervisão: bloqueia envio para menor com can_receive_messages=FALSE.
+            const targetProfile = await ProfileStorage.getProfileById(client, targetRes.target_id);
+            if (targetProfile?.id_user && !targetProfile.is_clan) {
+              const recvBlock = await assertMinorPermission(
+                targetProfile.id_user,
+                "can_receive_messages",
+                client
+              );
+              if (recvBlock) {
+                await client.query("ROLLBACK");
+                return { error: "Destinatário não está aceitando mensagens", status: 403 };
+              }
             }
             const created = await ConversationStorage.getOrCreate(
               client,

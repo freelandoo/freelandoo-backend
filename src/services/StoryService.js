@@ -2,6 +2,7 @@ const pool = require("../databases");
 const StoryStorage = require("../storages/StoryStorage");
 const uploadStoryVideoToR2 = require("../integrations/r2/uploadStoryVideo");
 const { processPortfolioMedia } = require("../utils/mediaProcessing");
+const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("StoryService");
@@ -112,6 +113,9 @@ class StoryService {
       }),
       async () => {
         if (!user?.id_user) return { error: "Usuário não autenticado" };
+        // Supervisão: stories são posts no feed/bees — respeita can_post_feed.
+        const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
+        if (minorBlock) return minorBlock;
         if (!id_profile || !UUID_RE.test(id_profile)) {
           return { error: "id_profile inválido" };
         }
