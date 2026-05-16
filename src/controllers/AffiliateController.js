@@ -17,6 +17,15 @@ class AffiliateController {
     }
   }
 
+  static async getMyShareCoupon(req, res) {
+    try {
+      const result = await AffiliateService.getMyShareCoupon(req.user);
+      return res.json(result);
+    } catch (err) {
+      return handleError(res, err);
+    }
+  }
+
   static async updateMyPayoutInfo(req, res) {
     try {
       const result = await AffiliateService.updateMyPayoutInfo(req.user, req.body || {});

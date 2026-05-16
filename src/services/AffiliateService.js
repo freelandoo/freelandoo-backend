@@ -79,6 +79,24 @@ async function updateMyPayoutInfo(user, body) {
   });
 }
 
+async function getMyShareCoupon(user) {
+  const couponsRes = await CouponStorage.listByUser(pool, user.id_user, {
+    is_active: true,
+    limit: 1,
+    offset: 0,
+  });
+  const coupon = couponsRes?.data?.[0] ?? null;
+  if (!coupon) return { coupon: null };
+  return {
+    coupon: {
+      id_coupon: coupon.id_coupon,
+      code: coupon.code,
+      discount_type: coupon.discount_type,
+      value: coupon.value,
+    },
+  };
+}
+
 async function listMyConversions(user, query) {
   const page = Math.max(parseInt(query.page || "1", 10), 1);
   const limit = Math.min(Math.max(parseInt(query.limit || "20", 10), 1), 100);
@@ -320,6 +338,7 @@ module.exports = {
   resolveDispute,
   // /me
   getMe,
+  getMyShareCoupon,
   updateMyPayoutInfo,
   listMyConversions,
   // admin

@@ -40,7 +40,7 @@ class CheckoutService {
       "createCheckout",
       () => ({ id_user: user.id_user, id_item: body?.id_item }),
       async () => {
-        const { id_item, id_profile: rawProfile } = body || {};
+        const { id_item, id_profile: rawProfile, coupon_code } = body || {};
 
         if (!id_item) {
           return { error: "id_item é obrigatório" };
@@ -74,7 +74,7 @@ class CheckoutService {
           id_profile: profileResolved.id_profile,
         });
 
-        await CheckoutStorage.createCheckoutItem(pool, {
+        const checkoutItem = await CheckoutStorage.createCheckoutItem(pool, {
           id_checkout: checkout.id_checkout,
           id_item,
           item_name_snapshot: item.desc_item,
@@ -84,6 +84,16 @@ class CheckoutService {
           discount_cents: 0,
         });
 
+        if (coupon_code && typeof coupon_code === "string" && coupon_code.trim()) {
+          await CheckoutService._tryApplyShareCoupon({
+            user,
+            id_checkout: checkout.id_checkout,
+            checkoutItem,
+            subtotal,
+            code: coupon_code.trim(),
+          });
+        }
+
         const summary = await CheckoutStorage.getCheckoutSummary(
           pool,
           checkout.id_checkout
@@ -92,6 +102,72 @@ class CheckoutService {
         return { checkout: summary };
       }
     );
+  }
+
+  static async _tryApplyShareCoupon({ user, id_checkout, checkoutItem, subtotal, code }) {
+    try {
+      const coupon = await CheckoutStorage.getCouponByCode(pool, code);
+      if (!coupon) return;
+      if (!coupon.is_active) return;
+      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) return;
+      if (coupon.owner_user_id && coupon.owner_user_id === user.id_user) return;
+
+      const normalizedScope = String(coupon.scope || "").trim().toUpperCase();
+
+      if (
+        coupon.min_order_cents !== null &&
+        coupon.min_order_cents !== undefined &&
+        subtotal < Number(coupon.min_order_cents)
+      ) return;
+
+      if (
+        normalizedScope === "ITEM" &&
+        coupon.applies_to_item_id &&
+        checkoutItem &&
+        coupon.applies_to_item_id !== checkoutItem.id_item
+      ) return;
+
+      if (coupon.max_uses !== null && coupon.max_uses !== undefined) {
+        const usageCount = await CheckoutStorage.countCouponUsage(pool, coupon.id_coupon);
+        if (Number(usageCount) >= Number(coupon.max_uses)) return;
+      }
+
+      const discount = CheckoutService.calculateDiscount({
+        subtotal,
+        type: coupon.discount_type,
+        value: coupon.value,
+        max: coupon.max_discount_cents,
+      });
+
+      const total = Math.max(0, subtotal - discount);
+
+      await CheckoutStorage.deactivateCheckoutCoupons(pool, id_checkout);
+      await CheckoutStorage.createCheckoutCoupon(pool, {
+        id_checkout,
+        id_coupon: coupon.id_coupon,
+        code_snapshot: coupon.code,
+        discount_cents: discount,
+      });
+      await CheckoutStorage.updateCheckoutTotals(pool, {
+        id_checkout,
+        subtotal_cents: subtotal,
+        discount_cents: discount,
+        total_cents: total,
+      });
+      if (checkoutItem) {
+        await CheckoutStorage.updateCheckoutItemDiscount(pool, {
+          id_checkout_item: checkoutItem.id_checkout_item,
+          discount_cents: discount,
+          total_cents: total,
+        });
+      }
+    } catch (err) {
+      log("warn", "_tryApplyShareCoupon: falha silenciosa", {
+        id_checkout,
+        code,
+        error: err?.message,
+      });
+    }
   }
 
   static async getCheckoutById(user, params) {
