@@ -236,6 +236,66 @@ class NotificationService {
       },
     });
   }
+
+  /**
+   * Notificação de espelho para o responsável quando um menor recebe mensagem.
+   * Idempotência: NÃO usa dedupe (cada mensagem vira 1 evento) — o stream para
+   * o responsável reflete o tráfego real do menor.
+   */
+  static async notifySupervisedMessage({
+    minor_user_id,
+    minor_profile_id,
+    responsible_user_id,
+    actor_user_id,
+    actor_profile_id,
+    id_conversation,
+    content_preview,
+  }) {
+    if (!responsible_user_id || !id_conversation) return null;
+    return safeNotify({
+      id_recipient_user: responsible_user_id,
+      id_recipient_profile: null,
+      type: "supervised_message_received",
+      id_actor_user: actor_user_id,
+      id_actor_profile: actor_profile_id,
+      entity_type: "conversation",
+      entity_id: id_conversation,
+      payload: {
+        preview: typeof content_preview === "string"
+          ? content_preview.slice(0, 140)
+          : null,
+        minor_user_id,
+        minor_profile_id,
+      },
+    });
+  }
+
+  /**
+   * Notificação de pedido de permissão: menor pede ao responsável para
+   * liberar um toggle (ex.: can_sell_courses).
+   * Dedupe parcial em índice (vide mig 062) evita spam.
+   */
+  static async notifyPermissionRequest({
+    minor_user_id,
+    responsible_user_id,
+    permission_key,
+    note,
+  }) {
+    if (!responsible_user_id || !permission_key) return null;
+    return safeNotify({
+      id_recipient_user: responsible_user_id,
+      id_recipient_profile: null,
+      type: "parental_permission_request",
+      id_actor_user: minor_user_id,
+      id_actor_profile: null,
+      entity_type: "minor",
+      entity_id: null,
+      payload: {
+        permission_key,
+        note: typeof note === "string" ? note.slice(0, 280) : null,
+      },
+    });
+  }
 }
 
 module.exports = NotificationService;

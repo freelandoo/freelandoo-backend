@@ -49,6 +49,13 @@ router.put(
   asyncHandler(SupervisionController.setMachine)
 );
 
+// Pedido de permissão do menor para o responsável
+router.post(
+  "/me/request-permission",
+  authMiddleware,
+  asyncHandler(SupervisionController.requestPermission)
+);
+
 // Mensagens supervisionadas (read-only para o responsável)
 router.get(
   "/minors/:minor_user_id/conversations",

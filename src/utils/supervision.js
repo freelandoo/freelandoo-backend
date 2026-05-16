@@ -26,6 +26,27 @@ async function isMinorUser(userId, conn = pool) {
   return Boolean(u && u.is_minor);
 }
 
+/**
+ * Retorna o estado de supervisão do usuário: minoridade + status do vínculo.
+ * - `is_minor`: flag denormalizada em tb_user.
+ * - `link_status`: status atual do supervised_account ('active'|'suspended'|
+ *   'revoked'|null se não tiver vínculo).
+ * - `responsible_user_id`: dono do vínculo (do tb_user denormalizado).
+ */
+async function getSupervisionState(userId, conn = pool) {
+  if (!userId) return { is_minor: false, link_status: null, responsible_user_id: null };
+  const flags = await SupervisionStorage.getUserMinorFlags(conn, userId);
+  if (!flags?.is_minor) {
+    return { is_minor: false, link_status: null, responsible_user_id: null };
+  }
+  const link = await SupervisionStorage.getSupervisedByMinor(conn, userId);
+  return {
+    is_minor: true,
+    link_status: link?.status || null,
+    responsible_user_id: flags.responsible_user_id || null,
+  };
+}
+
 async function getResponsibleUser(minorUserId, conn = pool) {
   if (!minorUserId) return null;
   const u = await SupervisionStorage.getUserMinorFlags(conn, minorUserId);
@@ -46,6 +67,27 @@ async function canAccessMachine(minorUserId, idMachine, conn = pool) {
     minorUserId,
     idMachine
   );
+}
+
+// Helper interno: bloqueio quando vínculo está suspended/revoked.
+// Retorna null se a conta está livre para agir, ou { error, status } se está
+// supervisionada e o vínculo não é 'active'.
+async function assertLinkActiveIfMinor(userId, conn = pool) {
+  const state = await getSupervisionState(userId, conn);
+  if (!state.is_minor) return null;
+  if (state.link_status === "suspended") {
+    return {
+      error: "Conta supervisionada está suspensa pelo responsável",
+      status: 403,
+    };
+  }
+  if (state.link_status === "revoked") {
+    return {
+      error: "Vínculo de supervisão foi revogado",
+      status: 403,
+    };
+  }
+  return null;
 }
 
 // Bloqueios duros: ficam negados independente do toggle de permissão.
@@ -91,8 +133,18 @@ async function assertNotMinorForMural(userId, conn = pool) {
 
 // Soft: depende de toggle. Ex.: cursos/feed/chats.
 async function assertMinorPermission(userId, permission, conn = pool) {
-  const isMinor = await isMinorUser(userId, conn);
-  if (!isMinor) return null;
+  const state = await getSupervisionState(userId, conn);
+  if (!state.is_minor) return null;
+  // Vínculo suspended/revoked bloqueia tudo, antes do toggle.
+  if (state.link_status !== "active") {
+    return {
+      error:
+        state.link_status === "suspended"
+          ? "Conta supervisionada está suspensa pelo responsável"
+          : "Vínculo de supervisão foi revogado",
+      status: 403,
+    };
+  }
   const ok = await hasMinorPermission(userId, permission, conn);
   if (!ok) {
     return {
@@ -104,8 +156,17 @@ async function assertMinorPermission(userId, permission, conn = pool) {
 }
 
 async function assertMachineAllowed(userId, idMachine, conn = pool) {
-  const isMinor = await isMinorUser(userId, conn);
-  if (!isMinor) return null;
+  const state = await getSupervisionState(userId, conn);
+  if (!state.is_minor) return null;
+  if (state.link_status !== "active") {
+    return {
+      error:
+        state.link_status === "suspended"
+          ? "Conta supervisionada está suspensa pelo responsável"
+          : "Vínculo de supervisão foi revogado",
+      status: 403,
+    };
+  }
   const ok = await canAccessMachine(userId, idMachine, conn);
   if (!ok) {
     return {
@@ -120,8 +181,10 @@ module.exports = {
   isAdultBirthdate,
   isMinorUser,
   getResponsibleUser,
+  getSupervisionState,
   hasMinorPermission,
   canAccessMachine,
+  assertLinkActiveIfMinor,
   assertNotMinorForServiceRequest,
   assertNotMinorForShowcase,
   assertNotMinorForRanking,
