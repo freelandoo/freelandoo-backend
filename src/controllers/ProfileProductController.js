@@ -1,4 +1,5 @@
 const ProfileProductService = require("../services/ProfileProductService");
+const ShippingService = require("../services/ShippingService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class ProfileProductController {
@@ -53,6 +54,17 @@ class ProfileProductController {
 
   static async reorderMedia(req, res) {
     const result = await ProfileProductService.reorderMedia(req.user, req.params, req.body);
+    return sendServiceResult(res, result);
+  }
+
+  // ─── Frete público ───────────────────────────────────────────────────
+  static async quoteShipping(req, res) {
+    const result = await ShippingService.quote({
+      id_profile: req.params.id_profile,
+      id_profile_product: req.params.id_profile_product,
+      destination_zipcode: req.body?.destination_zipcode,
+      quantity: req.body?.quantity,
+    });
     return sendServiceResult(res, result);
   }
 }
