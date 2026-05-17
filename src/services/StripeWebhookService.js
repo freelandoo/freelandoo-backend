@@ -323,9 +323,11 @@ async function processEvent(event) {
     case "charge.refunded": {
       const charge = event.data.object;
       const productOrderResult = await ProfileProductOrderService.handleChargeRefunded(charge);
-      if (!productOrderResult || productOrderResult.ignored) {
-        await handleChargeRefunded(pool, charge);
-      }
+      if (productOrderResult && !productOrderResult.ignored) break;
+      const BookingPayoutService = require("./BookingPayoutService");
+      const bookingResult = await BookingPayoutService.handleChargeRefunded(charge);
+      if (bookingResult && !bookingResult.ignored) break;
+      await handleChargeRefunded(pool, charge);
       break;
     }
     default:

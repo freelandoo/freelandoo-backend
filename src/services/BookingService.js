@@ -230,6 +230,12 @@ class BookingService {
     } catch (err) {
       log.error("booking.clan_split.fail", { bookingId: booking.id, error: err.message });
     }
+    try {
+      const BookingPayoutService = require("./BookingPayoutService");
+      await BookingPayoutService.createFromBooking(booking);
+    } catch (err) {
+      log.error("booking.payout_create.fail", { bookingId: booking.id, error: err.message });
+    }
     return booking;
   }
 
