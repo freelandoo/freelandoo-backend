@@ -4,6 +4,7 @@ const ProfileProductMediaStorage = require("../storages/ProfileProductMediaStora
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProductCategoryStorage = require("../storages/ProductCategoryStorage");
 const StoreProductPolicyService = require("./StoreProductPolicyService");
+const StoreGovernanceService = require("./StoreGovernanceService");
 const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadProductMediaToR2 = require("../integrations/r2/uploadProductMedia");
@@ -372,12 +373,12 @@ class ProfileProductService {
       });
       const ids = products.map((p) => Number(p.id_profile_product));
       const mediaMap = await ProfileProductMediaStorage.listByProducts(pool, ids);
-      return {
-        products: products.map((p) => ({
-          ...p,
-          media: mediaMap.get(String(p.id_profile_product)) || [],
-        })),
-      };
+      const enriched = await Promise.all(products.map(async (p) => ({
+        ...p,
+        media: mediaMap.get(String(p.id_profile_product)) || [],
+        pricing: await StoreGovernanceService.computeFeesFor(p.price_amount),
+      })));
+      return { products: enriched };
     });
   }
 
@@ -403,7 +404,8 @@ class ProfileProductService {
         return { error: "Produto não encontrado" };
       }
       const media = await ProfileProductMediaStorage.listByProduct(pool, Number(id_profile_product));
-      return { product: { ...product, media } };
+      const pricing = await StoreGovernanceService.computeFeesFor(product.price_amount);
+      return { product: { ...product, media, pricing } };
     });
   }
 

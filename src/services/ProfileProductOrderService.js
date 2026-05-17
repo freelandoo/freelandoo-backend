@@ -4,6 +4,7 @@ const ProfileProductOrderStorage = require("../storages/ProfileProductOrderStora
 const SellerBalanceStorage = require("../storages/SellerBalanceStorage");
 const ShippingService = require("./ShippingService");
 const StripeService = require("./StripeService");
+const StoreGovernanceService = require("./StoreGovernanceService");
 const { purchaseLabel } = require("../integrations/melhorenvio/purchaseLabel");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -80,9 +81,15 @@ class ProfileProductOrderService {
       const option = (quote.options || []).find((o) => String(o.service_id) === shippingServiceId);
       if (!option) return { error: "Opção de frete inválida ou expirada — recalcule" };
 
-      const unit = Number(product.price_amount) || 0;
+      const unit_seller = Number(product.price_amount) || 0;
+      const pricing = await StoreGovernanceService.computeFeesFor(unit_seller);
+      const unit_display = pricing.display_price_cents;
       const shipping_cents = option.price_cents;
-      const total_cents = unit * quantity + shipping_cents;
+      // Comprador paga: display_price (já inclui taxas) * qty + frete
+      const total_cents = unit_display * quantity + shipping_cents;
+      const seller_amount_total = unit_seller * quantity;
+      const service_fee_total = pricing.service_fee_cents * quantity;
+      const processor_fee_total = pricing.processor_fee_cents * quantity;
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
       const successUrl = `${frontend}/account/compras?status=success&session_id={CHECKOUT_SESSION_ID}`;
@@ -90,7 +97,7 @@ class ProfileProductOrderService {
 
       const session = await StripeService.createMultiItemCheckoutSession({
         line_items: [
-          { name: product.name, amount_cents: unit, quantity },
+          { name: product.name, amount_cents: unit_display, quantity },
           { name: `Frete — ${option.carrier} ${option.service_name}`, amount_cents: shipping_cents, quantity: 1 },
         ],
         currency: "BRL",
@@ -112,9 +119,13 @@ class ProfileProductOrderService {
         id_seller_profile: product.id_profile,
         id_seller_user: product.owner_id_user,
         quantity,
-        unit_price_cents: unit,
+        unit_price_cents: unit_display,
         shipping_cents,
         total_cents,
+        seller_amount_cents: seller_amount_total,
+        service_fee_cents: service_fee_total,
+        processor_fee_cents: processor_fee_total,
+        processor_fee_source: "fallback",
         shipping_service_id: shippingServiceId,
         shipping_service_name: option.service_name,
         shipping_carrier: option.carrier,
@@ -158,13 +169,20 @@ class ProfileProductOrderService {
         : session.payment_intent?.id || null;
       // charge_id só fica disponível via PI; pode ser preenchido em charge.refunded.
       let charge_id = null;
+      let stripe_fee_cents = null;
       if (payment_intent_id) {
         try {
           const stripe = StripeService.client();
-          const pi = await stripe.paymentIntents.retrieve(payment_intent_id);
-          charge_id = typeof pi.latest_charge === "string"
-            ? pi.latest_charge
-            : pi.latest_charge?.id || null;
+          const pi = await stripe.paymentIntents.retrieve(payment_intent_id, {
+            expand: ["latest_charge.balance_transaction"],
+          });
+          const charge = typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+          charge_id = charge?.id || (typeof pi.latest_charge === "string" ? pi.latest_charge : null);
+          // balance_transaction.fee é o valor REAL cobrado pelo Stripe em centavos.
+          const bt = charge?.balance_transaction;
+          if (bt && typeof bt === "object" && Number.isFinite(bt.fee)) {
+            stripe_fee_cents = Number(bt.fee);
+          }
         } catch (err) {
           log.warn("confirm.pi_lookup_fail", { payment_intent_id, message: err.message });
         }
@@ -190,18 +208,32 @@ class ProfileProductOrderService {
         return { error: "out_of_stock", canceled: true };
       }
 
-      const paid = await ProfileProductOrderStorage.markPaid(client, existing.id_order, {
+      let paid = await ProfileProductOrderStorage.markPaid(client, existing.id_order, {
         payment_intent_id,
         charge_id,
       });
 
-      // A plataforma compra a etiqueta no Melhor Envio com saldo próprio,
-      // então o frete fica retido (cobre o custo da etiqueta). Vendedor
-      // recebe apenas o valor do produto. Platform fee = 0 por enquanto.
+      // Substitui processor_fee estimado pela fee REAL do Stripe (balance_transaction.fee).
+      // Vendedor recebe seller_amount_cents fixo; eventual diferença (estimado vs real)
+      // é absorvida pela plataforma — service_fee_cents do order é o ganho bruto da plat.
+      if (Number.isFinite(stripe_fee_cents) && stripe_fee_cents >= 0) {
+        const updated = await ProfileProductOrderStorage.updateProcessorFeeFromStripe(
+          client, paid.id_order, stripe_fee_cents
+        );
+        if (updated) paid = updated;
+      }
+
+      // Vendedor recebe o seller_amount_cents cravado no checkout (taxas já foram
+      // embutidas no display que o comprador pagou). Frete fica retido com a plataforma
+      // — ela compra a etiqueta no Melhor Envio.
       const gross = Number(paid.total_cents) || 0;
       const shipping = Number(paid.shipping_cents) || 0;
-      const platform_fee = 0;
-      const net = Math.max(0, gross - shipping - platform_fee);
+      const seller_amount = Number(paid.seller_amount_cents) || 0;
+      const service_fee = Number(paid.service_fee_cents) || 0;
+      // platform_fee_cents do tb_seller_balance representa a taxa de serviço
+      // que a plataforma reteve (não inclui a maquininha — essa fica fora).
+      const platform_fee = service_fee;
+      const net = seller_amount;
       const available_at = new Date(Date.now() + HOLDBACK_DAYS * 24 * 60 * 60 * 1000);
 
       await SellerBalanceStorage.create(client, {
