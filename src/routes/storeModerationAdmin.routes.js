@@ -3,9 +3,14 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const roleMiddleware = require("../middlewares/roleMiddleware");
 const asyncHandler = require("../utils/asyncHandler");
 const StoreModerationAdminController = require("../controllers/StoreModerationAdminController");
+const StoreGovernanceController = require("../controllers/StoreGovernanceController");
 
 const router = Router();
 const admin = [authMiddleware, roleMiddleware("Administrator")];
+
+// Governança da Loja
+router.get("/governance", ...admin, asyncHandler(StoreGovernanceController.get));
+router.put("/governance", ...admin, asyncHandler(StoreGovernanceController.update));
 
 // Regras de produtos proibidos
 router.get("/prohibited-rules", ...admin, asyncHandler(StoreModerationAdminController.listRules));

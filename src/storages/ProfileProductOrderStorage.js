@@ -4,6 +4,7 @@ class ProfileProductOrderStorage {
       `INSERT INTO public.tb_profile_product_order (
          id_buyer_user, id_profile_product, id_seller_profile, id_seller_user,
          quantity, unit_price_cents, shipping_cents, total_cents,
+         seller_amount_cents, service_fee_cents, processor_fee_cents, processor_fee_source,
          shipping_service_id, shipping_service_name, shipping_carrier,
          destination_zipcode, destination_full_address,
          buyer_name, buyer_email, buyer_whatsapp,
@@ -11,14 +12,19 @@ class ProfileProductOrderStorage {
        ) VALUES (
          $1,$2,$3,$4,
          $5,$6,$7,$8,
-         $9,$10,$11,
-         $12,$13,
-         $14,$15,$16,
-         $17,$18
+         $9,$10,$11,$12,
+         $13,$14,$15,
+         $16,$17,
+         $18,$19,$20,
+         $21,$22
        ) RETURNING *`,
       [
         data.id_buyer_user, data.id_profile_product, data.id_seller_profile, data.id_seller_user,
         data.quantity, data.unit_price_cents, data.shipping_cents, data.total_cents,
+        data.seller_amount_cents ?? (data.total_cents - (data.shipping_cents || 0)),
+        data.service_fee_cents || 0,
+        data.processor_fee_cents || 0,
+        data.processor_fee_source || "fallback",
         data.shipping_service_id || null, data.shipping_service_name || null, data.shipping_carrier || null,
         data.destination_zipcode, data.destination_full_address ? JSON.stringify(data.destination_full_address) : null,
         data.buyer_name || null, data.buyer_email || null, data.buyer_whatsapp || null,
@@ -26,6 +32,25 @@ class ProfileProductOrderStorage {
       ]
     );
     return r.rows[0];
+  }
+
+  /**
+   * Atualiza a fee real do Stripe vinda do webhook (balance_transaction.fee).
+   * Idempotente: só atualiza se ainda estiver como 'fallback'.
+   */
+  static async updateProcessorFeeFromStripe(conn, id_order, fee_cents) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile_product_order
+          SET processor_fee_cents = $2,
+              processor_fee_source = 'stripe_balance_tx',
+              processor_fee_settled_at = NOW(),
+              updated_at = NOW()
+        WHERE id_order = $1
+          AND processor_fee_source = 'fallback'
+        RETURNING *`,
+      [id_order, fee_cents]
+    );
+    return r.rows[0] || null;
   }
 
   static async getById(conn, id_order) {

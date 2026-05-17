@@ -69,6 +69,7 @@ const productCategoryRoutes = require("./productCategory.routes");
 const productCategoryAdminRoutes = require("./productCategoryAdmin.routes");
 const productRequestRoutes = require("./productRequest.routes");
 const storeModerationAdminRoutes = require("./storeModerationAdmin.routes");
+const storePricePreviewRoutes = require("./storePricePreview.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -146,4 +147,5 @@ module.exports = (app) => {
   app.use("/admin/store/product-categories", productCategoryAdminRoutes);
   app.use("/product-requests", productRequestRoutes);
   app.use("/admin/store", storeModerationAdminRoutes);
+  app.use("/store", storePricePreviewRoutes);
 };
