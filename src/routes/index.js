@@ -63,6 +63,7 @@ const chatRoutes = require("./chatRoutes");
 const supervisionRoutes = require("./supervision.routes");
 const sellerBalanceRoutes = require("./sellerBalance.routes");
 const chatModerationAdminRoutes = require("./chatModerationAdmin.routes");
+const bookingPayoutRoutes = require("./bookingPayout.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -134,4 +135,5 @@ module.exports = (app) => {
   app.use("/me/onboarding", onboardingRoutes);
   app.use("/", sellerBalanceRoutes);
   app.use("/admin", chatModerationAdminRoutes);
+  app.use("/", bookingPayoutRoutes);
 };

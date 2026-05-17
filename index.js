@@ -66,6 +66,19 @@ const server = app.listen(PORT, () => {
   setTimeout(tickSellerBalances, 3 * 60 * 1000);
   setInterval(tickSellerBalances, TWO_HOURS);
 
+  // Job CDC: libera payouts de booking (agendamentos) após holdback.
+  const BookingPayoutStorage = require("./src/storages/BookingPayoutStorage");
+  const tickBookingPayouts = async () => {
+    try {
+      const rows = await BookingPayoutStorage.releaseDue(pool);
+      if (rows.length) bootLog.info("booking_payouts.released", { count: rows.length });
+    } catch (err) {
+      bootLog.error("booking_payouts.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickBookingPayouts, 5 * 60 * 1000);
+  setInterval(tickBookingPayouts, TWO_HOURS);
+
   // Job: compra etiqueta no Melhor Envio para pedidos pagos cuja compra
   // inicial (no webhook) falhou. Roda 4 min após boot e a cada 30 min.
   const ProfileProductOrderService = require("./src/services/ProfileProductOrderService");
