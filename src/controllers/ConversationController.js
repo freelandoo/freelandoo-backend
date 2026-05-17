@@ -40,6 +40,25 @@ class ConversationController {
     return sendServiceResult(res, result, 201);
   }
 
+  static async sendAudioMessage(req, res) {
+    const result = await ConversationService.sendAudioMessage(req.user, {
+      id_conversation: req.params?.id,
+      actor_id: req.body?.actor_id,
+      actor_type: req.body?.actor_type,
+      file: req.file,
+    });
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async deleteMessage(req, res) {
+    const result = await ConversationService.deleteMessage(req.user, {
+      id_message: req.params?.id_message,
+      actor_id: req.query?.actor_id || req.body?.actor_id,
+      actor_type: req.query?.actor_type || req.body?.actor_type,
+    });
+    return sendServiceResult(res, result);
+  }
+
   static async markRead(req, res) {
     const result = await ConversationService.markRead(req.user, {
       ...(req.body || {}),

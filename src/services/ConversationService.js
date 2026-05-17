@@ -9,11 +9,17 @@ const {
 } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const ProfileStorage = require("../storages/ProfileStorage");
+const { processConversationAudio } = require("../utils/mediaProcessing");
+const {
+  uploadConversationAudio,
+  deleteConversationAudio,
+} = require("../integrations/r2/uploadConversationAudio");
 
 const log = createLogger("ConversationService");
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_MESSAGES = 30;
+const RATE_LIMIT_MAX_AUDIO = 8;
 const MAX_BODY_LENGTH = 4000;
 
 function normalizeActorType(value) {
@@ -52,10 +58,26 @@ function mapMessage(row) {
     sender_entity_id: row.sender_entity_id,
     sender_user_id: row.sender_user_id,
     body: row.body,
+    kind: row.kind || "text",
     status: row.status,
+    audio_url: row.audio_url || null,
+    audio_duration_seconds: row.audio_duration_seconds || null,
+    audio_size_bytes: row.audio_size_bytes || null,
+    audio_mime_type: row.audio_mime_type || null,
+    audio_codec: row.audio_codec || null,
+    audio_bitrate: row.audio_bitrate || null,
+    media_processing_status: row.media_processing_status || "ready",
     created_at: row.created_at,
     deleted_at: row.deleted_at,
   };
+}
+
+function audioPreview(duration) {
+  const s = Math.max(1, Math.round(Number(duration) || 0));
+  if (s < 60) return `🎤 Áudio (${s}s)`;
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `🎤 Áudio (${mm}:${ss.toString().padStart(2, "0")})`;
 }
 
 function mapConversationListItem(row, viewerEntityId) {
@@ -486,6 +508,231 @@ class ConversationService {
         } finally {
           client.release();
         }
+      }
+    );
+  }
+
+  static async sendAudioMessage(user, payload) {
+    return runWithLogs(
+      log,
+      "sendAudioMessage",
+      () => ({
+        id_user: user?.id_user,
+        id_conversation: payload?.id_conversation,
+        actor_id: payload?.actor_id,
+      }),
+      async () => {
+        if (!payload?.file?.buffer?.length) {
+          return { error: "Arquivo de áudio não enviado" };
+        }
+        if (!payload?.id_conversation) {
+          return { error: "id_conversation é obrigatório para áudios" };
+        }
+
+        // Supervisão: menor com can_message=FALSE não pode enviar.
+        const minorSendBlock = await assertMinorPermission(user?.id_user, "can_message");
+        if (minorSendBlock) return minorSendBlock;
+
+        // Rate limit geral
+        const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
+        const recent = await MessageStorage.countSentByUserSince(pool, {
+          id_user: user?.id_user,
+          since,
+        });
+        if (recent >= RATE_LIMIT_MAX_MESSAGES) {
+          return { error: "Limite de envio excedido. Aguarde alguns segundos." };
+        }
+        // Rate limit específico de áudio
+        const recentAudio = await MessageStorage.countAudioSentByUserSince(pool, {
+          id_user: user?.id_user,
+          since,
+        });
+        if (recentAudio >= RATE_LIMIT_MAX_AUDIO) {
+          return { error: "Muitos áudios em sequência. Aguarde alguns segundos." };
+        }
+
+        // ── Etapa 1: pré-valida + cria placeholder pendente ─────────────
+        let pendingMessageId = null;
+        let conv = null;
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          const actorRes = await resolveActor(client, user, payload);
+          if (actorRes.error) {
+            await client.query("ROLLBACK");
+            return actorRes;
+          }
+
+          conv = await ConversationStorage.getById(client, payload.id_conversation);
+          if (!conv) {
+            await client.query("ROLLBACK");
+            return { error: "Conversa não encontrada" };
+          }
+          // Áudio só em conversa direta 1-a-1
+          if ((conv.kind || "direct") !== "direct") {
+            await client.query("ROLLBACK");
+            return { error: "Áudio só pode ser enviado em conversas privadas 1 a 1" };
+          }
+
+          const part = await ConversationStorage.getParticipant(client, {
+            id_conversation: conv.id_conversation,
+            entity_id: actorRes.actor_id,
+          });
+          if (!part) {
+            await client.query("ROLLBACK");
+            return { error: "Sem permissão para esta conversa" };
+          }
+
+          // Supervisão do destinatário
+          const otherEntityIdInTx = await ConversationStorage.otherEntityId(
+            conv,
+            actorRes.actor_id
+          );
+          if (otherEntityIdInTx) {
+            const otherProfile = await ProfileStorage.getProfileById(client, otherEntityIdInTx);
+            if (otherProfile?.id_user && !otherProfile.is_clan) {
+              const recvBlock = await assertMinorPermission(
+                otherProfile.id_user,
+                "can_receive_messages",
+                client
+              );
+              if (recvBlock) {
+                await client.query("ROLLBACK");
+                return { error: "Destinatário não está aceitando mensagens", status: 403 };
+              }
+            }
+          }
+
+          const pending = await MessageStorage.createAudioPending(client, {
+            id_conversation: conv.id_conversation,
+            sender_entity_id: actorRes.actor_id,
+            sender_user_id: user.id_user,
+          });
+          pendingMessageId = pending.id_message;
+
+          await client.query("COMMIT");
+
+          // ── Etapa 2: comprime + sobe R2 (fora da TX, async pesado) ────
+          let processed;
+          try {
+            processed = await processConversationAudio(payload.file);
+          } catch (err) {
+            // marca falha + apaga placeholder
+            try {
+              await MessageStorage.markAudioFailed(pool, pendingMessageId);
+              await MessageStorage.hardDeletePending(pool, pendingMessageId);
+            } catch { /* ignore */ }
+            return { error: err?.message || "Falha ao processar áudio", status: err?.statusCode || 400 };
+          }
+
+          let uploaded;
+          try {
+            uploaded = await uploadConversationAudio({
+              id_conversation: conv.id_conversation,
+              id_message: pendingMessageId,
+              buffer: processed.buffer,
+              mimetype: processed.mimetype,
+              extension: processed.extension,
+            });
+          } catch (err) {
+            log.warn("sendAudioMessage.upload_fail", { err: err?.message });
+            try {
+              await MessageStorage.markAudioFailed(pool, pendingMessageId);
+              await MessageStorage.hardDeletePending(pool, pendingMessageId);
+            } catch { /* ignore */ }
+            return { error: "Falha ao salvar áudio. Tente de novo." };
+          }
+
+          // ── Etapa 3: finaliza row + atualiza conversa ─────────────────
+          const finalized = await MessageStorage.finalizeAudio(pool, pendingMessageId, {
+            audio_url: uploaded.url,
+            audio_storage_key: uploaded.key,
+            audio_duration_seconds: processed.duration,
+            audio_size_bytes: processed.buffer.length,
+            audio_mime_type: processed.mimetype,
+            audio_codec: processed.codec,
+            audio_bitrate: processed.bitrate,
+          });
+
+          const preview = audioPreview(processed.duration);
+          await ConversationStorage.updateLastMessage(pool, {
+            id_conversation: conv.id_conversation,
+            sender_entity_id: actorRes.actor_id,
+            body: preview,
+            at: finalized.created_at,
+          });
+          await ConversationStorage.incrementUnreadForOther(pool, {
+            id_conversation: conv.id_conversation,
+            sender_entity_id: actorRes.actor_id,
+          });
+          await ConversationStorage.markRead(pool, {
+            id_conversation: conv.id_conversation,
+            entity_id: actorRes.actor_id,
+          });
+
+          // Notificação fire-and-forget
+          try {
+            const otherEntityId = await ConversationStorage.otherEntityId(conv, actorRes.actor_id);
+            if (otherEntityId) {
+              NotificationService.notifyMessage({
+                actor_user_id: user.id_user,
+                actor_profile_id: actorRes.actor_id,
+                recipient_profile_id: otherEntityId,
+                id_conversation: conv.id_conversation,
+                content_preview: preview,
+              }).catch(() => {});
+            }
+          } catch { /* fire-and-forget */ }
+
+          return {
+            message: mapMessage(finalized),
+            conversation: {
+              id_conversation: conv.id_conversation,
+              other_entity_id: await ConversationStorage.otherEntityId(conv, actorRes.actor_id),
+            },
+          };
+        } catch (error) {
+          try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+          throw error;
+        } finally {
+          client.release();
+        }
+      }
+    );
+  }
+
+  static async deleteMessage(user, payload) {
+    return runWithLogs(
+      log,
+      "deleteMessage",
+      () => ({
+        id_user: user?.id_user,
+        id_message: payload?.id_message,
+        actor_id: payload?.actor_id,
+      }),
+      async () => {
+        if (!payload?.id_message) return { error: "id_message é obrigatório" };
+
+        const actorRes = await resolveActor(pool, user, payload);
+        if (actorRes.error) return actorRes;
+
+        const message = await MessageStorage.getById(pool, payload.id_message);
+        if (!message) return { error: "Mensagem não encontrada" };
+
+        // Só o autor (sender_entity_id deve ser do actor) pode apagar
+        if (String(message.sender_entity_id) !== String(actorRes.actor_id)) {
+          return { error: "Sem permissão para apagar esta mensagem" };
+        }
+
+        const deleted = await MessageStorage.softDelete(pool, payload.id_message);
+
+        // Best-effort: remove arquivo do R2 quando havia áudio.
+        if (deleted?.audio_storage_key) {
+          deleteConversationAudio(deleted.audio_storage_key).catch(() => {});
+        }
+
+        return { deleted: true, id_message: payload.id_message };
       }
     );
   }
