@@ -5,6 +5,7 @@ const usersRoutes = require("./users.routes");
 const searchRoutes = require("./search.routes");
 const stripeRoutes = require("./stripe.routes");
 const annualFeeAdminRoutes = require("./annualFeeAdmin.routes");
+const publicPricingRoutes = require("./publicPricing.routes");
 const roleRoutes = require("./roles.routes");
 const legalDocumentsRoutes = require("./legalDocuments.routes");
 const profileRoutes = require("./profile.routes");
@@ -75,6 +76,7 @@ module.exports = (app) => {
   app.use("/users", usersRoutes);
   app.use("/stripe", stripeRoutes);
   app.use("/admin/annual-fee", annualFeeAdminRoutes);
+  app.use("/public", publicPricingRoutes);
   app.use("/search", searchRoutes);
   app.use("/role", roleRoutes);
   app.use("/legalDocuments", legalDocumentsRoutes);
