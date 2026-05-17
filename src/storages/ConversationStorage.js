@@ -251,16 +251,20 @@ class ConversationStorage {
         cp.unread_count,
         cp.last_read_at,
         CASE
+          WHEN c.kind = 'group' THEN NULL
           WHEN c.entity_a_id = $1 THEN c.entity_b_id
           ELSE c.entity_a_id
-        END AS other_entity_id
+        END AS other_entity_id,
+        CASE WHEN c.kind = 'group' THEN (
+          SELECT COUNT(*)::int FROM public.tb_conversation_participant cp2
+           WHERE cp2.id_conversation = c.id_conversation AND cp2.deleted_at IS NULL
+        ) ELSE NULL END AS member_count
       FROM public.tb_conversation c
       JOIN public.tb_conversation_participant cp
         ON cp.id_conversation = c.id_conversation
        AND cp.entity_id = $1
        AND cp.deleted_at IS NULL
       WHERE c.deleted_at IS NULL
-        AND (c.entity_a_id = $1 OR c.entity_b_id = $1)
         ${cursorClause}
       ORDER BY c.last_message_at DESC NULLS LAST, c.id_conversation DESC
       LIMIT $2
@@ -347,6 +351,93 @@ class ConversationStorage {
       [id_user]
     );
     return rows;
+  }
+
+  /* ────────────────── Grupos (mig 078) ────────────────── */
+
+  static async createGroup(conn, { owner_profile_id, name, cover_url, max_members }) {
+    const cap = Math.min(Math.max(parseInt(max_members, 10) || 200, 2), 500);
+    const key = `group:${owner_profile_id}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+    const { rows } = await conn.query(
+      `
+      INSERT INTO public.tb_conversation (
+        conversation_key, kind, name, cover_url, owner_profile_id, max_members
+      )
+      VALUES ($1, 'group', $2, $3, $4, $5)
+      RETURNING *
+      `,
+      [key, name.trim(), cover_url || null, owner_profile_id, cap]
+    );
+    return rows[0];
+  }
+
+  static async addGroupMember(conn, { id_conversation, profile_id, role = "member" }) {
+    const { rows } = await conn.query(
+      `
+      INSERT INTO public.tb_conversation_participant (
+        id_conversation, entity_type, entity_id, role
+      )
+      VALUES ($1, 'profile', $2, $3)
+      ON CONFLICT DO NOTHING
+      RETURNING *
+      `,
+      [id_conversation, profile_id, role]
+    );
+    return rows[0] || null;
+  }
+
+  static async countGroupMembers(conn, id_conversation) {
+    const { rows } = await conn.query(
+      `
+      SELECT COUNT(*)::int AS c
+        FROM public.tb_conversation_participant
+       WHERE id_conversation = $1
+         AND deleted_at IS NULL
+      `,
+      [id_conversation]
+    );
+    return rows[0]?.c || 0;
+  }
+
+  static async listGroupMembers(conn, id_conversation) {
+    const { rows } = await conn.query(
+      `
+      SELECT
+        cp.id_conversation_participant,
+        cp.entity_id          AS id_profile,
+        cp.role,
+        cp.created_at         AS joined_at,
+        p.display_name,
+        p.avatar_url,
+        p.sub_profile_slug,
+        u.username
+        FROM public.tb_conversation_participant cp
+        JOIN public.tb_profile p ON p.id_profile = cp.entity_id
+        LEFT JOIN public.tb_user u ON u.id_user = p.id_user
+       WHERE cp.id_conversation = $1
+         AND cp.deleted_at IS NULL
+       ORDER BY
+         CASE cp.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+         cp.created_at ASC
+      `,
+      [id_conversation]
+    );
+    return rows;
+  }
+
+  static async removeGroupMember(conn, { id_conversation, profile_id }) {
+    const { rows } = await conn.query(
+      `
+      UPDATE public.tb_conversation_participant
+         SET deleted_at = NOW(), updated_at = NOW()
+       WHERE id_conversation = $1
+         AND entity_id = $2
+         AND deleted_at IS NULL
+       RETURNING *
+      `,
+      [id_conversation, profile_id]
+    );
+    return rows[0] || null;
   }
 
   static async softDelete(conn, id_conversation) {
