@@ -179,6 +179,21 @@ class ProductRequestService {
     });
   }
 
+  static async hide(user, id_product_request) {
+    return runWithLogs(log, "hide", () => ({ id_user: user?.id_user, id_product_request }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      if (!UUID_RE.test(String(id_product_request || ""))) return { error: "id_product_request inválido" };
+      const r = await ProductRequestStorage.getById(pool, id_product_request);
+      if (!r) return { error: "Pedido não encontrado" };
+      if (String(r.id_buyer_user) !== String(user.id_user)) return { error: "Sem permissão" };
+      await ProductRequestStorage.hideForBuyer(pool, {
+        id_product_request,
+        id_buyer_user: user.id_user,
+      });
+      return { hidden: true };
+    });
+  }
+
   static async close(user, id_product_request) {
     return runWithLogs(log, "close", () => ({ id_user: user?.id_user, id_product_request }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };

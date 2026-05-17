@@ -29,6 +29,11 @@ class ProductRequestController {
     return sendServiceResult(res, result);
   }
 
+  static async hide(req, res) {
+    const result = await ProductRequestService.hide(req.user, req.params.id);
+    return sendServiceResult(res, result);
+  }
+
   static async close(req, res) {
     const result = await ProductRequestService.close(req.user, req.params.id);
     return sendServiceResult(res, result);
