@@ -2,6 +2,7 @@ const pool = require("../databases");
 const ProfileProductStorage = require("../storages/ProfileProductStorage");
 const ProfileProductMediaStorage = require("../storages/ProfileProductMediaStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const ProductCategoryStorage = require("../storages/ProductCategoryStorage");
 const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadProductMediaToR2 = require("../integrations/r2/uploadProductMedia");
@@ -107,6 +108,16 @@ function validateInput(payload, { partial = false } = {}) {
     out.is_active = payload.is_active;
   }
 
+  if (Object.prototype.hasOwnProperty.call(payload, "id_product_category")) {
+    if (payload.id_product_category === null || payload.id_product_category === "") {
+      out.id_product_category = null;
+    } else {
+      const c = Number(payload.id_product_category);
+      if (!Number.isInteger(c) || c <= 0) return { error: "Categoria inválida" };
+      out.id_product_category = c;
+    }
+  }
+
   return { data: out };
 }
 
@@ -144,11 +155,21 @@ class ProfileProductService {
       const v = validateInput(body || {});
       if (v.error) return { error: v.error };
 
+      if (v.data.id_product_category == null) {
+        return { error: "Categoria do produto é obrigatória" };
+      }
+
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
         const own = await assertOwnerWithProfile(client, id_profile, user.id_user);
         if (own.error) { await client.query("ROLLBACK"); return { error: own.error }; }
+
+        const cat = await ProductCategoryStorage.getById(client, v.data.id_product_category);
+        if (!cat || cat.status !== "active") {
+          await client.query("ROLLBACK");
+          return { error: "Categoria inválida ou inativa" };
+        }
 
         const wantsActive = v.data.is_active !== false; // default TRUE
         if (wantsActive) {
@@ -193,6 +214,18 @@ class ProfileProductService {
         if (!existing || String(existing.id_profile) !== String(id_profile)) {
           await client.query("ROLLBACK");
           return { error: "Produto não encontrado" };
+        }
+
+        if (Object.prototype.hasOwnProperty.call(v.data, "id_product_category")) {
+          if (v.data.id_product_category == null) {
+            await client.query("ROLLBACK");
+            return { error: "Categoria do produto é obrigatória" };
+          }
+          const cat = await ProductCategoryStorage.getById(client, v.data.id_product_category);
+          if (!cat || cat.status !== "active") {
+            await client.query("ROLLBACK");
+            return { error: "Categoria inválida ou inativa" };
+          }
         }
 
         // Se está reativando (ou criando ativo) e o sub não é mais pago, bloqueia.
