@@ -2,6 +2,7 @@
 
 const pool = require("../databases");
 const ChatStorage = require("../storages/ChatStorage");
+const ChatModerationService = require("./ChatModerationService");
 const {
   assertMinorPermission,
   assertMachineAllowed,
@@ -57,10 +58,13 @@ function mapRoom(row) {
 
 function mapMessage(row) {
   if (!row) return null;
+  const hidden = !!row.hidden_at;
   return {
     id_chat_message: row.id_chat_message,
     id_chat_room: row.id_chat_room,
-    content: row.content,
+    content: hidden ? "" : row.content,
+    hidden,
+    hidden_reason: row.hidden_reason || null,
     message_type: row.message_type,
     created_at: row.created_at,
     sender: {
@@ -319,25 +323,33 @@ class ChatService {
         const sanitized = sanitizeContent(body?.content);
         if (!sanitized) return { error: "Mensagem vazia" };
 
-        // rate limit
-        const recent = await ChatStorage.countRecentMessagesByUser(
-          pool,
-          user.id_user,
-          RATE_LIMIT_WINDOW_SECONDS
-        );
-        if (recent >= RATE_LIMIT_MAX_MESSAGES) {
-          return {
-            error: `Devagar — espere alguns segundos antes de enviar mais.`,
-          };
-        }
-
-        // anti-duplicado: bloqueia se igual à última mensagem do mesmo user na sala
-        const lastMine = await ChatStorage.getLastMessageByUserInRoom(pool, {
-          id_chat_room,
+        // Moderação (rate limit, profanity, blocked_terms, links, score)
+        const moderation = await ChatModerationService.moderateMessage({
           id_user: user.id_user,
+          room_type: room.type,
+          original_text: sanitized,
         });
-        if (lastMine && lastMine.content === sanitized) {
-          return { error: "Não repita a mesma mensagem." };
+
+        if (
+          moderation.action === "block" ||
+          moderation.action === "mute_temp" ||
+          moderation.action === "review"
+        ) {
+          // Log da decisão mesmo sem id_chat_message (mensagem não chega a existir)
+          await ChatModerationService.applyResult({
+            moderation,
+            id_user: user.id_user,
+            id_chat_room,
+            id_chat_message: null,
+          });
+          return {
+            error:
+              moderation.user_facing_error ||
+              (moderation.action === "review"
+                ? "Mensagem em análise."
+                : "Mensagem bloqueada."),
+            moderation_action: moderation.action,
+          };
         }
 
         // resolve perfil pra anexar (badge)
@@ -352,12 +364,26 @@ class ChatService {
           id_profile = await ChatStorage.getUserAnyProfile(pool, user.id_user);
         }
 
+        // Conteúdo final: máscara se aplicável
+        const finalContent =
+          moderation.action === "mask" && moderation.masked_content
+            ? moderation.masked_content
+            : sanitized;
+
         const inserted = await ChatStorage.insertMessage(pool, {
           id_chat_room,
           id_user: user.id_user,
           id_profile,
-          content: sanitized,
+          content: finalContent,
           message_type: "text",
+        });
+
+        // Loga o resultado vinculando ao id_chat_message
+        await ChatModerationService.applyResult({
+          moderation,
+          id_user: user.id_user,
+          id_chat_room,
+          id_chat_message: inserted.id_chat_message,
         });
 
         // bump presença
@@ -421,11 +447,19 @@ class ChatService {
           return { error: "Não dá pra denunciar a própria mensagem" };
         }
         const reason = (body?.reason || "").toString().trim().slice(0, 280);
+        const reason_category = (body?.reason_category || "").toString().trim().slice(0, 40) || null;
         await ChatStorage.insertReport(pool, {
           id_chat_message,
           id_reporter_user: user.id_user,
           reason: reason || null,
+          reason_category,
         });
+        // Pós-denúncia: pode esconder automaticamente e/ou marcar pra revisão.
+        try {
+          await ChatModerationService.onMessageReported({ id_chat_message });
+        } catch (err) {
+          log.warn("report.post_hook_fail", { id_chat_message, message: err.message });
+        }
         return { ok: true };
       }
     );
