@@ -177,6 +177,8 @@ class ChatStorage {
         m.message_type,
         m.created_at,
         m.deleted_at,
+        m.hidden_at,
+        m.hidden_reason,
         u.username        AS user_username,
         u.nome            AS user_nome,
         p.display_name    AS profile_display_name,
@@ -224,14 +226,14 @@ class ChatStorage {
   // Denúncias
   // ----------------------------------------------------------------
 
-  static async insertReport(conn, { id_chat_message, id_reporter_user, reason }) {
+  static async insertReport(conn, { id_chat_message, id_reporter_user, reason, reason_category }) {
     const { rows } = await conn.query(
       `INSERT INTO public.tb_chat_report
-        (id_chat_message, id_reporter_user, reason)
-       VALUES ($1, $2, $3)
+        (id_chat_message, id_reporter_user, reason, reason_category)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (id_chat_message, id_reporter_user) DO NOTHING
        RETURNING *`,
-      [id_chat_message, id_reporter_user, reason || null]
+      [id_chat_message, id_reporter_user, reason || null, reason_category || null]
     );
     return rows[0] || null;
   }
