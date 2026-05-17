@@ -3,9 +3,6 @@ const BookingAvailabilityStorage = require("../storages/BookingAvailabilityStora
 const BookingSettingsStorage = require("../storages/BookingSettingsStorage");
 const BookingStorage = require("../storages/BookingStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
-const { createLogger } = require("../utils/logger");
-
-const log = createLogger("BookingAvailabilityService");
 
 /**
  * Gera slots de horário com base em start/end/duration/buffer.

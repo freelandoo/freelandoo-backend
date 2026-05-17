@@ -91,8 +91,8 @@ function applyLeet(s) {
 }
 
 function removeInvisible(s) {
-  // remove zero-width, BOM, etc
-  return s.replace(/[​-‍﻿­]/g, "");
+  // remove zero-width chars (U+200B..U+200D), BOM (U+FEFF), soft hyphen (U+00AD)
+  return s.replace(/[\u200B-\u200D\uFEFF\u00AD]/g, "");
 }
 
 function normalizeText(text) {
@@ -190,7 +190,6 @@ function checkSpam(id_user, normalizedText, settings) {
   // excesso de caixa alta (>=60% das letras + msg >=20 chars)
   const letters = normalizedText.match(/[a-z]/g) || [];
   if (letters.length >= 20) {
-    const upper = normalizedText.replace(/[^a-z]/g, "").length;
     const original = normalizedText; // ja lowercase
     // como já está em lowercase, comparamos contra a string original via flag externa
     // (omito caps detection robusta pra MVP — flag opcional)

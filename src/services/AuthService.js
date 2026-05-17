@@ -13,10 +13,9 @@ const {
   sendPasswordResetEmail,
 } = require("./mailService");
 const normalizeEmail = require("../utils/normalizeEmail");
-const { validateUsername, normalizeUsername } = require("../utils/validateUsername");
+const { validateUsername } = require("../utils/validateUsername");
 const {
   validateEmailFormat,
-  validateAge18,
   validatePasswordStrength,
   calculateAge,
 } = require("../utils/validateSignup");
