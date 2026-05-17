@@ -93,6 +93,45 @@ const server = app.listen(PORT, () => {
   };
   setTimeout(tickLabels, 4 * 60 * 1000);
   setInterval(tickLabels, HALF_HOUR);
+
+  // Job diário: reseta histórico do Chat ao Vivo (Global + Máquinas) toda
+  // meia-noite de São Paulo. Apaga tb_chat_message, tb_chat_report,
+  // tb_chat_moderation_result e tb_chat_presence. Mantém salas, settings
+  // e reputação por usuário. Não há objetos em R2 — chat ao vivo é texto-only.
+  const ChatStorage = require("./src/storages/ChatStorage");
+  const SP_TZ = "America/Sao_Paulo";
+  const msUntilNextMidnightSP = () => {
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: SP_TZ,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date());
+    const get = (t) => Number(parts.find((p) => p.type === t)?.value || 0);
+    const secSinceMidnight = get("hour") * 3600 + get("minute") * 60 + get("second");
+    let ms = (86400 - secSinceMidnight) * 1000;
+    // Buffer mínimo de 30s pra evitar laço apertado se relógio bater 00:00 exato
+    if (ms < 30_000) ms += 86_400_000;
+    return ms;
+  };
+  const tickChatDailyReset = async () => {
+    try {
+      const counts = await ChatStorage.dailyReset(pool);
+      bootLog.info("chat.daily_reset", counts);
+    } catch (err) {
+      bootLog.error("chat.daily_reset_error", { message: err.message });
+    } finally {
+      // Reagenda sempre — mesmo em caso de erro, tenta de novo amanhã.
+      setTimeout(tickChatDailyReset, msUntilNextMidnightSP());
+    }
+  };
+  setTimeout(tickChatDailyReset, msUntilNextMidnightSP());
+  bootLog.info("chat.daily_reset_scheduled", {
+    next_run_ms: msUntilNextMidnightSP(),
+    tz: SP_TZ,
+  });
 });
 
 // Slice 7 (vídeo de curso): uploads até 100MB podem demorar minutos em
