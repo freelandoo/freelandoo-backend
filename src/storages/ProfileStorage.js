@@ -483,6 +483,11 @@ class ProfileStorage {
       values.push(payload.is_active); // boolean
     }
 
+    if (has("origin_zipcode")) {
+      fields.push(`origin_zipcode = $${idx++}`);
+      values.push(payload.origin_zipcode); // string 8 dígitos ou null
+    }
+
     if (fields.length === 0) return null;
 
     const r = await conn.query(

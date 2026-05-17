@@ -234,6 +234,19 @@ class ProfileService {
           }
         }
 
+        if (Object.prototype.hasOwnProperty.call(payload, "origin_zipcode")) {
+          const raw = payload.origin_zipcode;
+          if (raw === null || raw === "") {
+            payload.origin_zipcode = null;
+          } else {
+            const digits = String(raw).replace(/\D/g, "");
+            if (digits.length !== 8) {
+              return { error: "CEP de origem inválido (8 dígitos)." };
+            }
+            payload.origin_zipcode = digits;
+          }
+        }
+
         const hasAnyField = [
           "id_category",
           "display_name",
@@ -243,6 +256,7 @@ class ProfileService {
           "municipio",
           "is_active",
           "subcategories",
+          "origin_zipcode",
         ].some((k) => Object.prototype.hasOwnProperty.call(payload, k));
 
         if (!hasAnyField) return { error: "Nenhum campo para atualizar" };
