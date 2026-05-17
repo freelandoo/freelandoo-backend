@@ -24,14 +24,14 @@ class ProfileProductStorage {
   static async create(conn, {
     id_profile, name, description, price_amount, stock_quantity,
     weight_grams, height_cm, width_cm, length_cm,
-    origin_zipcode_override, is_active,
+    origin_zipcode_override, is_active, id_product_category,
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_product
         (id_profile, name, description, price_amount, stock_quantity,
          weight_grams, height_cm, width_cm, length_cm,
-         origin_zipcode_override, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         origin_zipcode_override, is_active, id_product_category)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
         id_profile, name, description || null,
@@ -39,6 +39,7 @@ class ProfileProductStorage {
         weight_grams, height_cm, width_cm, length_cm,
         origin_zipcode_override || null,
         is_active !== false,
+        id_product_category || null,
       ]
     );
     return r.rows[0];
@@ -48,7 +49,7 @@ class ProfileProductStorage {
     const allowed = [
       "name", "description", "price_amount", "stock_quantity",
       "weight_grams", "height_cm", "width_cm", "length_cm",
-      "origin_zipcode_override", "is_active",
+      "origin_zipcode_override", "is_active", "id_product_category",
     ];
     const sets = [];
     const values = [];

@@ -65,6 +65,8 @@ const supervisionRoutes = require("./supervision.routes");
 const sellerBalanceRoutes = require("./sellerBalance.routes");
 const chatModerationAdminRoutes = require("./chatModerationAdmin.routes");
 const bookingPayoutRoutes = require("./bookingPayout.routes");
+const productCategoryRoutes = require("./productCategory.routes");
+const productCategoryAdminRoutes = require("./productCategoryAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -138,4 +140,6 @@ module.exports = (app) => {
   app.use("/", sellerBalanceRoutes);
   app.use("/admin", chatModerationAdminRoutes);
   app.use("/", bookingPayoutRoutes);
+  app.use("/product-categories", productCategoryRoutes);
+  app.use("/admin/store/product-categories", productCategoryAdminRoutes);
 };
