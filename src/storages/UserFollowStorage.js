@@ -76,6 +76,19 @@ class UserFollowStorage {
     );
     return rows.map((r) => r.target_profile_id);
   }
+
+  static async countActiveByUser(conn, follower_user_id) {
+    const { rows } = await conn.query(
+      `
+      SELECT COUNT(*)::int AS following_count
+        FROM public.tb_user_follow
+       WHERE follower_user_id = $1
+         AND deleted_at IS NULL
+      `,
+      [follower_user_id]
+    );
+    return Number(rows[0]?.following_count || 0);
+  }
 }
 
 module.exports = UserFollowStorage;
