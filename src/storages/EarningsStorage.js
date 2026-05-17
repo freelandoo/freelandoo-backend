@@ -60,7 +60,7 @@ const SERVICE_QUERY = `
     'service'::text                                          AS kind,
     bp.id_payout::text                                       AS id,
     bp.id_booking::text                                      AS ref_id,
-    COALESCE(ps.title, 'Serviço')                            AS title,
+    COALESCE(ps.name, 'Serviço')                             AS title,
     CASE
       WHEN bp.status = 'revertido' THEN 'reversed'
       WHEN bp.status = 'pago'      THEN 'paid'
