@@ -28,6 +28,7 @@ class ProductRequestMatchingService {
            JOIN public.tb_profile_product pp
              ON pp.id_product_category = pr.id_product_category
             AND pp.is_active = TRUE
+            AND pp.moderation_status = 'active'
             AND pp.deleted_at IS NULL
            JOIN public.tb_profile p
              ON p.id_profile = pp.id_profile
@@ -40,7 +41,8 @@ class ProductRequestMatchingService {
            JOIN public.tb_profile_subscription ps
              ON ps.id_profile = p.id_profile
             AND ps.status = 'active'
-          WHERE pr.id_product_request = $1`,
+          WHERE pr.id_product_request = $1
+            AND pr.moderation_status = 'active'`,
         [id_product_request]
       );
       return r.rows;
@@ -85,11 +87,13 @@ class ProductRequestMatchingService {
              ON ps.id_profile = p.id_profile
             AND ps.status = 'active'
           WHERE pr.status IN ('open','answered','negotiating')
+            AND pr.moderation_status = 'active'
             AND EXISTS (
               SELECT 1 FROM public.tb_profile_product pp
                WHERE pp.id_profile = p.id_profile
                  AND pp.id_product_category = pr.id_product_category
                  AND pp.is_active = TRUE
+                 AND pp.moderation_status = 'active'
                  AND pp.deleted_at IS NULL
             )
             AND NOT EXISTS (

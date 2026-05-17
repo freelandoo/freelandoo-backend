@@ -3,6 +3,7 @@ const ProductRequestStorage = require("../storages/ProductRequestStorage");
 const ProductCategoryStorage = require("../storages/ProductCategoryStorage");
 const NotificationStorage = require("../storages/NotificationStorage");
 const ProductRequestMatchingService = require("./ProductRequestMatchingService");
+const StoreProductPolicyService = require("./StoreProductPolicyService");
 const uploadProductRequestImage = require("../integrations/r2/uploadProductRequestImage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -62,6 +63,19 @@ class ProductRequestService {
       const cat = await ProductCategoryStorage.getById(pool, v.data.id_product_category);
       if (!cat || cat.status !== "active") return { error: "Categoria inválida ou inativa" };
 
+      // Policy: bloqueia pedidos de produtos proibidos antes do upload/insert.
+      const policy = await StoreProductPolicyService.checkProductRequest({
+        title: v.data.title,
+        description: v.data.description,
+        id_product_category: v.data.id_product_category,
+      });
+      if (["block", "ban_product", "ban_category", "hide_product"].includes(policy.action)) {
+        return {
+          error: policy.reason || "Este pedido não é permitido pela política da plataforma.",
+          policy_action: policy.action,
+        };
+      }
+
       let reference_image_url = null;
       let reference_image_key = null;
       if (file && file.buffer) {
@@ -78,6 +92,18 @@ class ProductRequestService {
         reference_image_url,
         reference_image_key,
       });
+
+      // Se policy disse "review", marca para revisão e NÃO notifica vendedores.
+      if (policy.action === "review") {
+        await pool.query(
+          `UPDATE public.tb_product_request
+              SET moderation_status = 'pending_review', updated_at = NOW()
+            WHERE id_product_request = $1`,
+          [request.id_product_request]
+        );
+        request.moderation_status = "pending_review";
+        return { request, pending_review: true };
+      }
 
       // Notifica subperfis elegíveis (fire-and-forget; nunca quebra o create).
       try {

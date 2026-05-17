@@ -3,6 +3,7 @@ const ProfileProductStorage = require("../storages/ProfileProductStorage");
 const ProfileProductMediaStorage = require("../storages/ProfileProductMediaStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProductCategoryStorage = require("../storages/ProductCategoryStorage");
+const StoreProductPolicyService = require("./StoreProductPolicyService");
 const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadProductMediaToR2 = require("../integrations/r2/uploadProductMedia");
@@ -180,10 +181,35 @@ class ProfileProductService {
           }
         }
 
+        // Policy: avalia título+descrição+categoria contra regras de loja.
+        const policy = await StoreProductPolicyService.checkProduct({
+          title: v.data.name,
+          description: v.data.description,
+          id_product_category: v.data.id_product_category,
+        });
+        if (policy.action === "block" || policy.action === "ban_product" || policy.action === "ban_category" || policy.action === "hide_product") {
+          await client.query("ROLLBACK");
+          return {
+            error: policy.reason || "Este produto não é permitido pela política da plataforma.",
+            policy_action: policy.action,
+          };
+        }
+
         const product = await ProfileProductStorage.create(client, {
           id_profile,
           ...v.data,
         });
+
+        // Se policy disse "review", marca produto e bloqueia visibilidade pública.
+        if (policy.action === "review") {
+          await client.query(
+            `UPDATE public.tb_profile_product
+                SET moderation_status = 'pending_review', updated_at = NOW()
+              WHERE id_profile_product = $1`,
+            [product.id_profile_product]
+          );
+          product.moderation_status = "pending_review";
+        }
         await client.query("COMMIT");
         return { product: { ...product, media: [] } };
       } catch (err) {
@@ -241,7 +267,48 @@ class ProfileProductService {
           }
         }
 
+        // Re-avalia policy se nome/descrição/categoria mudaram
+        const willName = Object.prototype.hasOwnProperty.call(v.data, "name") ? v.data.name : existing.name;
+        const willDesc = Object.prototype.hasOwnProperty.call(v.data, "description") ? v.data.description : existing.description;
+        const willCat = Object.prototype.hasOwnProperty.call(v.data, "id_product_category") ? v.data.id_product_category : existing.id_product_category;
+        const fieldsChanged =
+          Object.prototype.hasOwnProperty.call(v.data, "name") ||
+          Object.prototype.hasOwnProperty.call(v.data, "description") ||
+          Object.prototype.hasOwnProperty.call(v.data, "id_product_category");
+
+        if (fieldsChanged) {
+          const policy = await StoreProductPolicyService.checkProduct({
+            title: willName,
+            description: willDesc,
+            id_product_category: willCat,
+          });
+          if (policy.action === "block" || policy.action === "ban_product" || policy.action === "ban_category" || policy.action === "hide_product") {
+            await client.query("ROLLBACK");
+            return {
+              error: policy.reason || "Este produto não é permitido pela política da plataforma.",
+              policy_action: policy.action,
+            };
+          }
+          if (policy.action === "review") {
+            v.data.__moderation_status = "pending_review";
+          } else if (existing.moderation_status === "pending_review") {
+            v.data.__moderation_status = "active";
+          }
+        }
+
+        const pendingModeration = v.data.__moderation_status;
+        delete v.data.__moderation_status;
         const product = await ProfileProductStorage.update(client, Number(id_profile_product), v.data);
+
+        if (pendingModeration) {
+          await client.query(
+            `UPDATE public.tb_profile_product
+                SET moderation_status = $2, updated_at = NOW()
+              WHERE id_profile_product = $1`,
+            [Number(id_profile_product), pendingModeration]
+          );
+          product.moderation_status = pendingModeration;
+        }
         await client.query("COMMIT");
         const media = await ProfileProductMediaStorage.listByProduct(pool, Number(id_profile_product));
         return { product: { ...product, media } };
@@ -316,7 +383,12 @@ class ProfileProductService {
       if (!paid) return { error: "Loja indisponível" };
 
       const product = await ProfileProductStorage.getById(pool, Number(id_profile_product));
-      if (!product || String(product.id_profile) !== String(id_profile) || !product.is_active) {
+      if (
+        !product ||
+        String(product.id_profile) !== String(id_profile) ||
+        !product.is_active ||
+        product.moderation_status !== "active"
+      ) {
         return { error: "Produto não encontrado" };
       }
       const media = await ProfileProductMediaStorage.listByProduct(pool, Number(id_profile_product));
