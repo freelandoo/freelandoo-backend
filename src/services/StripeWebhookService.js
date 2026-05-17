@@ -10,6 +10,7 @@ const ClanService = require("./ClanService");
 const ManifestationService = require("./ManifestationService");
 const PolenProductService = require("./PolenProductService");
 const PremiumService = require("./PremiumService");
+const ProfileProductOrderService = require("./ProfileProductOrderService");
 const XpStorage = require("../storages/XpStorage");
 const { createLogger } = require("../utils/logger");
 
@@ -301,6 +302,8 @@ async function processEvent(event) {
       } else if (meta.type === "course_purchase") {
         const CoursesService = require("./CoursesService");
         await CoursesService.confirmStripeSession(session);
+      } else if (meta.type === "profile_product_order") {
+        await ProfileProductOrderService.confirmStripeSession(session);
       } else {
         // Subscription checkout
         await handleCheckoutCompleted(pool, session);
@@ -317,9 +320,14 @@ async function processEvent(event) {
     case "customer.subscription.deleted":
       await handleSubscriptionDeleted(pool, event.data.object);
       break;
-    case "charge.refunded":
-      await handleChargeRefunded(pool, event.data.object);
+    case "charge.refunded": {
+      const charge = event.data.object;
+      const productOrderResult = await ProfileProductOrderService.handleChargeRefunded(charge);
+      if (!productOrderResult || productOrderResult.ignored) {
+        await handleChargeRefunded(pool, charge);
+      }
       break;
+    }
     default:
       log.debug("unhandled.event", { type: event.type });
   }
