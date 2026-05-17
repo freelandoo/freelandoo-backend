@@ -69,6 +69,57 @@ async function createSubscriptionCheckoutSession({
 }
 
 /**
+ * Cria checkout session em modo `payment` (one-time) para ATIVAÇÃO do perfil.
+ * R$ 300 vitalício — sem renovação. Aceita cupom (promotion code) opcional.
+ *
+ * Diferente de createOneTimeCheckoutSession (clan), este expõe controle de
+ * promotion code e popula payment_intent_data com metadata pra rastreio.
+ */
+async function createProfileActivationCheckoutSession({
+  amount_cents,
+  currency = "BRL",
+  productName,
+  customerEmail,
+  customerId,
+  clientReferenceId,
+  successUrl,
+  cancelUrl,
+  promotionCode,
+  metadata,
+}) {
+  const stripe = client();
+
+  const params = {
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: String(currency).toLowerCase(),
+          product_data: { name: productName },
+          unit_amount: amount_cents,
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    client_reference_id: clientReferenceId,
+    allow_promotion_codes: promotionCode ? undefined : true,
+    metadata: metadata || {},
+    payment_intent_data: { metadata: metadata || {} },
+  };
+
+  if (customerId) params.customer = customerId;
+  else if (customerEmail) params.customer_email = customerEmail;
+
+  if (promotionCode) {
+    params.discounts = [{ promotion_code: promotionCode }];
+  }
+
+  return stripe.checkout.sessions.create(params);
+}
+
+/**
  * Cria checkout session em modo `payment` (one-time). Usado para compras
  * pontuais como vagas de clan (R$50 cada).
  */
@@ -165,6 +216,10 @@ async function retrieveInvoice(invoiceId) {
   return client().invoices.retrieve(invoiceId);
 }
 
+async function retrievePaymentIntent(piId, opts = {}) {
+  return client().paymentIntents.retrieve(piId, opts);
+}
+
 async function cancelSubscriptionImmediate(stripeSubscriptionId) {
   return client().subscriptions.cancel(stripeSubscriptionId);
 }
@@ -237,11 +292,13 @@ module.exports = {
   client,
   createAnnualProductAndPrice,
   createSubscriptionCheckoutSession,
+  createProfileActivationCheckoutSession,
   createOneTimeCheckoutSession,
   createMultiItemCheckoutSession,
   retrieveSession,
   retrieveSubscription,
   retrieveInvoice,
+  retrievePaymentIntent,
   cancelSubscriptionImmediate,
   createRefund,
   constructWebhookEvent,
