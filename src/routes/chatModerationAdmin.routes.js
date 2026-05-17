@@ -32,4 +32,21 @@ router.post("/chat-moderation/users/:id_user/clear-penalties",  guard, asyncHand
 router.post("/chat-moderation/messages/:id_chat_message/hide",   guard, asyncHandler(ChatModerationAdminController.hideMessage));
 router.post("/chat-moderation/messages/:id_chat_message/unhide", guard, asyncHandler(ChatModerationAdminController.unhideMessage));
 
+// Reset manual: apaga TODO o histórico do Chat ao Vivo (Global + Máquinas).
+// Mesmo job que roda automaticamente toda meia-noite SP.
+router.post("/chat-moderation/daily-reset", guard, asyncHandler(async (req, res) => {
+  const pool = require("../databases");
+  const ChatStorage = require("../storages/ChatStorage");
+  const { createLogger } = require("../utils/logger");
+  const log = createLogger("admin.chat_reset");
+  try {
+    const counts = await ChatStorage.dailyReset(pool);
+    log.info("manual_reset", { admin_user: req.user?.id_user, counts });
+    return res.json({ ok: true, deleted: counts });
+  } catch (err) {
+    log.error("manual_reset_error", { message: err.message });
+    return res.status(500).json({ error: err.message });
+  }
+}));
+
 module.exports = router;
