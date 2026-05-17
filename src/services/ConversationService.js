@@ -62,6 +62,11 @@ function mapConversationListItem(row, viewerEntityId) {
   return {
     id_conversation: row.id_conversation,
     conversation_key: row.conversation_key,
+    kind: row.kind || "direct",
+    name: row.name || null,
+    cover_url: row.cover_url || null,
+    owner_profile_id: row.owner_profile_id || null,
+    member_count: row.member_count ?? null,
     other_entity_id: row.other_entity_id,
     last_message_at: row.last_message_at,
     last_message_preview: row.last_message_preview,
