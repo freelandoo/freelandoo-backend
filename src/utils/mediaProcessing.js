@@ -423,6 +423,72 @@ async function processPortfolioMedia(file, mediaType, options = {}) {
   throw httpError("Tipo de arquivo nao permitido");
 }
 
+/**
+ * Lê a duração de um arquivo de vídeo (em segundos) usando ffmpeg.
+ * Faz parse do stderr porque ffmpeg-static não vem com ffprobe.
+ */
+async function getVideoDuration(filePath) {
+  return new Promise((resolve, reject) => {
+    if (!ffmpegPath) { reject(httpError("ffmpeg nao disponivel.", 500)); return; }
+    const child = spawn(ffmpegPath, ["-i", filePath, "-f", "null", "-"], { windowsHide: true });
+    let stderr = "";
+    child.stderr.on("data", (c) => { stderr += c.toString(); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
+    child.on("error", reject);
+    child.on("close", () => {
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (!m) { reject(httpError("Nao foi possivel ler a duracao do video.")); return; }
+      const seconds = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+      resolve(seconds);
+    });
+  });
+}
+
+/**
+ * Divide um vídeo em chunks de até `chunkSeconds` segundos sem re-encode
+ * (-c copy → rápido). Retorna array de { buffer, index, duration, originalname }.
+ * Se a duração total for <= chunkSeconds, retorna [file] sem modificar.
+ */
+async function splitVideoIntoChunks(file, chunkSeconds = 60) {
+  await assertRealVideo(file);
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "freelandoo-split-"));
+  const inputPath = path.join(tempDir, `input-${crypto.randomUUID()}`);
+  try {
+    await fs.writeFile(inputPath, file.buffer);
+    const totalDuration = await getVideoDuration(inputPath);
+    if (totalDuration <= chunkSeconds + 0.5) {
+      return [{ buffer: file.buffer, index: 0, duration: totalDuration, originalname: file.originalname }];
+    }
+    const chunks = [];
+    const count = Math.ceil(totalDuration / chunkSeconds);
+    for (let i = 0; i < count; i++) {
+      const start = i * chunkSeconds;
+      const remaining = Math.min(chunkSeconds, totalDuration - start);
+      if (remaining < 0.5) break;
+      const outPath = path.join(tempDir, `chunk-${i}.mp4`);
+      await runFfmpeg([
+        "-y",
+        "-ss", String(start),
+        "-i", inputPath,
+        "-t", String(remaining),
+        "-c", "copy",
+        "-movflags", "+faststart",
+        outPath,
+      ], 60000);
+      const buffer = await fs.readFile(outPath);
+      const baseName = (file.originalname || "video.mp4").replace(/\.[^.]+$/, "");
+      chunks.push({
+        buffer,
+        index: i,
+        duration: remaining,
+        originalname: `${baseName}-parte-${i + 1}.mp4`,
+      });
+    }
+    return chunks;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function processUserMedia(file) {
   const mt = (file?.mimetype || "").toLowerCase();
   if (mt.startsWith("image/")) return processPostImage(file);
@@ -439,4 +505,6 @@ module.exports = {
   processPostImage,
   processUserMedia,
   processVideo,
+  getVideoDuration,
+  splitVideoIntoChunks,
 };

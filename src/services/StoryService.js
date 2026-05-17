@@ -1,7 +1,7 @@
 const pool = require("../databases");
 const StoryStorage = require("../storages/StoryStorage");
 const uploadStoryVideoToR2 = require("../integrations/r2/uploadStoryVideo");
-const { processPortfolioMedia } = require("../utils/mediaProcessing");
+const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaProcessing");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -124,8 +124,9 @@ class StoryService {
         const kind = normalizeKind(body?.kind);
         if (!kind) return { error: "kind inválido (use 'trampo' ou 'rest')" };
 
+        const autoSplit = body?.auto_split === true || body?.auto_split === "true" || body?.auto_split === "1";
         const duration_seconds = normalizeDuration(body?.duration_seconds);
-        if (!duration_seconds) {
+        if (!autoSplit && !duration_seconds) {
           return {
             error:
               "duration_seconds inválido — informe a duração em segundos (1..60)",
@@ -136,87 +137,86 @@ class StoryService {
         const height = normalizeOptionalInt(body?.height);
         const caption = normalizeCaption(body?.caption);
 
-        const client = await pool.connect();
+        // ─── Pré-checagem de permissões (uma vez, fora da tx por chunk) ─────
+        const profile = await StoryStorage.getProfileForOwnership(pool, {
+          id_profile,
+          id_user: user.id_user,
+        });
+        if (!profile) return { error: "Sem permissão para postar por este perfil" };
+        if (!profile.is_active) return { error: "Perfil inativo não pode postar story" };
+        if (kind === "trampo") {
+          if (profile.is_clan) return { error: "Clans não podem postar trampo" };
+          const subscribed = await StoryStorage.profileHasActiveSubscription(pool, id_profile);
+          if (!subscribed) return { error: "Trampo é exclusivo de subperfis com assinatura ativa" };
+        }
+
+        // ─── Split (no-op se duração ≤ 60s) ─────────────────────────────────
+        let chunks;
         try {
-          await client.query("BEGIN");
+          chunks = autoSplit
+            ? await splitVideoIntoChunks(file, 60)
+            : [{ buffer: file.buffer, index: 0, duration: duration_seconds, originalname: file.originalname }];
+        } catch (err) {
+          return { error: err?.message || "Falha ao analisar vídeo" };
+        }
 
-          const profile = await StoryStorage.getProfileForOwnership(client, {
-            id_profile,
-            id_user: user.id_user,
-          });
-          if (!profile) {
-            await client.query("ROLLBACK");
-            return { error: "Sem permissão para postar por este perfil" };
-          }
-          if (!profile.is_active) {
-            await client.query("ROLLBACK");
-            return { error: "Perfil inativo não pode postar story" };
-          }
-
-          if (kind === "trampo") {
-            if (profile.is_clan) {
-              await client.query("ROLLBACK");
-              return { error: "Clans não podem postar trampo" };
-            }
-            const subscribed = await StoryStorage.profileHasActiveSubscription(
-              client,
-              id_profile
-            );
-            if (!subscribed) {
-              await client.query("ROLLBACK");
-              return {
-                error: "Trampo é exclusivo de subperfis com assinatura ativa",
-              };
-            }
-          }
-
+        const total = chunks.length;
+        const stories = [];
+        for (const chunk of chunks) {
+          const chunkFile = {
+            ...file,
+            buffer: chunk.buffer,
+            originalname: chunk.originalname,
+            size: chunk.buffer.length,
+          };
           let processedFile;
           try {
-            processedFile = await processPortfolioMedia(file, "video");
+            processedFile = await processPortfolioMedia(chunkFile, "video");
           } catch (err) {
-            await client.query("ROLLBACK");
             return { error: err?.message || "Falha ao processar vídeo" };
           }
+          const uploaded = await uploadStoryVideoToR2({ id_profile, file: processedFile });
+          const finalWidth = width || processedFile.mediaMetadata?.width || null;
+          const finalHeight = height || processedFile.mediaMetadata?.height || null;
+          const chunkCaption =
+            total > 1
+              ? (caption ? `${caption} (Parte ${chunk.index + 1}/${total})` : `Parte ${chunk.index + 1}/${total}`)
+              : caption;
+          const chunkDuration = Math.max(1, Math.min(60, Math.round(chunk.duration)));
 
-          const uploaded = await uploadStoryVideoToR2({
-            id_profile,
-            file: processedFile,
-          });
-
-          const finalWidth =
-            width || processedFile.mediaMetadata?.width || null;
-          const finalHeight =
-            height || processedFile.mediaMetadata?.height || null;
-
-          const story = await StoryStorage.insertStory(client, {
-            id_profile,
-            id_user: user.id_user,
-            kind,
-            video_url: uploaded.url,
-            thumbnail_url: uploaded.thumbnail_url,
-            storage_key: uploaded.key,
-            thumbnail_key: uploaded.thumbnail_key,
-            duration_seconds,
-            width: finalWidth,
-            height: finalHeight,
-            caption,
-            metadata: {
-              ...(processedFile.mediaMetadata || {}),
+          const client = await pool.connect();
+          try {
+            await client.query("BEGIN");
+            const story = await StoryStorage.insertStory(client, {
+              id_profile,
+              id_user: user.id_user,
+              kind,
+              video_url: uploaded.url,
+              thumbnail_url: uploaded.thumbnail_url,
               storage_key: uploaded.key,
-              ...(uploaded.thumbnail_key
-                ? { thumbnail_storage_key: uploaded.thumbnail_key }
-                : {}),
-            },
-          });
-
-          await client.query("COMMIT");
-          return { story: mapStory(story) };
-        } catch (err) {
-          await client.query("ROLLBACK");
-          throw err;
-        } finally {
-          client.release();
+              thumbnail_key: uploaded.thumbnail_key,
+              duration_seconds: chunkDuration,
+              width: finalWidth,
+              height: finalHeight,
+              caption: chunkCaption,
+              metadata: {
+                ...(processedFile.mediaMetadata || {}),
+                storage_key: uploaded.key,
+                ...(uploaded.thumbnail_key ? { thumbnail_storage_key: uploaded.thumbnail_key } : {}),
+                ...(total > 1 ? { split_index: chunk.index, split_total: total } : {}),
+              },
+            });
+            await client.query("COMMIT");
+            stories.push(mapStory(story));
+          } catch (err) {
+            await client.query("ROLLBACK");
+            throw err;
+          } finally {
+            client.release();
+          }
         }
+
+        return { stories, story: stories[0] || null, count: stories.length };
       }
     );
   }
