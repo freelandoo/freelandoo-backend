@@ -13,8 +13,6 @@ const log = createLogger("ChatService");
 
 const MAX_USERS_PER_ROOM = 100;
 const MAX_MESSAGE_LENGTH = 500;
-const RATE_LIMIT_MAX_MESSAGES = 5;
-const RATE_LIMIT_WINDOW_SECONDS = 10;
 const MESSAGES_PAGE_DEFAULT = 50;
 
 const UUID_RE =

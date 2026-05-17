@@ -5,9 +5,6 @@ const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateService = require("./AffiliateService");
 const { resolve: resolveDiscount } = require("./CouponDiscountResolver");
 const { generateManualCouponCode } = require("../utils/couponCode");
-const { createLogger } = require("../utils/logger");
-
-const log = createLogger("CouponAdminService");
 
 class ServiceError extends Error {
   constructor(message, status = 400) {

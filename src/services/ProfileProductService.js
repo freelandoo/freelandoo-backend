@@ -12,7 +12,6 @@ const log = createLogger("ProfileProductService");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ZIP_RE = /^\d{8}$/;
 
 function normalizeZipcode(z) {
   if (z === null || z === undefined) return null;
