@@ -1,6 +1,8 @@
 const pool = require("../databases");
 const ProductRequestStorage = require("../storages/ProductRequestStorage");
 const ProductCategoryStorage = require("../storages/ProductCategoryStorage");
+const NotificationStorage = require("../storages/NotificationStorage");
+const ProductRequestMatchingService = require("./ProductRequestMatchingService");
 const uploadProductRequestImage = require("../integrations/r2/uploadProductRequestImage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -76,6 +78,33 @@ class ProductRequestService {
         reference_image_url,
         reference_image_key,
       });
+
+      // Notifica subperfis elegíveis (fire-and-forget; nunca quebra o create).
+      try {
+        const eligible = await ProductRequestMatchingService.findEligibleSubprofiles(
+          request.id_product_request
+        );
+        for (const row of eligible) {
+          await NotificationStorage.insert(pool, {
+            id_recipient_user: row.id_user,
+            id_recipient_profile: row.id_profile,
+            type: "product_request_new",
+            id_actor_user: user.id_user,
+            entity_type: "product_request",
+            entity_id: request.id_product_request,
+            payload: {
+              title: request.title,
+              category_id: request.id_product_category,
+              category_name: cat.name,
+              city: request.city,
+              state: request.state,
+            },
+          });
+        }
+      } catch (err) {
+        log.warn("notify.eligible.fail", { err: err?.message });
+      }
+
       return { request };
     });
   }
@@ -94,9 +123,17 @@ class ProductRequestService {
       if (!UUID_RE.test(String(id_product_request || ""))) return { error: "id_product_request inválido" };
       const r = await ProductRequestStorage.getById(pool, id_product_request);
       if (!r) return { error: "Pedido não encontrado" };
-      // No slice 2 só o comprador acessa o detalhe; slice 3 abre p/ vendedores compatíveis.
-      if (String(r.id_buyer_user) !== String(user.id_user)) return { error: "Sem permissão" };
-      return { request: r };
+      // Comprador sempre vê. Vendedor: vê se já respondeu (ownership de subperfil).
+      if (String(r.id_buyer_user) === String(user.id_user)) return { request: r };
+      const { rows } = await pool.query(
+        `SELECT 1 FROM public.tb_product_request_response prr
+           JOIN public.tb_profile p ON p.id_profile = prr.id_profile
+          WHERE prr.id_product_request = $1 AND p.id_user = $2
+          LIMIT 1`,
+        [id_product_request, user.id_user]
+      );
+      if (rows.length > 0) return { request: r };
+      return { error: "Sem permissão" };
     });
   }
 
