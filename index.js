@@ -40,6 +40,7 @@ const server = app.listen(PORT, () => {
   // Scheduler do ranking: checa e recalcula a cada 2 horas.
   const pool = require("./src/databases");
   const RankingStorage = require("./src/storages/RankingStorage");
+  const SellerBalanceStorage = require("./src/storages/SellerBalanceStorage");
   const TWO_HOURS = 2 * 60 * 60 * 1000;
   const tickRanking = async () => {
     try {
@@ -52,6 +53,18 @@ const server = app.listen(PORT, () => {
   // Primeira checagem 2 min após o boot, depois a cada 2 horas.
   setTimeout(tickRanking, 2 * 60 * 1000);
   setInterval(tickRanking, TWO_HOURS);
+
+  // Job CDC: libera saldos do vendedor cujo holdback de 8 dias venceu.
+  const tickSellerBalances = async () => {
+    try {
+      const rows = await SellerBalanceStorage.releaseDue(pool);
+      if (rows.length) bootLog.info("seller_balance.released", { count: rows.length });
+    } catch (err) {
+      bootLog.error("seller_balance.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickSellerBalances, 3 * 60 * 1000);
+  setInterval(tickSellerBalances, TWO_HOURS);
 });
 
 // Slice 7 (vídeo de curso): uploads até 100MB podem demorar minutos em

@@ -110,6 +110,47 @@ async function createOneTimeCheckoutSession({
   return stripe.checkout.sessions.create(params);
 }
 
+/**
+ * Cria checkout session em modo `payment` com múltiplos line items ad-hoc
+ * (produto + frete + outros). Usado pela Loja para enviar produto e frete
+ * como itens separados.
+ */
+async function createMultiItemCheckoutSession({
+  line_items, // [{ name, amount_cents, quantity }]
+  currency = "BRL",
+  customerEmail,
+  customerId,
+  clientReferenceId,
+  successUrl,
+  cancelUrl,
+  metadata,
+}) {
+  const stripe = client();
+  const items = (line_items || []).map((li) => ({
+    price_data: {
+      currency: String(currency).toLowerCase(),
+      product_data: { name: String(li.name).slice(0, 250) },
+      unit_amount: Math.max(0, Math.round(Number(li.amount_cents) || 0)),
+    },
+    quantity: Math.max(1, Number(li.quantity) || 1),
+  }));
+
+  const params = {
+    mode: "payment",
+    line_items: items,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    client_reference_id: clientReferenceId,
+    metadata: metadata || {},
+    payment_intent_data: { metadata: metadata || {} },
+  };
+
+  if (customerId) params.customer = customerId;
+  else if (customerEmail) params.customer_email = customerEmail;
+
+  return stripe.checkout.sessions.create(params);
+}
+
 async function retrieveSession(sessionId) {
   return client().checkout.sessions.retrieve(sessionId, {
     expand: ["subscription", "customer", "total_details.breakdown.discounts"],
@@ -197,6 +238,7 @@ module.exports = {
   createAnnualProductAndPrice,
   createSubscriptionCheckoutSession,
   createOneTimeCheckoutSession,
+  createMultiItemCheckoutSession,
   retrieveSession,
   retrieveSubscription,
   retrieveInvoice,
