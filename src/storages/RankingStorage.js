@@ -259,60 +259,68 @@ module.exports = {
     }
 
     const periodDays = cfg.period_days ?? 30;
-    const wv = cfg.weight_visits ?? 1;
-    const wl = cfg.weight_likes ?? 2;
-    const wr = cfg.weight_ratings ?? 5;
-    const wo = cfg.weight_online ?? 0.5;
     const maxOnline = cfg.max_online_minutes ?? 120;
 
     // Upsert pontuação bruta para cada perfil publicado
     await db.query(
       `INSERT INTO profile_ranking
-         (id_profile, total_points, visits_count, likes_count, ratings_count, avg_rating, online_minutes, updated_at)
+         (id_profile, total_points, visits_count, likes_count, ratings_count, avg_rating, online_minutes, content_retention_seconds, updated_at)
        SELECT
          pro.id_profile,
          -- fórmula
-         COALESCE(v.cnt, 0) * $1
-           + COALESCE(l.cnt, 0) * $2
-           + COALESCE(rat.avg_r, 0) * COALESCE(rat.cnt, 0) * $3
-           + LEAST(COALESCE(o.mins, 0), $5) * $4    AS total_points,
-         COALESCE(v.cnt,   0) AS visits_count,
+         COALESCE(xp.points, 0) AS total_points,
+         COALESCE(v.cnt, 0) AS visits_count,
          COALESCE(l.cnt,   0) AS likes_count,
          COALESCE(rat.cnt, 0) AS ratings_count,
          COALESCE(rat.avg_r, 0) AS avg_rating,
-         LEAST(COALESCE(o.mins, 0), $5) AS online_minutes,
+         LEAST(COALESCE(o.mins, 0), $1) AS online_minutes,
+         COALESCE(ret.seconds_watched, 0) AS content_retention_seconds,
          NOW()
        FROM tb_profile pro
        JOIN tb_profile_subscription psub ON psub.id_profile = pro.id_profile AND psub.status = 'active'
        JOIN tb_user tu ON tu.id_user = pro.id_user
 
        LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(xpe.xp_amount), 0)::numeric AS points
+           FROM subprofile_xp_events xpe
+          WHERE xpe.id_profile = pro.id_profile
+            AND xpe.created_at >= NOW() - ($2 || ' days')::interval
+       ) xp ON TRUE
+
+       LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt
            FROM profile_visits pv
           WHERE pv.id_profile = pro.id_profile
-            AND pv.visited_at >= NOW() - ($6 || ' days')::interval
+            AND pv.visited_at >= NOW() - ($2 || ' days')::interval
        ) v ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt
            FROM portfolio_likes pl
           WHERE pl.id_profile = pro.id_profile
-            AND pl.liked_at >= NOW() - ($6 || ' days')::interval
+            AND pl.liked_at >= NOW() - ($2 || ' days')::interval
        ) l ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt, COALESCE(AVG(rating), 0)::numeric(4,2) AS avg_r
            FROM profile_ratings pr
           WHERE pr.id_profile = pro.id_profile
-            AND pr.rated_at >= NOW() - ($6 || ' days')::interval
+            AND pr.rated_at >= NOW() - ($2 || ' days')::interval
        ) rat ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(uot.minutes_online), 0)::int AS mins
            FROM user_online_time uot
           WHERE uot.id_user = pro.id_user
-            AND uot.date >= CURRENT_DATE - $6::int
+            AND uot.date >= CURRENT_DATE - $2::int
        ) o ON TRUE
+
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(pcr.seconds_watched), 0)::int AS seconds_watched
+           FROM portfolio_content_retention pcr
+          WHERE pcr.id_profile = pro.id_profile
+            AND pcr.updated_at >= NOW() - ($2 || ' days')::interval
+       ) ret ON TRUE
 
        WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
          AND pro.is_clan = FALSE
@@ -326,8 +334,9 @@ module.exports = {
          ratings_count   = EXCLUDED.ratings_count,
          avg_rating      = EXCLUDED.avg_rating,
          online_minutes  = EXCLUDED.online_minutes,
+         content_retention_seconds = EXCLUDED.content_retention_seconds,
          updated_at      = NOW()`,
-      [wv, wl, wr, wo, maxOnline, periodDays]
+      [maxOnline, periodDays]
     );
 
     // Pass 2 — pontuação do clan = média simples dos total_points dos membros
@@ -336,7 +345,7 @@ module.exports = {
     // avg_rating é média ponderada pelo número de avaliações de cada membro.
     await db.query(
       `INSERT INTO profile_ranking
-         (id_profile, total_points, visits_count, likes_count, ratings_count, avg_rating, online_minutes, updated_at)
+         (id_profile, total_points, visits_count, likes_count, ratings_count, avg_rating, online_minutes, content_retention_seconds, updated_at)
        SELECT
          clan.id_profile,
          CASE
@@ -353,6 +362,7 @@ module.exports = {
            ELSE 0
          END AS avg_rating,
          COALESCE(SUM(mr.online_minutes), 0)::int AS online_minutes,
+         COALESCE(SUM(mr.content_retention_seconds), 0)::int AS content_retention_seconds,
          NOW()
        FROM tb_profile clan
        LEFT JOIN tb_clan_member cm ON cm.id_clan_profile = clan.id_profile
@@ -368,6 +378,7 @@ module.exports = {
          ratings_count   = EXCLUDED.ratings_count,
          avg_rating      = EXCLUDED.avg_rating,
          online_minutes  = EXCLUDED.online_minutes,
+         content_retention_seconds = EXCLUDED.content_retention_seconds,
          updated_at      = NOW()`
     );
 
@@ -507,6 +518,7 @@ module.exports = {
          pr.ratings_count,
          pr.avg_rating,
          pr.online_minutes,
+         pr.content_retention_seconds,
          pr.position_general,
          pr.position_machine,
          pr.position_city,
@@ -980,6 +992,7 @@ module.exports = {
          pr.ratings_count,
          pr.avg_rating,
          pr.online_minutes,
+         pr.content_retention_seconds,
          pr.position_general,
          pr.position_machine,
          pr.position_city,

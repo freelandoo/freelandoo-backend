@@ -34,6 +34,7 @@ const XP_EVENT_FIELD = {
   online_time:              "online_minute_xp",
   profile_visit:            "profile_visit_xp",
   review_received:          "review_received_xp",
+  content_retention:         "content_retention_second_xp",
 };
 
 module.exports = {
@@ -194,7 +195,7 @@ module.exports = {
 
   // Main entry point: validate + insert event + recalculate profile XP.
   // Fire-and-forget safe — catches all errors internally.
-  async award(db, { id_profile, event_type, source_type, source_id, metadata }) {
+  async award(db, { id_profile, event_type, source_type, source_id, metadata, unit_count }) {
     try {
       const settings = await this.getSettings(db);
       if (!settings || !settings.is_active) return;
@@ -202,7 +203,8 @@ module.exports = {
       const field = XP_EVENT_FIELD[event_type];
       if (!field) return;
 
-      const xp_amount = Number(settings[field] ?? 0);
+      const units = Math.max(1, Number(unit_count ?? 1));
+      const xp_amount = Number(settings[field] ?? 0) * units;
       if (xp_amount <= 0) return;
 
       // Only award to non-clan active subprofiles

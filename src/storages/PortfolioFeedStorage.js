@@ -69,7 +69,15 @@ function buildCandidateQuery(mode) {
           WHERE pl.id_portfolio_item = ppi.id_portfolio_item
             AND pl.id_user = $7::uuid
         ) THEN TRUE ELSE FALSE
-      END                                                  AS viewer_has_liked
+      END                                                  AS viewer_has_liked,
+
+      CASE
+        WHEN $7::uuid IS NOT NULL AND EXISTS (
+          SELECT 1 FROM user_bookmark_item ubi
+          WHERE ubi.id_portfolio_item = ppi.id_portfolio_item
+            AND ubi.id_user = $7::uuid
+        ) THEN TRUE ELSE FALSE
+      END                                                  AS viewer_has_bookmarked
 
     FROM tb_profile_portfolio_item ppi
     JOIN tb_profile pro       ON pro.id_profile  = ppi.id_profile

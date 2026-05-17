@@ -146,7 +146,7 @@ module.exports = {
     const engagement = await RankingStorage.getEngagement(pool, { id_profile });
     return res.json(engagement ?? {
       total_points: 0, visits_count: 0, likes_count: 0,
-      ratings_count: 0, avg_rating: 0, online_minutes: 0,
+      ratings_count: 0, avg_rating: 0, online_minutes: 0, content_retention_seconds: 0,
       position_general: null, position_machine: null,
       position_city: null, position_profession: null,
     });
