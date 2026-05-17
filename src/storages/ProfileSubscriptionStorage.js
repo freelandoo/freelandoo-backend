@@ -54,6 +54,24 @@ class ProfileSubscriptionStorage {
     return rows[0] || null;
   }
 
+  static async findByPaymentIntentId(conn, paymentIntentId) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.tb_profile_subscription
+       WHERE stripe_payment_intent_id = $1 LIMIT 1`,
+      [paymentIntentId]
+    );
+    return rows[0] || null;
+  }
+
+  static async findByChargeId(conn, chargeId) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.tb_profile_subscription
+       WHERE stripe_charge_id = $1 LIMIT 1`,
+      [chargeId]
+    );
+    return rows[0] || null;
+  }
+
   static async findByCustomerId(conn, customerId) {
     const { rows } = await conn.query(
       `SELECT * FROM public.tb_profile_subscription

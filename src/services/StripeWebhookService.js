@@ -59,6 +59,25 @@ async function applyProfileActivation(conn, { id_profile, id_user }) {
   }
 }
 
+async function revertProfileActivation(conn, { id_profile, id_user }) {
+  if (!id_profile) return;
+  const taxaPendenteId = await getStatusIdByDesc(conn, "taxa_pendente");
+  const feePaidId = await getStatusIdByDesc(conn, "fee_paid");
+  if (feePaidId) {
+    await ProfileStorage.deleteProfileStatus(conn, {
+      id_profile,
+      id_status: feePaidId,
+    });
+  }
+  if (taxaPendenteId) {
+    await ProfileStorage.insertProfileStatus(conn, {
+      id_profile,
+      id_status: taxaPendenteId,
+      created_by: id_user,
+    });
+  }
+}
+
 async function handleCheckoutCompleted(conn, session) {
   const row = await ProfileSubscriptionStorage.findBySessionId(conn, session.id);
   if (!row) {
@@ -66,30 +85,66 @@ async function handleCheckoutCompleted(conn, session) {
     return;
   }
 
-  const subscriptionId =
+  const isOneTime = session.mode === "payment";
+
+  const subscriptionId = !isOneTime && (
     typeof session.subscription === "string"
       ? session.subscription
-      : session.subscription?.id || null;
+      : session.subscription?.id || null
+  );
+
+  const paymentIntentId = isOneTime && (
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id || null
+  );
 
   const customerId =
     typeof session.customer === "string"
       ? session.customer
       : session.customer?.id || null;
 
-  const subscription = subscriptionId
-    ? await StripeService.retrieveSubscription(subscriptionId)
-    : null;
+  // Ativação one-time: charge via PI; vitalício (current_period_end=NULL).
+  // Subscription legacy: charge via invoice/subscription; período recorrente.
+  let chargeId = null;
+  let periodStart = null;
+  let periodEnd = null;
+
+  if (isOneTime && paymentIntentId) {
+    try {
+      const pi = await StripeService.retrievePaymentIntent(paymentIntentId, {
+        expand: ["latest_charge"],
+      });
+      chargeId = typeof pi.latest_charge === "object"
+        ? pi.latest_charge?.id
+        : pi.latest_charge || null;
+    } catch (err) {
+      log.warn("checkout.completed.pi_lookup_fail", { paymentIntentId, message: err.message });
+    }
+    periodStart = new Date();
+    periodEnd = null; // vitalício
+  } else if (subscriptionId) {
+    try {
+      const subscription = await StripeService.retrieveSubscription(subscriptionId);
+      periodStart = toTimestamp(subscription?.current_period_start);
+      periodEnd = toTimestamp(subscription?.current_period_end);
+    } catch (err) {
+      log.warn("checkout.completed.sub_lookup_fail", { subscriptionId, message: err.message });
+    }
+  }
 
   const updatedSubscription = await ProfileSubscriptionStorage.updateBySessionId(
     conn,
     session.id,
     {
       status: "active",
-      stripe_subscription_id: subscriptionId,
+      stripe_subscription_id: subscriptionId || null,
+      stripe_payment_intent_id: paymentIntentId || null,
+      stripe_charge_id: chargeId || null,
       stripe_customer_id: customerId,
       paid_at: new Date(),
-      current_period_start: toTimestamp(subscription?.current_period_start),
-      current_period_end: toTimestamp(subscription?.current_period_end),
+      current_period_start: periodStart,
+      current_period_end: periodEnd,
       raw_event: session,
     }
   );
@@ -178,6 +233,69 @@ async function handleChargeRefunded(conn, charge) {
     typeof charge.payment_intent === "string"
       ? charge.payment_intent
       : charge.payment_intent?.id || null;
+
+  let profileSubscription =
+    (await ProfileSubscriptionStorage.findByChargeId(conn, charge.id)) ||
+    (paymentIntentId
+      ? await ProfileSubscriptionStorage.findByPaymentIntentId(conn, paymentIntentId)
+      : null);
+
+  if (!profileSubscription && charge.invoice) {
+    const invoiceId = typeof charge.invoice === "string" ? charge.invoice : charge.invoice?.id;
+    try {
+      const invoice = await StripeService.retrieveInvoice?.(invoiceId);
+      const subscriptionId =
+        typeof invoice?.subscription === "string"
+          ? invoice.subscription
+          : invoice?.subscription?.id || null;
+      if (subscriptionId) {
+        profileSubscription = await ProfileSubscriptionStorage.findBySubscriptionId(
+          conn,
+          subscriptionId
+        );
+      }
+    } catch (err) {
+      log.warn("charge.refunded.profile_invoice_lookup_fail", { invoiceId, error: err.message });
+    }
+  }
+
+  if (profileSubscription) {
+    await conn.query(
+      `UPDATE public.tb_profile_subscription
+       SET status = 'expired',
+           refunded_at = COALESCE(refunded_at, NOW()),
+           canceled_at = COALESCE(canceled_at, NOW()),
+           stripe_charge_id = COALESCE(stripe_charge_id, $2),
+           raw_event = $3,
+           updated_at = NOW()
+       WHERE id_subscription = $1`,
+      [profileSubscription.id_subscription, charge.id, charge]
+    );
+
+    await revertProfileActivation(conn, {
+      id_profile: profileSubscription.id_profile,
+      id_user: profileSubscription.id_user,
+    });
+
+    if (profileSubscription.stripe_checkout_session_id) {
+      const bySession = await conn.query(
+        `SELECT * FROM tb_order WHERE payment_provider = 'stripe' AND payment_provider_ref = $1 LIMIT 1`,
+        [profileSubscription.stripe_checkout_session_id]
+      );
+      const subscriptionOrder = bySession.rows[0] || null;
+      if (subscriptionOrder) {
+        await AffiliateConversionService.onOrderStatusChange(conn, {
+          order: subscriptionOrder,
+          newStatus: "CANCELED",
+          source: "stripe_webhook",
+          source_event_id: `charge.refunded:${charge.id}`,
+          payload: { charge_id: charge.id, amount_refunded: charge.amount_refunded },
+        });
+      }
+    }
+
+    return;
+  }
 
   // Tenta achar a order pela invoice → subscription → session, ou por payment_intent direto.
   let order = null;
