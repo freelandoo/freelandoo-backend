@@ -23,6 +23,11 @@ class ServiceRequestController {
     return sendServiceResult(res, result);
   }
 
+  static async hide(req, res) {
+    const result = await ServiceRequestService.hideRequest(req.user, req.params.id);
+    return sendServiceResult(res, result);
+  }
+
   static async finalize(req, res) {
     const result = await ServiceRequestService.finalizeResponse(
       req.user, req.params.id, req.params.id_response

@@ -26,10 +26,24 @@ class ServiceRequestStorage {
          JOIN public.tb_machine m ON m.id_machine = r.id_machine
          JOIN public.tb_category c ON c.id_category = r.id_category
         WHERE r.id_user = $1
+          AND r.user_hidden_at IS NULL
         ORDER BY r.created_at DESC`,
       [id_user]
     );
     return r.rows;
+  }
+
+  static async hideRequestForUser(conn, { id_request, id_user }) {
+    const r = await conn.query(
+      `UPDATE public.tb_service_request
+          SET user_hidden_at = NOW()
+        WHERE id_request = $1
+          AND id_user = $2
+          AND user_hidden_at IS NULL
+        RETURNING id_request`,
+      [id_request, id_user]
+    );
+    return r.rows[0] || null;
   }
 
   static async cancelRequest(conn, id_request) {

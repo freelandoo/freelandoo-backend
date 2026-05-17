@@ -41,11 +41,25 @@ class ProductRequestStorage {
          JOIN public.tb_product_category pc
            ON pc.id_product_category = pr.id_product_category
         WHERE pr.id_buyer_user = $1
+          AND pr.user_hidden_at IS NULL
         ORDER BY pr.created_at DESC
         LIMIT $2 OFFSET $3`,
       [id_buyer_user, limit, offset]
     );
     return rows;
+  }
+
+  static async hideForBuyer(conn, { id_product_request, id_buyer_user }) {
+    const { rows } = await conn.query(
+      `UPDATE public.tb_product_request
+          SET user_hidden_at = NOW(), updated_at = NOW()
+        WHERE id_product_request = $1
+          AND id_buyer_user = $2
+          AND user_hidden_at IS NULL
+        RETURNING id_product_request`,
+      [id_product_request, id_buyer_user]
+    );
+    return rows[0] || null;
   }
 
   static async cancel(conn, id_product_request) {

@@ -16,5 +16,6 @@ router.post("/:id/responses", ...auth, asyncHandler(ProductRequestController.cre
 router.get("/:id", ...auth, asyncHandler(ProductRequestController.getById));
 router.post("/:id/cancel", ...auth, asyncHandler(ProductRequestController.cancel));
 router.post("/:id/close", ...auth, asyncHandler(ProductRequestController.close));
+router.delete("/:id", ...auth, asyncHandler(ProductRequestController.hide));
 
 module.exports = router;

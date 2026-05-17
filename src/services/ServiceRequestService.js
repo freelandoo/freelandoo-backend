@@ -115,6 +115,21 @@ class ServiceRequestService {
     });
   }
 
+  static async hideRequest(user, id_request) {
+    return runWithLogs(log, "hideRequest", () => ({ id_user: user?.id_user, id_request }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      if (!isUuid(id_request)) return { error: "id_request inválido" };
+      const req = await ServiceRequestStorage.getRequestById(pool, id_request);
+      if (!req) return { error: "Solicitação não encontrada" };
+      if (String(req.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
+      await ServiceRequestStorage.hideRequestForUser(pool, {
+        id_request,
+        id_user: user.id_user,
+      });
+      return { hidden: true };
+    });
+  }
+
   static async finalizeResponse(user, id_request, id_response) {
     return runWithLogs(log, "finalizeResponse", () => ({ id_user: user?.id_user, id_request, id_response }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
