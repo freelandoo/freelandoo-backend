@@ -1,7 +1,10 @@
 class ProfileProductStorage {
   static async list(conn, id_profile, { only_active = false } = {}) {
     const where = ["id_profile = $1", "deleted_at IS NULL"];
-    if (only_active) where.push("is_active = TRUE");
+    if (only_active) {
+      where.push("is_active = TRUE");
+      where.push("moderation_status = 'active'");
+    }
     const r = await conn.query(
       `SELECT * FROM public.tb_profile_product
        WHERE ${where.join(" AND ")}
