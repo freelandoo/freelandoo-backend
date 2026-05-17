@@ -91,6 +91,77 @@ class ProfileProductOrderStorage {
     return r.rows[0] || null;
   }
 
+  static async markLabelPurchased(conn, id_order, { melhor_envio_order_id, label_pdf_url, tracking_code }) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile_product_order
+          SET melhor_envio_order_id = $2,
+              label_pdf_url         = $3,
+              label_purchased_at    = NOW(),
+              label_purchase_error  = NULL,
+              tracking_code         = COALESCE($4, tracking_code),
+              updated_at            = NOW()
+        WHERE id_order = $1
+        RETURNING *`,
+      [id_order, melhor_envio_order_id, label_pdf_url, tracking_code || null]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async markLabelFailure(conn, id_order, error_message) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile_product_order
+          SET label_purchase_error    = $2,
+              label_purchase_attempts = label_purchase_attempts + 1,
+              label_last_attempt_at   = NOW(),
+              updated_at              = NOW()
+        WHERE id_order = $1
+        RETURNING *`,
+      [id_order, String(error_message || "").slice(0, 400)]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async listPendingLabels(conn, { limit = 20 } = {}) {
+    const r = await conn.query(
+      `SELECT id_order
+         FROM public.tb_profile_product_order
+        WHERE status = 'paid'
+          AND label_purchased_at IS NULL
+          AND label_purchase_attempts < 5
+          AND (label_last_attempt_at IS NULL OR label_last_attempt_at < NOW() - INTERVAL '30 minutes')
+        ORDER BY paid_at ASC NULLS LAST
+        LIMIT $1`,
+      [limit]
+    );
+    return r.rows.map((row) => row.id_order);
+  }
+
+  static async getForSeller(conn, id_order, id_seller_user) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_profile_product_order
+        WHERE id_order = $1 AND id_seller_user = $2 LIMIT 1`,
+      [id_order, id_seller_user]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async listForSeller(conn, id_seller_user, { limit = 50, offset = 0 } = {}) {
+    const r = await conn.query(
+      `SELECT o.*,
+              pp.name AS product_name,
+              (SELECT media_url FROM public.tb_profile_product_media m
+                 WHERE m.id_profile_product = o.id_profile_product
+                 ORDER BY m.sort_order ASC, m.id_product_media ASC LIMIT 1) AS product_cover_url
+         FROM public.tb_profile_product_order o
+         JOIN public.tb_profile_product pp ON pp.id_profile_product = o.id_profile_product
+        WHERE o.id_seller_user = $1
+        ORDER BY o.created_at DESC
+        LIMIT $2 OFFSET $3`,
+      [id_seller_user, limit, offset]
+    );
+    return r.rows;
+  }
+
   static async listForBuyer(conn, id_buyer_user, { limit = 50, offset = 0 } = {}) {
     const r = await conn.query(
       `SELECT o.*,

@@ -11,6 +11,16 @@ class ProfileProductOrderController {
     const result = await ProfileProductOrderService.listMyOrders(req.user, req.query || {});
     return sendServiceResult(res, result);
   }
+
+  static async listMySales(req, res) {
+    const result = await ProfileProductOrderService.listMySales(req.user, req.query || {});
+    return sendServiceResult(res, result);
+  }
+
+  static async getLabel(req, res) {
+    const result = await ProfileProductOrderService.getLabelForSeller(req.user, req.params.id_order);
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = ProfileProductOrderController;

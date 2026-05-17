@@ -94,7 +94,7 @@ module.exports = (app) => {
   app.use("/profile", bookingRoutes);
   app.use("/profile/:id_profile/services", profileServiceRoutes);
   app.use("/profile/:id_profile/products", profileProductRoutes);
-  app.use("/me/orders", profileProductOrderRoutes);
+  app.use("/me", profileProductOrderRoutes);
   app.use("/public/profile", bookingPublicRoutes);
   app.use("/public/profile", profileServicePublicRoutes);
   app.use("/public/profile", profileProductPublicRoutes);
