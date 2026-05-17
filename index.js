@@ -65,6 +65,21 @@ const server = app.listen(PORT, () => {
   };
   setTimeout(tickSellerBalances, 3 * 60 * 1000);
   setInterval(tickSellerBalances, TWO_HOURS);
+
+  // Job: compra etiqueta no Melhor Envio para pedidos pagos cuja compra
+  // inicial (no webhook) falhou. Roda 4 min após boot e a cada 30 min.
+  const ProfileProductOrderService = require("./src/services/ProfileProductOrderService");
+  const HALF_HOUR = 30 * 60 * 1000;
+  const tickLabels = async () => {
+    try {
+      const result = await ProfileProductOrderService.processPendingLabels();
+      if (result.processed) bootLog.info("labels.retry", result);
+    } catch (err) {
+      bootLog.error("labels.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickLabels, 4 * 60 * 1000);
+  setInterval(tickLabels, HALF_HOUR);
 });
 
 // Slice 7 (vídeo de curso): uploads até 100MB podem demorar minutos em

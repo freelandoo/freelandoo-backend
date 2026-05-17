@@ -4,6 +4,7 @@ const ProfileProductOrderStorage = require("../storages/ProfileProductOrderStora
 const SellerBalanceStorage = require("../storages/SellerBalanceStorage");
 const ShippingService = require("./ShippingService");
 const StripeService = require("./StripeService");
+const { purchaseLabel } = require("../integrations/melhorenvio/purchaseLabel");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ProfileProductOrderService");
@@ -194,12 +195,13 @@ class ProfileProductOrderService {
         charge_id,
       });
 
-      // Cria saldo do vendedor — gross/net = total - frete (frete vai pro
-      // vendedor também já que ele paga a etiqueta). Platform fee = 0 por enquanto.
+      // A plataforma compra a etiqueta no Melhor Envio com saldo próprio,
+      // então o frete fica retido (cobre o custo da etiqueta). Vendedor
+      // recebe apenas o valor do produto. Platform fee = 0 por enquanto.
       const gross = Number(paid.total_cents) || 0;
       const shipping = Number(paid.shipping_cents) || 0;
       const platform_fee = 0;
-      const net = gross - platform_fee;
+      const net = Math.max(0, gross - shipping - platform_fee);
       const available_at = new Date(Date.now() + HOLDBACK_DAYS * 24 * 60 * 60 * 1000);
 
       await SellerBalanceStorage.create(client, {
@@ -215,6 +217,15 @@ class ProfileProductOrderService {
       });
 
       await client.query("COMMIT");
+
+      // Fire-and-forget: compra etiqueta no Melhor Envio. Falhas não bloqueiam
+      // o webhook — vão pro job de retry.
+      setImmediate(() => {
+        ProfileProductOrderService.purchaseLabelForOrder(paid.id_order).catch((err) => {
+          log.warn("confirm.label_dispatch_fail", { id_order: paid.id_order, message: err.message });
+        });
+      });
+
       return { order: paid };
     } catch (err) {
       await client.query("ROLLBACK");
@@ -222,6 +233,118 @@ class ProfileProductOrderService {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Compra etiqueta no Melhor Envio para um pedido pago. Idempotente:
+   * se já comprou, retorna {already:true}. Em falha, marca o erro e
+   * incrementa attempts pra o job de retry pegar depois.
+   */
+  static async purchaseLabelForOrder(id_order) {
+    return runWithLogs(log, "purchaseLabelForOrder", () => ({ id_order }), async () => {
+      const order = await ProfileProductOrderStorage.getById(pool, id_order);
+      if (!order) return { error: "Pedido não encontrado" };
+      if (!["paid", "shipped", "delivered"].includes(order.status)) {
+        return { error: "Pedido não está em status pagável" };
+      }
+      if (order.label_purchased_at && order.melhor_envio_order_id) {
+        return {
+          already: true,
+          melhor_envio_order_id: order.melhor_envio_order_id,
+          label_pdf_url: order.label_pdf_url,
+        };
+      }
+
+      const product = await ProfileProductStorage.getWithOwner(pool, order.id_profile_product);
+      if (!product) {
+        await ProfileProductOrderStorage.markLabelFailure(pool, id_order, "Produto não encontrado para etiqueta");
+        return { error: "Produto não encontrado" };
+      }
+
+      const sellerRow = await pool.query(
+        `SELECT nome, email, telefone FROM public.tb_user WHERE id_user = $1 LIMIT 1`,
+        [order.id_seller_user]
+      );
+      const seller = sellerRow.rows[0] || {};
+
+      try {
+        const result = await purchaseLabel({
+          order,
+          product,
+          seller: {
+            nome: seller.nome,
+            email: seller.email,
+            telefone: seller.telefone,
+            origin_zipcode: product.origin_zipcode_override || product.profile_origin_zipcode,
+          },
+        });
+        const updated = await ProfileProductOrderStorage.markLabelPurchased(pool, id_order, result);
+        log.info("label.purchased", { id_order, melhor_envio_order_id: result.melhor_envio_order_id });
+        return { order: updated, ...result };
+      } catch (err) {
+        await ProfileProductOrderStorage.markLabelFailure(pool, id_order, err.message || "Falha desconhecida");
+        log.warn("label.purchase_fail", { id_order, message: err.message });
+        return { error: err.message };
+      }
+    });
+  }
+
+  /**
+   * Job CDC: tenta etiquetas pendentes (≤5 tentativas, ≥30min entre tentativas).
+   * Chamado pelo agendador no boot do servidor.
+   */
+  static async processPendingLabels() {
+    return runWithLogs(log, "processPendingLabels", () => ({}), async () => {
+      const ids = await ProfileProductOrderStorage.listPendingLabels(pool, { limit: 20 });
+      if (ids.length === 0) return { processed: 0, ok: 0, fail: 0 };
+      let ok = 0;
+      let fail = 0;
+      for (const id of ids) {
+        const r = await ProfileProductOrderService.purchaseLabelForOrder(id);
+        if (r.error) fail++; else ok++;
+      }
+      return { processed: ids.length, ok, fail };
+    });
+  }
+
+  /**
+   * Endpoint do vendedor: devolve a label_pdf_url, tentando comprar se
+   * ainda não foi comprada e nenhum job de retry pegou.
+   */
+  static async getLabelForSeller(user, id_order) {
+    return runWithLogs(log, "getLabelForSeller", () => ({ id_user: user?.id_user, id_order }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const order = await ProfileProductOrderStorage.getForSeller(pool, Number(id_order), user.id_user);
+      if (!order) return { error: "Pedido não encontrado" };
+      if (order.label_purchased_at && order.label_pdf_url) {
+        return {
+          label_pdf_url: order.label_pdf_url,
+          melhor_envio_order_id: order.melhor_envio_order_id,
+          tracking_code: order.tracking_code,
+        };
+      }
+      if (order.status !== "paid" && order.status !== "shipped" && order.status !== "delivered") {
+        return { error: "Pedido ainda não pago" };
+      }
+      // Tenta comprar agora (sob demanda — se webhook falhou e retry ainda não rodou)
+      const r = await ProfileProductOrderService.purchaseLabelForOrder(order.id_order);
+      if (r.error) return { error: r.error };
+      return {
+        label_pdf_url: r.label_pdf_url || r.order?.label_pdf_url,
+        melhor_envio_order_id: r.melhor_envio_order_id || r.order?.melhor_envio_order_id,
+        tracking_code: r.tracking_code || r.order?.tracking_code,
+      };
+    });
+  }
+
+  static async listMySales(user, { limit = 50, offset = 0 } = {}) {
+    return runWithLogs(log, "listMySales", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
+      const off = Math.max(Number(offset) || 0, 0);
+      const orders = await ProfileProductOrderStorage.listForSeller(pool, user.id_user, { limit: lim, offset: off });
+      return { orders };
+    });
   }
 
   /**

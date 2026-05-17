@@ -48,6 +48,14 @@ class SellerBalanceStorage {
               o.status AS order_status,
               o.buyer_name,
               o.created_at AS order_created_at,
+              o.label_pdf_url,
+              o.label_purchased_at,
+              o.label_purchase_error,
+              o.label_purchase_attempts,
+              o.melhor_envio_order_id,
+              o.tracking_code,
+              o.shipping_carrier,
+              o.shipping_service_name,
               pp.name AS product_name,
               pr.display_name AS seller_display_name
          FROM public.tb_seller_balance b
