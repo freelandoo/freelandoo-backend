@@ -325,6 +325,57 @@ class ChatStorage {
     );
     return rows;
   }
+
+  /**
+   * Reset diário: apaga TODO o histórico do chat ao vivo (Global + Máquinas).
+   * Mantém salas, settings de moderação, blocked terms e reputação por usuário
+   * (tb_chat_user_moderation_state) — apenas o histórico de mensagens some.
+   *
+   * tb_chat_presence também sai pra forçar rejoin "limpo" e ressetar contagem
+   * de online.
+   *
+   * Pool é passado direto (não conn em transação) — abre client próprio.
+   * Retorna contagens "antes" para o log.
+   */
+  static async dailyReset(pool) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const counts = {};
+      for (const t of [
+        "tb_chat_message",
+        "tb_chat_report",
+        "tb_chat_moderation_result",
+        "tb_chat_presence",
+      ]) {
+        const { rows } = await client.query(
+          `SELECT COUNT(*)::int AS total FROM public.${t}`
+        );
+        counts[t] = rows[0]?.total || 0;
+      }
+
+      // TRUNCATE com CASCADE garante consistência se houver FKs.
+      // RESTART IDENTITY zera sequences (defensivo — algumas tabelas usam
+      // gen_random_uuid e não têm sequence, mas não faz mal).
+      await client.query(
+        `TRUNCATE TABLE
+           public.tb_chat_report,
+           public.tb_chat_moderation_result,
+           public.tb_chat_message,
+           public.tb_chat_presence
+         RESTART IDENTITY CASCADE`
+      );
+
+      await client.query("COMMIT");
+      return counts;
+    } catch (err) {
+      try { await client.query("ROLLBACK"); } catch { /* ignore */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 module.exports = ChatStorage;
