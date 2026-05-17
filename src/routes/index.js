@@ -67,6 +67,7 @@ const chatModerationAdminRoutes = require("./chatModerationAdmin.routes");
 const bookingPayoutRoutes = require("./bookingPayout.routes");
 const productCategoryRoutes = require("./productCategory.routes");
 const productCategoryAdminRoutes = require("./productCategoryAdmin.routes");
+const productRequestRoutes = require("./productRequest.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -142,4 +143,5 @@ module.exports = (app) => {
   app.use("/", bookingPayoutRoutes);
   app.use("/product-categories", productCategoryRoutes);
   app.use("/admin/store/product-categories", productCategoryAdminRoutes);
+  app.use("/product-requests", productRequestRoutes);
 };
