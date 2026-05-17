@@ -24,7 +24,7 @@ class ProfileProductController {
   }
 
   static async listPublic(req, res) {
-    const result = await ProfileProductService.listPublic(req.params.id_profile);
+    const result = await ProfileProductService.listPublic(req.params.id_profile, req.query || {});
     return sendServiceResult(res, result);
   }
 

@@ -82,6 +82,19 @@ class ProductRequestStorage {
       [id_product_request]
     );
   }
+
+  /**
+   * Expira lazy pedidos abertos há mais de 30 dias. Chamada antes de listar
+   * mural / meus pedidos. Idempotente.
+   */
+  static async expireOld(conn) {
+    await conn.query(
+      `UPDATE public.tb_product_request
+          SET status = 'expired', expired_at = NOW(), updated_at = NOW()
+        WHERE status = 'open'
+          AND created_at < NOW() - INTERVAL '30 days'`
+    );
+  }
 }
 
 module.exports = ProductRequestStorage;
