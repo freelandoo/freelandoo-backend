@@ -348,8 +348,8 @@ class ProfileProductService {
   }
 
   // ─── Listagem pública ──────────────────────────────────────────────────────
-  static async listPublic(id_profile) {
-    return runWithLogs(log, "listPublic", () => ({ id_profile }), async () => {
+  static async listPublic(id_profile, filters = {}) {
+    return runWithLogs(log, "listPublic", () => ({ id_profile, ...filters }), async () => {
       if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
       const profile = await ProfileStorage.getProfileById(pool, id_profile);
       if (!profile) return { error: "Perfil não encontrado" };
@@ -358,7 +358,18 @@ class ProfileProductService {
       const paid = await isProfilePaid(pool, id_profile);
       if (!paid) return { products: [] }; // loja pausada quando assinatura não-ativa
 
-      const products = await ProfileProductStorage.list(pool, id_profile, { only_active: true });
+      const id_product_category = filters.id_product_category ? Number(filters.id_product_category) : null;
+      const min_price_cents = filters.min_price_cents != null && filters.min_price_cents !== "" ? Number(filters.min_price_cents) : null;
+      const max_price_cents = filters.max_price_cents != null && filters.max_price_cents !== "" ? Number(filters.max_price_cents) : null;
+      const sort = ["recent", "price_asc", "price_desc"].includes(filters.sort) ? filters.sort : "recent";
+
+      const products = await ProfileProductStorage.list(pool, id_profile, {
+        only_active: true,
+        id_product_category: Number.isInteger(id_product_category) && id_product_category > 0 ? id_product_category : null,
+        min_price_cents: Number.isInteger(min_price_cents) && min_price_cents >= 0 ? min_price_cents : null,
+        max_price_cents: Number.isInteger(max_price_cents) && max_price_cents >= 0 ? max_price_cents : null,
+        sort,
+      });
       const ids = products.map((p) => Number(p.id_profile_product));
       const mediaMap = await ProfileProductMediaStorage.listByProducts(pool, ids);
       return {

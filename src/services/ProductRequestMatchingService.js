@@ -51,6 +51,13 @@ class ProductRequestMatchingService {
 
   static async listMuralForProfile(id_profile) {
     return runWithLogs(log, "listMuralForProfile", () => ({ id_profile }), async () => {
+      // Lazy expire (idempotente, barato — UPDATE com WHERE índice).
+      await pool.query(
+        `UPDATE public.tb_product_request
+            SET status = 'expired', expired_at = NOW(), updated_at = NOW()
+          WHERE status = 'open'
+            AND created_at < NOW() - INTERVAL '30 days'`
+      );
       const r = await pool.query(
         `SELECT pr.id_product_request,
                 pr.id_buyer_user,

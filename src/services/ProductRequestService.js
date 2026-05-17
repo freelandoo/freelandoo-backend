@@ -138,6 +138,7 @@ class ProductRequestService {
   static async listMine(user) {
     return runWithLogs(log, "listMine", () => ({ id_user: user?.id_user }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
+      await ProductRequestStorage.expireOld(pool);
       const requests = await ProductRequestStorage.listByBuyer(pool, user.id_user);
       return { requests };
     });

@@ -1,15 +1,40 @@
 class ProfileProductStorage {
-  static async list(conn, id_profile, { only_active = false } = {}) {
+  static async list(conn, id_profile, opts = {}) {
+    const {
+      only_active = false,
+      id_product_category = null,
+      min_price_cents = null,
+      max_price_cents = null,
+      sort = "recent", // recent | price_asc | price_desc
+    } = opts;
     const where = ["id_profile = $1", "deleted_at IS NULL"];
+    const params = [id_profile];
+    let i = 2;
     if (only_active) {
       where.push("is_active = TRUE");
       where.push("moderation_status = 'active'");
     }
+    if (id_product_category) {
+      where.push(`id_product_category = $${i++}`);
+      params.push(id_product_category);
+    }
+    if (min_price_cents != null) {
+      where.push(`price_amount >= $${i++}`);
+      params.push(min_price_cents);
+    }
+    if (max_price_cents != null) {
+      where.push(`price_amount <= $${i++}`);
+      params.push(max_price_cents);
+    }
+    const orderBy =
+      sort === "price_asc" ? "price_amount ASC" :
+      sort === "price_desc" ? "price_amount DESC" :
+      "created_at DESC";
     const r = await conn.query(
       `SELECT * FROM public.tb_profile_product
        WHERE ${where.join(" AND ")}
-       ORDER BY created_at ASC`,
-      [id_profile]
+       ORDER BY ${orderBy}`,
+      params
     );
     return r.rows;
   }
