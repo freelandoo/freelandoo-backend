@@ -19,4 +19,10 @@ router.post(
   asyncHandler(StoryController.markViewed)
 );
 
+router.post(
+  "/:id_story/react",
+  authMiddleware,
+  asyncHandler(StoryController.react)
+);
+
 module.exports = router;

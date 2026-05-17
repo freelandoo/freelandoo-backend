@@ -13,6 +13,7 @@ const ALLOWED_EVENTS = new Set([
   "whatsapp_click",
   "social_click",
   "view_more_caption",
+  "content_retention",
 ]);
 
 const UUID_RE =
@@ -88,14 +89,24 @@ class PortfolioEventService {
         const filters = normalizeFilters(payload?.filters);
         const metadata = normalizeMetadata(payload?.metadata);
 
-        const result = await PortfolioEventStorage.recordEvent(db, {
-          id_portfolio_item: post_id,
-          event_type,
-          session_id,
-          id_user: viewer?.id_user || null,
-          filters,
-          metadata,
-        });
+        const result = event_type === "content_retention"
+          ? await PortfolioEventStorage.recordRetention(db, {
+              id_portfolio_item: post_id,
+              session_id,
+              id_user: viewer?.id_user || null,
+              seconds_delta: metadata?.seconds_delta,
+              sequence: metadata?.sequence,
+              filters,
+              metadata,
+            })
+          : await PortfolioEventStorage.recordEvent(db, {
+              id_portfolio_item: post_id,
+              event_type,
+              session_id,
+              id_user: viewer?.id_user || null,
+              filters,
+              metadata,
+            });
 
         if (!result.ok && result.reason === "post_not_found") {
           return { status: 404, body: { error: "post não encontrado" } };
@@ -105,6 +116,7 @@ class PortfolioEventService {
         const XP_FEED_EVENTS = {
           share: "share_received",
           whatsapp_click: "whatsapp_click",
+          content_retention: "content_retention",
         };
         const xpEventType = XP_FEED_EVENTS[event_type];
         if (result.ok && result.counted && result.id_profile && xpEventType) {
@@ -112,7 +124,13 @@ class PortfolioEventService {
             id_profile: result.id_profile,
             event_type: xpEventType,
             source_type: "portfolio_event",
-            source_id: `${post_id}_${session_id || "anon"}_${event_type}`,
+            source_id: event_type === "content_retention"
+              ? `${post_id}_${session_id}_retention_${metadata?.sequence || 0}`
+              : `${post_id}_${session_id || "anon"}_${event_type}`,
+            unit_count: event_type === "content_retention" ? result.seconds_delta : 1,
+            metadata: event_type === "content_retention"
+              ? { seconds_delta: result.seconds_delta, sequence: metadata?.sequence || null }
+              : undefined,
           }).catch(() => {});
         }
 

@@ -3,6 +3,7 @@ const ProfileStorage = require("../storages/ProfileStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
 const ClanStorage = require("../storages/ClanStorage");
 const XpStorage = require("../storages/XpStorage");
+const ChatModerationService = require("./ChatModerationService");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -67,6 +68,26 @@ function normalizeDescription(value) {
     return { error: `Descrição muito longa (máximo ${DESCRIPTION_MAX_CHARS} caracteres)` };
   }
   return norm;
+}
+
+async function moderatePortfolioText(user, { title, description }) {
+  const text = [title, description].filter(Boolean).join("\n").slice(0, 500);
+  if (!text.trim()) return null;
+  const moderation = await ChatModerationService.moderateMessage({
+    id_user: user.id_user,
+    room_type: "global",
+    original_text: text,
+  });
+  if (["block", "mute_temp", "review"].includes(moderation?.action)) {
+    return {
+      error:
+        moderation.user_facing_error ||
+        "Conteudo bloqueado por violar as politicas da plataforma.",
+      moderation_action: moderation.action,
+      moderation_flags: moderation.flags || [],
+    };
+  }
+  return null;
 }
 
 function normalizeBoolean(value, fieldName) {
@@ -159,6 +180,9 @@ class PortfolioService {
 
     const description = normalizeDescription(payload?.description);
     if (description?.error) return description;
+
+    const moderationError = await moderatePortfolioText(user, { title, description });
+    if (moderationError) return moderationError;
 
     const project_url = normalizeOptionalUrl(
       payload?.project_url,
@@ -312,6 +336,11 @@ class PortfolioService {
     if (has(payload, "description")) {
       description = normalizeDescription(payload.description);
       if (description?.error) return description;
+    }
+
+    if (title !== undefined || description !== undefined) {
+      const moderationError = await moderatePortfolioText(user, { title, description });
+      if (moderationError) return moderationError;
     }
 
     let project_url;

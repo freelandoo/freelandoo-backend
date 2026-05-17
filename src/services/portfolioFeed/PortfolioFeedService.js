@@ -266,6 +266,7 @@ function shapeRow(row) {
     published_at: row.published_at,
     feed_kind: row.feed_kind === "bees" ? "bees" : "feed",
     viewer_has_liked: !!row.viewer_has_liked,
+    viewer_has_bookmarked: !!row.viewer_has_bookmarked,
     public_profile_url,
     whatsapp_url,
     social_links: row.social_links || [],

@@ -1,6 +1,8 @@
 const pool = require("../databases");
 const StoryStorage = require("../storages/StoryStorage");
 const uploadStoryVideoToR2 = require("../integrations/r2/uploadStoryVideo");
+const ChatModerationService = require("./ChatModerationService");
+const ConversationService = require("./ConversationService");
 const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaProcessing");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -136,6 +138,22 @@ class StoryService {
         const width = normalizeOptionalInt(body?.width);
         const height = normalizeOptionalInt(body?.height);
         const caption = normalizeCaption(body?.caption);
+        if (caption) {
+          const moderation = await ChatModerationService.moderateMessage({
+            id_user: user.id_user,
+            room_type: "global",
+            original_text: caption,
+          });
+          if (["block", "mute_temp", "review"].includes(moderation?.action)) {
+            return {
+              error:
+                moderation.user_facing_error ||
+                "Conteudo bloqueado por violar as politicas da plataforma.",
+              moderation_action: moderation.action,
+              moderation_flags: moderation.flags || [],
+            };
+          }
+        }
 
         // ─── Pré-checagem de permissões (uma vez, fora da tx por chunk) ─────
         const profile = await StoryStorage.getProfileForOwnership(pool, {
@@ -309,6 +327,43 @@ class StoryService {
           id_viewer_user: user.id_user,
         });
         return { viewed: true, id_story };
+      }
+    );
+  }
+
+  static async react(user, params, body = {}) {
+    return runWithLogs(
+      log,
+      "react",
+      () => ({ id_user: user?.id_user, id_story: params?.id_story }),
+      async () => {
+        if (!user?.id_user) return { error: "UsuÃ¡rio nÃ£o autenticado" };
+        const id_story = params?.id_story;
+        if (!id_story || !UUID_RE.test(id_story)) {
+          return { error: "id_story invÃ¡lido" };
+        }
+
+        const emoji = String(body?.emoji || "").trim().slice(0, 16);
+        if (!emoji) return { error: "emoji obrigatÃ³rio" };
+
+        const story = await StoryStorage.getActiveById(pool, id_story);
+        if (!story) return { error: "Story nÃ£o encontrada" };
+
+        const messageText = `${emoji} reagiu ao seu story ${story.kind}`;
+        const result = await ConversationService.sendMessage(user, {
+          target_id: story.id_profile,
+          target_type: "profile",
+          body: messageText,
+        });
+        if (result?.error) return result;
+
+        return {
+          reacted: true,
+          emoji,
+          id_story,
+          conversation: result.conversation,
+          message: result.message,
+        };
       }
     );
   }

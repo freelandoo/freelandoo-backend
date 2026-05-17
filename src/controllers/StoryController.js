@@ -36,6 +36,11 @@ class StoryController {
     const result = await StoryService.markViewed(req.user, req.params);
     return sendServiceResult(res, result);
   }
+
+  static async react(req, res) {
+    const result = await StoryService.react(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = StoryController;
