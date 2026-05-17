@@ -21,6 +21,21 @@ const VIDEO_THUMB_QUALITY = 75;
 
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+const AUDIO_MIME_TYPES = new Set([
+  "audio/webm",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/m4a",
+  "audio/aac",
+  "audio/x-m4a",
+  "audio/wav",
+  "audio/x-wav",
+]);
+
+const MAX_AUDIO_INPUT_BYTES = 5 * MB;
+const MAX_AUDIO_DURATION_SECONDS = 120;
+const AUDIO_TARGET_BITRATE_BPS = 24000; // 24 kbps
 
 function httpError(message, statusCode = 400) {
   const err = new Error(message);
@@ -489,6 +504,138 @@ async function splitVideoIntoChunks(file, chunkSeconds = 60) {
   }
 }
 
+async function assertRealAudio(file) {
+  if (!file?.buffer?.length) throw httpError("Arquivo nao enviado");
+  if (file.buffer.length > MAX_AUDIO_INPUT_BYTES) {
+    throw httpError("O audio precisa ter no maximo 5MB.");
+  }
+
+  const detected = await detectFileType(file.buffer);
+  // file-type detecta "audio/webm" como video/webm em alguns casos (container webm
+  // não distingue). Aceitamos audio/* OU video/webm explicitamente — o ffmpeg
+  // valida o stream de áudio na prática.
+  const mime = (detected?.mime || "").toLowerCase();
+  const ok = AUDIO_MIME_TYPES.has(mime) || mime === "video/webm" || mime === "video/ogg";
+  if (!ok) {
+    throw httpError("Formato de audio nao aceito.");
+  }
+  return mime;
+}
+
+/**
+ * Recomprime áudio para WebM/Opus mono @ 24kbps. Se libopus não estiver
+ * disponível no ffmpeg-static do servidor, faz fallback para AAC/M4A.
+ *
+ * Retorna { buffer, mimetype, extension, codec, bitrate, duration }.
+ */
+async function processConversationAudio(file) {
+  await assertRealAudio(file);
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "freelandoo-audio-"));
+  const inputPath = path.join(tempDir, `input-${crypto.randomUUID()}`);
+  const opusOutPath = path.join(tempDir, "out.webm");
+  const aacOutPath = path.join(tempDir, "out.m4a");
+
+  try {
+    await fs.writeFile(inputPath, file.buffer);
+
+    let duration = 0;
+    try {
+      duration = await getVideoDuration(inputPath); // ffmpeg lê Duration de áudio também
+    } catch {
+      duration = 0;
+    }
+    if (duration > MAX_AUDIO_DURATION_SECONDS + 1) {
+      throw httpError(`O audio precisa ter no maximo ${MAX_AUDIO_DURATION_SECONDS} segundos.`);
+    }
+
+    // Tenta Opus/WebM primeiro
+    let outputPath = opusOutPath;
+    let mimetype = "audio/webm";
+    let extension = "webm";
+    let codec = "opus";
+    let bitrate = AUDIO_TARGET_BITRATE_BPS;
+    let usedFallback = false;
+
+    try {
+      await runFfmpeg(
+        [
+          "-y",
+          "-i",
+          inputPath,
+          "-map_metadata",
+          "-1",
+          "-vn",
+          "-ac",
+          "1",
+          "-ar",
+          "16000",
+          "-c:a",
+          "libopus",
+          "-b:a",
+          "24k",
+          "-application",
+          "voip",
+          opusOutPath,
+        ],
+        60000
+      );
+    } catch (err) {
+      // libopus indisponível — fallback AAC/M4A 32k mono
+      usedFallback = true;
+      try {
+        await runFfmpeg(
+          [
+            "-y",
+            "-i",
+            inputPath,
+            "-map_metadata",
+            "-1",
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "32k",
+            "-movflags",
+            "+faststart",
+            aacOutPath,
+          ],
+          60000
+        );
+        outputPath = aacOutPath;
+        mimetype = "audio/mp4";
+        extension = "m4a";
+        codec = "aac";
+        bitrate = 32000;
+      } catch (innerErr) {
+        throw httpError(`Nao foi possivel comprimir o audio. ${innerErr?.message || err?.message || ""}`.trim());
+      }
+    }
+
+    const buffer = await fs.readFile(outputPath);
+    if (!buffer.length) throw httpError("Saida vazia ao comprimir o audio.");
+    if (buffer.length > MAX_AUDIO_INPUT_BYTES) {
+      throw httpError("O audio otimizado ficou grande demais.");
+    }
+
+    return {
+      buffer,
+      mimetype,
+      extension,
+      codec,
+      bitrate,
+      duration: Math.max(1, Math.round(duration)),
+      fallback: usedFallback,
+    };
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function processUserMedia(file) {
   const mt = (file?.mimetype || "").toLowerCase();
   if (mt.startsWith("image/")) return processPostImage(file);
@@ -500,11 +647,15 @@ module.exports = {
   POST_IMAGE_MAX_BYTES,
   AVATAR_IMAGE_MAX_BYTES,
   MAX_VIDEO_INPUT_BYTES,
+  MAX_AUDIO_INPUT_BYTES,
+  MAX_AUDIO_DURATION_SECONDS,
+  AUDIO_TARGET_BITRATE_BPS,
   processAvatarImage,
   processPortfolioMedia,
   processPostImage,
   processUserMedia,
   processVideo,
+  processConversationAudio,
   getVideoDuration,
   splitVideoIntoChunks,
 };

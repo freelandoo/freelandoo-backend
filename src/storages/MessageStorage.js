@@ -46,14 +46,91 @@ class MessageStorage {
         id_conversation,
         sender_entity_type, sender_entity_id,
         sender_user_id,
-        body
+        body,
+        kind
       )
-      VALUES ($1, 'profile', $2, $3, $4)
+      VALUES ($1, 'profile', $2, $3, $4, 'text')
       RETURNING *
       `,
       [id_conversation, sender_entity_id, sender_user_id, body]
     );
     return rows[0] || null;
+  }
+
+  /**
+   * Pré-cria o row da mensagem de áudio com placeholder de URL/key, para
+   * conseguirmos usar o id_message no path do R2 antes do upload.
+   */
+  static async createAudioPending(conn, { id_conversation, sender_entity_id, sender_user_id }) {
+    const { rows } = await conn.query(
+      `
+      INSERT INTO public.tb_message (
+        id_conversation,
+        sender_entity_type, sender_entity_id,
+        sender_user_id,
+        kind,
+        media_processing_status
+      )
+      VALUES ($1, 'profile', $2, $3, 'audio', 'processing')
+      RETURNING *
+      `,
+      [id_conversation, sender_entity_id, sender_user_id]
+    );
+    return rows[0] || null;
+  }
+
+  static async finalizeAudio(conn, id_message, {
+    audio_url,
+    audio_storage_key,
+    audio_duration_seconds,
+    audio_size_bytes,
+    audio_mime_type,
+    audio_codec,
+    audio_bitrate,
+  }) {
+    const { rows } = await conn.query(
+      `
+      UPDATE public.tb_message
+         SET audio_url = $2,
+             audio_storage_key = $3,
+             audio_duration_seconds = $4,
+             audio_size_bytes = $5,
+             audio_mime_type = $6,
+             audio_codec = $7,
+             audio_bitrate = $8,
+             media_processing_status = 'ready'
+       WHERE id_message = $1
+       RETURNING *
+      `,
+      [
+        id_message,
+        audio_url,
+        audio_storage_key,
+        audio_duration_seconds,
+        audio_size_bytes,
+        audio_mime_type,
+        audio_codec,
+        audio_bitrate,
+      ]
+    );
+    return rows[0] || null;
+  }
+
+  static async markAudioFailed(conn, id_message) {
+    await conn.query(
+      `UPDATE public.tb_message
+          SET media_processing_status = 'failed'
+        WHERE id_message = $1`,
+      [id_message]
+    );
+  }
+
+  static async hardDeletePending(conn, id_message) {
+    await conn.query(
+      `DELETE FROM public.tb_message
+        WHERE id_message = $1 AND media_processing_status = 'processing'`,
+      [id_message]
+    );
   }
 
   static async getById(conn, id_message) {
@@ -88,6 +165,7 @@ class MessageStorage {
         FROM public.tb_message m
        WHERE m.id_conversation = $1
          AND m.deleted_at IS NULL
+         AND m.media_processing_status <> 'processing'
          ${cursorClause}
        ORDER BY m.created_at DESC, m.id_message DESC
        LIMIT $2
@@ -112,6 +190,21 @@ class MessageStorage {
        WHERE sender_user_id = $1
          AND created_at >= $2
          AND deleted_at IS NULL
+      `,
+      [id_user, since]
+    );
+    return rows[0]?.total || 0;
+  }
+
+  static async countAudioSentByUserSince(conn, { id_user, since }) {
+    const { rows } = await conn.query(
+      `
+      SELECT COUNT(*)::int AS total
+        FROM public.tb_message
+       WHERE sender_user_id = $1
+         AND created_at >= $2
+         AND deleted_at IS NULL
+         AND kind = 'audio'
       `,
       [id_user, since]
     );

@@ -2,6 +2,7 @@ const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const ConversationController = require("../controllers/ConversationController");
 const GroupConversationController = require("../controllers/GroupConversationController");
+const uploadConversationAudio = require("../middlewares/uploadConversationAudio");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -49,6 +50,21 @@ router.post(
   "/:id/messages",
   authMiddleware,
   asyncHandler(ConversationController.sendMessage)
+);
+
+// Áudio — só em conversas privadas 1-a-1 (service rejeita group/global/maquinas).
+router.post(
+  "/:id/messages/audio",
+  authMiddleware,
+  uploadConversationAudio.single("audio"),
+  asyncHandler(ConversationController.sendAudioMessage)
+);
+
+// Apagar mensagem (autor) — limpa R2 best-effort se for áudio.
+router.delete(
+  "/messages/:id_message",
+  authMiddleware,
+  asyncHandler(ConversationController.deleteMessage)
 );
 
 router.post(
