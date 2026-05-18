@@ -52,4 +52,29 @@ module.exports = {
     });
     return res.json({ bookmarked });
   },
+
+  async listMine(req, res) {
+    const rawKind = String(req.query?.kind || "").trim().toLowerCase();
+    const kind = rawKind === "feed" || rawKind === "bees" ? rawKind : null;
+    const limit = Math.min(60, Math.max(1, parseInt(req.query?.per_page, 10) || 24));
+    const page = Math.max(1, parseInt(req.query?.page, 10) || 1);
+    const offset = (page - 1) * limit;
+
+    const { items, total } = await BookmarkStorage.listMine(pool, {
+      id_user: req.user.id_user,
+      kind,
+      limit,
+      offset,
+    });
+
+    return res.json({
+      items,
+      pagination: {
+        page,
+        per_page: limit,
+        total,
+        total_pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  },
 };
