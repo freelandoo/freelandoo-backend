@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const app = require("./src/app");
+const realtime = require("./src/realtime/socket");
 const { createLogger } = require("./src/utils/logger");
 
 const bootLog = createLogger("boot");
@@ -36,6 +37,11 @@ const PORT = process.env.PORT || 3000;
 
 const server = app.listen(PORT, () => {
   bootLog.info("server.listen", { port: PORT });
+
+  // Realtime (socket.io) — autenticado por JWT, attach no mesmo HTTP server.
+  // Endpoint: /realtime. Eventos: conversation:message, notification:new,
+  // nav-counts:changed. Frontend conecta via wss://<railway-host>/realtime.
+  realtime.init(server);
 
   // Scheduler do ranking: checa e recalcula a cada 2 horas.
   const pool = require("./src/databases");

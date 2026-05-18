@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const NotificationStorage = require("../storages/NotificationStorage");
+const realtime = require("../realtime/socket");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("NotificationService");
@@ -45,6 +46,19 @@ async function safeNotify(data) {
       return null;
     }
     const row = await NotificationStorage.insert(pool, data);
+    if (row) {
+      try {
+        realtime.emitToUser(data.id_recipient_user, "notification:new", {
+          type: data.type,
+          id_notification: row.id_notification,
+        });
+        realtime.emitToUser(data.id_recipient_user, "nav-counts:changed", {
+          reason: "notification_new",
+        });
+      } catch {
+        /* realtime é best-effort */
+      }
+    }
     return row;
   } catch (err) {
     log.warn("notify.failed", { type: data?.type, error: err?.message });

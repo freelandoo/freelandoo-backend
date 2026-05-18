@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const NotificationService = require("./NotificationService");
+const realtime = require("../realtime/socket");
 const ConversationStorage = require("../storages/ConversationStorage");
 const MessageStorage = require("../storages/MessageStorage");
 const EntityFollowStorage = require("../storages/EntityFollowStorage");
@@ -442,6 +443,39 @@ class ConversationService {
           });
 
           await client.query("COMMIT");
+
+          // Realtime: emite a mensagem na sala da conversa (frontend assinado
+          // recebe sem precisar pollar) e dispara nav-counts:changed para os
+          // dois lados atualizarem o badge.
+          try {
+            const mapped = mapMessage(message);
+            realtime.emitToConversation(conv.id_conversation, "conversation:message", {
+              id_conversation: conv.id_conversation,
+              message: mapped,
+            });
+            realtime.emitToUser(user.id_user, "nav-counts:changed", {
+              reason: "message_sent",
+              id_conversation: conv.id_conversation,
+            });
+            const otherForRealtime = await ConversationStorage.otherEntityId(
+              conv,
+              actorRes.actor_id
+            );
+            if (otherForRealtime) {
+              const otherProfile = await ProfileStorage.getProfileById(
+                pool,
+                otherForRealtime
+              );
+              if (otherProfile?.id_user && otherProfile.id_user !== user.id_user) {
+                realtime.emitToUser(otherProfile.id_user, "nav-counts:changed", {
+                  reason: "message_received",
+                  id_conversation: conv.id_conversation,
+                });
+              }
+            }
+          } catch {
+            /* realtime é best-effort */
+          }
 
           // Notificação fire-and-forget para o outro participante.
           try {
