@@ -86,4 +86,70 @@ module.exports = {
     );
     return r.rows.map((row) => row.id_portfolio_item);
   },
+
+  async listMine(db, { id_user, kind = null, limit = 24, offset = 0 }) {
+    const kindFilter = kind && (kind === "feed" || kind === "bees")
+      ? "AND ppi.feed_kind = $4"
+      : "";
+    const params = [id_user, limit, offset];
+    if (kindFilter) params.push(kind);
+
+    const sql = `
+      SELECT
+        b.id_bookmark::text                          AS id_bookmark,
+        b.created_at                                 AS bookmarked_at,
+        ppi.id_portfolio_item::text                  AS post_id,
+        ppi.title,
+        ppi.feed_kind,
+        ppi.published_at,
+        ppi.likes_count,
+        pro.id_profile::text                         AS id_profile,
+        pro.display_name,
+        pro.avatar_url,
+        pro.is_clan,
+        tu.username,
+        m.color_accent,
+        m.name                                       AS machine_name,
+        (
+          SELECT jsonb_build_object(
+            'url', ppm.media_url,
+            'type', ppm.media_type,
+            'thumbnail_url', ppm.thumbnail_url
+          )
+          FROM public.tb_profile_portfolio_media ppm
+          WHERE ppm.id_portfolio_item = ppi.id_portfolio_item
+          ORDER BY ppm.sort_order, ppm.created_at
+          LIMIT 1
+        )                                            AS first_media
+        FROM public.user_bookmark_item b
+        JOIN public.tb_profile_portfolio_item ppi
+          ON ppi.id_portfolio_item = b.id_portfolio_item
+        JOIN public.tb_profile pro   ON pro.id_profile = ppi.id_profile
+        JOIN public.tb_user    tu    ON tu.id_user     = pro.id_user
+        LEFT JOIN public.tb_category ca ON ca.id_category = pro.id_category
+        LEFT JOIN public.tb_machine  m  ON m.id_machine  = COALESCE(ca.id_machine, pro.id_machine)
+       WHERE b.id_user = $1
+         AND ppi.is_active = TRUE
+         ${kindFilter}
+       ORDER BY b.created_at DESC
+       LIMIT $2 OFFSET $3
+    `;
+    const countParams = [id_user];
+    const countSql = `
+      SELECT COUNT(*)::int AS c
+        FROM public.user_bookmark_item b
+        JOIN public.tb_profile_portfolio_item ppi
+          ON ppi.id_portfolio_item = b.id_portfolio_item
+       WHERE b.id_user = $1
+         AND ppi.is_active = TRUE
+         ${kindFilter ? "AND ppi.feed_kind = $2" : ""}
+    `;
+    if (kindFilter) countParams.push(kind);
+
+    const [rows, count] = await Promise.all([
+      db.query(sql, params),
+      db.query(countSql, countParams),
+    ]);
+    return { items: rows.rows, total: count.rows[0]?.c || 0 };
+  },
 };

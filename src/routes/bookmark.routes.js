@@ -10,5 +10,6 @@ router.get("/folders", asyncHandler(BookmarkController.listFolders));
 router.post("/folders", asyncHandler(BookmarkController.createFolder));
 router.get("/status", asyncHandler(BookmarkController.status));
 router.post("/toggle", asyncHandler(BookmarkController.toggle));
+router.get("/", asyncHandler(BookmarkController.listMine));
 
 module.exports = router;
