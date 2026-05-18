@@ -253,6 +253,13 @@ class CheckoutService {
           return { error: "Cupom inválido" };
         }
 
+        if (
+          coupon.owner_user_id &&
+          String(coupon.owner_user_id) === String(user.id_user)
+        ) {
+          return { error: "Você não pode usar seu próprio cupom" };
+        }
+
         if (!coupon.is_active) {
           return { error: "Cupom inativo" };
         }
