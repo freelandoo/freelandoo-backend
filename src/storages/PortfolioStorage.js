@@ -276,6 +276,7 @@ class PortfolioStorage {
       ) mq ON true
       WHERE i.id_portfolio_item = $1
         AND i.is_active = true
+        AND i.is_banned = false
         AND pro.deleted_at IS NULL
       LIMIT 1
       `,
@@ -407,6 +408,7 @@ class PortfolioStorage {
       ) lme ON $2::uuid IS NOT NULL
       WHERE i.id_profile = ANY($3::uuid[])
         AND i.is_active = true
+        AND i.is_banned = false
         AND ($4::text IS NULL OR i.feed_kind = $4::text)
         AND NOT EXISTS (
           SELECT 1
@@ -540,6 +542,7 @@ class PortfolioStorage {
       ) lme ON $2::uuid IS NOT NULL
       WHERE i.id_profile = $1
         AND i.is_active = true
+        AND i.is_banned = false
         AND ($3::text IS NULL OR i.feed_kind = $3::text)
       ORDER BY
         i.is_featured DESC,
