@@ -18,6 +18,8 @@ module.exports = {
         tu.bio,
         tu.estado,
         tu.municipio,
+        tu.preferred_locale,
+        tu.preferred_country,
         tu.is_minor,
         tu.responsible_user_id,
 
@@ -208,6 +210,28 @@ module.exports = {
     );
 
     return result.rows[0] || null;
+  },
+
+  async updatePreferredLocale(db, id_user, locale) {
+    const r = await db.query(
+      `UPDATE tb_user
+          SET preferred_locale = $1, updated_at = NOW()
+        WHERE id_user = $2
+        RETURNING id_user, preferred_locale`,
+      [locale, id_user]
+    );
+    return r.rows[0] || null;
+  },
+
+  async updatePreferredCountry(db, id_user, iso2) {
+    const r = await db.query(
+      `UPDATE tb_user
+          SET preferred_country = $1, updated_at = NOW()
+        WHERE id_user = $2
+        RETURNING id_user, preferred_country`,
+      [iso2, id_user]
+    );
+    return r.rows[0] || null;
   },
 
   async updateAvatarById(db, id_user, avatarUrl) {

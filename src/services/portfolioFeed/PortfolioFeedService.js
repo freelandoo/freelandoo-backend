@@ -314,6 +314,7 @@ class PortfolioFeedService {
             filters?.feed_kind === "feed" || filters?.feed_kind === "bees"
               ? filters.feed_kind
               : null,
+          country: filters?.country || null,
           viewer_id_user: viewer?.id_user || null,
         };
 

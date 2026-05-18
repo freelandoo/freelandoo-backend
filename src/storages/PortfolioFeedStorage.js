@@ -167,6 +167,7 @@ function buildCandidateQuery(mode) {
       AND ($5::uuid[] IS NULL OR NOT (ppi.id_portfolio_item = ANY($5::uuid[])))
       AND ($8::int IS NULL OR pro.xp_level >= $8)
       AND ($9::text IS NULL OR ppi.feed_kind = $9)
+      AND ($10::text IS NULL OR pro.country = $10)
 
       ${newClause}
     ${orderClause}
@@ -186,6 +187,7 @@ function buildParams({
   viewer_id_user,
   level_min,
   feed_kind,
+  country,
   limit,
 }) {
   return [
@@ -198,6 +200,7 @@ function buildParams({
     viewer_id_user || null,                                           // $7
     Number.isFinite(level_min) ? level_min : null,                    // $8
     feed_kind === "bees" || feed_kind === "feed" ? feed_kind : null,  // $9 (null = todos)
+    country || null,                                                  // $10
   ];
 }
 

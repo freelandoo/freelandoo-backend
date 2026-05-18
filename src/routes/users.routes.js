@@ -12,6 +12,8 @@ router.get("/me", authMiddleware, asyncHandler(UserController.me));
 router.put("/me", authMiddleware, asyncHandler(UserController.updateMe));
 router.delete("/me", authMiddleware, asyncHandler(UserController.deleteMe));
 router.get("/me/export", authMiddleware, asyncHandler(UserController.exportMe));
+router.put("/me/locale", authMiddleware, asyncHandler(UserController.updateLocale));
+router.put("/me/country", authMiddleware, asyncHandler(UserController.updateCountry));
 
 router.put(
   "/me/avatar",
