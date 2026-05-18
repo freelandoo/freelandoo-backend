@@ -72,6 +72,7 @@ const storeModerationAdminRoutes = require("./storeModerationAdmin.routes");
 const storePricePreviewRoutes = require("./storePricePreview.routes");
 const bookmarkRoutes = require("./bookmark.routes");
 const earningsRoutes = require("./earnings.routes");
+const postReportsRoutes = require("./postReports.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -152,4 +153,5 @@ module.exports = (app) => {
   app.use("/store", storePricePreviewRoutes);
   app.use("/me/bookmarks", bookmarkRoutes);
   app.use("/", earningsRoutes);
+  app.use("/", postReportsRoutes);
 };

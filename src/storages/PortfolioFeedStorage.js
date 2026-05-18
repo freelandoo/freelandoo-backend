@@ -132,6 +132,7 @@ function buildCandidateQuery(mode) {
 
     WHERE ppi.status   = 'published'
       AND ppi.is_active = TRUE
+      AND ppi.is_banned = FALSE
       AND tu.ativo      = TRUE
       AND pro.is_active = TRUE
       AND (pro.is_visible = TRUE OR pro.is_user_account = TRUE)

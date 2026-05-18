@@ -130,6 +130,7 @@ module.exports = {
         LEFT JOIN public.tb_machine  m  ON m.id_machine  = COALESCE(ca.id_machine, pro.id_machine)
        WHERE b.id_user = $1
          AND ppi.is_active = TRUE
+         AND ppi.is_banned = FALSE
          ${kindFilter}
        ORDER BY b.created_at DESC
        LIMIT $2 OFFSET $3
@@ -142,6 +143,7 @@ module.exports = {
           ON ppi.id_portfolio_item = b.id_portfolio_item
        WHERE b.id_user = $1
          AND ppi.is_active = TRUE
+         AND ppi.is_banned = FALSE
          ${kindFilter ? "AND ppi.feed_kind = $2" : ""}
     `;
     if (kindFilter) countParams.push(kind);
