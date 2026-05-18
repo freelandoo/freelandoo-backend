@@ -42,8 +42,14 @@ function resolveFeedKind(raw, fallback) {
 
 function makeFeedHandler(defaultKind) {
   return async function feedHandler(req, res) {
-    const { id_machine, id_category, estado, municipio, level_min, exclude_ids, cursor, limit, kind } =
+    const { id_machine, id_category, estado, municipio, level_min, exclude_ids, cursor, limit, kind, country } =
       req.query;
+
+    let normalizedCountry = null;
+    if (country && country !== "all") {
+      const c = String(country).trim().toUpperCase();
+      if (c.length === 2) normalizedCountry = c;
+    }
 
     const data = await PortfolioFeedService.getFeed({
       db: pool,
@@ -55,6 +61,7 @@ function makeFeedHandler(defaultKind) {
         level_min: parseLevelMin(level_min),
         exclude_ids: parseExcludeIds(exclude_ids),
         feed_kind: resolveFeedKind(kind, defaultKind),
+        country: normalizedCountry,
       },
       pagination: {
         limit: parseIntOrNull(limit),

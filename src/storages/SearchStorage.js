@@ -119,6 +119,7 @@ module.exports = {
   async searchCreators(
     db,
     {
+      country,
       estado,
       municipio,
       platform,
@@ -284,6 +285,9 @@ module.exports = {
 
         -- Filtro de nível mínimo (xp_level)
         AND ($12::int IS NULL OR pro.xp_level >= $12)
+
+        -- Filtro de país (mig 082)
+        AND ($13::text IS NULL OR pro.country = $13)
       ),
       clans AS (
         -- Clans aparecem na vitrine batendo qualquer atributo de seus membros.
@@ -386,6 +390,13 @@ module.exports = {
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile AND mpf.xp_level >= $12
           ))
+
+          -- Filtro de país (mig 082): clan ou qualquer membro
+          AND ($13::text IS NULL OR clan.country = $13 OR EXISTS (
+            SELECT 1 FROM tb_clan_member cmf
+            JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+            WHERE cmf.id_clan_profile = clan.id_profile AND mpf.country = $13
+          ))
       )
       SELECT * FROM (
         SELECT * FROM creators
@@ -408,6 +419,7 @@ module.exports = {
         Number.isFinite(id_category) ? id_category : null, // $10
         machine_slug || null,                      // $11
         Number.isFinite(level_min) ? level_min : null,     // $12
+        country || null,                           // $13
       ]
     );
 

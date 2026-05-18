@@ -5,6 +5,8 @@ const UpdateMeService = require("../services/user/UpdateMeService");
 const UpdateAvatarService = require("../services/user/UpdateAvatarService");
 const DeleteMeService = require("../services/user/DeleteMeService");
 const ExportMeService = require("../services/user/ExportMeService");
+const UpdatePreferredLocaleService = require("../services/user/UpdatePreferredLocaleService");
+const UpdatePreferredCountryService = require("../services/user/UpdatePreferredCountryService");
 
 class UserController {
   static async me(req, res) {
@@ -43,6 +45,28 @@ class UserController {
     const { id_user } = req.user;
     const result = await DeleteMeService.execute({ db: pool, id_user });
     return res.json(result);
+  }
+
+  static async updateLocale(req, res) {
+    const { id_user } = req.user;
+    const { locale } = req.body || {};
+    const updated = await UpdatePreferredLocaleService.execute({
+      db: pool,
+      id_user,
+      locale,
+    });
+    return res.json(updated);
+  }
+
+  static async updateCountry(req, res) {
+    const { id_user } = req.user;
+    const { country } = req.body || {};
+    const updated = await UpdatePreferredCountryService.execute({
+      db: pool,
+      id_user,
+      country,
+    });
+    return res.json(updated);
   }
 
   static async exportMe(req, res) {

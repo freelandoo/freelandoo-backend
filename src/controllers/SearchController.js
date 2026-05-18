@@ -4,6 +4,7 @@ const SearchService = require("../services/search/SearchService");
 class SearchController {
   static async search(req, res) {
     const {
+      country,
       estado,
       municipio,
       platform,
@@ -19,6 +20,13 @@ class SearchController {
       offset,
     } = req.query;
 
+    // Normaliza country: ISO-2 maiúsculo. "all" desliga o filtro (NULL).
+    let normalizedCountry = null;
+    if (country && country !== "all") {
+      const c = String(country).trim().toUpperCase();
+      if (c.length === 2) normalizedCountry = c;
+    }
+
     const parsedCategories = Array.isArray(categories)
       ? categories.filter(Boolean)
       : typeof categories === "string" && categories.trim() !== ""
@@ -32,6 +40,7 @@ class SearchController {
     const data = await SearchService.execute({
       db: pool,
       filters: {
+        country: normalizedCountry,
         estado: estado || null,
         municipio: municipio || null,
         platform: platform || null,
