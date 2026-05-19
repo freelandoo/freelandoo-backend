@@ -3,10 +3,12 @@ const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class ManifestationController {
   static async listProducts(req, res) {
+    res.set("Cache-Control", "public, s-maxage=300, stale-while-revalidate=3600");
     return sendServiceResult(res, await ManifestationService.listPublicCatalog());
   }
 
   static async getProduct(req, res) {
+    res.set("Cache-Control", "public, s-maxage=300, stale-while-revalidate=3600");
     return sendServiceResult(res, await ManifestationService.getPublicProduct(req.params.id));
   }
 

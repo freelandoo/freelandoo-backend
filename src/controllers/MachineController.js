@@ -11,6 +11,7 @@ class MachineController {
   static async listPublic(req, res) {
     try {
       const data = await MachineService.listPublicMachines();
+      res.set("Cache-Control", "public, s-maxage=300, stale-while-revalidate=3600");
       return res.json(data);
     } catch (err) {
       return handleError(res, err);
@@ -24,6 +25,7 @@ class MachineController {
         return res.status(400).json({ error: "id_machine inválido" });
       }
       const data = await MachineService.listCategoriesOfMachine(id_machine);
+      res.set("Cache-Control", "public, s-maxage=300, stale-while-revalidate=3600");
       return res.json(data);
     } catch (err) {
       return handleError(res, err);
