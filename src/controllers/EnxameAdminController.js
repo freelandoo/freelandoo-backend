@@ -1,7 +1,7 @@
-const MachineService = require("../services/MachineService");
+const EnxameService = require("../services/EnxameService");
 
 function handleError(res, err) {
-  if (err instanceof MachineService.ServiceError) {
+  if (err instanceof EnxameService.ServiceError) {
     return res.status(err.status).json({ error: err.message });
   }
   if (err && typeof err.status === "number") {
@@ -10,10 +10,10 @@ function handleError(res, err) {
   throw err;
 }
 
-class MachineAdminController {
+class EnxameAdminController {
   static async listAll(req, res) {
     try {
-      const data = await MachineService.listAllMachines();
+      const data = await EnxameService.listAllEnxames();
       return res.json(data);
     } catch (err) {
       return handleError(res, err);
@@ -22,12 +22,12 @@ class MachineAdminController {
 
   static async updateStatus(req, res) {
     try {
-      const id_machine = Number(req.params.id_machine);
-      if (!Number.isFinite(id_machine)) {
-        return res.status(400).json({ error: "id_machine inválido" });
+      const id_enxame = Number(req.params.id_enxame);
+      if (!Number.isFinite(id_enxame)) {
+        return res.status(400).json({ error: "id_enxame inválido" });
       }
       const { is_active, reason } = req.body || {};
-      const row = await MachineService.setMachineStatus(req.user, id_machine, {
+      const row = await EnxameService.setEnxameStatus(req.user, id_enxame, {
         is_active,
         reason,
       });
@@ -39,7 +39,7 @@ class MachineAdminController {
 
   static async create(req, res) {
     try {
-      const row = await MachineService.createMachine(req.user, req.body || {});
+      const row = await EnxameService.createEnxame(req.user, req.body || {});
       return res.status(201).json(row);
     } catch (err) {
       return handleError(res, err);
@@ -48,11 +48,11 @@ class MachineAdminController {
 
   static async remove(req, res) {
     try {
-      const id_machine = Number(req.params.id_machine);
-      if (!Number.isFinite(id_machine)) {
-        return res.status(400).json({ error: "id_machine inválido" });
+      const id_enxame = Number(req.params.id_enxame);
+      if (!Number.isFinite(id_enxame)) {
+        return res.status(400).json({ error: "id_enxame inválido" });
       }
-      const row = await MachineService.deleteMachine(req.user, id_machine, {
+      const row = await EnxameService.deleteEnxame(req.user, id_enxame, {
         reason: req.body?.reason,
       });
       return res.json(row);
@@ -63,11 +63,11 @@ class MachineAdminController {
 
   static async update(req, res) {
     try {
-      const id_machine = Number(req.params.id_machine);
-      if (!Number.isFinite(id_machine)) {
-        return res.status(400).json({ error: "id_machine inválido" });
+      const id_enxame = Number(req.params.id_enxame);
+      if (!Number.isFinite(id_enxame)) {
+        return res.status(400).json({ error: "id_enxame inválido" });
       }
-      const row = await MachineService.updateMachine(req.user, id_machine, req.body || {});
+      const row = await EnxameService.updateEnxame(req.user, id_enxame, req.body || {});
       return res.json(row);
     } catch (err) {
       return handleError(res, err);
@@ -76,11 +76,11 @@ class MachineAdminController {
 
   static async addCategory(req, res) {
     try {
-      const id_machine = Number(req.params.id_machine);
-      if (!Number.isFinite(id_machine)) {
-        return res.status(400).json({ error: "id_machine inválido" });
+      const id_enxame = Number(req.params.id_enxame);
+      if (!Number.isFinite(id_enxame)) {
+        return res.status(400).json({ error: "id_enxame inválido" });
       }
-      const row = await MachineService.addCategory(req.user, id_machine, req.body || {});
+      const row = await EnxameService.addCategory(req.user, id_enxame, req.body || {});
       return res.json(row);
     } catch (err) {
       return handleError(res, err);
@@ -93,7 +93,7 @@ class MachineAdminController {
       if (!Number.isFinite(id_category)) {
         return res.status(400).json({ error: "id_category inválido" });
       }
-      const row = await MachineService.updateCategory(req.user, id_category, req.body || {});
+      const row = await EnxameService.updateCategory(req.user, id_category, req.body || {});
       return res.json(row);
     } catch (err) {
       return handleError(res, err);
@@ -101,4 +101,4 @@ class MachineAdminController {
   }
 }
 
-module.exports = MachineAdminController;
+module.exports = EnxameAdminController;

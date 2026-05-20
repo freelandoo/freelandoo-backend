@@ -1,5 +1,8 @@
-class MachineStorage {
-  static async listMachines(conn, { include_inactive = false } = {}) {
+// EnxameStorage — acesso ao catálogo de Enxames (vitrine).
+// Nota: a tabela física continua chamando-se tb_machine / id_machine (legado);
+// o conceito foi renomeado para "Enxame" apenas na camada de aplicação.
+class EnxameStorage {
+  static async listEnxames(conn, { include_inactive = false } = {}) {
     const { rows } = await conn.query(
       `
       SELECT
@@ -25,7 +28,7 @@ class MachineStorage {
     return rows;
   }
 
-  static async getMachineById(conn, id_machine) {
+  static async getEnxameById(conn, id_enxame) {
     const { rows } = await conn.query(
       `
       SELECT *
@@ -33,12 +36,12 @@ class MachineStorage {
       WHERE id_machine = $1
       LIMIT 1
       `,
-      [id_machine]
+      [id_enxame]
     );
     return rows[0] || null;
   }
 
-  static async getMachineBySlug(conn, slug) {
+  static async getEnxameBySlug(conn, slug) {
     const { rows } = await conn.query(
       `
       SELECT *
@@ -51,9 +54,9 @@ class MachineStorage {
     return rows[0] || null;
   }
 
-  static async listCategoriesByMachine(
+  static async listCategoriesByEnxame(
     conn,
-    id_machine,
+    id_enxame,
     { include_inactive = false } = {}
   ) {
     const { rows } = await conn.query(
@@ -64,12 +67,12 @@ class MachineStorage {
         AND (($2::boolean = TRUE) OR (is_active = TRUE))
       ORDER BY desc_category
       `,
-      [id_machine, include_inactive]
+      [id_enxame, include_inactive]
     );
     return rows;
   }
 
-  static async listMachinesWithCategories(
+  static async listEnxamesWithCategories(
     conn,
     { include_inactive = false } = {}
   ) {
@@ -114,7 +117,7 @@ class MachineStorage {
   }
 
   // ─────────────────── Admin mutations ───────────────────
-  static async updateMachineStatus(conn, { id_machine, is_active }) {
+  static async updateEnxameStatus(conn, { id_enxame, is_active }) {
     const { rows } = await conn.query(
       `
       UPDATE public.tb_machine
@@ -123,12 +126,12 @@ class MachineStorage {
        WHERE id_machine = $1
       RETURNING *
       `,
-      [id_machine, is_active]
+      [id_enxame, is_active]
     );
     return rows[0] || null;
   }
 
-  static async createMachine(conn, { fields }) {
+  static async createEnxame(conn, { fields }) {
     const cols = [
       "slug",
       "name",
@@ -165,19 +168,19 @@ class MachineStorage {
     return rows[0] || null;
   }
 
-  static async deleteMachine(conn, id_machine) {
+  static async deleteEnxame(conn, id_enxame) {
     const { rows } = await conn.query(
       `
       DELETE FROM public.tb_machine
        WHERE id_machine = $1
       RETURNING *
       `,
-      [id_machine]
+      [id_enxame]
     );
     return rows[0] || null;
   }
 
-  static async updateMachine(conn, { id_machine, fields }) {
+  static async updateEnxame(conn, { id_enxame, fields }) {
     const allowed = [
       "name",
       "display_order",
@@ -191,7 +194,7 @@ class MachineStorage {
       "icon_name",
     ];
     const sets = [];
-    const values = [id_machine];
+    const values = [id_enxame];
     let i = 1;
     for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call(fields, key)) {
@@ -199,7 +202,7 @@ class MachineStorage {
         values.push(fields[key]);
       }
     }
-    if (sets.length === 0) return await this.getMachineById(conn, id_machine);
+    if (sets.length === 0) return await this.getEnxameById(conn, id_enxame);
     sets.push("updated_at = NOW()");
     const { rows } = await conn.query(
       `
@@ -213,7 +216,7 @@ class MachineStorage {
     return rows[0] || null;
   }
 
-  static async addCategoryToMachine(conn, { id_machine, desc_category }) {
+  static async addCategoryToEnxame(conn, { id_enxame, desc_category }) {
     const existing = await conn.query(
       `SELECT id_category, id_machine, is_active
          FROM public.tb_category
@@ -230,7 +233,7 @@ class MachineStorage {
          WHERE id_category = $1
         RETURNING *
         `,
-        [existing.rows[0].id_category, id_machine]
+        [existing.rows[0].id_category, id_enxame]
       );
       return { row: rows[0], created: false };
     }
@@ -240,7 +243,7 @@ class MachineStorage {
       VALUES ($1, $2, TRUE)
       RETURNING *
       `,
-      [desc_category, id_machine]
+      [desc_category, id_enxame]
     );
     return { row: rows[0], created: true };
   }
@@ -307,4 +310,4 @@ class MachineStorage {
   }
 }
 
-module.exports = MachineStorage;
+module.exports = EnxameStorage;

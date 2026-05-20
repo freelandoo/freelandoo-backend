@@ -1,5 +1,5 @@
 const pool = require("../databases");
-const MachineStorage = require("../storages/MachineStorage");
+const EnxameStorage = require("../storages/EnxameStorage");
 
 class ServiceError extends Error {
   constructor(message, status = 400) {
@@ -8,43 +8,43 @@ class ServiceError extends Error {
   }
 }
 
-async function listPublicMachines() {
-  const machines = await MachineStorage.listMachinesWithCategories(pool, {
+async function listPublicEnxames() {
+  const enxames = await EnxameStorage.listEnxamesWithCategories(pool, {
     include_inactive: false,
   });
-  return { machines };
+  return { enxames };
 }
 
-async function listAllMachines() {
-  const machines = await MachineStorage.listMachinesWithCategories(pool, {
+async function listAllEnxames() {
+  const enxames = await EnxameStorage.listEnxamesWithCategories(pool, {
     include_inactive: true,
   });
-  return { machines };
+  return { enxames };
 }
 
-async function listCategoriesOfMachine(id_machine, { include_inactive = false } = {}) {
-  if (!id_machine) throw new ServiceError("id_machine obrigatório", 400);
-  const machine = await MachineStorage.getMachineById(pool, id_machine);
-  if (!machine) throw new ServiceError("Máquina não encontrada", 404);
-  const categories = await MachineStorage.listCategoriesByMachine(pool, id_machine, {
+async function listCategoriesOfEnxame(id_enxame, { include_inactive = false } = {}) {
+  if (!id_enxame) throw new ServiceError("id_enxame obrigatório", 400);
+  const enxame = await EnxameStorage.getEnxameById(pool, id_enxame);
+  if (!enxame) throw new ServiceError("Enxame não encontrado", 404);
+  const categories = await EnxameStorage.listCategoriesByEnxame(pool, id_enxame, {
     include_inactive,
   });
-  return { machine, categories };
+  return { enxame, categories };
 }
 
 // ─────────────────── Admin ───────────────────
-async function setMachineStatus(actor, id_machine, { is_active, reason }) {
-  const before = await MachineStorage.getMachineById(pool, id_machine);
-  if (!before) throw new ServiceError("Máquina não encontrada", 404);
+async function setEnxameStatus(actor, id_enxame, { is_active, reason }) {
+  const before = await EnxameStorage.getEnxameById(pool, id_enxame);
+  if (!before) throw new ServiceError("Enxame não encontrado", 404);
 
-  const after = await MachineStorage.updateMachineStatus(pool, {
-    id_machine,
+  const after = await EnxameStorage.updateEnxameStatus(pool, {
+    id_enxame,
     is_active: !!is_active,
   });
 
-  await MachineStorage.writeAudit(pool, {
-    entity: "machine",
-    entity_id: id_machine,
+  await EnxameStorage.writeAudit(pool, {
+    entity: "enxame",
+    entity_id: id_enxame,
     action: is_active ? "enable" : "disable",
     before_state: before,
     after_state: after,
@@ -55,9 +55,9 @@ async function setMachineStatus(actor, id_machine, { is_active, reason }) {
   return after;
 }
 
-async function updateMachine(actor, id_machine, body) {
-  const before = await MachineStorage.getMachineById(pool, id_machine);
-  if (!before) throw new ServiceError("Máquina não encontrada", 404);
+async function updateEnxame(actor, id_enxame, body) {
+  const before = await EnxameStorage.getEnxameById(pool, id_enxame);
+  if (!before) throw new ServiceError("Enxame não encontrado", 404);
 
   const fields = {};
   if (body.name != null) fields.name = String(body.name).trim();
@@ -69,11 +69,11 @@ async function updateMachine(actor, id_machine, body) {
     fields.description = body.description == null ? null : String(body.description).trim() || null;
   }
 
-  const after = await MachineStorage.updateMachine(pool, { id_machine, fields });
+  const after = await EnxameStorage.updateEnxame(pool, { id_enxame, fields });
 
-  await MachineStorage.writeAudit(pool, {
-    entity: "machine",
-    entity_id: id_machine,
+  await EnxameStorage.writeAudit(pool, {
+    entity: "enxame",
+    entity_id: id_enxame,
     action: "update",
     before_state: before,
     after_state: after,
@@ -94,7 +94,7 @@ function slugify(input) {
     .slice(0, 40);
 }
 
-async function createMachine(actor, body) {
+async function createEnxame(actor, body) {
   const name = String(body?.name || "").trim();
   if (!name) throw new ServiceError("name obrigatório", 400);
 
@@ -102,7 +102,7 @@ async function createMachine(actor, body) {
   slug = slugify(slug);
   if (!slug) throw new ServiceError("slug inválido", 400);
 
-  const existing = await MachineStorage.getMachineBySlug(pool, slug);
+  const existing = await EnxameStorage.getEnxameBySlug(pool, slug);
   if (existing) throw new ServiceError("Slug já existe", 409);
 
   const fields = {
@@ -121,10 +121,10 @@ async function createMachine(actor, body) {
     if (d) fields.description = d;
   }
 
-  const row = await MachineStorage.createMachine(pool, { fields });
+  const row = await EnxameStorage.createEnxame(pool, { fields });
 
-  await MachineStorage.writeAudit(pool, {
-    entity: "machine",
+  await EnxameStorage.writeAudit(pool, {
+    entity: "enxame",
     entity_id: row.id_machine,
     action: "create",
     after_state: row,
@@ -134,15 +134,15 @@ async function createMachine(actor, body) {
   return row;
 }
 
-async function deleteMachine(actor, id_machine, { reason } = {}) {
-  const before = await MachineStorage.getMachineById(pool, id_machine);
-  if (!before) throw new ServiceError("Máquina não encontrada", 404);
+async function deleteEnxame(actor, id_enxame, { reason } = {}) {
+  const before = await EnxameStorage.getEnxameById(pool, id_enxame);
+  if (!before) throw new ServiceError("Enxame não encontrado", 404);
 
-  const deleted = await MachineStorage.deleteMachine(pool, id_machine);
+  const deleted = await EnxameStorage.deleteEnxame(pool, id_enxame);
 
-  await MachineStorage.writeAudit(pool, {
-    entity: "machine",
-    entity_id: id_machine,
+  await EnxameStorage.writeAudit(pool, {
+    entity: "enxame",
+    entity_id: id_enxame,
     action: "delete",
     before_state: before,
     after_state: null,
@@ -153,19 +153,19 @@ async function deleteMachine(actor, id_machine, { reason } = {}) {
   return deleted;
 }
 
-async function addCategory(actor, id_machine, { desc_category }) {
+async function addCategory(actor, id_enxame, { desc_category }) {
   if (!desc_category || typeof desc_category !== "string" || !desc_category.trim()) {
     throw new ServiceError("desc_category obrigatório", 400);
   }
-  const machine = await MachineStorage.getMachineById(pool, id_machine);
-  if (!machine) throw new ServiceError("Máquina não encontrada", 404);
+  const enxame = await EnxameStorage.getEnxameById(pool, id_enxame);
+  if (!enxame) throw new ServiceError("Enxame não encontrado", 404);
 
-  const { row, created } = await MachineStorage.addCategoryToMachine(pool, {
-    id_machine,
+  const { row, created } = await EnxameStorage.addCategoryToEnxame(pool, {
+    id_enxame,
     desc_category: desc_category.trim(),
   });
 
-  await MachineStorage.writeAudit(pool, {
+  await EnxameStorage.writeAudit(pool, {
     entity: "category",
     entity_id: row.id_category,
     action: created ? "create" : "reassign",
@@ -177,7 +177,7 @@ async function addCategory(actor, id_machine, { desc_category }) {
 }
 
 async function updateCategory(actor, id_category, body) {
-  const before = await MachineStorage.getCategoryById(pool, id_category);
+  const before = await EnxameStorage.getCategoryById(pool, id_category);
   if (!before) throw new ServiceError("Profissão não encontrada", 404);
 
   const fields = {};
@@ -187,19 +187,19 @@ async function updateCategory(actor, id_category, body) {
     fields.desc_category = s;
   }
   if (body.is_active != null) fields.is_active = !!body.is_active;
-  if (body.id_machine !== undefined) {
-    if (body.id_machine === null) {
+  if (body.id_enxame !== undefined) {
+    if (body.id_enxame === null) {
       fields.id_machine = null;
     } else {
-      const m = await MachineStorage.getMachineById(pool, Number(body.id_machine));
-      if (!m) throw new ServiceError("Máquina destino não encontrada", 404);
+      const m = await EnxameStorage.getEnxameById(pool, Number(body.id_enxame));
+      if (!m) throw new ServiceError("Enxame destino não encontrado", 404);
       fields.id_machine = m.id_machine;
     }
   }
 
-  const after = await MachineStorage.updateCategory(pool, { id_category, fields });
+  const after = await EnxameStorage.updateCategory(pool, { id_category, fields });
 
-  await MachineStorage.writeAudit(pool, {
+  await EnxameStorage.writeAudit(pool, {
     entity: "category",
     entity_id: id_category,
     action: "update",
@@ -213,14 +213,14 @@ async function updateCategory(actor, id_category, body) {
 
 module.exports = {
   ServiceError,
-  listPublicMachines,
-  listAllMachines,
-  listCategoriesOfMachine,
+  listPublicEnxames,
+  listAllEnxames,
+  listCategoriesOfEnxame,
   // admin
-  setMachineStatus,
-  updateMachine,
-  createMachine,
-  deleteMachine,
+  setEnxameStatus,
+  updateEnxame,
+  createEnxame,
+  deleteEnxame,
   addCategory,
   updateCategory,
 };
