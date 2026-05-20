@@ -111,7 +111,7 @@ class AuthService {
             }
             if (id_machine && Number(catRow.rows[0].id_machine) !== Number(id_machine)) {
               return {
-                error: "A profissão selecionada não pertence à máquina escolhida",
+                error: "A profissão selecionada não pertence ao enxame escolhido",
               };
             }
           }

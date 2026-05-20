@@ -49,7 +49,7 @@ class ProfileService {
           if (Number(catRow.rows[0].id_machine) !== Number(id_machine)) {
             await client.query("ROLLBACK");
             return {
-              error: "A profissão selecionada não pertence à máquina escolhida",
+              error: "A profissão selecionada não pertence ao enxame escolhido",
             };
           }
 

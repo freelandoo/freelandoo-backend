@@ -128,7 +128,7 @@ class ClanService {
           );
           if (!okMachine) {
             await client.query("ROLLBACK");
-            return { error: "Máquina não encontrada ou inativa" };
+            return { error: "Enxame não encontrado ou inativo" };
           }
 
           // 4. Cria o perfil-clan

@@ -170,7 +170,7 @@ async function assertMachineAllowed(userId, idMachine, conn = pool) {
   const ok = await canAccessMachine(userId, idMachine, conn);
   if (!ok) {
     return {
-      error: "Esta máquina não está liberada pelo responsável",
+      error: "Este enxame não está liberado pelo responsável",
       status: 403,
     };
   }

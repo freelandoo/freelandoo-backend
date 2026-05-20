@@ -121,14 +121,14 @@ class ChatService {
             if (machines.length === 1) {
               idMachine = machines[0].id_machine;
             } else if (machines.length === 0) {
-              return { error: "Sem máquina principal. Escolha uma máquina antes." };
+              return { error: "Sem enxame principal. Escolha um enxame antes." };
             } else {
-              return { error: "Ambíguo. Escolha uma máquina." };
+              return { error: "Ambíguo. Escolha um enxame." };
             }
           }
           // valida machine
           const machine = await ChatStorage.getMachineById(pool, idMachine);
-          if (!machine) return { error: "Máquina inválida" };
+          if (!machine) return { error: "Enxame inválido" };
 
           // Supervisão: máquina precisa estar liberada para o menor.
           const machineBlock = await assertMachineAllowed(user.id_user, idMachine);
@@ -147,7 +147,7 @@ class ChatService {
             let internal_name = `global_${next}`;
             if (type === "machine") {
               const machine = await ChatStorage.getMachineById(client, idMachine);
-              display_name = machine?.name || "Máquina";
+              display_name = machine?.name || "Enxame";
               internal_name = `${machine?.slug || "machine"}_${next}`;
             }
             room = await ChatStorage.createRoom(client, {
