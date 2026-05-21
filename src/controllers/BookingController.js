@@ -96,9 +96,9 @@ class BookingController {
     return sendServiceResult(res, result);
   }
 
-  // ─── Público: criar booking ──────────────────────────────────────
+  // ─── Cliente logado: criar booking ───────────────────────────────
   static async createPublicBooking(req, res) {
-    const result = await BookingService.createPublicBooking(req.params.id_profile, req.body);
+    const result = await BookingService.createPublicBooking(req.user, req.params.id_profile, req.body);
     return sendServiceResult(res, result, 201);
   }
 }

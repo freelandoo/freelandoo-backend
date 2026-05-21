@@ -1,6 +1,7 @@
 class BookingStorage {
   static async create(conn, {
-    id_profile, profile_owner_user_id, client_name, client_email, client_whatsapp,
+    id_profile, profile_owner_user_id, id_client_user = null,
+    client_name, client_email, client_whatsapp,
     booking_date, start_time, end_time,
     deposit_amount, platform_fee_amount, professional_amount,
     stripe_checkout_session_id,
@@ -8,14 +9,16 @@ class BookingStorage {
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_bookings
-        (id_profile, profile_owner_user_id, client_name, client_email, client_whatsapp,
+        (id_profile, profile_owner_user_id, id_client_user,
+         client_name, client_email, client_whatsapp,
          booking_date, start_time, end_time,
          deposit_amount, platform_fee_amount, professional_amount,
          stripe_checkout_session_id, status, payment_status,
          id_profile_service, service_name_snapshot, service_price_amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending_payment','pending',$13,$14,$15)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending_payment','pending',$14,$15,$16)
        RETURNING *`,
-      [id_profile, profile_owner_user_id, client_name, client_email, client_whatsapp,
+      [id_profile, profile_owner_user_id, id_client_user,
+       client_name, client_email, client_whatsapp,
        booking_date, start_time, end_time,
        deposit_amount, platform_fee_amount, professional_amount,
        stripe_checkout_session_id,

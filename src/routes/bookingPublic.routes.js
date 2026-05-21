@@ -17,9 +17,10 @@ router.get(
   asyncHandler(BookingController.getWeekData)
 );
 
-// ─── Público: criar booking ────────────────────────────────────────
+// ─── Cliente logado: criar booking ─────────────────────────────────
 router.post(
   "/:id_profile/bookings",
+  authMiddleware,
   asyncHandler(BookingController.createPublicBooking)
 );
 

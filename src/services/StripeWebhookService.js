@@ -391,6 +391,7 @@ function resolveCommissionContext(meta) {
     case "manifestation":         return { source_context: "manifestation" };
     case "premium":               return { source_context: "premium" };
     case "clan_slot":             return { source_context: "clan_slot" };
+    case "booking_deposit":       return { source_context: "booking_deposit" };
     default: return null;
   }
 }

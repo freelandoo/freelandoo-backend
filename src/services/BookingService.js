@@ -14,19 +14,30 @@ const PLATFORM_FEE_CENTS = 1000; // R$ 10,00
 
 class BookingService {
   /**
-   * Público: cria booking + Stripe checkout session para pagamento do sinal.
+   * Cliente logado: cria booking + Stripe checkout session para pagamento do sinal.
+   * Nome e e-mail vêm da conta autenticada; WhatsApp opcional vem do body.
    */
-  static async createPublicBooking(id_profile, body) {
-    const { client_name, client_email, client_whatsapp, booking_date, start_time, id_profile_service } = body;
+  static async createPublicBooking(user, id_profile, body) {
+    if (!user?.id_user) return { error: "Login obrigatório para agendar" };
 
-    if (!client_name || !client_email || !booking_date || !start_time) {
-      return { error: "Campos obrigatórios: client_name, client_email, booking_date, start_time" };
+    const { client_whatsapp, booking_date, start_time, id_profile_service, coupon_code } = body || {};
+
+    const client_name = (user.name || user.username || "").trim();
+    const client_email = (user.email || "").trim();
+    if (!client_name || !client_email) {
+      return { error: "Conta sem nome/e-mail. Atualize seu perfil antes de agendar." };
+    }
+    if (!booking_date || !start_time) {
+      return { error: "Campos obrigatórios: booking_date, start_time" };
     }
 
     // Validar perfil
     const profile = await ProfileStorage.getProfileById(pool, id_profile);
     if (!profile || profile.deleted_at) return { error: "Perfil não encontrado" };
     if (!profile.is_visible) return { error: "Perfil indisponível" };
+    if (String(profile.id_user) === String(user.id_user)) {
+      return { error: "Você não pode agendar com seu próprio perfil" };
+    }
 
     // Verificar assinatura ativa
     const sub = await ProfileSubscriptionStorage.findActiveByProfile(pool, id_profile);
@@ -119,6 +130,8 @@ class BookingService {
           start_time,
           client_name,
           client_email,
+          user_id: String(user.id_user),
+          ...(coupon_code ? { coupon_code: String(coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
           charge_amount: String(charge_amount),
           platform_fee: String(PLATFORM_FEE_CENTS),
           professional_amount: String(professional_amount),
@@ -134,6 +147,7 @@ class BookingService {
       const booking = await BookingStorage.create(client, {
         id_profile,
         profile_owner_user_id: profile.id_user,
+        id_client_user: user.id_user,
         client_name,
         client_email,
         client_whatsapp: client_whatsapp || null,
