@@ -71,6 +71,13 @@ class ConversationController {
     const result = await ConversationService.unreadSummary(req.user);
     return sendServiceResult(res, result);
   }
+
+  static async deleteConversation(req, res) {
+    const result = await ConversationService.deleteConversation(req.user, {
+      id_conversation: req.params?.id,
+    });
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = ConversationController;

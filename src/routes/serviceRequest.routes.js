@@ -27,5 +27,7 @@ router.get("/badge", ...auth, asyncHandler(ServiceRequestController.badgeProfile
 router.post("/responses/:id_response/read", ...auth, asyncHandler(ServiceRequestController.markRead));
 router.get("/responses/:id_response/messages", ...auth, asyncHandler(ServiceRequestController.messages));
 router.post("/responses/:id_response/messages", ...auth, asyncHandler(ServiceRequestController.sendMessage));
+// Apaga a conversa (soft-delete em tb_service_request_response). Some pros 2 lados.
+router.delete("/responses/:id_response", ...auth, asyncHandler(ServiceRequestController.deleteChat));
 
 module.exports = router;

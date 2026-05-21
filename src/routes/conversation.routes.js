@@ -41,6 +41,14 @@ router.post("/", authMiddleware, asyncHandler(ConversationController.open));
 
 router.get("/:id", authMiddleware, asyncHandler(ConversationController.detail));
 
+// Apagar conversa inteira (soft-delete em tb_conversation). Quem é dono de
+// qualquer um dos dois participantes pode disparar — esconde dos dois lados.
+router.delete(
+  "/:id",
+  authMiddleware,
+  asyncHandler(ConversationController.deleteConversation)
+);
+
 router.get(
   "/:id/messages",
   authMiddleware,

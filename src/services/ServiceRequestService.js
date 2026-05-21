@@ -156,6 +156,41 @@ class ServiceRequestService {
     });
   }
 
+  static async deleteChat(user, id_response) {
+    return runWithLogs(log, "deleteChat", () => ({ id_user: user?.id_user, id_response }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      if (!isUuid(id_response)) return { error: "id_response inválido" };
+
+      const resp = await ServiceRequestStorage.getResponseById(pool, id_response);
+      if (!resp) return { error: "Resposta não encontrada" };
+      if (resp.deleted_at) return { error: "Conversa já apagada" };
+
+      // Permite apagar quem é dono do request (lado USER) ou dono do
+      // subperfil que respondeu (lado PRO). Decisão do produto: qualquer
+      // lado pode encerrar a conversa pra ambos.
+      const req = await ServiceRequestStorage.getRequestById(pool, resp.id_request);
+      if (!req) return { error: "Solicitação não encontrada" };
+
+      const isUserSide = String(req.id_user) === String(user.id_user);
+      let isProSide = false;
+      if (!isUserSide) {
+        const { rows } = await pool.query(
+          `SELECT id_profile FROM public.tb_profile
+            WHERE id_profile = $1
+              AND id_user = $2
+              AND deleted_at IS NULL
+            LIMIT 1`,
+          [resp.id_profile, user.id_user]
+        );
+        isProSide = !!rows[0];
+      }
+      if (!isUserSide && !isProSide) return { error: "Sem permissão" };
+
+      await ServiceRequestStorage.softDeleteResponse(pool, id_response);
+      return { deleted: true, id_response };
+    });
+  }
+
   static async hideRequest(user, id_request) {
     return runWithLogs(log, "hideRequest", () => ({ id_user: user?.id_user, id_request }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };

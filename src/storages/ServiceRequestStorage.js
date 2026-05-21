@@ -77,6 +77,18 @@ class ServiceRequestStorage {
     return r.rows[0] || null;
   }
 
+  static async softDeleteResponse(conn, id_response) {
+    const r = await conn.query(
+      `UPDATE public.tb_service_request_response
+          SET deleted_at = NOW()
+        WHERE id_response = $1
+          AND deleted_at IS NULL
+        RETURNING id_response`,
+      [id_response]
+    );
+    return r.rows[0] || null;
+  }
+
   static async getResponseByPair(conn, id_request, id_profile) {
     const r = await conn.query(
       `SELECT * FROM public.tb_service_request_response
@@ -307,6 +319,7 @@ class ServiceRequestStorage {
          JOIN public.tb_machine m ON m.id_machine = req.id_machine
          LEFT JOIN public.tb_category c ON c.id_category = req.id_category
         WHERE req.id_user = $1
+          AND resp.deleted_at IS NULL
           AND resp.status IN (
             'PENDING',
             'PRO_ACCEPTED',
@@ -415,6 +428,7 @@ class ServiceRequestStorage {
          JOIN public.tb_machine m ON m.id_machine = req.id_machine
          LEFT JOIN public.tb_category c ON c.id_category = req.id_category
         WHERE p.id_user = $1
+          AND resp.deleted_at IS NULL
           AND resp.status IN ('PENDING','PRO_ACCEPTED','PRO_REJECTED','USER_REJECTED','FINALIZED','CLOSED_OTHER_WON')
         ORDER BY COALESCE(
           (SELECT created_at FROM public.tb_service_request_message

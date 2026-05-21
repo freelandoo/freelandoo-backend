@@ -68,6 +68,11 @@ class ServiceRequestController {
     return sendServiceResult(res, result);
   }
 
+  static async deleteChat(req, res) {
+    const result = await ServiceRequestService.deleteChat(req.user, req.params.id_response);
+    return sendServiceResult(res, result);
+  }
+
   // Messages
   static async messages(req, res) {
     const result = await ServiceRequestService.listMessages(req.user, req.params.id_response);

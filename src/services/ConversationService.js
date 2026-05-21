@@ -803,6 +803,40 @@ class ConversationService {
     );
   }
 
+  static async deleteConversation(user, payload) {
+    return runWithLogs(
+      log,
+      "deleteConversation",
+      () => ({ id_user: user?.id_user, id_conversation: payload?.id_conversation }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_conversation = payload?.id_conversation;
+        if (!id_conversation) return { error: "id_conversation é obrigatório" };
+
+        const conv = await ConversationStorage.getById(pool, id_conversation);
+        if (!conv) return { error: "Conversa não encontrada" };
+
+        // Verifica que o user é dono de pelo menos um dos dois participantes
+        // (entity_a_id ou entity_b_id em tb_profile.id_user). Solidariamente:
+        // user dono de um lado pode apagar pra ambos (decisão do produto).
+        const { rows: owned } = await pool.query(
+          `SELECT id_profile FROM public.tb_profile
+            WHERE id_profile IN ($1, $2)
+              AND id_user = $3
+              AND deleted_at IS NULL
+            LIMIT 1`,
+          [conv.entity_a_id, conv.entity_b_id, user.id_user]
+        );
+        if (!owned[0]) return { error: "Sem permissão para apagar esta conversa" };
+
+        const deleted = await ConversationStorage.softDelete(pool, id_conversation);
+        if (!deleted) return { error: "Conversa já estava apagada" };
+
+        return { deleted: true, id_conversation };
+      }
+    );
+  }
+
   static async unreadSummary(user) {
     return runWithLogs(
       log,
