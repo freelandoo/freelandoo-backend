@@ -14,6 +14,9 @@ router.post("/:id/cancel", ...auth, asyncHandler(CourseRequestController.cancel)
 
 // PRO side
 router.get("/mural", ...auth, asyncHandler(CourseRequestController.mural));
+router.post("/mural/mark-seen", ...auth, asyncHandler(CourseRequestController.markMuralSeen));
+router.get("/badge", ...auth, asyncHandler(CourseRequestController.badgeProfile));
+router.get("/badge/me", ...auth, asyncHandler(CourseRequestController.badgeMe));
 router.post("/:id/respond", ...auth, asyncHandler(CourseRequestController.respond));
 
 // Mensagens

@@ -212,7 +212,50 @@ class CourseRequestService {
       // marca como lido pelo lado certo
       if (isUser) await CourseRequestStorage.markReadByUser(pool, id_response);
       else if (isPro) await CourseRequestStorage.markReadByPro(pool, id_response);
-      return { messages };
+      return {
+        messages,
+        side: isUser ? "USER" : "PRO",
+        response: { id_response: resp.id_response, status: resp.status },
+      };
+    });
+  }
+
+  // ---------- Badges ----------
+  static async badgeForProfile(user, id_profile) {
+    return runWithLogs(log, "badgeForProfile", () => ({ id_user: user?.id_user, id_profile }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const own = await loadOwnedProfile(pool, id_profile, user.id_user);
+      if (own.error) return { error: own.error };
+      const p = own.profile;
+      let mural_count = 0;
+      if (!p.is_clan) {
+        const since = await CourseRequestStorage.getMuralLastSeen(pool, id_profile);
+        mural_count = await CourseRequestStorage.countMuralNew(
+          pool,
+          { id_profile: p.id_profile, id_machine: p.id_machine, id_category: p.id_category },
+          since,
+        );
+      }
+      const chat_unread = await CourseRequestStorage.countProUnreadChats(pool, id_profile);
+      return { has_new: mural_count > 0 || chat_unread > 0, mural_count, chat_unread };
+    });
+  }
+
+  static async badgeForUser(user) {
+    return runWithLogs(log, "badgeForUser", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const unread_chats = await CourseRequestStorage.countUserUnreadChats(pool, user.id_user);
+      return { has_new: unread_chats > 0, unread_chats };
+    });
+  }
+
+  static async markMuralSeen(user, id_profile) {
+    return runWithLogs(log, "markMuralSeen", () => ({ id_profile }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const own = await loadOwnedProfile(pool, id_profile, user.id_user);
+      if (own.error) return { error: own.error };
+      await CourseRequestStorage.setMuralSeen(pool, id_profile);
+      return { ok: true };
     });
   }
 

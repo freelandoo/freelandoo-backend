@@ -243,6 +243,57 @@ class CourseRequestStorage {
     return r.rows;
   }
 
+  // ---------- Badges ----------
+  static async getMuralLastSeen(conn, id_profile) {
+    const r = await conn.query(
+      `SELECT course_mural_last_seen_at FROM public.tb_profile WHERE id_profile = $1`,
+      [id_profile]
+    );
+    return r.rows[0]?.course_mural_last_seen_at || null;
+  }
+
+  static async setMuralSeen(conn, id_profile) {
+    await conn.query(
+      `UPDATE public.tb_profile SET course_mural_last_seen_at = NOW() WHERE id_profile = $1`,
+      [id_profile]
+    );
+  }
+
+  static async countProUnreadChats(conn, id_profile) {
+    const r = await conn.query(
+      `SELECT COUNT(*)::int AS n
+         FROM public.tb_course_request_response resp
+         JOIN public.tb_course_request_message msg
+           ON msg.id_response = resp.id_response
+        WHERE resp.id_profile = $1
+          AND resp.status IN ('PRO_ACCEPTED')
+          AND msg.sender = 'USER'
+          AND (resp.pro_last_read_at IS NULL OR msg.created_at > resp.pro_last_read_at)`,
+      [id_profile]
+    );
+    return r.rows[0].n;
+  }
+
+  static async countUserUnreadChats(conn, id_user) {
+    const r = await conn.query(
+      `SELECT COUNT(DISTINCT resp.id_response)::int AS n
+         FROM public.tb_course_request r
+         JOIN public.tb_course_request_response resp ON resp.id_course_request = r.id_course_request
+         LEFT JOIN public.tb_course_request_message msg
+           ON msg.id_response = resp.id_response
+          AND msg.sender = 'PRO'
+          AND (resp.user_last_read_at IS NULL OR msg.created_at > resp.user_last_read_at)
+        WHERE r.id_buyer_user = $1
+          AND resp.status IN ('PRO_ACCEPTED','FINALIZED')
+          AND (
+            (resp.status = 'PRO_ACCEPTED' AND resp.user_last_read_at IS NULL)
+            OR msg.id_message IS NOT NULL
+          )`,
+      [id_user]
+    );
+    return r.rows[0].n;
+  }
+
   static async countMuralNew(conn, profile, since) {
     const r = await conn.query(
       `SELECT COUNT(*)::int AS n

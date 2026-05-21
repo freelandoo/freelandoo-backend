@@ -47,6 +47,21 @@ class CourseRequestController {
     const result = await CourseRequestService.markRead(req.user, req.params.id_response);
     return sendServiceResult(res, result);
   }
+
+  static async badgeProfile(req, res) {
+    const result = await CourseRequestService.badgeForProfile(req.user, req.query.id_profile);
+    return sendServiceResult(res, result);
+  }
+
+  static async badgeMe(req, res) {
+    const result = await CourseRequestService.badgeForUser(req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async markMuralSeen(req, res) {
+    const result = await CourseRequestService.markMuralSeen(req.user, req.body?.id_profile);
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = CourseRequestController;

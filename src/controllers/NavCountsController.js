@@ -1,5 +1,6 @@
 const ConversationService = require("../services/ConversationService");
 const ServiceRequestService = require("../services/ServiceRequestService");
+const CourseRequestService = require("../services/CourseRequestService");
 const NotificationService = require("../services/NotificationService");
 
 function safeResult(promise) {
@@ -22,9 +23,10 @@ class NavCountsController {
       });
     }
 
-    const [conv, sr, notif] = await Promise.all([
+    const [conv, sr, cr, notif] = await Promise.all([
       safeResult(ConversationService.unreadSummary(req.user)),
       safeResult(ServiceRequestService.badgeForUser(req.user)),
+      safeResult(CourseRequestService.badgeForUser(req.user)),
       safeResult(NotificationService.unreadCount(req.user)),
     ]);
 
@@ -36,13 +38,13 @@ class NavCountsController {
           }
         : { total: 0, by_actor: [] };
 
-    const serviceRequests =
-      sr && !sr.error
-        ? {
-            has_new: !!sr.has_new,
-            unread_chats: Number(sr.unread_chats) || 0,
-          }
-        : { has_new: false, unread_chats: 0 };
+    const srUnread = sr && !sr.error ? Number(sr.unread_chats) || 0 : 0;
+    const crUnread = cr && !cr.error ? Number(cr.unread_chats) || 0 : 0;
+    // O badge de O.S. no menu agrega service-requests + course-requests.
+    const serviceRequests = {
+      has_new: srUnread + crUnread > 0,
+      unread_chats: srUnread + crUnread,
+    };
 
     const notifications =
       notif && !notif.error
