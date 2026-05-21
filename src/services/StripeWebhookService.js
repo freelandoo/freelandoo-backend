@@ -379,6 +379,49 @@ async function handleSubscriptionDeleted(conn, subscription) {
 }
 
 /**
+ * Mapeia metadata.type → identificador semântico para a conversão de afiliado.
+ * Retorna null quando o fluxo não deve gerar comissão (assinatura usa fluxo
+ * próprio; clan/manifestation/premium ficam de fora por enquanto).
+ */
+function resolveCommissionContext(meta) {
+  switch (meta?.type) {
+    case "profile_product_order": return { source_context: "loja_produto" };
+    case "polen_purchase":        return { source_context: "polen_pack" };
+    case "course_purchase":       return { source_context: "course_purchase" };
+    default: return null;
+  }
+}
+
+function resolveBuyerUserId(session, meta) {
+  if (meta?.id_buyer_user) return String(meta.id_buyer_user);
+  if (meta?.user_id) return String(meta.user_id);
+  if (session?.client_reference_id) return String(session.client_reference_id);
+  return null;
+}
+
+async function maybeAttributeCouponCommission(conn, session, meta) {
+  try {
+    if (!meta?.coupon_code) return;
+    const ctx = resolveCommissionContext(meta);
+    if (!ctx) return;
+    const id_user_buyer = resolveBuyerUserId(session, meta);
+    const total_cents = Number(session?.amount_total || 0);
+    if (!total_cents) return;
+    await AffiliateConversionService.createFromGenericPaidOrder(conn, {
+      coupon_code: meta.coupon_code,
+      id_user_buyer,
+      total_cents,
+      source_context: ctx.source_context,
+      payment_provider: "stripe",
+      payment_provider_ref: session.id,
+      raw_webhook: session,
+    });
+  } catch (err) {
+    log.error("affiliate.commission.attribute.fail", { error: err.message });
+  }
+}
+
+/**
  * Processa um evento Stripe já verificado. Idempotente via tb_stripe_webhook_event.
  */
 async function processEvent(event) {
@@ -426,6 +469,9 @@ async function processEvent(event) {
         // Subscription checkout
         await handleCheckoutCompleted(pool, session);
       }
+      // Atribuição de comissão para fluxos não-assinatura quando o cupom
+      // veio capturado via ?cupom= no link. Idempotente por (provider, ref).
+      await maybeAttributeCouponCommission(pool, session, meta);
       break;
     }
     case "invoice.payment_succeeded":

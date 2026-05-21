@@ -110,6 +110,7 @@ class ProfileProductOrderService {
           id_profile_product: String(id_profile_product),
           id_buyer_user: String(user.id_user),
           quantity: String(quantity),
+          ...(body.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
         },
       });
 

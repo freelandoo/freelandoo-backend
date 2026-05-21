@@ -123,7 +123,7 @@ class CoursesService {
    * - Bloqueia se user é dono do curso ou já tem enrollment ativo.
    * - metadata.type='course_purchase' → webhook chama confirmStripeSession.
    */
-  static async createStripeCheckout(user, courseId) {
+  static async createStripeCheckout(user, courseId, body = {}) {
     return runWithLogs(
       log,
       "createStripeCheckout",
@@ -169,6 +169,7 @@ class CoursesService {
             user_id: user.id_user,
             course_id: course.id,
             amount_cents: String(amount),
+            ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
           },
         });
         return { checkout_url: session.url, session_id: session.id };

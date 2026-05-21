@@ -503,7 +503,11 @@ async function createFromGenericPaidOrder(client, {
   paid_at = null,
 }) {
   try {
-    if (!coupon_code || !id_user_buyer || !payment_provider_ref) return null;
+    if (!coupon_code || !payment_provider_ref) return null;
+    if (!id_user_buyer) {
+      log.warn("affiliate.conversion.skip.no_buyer", { source_context, payment_provider_ref });
+      return null;
+    }
     if (!Number.isFinite(Number(total_cents)) || Number(total_cents) <= 0) return null;
 
     const code = String(coupon_code).trim().toUpperCase();

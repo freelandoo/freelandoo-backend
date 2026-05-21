@@ -162,6 +162,7 @@ class PolenProductService {
           user_id: user.id_user,
           product_id: product.id,
           polens_amount: String(totalPolens),
+          ...(body.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
         },
       });
 

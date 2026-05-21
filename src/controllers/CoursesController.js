@@ -27,7 +27,7 @@ class CoursesController {
   static async createCheckout(req, res) {
     return sendServiceResult(
       res,
-      await CoursesService.createStripeCheckout(req.user, req.params.id),
+      await CoursesService.createStripeCheckout(req.user, req.params.id, req.body || {}),
     );
   }
 
