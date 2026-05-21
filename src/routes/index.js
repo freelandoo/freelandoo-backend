@@ -68,6 +68,7 @@ const bookingPayoutRoutes = require("./bookingPayout.routes");
 const productCategoryRoutes = require("./productCategory.routes");
 const productCategoryAdminRoutes = require("./productCategoryAdmin.routes");
 const productRequestRoutes = require("./productRequest.routes");
+const courseRequestRoutes = require("./courseRequest.routes");
 const storeModerationAdminRoutes = require("./storeModerationAdmin.routes");
 const storePricePreviewRoutes = require("./storePricePreview.routes");
 const bookmarkRoutes = require("./bookmark.routes");
@@ -152,6 +153,7 @@ module.exports = (app) => {
   app.use("/product-categories", productCategoryRoutes);
   app.use("/admin/store/product-categories", productCategoryAdminRoutes);
   app.use("/product-requests", productRequestRoutes);
+  app.use("/course-requests", courseRequestRoutes);
   app.use("/admin/store", storeModerationAdminRoutes);
   app.use("/store", storePricePreviewRoutes);
   app.use("/me/bookmarks", bookmarkRoutes);
