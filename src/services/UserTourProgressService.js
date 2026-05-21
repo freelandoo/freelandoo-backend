@@ -11,6 +11,7 @@ const ALLOWED_TOUR_KEYS = new Set([
   "subprofiles",
   "enxames",
   "feed",
+  "bees_feed",
   "messages_private",
   "groups",
   "global_chat_rooms",
