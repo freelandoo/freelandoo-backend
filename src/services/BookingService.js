@@ -22,8 +22,16 @@ class BookingService {
 
     const { client_whatsapp, booking_date, start_time, id_profile_service, coupon_code } = body || {};
 
-    const client_name = (user.name || user.username || "").trim();
-    const client_email = (user.email || "").trim();
+    // Nome e email vêm sempre da conta autenticada (req.user só tem id+email no token,
+    // então buscamos o nome no banco).
+    const buyerRes = await pool.query(
+      `SELECT nome, email FROM public.tb_user WHERE id_user = $1 LIMIT 1`,
+      [user.id_user]
+    );
+    const buyer = buyerRes.rows[0];
+    if (!buyer) return { error: "Conta não encontrada" };
+    const client_name = String(buyer.nome || "").trim();
+    const client_email = String(buyer.email || user.email || "").trim();
     if (!client_name || !client_email) {
       return { error: "Conta sem nome/e-mail. Atualize seu perfil antes de agendar." };
     }
