@@ -45,6 +45,7 @@ function normalizeProgressRow(row) {
     tour_key: row.tour_key,
     status: row.status,
     current_step: row.current_step,
+    seen_version: row.seen_version ?? 1,
     completed_at: row.completed_at,
     skipped_at: row.skipped_at,
     created_at: row.created_at,
@@ -93,11 +94,14 @@ class UserTourProgressService {
 
       const parsedStep = Number.isFinite(Number(body?.currentStep)) ? Number(body.currentStep) : 0;
       const currentStep = Math.max(0, Math.floor(parsedStep));
+      const parsedVersion = Number.isFinite(Number(body?.version)) ? Number(body.version) : 1;
+      const version = Math.max(1, Math.floor(parsedVersion));
       const row = await UserTourProgressStorage.upsertStatus(pool, {
         userId: user.id_user,
         tourKey,
         status,
         currentStep,
+        version,
       });
       return { item: normalizeProgressRow(row) };
     });
