@@ -160,7 +160,7 @@ class PremiumService {
    * Cria Stripe Checkout Session pro premium. Cria também um registro pending
    * (UNIQUE em stripe_session_id garante idempotência se o webhook chegar antes).
    */
-  static async createStripeCheckout(user, profileId) {
+  static async createStripeCheckout(user, profileId, body = {}) {
     return runWithLogs(log, "createStripeCheckout", () => ({
       id_user: user?.id_user,
       profileId,
@@ -202,6 +202,7 @@ class PremiumService {
           duration_days: String(pricing.duration_days),
           uf: profile.estado,
           city_name: profile.municipio,
+          ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
         },
       });
 

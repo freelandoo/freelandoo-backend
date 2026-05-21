@@ -83,7 +83,7 @@ class ClanController {
   }
 
   static async createSlotCheckout(req, res) {
-    const result = await ClanService.createSlotCheckout(req.user, req.params);
+    const result = await ClanService.createSlotCheckout(req.user, req.params, req.body || {});
     return sendServiceResult(res, result, 201);
   }
 

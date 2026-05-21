@@ -388,6 +388,9 @@ function resolveCommissionContext(meta) {
     case "profile_product_order": return { source_context: "loja_produto" };
     case "polen_purchase":        return { source_context: "polen_pack" };
     case "course_purchase":       return { source_context: "course_purchase" };
+    case "manifestation":         return { source_context: "manifestation" };
+    case "premium":               return { source_context: "premium" };
+    case "clan_slot":             return { source_context: "clan_slot" };
     default: return null;
   }
 }

@@ -752,7 +752,7 @@ class ClanService {
    * Cria checkout Stripe one-time para liberar uma vaga adicional (R$50).
    * Apenas owner do clan pode comprar. Limita a 3 vagas pagas (total 6).
    */
-  static async createSlotCheckout(user, params) {
+  static async createSlotCheckout(user, params, body = {}) {
     return runWithLogs(
       log,
       "createSlotCheckout",
@@ -802,7 +802,7 @@ class ClanService {
             };
           }
 
-          const amount_cents = settings.slot_price_cents || 5000;
+          const amount_cents = settings.slot_price_cents || 3900;
 
           const purchase = await ClanStorage.createSlotPurchase(client, {
             id_clan_profile,
@@ -834,6 +834,8 @@ class ClanService {
               type: "clan_slot",
               id_clan_slot_purchase: String(purchase.id_clan_slot_purchase),
               id_clan_profile: String(id_clan_profile),
+              user_id: String(user.id_user),
+              ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
             },
           });
 

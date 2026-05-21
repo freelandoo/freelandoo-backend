@@ -221,6 +221,7 @@ class ManifestationService {
           type: "manifestation",
           user_id: user.id_user,
           product_id: product.id,
+          ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
         },
       });
       return { checkout_url: session.url, session_id: session.id };

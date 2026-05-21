@@ -16,7 +16,7 @@ class PremiumController {
   static async checkoutStripe(req, res) {
     return sendServiceResult(
       res,
-      await PremiumService.createStripeCheckout(req.user, req.params.profileId)
+      await PremiumService.createStripeCheckout(req.user, req.params.profileId, req.body || {})
     );
   }
 }
