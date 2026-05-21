@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS public.user_tour_settings (
+  user_id UUID PRIMARY KEY REFERENCES public.tb_user(id_user) ON DELETE CASCADE,
+  hide_all_tours BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
