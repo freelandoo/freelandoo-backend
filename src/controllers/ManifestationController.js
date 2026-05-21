@@ -24,6 +24,10 @@ class ManifestationController {
     return sendServiceResult(res, await ManifestationService.createStripeCheckout(req.user, req.body || {}), 201);
   }
 
+  static async apply(req, res) {
+    return sendServiceResult(res, await ManifestationService.applyManifestation(req.user, req.body || {}));
+  }
+
   static async setProfileApply(req, res) {
     return sendServiceResult(
       res,

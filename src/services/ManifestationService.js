@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const pool = require("../databases");
 const ManifestationStorage = require("../storages/ManifestationStorage");
 const PolenStorage = require("../storages/PolenStorage");
@@ -122,27 +121,36 @@ class ManifestationService {
 
   static async getMine(user, query = {}) {
     return runWithLogs(log, "getMine", () => ({ id_user: user?.id_user }), async () => {
-      if (!user?.id_user) return { error: "NÃ£o autenticado" };
-      const [active, profiles, history] = await Promise.all([
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const [active, profiles, history, owned] = await Promise.all([
         ManifestationStorage.getActiveForUser(pool, user.id_user),
         ManifestationStorage.listOwnedProfilesForApply(pool, user.id_user),
         ManifestationStorage.listHistoryForUser(pool, user.id_user, {
           limit: Math.min(Math.max(Number(query.limit) || 20, 1), 100),
           offset: Math.max(Number(query.offset) || 0, 0),
         }),
+        ManifestationStorage.listOwnedForUser(pool, user.id_user),
       ]);
       const applied = active?.id ? await ManifestationStorage.listAppliedProfileIds(pool, active.id) : [];
-      return { active, applied_profile_ids: applied, profiles, history };
+      return { active, applied_profile_ids: applied, profiles, history, owned };
     });
   }
 
+  // Desbloqueio com Poléns (modelo biblioteca): debita uma vez e cria o
+  // desbloqueio permanente NÃO aplicado. "Usar" é uma ação separada (applyManifestation).
   static async checkoutWithPolens(user, body = {}) {
     return runWithLogs(log, "checkoutWithPolens", () => ({ id_user: user?.id_user, product_id: body?.product_id }), async () => {
-      if (!user?.id_user) return { error: "NÃ£o autenticado" };
+      if (!user?.id_user) return { error: "Não autenticado" };
       const product = await ManifestationStorage.getProductById(pool, body.product_id);
-      if (!product || !product.is_active) return { error: "Produto nÃ£o encontrado" };
+      if (!product || !product.is_active) return { error: "Manifestação não encontrada ou indisponível" };
       const amount = Number(product.price_polens) || 0;
-      if (amount <= 0) return { error: "Produto sem preÃ§o em PolÃ©ns" };
+      if (amount <= 0) return { error: "Manifestação sem preço em Poléns" };
+
+      // Já desbloqueada? Não debita de novo (idempotência — critério de aceite 11).
+      const already = await ManifestationStorage.getOwnedUnlock(pool, user.id_user, product.id);
+      if (already) {
+        return { error: "Você já desbloqueou esta manifestação.", code: "already_owned" };
+      }
 
       const client = await pool.connect();
       try {
@@ -151,48 +159,80 @@ class ManifestationService {
         const settings = gate.settings;
         if (!settings?.is_active) {
           await client.query("ROLLBACK");
-          return { error: "Sistema de PolÃ©ns inativo" };
+          return { error: "Sistema de Poléns inativo" };
         }
         if (!gate.ok) {
           await client.query("ROLLBACK");
           return { error: gate.error, eligibility: gate.eligibility };
         }
+        // reserveStock: produtos do seed têm stock NULL (ilimitado) — passa direto.
         const reserved = await ManifestationStorage.reserveStock(client, product.id);
         if (!reserved) {
           await client.query("ROLLBACK");
-          return { error: "Produto indisponÃ­vel" };
+          return { error: "Manifestação indisponível" };
         }
         const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
-        const sourceId = `manifestation:${product.id}:${crypto.randomUUID()}`;
         const debit = await PolenStorage.debit(client, {
           user_id: user.id_user,
           wallet_id: wallet.id,
           amount,
           type: "spend_manifestation",
           source: "manifestation",
-          source_id: sourceId,
-          metadata: { product_id: product.id, product_name: product.name },
+          source_id: `manifestation:${product.id}:${user.id_user}`,
+          metadata: { product_id: product.id, product_name: product.name, slug: product.slug },
         });
         if (!debit) {
           await client.query("ROLLBACK");
-          return { error: "Saldo insuficiente" };
+          return {
+            error: `Você precisa de ${amount} pólens para desbloquear esta manifestação.`,
+            code: "insufficient_balance",
+          };
         }
-        await ManifestationStorage.deactivateActiveForUser(client, user.id_user);
-        const manifestation = await ManifestationStorage.createUserManifestation(client, {
+        const unlock = await ManifestationStorage.createUnlock(client, {
           user_id: user.id_user,
           product_id: product.id,
-          duration_days: product.duration_days,
           payment_method: "polens",
           amount_polens: amount,
         });
+        if (!unlock) {
+          // Corrida: desbloqueado entre o pré-check e o INSERT.
+          await client.query("ROLLBACK");
+          return { error: "Você já desbloqueou esta manifestação.", code: "already_owned" };
+        }
         await client.query("COMMIT");
-        return { manifestation, wallet: debit.wallet, transaction: debit.transaction };
+        return {
+          message: "Manifestação desbloqueada com sucesso.",
+          unlock,
+          product,
+          wallet: debit.wallet,
+          transaction: debit.transaction,
+        };
       } catch (err) {
         await client.query("ROLLBACK");
         throw err;
       } finally {
         client.release();
       }
+    });
+  }
+
+  // Aplica uma manifestação JÁ desbloqueada no headcard do perfil.
+  static async applyManifestation(user, body = {}) {
+    return runWithLogs(log, "applyManifestation", () => ({ id_user: user?.id_user, product_id: body?.product_id }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      if (!body?.product_id) return { error: "product_id obrigatório" };
+      const product = await ManifestationStorage.getProductById(pool, body.product_id);
+      if (!product) return { error: "Manifestação não encontrada" };
+      const owned = await ManifestationStorage.getOwnedUnlock(pool, user.id_user, product.id);
+      if (!owned) {
+        return {
+          error: "Você precisa desbloquear esta manifestação antes de usar.",
+          code: "not_owned",
+        };
+      }
+      await ManifestationStorage.setActiveManifestation(pool, user.id_user, product.id);
+      const active = await ManifestationStorage.getActiveForUser(pool, user.id_user);
+      return { message: "Manifestação aplicada no seu perfil.", active };
     });
   }
 

@@ -259,12 +259,13 @@ class ManifestationStorage {
         `SELECT
            (SELECT COUNT(DISTINCT user_id)::int
               FROM public.user_manifestations
-             WHERE is_active = TRUE AND expires_at > NOW()) AS active_users,
+             WHERE is_active = TRUE
+               AND (expires_at IS NULL OR expires_at > NOW())) AS active_users,
            (SELECT COUNT(*)::int
               FROM public.user_manifestations um
               JOIN public.tb_profile p ON p.id_user = um.user_id
              WHERE um.is_active = TRUE
-               AND um.expires_at > NOW()
+               AND (um.expires_at IS NULL OR um.expires_at > NOW())
                AND COALESCE(p.is_clan, FALSE) = FALSE
                AND p.deleted_at IS NULL) AS active_subprofile_apply,
            (SELECT COUNT(*)::int FROM public.manifestation_products) AS products_total,
@@ -293,7 +294,7 @@ class ManifestationStorage {
                 p.name,
                 p.is_active,
                 COUNT(um.id)::int AS purchases_30d,
-                COUNT(*) FILTER (WHERE um.is_active = TRUE AND um.expires_at > NOW())::int AS active_users,
+                COUNT(*) FILTER (WHERE um.is_active = TRUE AND (um.expires_at IS NULL OR um.expires_at > NOW()))::int AS active_users,
                 COALESCE(SUM(um.amount_cents), 0)::int AS revenue_cents_30d,
                 COALESCE(SUM(um.amount_polens), 0)::int AS revenue_polens_30d
            FROM public.manifestation_products p
@@ -435,7 +436,7 @@ class ManifestationStorage {
          LEFT JOIN public.manifestation_categories c ON c.id = p.category_id
         WHERE um.user_id = $1
           AND um.is_active = TRUE
-          AND um.expires_at > NOW()
+          AND (um.expires_at IS NULL OR um.expires_at > NOW())
         ORDER BY um.acquired_at DESC
         LIMIT 1`,
       [userId]
@@ -457,7 +458,7 @@ class ManifestationStorage {
          JOIN public.tb_profile tp ON tp.id_user = um.user_id
         WHERE tp.id_profile = $1
           AND um.is_active = TRUE
-          AND um.expires_at > NOW()
+          AND (um.expires_at IS NULL OR um.expires_at > NOW())
           AND COALESCE(tp.is_clan, FALSE) = FALSE
           AND tp.deleted_at IS NULL
         LIMIT 1`,
@@ -526,6 +527,81 @@ class ManifestationStorage {
         WHERE user_id = $1 AND is_active = TRUE`,
       [userId]
     );
+  }
+
+  // ---------- Biblioteca de desbloqueios (modelo Slice 089+) ----------
+  // user_manifestations vira a tabela de desbloqueios: 1 linha por (user, produto),
+  // permanente (expires_at NULL). is_active = a manifestação aplicada no headcard.
+
+  static async getOwnedUnlock(conn, userId, productId) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.user_manifestations
+        WHERE user_id = $1 AND product_id = $2
+        LIMIT 1`,
+      [userId, productId]
+    );
+    return rows[0] || null;
+  }
+
+  static async listOwnedForUser(conn, userId) {
+    const { rows } = await conn.query(
+      `SELECT um.id,
+              um.product_id,
+              um.is_active,
+              um.acquired_at,
+              um.payment_method,
+              um.amount_polens,
+              p.slug,
+              p.name,
+              p.type,
+              p.headline,
+              p.description,
+              p.banner_url
+         FROM public.user_manifestations um
+         JOIN public.manifestation_products p ON p.id = um.product_id
+        WHERE um.user_id = $1
+        ORDER BY um.acquired_at DESC`,
+      [userId]
+    );
+    return rows;
+  }
+
+  // Cria o desbloqueio como NÃO aplicado. ON CONFLICT DO NOTHING => idempotente:
+  // se o user já desbloqueou esse produto, retorna null (sem débito duplicado).
+  static async createUnlock(conn, {
+    user_id,
+    product_id,
+    payment_method = "polens",
+    amount_polens = null,
+    amount_cents = null,
+  }) {
+    const { rows } = await conn.query(
+      `INSERT INTO public.user_manifestations
+         (user_id, product_id, acquired_at, expires_at, is_active, payment_method, amount_polens, amount_cents)
+       VALUES ($1, $2, NOW(), NULL, FALSE, $3, $4, $5)
+       ON CONFLICT (user_id, product_id) DO NOTHING
+       RETURNING *`,
+      [user_id, product_id, payment_method, amount_polens, amount_cents]
+    );
+    return rows[0] || null;
+  }
+
+  // Aplica uma manifestação desbloqueada no headcard (1 ativa por user).
+  static async setActiveManifestation(conn, userId, productId) {
+    await conn.query(
+      `UPDATE public.user_manifestations
+          SET is_active = FALSE
+        WHERE user_id = $1 AND is_active = TRUE`,
+      [userId]
+    );
+    const { rows } = await conn.query(
+      `UPDATE public.user_manifestations
+          SET is_active = TRUE
+        WHERE user_id = $1 AND product_id = $2
+        RETURNING *`,
+      [userId, productId]
+    );
+    return rows[0] || null;
   }
 
   static async reserveStock(conn, productId) {
