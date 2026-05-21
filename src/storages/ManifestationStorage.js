@@ -574,14 +574,25 @@ class ManifestationStorage {
     payment_method = "polens",
     amount_polens = null,
     amount_cents = null,
+    stripe_session_id = null,
+    stripe_payment_intent = null,
   }) {
     const { rows } = await conn.query(
       `INSERT INTO public.user_manifestations
-         (user_id, product_id, acquired_at, expires_at, is_active, payment_method, amount_polens, amount_cents)
-       VALUES ($1, $2, NOW(), NULL, FALSE, $3, $4, $5)
+         (user_id, product_id, acquired_at, expires_at, is_active, payment_method,
+          amount_polens, amount_cents, stripe_session_id, stripe_payment_intent)
+       VALUES ($1, $2, NOW(), NULL, FALSE, $3, $4, $5, $6, $7)
        ON CONFLICT (user_id, product_id) DO NOTHING
        RETURNING *`,
-      [user_id, product_id, payment_method, amount_polens, amount_cents]
+      [
+        user_id,
+        product_id,
+        payment_method,
+        amount_polens,
+        amount_cents,
+        stripe_session_id,
+        stripe_payment_intent,
+      ]
     );
     return rows[0] || null;
   }

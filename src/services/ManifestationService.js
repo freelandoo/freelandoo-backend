@@ -143,8 +143,8 @@ class ManifestationService {
       if (!user?.id_user) return { error: "Não autenticado" };
       const product = await ManifestationStorage.getProductById(pool, body.product_id);
       if (!product || !product.is_active) return { error: "Manifestação não encontrada ou indisponível" };
-      const amount = Number(product.price_polens) || 0;
-      if (amount <= 0) return { error: "Manifestação sem preço em Poléns" };
+      // Preço 0 é válido: o admin pode liberar uma manifestação grátis via Poléns.
+      const amount = Math.max(0, Number(product.price_polens) || 0);
 
       // Já desbloqueada? Não debita de novo (idempotência — critério de aceite 11).
       const already = await ManifestationStorage.getOwnedUnlock(pool, user.id_user, product.id);
@@ -172,26 +172,30 @@ class ManifestationService {
           return { error: "Manifestação indisponível" };
         }
         const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
-        const debit = await PolenStorage.debit(client, {
-          user_id: user.id_user,
-          wallet_id: wallet.id,
-          amount,
-          type: "spend_manifestation",
-          source: "manifestation",
-          source_id: `manifestation:${product.id}:${user.id_user}`,
-          metadata: { product_id: product.id, product_name: product.name, slug: product.slug },
-        });
-        if (!debit) {
-          await client.query("ROLLBACK");
-          return {
-            error: `Você precisa de ${amount} pólens para desbloquear esta manifestação.`,
-            code: "insufficient_balance",
-          };
+        // amount === 0 => resgate grátis: não debita, não cria transação.
+        let debit = null;
+        if (amount > 0) {
+          debit = await PolenStorage.debit(client, {
+            user_id: user.id_user,
+            wallet_id: wallet.id,
+            amount,
+            type: "spend_manifestation",
+            source: "manifestation",
+            source_id: `manifestation:${product.id}:${user.id_user}`,
+            metadata: { product_id: product.id, product_name: product.name, slug: product.slug },
+          });
+          if (!debit) {
+            await client.query("ROLLBACK");
+            return {
+              error: `Você precisa de ${amount} pólens para desbloquear esta manifestação.`,
+              code: "insufficient_balance",
+            };
+          }
         }
         const unlock = await ManifestationStorage.createUnlock(client, {
           user_id: user.id_user,
           product_id: product.id,
-          payment_method: "polens",
+          payment_method: amount > 0 ? "polens" : "free",
           amount_polens: amount,
         });
         if (!unlock) {
@@ -204,8 +208,8 @@ class ManifestationService {
           message: "Manifestação desbloqueada com sucesso.",
           unlock,
           product,
-          wallet: debit.wallet,
-          transaction: debit.transaction,
+          wallet: debit?.wallet ?? wallet,
+          transaction: debit?.transaction ?? null,
         };
       } catch (err) {
         await client.query("ROLLBACK");
@@ -282,29 +286,29 @@ class ManifestationService {
       const product = await ManifestationStorage.getProductById(client, meta.product_id);
       if (!product || !product.is_active) {
         await client.query("ROLLBACK");
-        return { error: "Produto nÃ£o encontrado" };
+        return { error: "Manifestação não encontrada" };
       }
       const reserved = await ManifestationStorage.reserveStock(client, product.id);
       if (!reserved) {
         await client.query("ROLLBACK");
-        return { error: "Produto indisponÃ­vel" };
+        return { error: "Manifestação indisponível" };
       }
-      await ManifestationStorage.deactivateActiveForUser(client, meta.user_id);
       const paymentIntent =
         typeof session.payment_intent === "string"
           ? session.payment_intent
           : session.payment_intent?.id || null;
-      const manifestation = await ManifestationStorage.createUserManifestation(client, {
+      // Desbloqueio permanente (não aplicado). Se o user já possuía a
+      // manifestação (ex.: comprou com Poléns antes), createUnlock devolve null.
+      const unlock = await ManifestationStorage.createUnlock(client, {
         user_id: meta.user_id,
         product_id: product.id,
-        duration_days: product.duration_days,
         payment_method: "stripe",
+        amount_cents: session.amount_total ?? product.price_cents,
         stripe_session_id: session.id,
         stripe_payment_intent: paymentIntent,
-        amount_cents: session.amount_total ?? product.price_cents,
       });
       await client.query("COMMIT");
-      return { manifestation };
+      return { manifestation: unlock, duplicate: !unlock };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

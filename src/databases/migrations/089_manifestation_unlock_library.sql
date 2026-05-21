@@ -70,8 +70,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_user_manifestations_user_product
 -- 3. Seed das 30 manifestações (idempotente via ON CONFLICT (slug))
 -- ---------------------------------------------------------------------------
 -- Imagens estáticas servidas pelo frontend em /public/banners-manifestacao/.
--- price_polens fixo = 50. Re-roda a cada deploy: cria se não existe, atualiza
--- conteúdo/preço/imagem se já existe (conforme briefing).
+-- Cria as 30 com preço inicial de 50 Poléns. ON CONFLICT DO NOTHING: depois da
+-- 1ª criação o admin é o dono da linha (preço em Poléns/R$, status, imagem) —
+-- o seed nunca sobrescreve edições feitas no painel admin.
 INSERT INTO public.manifestation_products
   (slug, name, type, headline, description, banner_url, price_polens, price_cents, is_active, sort_order)
 VALUES
@@ -105,12 +106,4 @@ VALUES
   ('livre','Livre','emotion','Leveza para ser quem sou.','Estado de liberdade, leveza e autenticidade.','/banners-manifestacao/livre.png',50,0,TRUE,28),
   ('calmo','Calmo','emotion','Silêncio que fortalece.','Estado de calma, controle emocional e estabilidade.','/banners-manifestacao/calmo.png',50,0,TRUE,29),
   ('inspirado','Inspirado','emotion','Ideia acesa.','Estado de criatividade, imaginação e produção.','/banners-manifestacao/inspirado.png',50,0,TRUE,30)
-ON CONFLICT (slug) DO UPDATE SET
-  name         = EXCLUDED.name,
-  type         = EXCLUDED.type,
-  headline     = EXCLUDED.headline,
-  description  = EXCLUDED.description,
-  banner_url   = EXCLUDED.banner_url,
-  price_polens = EXCLUDED.price_polens,
-  is_active    = TRUE,
-  updated_at   = NOW();
+ON CONFLICT (slug) DO NOTHING;
