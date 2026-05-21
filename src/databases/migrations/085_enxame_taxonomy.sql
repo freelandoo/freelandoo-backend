@@ -125,11 +125,18 @@ ON CONFLICT (slug) DO UPDATE SET
 -- Keep-first: quando um nome aparece em mais de um enxame, vence a 1ª ocorrência.
 -- Reaproveita categorias antigas por nome (lower) — perfis nesses nomes não
 -- ficam órfãos. Profissões removidas permanecem is_active = FALSE.
+-- unaccent é necessário pra gerar profession_slug (já habilitado pela mig 011,
+-- mantemos por idempotência caso 085 rode antes em algum cenário).
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 DO $seed$
 DECLARE
-  v       RECORD;
-  v_enx   INTEGER;
-  v_cat   RECORD;
+  v          RECORD;
+  v_enx      INTEGER;
+  v_cat      RECORD;
+  v_slug_base TEXT;
+  v_slug     TEXT;
+  v_suffix   INT;
 BEGIN
   FOR v IN
     SELECT * FROM (VALUES
@@ -482,9 +489,29 @@ BEGIN
      LIMIT 1;
 
     IF v_cat.id_category IS NULL THEN
-      -- profissão nova
-      INSERT INTO public.tb_category (desc_category, id_machine, is_active)
-      VALUES (v.profession, v_enx, TRUE);
+      -- profissão nova → gera profession_slug (NOT NULL, UNIQUE lower) via
+      -- mesmo algoritmo da mig 011: unaccent → lower → não-alfanum vira "-"
+      -- → colapsa hifens → trim → resolve colisão com sufixo numérico.
+      v_slug_base := lower(unaccent(v.profession));
+      v_slug_base := regexp_replace(v_slug_base, '[^a-z0-9]+', '-', 'g');
+      v_slug_base := regexp_replace(v_slug_base, '-+', '-', 'g');
+      v_slug_base := regexp_replace(v_slug_base, '^-|-$', '', 'g');
+      IF v_slug_base IS NULL OR length(v_slug_base) = 0 THEN
+        v_slug_base := 'profissao';
+      END IF;
+      v_slug_base := substring(v_slug_base, 1, 75);
+
+      v_slug := v_slug_base;
+      v_suffix := 2;
+      WHILE EXISTS (
+        SELECT 1 FROM public.tb_category WHERE lower(profession_slug) = v_slug
+      ) LOOP
+        v_slug := v_slug_base || '-' || v_suffix::text;
+        v_suffix := v_suffix + 1;
+      END LOOP;
+
+      INSERT INTO public.tb_category (desc_category, id_machine, is_active, profession_slug)
+      VALUES (v.profession, v_enx, TRUE, v_slug);
     ELSIF v_cat.id_machine IS NULL THEN
       -- categoria reaproveitada por nome (ainda não reivindicada nesta execução)
       UPDATE public.tb_category
