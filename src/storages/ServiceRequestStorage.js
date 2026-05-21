@@ -24,7 +24,7 @@ class ServiceRequestStorage {
       `SELECT r.*, m.name AS machine_name, c.desc_category AS category_name
          FROM public.tb_service_request r
          JOIN public.tb_machine m ON m.id_machine = r.id_machine
-         JOIN public.tb_category c ON c.id_category = r.id_category
+         LEFT JOIN public.tb_category c ON c.id_category = r.id_category
         WHERE r.id_user = $1
           AND r.user_hidden_at IS NULL
         ORDER BY r.created_at DESC`,
@@ -305,7 +305,7 @@ class ServiceRequestStorage {
          JOIN public.tb_profile p ON p.id_profile = resp.id_profile
          JOIN public.tb_user u ON u.id_user = p.id_user
          JOIN public.tb_machine m ON m.id_machine = req.id_machine
-         JOIN public.tb_category c ON c.id_category = req.id_category
+         LEFT JOIN public.tb_category c ON c.id_category = req.id_category
         WHERE req.id_user = $1
           AND resp.status IN (
             'PENDING',
@@ -347,12 +347,12 @@ class ServiceRequestStorage {
          FROM public.tb_service_request r
          JOIN public.tb_user u ON u.id_user = r.id_user
          JOIN public.tb_machine m ON m.id_machine = r.id_machine
-         JOIN public.tb_category c ON c.id_category = r.id_category
+         LEFT JOIN public.tb_category c ON c.id_category = r.id_category
          LEFT JOIN public.tb_service_request_response resp
            ON resp.id_request = r.id_request AND resp.id_profile = $1
         WHERE r.status = 'OPEN'
           AND r.id_machine = $2
-          AND r.id_category = $3
+          AND (r.id_category IS NULL OR r.id_category = $3)
           AND (r.municipio IS NULL OR r.municipio = $4)
           AND resp.id_response IS NULL
         ORDER BY r.created_at DESC`,
@@ -369,7 +369,7 @@ class ServiceRequestStorage {
            ON resp.id_request = r.id_request AND resp.id_profile = $1
         WHERE r.status = 'OPEN'
           AND r.id_machine = $2
-          AND r.id_category = $3
+          AND (r.id_category IS NULL OR r.id_category = $3)
           AND (r.municipio IS NULL OR r.municipio = $4)
           AND resp.id_response IS NULL
           AND ($5::timestamptz IS NULL OR r.created_at > $5)`,

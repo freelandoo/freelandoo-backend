@@ -33,9 +33,14 @@ class ServiceRequestService {
       const minorBlock = await assertNotMinorForServiceRequest(user.id_user);
       if (minorBlock) return minorBlock;
       const id_machine = Number(body?.id_machine);
-      const id_category = Number(body?.id_category);
       if (!Number.isInteger(id_machine) || id_machine <= 0) return { error: "id_machine inválido" };
-      if (!Number.isInteger(id_category) || id_category <= 0) return { error: "id_category inválido" };
+      // id_category é opcional: null = broadcast pra todo o Enxame
+      let id_category = null;
+      if (body?.id_category != null && body?.id_category !== "") {
+        const parsed = Number(body.id_category);
+        if (!Number.isInteger(parsed) || parsed <= 0) return { error: "id_category inválido" };
+        id_category = parsed;
+      }
       const description = typeof body?.description === "string" ? body.description.trim() : "";
       if (description.length < 5) return { error: "Descrição obrigatório (mín. 5 caracteres)" };
       const estado = body?.estado ? String(body.estado).trim().slice(0, 2).toUpperCase() : null;
@@ -224,8 +229,12 @@ class ServiceRequestService {
       }
       // valida match (defensivo)
       if (!p.is_clan) {
-        if (Number(p.id_machine) !== Number(req.id_machine) || Number(p.id_category) !== Number(req.id_category)) {
-          return { error: "Perfil não corresponde à solicitação" };
+        if (Number(p.id_machine) !== Number(req.id_machine)) {
+          return { error: "Perfil não corresponde ao Enxame da solicitação" };
+        }
+        // id_category NULL no request = broadcast a todo o Enxame, aceita qualquer profissão
+        if (req.id_category != null && Number(p.id_category) !== Number(req.id_category)) {
+          return { error: "Perfil não corresponde à profissão da solicitação" };
         }
         if (req.municipio && p.municipio && req.municipio !== p.municipio) {
           return { error: "Município não corresponde" };
