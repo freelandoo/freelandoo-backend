@@ -91,6 +91,7 @@ class CheckoutService {
             checkoutItem,
             subtotal,
             code: coupon_code.trim(),
+            isSubscription: !!item.is_subscription,
           });
         }
 
@@ -104,7 +105,7 @@ class CheckoutService {
     );
   }
 
-  static async _tryApplyShareCoupon({ user, id_checkout, checkoutItem, subtotal, code }) {
+  static async _tryApplyShareCoupon({ user, id_checkout, checkoutItem, subtotal, code, isSubscription = false }) {
     try {
       const coupon = await CheckoutStorage.getCouponByCode(pool, code);
       if (!coupon) return;
@@ -132,12 +133,16 @@ class CheckoutService {
         if (Number(usageCount) >= Number(coupon.max_uses)) return;
       }
 
-      const discount = CheckoutService.calculateDiscount({
-        subtotal,
-        type: coupon.discount_type,
-        value: coupon.value,
-        max: coupon.max_discount_cents,
-      });
+      // Desconto só vale para itens marcados como assinatura. Demais itens
+      // anexam o cupom apenas para fins de atribuição de comissão.
+      const discount = isSubscription
+        ? CheckoutService.calculateDiscount({
+            subtotal,
+            type: coupon.discount_type,
+            value: coupon.value,
+            max: coupon.max_discount_cents,
+          })
+        : 0;
 
       const total = Math.max(0, subtotal - discount);
 
@@ -300,12 +305,17 @@ class CheckoutService {
           }
         }
 
-        const discount = CheckoutService.calculateDiscount({
-          subtotal,
-          type: coupon.discount_type,
-          value: coupon.value,
-          max: coupon.max_discount_cents,
-        });
+        const item = await CheckoutStorage.getItemById(pool, checkoutItem.id_item);
+        const isSubscription = !!(item && item.is_subscription);
+
+        const discount = isSubscription
+          ? CheckoutService.calculateDiscount({
+              subtotal,
+              type: coupon.discount_type,
+              value: coupon.value,
+              max: coupon.max_discount_cents,
+            })
+          : 0;
 
         const total = Math.max(0, subtotal - discount);
 
@@ -336,7 +346,11 @@ class CheckoutService {
           id_checkout
         );
 
-        return { checkout: summary };
+        const info = !isSubscription
+          ? "Cupom registrado para comissão. Desconto só vale em assinatura."
+          : null;
+
+        return { checkout: summary, ...(info ? { info } : {}) };
       }
     );
   }
@@ -497,12 +511,17 @@ class CheckoutService {
             }
           }
 
-          discount = CheckoutService.calculateDiscount({
-            subtotal,
-            type: coupon.discount_type,
-            value: coupon.value,
-            max: coupon.max_discount_cents,
-          });
+          const itemAtConfirm = await CheckoutStorage.getItemById(pool, checkoutItem.id_item);
+          const isSubscription = !!(itemAtConfirm && itemAtConfirm.is_subscription);
+
+          discount = isSubscription
+            ? CheckoutService.calculateDiscount({
+                subtotal,
+                type: coupon.discount_type,
+                value: coupon.value,
+                max: coupon.max_discount_cents,
+              })
+            : 0;
         }
 
         const total = Math.max(0, subtotal - discount);

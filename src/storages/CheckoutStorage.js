@@ -9,7 +9,8 @@ class CheckoutStorage {
             details,
             unity_price_cents,
             currency,
-            is_active
+            is_active,
+            is_subscription
         FROM tb_item
         WHERE id_item = $1
         LIMIT 1
