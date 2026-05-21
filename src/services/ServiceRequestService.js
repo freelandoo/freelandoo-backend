@@ -71,6 +71,42 @@ class ServiceRequestService {
     });
   }
 
+  static async listMyProChats(user) {
+    return runWithLogs(log, "listMyProChats", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const rows = await ServiceRequestStorage.listChatsForPro(pool, user.id_user);
+      const chats = rows.map((r) => ({
+        id_response: r.id_response,
+        response_status: r.response_status,
+        response_created_at: r.response_created_at,
+        last_message: r.last_message,
+        last_message_at: r.last_message_at,
+        unread_count: r.unread_count,
+        request: {
+          id_request: r.id_request,
+          status: r.request_status,
+          description: r.request_description,
+          estado: r.request_estado,
+          municipio: r.request_municipio,
+          id_machine: r.id_machine,
+          id_category: r.id_category,
+          machine_name: r.machine_name,
+          category_name: r.category_name,
+          id_response_chosen: r.id_response_chosen,
+        },
+        profile: {
+          id_profile: "",
+          display_name: r.buyer_username || "Solicitante",
+          avatar_url: null,
+          sub_profile_slug: null,
+          username: r.buyer_username || null,
+          is_clan: false,
+        },
+      }));
+      return { chats };
+    });
+  }
+
   static async listMyChats(user) {
     return runWithLogs(log, "listMyChats", () => ({ id_user: user?.id_user }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };

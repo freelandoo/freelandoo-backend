@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const ProductRequestStorage = require("../storages/ProductRequestStorage");
+const ProductRequestResponseStorage = require("../storages/ProductRequestResponseStorage");
 const ProductCategoryStorage = require("../storages/ProductCategoryStorage");
 const NotificationStorage = require("../storages/NotificationStorage");
 const ProductRequestMatchingService = require("./ProductRequestMatchingService");
@@ -141,6 +142,14 @@ class ProductRequestService {
       await ProductRequestStorage.expireOld(pool);
       const requests = await ProductRequestStorage.listByBuyer(pool, user.id_user);
       return { requests };
+    });
+  }
+
+  static async listMySentResponses(user) {
+    return runWithLogs(log, "listMySentResponses", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const responses = await ProductRequestResponseStorage.listBySellerUser(pool, user.id_user);
+      return { responses };
     });
   }
 

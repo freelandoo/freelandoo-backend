@@ -378,6 +378,55 @@ class ServiceRequestStorage {
     return r.rows[0].n;
   }
 
+  // Chats do lado PRO: responses de QUALQUER subperfil do usuário logado.
+  static async listChatsForPro(conn, id_user) {
+    const r = await conn.query(
+      `SELECT
+         resp.id_response,
+         resp.id_request,
+         resp.id_profile,
+         resp.status AS response_status,
+         resp.created_at AS response_created_at,
+         req.status AS request_status,
+         req.description AS request_description,
+         req.estado AS request_estado,
+         req.municipio AS request_municipio,
+         req.id_machine,
+         req.id_category,
+         req.id_response_chosen,
+         m.name AS machine_name,
+         c.desc_category AS category_name,
+         buyer.username AS buyer_username,
+         p.display_name AS my_profile_name,
+         (SELECT content FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1) AS last_message,
+         (SELECT created_at FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1) AS last_message_at,
+         (SELECT COUNT(*) FROM public.tb_service_request_message msg
+            WHERE msg.id_response = resp.id_response
+              AND msg.sender = 'USER'
+              AND (resp.pro_last_read_at IS NULL OR msg.created_at > resp.pro_last_read_at))::int AS unread_count
+         FROM public.tb_service_request_response resp
+         JOIN public.tb_service_request req ON req.id_request = resp.id_request
+         JOIN public.tb_profile p ON p.id_profile = resp.id_profile
+         JOIN public.tb_user buyer ON buyer.id_user = req.id_user
+         JOIN public.tb_machine m ON m.id_machine = req.id_machine
+         LEFT JOIN public.tb_category c ON c.id_category = req.id_category
+        WHERE p.id_user = $1
+          AND resp.status IN ('PENDING','PRO_ACCEPTED','PRO_REJECTED','USER_REJECTED','FINALIZED','CLOSED_OTHER_WON')
+        ORDER BY COALESCE(
+          (SELECT created_at FROM public.tb_service_request_message
+            WHERE id_response = resp.id_response
+            ORDER BY created_at DESC LIMIT 1),
+          resp.created_at
+        ) DESC`,
+      [id_user]
+    );
+    return r.rows;
+  }
+
   static async countProUnreadChats(conn, id_profile) {
     const r = await conn.query(
       `SELECT COUNT(*)::int AS n

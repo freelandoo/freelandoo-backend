@@ -19,6 +19,11 @@ class ProductRequestController {
     return sendServiceResult(res, result);
   }
 
+  static async listMySent(req, res) {
+    const result = await ProductRequestService.listMySentResponses(req.user);
+    return sendServiceResult(res, result);
+  }
+
   static async getById(req, res) {
     const result = await ProductRequestService.getById(req.user, req.params.id);
     return sendServiceResult(res, result);

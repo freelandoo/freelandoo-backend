@@ -9,6 +9,7 @@ const auth = [authMiddleware];
 
 router.post("/", ...auth, uploadAvatar.single("reference_image"), asyncHandler(ProductRequestController.create));
 router.get("/me", ...auth, asyncHandler(ProductRequestController.listMine));
+router.get("/me/sent", ...auth, asyncHandler(ProductRequestController.listMySent));
 router.get("/mural", ...auth, asyncHandler(ProductRequestController.muralForProfile));
 router.get("/:id/eligible-products", ...auth, asyncHandler(ProductRequestController.eligibleProducts));
 router.get("/:id/responses", ...auth, asyncHandler(ProductRequestController.listResponses));

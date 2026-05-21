@@ -17,6 +17,11 @@ class CourseRequestController {
     return sendServiceResult(res, result);
   }
 
+  static async listMyProChats(req, res) {
+    const result = await CourseRequestService.listMyProChats(req.user);
+    return sendServiceResult(res, result);
+  }
+
   static async cancel(req, res) {
     const result = await CourseRequestService.cancelRequest(req.user, req.params.id);
     return sendServiceResult(res, result);

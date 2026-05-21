@@ -96,6 +96,41 @@ class CourseRequestService {
     });
   }
 
+  static async listMyProChats(user) {
+    return runWithLogs(log, "listMyProChats", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const rows = await CourseRequestStorage.listChatsForPro(pool, user.id_user);
+      const chats = rows.map((r) => ({
+        id_response: r.id_response,
+        response_status: r.response_status,
+        response_created_at: r.response_created_at,
+        last_message: r.last_message,
+        last_message_at: r.last_message_at,
+        unread_count: r.unread_count,
+        request: {
+          id_request: r.id_request,
+          status: r.request_status,
+          description: r.request_description,
+          id_machine: r.id_machine,
+          id_category: r.id_category,
+          machine_name: r.machine_name,
+          category_name: r.category_name,
+          id_response_chosen: r.id_response_chosen,
+        },
+        profile: {
+          id_profile: "",
+          display_name: r.buyer_username || "Aluno",
+          avatar_url: null,
+          sub_profile_slug: null,
+          username: r.buyer_username || null,
+          is_clan: false,
+        },
+        course: r.id_course ? { id_course: r.id_course } : null,
+      }));
+      return { chats };
+    });
+  }
+
   static async cancelRequest(user, id_request) {
     return runWithLogs(log, "cancelRequest", () => ({ id_request }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };

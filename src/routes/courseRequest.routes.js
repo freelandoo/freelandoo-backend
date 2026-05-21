@@ -10,6 +10,7 @@ const auth = [authMiddleware];
 router.post("/", ...auth, asyncHandler(CourseRequestController.create));
 router.get("/me", ...auth, asyncHandler(CourseRequestController.listMine));
 router.get("/me/chats", ...auth, asyncHandler(CourseRequestController.listMyChats));
+router.get("/me/pro-chats", ...auth, asyncHandler(CourseRequestController.listMyProChats));
 router.post("/:id/cancel", ...auth, asyncHandler(CourseRequestController.cancel));
 
 // PRO side

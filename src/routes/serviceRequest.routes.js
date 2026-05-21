@@ -10,6 +10,7 @@ const auth = [authMiddleware];
 router.post("/", ...auth, asyncHandler(ServiceRequestController.create));
 router.get("/me", ...auth, asyncHandler(ServiceRequestController.listMine));
 router.get("/me/chats", ...auth, asyncHandler(ServiceRequestController.listMyChats));
+router.get("/me/pro-chats", ...auth, asyncHandler(ServiceRequestController.listMyProChats));
 router.post("/:id/cancel", ...auth, asyncHandler(ServiceRequestController.cancel));
 router.delete("/:id", ...auth, asyncHandler(ServiceRequestController.hide));
 router.post("/:id/finalize-response/:id_response", ...auth, asyncHandler(ServiceRequestController.finalize));

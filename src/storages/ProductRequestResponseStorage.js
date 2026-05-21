@@ -54,6 +54,34 @@ class ProductRequestResponseStorage {
     return rows;
   }
 
+  // Respostas enviadas por qualquer subperfil do vendedor (lado vendedor).
+  static async listBySellerUser(conn, id_user) {
+    const { rows } = await conn.query(
+      `SELECT prr.*,
+              p.display_name AS my_profile_name,
+              pp.name AS suggested_product_name,
+              pp.price_amount AS suggested_product_price,
+              pr.title AS request_title,
+              pr.description AS request_description,
+              pr.city AS request_city,
+              pr.state AS request_state,
+              pr.status AS request_status,
+              pr.id_product_category,
+              pcat.name AS category_name,
+              buyer.username AS buyer_username
+         FROM public.tb_product_request_response prr
+         JOIN public.tb_profile p ON p.id_profile = prr.id_profile
+         JOIN public.tb_product_request pr ON pr.id_product_request = prr.id_product_request
+         JOIN public.tb_user buyer ON buyer.id_user = pr.id_buyer_user
+    LEFT JOIN public.tb_profile_product pp ON pp.id_profile_product = prr.id_profile_product
+    LEFT JOIN public.tb_product_category pcat ON pcat.id_product_category = pr.id_product_category
+        WHERE prr.id_seller_user = $1
+        ORDER BY prr.created_at DESC`,
+      [id_user]
+    );
+    return rows;
+  }
+
   static async countByRequest(conn, id_product_request) {
     const { rows } = await conn.query(
       `SELECT COUNT(*)::INT AS total
