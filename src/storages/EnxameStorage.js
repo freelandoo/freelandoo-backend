@@ -237,13 +237,51 @@ class EnxameStorage {
       );
       return { row: rows[0], created: false };
     }
+    // profession_slug é NOT NULL com CHECK ^[a-z0-9]+(-[a-z0-9]+)*$ e UNIQUE
+    // case-insensitive (mig 011). Gera no Postgres com unaccent e resolve
+    // colisão por sufixo numérico — mesmo algoritmo das migs 011/085.
     const { rows } = await conn.query(
       `
-      INSERT INTO public.tb_category (desc_category, id_machine, is_active)
-      VALUES ($1, $2, TRUE)
+      WITH
+      base AS (
+        SELECT NULLIF(
+          regexp_replace(
+            regexp_replace(
+              regexp_replace(lower(unaccent($1)), '[^a-z0-9]+', '-', 'g'),
+              '-+', '-', 'g'
+            ),
+            '^-|-$', '', 'g'
+          ),
+          ''
+        ) AS slug
+      ),
+      base_clamped AS (
+        SELECT
+          CASE
+            WHEN slug IS NULL THEN 'profissao'
+            ELSE substring(slug, 1, 75)
+          END AS slug
+        FROM base
+      ),
+      candidate AS (
+        SELECT
+          (
+            SELECT CASE WHEN n = 1 THEN b.slug ELSE b.slug || '-' || n::text END
+              FROM base_clamped b
+              CROSS JOIN generate_series(1, 9999) AS n
+             WHERE NOT EXISTS (
+               SELECT 1 FROM public.tb_category c
+                WHERE lower(c.profession_slug) =
+                  CASE WHEN n = 1 THEN b.slug ELSE b.slug || '-' || n::text END
+             )
+             LIMIT 1
+          ) AS slug
+      )
+      INSERT INTO public.tb_category (desc_category, id_machine, is_active, profession_slug)
+      SELECT $2, $3, TRUE, slug FROM candidate
       RETURNING *
       `,
-      [desc_category, id_enxame]
+      [desc_category, desc_category, id_enxame]
     );
     return { row: rows[0], created: true };
   }
