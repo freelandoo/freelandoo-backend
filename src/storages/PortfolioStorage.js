@@ -251,7 +251,7 @@ class PortfolioStorage {
         JOIN public.manifestation_products mp ON mp.id = um.product_id
         WHERE um.user_id = pro.id_user
           AND um.is_active = TRUE
-          AND um.expires_at > NOW()
+          AND (um.expires_at IS NULL OR um.expires_at > NOW())
           AND COALESCE(pro.is_clan, FALSE) = FALSE
         LIMIT 1
       ) mf ON TRUE
