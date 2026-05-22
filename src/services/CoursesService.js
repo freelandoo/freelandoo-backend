@@ -16,6 +16,7 @@ const StripeService = require("./StripeService");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const { assertMinorPermission } = require("../utils/supervision");
 const { slugify } = require("../utils/slug");
+const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CoursesService");
@@ -88,6 +89,10 @@ function publicCourseShape(row) {
     price_cents: row.price_cents,
     status: row.status,
     feed_post_id: row.feed_post_id || null,
+    affiliates_allowed: row.affiliates_allowed ?? false,
+    affiliate_commission_pct: row.affiliate_commission_pct != null
+      ? Number(row.affiliate_commission_pct)
+      : 25,
     published_at: row.published_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -285,6 +290,10 @@ class CoursesService {
             ? body.profile_id.trim()
             : null;
 
+        const optIn = {};
+        const optInErr = parseAffiliateOptIn(body, optIn);
+        if (optInErr) return { error: optInErr };
+
         const client = await pool.connect();
         try {
           if (!(await profileBelongsToUser(client, profileId, user.id_user))) {
@@ -300,6 +309,8 @@ class CoursesService {
             description,
             coverUrl,
             priceCents,
+            affiliatesAllowed: optIn.affiliates_allowed,
+            affiliateCommissionPct: optIn.affiliate_commission_pct,
           });
           return { course: publicCourseShape(created) };
         } finally {
@@ -398,6 +409,9 @@ class CoursesService {
               patch.status = next;
             }
           }
+
+          const optInErr = parseAffiliateOptIn(body, patch);
+          if (optInErr) return { error: optInErr };
 
           const updated = await CoursesStorage.updateById(
             client,

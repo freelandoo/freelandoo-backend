@@ -21,19 +21,29 @@ class ProfileServiceStorage {
     return r.rows[0] || null;
   }
 
-  static async create(conn, { id_profile, name, description, duration_minutes, price_amount, is_active }) {
+  static async create(conn, {
+    id_profile, name, description, duration_minutes, price_amount, is_active,
+    affiliates_allowed = false, affiliate_commission_pct = 25,
+  }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_service
-        (id_profile, name, description, duration_minutes, price_amount, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6)
+        (id_profile, name, description, duration_minutes, price_amount, is_active,
+         affiliates_allowed, affiliate_commission_pct)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [id_profile, name, description || null, duration_minutes, price_amount, is_active !== false]
+      [
+        id_profile, name, description || null, duration_minutes, price_amount,
+        is_active !== false, affiliates_allowed === true, affiliate_commission_pct,
+      ]
     );
     return r.rows[0];
   }
 
   static async update(conn, id_profile_service, fields) {
-    const allowed = ["name", "description", "duration_minutes", "price_amount", "is_active"];
+    const allowed = [
+      "name", "description", "duration_minutes", "price_amount", "is_active",
+      "affiliates_allowed", "affiliate_commission_pct",
+    ];
     const sets = [];
     const values = [];
     let i = 1;

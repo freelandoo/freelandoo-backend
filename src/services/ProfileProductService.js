@@ -9,6 +9,7 @@ const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadProductMediaToR2 = require("../integrations/r2/uploadProductMedia");
 const { processPortfolioMedia } = require("../utils/mediaProcessing");
+const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ProfileProductService");
@@ -119,6 +120,9 @@ function validateInput(payload, { partial = false } = {}) {
       out.id_product_category = c;
     }
   }
+
+  const optInErr = parseAffiliateOptIn(payload, out);
+  if (optInErr) return { error: optInErr };
 
   return { data: out };
 }

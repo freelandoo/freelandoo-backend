@@ -7,6 +7,7 @@ const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadServiceMediaToR2 = require("../integrations/r2/uploadServiceMedia");
 const { processPortfolioMedia } = require("../utils/mediaProcessing");
+const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ProfileServiceService");
@@ -55,6 +56,8 @@ function validateInput(payload, { partial = false } = {}) {
     }
     out.member_profile_ids = [...seen];
   }
+  const optInErr = parseAffiliateOptIn(payload, out);
+  if (optInErr) return { error: optInErr };
   return { data: out };
 }
 
