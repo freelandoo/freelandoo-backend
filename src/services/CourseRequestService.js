@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const CourseRequestStorage = require("../storages/CourseRequestStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const realtime = require("../realtime/socket");
 const {
   assertNotMinorForServiceRequest,
   assertNotMinorForMural,
@@ -224,6 +225,23 @@ class CourseRequestService {
         sender,
         content: content.slice(0, 4000),
       });
+
+      // Realtime: empurra pros 2 lados (USER e PRO).
+      try {
+        const proProfile = await ProfileStorage.getProfileById(pool, resp.id_profile);
+        const buyerUserId = req.id_buyer_user;
+        const proUserId = proProfile?.id_user;
+        const payload = { id_response, kind: "course", sender, message: msg };
+        if (buyerUserId) realtime.emitToUser(buyerUserId, "os:message", payload);
+        if (proUserId && proUserId !== buyerUserId) {
+          realtime.emitToUser(proUserId, "os:message", payload);
+        }
+        if (buyerUserId) realtime.emitToUser(buyerUserId, "nav-counts:changed", { reason: "os_message", id_response });
+        if (proUserId && proUserId !== buyerUserId) {
+          realtime.emitToUser(proUserId, "nav-counts:changed", { reason: "os_message", id_response });
+        }
+      } catch { /* realtime é best-effort */ }
+
       return { message: msg };
     });
   }

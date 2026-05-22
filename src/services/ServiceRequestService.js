@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const ServiceRequestStorage = require("../storages/ServiceRequestStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const realtime = require("../realtime/socket");
 const {
   assertNotMinorForServiceRequest,
   assertNotMinorForMural,
@@ -372,6 +373,29 @@ class ServiceRequestService {
         content,
       });
       await ServiceRequestStorage.markRead(pool, id_response, ctx.side);
+
+      // Realtime: empurra pros 2 lados (USER e PRO) sem precisar polling.
+      try {
+        const proProfile = await ProfileStorage.getProfileById(pool, ctx.response.id_profile);
+        const buyerUserId = ctx.request.id_user;
+        const proUserId = proProfile?.id_user;
+        const payload = {
+          id_response,
+          kind: "service",
+          sender: ctx.side,
+          message: msg,
+        };
+        if (buyerUserId) realtime.emitToUser(buyerUserId, "os:message", payload);
+        if (proUserId && proUserId !== buyerUserId) {
+          realtime.emitToUser(proUserId, "os:message", payload);
+        }
+        // Atualiza badges/contadores no header
+        if (buyerUserId) realtime.emitToUser(buyerUserId, "nav-counts:changed", { reason: "os_message", id_response });
+        if (proUserId && proUserId !== buyerUserId) {
+          realtime.emitToUser(proUserId, "nav-counts:changed", { reason: "os_message", id_response });
+        }
+      } catch { /* realtime é best-effort */ }
+
       return { message: msg };
     });
   }
