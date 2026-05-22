@@ -121,6 +121,14 @@ function validateInput(payload, { partial = false } = {}) {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(payload, "delivery_mode")) {
+    const m = String(payload.delivery_mode || "").toLowerCase();
+    if (m !== "shipping" && m !== "local_pickup") {
+      return { error: "delivery_mode inválido (shipping ou local_pickup)" };
+    }
+    out.delivery_mode = m;
+  }
+
   const optInErr = parseAffiliateOptIn(payload, out);
   if (optInErr) return { error: optInErr };
 

@@ -6,6 +6,33 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ShippingService");
 
+// Limites das transportadoras de encomenda comum (Correios PAC/SEDEX,
+// Jadlog .Package/.Com). Acima disso, todas recusam e o produto cai pra
+// "combine retirada com o vendedor".
+const MAX_SUM_CM = 200;
+const MAX_SIDE_CM = 105;
+const MAX_WEIGHT_G = 30000;
+
+function checkShippingLimits({ height_cm, width_cm, length_cm, weight_grams }) {
+  const h = Number(height_cm) || 0;
+  const w = Number(width_cm) || 0;
+  const l = Number(length_cm) || 0;
+  const g = Number(weight_grams) || 0;
+  const sum = h + w + l;
+  const biggest = Math.max(h, w, l);
+
+  const reasons = [];
+  if (sum > MAX_SUM_CM) reasons.push("sum");
+  if (biggest > MAX_SIDE_CM) reasons.push("side");
+  if (g > MAX_WEIGHT_G) reasons.push("weight");
+  return {
+    exceeded: reasons.length > 0,
+    reasons,
+    limits: { max_sum_cm: MAX_SUM_CM, max_side_cm: MAX_SIDE_CM, max_weight_g: MAX_WEIGHT_G },
+    actual: { sum_cm: sum, biggest_side_cm: biggest, weight_g: g },
+  };
+}
+
 const CACHE = new Map();
 const TTL_MS = 5 * 60 * 1000;
 
@@ -49,6 +76,41 @@ class ShippingService {
       if (product.profile_is_clan) return { error: "Produto não encontrado" };
       if (!product.profile_is_paid) return { error: "Loja indisponível" };
 
+      // Retirada no local — vendedor combina entrega direto. Não consulta
+      // transportadora, frontend mostra contato do vendedor.
+      if (product.delivery_mode === "local_pickup") {
+        return {
+          mode: "local_pickup",
+          origin_zipcode: null,
+          destination_zipcode: destCep,
+          destination_address: await lookupZipcode(destCep).catch(() => null),
+          options: [],
+        };
+      }
+
+      // Dimensões/peso fora dos limites das transportadoras — nem chama o
+      // Melhor Envio (ia retornar erro em todos os carriers). Frontend mostra
+      // "excedeu o limite, combine retirada com o vendedor".
+      const limitCheck = checkShippingLimits({
+        height_cm: product.height_cm,
+        width_cm: product.width_cm,
+        length_cm: product.length_cm,
+        weight_grams: product.weight_grams,
+      });
+      if (limitCheck.exceeded) {
+        return {
+          mode: "shipping",
+          exceeded_limits: true,
+          exceeded_reasons: limitCheck.reasons,
+          limits: limitCheck.limits,
+          actual: limitCheck.actual,
+          origin_zipcode: null,
+          destination_zipcode: destCep,
+          destination_address: await lookupZipcode(destCep).catch(() => null),
+          options: [],
+        };
+      }
+
       const originCep = normalizeCep(product.origin_zipcode_override) ||
         normalizeCep(product.profile_origin_zipcode);
       if (!originCep) return { error: "Vendedor não configurou CEP de origem" };
@@ -81,6 +143,7 @@ class ShippingService {
       ]);
 
       const result = {
+        mode: "shipping",
         origin_zipcode: originCep,
         destination_zipcode: destCep,
         destination_address,
