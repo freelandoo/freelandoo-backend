@@ -53,15 +53,15 @@ class ProfileProductStorage {
     id_profile, name, description, price_amount, stock_quantity,
     weight_grams, height_cm, width_cm, length_cm,
     origin_zipcode_override, is_active, id_product_category,
-    affiliates_allowed = false, affiliate_commission_pct = 25,
+    affiliates_allowed = false,
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_product
         (id_profile, name, description, price_amount, stock_quantity,
          weight_grams, height_cm, width_cm, length_cm,
          origin_zipcode_override, is_active, id_product_category,
-         affiliates_allowed, affiliate_commission_pct)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         affiliates_allowed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         id_profile, name, description || null,
@@ -71,7 +71,6 @@ class ProfileProductStorage {
         is_active !== false,
         id_product_category || null,
         affiliates_allowed === true,
-        affiliate_commission_pct,
       ]
     );
     return r.rows[0];
@@ -82,7 +81,7 @@ class ProfileProductStorage {
       "name", "description", "price_amount", "stock_quantity",
       "weight_grams", "height_cm", "width_cm", "length_cm",
       "origin_zipcode_override", "is_active", "id_product_category",
-      "affiliates_allowed", "affiliate_commission_pct",
+      "affiliates_allowed",
     ];
     const sets = [];
     const values = [];

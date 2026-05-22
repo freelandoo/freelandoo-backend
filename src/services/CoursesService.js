@@ -90,9 +90,6 @@ function publicCourseShape(row) {
     status: row.status,
     feed_post_id: row.feed_post_id || null,
     affiliates_allowed: row.affiliates_allowed ?? false,
-    affiliate_commission_pct: row.affiliate_commission_pct != null
-      ? Number(row.affiliate_commission_pct)
-      : 25,
     published_at: row.published_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -310,7 +307,6 @@ class CoursesService {
             coverUrl,
             priceCents,
             affiliatesAllowed: optIn.affiliates_allowed,
-            affiliateCommissionPct: optIn.affiliate_commission_pct,
           });
           return { course: publicCourseShape(created) };
         } finally {
