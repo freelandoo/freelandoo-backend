@@ -77,6 +77,7 @@ const postReportsRoutes = require("./postReports.routes");
 const countriesRoutes = require("./countries.routes");
 const navCountsRoutes = require("./navCounts.routes");
 const userTourProgressRoutes = require("./userTourProgress.routes");
+const meOfferingsRoutes = require("./meOfferings.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -162,4 +163,5 @@ module.exports = (app) => {
   app.use("/countries", countriesRoutes);
   app.use("/me", navCountsRoutes);
   app.use("/tours", userTourProgressRoutes);
+  app.use("/me", meOfferingsRoutes);
 };
