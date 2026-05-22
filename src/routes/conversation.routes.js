@@ -14,6 +14,13 @@ router.get(
   asyncHandler(ConversationController.unread)
 );
 
+// Busca de perfis/clans pra começar nova conversa. DEVE vir antes de "/:id".
+router.get(
+  "/search",
+  authMiddleware,
+  asyncHandler(ConversationController.search)
+);
+
 // Grupos — rotas estáticas antes de "/:id".
 router.post(
   "/groups",

@@ -78,6 +78,14 @@ class ConversationController {
     });
     return sendServiceResult(res, result);
   }
+
+  static async search(req, res) {
+    const result = await ConversationService.searchMessageable(req.user, {
+      q: req.query?.q,
+      limit: req.query?.limit,
+    });
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = ConversationController;

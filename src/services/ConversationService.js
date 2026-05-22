@@ -125,8 +125,10 @@ async function resolveActor(conn, user, payload = {}) {
         });
 
   if (!actor) return { error: "Sem permissão para enviar como esta entidade" };
-  if (!EntityFollowStorage.isPublicEntity(actor)) {
-    return { error: "Entidade ativa e publicada é obrigatória" };
+  // Mensagens privadas usam check frouxo: qualquer subperfil/clan/user-account
+  // ativo pode enviar. Não exige is_paid nem is_visible.
+  if (!EntityFollowStorage.isMessageableEntity(actor)) {
+    return { error: "Entidade indisponível para enviar mensagens" };
   }
 
   return { actor_type, actor_id, actor };
@@ -150,7 +152,7 @@ async function resolveTarget(conn, payload = {}) {
   }
 
   if (!resolved) return { error: "Destinatário não encontrado" };
-  if (!EntityFollowStorage.isPublicEntity(resolved)) {
+  if (!EntityFollowStorage.isMessageableEntity(resolved)) {
     return { error: "Destinatário não está disponível para mensagens" };
   }
   return { target_id, target: resolved };
@@ -798,6 +800,65 @@ class ConversationService {
         return {
           unread_count: updated?.unread_count || 0,
           last_read_at: updated?.last_read_at,
+        };
+      }
+    );
+  }
+
+  static async searchMessageable(user, payload) {
+    return runWithLogs(
+      log,
+      "searchMessageable",
+      () => ({ id_user: user?.id_user, q: payload?.q }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const qRaw = String(payload?.q || "").trim();
+        if (qRaw.length < 1) return { results: [] };
+        const limit = Math.min(20, Math.max(1, Number(payload?.limit) || 12));
+        // LIKE com escape básico — usamos lower + replace pra ILIKE seguro.
+        const term = qRaw.replace(/[%_]/g, "\\$&");
+        const like = `%${term}%`;
+        const handleLike = `${term.replace(/^@/, "")}%`;
+        const { rows } = await pool.query(
+          `
+          SELECT
+            p.id_profile,
+            CASE WHEN p.is_clan THEN 'clan' ELSE 'profile' END AS type,
+            p.display_name,
+            p.avatar_url,
+            p.sub_profile_slug,
+            p.is_clan,
+            p.is_user_account,
+            u.username
+          FROM public.tb_profile p
+          JOIN public.tb_user u ON u.id_user = p.id_user
+          WHERE p.deleted_at IS NULL
+            AND p.is_active = TRUE
+            AND p.id_user <> $1
+            AND (
+              p.display_name ILIKE $2 ESCAPE '\\'
+              OR u.username ILIKE $3 ESCAPE '\\'
+              OR p.sub_profile_slug ILIKE $2 ESCAPE '\\'
+            )
+          ORDER BY
+            CASE WHEN u.username ILIKE $3 ESCAPE '\\' THEN 0 ELSE 1 END,
+            p.is_paid DESC,
+            p.created_at DESC
+          LIMIT $4
+          `,
+          [user.id_user, like, handleLike, limit]
+        );
+        return {
+          results: rows.map((r) => ({
+            id: r.id_profile,
+            type: r.type,
+            display_name: r.display_name,
+            avatar_url: r.avatar_url,
+            sub_profile_slug: r.sub_profile_slug,
+            is_clan: r.is_clan,
+            is_user_account: r.is_user_account,
+            username: r.username,
+          })),
         };
       }
     );

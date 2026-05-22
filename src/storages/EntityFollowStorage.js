@@ -226,6 +226,18 @@ class EntityFollowStorage {
     );
   }
 
+  // Check mais frouxo usado pelo sistema de mensagens. Qualquer entidade ativa
+  // e não apagada pode enviar/receber DM — inclusive perfil-fantasma do user
+  // account (is_paid=FALSE, is_visible=FALSE), subperfis ainda não ativados e
+  // clans. A ideia: mensagens privadas não dependem de assinatura.
+  static isMessageableEntity(entity) {
+    return !!(
+      entity &&
+      entity.is_active &&
+      !entity.deleted_at
+    );
+  }
+
   static async findActive(conn, data) {
     const { rows } = await conn.query(
       `
