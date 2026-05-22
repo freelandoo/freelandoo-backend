@@ -13,12 +13,18 @@ module.exports = {
     const r = await db.query("SELECT * FROM ranking_config WHERE id = 1");
     const cfg = r.rows[0] ?? null;
     if (!cfg) return null;
+    const periodDays = cfg.period_days ?? 90;
+    const seasonEndsAt = cfg.season_started_at
+      ? new Date(new Date(cfg.season_started_at).getTime() + periodDays * 86400000).toISOString()
+      : null;
     return {
       ...cfg,
       recalculation_interval_hours: 2,
       next_recalculation_at: cfg.last_recalculated_at
         ? new Date(new Date(cfg.last_recalculated_at).getTime() + TWO_HOURS_MS).toISOString()
         : null,
+      // Temporada: o ranking zera quando NOW() passa de season_ends_at.
+      season_ends_at: seasonEndsAt,
     };
   },
 
@@ -258,10 +264,87 @@ module.exports = {
       return { success: false, skipped: true, reason: "disabled", updated: 0 };
     }
 
-    const periodDays = cfg.period_days ?? 30;
-    const maxOnline = cfg.max_online_minutes ?? 120;
+    // Encerra temporada(s) vencida(s): arquiva o Hall da Fama e zera o placar.
+    const rolled = await this.rollSeasonsIfDue(db, cfg);
+    const freshCfg = rolled > 0 ? await this.getConfig(db) : cfg;
 
-    // Upsert pontuação bruta para cada perfil publicado
+    // Recalcula a pontuação da temporada corrente.
+    await this.runRecalcPasses(db, freshCfg);
+
+    await db.query(`UPDATE ranking_config SET last_recalculated_at = NOW() WHERE id = 1`);
+
+    const count = await db.query(`SELECT COUNT(*) FROM profile_ranking`);
+    return {
+      success: true,
+      updated: parseInt(count.rows[0].count, 10),
+      entities_processed: parseInt(count.rows[0].count, 10),
+      seasons_rolled: rolled,
+      season_number: freshCfg.season_number,
+      recalculated_at: new Date().toISOString(),
+      next_recalculation: new Date(Date.now() + TWO_HOURS_MS).toISOString(),
+    };
+  },
+
+  // Enquanto a temporada corrente já passou de (season_started_at + period_days),
+  // arquiva o placar final no Hall da Fama, abre a próxima temporada e zera o
+  // placar. Retorna quantas temporadas foram encerradas (normalmente 0 ou 1).
+  async rollSeasonsIfDue(db, cfg) {
+    let current = cfg;
+    let rolled = 0;
+    let guard = 0;
+    while (guard++ < 60) {
+      const due = await db.query(
+        `SELECT (NOW() >= $1::timestamptz + ($2 || ' days')::interval) AS due`,
+        [current.season_started_at, current.period_days]
+      );
+      if (!due.rows[0]?.due) break;
+
+      // 1. Recalcula a temporada que está encerrando (garante placar final).
+      await this.runRecalcPasses(db, current);
+
+      // 2. Arquiva o Hall da Fama — só quem pontuou na temporada.
+      await db.query(
+        `INSERT INTO ranking_season_archive
+           (season_number, id_profile, display_name, avatar_url, username, is_clan,
+            total_points, position_general, position_machine, position_city,
+            position_profession, season_started_at, season_ended_at)
+         SELECT $1, pr.id_profile, pro.display_name, pro.avatar_url, u.username,
+                pro.is_clan, pr.total_points, pr.position_general, pr.position_machine,
+                pr.position_city, pr.position_profession, $2::timestamptz, NOW()
+           FROM profile_ranking pr
+           JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+           JOIN tb_user u ON u.id_user = pro.id_user
+          WHERE pro.deleted_at IS NULL
+            AND pr.total_points > 0
+         ON CONFLICT (season_number, id_profile) DO NOTHING`,
+        [current.season_number, current.season_started_at]
+      );
+
+      // 3. Avança para a próxima temporada.
+      await db.query(
+        `UPDATE ranking_config
+            SET season_started_at = season_started_at + ($1 || ' days')::interval,
+                season_number = season_number + 1
+          WHERE id = 1`,
+        [current.period_days]
+      );
+
+      // 4. Zera o placar para a nova temporada começar do zero.
+      await db.query(`DELETE FROM profile_ranking`);
+
+      rolled += 1;
+      current = await this.getConfig(db);
+    }
+    return rolled;
+  },
+
+  // Recalcula profile_ranking para a temporada descrita por `cfg`.
+  // total_points = soma dos subprofile_xp_events com created_at >= season_started_at.
+  async runRecalcPasses(db, cfg) {
+    const maxOnline = cfg.max_online_minutes ?? 120;
+    const seasonStart = cfg.season_started_at;
+
+    // Upsert pontuação bruta para cada perfil publicado (temporada corrente)
     await db.query(
       `INSERT INTO profile_ranking
          (id_profile, total_points, visits_count, likes_count, ratings_count, avg_rating, online_minutes, content_retention_seconds, updated_at)
@@ -284,42 +367,42 @@ module.exports = {
          SELECT COALESCE(SUM(xpe.xp_amount), 0)::numeric AS points
            FROM subprofile_xp_events xpe
           WHERE xpe.id_profile = pro.id_profile
-            AND xpe.created_at >= NOW() - ($2 || ' days')::interval
+            AND xpe.created_at >= $2::timestamptz
        ) xp ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt
            FROM profile_visits pv
           WHERE pv.id_profile = pro.id_profile
-            AND pv.visited_at >= NOW() - ($2 || ' days')::interval
+            AND pv.visited_at >= $2::timestamptz
        ) v ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt
            FROM portfolio_likes pl
           WHERE pl.id_profile = pro.id_profile
-            AND pl.liked_at >= NOW() - ($2 || ' days')::interval
+            AND pl.liked_at >= $2::timestamptz
        ) l ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS cnt, COALESCE(AVG(rating), 0)::numeric(4,2) AS avg_r
            FROM profile_ratings pr
           WHERE pr.id_profile = pro.id_profile
-            AND pr.rated_at >= NOW() - ($2 || ' days')::interval
+            AND pr.rated_at >= $2::timestamptz
        ) rat ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(uot.minutes_online), 0)::int AS mins
            FROM user_online_time uot
           WHERE uot.id_user = pro.id_user
-            AND uot.date >= CURRENT_DATE - $2::int
+            AND uot.date >= $2::date
        ) o ON TRUE
 
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(pcr.seconds_watched), 0)::int AS seconds_watched
            FROM portfolio_content_retention pcr
           WHERE pcr.id_profile = pro.id_profile
-            AND pcr.updated_at >= NOW() - ($2 || ' days')::interval
+            AND pcr.updated_at >= $2::timestamptz
        ) ret ON TRUE
 
        WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
@@ -336,7 +419,7 @@ module.exports = {
          online_minutes  = EXCLUDED.online_minutes,
          content_retention_seconds = EXCLUDED.content_retention_seconds,
          updated_at      = NOW()`,
-      [maxOnline, periodDays]
+      [maxOnline, seasonStart]
     );
 
     // Pass 2 — pontuação do clan = média simples dos total_points dos membros
@@ -435,18 +518,6 @@ module.exports = {
         ) sub
        WHERE pr.id_profile = sub.id_profile
     `);
-
-    await db.query(`UPDATE ranking_config SET last_recalculated_at = NOW() WHERE id = 1`);
-
-    const count = await db.query(`SELECT COUNT(*) FROM profile_ranking`);
-    const recalculatedAt = new Date().toISOString();
-    return {
-      success: true,
-      updated: parseInt(count.rows[0].count, 10),
-      entities_processed: parseInt(count.rows[0].count, 10),
-      recalculated_at: recalculatedAt,
-      next_recalculation: new Date(Date.now() + TWO_HOURS_MS).toISOString(),
-    };
   },
 
   // Recálculo automático: roda a cada 2 horas, sem recalcular em page load.
@@ -1011,5 +1082,36 @@ module.exports = {
       [machine_slug || null, municipio || null, id_category ? parseInt(id_category) : null, limit, offset]
     );
     return this.attachXpSummaries(db, r.rows);
+  },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // HALL DA FAMA — temporadas encerradas
+  // ──────────────────────────────────────────────────────────────────────────
+  async listSeasons(db) {
+    const r = await db.query(
+      `SELECT season_number,
+              MIN(season_started_at) AS season_started_at,
+              MAX(season_ended_at)   AS season_ended_at,
+              COUNT(*)::int          AS entries,
+              MAX(total_points)      AS top_points
+         FROM ranking_season_archive
+        GROUP BY season_number
+        ORDER BY season_number DESC`
+    );
+    return r.rows;
+  },
+
+  async getSeasonArchive(db, { season_number, limit = 100 }) {
+    const r = await db.query(
+      `SELECT season_number, id_profile, display_name, avatar_url, username, is_clan,
+              total_points, position_general, position_machine, position_city,
+              position_profession, season_started_at, season_ended_at
+         FROM ranking_season_archive
+        WHERE season_number = $1
+        ORDER BY position_general ASC NULLS LAST, total_points DESC
+        LIMIT $2`,
+      [season_number, Math.min(limit, 200)]
+    );
+    return r.rows;
   },
 };

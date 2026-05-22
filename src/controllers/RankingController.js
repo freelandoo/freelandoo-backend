@@ -226,6 +226,26 @@ module.exports = {
     return res.json(rows);
   },
 
+  // GET /ranking/public/seasons  (público — Hall da Fama: temporadas encerradas)
+  async getSeasons(req, res) {
+    const seasons = await RankingStorage.listSeasons(pool);
+    return res.json({ seasons });
+  },
+
+  // GET /ranking/public/seasons/:season_number  (público — campeões da temporada)
+  async getSeasonChampions(req, res) {
+    const seasonNumber = parseInt(req.params.season_number, 10);
+    if (!Number.isInteger(seasonNumber) || seasonNumber < 1) {
+      return res.status(400).json({ error: "season_number inválido" });
+    }
+    const limit = Math.min(parseInt(req.query.limit ?? "100", 10), 200);
+    const champions = await RankingStorage.getSeasonArchive(pool, {
+      season_number: seasonNumber,
+      limit,
+    });
+    return res.json({ season_number: seasonNumber, champions });
+  },
+
   // ──────────────────────────────────── ADMIN ────────────────────────────────
 
   // GET /admin/rankings

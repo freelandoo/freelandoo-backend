@@ -15,6 +15,8 @@ router.get("/public/city", asyncHandler(RankingController.getTopByCity));
 router.get("/public/profession/:profession_slug", asyncHandler(RankingController.getTopByProfession));
 router.get("/public/clans/general", asyncHandler(RankingController.getTopClansGeneral));
 router.get("/public/clans/machine/:id_machine", asyncHandler(RankingController.getTopClansByMachine));
+router.get("/public/seasons", asyncHandler(RankingController.getSeasons));
+router.get("/public/seasons/:season_number", asyncHandler(RankingController.getSeasonChampions));
 
 // Autenticados (opcionalmente autenticado para visitas com user_id)
 router.post("/like", authMiddleware, asyncHandler(RankingController.toggleLike));
