@@ -44,10 +44,10 @@ async function loadProfileForUser(conn, { id_profile, id_user }) {
   return row;
 }
 
-async function resolvePromotionCode(conn, couponCode) {
+async function resolvePromotionCode(conn, couponCode, buyerUserId) {
   if (!couponCode) return { promotion_code_id: null, id_coupon: null };
   const { rows } = await conn.query(
-    `SELECT id_coupon, stripe_promotion_code_id, is_active, expires_at
+    `SELECT id_coupon, stripe_promotion_code_id, is_active, expires_at, owner_user_id
      FROM public.tb_coupon
      WHERE UPPER(code) = UPPER($1)
      LIMIT 1`,
@@ -55,6 +55,10 @@ async function resolvePromotionCode(conn, couponCode) {
   );
   const row = rows[0];
   if (!row) throw new ServiceError("Cupom inválido", 400);
+  // Veto auto-afiliação: ninguém compra com o próprio cupom.
+  if (row.owner_user_id && String(row.owner_user_id) === String(buyerUserId)) {
+    throw new ServiceError("Você não pode usar seu próprio cupom", 400);
+  }
   if (!row.is_active) throw new ServiceError("Cupom inativo", 400);
   if (row.expires_at && new Date(row.expires_at) < new Date()) {
     throw new ServiceError("Cupom expirado", 400);
@@ -121,7 +125,8 @@ async function createSessionForUser(user, body) {
 
       const couponInfo = await resolvePromotionCode(
         pool,
-        body?.coupon_code || null
+        body?.coupon_code || null,
+        user.id_user
       );
 
       const frontend = String(process.env.FRONTEND_URL || "").replace(/\/$/, "");
