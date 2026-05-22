@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const StripeService = require("./StripeService");
+const CouponDiscountResolver = require("./CouponDiscountResolver");
 const AnnualFeeSettingsStorage = require("../storages/AnnualFeeSettingsStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
@@ -44,10 +45,19 @@ async function loadProfileForUser(conn, { id_profile, id_user }) {
   return row;
 }
 
-async function resolvePromotionCode(conn, couponCode, buyerUserId) {
-  if (!couponCode) return { promotion_code_id: null, id_coupon: null };
+/**
+ * Resolve e valida o cupom informado no checkout de ativação.
+ *
+ * Diferente da versão antiga (que devolvia o promotion_code do Stripe), aqui
+ * devolvemos o cupom inteiro — o desconto é calculado por CouponDiscountResolver
+ * e cobrado direto no preço ad-hoc. Promotion code do Stripe não reflete
+ * override/regra-geral do admin, então não é mais usado.
+ */
+async function resolveCoupon(conn, couponCode, buyerUserId) {
+  if (!couponCode) return { coupon: null };
   const { rows } = await conn.query(
-    `SELECT id_coupon, stripe_promotion_code_id, is_active, expires_at, owner_user_id
+    `SELECT id_coupon, code, owner_user_id, is_active, expires_at,
+            discount_type, value, max_discount_cents
      FROM public.tb_coupon
      WHERE UPPER(code) = UPPER($1)
      LIMIT 1`,
@@ -63,13 +73,7 @@ async function resolvePromotionCode(conn, couponCode, buyerUserId) {
   if (row.expires_at && new Date(row.expires_at) < new Date()) {
     throw new ServiceError("Cupom expirado", 400);
   }
-  if (!row.stripe_promotion_code_id) {
-    throw new ServiceError("Cupom não sincronizado com Stripe", 400);
-  }
-  return {
-    promotion_code_id: row.stripe_promotion_code_id,
-    id_coupon: row.id_coupon,
-  };
+  return { coupon: row };
 }
 
 /**
@@ -123,11 +127,32 @@ async function createSessionForUser(user, body) {
         throw new ServiceError("Este perfil já está ativado", 409);
       }
 
-      const couponInfo = await resolvePromotionCode(
+      const { coupon } = await resolveCoupon(
         pool,
         body?.coupon_code || null,
         user.id_user
       );
+
+      // Desconto calculado pelas regras do admin (override > regra geral >
+      // campos do cupom) e cobrado direto no preço — o promotion code do
+      // Stripe ficava desatualizado quando o admin mudava o desconto.
+      const fullAmount = Number(settings.amount_cents);
+      let discountCents = 0;
+      if (coupon) {
+        const rule = await CouponDiscountResolver.resolve(pool, coupon);
+        discountCents = CouponDiscountResolver.calculateDiscount({
+          order_value_cents: fullAmount,
+          rule,
+        });
+      }
+      discountCents = Math.min(Math.max(discountCents, 0), fullAmount);
+      const chargeAmount = fullAmount - discountCents;
+      if (coupon && chargeAmount <= 0) {
+        throw new ServiceError(
+          "Este cupom zera o valor da ativação. Contate o suporte.",
+          409
+        );
+      }
 
       const frontend = String(process.env.FRONTEND_URL || "").replace(/\/$/, "");
       const successUrl = `${frontend}/pagamento/sucesso?session_id={CHECKOUT_SESSION_ID}&profile_id=${id_profile}`;
@@ -138,17 +163,21 @@ async function createSessionForUser(user, body) {
         id_profile: String(id_profile),
         type: "profile_activation",
       };
-      if (couponInfo.id_coupon) metadata.id_coupon = String(couponInfo.id_coupon);
+      if (coupon) {
+        metadata.id_coupon = String(coupon.id_coupon);
+        // Comissão de afiliado: o webhook reconstrói o bruto a partir destes.
+        metadata.original_amount_cents = String(fullAmount);
+        metadata.coupon_discount_cents = String(discountCents);
+      }
 
       const session = await StripeService.createProfileActivationCheckoutSession({
-        amount_cents: settings.amount_cents,
+        amount_cents: chargeAmount,
         currency: settings.currency || "BRL",
         productName: `Ativação do perfil — ${profile.display_name || "Freelandoo"}`,
         customerEmail: dbUser.email,
         clientReferenceId: String(user.id_user),
         successUrl,
         cancelUrl,
-        promotionCode: couponInfo.promotion_code_id,
         metadata,
       });
 
@@ -156,7 +185,7 @@ async function createSessionForUser(user, body) {
         id_user: user.id_user,
         id_profile,
         status: "pending",
-        amount_cents: settings.amount_cents,
+        amount_cents: chargeAmount,
         currency: settings.currency,
         stripe_customer_id:
           typeof session.customer === "string"
@@ -164,8 +193,8 @@ async function createSessionForUser(user, body) {
             : session.customer?.id || null,
         stripe_checkout_session_id: session.id,
         stripe_price_id: null,
-        stripe_promotion_code: couponInfo.promotion_code_id,
-        id_coupon: couponInfo.id_coupon,
+        stripe_promotion_code: null,
+        id_coupon: coupon ? coupon.id_coupon : null,
       });
 
       return {

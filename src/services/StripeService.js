@@ -84,11 +84,13 @@ async function createProfileActivationCheckoutSession({
   clientReferenceId,
   successUrl,
   cancelUrl,
-  promotionCode,
   metadata,
 }) {
   const stripe = client();
 
+  // O desconto de cupom é calculado no backend e embutido em `amount_cents`.
+  // allow_promotion_codes fica FALSE pra ninguém digitar um código avulso
+  // na página do Stripe e furar a validação (cupom próprio, override, etc.).
   const params = {
     mode: "payment",
     line_items: [
@@ -104,17 +106,13 @@ async function createProfileActivationCheckoutSession({
     success_url: successUrl,
     cancel_url: cancelUrl,
     client_reference_id: clientReferenceId,
-    allow_promotion_codes: promotionCode ? undefined : true,
+    allow_promotion_codes: false,
     metadata: metadata || {},
     payment_intent_data: { metadata: metadata || {} },
   };
 
   if (customerId) params.customer = customerId;
   else if (customerEmail) params.customer_email = customerEmail;
-
-  if (promotionCode) {
-    params.discounts = [{ promotion_code: promotionCode }];
-  }
 
   return stripe.checkout.sessions.create(params);
 }

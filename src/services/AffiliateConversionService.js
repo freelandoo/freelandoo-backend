@@ -12,6 +12,24 @@ function toCents(value, fallback = 0) {
 }
 
 function getSessionAmounts(session, subscription) {
+  // Caminho atual: o desconto de cupom é calculado no backend e embutido no
+  // preço, então o Stripe não reporta amount_discount. O bruto + desconto vêm
+  // da metadata da session (gravada por StripeSubscriptionService).
+  const meta = session?.metadata || {};
+  const metaSubtotal = toCents(meta.original_amount_cents, 0);
+  if (metaSubtotal > 0) {
+    const metaDiscount = Math.min(
+      toCents(meta.coupon_discount_cents, 0),
+      metaSubtotal
+    );
+    return {
+      subtotal_cents: metaSubtotal,
+      total_cents: metaSubtotal - metaDiscount,
+      discount_cents: metaDiscount,
+    };
+  }
+
+  // Fallback (sessions legadas com promotion code do Stripe).
   const fallbackSubtotal = toCents(subscription?.amount_cents, 0);
   const discount_cents = toCents(session?.total_details?.amount_discount, 0);
   const totalFallback = Math.max(0, fallbackSubtotal - discount_cents);
