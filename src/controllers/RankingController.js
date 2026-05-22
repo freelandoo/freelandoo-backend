@@ -154,13 +154,10 @@ module.exports = {
       return res.status(403).json({ error: "Acesso negado" });
     }
 
+    // getEngagement já retorna defaults zerados quando o perfil ainda não
+    // foi ranqueado, e sempre inclui temporada + pesos do tempo online.
     const engagement = await RankingStorage.getEngagement(pool, { id_profile });
-    return res.json(engagement ?? {
-      total_points: 0, visits_count: 0, likes_count: 0,
-      ratings_count: 0, avg_rating: 0, online_minutes: 0, content_retention_seconds: 0,
-      position_general: null, position_machine: null,
-      position_city: null, position_profession: null,
-    });
+    return res.json(engagement);
   },
 
   // GET /ranking/public/profile/:id_profile (público — pra botão Ranking no card)

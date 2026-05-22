@@ -600,22 +600,33 @@ module.exports = {
   // ENGAJAMENTO DO PERFIL (para o dono)
   // ──────────────────────────────────────────────────────────────────────────
   async getEngagement(db, { id_profile }) {
+    // Sempre retorna 1 linha — com defaults zerados se o perfil ainda não
+    // foi ranqueado. Inclui info da temporada e os pesos relevantes do
+    // tempo online pro painel poder mostrar "Pontuação — Temporada N" e
+    // calcular o XP por hora certo (em vez do hardcoded "2 pts/min").
     const r = await db.query(
       `SELECT
-         pr.total_points,
-         pr.visits_count,
-         pr.likes_count,
-         pr.ratings_count,
-         pr.avg_rating,
-         pr.online_minutes,
-         pr.content_retention_seconds,
+         COALESCE(pr.total_points, 0)              AS total_points,
+         COALESCE(pr.visits_count, 0)              AS visits_count,
+         COALESCE(pr.likes_count, 0)               AS likes_count,
+         COALESCE(pr.ratings_count, 0)             AS ratings_count,
+         COALESCE(pr.avg_rating, 0)                AS avg_rating,
+         COALESCE(pr.online_minutes, 0)            AS online_minutes,
+         COALESCE(pr.content_retention_seconds, 0) AS content_retention_seconds,
          pr.position_general,
          pr.position_machine,
          pr.position_city,
          pr.position_profession,
-         pr.updated_at
-       FROM profile_ranking pr
-       WHERE pr.id_profile = $1`,
+         pr.updated_at,
+         rc.season_number,
+         rc.season_started_at,
+         rc.period_days,
+         xs.online_minute_xp,
+         xs.max_online_minutes
+       FROM ranking_config rc
+       CROSS JOIN xp_settings xs
+       LEFT JOIN profile_ranking pr ON pr.id_profile = $1
+       WHERE rc.id = 1 AND xs.id = 1`,
       [id_profile]
     );
     return r.rows[0] ?? null;
