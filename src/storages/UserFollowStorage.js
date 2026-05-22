@@ -77,6 +77,30 @@ class UserFollowStorage {
     return rows.map((r) => r.target_profile_id);
   }
 
+  static async listFollowedProfiles(conn, follower_user_id) {
+    const { rows } = await conn.query(
+      `
+      SELECT
+        p.id_profile,
+        p.display_name,
+        p.avatar_url,
+        p.is_clan,
+        p.sub_profile_slug,
+        u.username,
+        uf.created_at AS followed_at
+        FROM public.tb_user_follow uf
+        JOIN public.tb_profile p ON p.id_profile = uf.target_profile_id
+        JOIN public.tb_user    u ON u.id_user    = p.id_user
+       WHERE uf.follower_user_id = $1
+         AND uf.deleted_at IS NULL
+         AND p.deleted_at IS NULL
+       ORDER BY uf.created_at DESC
+      `,
+      [follower_user_id]
+    );
+    return rows;
+  }
+
   static async countActiveByUser(conn, follower_user_id) {
     const { rows } = await conn.query(
       `

@@ -13,6 +13,8 @@ router.get(
   asyncHandler(EntityFollowController.listMessageableActors)
 );
 router.get("/me/summary", authMiddleware, asyncHandler(EntityFollowController.mySummary));
+// Lista os perfis que o usuário logado acompanha (nível de usuário).
+router.get("/me/following", authMiddleware, asyncHandler(EntityFollowController.myFollowing));
 router.post("/", authMiddleware, asyncHandler(EntityFollowController.follow));
 router.delete("/", authMiddleware, asyncHandler(EntityFollowController.unfollow));
 router.delete(

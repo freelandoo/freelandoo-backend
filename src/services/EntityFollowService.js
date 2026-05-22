@@ -196,6 +196,22 @@ class EntityFollowService {
     );
   }
 
+  static async myFollowing(user) {
+    return runWithLogs(
+      log,
+      "myFollowing",
+      () => ({ id_user: user?.id_user }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const items = await UserFollowStorage.listFollowedProfiles(
+          pool,
+          user.id_user
+        );
+        return { items, count: items.length };
+      }
+    );
+  }
+
   static async follow(user, payload) {
     return runWithLogs(
       log,

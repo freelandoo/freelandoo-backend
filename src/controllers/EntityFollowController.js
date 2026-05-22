@@ -17,6 +17,11 @@ class EntityFollowController {
     return sendServiceResult(res, result);
   }
 
+  static async myFollowing(req, res) {
+    const result = await EntityFollowService.myFollowing(req.user);
+    return sendServiceResult(res, result);
+  }
+
   static async follow(req, res) {
     const result = await EntityFollowService.follow(req.user, req.body || {});
     return sendServiceResult(res, result, 201);
