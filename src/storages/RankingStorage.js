@@ -28,20 +28,17 @@ module.exports = {
     };
   },
 
-  async updateConfig(db, { is_enabled, period_days, weight_visits, weight_likes, weight_ratings, weight_online, max_online_minutes }) {
+  // ranking_config guarda só estado da temporada + agendamento.
+  // Os pesos de pontuação ficam todos em xp_settings (mig 099).
+  async updateConfig(db, { is_enabled, period_days }) {
     const r = await db.query(
       `UPDATE ranking_config SET
-        is_enabled         = COALESCE($1, is_enabled),
-        period_days        = COALESCE($2, period_days),
-        weight_visits      = COALESCE($3, weight_visits),
-        weight_likes       = COALESCE($4, weight_likes),
-        weight_ratings     = COALESCE($5, weight_ratings),
-        weight_online      = COALESCE($6, weight_online),
-        max_online_minutes = COALESCE($7, max_online_minutes),
-        updated_at         = NOW()
+        is_enabled  = COALESCE($1, is_enabled),
+        period_days = COALESCE($2, period_days),
+        updated_at  = NOW()
        WHERE id = 1
        RETURNING *`,
-      [is_enabled, period_days, weight_visits, weight_likes, weight_ratings, weight_online, max_online_minutes]
+      [is_enabled, period_days]
     );
     return r.rows[0];
   },
@@ -216,17 +213,37 @@ module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   // TEMPO ONLINE (heartbeat — incrementa 1 min por chamada, máx configurável)
   // ──────────────────────────────────────────────────────────────────────────
-  async heartbeat(db, { id_user, max_online_minutes }) {
-    const max = max_online_minutes ?? 120;
+  // Soma `minutes` (delta desde o último heartbeat) ao tempo online do dia,
+  // respeitando o teto. Retorna { minutes_online, applied } — applied é quanto
+  // foi efetivamente somado (0 se o teto já estava batido), usado pra conceder
+  // o XP de tempo online na proporção certa.
+  async heartbeat(db, { id_user, max_online_minutes, minutes }) {
+    const max = Number(max_online_minutes ?? 120);
+    // Clamp anti-abuso: cliente nunca soma mais que 10 min por chamada.
+    const delta = Math.min(Math.max(1, Math.round(Number(minutes) || 1)), 10);
     const r = await db.query(
-      `INSERT INTO user_online_time (id_user, date, minutes_online)
-       VALUES ($1, CURRENT_DATE, 1)
-       ON CONFLICT (id_user, date) DO UPDATE
-         SET minutes_online = LEAST(user_online_time.minutes_online + 1, $2)
-       RETURNING minutes_online`,
-      [id_user, max]
+      `WITH prev AS (
+         SELECT minutes_online AS old
+           FROM user_online_time
+          WHERE id_user = $1 AND date = CURRENT_DATE
+       ),
+       upd AS (
+         INSERT INTO user_online_time (id_user, date, minutes_online)
+         VALUES ($1, CURRENT_DATE, LEAST($3, $2))
+         ON CONFLICT (id_user, date) DO UPDATE
+           SET minutes_online = LEAST(user_online_time.minutes_online + $3, $2)
+         RETURNING minutes_online AS new
+       )
+       SELECT upd.new, COALESCE(prev.old, 0) AS old
+         FROM upd LEFT JOIN prev ON TRUE`,
+      [id_user, max, delta]
     );
-    return r.rows[0]?.minutes_online ?? 0;
+    const row = r.rows[0] ?? { new: 0, old: 0 };
+    const minutesOnline = Number(row.new);
+    return {
+      minutes_online: minutesOnline,
+      applied: Math.max(0, minutesOnline - Number(row.old)),
+    };
   },
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -341,7 +358,9 @@ module.exports = {
   // Recalcula profile_ranking para a temporada descrita por `cfg`.
   // total_points = soma dos subprofile_xp_events com created_at >= season_started_at.
   async runRecalcPasses(db, cfg) {
-    const maxOnline = cfg.max_online_minutes ?? 120;
+    // O teto de tempo online vive em xp_settings (página única de pesos).
+    const xpSettings = await XpStorage.getSettings(db);
+    const maxOnline = Number(xpSettings?.max_online_minutes ?? 120);
     const seasonStart = cfg.season_started_at;
 
     // Upsert pontuação bruta para cada perfil publicado (temporada corrente)

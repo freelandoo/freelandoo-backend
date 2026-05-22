@@ -54,6 +54,7 @@ module.exports = {
       "is_active",
       "base_xp_level_1",
       "level_multiplier",
+      "max_online_minutes",
     ]);
 
     const sets = ["updated_at = NOW()"];

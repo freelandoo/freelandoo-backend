@@ -107,26 +107,37 @@ module.exports = {
   },
 
   // POST /ranking/heartbeat  (requer auth)
+  // Body: { minutes } — minutos decorridos desde o último heartbeat.
   async heartbeat(req, res) {
-    const cfg = await RankingStorage.getConfig(pool);
-    const maxOnline = cfg?.max_online_minutes ?? 120;
-    const minutes = await RankingStorage.heartbeat(pool, { id_user: req.user.id_user, max_online_minutes: maxOnline });
+    // Teto de tempo online vive em xp_settings (página única de pesos).
+    const xpSettings = await XpStorage.getSettings(pool);
+    const maxOnline = Number(xpSettings?.max_online_minutes ?? 120);
 
-    // XP por minuto online — source_id único por (user, data, minuto) evita duplicatas
-    // Award para todos os subperfis ativos do usuário
-    const today = new Date().toISOString().slice(0, 10);
-    XpStorage.getUserActiveProfileIds(pool, req.user.id_user).then((profileIds) => {
-      for (const id_profile of profileIds) {
-        XpStorage.award(pool, {
-          id_profile,
-          event_type: "online_time",
-          source_type: "heartbeat",
-          source_id: `${req.user.id_user}_${today}_min${minutes}`,
-        }).catch(() => {});
-      }
-    }).catch(() => {});
+    const { minutes_online, applied } = await RankingStorage.heartbeat(pool, {
+      id_user: req.user.id_user,
+      max_online_minutes: maxOnline,
+      minutes: req.body?.minutes,
+    });
 
-    return res.json({ minutes_online_today: minutes });
+    // XP por tempo online — concede unit_count = minutos efetivamente somados
+    // (respeita o teto diário). source_id único por chamada evita duplicar.
+    // Award para todos os subperfis ativos do usuário.
+    if (applied > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      XpStorage.getUserActiveProfileIds(pool, req.user.id_user).then((profileIds) => {
+        for (const id_profile of profileIds) {
+          XpStorage.award(pool, {
+            id_profile,
+            event_type: "online_time",
+            source_type: "heartbeat",
+            source_id: `${req.user.id_user}_${today}_${minutes_online}`,
+            unit_count: applied,
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+
+    return res.json({ minutes_online_today: minutes_online });
   },
 
   // GET /ranking/engagement/:id_profile  (requer auth + ser dono)
@@ -266,11 +277,10 @@ module.exports = {
   },
 
   // PUT /admin/ranking-config
+  // ranking_config guarda só temporada + agendamento; pesos ficam em xp-settings.
   async adminUpdateConfig(req, res) {
-    const { is_enabled, period_days, weight_visits, weight_likes, weight_ratings, weight_online, max_online_minutes } = req.body;
-    await RankingStorage.updateConfig(pool, {
-      is_enabled, period_days, weight_visits, weight_likes, weight_ratings, weight_online, max_online_minutes,
-    });
+    const { is_enabled, period_days } = req.body;
+    await RankingStorage.updateConfig(pool, { is_enabled, period_days });
     const cfg = await RankingStorage.getConfig(pool);
     return res.json(cfg);
   },
