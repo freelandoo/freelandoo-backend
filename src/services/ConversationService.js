@@ -707,6 +707,39 @@ class ConversationService {
             entity_id: actorRes.actor_id,
           });
 
+          // Realtime: empurra o áudio finalizado pros 2 lados sem polling.
+          // (O sendMessage de texto já faz isso na linha ~454; este branch
+          // de áudio não fazia, então o destinatário tinha que dar refresh
+          // ou esperar o fallback do poll. Fix: emite na sala da conversa
+          // e dispara nav-counts:changed nos 2 user-rooms.)
+          try {
+            const mapped = mapMessage(finalized);
+            realtime.emitToConversation(conv.id_conversation, "conversation:message", {
+              id_conversation: conv.id_conversation,
+              message: mapped,
+            });
+            realtime.emitToUser(user.id_user, "nav-counts:changed", {
+              reason: "message_sent",
+              id_conversation: conv.id_conversation,
+            });
+            const otherForRealtime = await ConversationStorage.otherEntityId(
+              conv,
+              actorRes.actor_id
+            );
+            if (otherForRealtime) {
+              const otherProfile = await ProfileStorage.getProfileById(
+                pool,
+                otherForRealtime
+              );
+              if (otherProfile?.id_user && otherProfile.id_user !== user.id_user) {
+                realtime.emitToUser(otherProfile.id_user, "nav-counts:changed", {
+                  reason: "message_received",
+                  id_conversation: conv.id_conversation,
+                });
+              }
+            }
+          } catch { /* realtime é best-effort */ }
+
           // Notificação fire-and-forget
           try {
             const otherEntityId = await ConversationStorage.otherEntityId(conv, actorRes.actor_id);
