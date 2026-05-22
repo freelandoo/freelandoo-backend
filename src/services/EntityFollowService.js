@@ -149,6 +149,34 @@ class EntityFollowService {
     );
   }
 
+  // Atores válidos pro sistema de mensagens. Não exige assinatura ativa
+  // nem visibilidade — qualquer subperfil/clan/user-account ativo serve.
+  // Garante a existência do perfil-fantasma antes de retornar, para que
+  // o usuário SEMPRE tenha pelo menos um ator pra abrir conversa.
+  static async listMessageableActors(user) {
+    return runWithLogs(
+      log,
+      "listMessageableActors",
+      () => ({ id_user: user?.id_user }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const AuthStorage = require("../storages/AuthStorage");
+        const client = await pool.connect();
+        try {
+          // Idempotente — só insere se ainda não existir.
+          await AuthStorage.ensureUserAccountProfile(client, user.id_user, user.nome || null);
+        } finally {
+          client.release();
+        }
+        const actors = await EntityFollowStorage.listMessageableActorOptions(
+          pool,
+          user.id_user
+        );
+        return { actors: actors.map(mapEntity).filter(Boolean) };
+      }
+    );
+  }
+
   static async mySummary(user) {
     return runWithLogs(
       log,

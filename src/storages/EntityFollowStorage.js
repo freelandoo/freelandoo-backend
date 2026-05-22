@@ -182,6 +182,45 @@ class EntityFollowStorage {
     return rows[0] || null;
   }
 
+  // Lista de "atores" pro sistema de mensagens (mais frouxo que listActorOptions).
+  // Não exige assinatura ativa nem is_visible — inclui o perfil-fantasma do
+  // user account, subperfis ainda não ativados, e clans onde o user é owner.
+  static async listMessageableActorOptions(conn, id_user) {
+    const { rows } = await conn.query(
+      `
+      WITH profile_actors AS (
+        SELECT ${entitySelect("p")}, NULL::text AS my_role
+          FROM public.tb_profile p
+          ${entityJoins("p")}
+         WHERE p.id_user = $1
+           AND p.is_clan = FALSE
+           AND p.deleted_at IS NULL
+           AND p.is_active = TRUE
+      ),
+      clan_actors AS (
+        SELECT ${entitySelect("p")}, cm.role AS my_role
+          FROM public.tb_profile p
+          JOIN public.tb_clan_member cm
+            ON cm.id_clan_profile = p.id_profile
+           AND cm.role = 'owner'
+          JOIN public.tb_profile member_profile
+            ON member_profile.id_profile = cm.id_member_profile
+           AND member_profile.id_user = $1
+          ${entityJoins("p")}
+         WHERE p.is_clan = TRUE
+           AND p.deleted_at IS NULL
+           AND p.is_active = TRUE
+      )
+      SELECT * FROM profile_actors
+      UNION ALL
+      SELECT * FROM clan_actors
+      ORDER BY type ASC, display_name ASC NULLS LAST
+      `,
+      [id_user]
+    );
+    return rows;
+  }
+
   static async listActorOptions(conn, id_user) {
     const { rows } = await conn.query(
       `

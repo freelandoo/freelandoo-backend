@@ -815,35 +815,72 @@ class ConversationService {
         const qRaw = String(payload?.q || "").trim();
         if (qRaw.length < 1) return { results: [] };
         const limit = Math.min(20, Math.max(1, Number(payload?.limit) || 12));
-        // LIKE com escape básico — usamos lower + replace pra ILIKE seguro.
         const term = qRaw.replace(/[%_]/g, "\\$&");
         const like = `%${term}%`;
-        const handleLike = `${term.replace(/^@/, "")}%`;
+        const handle = term.replace(/^@/, "");
+        const handleLike = `${handle}%`;
+        // DISTINCT ON (id_user) retorna 1 melhor perfil por usuário —
+        // preferência: user-account > paid > não-clan. Evita listar o mesmo
+        // user várias vezes (ex.: 3 subperfis do persio998). Inclui também
+        // clans que casarem.
         const { rows } = await pool.query(
           `
           SELECT
-            p.id_profile,
-            CASE WHEN p.is_clan THEN 'clan' ELSE 'profile' END AS type,
-            p.display_name,
-            p.avatar_url,
-            p.sub_profile_slug,
-            p.is_clan,
-            p.is_user_account,
-            u.username
-          FROM public.tb_profile p
-          JOIN public.tb_user u ON u.id_user = p.id_user
-          WHERE p.deleted_at IS NULL
-            AND p.is_active = TRUE
-            AND p.id_user <> $1
-            AND (
-              p.display_name ILIKE $2 ESCAPE '\\'
-              OR u.username ILIKE $3 ESCAPE '\\'
-              OR p.sub_profile_slug ILIKE $2 ESCAPE '\\'
-            )
-          ORDER BY
-            CASE WHEN u.username ILIKE $3 ESCAPE '\\' THEN 0 ELSE 1 END,
-            p.is_paid DESC,
-            p.created_at DESC
+            id_profile,
+            type,
+            display_name,
+            avatar_url,
+            sub_profile_slug,
+            is_clan,
+            is_user_account,
+            username
+          FROM (
+            SELECT DISTINCT ON (group_key)
+              q.id_profile,
+              q.type,
+              q.display_name,
+              q.avatar_url,
+              q.sub_profile_slug,
+              q.is_clan,
+              q.is_user_account,
+              q.username,
+              q.priority
+            FROM (
+              SELECT
+                p.id_profile,
+                CASE WHEN p.is_clan THEN 'clan' ELSE 'profile' END AS type,
+                p.display_name,
+                p.avatar_url,
+                p.sub_profile_slug,
+                p.is_clan,
+                p.is_user_account,
+                u.username,
+                -- Clans são únicos por id_profile; subperfis colapsam por user.
+                CASE WHEN p.is_clan THEN 'c:' || p.id_profile::text
+                                    ELSE 'u:' || p.id_user::text END AS group_key,
+                CASE
+                  WHEN p.is_user_account THEN 0
+                  WHEN EXISTS (
+                    SELECT 1 FROM public.tb_profile_subscription ps
+                     WHERE ps.id_profile = p.id_profile
+                       AND ps.status = 'active'
+                  ) THEN 1
+                  ELSE 2
+                END AS priority
+              FROM public.tb_profile p
+              JOIN public.tb_user u ON u.id_user = p.id_user
+              WHERE p.deleted_at IS NULL
+                AND p.is_active = TRUE
+                AND p.id_user <> $1
+                AND (
+                  p.display_name ILIKE $2 ESCAPE '\\'
+                  OR u.username ILIKE $3 ESCAPE '\\'
+                  OR p.sub_profile_slug ILIKE $2 ESCAPE '\\'
+                )
+            ) q
+            ORDER BY group_key, priority
+          ) deduped
+          ORDER BY priority, display_name NULLS LAST
           LIMIT $4
           `,
           [user.id_user, like, handleLike, limit]

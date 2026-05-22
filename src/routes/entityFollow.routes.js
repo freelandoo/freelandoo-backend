@@ -6,6 +6,12 @@ const asyncHandler = require("../utils/asyncHandler");
 const router = Router();
 
 router.get("/actors", authMiddleware, asyncHandler(EntityFollowController.listActors));
+// Atores válidos pro sistema de mensagens — não exige assinatura ativa.
+router.get(
+  "/actors/messageable",
+  authMiddleware,
+  asyncHandler(EntityFollowController.listMessageableActors)
+);
 router.get("/me/summary", authMiddleware, asyncHandler(EntityFollowController.mySummary));
 router.post("/", authMiddleware, asyncHandler(EntityFollowController.follow));
 router.delete("/", authMiddleware, asyncHandler(EntityFollowController.unfollow));

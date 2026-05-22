@@ -7,6 +7,11 @@ class EntityFollowController {
     return sendServiceResult(res, result);
   }
 
+  static async listMessageableActors(req, res) {
+    const result = await EntityFollowService.listMessageableActors(req.user);
+    return sendServiceResult(res, result);
+  }
+
   static async mySummary(req, res) {
     const result = await EntityFollowService.mySummary(req.user);
     return sendServiceResult(res, result);
