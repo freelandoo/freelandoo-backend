@@ -37,15 +37,18 @@ class PortfolioStorage {
     }
   ) {
     const kind = feed_kind === "bees" ? "bees" : "feed";
+    // status default = 'published' (mig 025) → o item já nasce publicado, então
+    // published_at tem que ser preenchido aqui. Sem isto ele fica NULL até o
+    // próximo boot (a mig 025 faz backfill), bagunçando a ordenação do feed.
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile_portfolio_item
-        (id_profile, title, description, project_url, is_featured, sort_order, created_by, updated_by, feed_kind)
+        (id_profile, title, description, project_url, is_featured, sort_order, created_by, updated_by, feed_kind, published_at)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $7, $8)
+        ($1, $2, $3, $4, $5, $6, $7, $7, $8, NOW())
       RETURNING
         id_portfolio_item, id_profile, title, description, project_url,
-        is_featured, sort_order, feed_kind, created_at, updated_at, is_active
+        is_featured, sort_order, feed_kind, created_at, updated_at, is_active, published_at
       `,
       [
         id_profile,
