@@ -1,3 +1,19 @@
 node_modules/
+
+# env files (mantém .env.example versionado)
 .env
 .env.*
+!.env.example
+
+# storage local (uploads gerados em runtime)
+storage/
+
+# logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
