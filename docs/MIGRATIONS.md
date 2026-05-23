@@ -1,5 +1,8 @@
 # Migrations — guia operacional
 
+<!-- canário 2026-05-23: validação do runner novo (lock + checksum + abort) em prod. -->
+
+
 ## Fluxo
 
 1. Crie um arquivo numerado em `src/databases/migrations/`, ex:
