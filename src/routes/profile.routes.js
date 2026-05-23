@@ -3,6 +3,7 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const ProfileController = require("../controllers/ProfileController");
 const uploadAvatar = require("../middlewares/uploadAvatar");
 const asyncHandler = require("../utils/asyncHandler");
+const rateLimit = require("../middlewares/rateLimit");
 
 const router = Router();
 
@@ -37,6 +38,7 @@ router.patch(
 router.post(
   "/:id_profile/avatar",
   authMiddleware,
+  rateLimit.upload,
   uploadAvatar.single("avatar"),
   asyncHandler(ProfileController.uploadAvatar)
 );

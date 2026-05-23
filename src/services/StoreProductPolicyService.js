@@ -9,6 +9,7 @@ function stripDiacritics(s) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 function removeInvisible(s) {
+  // eslint-disable-next-line no-irregular-whitespace -- chars zero-width intencionais (zero-width space → soft hyphen) no regex
   return s.replace(/[​-‍﻿­]/g, "");
 }
 function normalize(text) {

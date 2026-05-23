@@ -4,6 +4,7 @@ const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const PortfolioController = require("../controllers/PortfolioController");
 const uploadPortfolioMedia = require("../middlewares/uploadPortfolioMedia");
 const asyncHandler = require("../utils/asyncHandler");
+const rateLimit = require("../middlewares/rateLimit");
 
 const router = Router({ mergeParams: true });
 
@@ -35,6 +36,7 @@ router.delete(
 router.post(
   "/:id_portfolio_item/upload",
   authMiddleware,
+  rateLimit.upload,
   uploadPortfolioMedia.single("file"),
   asyncHandler(PortfolioController.uploadMedia)
 );

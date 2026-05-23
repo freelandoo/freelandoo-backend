@@ -4,6 +4,7 @@ const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const ChatController = require("../controllers/ChatController");
 const asyncHandler = require("../utils/asyncHandler");
+const rateLimit = require("../middlewares/rateLimit");
 
 const router = Router();
 
@@ -16,7 +17,11 @@ router.post("/rooms/:id_chat_room/heartbeat", asyncHandler(ChatController.heartb
 router.post("/rooms/:id_chat_room/leave", asyncHandler(ChatController.leave));
 
 router.get("/rooms/:id_chat_room/messages", asyncHandler(ChatController.listMessages));
-router.post("/rooms/:id_chat_room/messages", asyncHandler(ChatController.sendMessage));
+router.post(
+  "/rooms/:id_chat_room/messages",
+  rateLimit.chat,
+  asyncHandler(ChatController.sendMessage)
+);
 
 router.delete("/messages/:id_chat_message", asyncHandler(ChatController.deleteOwnMessage));
 router.post("/messages/:id_chat_message/report", asyncHandler(ChatController.reportMessage));

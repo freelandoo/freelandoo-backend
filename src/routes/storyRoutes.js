@@ -3,6 +3,7 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const uploadStoryVideo = require("../middlewares/uploadStoryVideo");
 const StoryController = require("../controllers/StoryController");
 const asyncHandler = require("../utils/asyncHandler");
+const rateLimit = require("../middlewares/rateLimit");
 
 const router = Router();
 
@@ -11,6 +12,7 @@ router.get("/", authMiddleware, asyncHandler(StoryController.listMine));
 router.post(
   "/",
   authMiddleware,
+  rateLimit.upload,
   uploadStoryVideo.single("video"),
   asyncHandler(StoryController.createMine)
 );

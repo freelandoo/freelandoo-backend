@@ -2,12 +2,14 @@ const express = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const CheckoutController = require("../controllers/CheckoutController");
 const asyncHandler = require("../utils/asyncHandler");
+const rateLimit = require("../middlewares/rateLimit");
 
 const router = express.Router();
 
 router.post(
   "/",
   authMiddleware,
+  rateLimit.checkout,
   asyncHandler(CheckoutController.createCheckout)
 );
 
@@ -20,6 +22,7 @@ router.get(
 router.post(
   "/:id_checkout/apply-coupon",
   authMiddleware,
+  rateLimit.checkout,
   asyncHandler(CheckoutController.applyCoupon)
 );
 
@@ -32,6 +35,7 @@ router.delete(
 router.post(
   "/:id_checkout/confirm",
   authMiddleware,
+  rateLimit.checkout,
   asyncHandler(CheckoutController.confirmCheckout)
 );
 

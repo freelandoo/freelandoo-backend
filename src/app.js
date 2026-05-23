@@ -1,13 +1,20 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const path = require("path");
 const routes = require("./routes");
 const webhooksRoutes = require("./routes/webhooks.routes");
+const requestId = require("./middlewares/requestId");
 const { createLogger } = require("./utils/logger");
 
 const appLog = createLogger("app");
 
 const app = express();
+
+// Confia no X-Forwarded-For (Railway/Vercel terminam TLS upstream).
+// Necessário para que `req.ip` seja o IP real do cliente, usado pelo
+// rate limiter e pelo audit log.
+app.set("trust proxy", 1);
 
 const allowedOrigins = [
   "https://v0.dev",
@@ -42,24 +49,44 @@ const corsOptions = {
     return callback(err);
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+  exposedHeaders: ["X-Request-Id", "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"],
   credentials: true,
   optionsSuccessStatus: 200,
 };
 
+// Helmet com defaults — `contentSecurityPolicy: false` porque a API
+// devolve JSON, não HTML, e estamos atrás do CORS já restrito acima.
+// `crossOriginResourcePolicy: false` porque os assets do bucket R2 são
+// servidos via URL pública direta (não passam por aqui).
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: false,
+  })
+);
+
+app.use(requestId);
+
 app.use("/storage", express.static(path.join(__dirname, "..", "storage")));
 app.use(cors(corsOptions));
 
-// Webhooks precisam do body raw (verificação de assinatura Stripe).
-// Montado ANTES do express.json() pra não ser consumido.
+// Webhooks precisam do body raw (verificação de assinatura Stripe/Melhor Envio).
+// Montado ANTES do express.json() pra não ser consumido, e ANTES do rate limit
+// pra não devolver 429 em retry legítimo do provedor.
 app.use("/webhooks", webhooksRoutes);
 
-app.use(express.json());
+// Limite de 1MB cobre praticamente todo POST/PUT JSON do projeto
+// (signin, perfil, comentário, etc). Uploads de arquivo usam multer
+// em outras rotas e têm seu próprio limite.
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
     appLog.info("request.complete", {
+      requestId: req.requestId,
       method: req.method,
       url: req.originalUrl || req.url,
       status: res.statusCode,
@@ -69,6 +96,12 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// Audit log estruturado em qualquer rota /admin/*. Não cria tabela —
+// vai pro logger central. Migrar pra `audit_log` em mig futura se virar
+// necessidade pesquisável.
+const auditAdmin = require("./middlewares/auditAdmin");
+app.use("/admin", auditAdmin);
 
 // rotas
 routes(app);
@@ -83,14 +116,21 @@ app.use((err, req, res, next) => {
     ["Formato nao aceito", "Tipo de arquivo nao permitido"].some((msg) =>
       String(err.message || "").includes(msg)
     );
-  const statusCode = err.statusCode || (isUploadError ? 400 : 500);
+  const isPayloadTooLarge =
+    err.type === "entity.too.large" || err.status === 413;
+  const statusCode =
+    err.statusCode ||
+    (isPayloadTooLarge ? 413 : isUploadError ? 400 : 500);
   const message =
     err.code === "LIMIT_FILE_SIZE"
       ? "Arquivo muito grande para upload."
+      : isPayloadTooLarge
+      ? "Payload acima do limite permitido."
       : err.message || "Erro interno no servidor";
 
   if (statusCode >= 500) {
     appLog.error("error_handler", {
+      requestId: req.requestId,
       statusCode,
       message: err?.message,
       stack: err?.stack,
