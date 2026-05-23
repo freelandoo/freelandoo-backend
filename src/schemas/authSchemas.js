@@ -1,7 +1,12 @@
 // Schemas Zod das rotas de autenticação.
-// Mantém limites compatíveis com o que AuthService já assume (e com o
-// schema do banco — username max 30, etc.). Não loosens nem tightens
-// regras de negócio; apenas rejeita lixo no boundary.
+//
+// Filosofia: validação MÍNIMA no boundary — só rejeita request claramente
+// malformado (body vazio, tipos errados, email com formato inválido).
+// Validação de regra de negócio (força de senha, idade, username em uso,
+// etc.) continua no AuthService — não duplicar.
+//
+// Campos do backend são em português (nome, senha, novaSenha) por
+// histórico do projeto. NÃO mudar.
 
 const { z } = require("zod");
 
@@ -13,43 +18,42 @@ const emailSchema = z
   .max(254, "Email muito longo.")
   .email("Email inválido.");
 
-const passwordSchema = z
+const senhaSchema = z
   .string({ message: "Senha é obrigatória." })
-  .min(6, "Senha deve ter ao menos 6 caracteres.")
+  .min(1, "Senha é obrigatória.")
   .max(200, "Senha muito longa.");
 
-const usernameSchema = z
-  .string({ message: "Username é obrigatório." })
-  .trim()
-  .min(3, "Username muito curto.")
-  .max(30, "Username muito longo.")
-  .regex(
-    /^[a-zA-Z0-9._-]+$/,
-    "Username pode conter apenas letras, números, ponto, underline e hífen."
-  );
+// passthrough em todos pra não bloquear campos opcionais que o service
+// usa (display_name, bio, avatar_url, responsible_code, estado, etc).
 
 const signupBody = z
   .object({
-    name: z.string().trim().min(1, "Nome obrigatório.").max(120),
+    nome: z.string().trim().min(1, "Nome obrigatório.").max(120),
     email: emailSchema,
-    password: passwordSchema,
-    username: usernameSchema.optional(),
-    affiliateCode: z.string().trim().max(60).optional(),
+    senha: senhaSchema,
+    data_nascimento: z.string().trim().min(4, "Data de nascimento obrigatória."),
   })
-  .passthrough(); // mantém outros campos opcionais que o service usa
+  .passthrough();
 
 const signinBody = z
   .object({
     email: emailSchema,
-    password: passwordSchema,
+    senha: senhaSchema,
   })
   .passthrough();
 
+// Frontend (Google Identity Services) manda `credential`; clientes
+// legados podem mandar `id_token`. AuthService aceita os dois.
 const googleSigninBody = z
   .object({
-    id_token: z.string().min(20, "id_token ausente."),
+    credential: z.string().min(20).optional(),
+    id_token: z.string().min(20).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((data) => Boolean(data.credential || data.id_token), {
+    message: "credential ou id_token é obrigatório.",
+    path: ["credential"],
+  });
 
 const forgotPasswordBody = z
   .object({
@@ -60,15 +64,21 @@ const forgotPasswordBody = z
 const resetPasswordBody = z
   .object({
     token: z.string().min(10, "Token ausente.").max(500),
-    password: passwordSchema,
+    novaSenha: senhaSchema,
   })
   .passthrough();
 
+// AuthController aceita ?u= ou ?username=
 const checkUsernameQuery = z
   .object({
-    username: usernameSchema,
+    u: z.string().trim().min(1).max(60).optional(),
+    username: z.string().trim().min(1).max(60).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((data) => Boolean(data.u || data.username), {
+    message: "Parâmetro u (ou username) é obrigatório.",
+    path: ["u"],
+  });
 
 const activateQuery = z
   .object({
