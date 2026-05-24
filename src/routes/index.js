@@ -80,7 +80,6 @@ const userTourProgressRoutes = require("./userTourProgress.routes");
 const meOfferingsRoutes = require("./meOfferings.routes");
 const monetizationOnboardingRoutes = require("./monetizationOnboarding.routes");
 const tourPathRoutes = require("./tourPath.routes");
-const adminTourPathRoutes = require("./adminTourPath.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -169,5 +168,4 @@ module.exports = (app) => {
   app.use("/me", meOfferingsRoutes);
   app.use("/onboarding/monetization", monetizationOnboardingRoutes);
   app.use("/tour-paths", tourPathRoutes);
-  app.use("/admin/tours", adminTourPathRoutes);
 };
