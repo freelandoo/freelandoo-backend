@@ -78,6 +78,8 @@ const countriesRoutes = require("./countries.routes");
 const navCountsRoutes = require("./navCounts.routes");
 const userTourProgressRoutes = require("./userTourProgress.routes");
 const meOfferingsRoutes = require("./meOfferings.routes");
+const monetizationOnboardingRoutes = require("./monetizationOnboarding.routes");
+const tourPathRoutes = require("./tourPath.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -164,4 +166,6 @@ module.exports = (app) => {
   app.use("/me", navCountsRoutes);
   app.use("/tours", userTourProgressRoutes);
   app.use("/me", meOfferingsRoutes);
+  app.use("/onboarding/monetization", monetizationOnboardingRoutes);
+  app.use("/tour-paths", tourPathRoutes);
 };
