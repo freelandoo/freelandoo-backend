@@ -24,13 +24,13 @@ function validate(payload) {
   if (description.length < 5) return { error: "Descrição obrigatória (mín. 5 caracteres)" };
   out.description = description.slice(0, 4000);
 
+  // city/state opcionais — quando ausentes, o pedido é nacional (sem filtro geográfico).
   const city = typeof payload?.city === "string" ? payload.city.trim() : "";
-  if (!city) return { error: "Cidade obrigatória" };
-  out.city = city.slice(0, 120);
+  out.city = city ? city.slice(0, 120) : null;
 
   const state = typeof payload?.state === "string" ? payload.state.trim().toUpperCase() : "";
-  if (state.length !== 2) return { error: "Estado inválido (UF de 2 letras)" };
-  out.state = state;
+  if (state && state.length !== 2) return { error: "Estado inválido (UF de 2 letras)" };
+  out.state = state || null;
 
   const cat = Number(payload?.id_product_category);
   if (!Number.isInteger(cat) || cat <= 0) return { error: "Categoria inválida" };

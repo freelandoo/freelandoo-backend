@@ -11,7 +11,9 @@ const log = createLogger("ProductRequestMatchingService");
  *  - Assinatura ativa em tb_profile_subscription.
  *  - Tem pelo menos 1 tb_profile_product ativo (is_active, sem deleted_at)
  *    na MESMA categoria do pedido.
- *  - Cidade + UF coincidem (case-insensitive UPPER e TRIM).
+ *  - Cidade + UF coincidem quando o pedido informa local (case-insensitive
+ *    UPPER e TRIM). Se o pedido NÃO informa city/state, é considerado
+ *    nacional: todos os subperfis elegíveis do país recebem.
  *
  * Notas:
  *  - Notificação fire-and-forget: chamamos findEligibleSubprofiles após
@@ -36,8 +38,8 @@ class ProductRequestMatchingService {
             AND p.is_active = TRUE
             AND COALESCE(p.is_visible, TRUE) = TRUE
             AND p.deleted_at IS NULL
-            AND UPPER(TRIM(p.municipio)) = UPPER(TRIM(pr.city))
-            AND UPPER(TRIM(p.estado)) = UPPER(TRIM(pr.state))
+            AND (pr.state IS NULL OR UPPER(TRIM(p.estado)) = UPPER(TRIM(pr.state)))
+            AND (pr.city  IS NULL OR UPPER(TRIM(p.municipio)) = UPPER(TRIM(pr.city)))
            JOIN public.tb_profile_subscription ps
              ON ps.id_profile = p.id_profile
             AND ps.status = 'active'
@@ -88,8 +90,8 @@ class ProductRequestMatchingService {
             AND p.is_active = TRUE
             AND COALESCE(p.is_visible, TRUE) = TRUE
             AND p.deleted_at IS NULL
-            AND UPPER(TRIM(p.municipio)) = UPPER(TRIM(pr.city))
-            AND UPPER(TRIM(p.estado)) = UPPER(TRIM(pr.state))
+            AND (pr.state IS NULL OR UPPER(TRIM(p.estado)) = UPPER(TRIM(pr.state)))
+            AND (pr.city  IS NULL OR UPPER(TRIM(p.municipio)) = UPPER(TRIM(pr.city)))
            JOIN public.tb_profile_subscription ps
              ON ps.id_profile = p.id_profile
             AND ps.status = 'active'
