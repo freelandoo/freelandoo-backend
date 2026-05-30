@@ -17,6 +17,22 @@ router.post(
   asyncHandler(StoryController.createMine)
 );
 
+// ─── Câmera in-browser (zero-servidor / GPU-local) ─────────────────────────
+// Passo 1: emite presigned PUT URLs (vídeo MP4 + poster WebP) → upload direto R2.
+router.post(
+  "/upload-url",
+  authMiddleware,
+  rateLimit.upload,
+  asyncHandler(StoryController.createUploadUrl)
+);
+// Passo 2: registra a story a partir do objeto já enviado pro R2 (só metadados).
+router.post(
+  "/from-upload",
+  authMiddleware,
+  rateLimit.upload,
+  asyncHandler(StoryController.createFromUpload)
+);
+
 router.delete(
   "/:id_story",
   authMiddleware,

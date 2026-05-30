@@ -22,6 +22,18 @@ class StoryController {
     return sendServiceResult(res, result);
   }
 
+  // Câmera (presigned/GPU-local): passo 1 — gerar URLs de upload direto pro R2.
+  static async createUploadUrl(req, res) {
+    const result = await StoryService.createUploadUrls(req.user, req.body || {});
+    return sendServiceResult(res, result);
+  }
+
+  // Câmera: passo 2 — registrar a story a partir do objeto já enviado pro R2.
+  static async createFromUpload(req, res) {
+    const result = await StoryService.createStoryFromUpload(req.user, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
+
   static async getFeed(req, res) {
     const result = await StoryService.getFeed(req.user, req.query);
     return sendServiceResult(res, result);

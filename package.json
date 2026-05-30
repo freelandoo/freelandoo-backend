@@ -30,6 +30,7 @@
   "homepage": "https://github.com/persio1998/creators-views#readme",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.972.0",
+    "@aws-sdk/s3-request-presigner": "^3.1057.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

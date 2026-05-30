@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const StoryStorage = require("../storages/StoryStorage");
 const uploadStoryVideoToR2 = require("../integrations/r2/uploadStoryVideo");
+const presignStory = require("../integrations/r2/presignStoryUpload");
 const ChatModerationService = require("./ChatModerationService");
 const ConversationService = require("./ConversationService");
 const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaProcessing");
@@ -13,6 +14,36 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const KINDS = new Set(["trampo", "rest"]);
+
+// Câmera (presigned/GPU-local): limites do arquivo final gerado no browser.
+const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80MB (espelha uploadStoryVideo legado)
+const MAX_POSTER_BYTES = 3 * 1024 * 1024; // 3MB
+const VIDEO_CONTENT_TYPE = "video/mp4"; // SEMPRE MP4/H.264 (WebM não toca no iOS)
+const POSTER_CONTENT_TYPE = "image/webp";
+const FILTER_META_MAX_CHARS = 4000;
+
+// Sanitiza o filterMeta vindo do cliente: aceita só objeto plano pequeno
+// (preset/ajustes numéricos). Nunca contém dado facial — é só a "receita" visual.
+function normalizeFilterMeta(value) {
+  if (value === null || value === undefined) return null;
+  let obj = value;
+  if (typeof value === "string") {
+    try {
+      obj = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof obj !== "object" || Array.isArray(obj)) return null;
+  let serialized;
+  try {
+    serialized = JSON.stringify(obj);
+  } catch {
+    return null;
+  }
+  if (!serialized || serialized.length > FILTER_META_MAX_CHARS) return null;
+  return obj;
+}
 
 function normalizeKind(value) {
   if (typeof value !== "string") return null;
@@ -235,6 +266,175 @@ class StoryService {
         }
 
         return { stories, story: stories[0] || null, count: stories.length };
+      }
+    );
+  }
+
+  // Pré-checagem compartilhada de permissão de postar story por um perfil.
+  // Retorna { error } ou { profile } (perfil já validado p/ ownership/subscription).
+  static async _assertCanPost(user, id_profile, kind) {
+    if (!user?.id_user) return { error: "Usuário não autenticado" };
+    const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
+    if (minorBlock) return minorBlock;
+    if (!id_profile || !UUID_RE.test(id_profile)) {
+      return { error: "id_profile inválido" };
+    }
+    if (!kind) return { error: "kind inválido (use 'trampo' ou 'rest')" };
+    const profile = await StoryStorage.getProfileForOwnership(pool, {
+      id_profile,
+      id_user: user.id_user,
+    });
+    if (!profile) return { error: "Sem permissão para postar por este perfil" };
+    if (!profile.is_active) return { error: "Perfil inativo não pode postar story" };
+    if (kind === "trampo") {
+      if (profile.is_clan) return { error: "Clans não podem postar trampo" };
+      const subscribed = await StoryStorage.profileHasActiveSubscription(pool, id_profile);
+      if (!subscribed) return { error: "Trampo é exclusivo de subperfis com assinatura ativa" };
+    }
+    return { profile };
+  }
+
+  // ─── Câmera: passo 1 — emite presigned PUT URLs (vídeo + poster) ───────────
+  // O cliente grava/encoda local (WebCodecs) e sobe DIRETO pro R2 nessas URLs.
+  // O servidor não recebe bytes de vídeo; só assina keys sob stories/<id_profile>/.
+  static async createUploadUrls(user, body = {}) {
+    return runWithLogs(
+      log,
+      "createUploadUrls",
+      () => ({ id_user: user?.id_user, id_profile: body?.id_profile, kind: body?.kind }),
+      async () => {
+        const id_profile = body?.id_profile;
+        const kind = normalizeKind(body?.kind);
+        const check = await StoryService._assertCanPost(user, id_profile, kind);
+        if (check.error) return check;
+
+        const videoKey = presignStory.buildKey(id_profile, kind, "mp4");
+        const posterKey = presignStory.buildKey(id_profile, kind, "webp", "poster");
+        const [videoUrl, posterUrl] = await Promise.all([
+          presignStory.presignPut(videoKey, VIDEO_CONTENT_TYPE),
+          presignStory.presignPut(posterKey, POSTER_CONTENT_TYPE),
+        ]);
+
+        return {
+          expires_in: presignStory.DEFAULT_EXPIRES,
+          video: { key: videoKey, url: videoUrl, content_type: VIDEO_CONTENT_TYPE, max_bytes: MAX_VIDEO_BYTES },
+          poster: { key: posterKey, url: posterUrl, content_type: POSTER_CONTENT_TYPE, max_bytes: MAX_POSTER_BYTES },
+        };
+      }
+    );
+  }
+
+  // ─── Câmera: passo 2 — cria a story a partir do que já foi enviado pro R2 ───
+  // Valida ownership/subscription/moderação, confirma o objeto via HeadObject
+  // (existe? tamanho ok? key no namespace certo?) e grava metadados (+ filterMeta).
+  static async createStoryFromUpload(user, body = {}) {
+    return runWithLogs(
+      log,
+      "createStoryFromUpload",
+      () => ({ id_user: user?.id_user, id_profile: body?.id_profile, kind: body?.kind }),
+      async () => {
+        const id_profile = body?.id_profile;
+        const kind = normalizeKind(body?.kind);
+        const check = await StoryService._assertCanPost(user, id_profile, kind);
+        if (check.error) return check;
+
+        const duration_seconds = normalizeDuration(body?.duration_seconds);
+        if (!duration_seconds) {
+          return { error: "duration_seconds inválido — informe a duração em segundos (1..60)" };
+        }
+        const width = normalizeOptionalInt(body?.width);
+        const height = normalizeOptionalInt(body?.height);
+        const caption = normalizeCaption(body?.caption);
+        const filterMeta = normalizeFilterMeta(body?.filter_meta);
+
+        const storageKey = body?.storage_key;
+        const thumbnailKey = body?.thumbnail_key || null;
+        if (!presignStory.keyBelongsToProfile(storageKey, id_profile) || !storageKey.endsWith(".mp4")) {
+          return { error: "storage_key inválido" };
+        }
+        if (thumbnailKey && !presignStory.keyBelongsToProfile(thumbnailKey, id_profile)) {
+          return { error: "thumbnail_key inválido" };
+        }
+
+        if (caption) {
+          const moderation = await ChatModerationService.moderateMessage({
+            id_user: user.id_user,
+            room_type: "global",
+            original_text: caption,
+          });
+          if (["block", "mute_temp", "review"].includes(moderation?.action)) {
+            // Conteúdo do caption barrado → remove o objeto recém-enviado p/ não virar órfão.
+            await presignStory.deleteObject(storageKey);
+            if (thumbnailKey) await presignStory.deleteObject(thumbnailKey);
+            return {
+              error:
+                moderation.user_facing_error ||
+                "Conteudo bloqueado por violar as politicas da plataforma.",
+              moderation_action: moderation.action,
+              moderation_flags: moderation.flags || [],
+            };
+          }
+        }
+
+        // Confirma que o vídeo realmente chegou no R2 e respeita os limites.
+        const videoHead = await presignStory.headObject(storageKey);
+        if (!videoHead.exists) {
+          return { error: "Upload do vídeo não encontrado no storage. Tente novamente." };
+        }
+        if (videoHead.size > MAX_VIDEO_BYTES) {
+          await presignStory.deleteObject(storageKey);
+          if (thumbnailKey) await presignStory.deleteObject(thumbnailKey);
+          return { error: "O vídeo excede o limite de 80MB." };
+        }
+
+        let thumbnailUrl = null;
+        let validThumbKey = null;
+        if (thumbnailKey) {
+          const posterHead = await presignStory.headObject(thumbnailKey);
+          if (posterHead.exists && posterHead.size <= MAX_POSTER_BYTES) {
+            thumbnailUrl = presignStory.publicUrl(thumbnailKey);
+            validThumbKey = thumbnailKey;
+          } else if (posterHead.exists) {
+            await presignStory.deleteObject(thumbnailKey);
+          }
+        }
+
+        const videoUrl = presignStory.publicUrl(storageKey);
+        const metadata = {
+          media_type: "video",
+          source: "camera",
+          storage_key: storageKey,
+          ...(validThumbKey ? { thumbnail_storage_key: validThumbKey } : {}),
+          ...(filterMeta ? { filter_meta: filterMeta } : {}),
+          ...(width ? { width } : {}),
+          ...(height ? { height } : {}),
+        };
+
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const story = await StoryStorage.insertStory(client, {
+            id_profile,
+            id_user: user.id_user,
+            kind,
+            video_url: videoUrl,
+            thumbnail_url: thumbnailUrl,
+            storage_key: storageKey,
+            thumbnail_key: validThumbKey,
+            duration_seconds,
+            width,
+            height,
+            caption,
+            metadata,
+          });
+          await client.query("COMMIT");
+          return { story: mapStory(story) };
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
       }
     );
   }
