@@ -18,7 +18,7 @@ const {
 const ALLOWED_ORIGINS = [
   "https://freelandoo.com.br",
   "https://www.freelandoo.com.br",
-  "https://freelandoo.vercel.app",
+  "https://*.vercel.app", // preview + prod deploys da Vercel
   "http://localhost:3000",
 ];
 
