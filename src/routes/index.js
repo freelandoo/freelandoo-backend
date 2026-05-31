@@ -79,6 +79,8 @@ const navCountsRoutes = require("./navCounts.routes");
 const userTourProgressRoutes = require("./userTourProgress.routes");
 const meOfferingsRoutes = require("./meOfferings.routes");
 const monetizationIntentRoutes = require("./monetizationIntent.routes");
+const audioLibraryRoutes = require("./audioLibrary.routes");
+const audioLibraryAdminRoutes = require("./audioLibraryAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -166,4 +168,6 @@ module.exports = (app) => {
   app.use("/tours", userTourProgressRoutes);
   app.use("/me", meOfferingsRoutes);
   app.use("/onboarding/intent", monetizationIntentRoutes);
+  app.use("/audio-library", audioLibraryRoutes);
+  app.use("/admin/audio-library", audioLibraryAdminRoutes);
 };
