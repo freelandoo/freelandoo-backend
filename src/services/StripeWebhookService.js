@@ -11,6 +11,7 @@ const ManifestationService = require("./ManifestationService");
 const PolenProductService = require("./PolenProductService");
 const PremiumService = require("./PremiumService");
 const ProfileProductOrderService = require("./ProfileProductOrderService");
+const CasaParticipantService = require("./CasaParticipantService");
 const XpStorage = require("../storages/XpStorage");
 const { createLogger } = require("../utils/logger");
 
@@ -469,6 +470,8 @@ async function processEvent(event) {
         await CoursesService.confirmStripeSession(session);
       } else if (meta.type === "profile_product_order") {
         await ProfileProductOrderService.confirmStripeSession(session);
+      } else if (meta.type === "casa_participant_order") {
+        await CasaParticipantService.confirmStripeSession(session);
       } else {
         // Subscription checkout
         await handleCheckoutCompleted(pool, session);
@@ -492,6 +495,8 @@ async function processEvent(event) {
       const charge = event.data.object;
       const productOrderResult = await ProfileProductOrderService.handleChargeRefunded(charge);
       if (productOrderResult && !productOrderResult.ignored) break;
+      const casaResult = await CasaParticipantService.handleChargeRefunded(charge);
+      if (casaResult && !casaResult.ignored) break;
       const BookingPayoutService = require("./BookingPayoutService");
       const bookingResult = await BookingPayoutService.handleChargeRefunded(charge);
       if (bookingResult && !bookingResult.ignored) break;

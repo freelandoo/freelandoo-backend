@@ -81,6 +81,8 @@ const meOfferingsRoutes = require("./meOfferings.routes");
 const monetizationIntentRoutes = require("./monetizationIntent.routes");
 const audioLibraryRoutes = require("./audioLibrary.routes");
 const audioLibraryAdminRoutes = require("./audioLibraryAdmin.routes");
+const casaPublicRoutes = require("./casaPublic.routes");
+const casaAdminRoutes = require("./casaAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -170,4 +172,6 @@ module.exports = (app) => {
   app.use("/onboarding/intent", monetizationIntentRoutes);
   app.use("/audio-library", audioLibraryRoutes);
   app.use("/admin/audio-library", audioLibraryAdminRoutes);
+  app.use("/casa", casaPublicRoutes);
+  app.use("/admin/casa", casaAdminRoutes);
 };
