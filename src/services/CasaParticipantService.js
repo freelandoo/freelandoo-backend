@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const CasaParticipantStorage = require("../storages/CasaParticipantStorage");
 const CasaProductStorage = require("../storages/CasaProductStorage");
+const CasaStoreStorage = require("../storages/CasaStoreStorage");
 const StripeService = require("./StripeService");
 const uploadCasaParticipantMediaToR2 = require("../integrations/r2/uploadCasaParticipantMedia");
 const { slugify } = require("../utils/slug");
@@ -47,11 +48,14 @@ class CasaParticipantService {
     return runWithLogs(log, "getPublicBySlug", () => ({ slug }), async () => {
       const participant = await CasaParticipantStorage.getParticipantBySlug(pool, slug);
       if (!participant || !participant.is_active) return { error: "Participante não encontrado" };
+      // Conveniência Views é uma loja ÚNICA global: toda página de participante
+      // ESPELHA a mesma vitrine. A atribuição da venda ao participante acontece
+      // no checkout (id_participant no pedido), não no produto.
       const [journey, secrets, theories, products] = await Promise.all([
         CasaParticipantStorage.listJourney(pool, participant.id),
         CasaParticipantStorage.listSecrets(pool, participant.id),
         CasaParticipantStorage.listTheories(pool, participant.id),
-        CasaProductStorage.listProducts(pool, participant.id, { onlyActive: true }),
+        CasaStoreStorage.listProductsWithMedia(pool, { onlyActive: true }),
       ]);
       return { participant, journey, secrets, theories, products };
     });
@@ -62,14 +66,19 @@ class CasaParticipantService {
   static async createProductCheckout(user, body = {}) {
     return runWithLogs(log, "createProductCheckout", () => ({ id_user: user?.id_user, product_id: body?.product_id }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
-      const product = await CasaProductStorage.getProductById(pool, body.product_id);
+      const product = await CasaStoreStorage.getProductById(pool, body.product_id);
       if (!product || !product.is_active) return { error: "Produto não encontrado" };
       const amount = Number(product.price_cents) || 0;
       if (amount <= 0) return { error: "Produto sem preço" };
       if (product.stock !== null && Number(product.stock) <= 0) return { error: "Produto esgotado" };
 
-      const participant = await CasaParticipantStorage.getParticipantById(pool, product.id_participant);
-      if (!participant) return { error: "Participante não encontrado" };
+      // Atribuição: o participante vem da PÁGINA onde a compra aconteceu.
+      const participant = body.participant_slug
+        ? await CasaParticipantStorage.getParticipantBySlug(pool, body.participant_slug)
+        : body.participant_id
+          ? await CasaParticipantStorage.getParticipantById(pool, body.participant_id)
+          : null;
+      if (!participant) return { error: "Participante (atribuição) não informado" };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
       const successUrl = `${frontend}/acasaviews/participantes/${participant.slug}?compra=success&session_id={CHECKOUT_SESSION_ID}`;
@@ -119,17 +128,18 @@ class CasaParticipantService {
         return { order: existing, duplicate: true };
       }
 
-      const product = await CasaProductStorage.getProductById(client, meta.product_id);
+      const product = await CasaStoreStorage.getProductById(client, meta.product_id);
       if (!product) {
         await client.query("ROLLBACK");
         return { error: "Produto não encontrado" };
       }
 
       // Garante a linha do pedido caso o create no checkout tenha falhado.
-      if (!existing) {
+      // O participante (atribuição) vem do metadata da sessão.
+      if (!existing && meta.participant_id) {
         await CasaProductStorage.createOrder(client, {
           id_product: product.id,
-          id_participant: product.id_participant,
+          id_participant: meta.participant_id,
           id_user: meta.user_id || null,
           buyer_email: null,
           product_name: product.name,
@@ -140,15 +150,10 @@ class CasaParticipantService {
       }
 
       // Reserva estoque (NULL = ilimitado).
-      const reserved = await CasaProductStorage.reserveStock(client, product.id);
+      const reserved = await CasaStoreStorage.reserveStock(client, product.id);
       if (!reserved) {
         // sem estoque: cancela o pedido, mas não derruba o webhook
-        await client.query(
-          `UPDATE public.casa_participant_product_order
-             SET status = 'canceled', updated_at = NOW()
-           WHERE stripe_session_id = $1`,
-          [session.id]
-        );
+        await CasaProductStorage.markOrderCanceled(client, session.id);
         await client.query("COMMIT");
         return { error: "Produto esgotado no momento da confirmação", order_canceled: true };
       }
@@ -194,7 +199,7 @@ class CasaParticipantService {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await CasaProductStorage.restoreStock(client, order.id_product);
+      await CasaStoreStorage.restoreStock(client, order.id_product);
       const updated = await CasaProductStorage.markOrderRefunded(client, order.id);
       await client.query("COMMIT");
       return { order: updated };
@@ -226,13 +231,12 @@ class CasaParticipantService {
     return runWithLogs(log, "adminGet", () => ({ id }), async () => {
       const participant = await CasaParticipantStorage.getParticipantById(pool, id);
       if (!participant) return { error: "Participante não encontrado" };
-      const [journey, secrets, theories, products] = await Promise.all([
+      const [journey, secrets, theories] = await Promise.all([
         CasaParticipantStorage.listJourney(pool, id),
         CasaParticipantStorage.listSecrets(pool, id),
         CasaParticipantStorage.listTheories(pool, id),
-        CasaProductStorage.listProducts(pool, id),
       ]);
-      return { participant, journey, secrets, theories, products };
+      return { participant, journey, secrets, theories };
     });
   }
 
@@ -463,65 +467,7 @@ class CasaParticipantService {
     await CasaParticipantStorage.deleteTheory(pool, id);
     return { ok: true };
   }
-
-  // ──────────────────────── Admin: produtos ────────────────────────
-
-  static async adminListProducts(id_participant) {
-    return runWithLogs(log, "adminListProducts", () => ({ id_participant }), async () => {
-      const p = await CasaParticipantStorage.getParticipantById(pool, id_participant);
-      if (!p) return { error: "Participante não encontrado" };
-      return { products: await CasaProductStorage.listProducts(pool, id_participant) };
-    });
-  }
-
-  static async adminCreateProduct(id_participant, body, file) {
-    return runWithLogs(log, "adminCreateProduct", () => ({ id_participant }), async () => {
-      const p = await CasaParticipantStorage.getParticipantById(pool, id_participant);
-      if (!p) return { error: "Participante não encontrado" };
-      const name = txt(body?.name, 160);
-      if (!name) return { error: "name obrigatório" };
-      let image_url = txt(body?.image_url, 600);
-      if (file?.buffer) image_url = await uploadCasaParticipantMediaToR2({ file, kind: "product" });
-      const product = await CasaProductStorage.createProduct(pool, {
-        id_participant,
-        name,
-        description: txt(body?.description, 2000),
-        image_url,
-        price_cents: clampInt(body?.price_cents, { fallback: 0 }),
-        stock: body?.stock == null || body?.stock === "" ? null : clampInt(body.stock, { min: 0, fallback: 0 }),
-        is_active: boolish(body?.is_active, true),
-        sort_order: clampInt(body?.sort_order, { fallback: 0 }),
-      });
-      return { product };
-    });
-  }
-
-  static async adminUpdateProduct(id, body, file) {
-    return runWithLogs(log, "adminUpdateProduct", () => ({ id }), async () => {
-      const existing = await CasaProductStorage.getProductById(pool, id);
-      if (!existing) return { error: "Produto não encontrado" };
-      const patch = {};
-      if (body?.name !== undefined) { const v = txt(body.name, 160); if (!v) return { error: "name inválido" }; patch.name = v; }
-      if (body?.description !== undefined) patch.description = txt(body.description, 2000);
-      if (body?.price_cents !== undefined) patch.price_cents = clampInt(body.price_cents);
-      if (body?.stock !== undefined) patch.stock = body.stock == null || body.stock === "" ? null : clampInt(body.stock, { min: 0, fallback: 0 });
-      if (body?.is_active !== undefined) patch.is_active = boolish(body.is_active, true);
-      if (body?.sort_order !== undefined) patch.sort_order = clampInt(body.sort_order);
-      if (file?.buffer) patch.image_url = await uploadCasaParticipantMediaToR2({ file, kind: "product" });
-      else if (body?.image_url !== undefined) patch.image_url = txt(body.image_url, 600);
-      const product = await CasaProductStorage.updateProduct(pool, id, patch);
-      return { product };
-    });
-  }
-
-  static async adminDeleteProduct(id) {
-    return runWithLogs(log, "adminDeleteProduct", () => ({ id }), async () => {
-      const existing = await CasaProductStorage.getProductById(pool, id);
-      if (!existing) return { error: "Produto não encontrado" };
-      const product = await CasaProductStorage.deleteProduct(pool, id);
-      return { product };
-    });
-  }
+  // Produtos da Conveniência Views são GLOBAIS — geridos por CasaStoreService.
 }
 
 module.exports = CasaParticipantService;

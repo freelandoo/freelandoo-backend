@@ -54,20 +54,6 @@ class CasaAdminController {
   static async deleteTheory(req, res) {
     return sendServiceResult(res, await CasaParticipantService.adminDeleteTheory(req.params.itemId));
   }
-
-  // Produtos
-  static async listProducts(req, res) {
-    return sendServiceResult(res, await CasaParticipantService.adminListProducts(req.params.id));
-  }
-  static async createProduct(req, res) {
-    return sendServiceResult(res, await CasaParticipantService.adminCreateProduct(req.params.id, req.body || {}, req.file), 201);
-  }
-  static async updateProduct(req, res) {
-    return sendServiceResult(res, await CasaParticipantService.adminUpdateProduct(req.params.productId, req.body || {}, req.file));
-  }
-  static async deleteProduct(req, res) {
-    return sendServiceResult(res, await CasaParticipantService.adminDeleteProduct(req.params.productId));
-  }
 }
 
 module.exports = CasaAdminController;

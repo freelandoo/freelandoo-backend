@@ -3,10 +3,22 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const roleMiddleware = require("../middlewares/roleMiddleware");
 const uploadAvatar = require("../middlewares/uploadAvatar");
 const CasaAdminController = require("../controllers/CasaAdminController");
+const CasaStoreController = require("../controllers/CasaStoreController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
 const admin = [authMiddleware, roleMiddleware("Administrator")];
+
+// ─── Loja global "Conveniência Views" (produtos espelhados) ───
+router.get("/store/products", ...admin, asyncHandler(CasaStoreController.list));
+router.post("/store/products", ...admin, asyncHandler(CasaStoreController.create));
+router.get("/store/orders", ...admin, asyncHandler(CasaStoreController.listOrders));
+router.get("/store/products/:id", ...admin, asyncHandler(CasaStoreController.get));
+router.put("/store/products/:id", ...admin, asyncHandler(CasaStoreController.update));
+router.delete("/store/products/:id", ...admin, asyncHandler(CasaStoreController.remove));
+router.post("/store/products/:id/media", ...admin, uploadAvatar.single("file"), asyncHandler(CasaStoreController.addMedia));
+router.put("/store/products/:id/media/reorder", ...admin, asyncHandler(CasaStoreController.reorderMedia));
+router.delete("/store/media/:mediaId", ...admin, asyncHandler(CasaStoreController.deleteMedia));
 
 // Participantes
 router.get("/participants", ...admin, asyncHandler(CasaAdminController.list));
@@ -30,11 +42,5 @@ router.delete("/secrets/:itemId", ...admin, asyncHandler(CasaAdminController.del
 router.post("/participants/:id/theories", ...admin, asyncHandler(CasaAdminController.createTheory));
 router.put("/theories/:itemId", ...admin, asyncHandler(CasaAdminController.updateTheory));
 router.delete("/theories/:itemId", ...admin, asyncHandler(CasaAdminController.deleteTheory));
-
-// Produtos (Conveniência Views)
-router.get("/participants/:id/products", ...admin, asyncHandler(CasaAdminController.listProducts));
-router.post("/participants/:id/products", ...admin, uploadAvatar.single("file"), asyncHandler(CasaAdminController.createProduct));
-router.put("/products/:productId", ...admin, uploadAvatar.single("file"), asyncHandler(CasaAdminController.updateProduct));
-router.delete("/products/:productId", ...admin, asyncHandler(CasaAdminController.deleteProduct));
 
 module.exports = router;
