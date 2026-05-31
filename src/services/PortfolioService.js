@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const ProfileStorage = require("../storages/ProfileStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
+const AudioTrackStorage = require("../storages/AudioTrackStorage");
 const ClanStorage = require("../storages/ClanStorage");
 const XpStorage = require("../storages/XpStorage");
 const ChatModerationService = require("./ChatModerationService");
@@ -113,6 +114,32 @@ function normalizeMediaType(value) {
   return t;
 }
 
+function normalizeAudioStartMs(value) {
+  if (value === undefined || value === null || value === "") return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(10 * 60 * 1000, Math.floor(n)));
+}
+
+function normalizeRenderMeta(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { error: "render_meta inválido" };
+  }
+  return value;
+}
+
+async function resolveAudioTrackId(conn, value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !UUID_RE.test(value)) {
+    return { error: "audio_track_id inválido" };
+  }
+  const track = await AudioTrackStorage.getById(conn, value);
+  if (!track || track.is_active === false) return null;
+  return track.id_audio_track;
+}
+
 class PortfolioService {
   static async listPublic(params) {
     return runWithLogs(
@@ -202,6 +229,10 @@ class PortfolioService {
       return { error: "media deve ser um array" };
     }
 
+    const render_meta = normalizeRenderMeta(payload?.render_meta);
+    if (render_meta?.error) return render_meta;
+    const audio_start_ms = normalizeAudioStartMs(payload?.audio_start_ms);
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -217,6 +248,12 @@ class PortfolioService {
         return accessErr;
       }
 
+      const audio_track_id = await resolveAudioTrackId(client, payload?.audio_track_id);
+      if (audio_track_id?.error) {
+        await client.query("ROLLBACK");
+        return audio_track_id;
+      }
+
       const feed_kind = payload?.feed_kind === "bees" ? "bees" : "feed";
 
       const item = await PortfolioStorage.createItem(client, {
@@ -229,6 +266,9 @@ class PortfolioService {
           sort_order === undefined || sort_order === null ? 0 : sort_order,
         created_by: user.id_user,
         feed_kind,
+        audio_track_id,
+        audio_start_ms: audio_track_id ? audio_start_ms : 0,
+        render_meta: render_meta === undefined ? null : render_meta,
       });
 
       // inserir mídias

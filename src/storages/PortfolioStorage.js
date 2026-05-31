@@ -34,6 +34,9 @@ class PortfolioStorage {
       sort_order,
       created_by,
       feed_kind,
+      audio_track_id = null,
+      audio_start_ms = 0,
+      render_meta = null,
     }
   ) {
     const kind = feed_kind === "bees" ? "bees" : "feed";
@@ -43,12 +46,13 @@ class PortfolioStorage {
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile_portfolio_item
-        (id_profile, title, description, project_url, is_featured, sort_order, created_by, updated_by, feed_kind, published_at)
+        (id_profile, title, description, project_url, is_featured, sort_order, created_by, updated_by, feed_kind, published_at, audio_track_id, audio_start_ms, render_meta)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $7, $8, NOW())
+        ($1, $2, $3, $4, $5, $6, $7, $7, $8, NOW(), $9, $10, $11)
       RETURNING
         id_portfolio_item, id_profile, title, description, project_url,
-        is_featured, sort_order, feed_kind, created_at, updated_at, is_active, published_at
+        is_featured, sort_order, feed_kind, audio_track_id, audio_start_ms,
+        render_meta, created_at, updated_at, is_active, published_at
       `,
       [
         id_profile,
@@ -59,6 +63,9 @@ class PortfolioStorage {
         sort_order,
         created_by,
         kind,
+        audio_track_id,
+        audio_start_ms || 0,
+        render_meta,
       ]
     );
     return r.rows[0];
@@ -300,6 +307,9 @@ class PortfolioStorage {
         i.is_featured,
         i.sort_order,
         i.feed_kind,
+        i.audio_track_id,
+        i.audio_start_ms,
+        i.render_meta,
         i.created_at,
         i.updated_at,
         i.is_active,
