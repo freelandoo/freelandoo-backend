@@ -1,7 +1,9 @@
 const pool = require("../databases");
 const StoryStorage = require("../storages/StoryStorage");
+const AudioTrackStorage = require("../storages/AudioTrackStorage");
 const uploadStoryVideoToR2 = require("../integrations/r2/uploadStoryVideo");
 const presignStory = require("../integrations/r2/presignStoryUpload");
+const { publicUrl: audioPublicUrl } = require("../integrations/r2/uploadAudioTrack");
 const ChatModerationService = require("./ChatModerationService");
 const ConversationService = require("./ConversationService");
 const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaProcessing");
@@ -68,6 +70,23 @@ function normalizeOptionalInt(value) {
   return n;
 }
 
+function normalizeAudioStartMs(value) {
+  if (value === undefined || value === null || value === "") return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  // Cap em 1h — proteção contra valores absurdos.
+  return Math.min(Math.round(n), 3_600_000);
+}
+
+// Confirma que a faixa escolhida existe e está ativa. Faixa inexistente/inativa
+// → ignora silenciosamente (música é opcional; nunca derruba a publicação).
+async function resolveAudioTrackId(value) {
+  if (typeof value !== "string" || !UUID_RE.test(value)) return null;
+  const track = await AudioTrackStorage.getById(pool, value);
+  if (!track || track.is_active === false) return null;
+  return track.id_audio_track;
+}
+
 function normalizeCaption(value) {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") return null;
@@ -91,6 +110,18 @@ function mapStory(row) {
     caption: row.caption,
     created_at: row.created_at,
     expires_at: row.expires_at,
+    // Música anexada (metadado) — só presente quando houve JOIN com tb_audio_track.
+    audio: row.audio_track_id
+      ? {
+          id_audio_track: row.audio_track_id,
+          start_ms: row.audio_start_ms || 0,
+          title: row.audio_title || null,
+          artist: row.audio_artist || null,
+          audio_url: row.audio_storage_key ? audioPublicUrl(row.audio_storage_key) : null,
+          cover_url: row.audio_cover_key ? audioPublicUrl(row.audio_cover_key) : null,
+          duration_ms: row.audio_duration_ms || 0,
+        }
+      : null,
     profile: row.profile_display_name
       ? {
           id_profile: row.id_profile,
@@ -169,6 +200,8 @@ class StoryService {
         const width = normalizeOptionalInt(body?.width);
         const height = normalizeOptionalInt(body?.height);
         const caption = normalizeCaption(body?.caption);
+        const audioTrackId = await resolveAudioTrackId(body?.audio_track_id);
+        const audioStartMs = audioTrackId ? normalizeAudioStartMs(body?.audio_start_ms) : 0;
         if (caption) {
           const moderation = await ChatModerationService.moderateMessage({
             id_user: user.id_user,
@@ -254,6 +287,8 @@ class StoryService {
                 ...(uploaded.thumbnail_key ? { thumbnail_storage_key: uploaded.thumbnail_key } : {}),
                 ...(total > 1 ? { split_index: chunk.index, split_total: total } : {}),
               },
+              audio_track_id: audioTrackId,
+              audio_start_ms: audioStartMs,
             });
             await client.query("COMMIT");
             stories.push(mapStory(story));
@@ -346,6 +381,9 @@ class StoryService {
         const height = normalizeOptionalInt(body?.height);
         const caption = normalizeCaption(body?.caption);
         const filterMeta = normalizeFilterMeta(body?.filter_meta);
+        const renderMeta = normalizeFilterMeta(body?.render_meta);
+        const audioTrackId = await resolveAudioTrackId(body?.audio_track_id);
+        const audioStartMs = audioTrackId ? normalizeAudioStartMs(body?.audio_start_ms) : 0;
 
         const storageKey = body?.storage_key;
         const thumbnailKey = body?.thumbnail_key || null;
@@ -426,6 +464,9 @@ class StoryService {
             height,
             caption,
             metadata,
+            audio_track_id: audioTrackId,
+            audio_start_ms: audioStartMs,
+            render_meta: renderMeta,
           });
           await client.query("COMMIT");
           return { story: mapStory(story) };

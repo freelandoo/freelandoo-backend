@@ -2,6 +2,7 @@ const PortfolioFeedStorage = require("../../storages/PortfolioFeedStorage");
 const { assertMinorPermission } = require("../../utils/supervision");
 const { createLogger, runWithLogs } = require("../../utils/logger");
 const { slugify, buildProfileUrl } = require("../../utils/slug");
+const { publicUrl: audioPublicUrl } = require("../../integrations/r2/uploadAudioTrack");
 
 const log = createLogger("PortfolioFeedService");
 
@@ -255,6 +256,18 @@ function shapeRow(row) {
     source_type: row.source_type || "portfolio",
     source_course_id: row.source_course_id || null,
     media: row.media || [],
+    // Música anexada (metadado, mig 108) — player toca; nada é queimado.
+    audio: row.audio_track_id
+      ? {
+          id_audio_track: row.audio_track_id,
+          start_ms: row.audio_start_ms || 0,
+          title: row.audio_title || null,
+          artist: row.audio_artist || null,
+          audio_url: row.audio_storage_key ? audioPublicUrl(row.audio_storage_key) : null,
+          cover_url: row.audio_cover_key ? audioPublicUrl(row.audio_cover_key) : null,
+          duration_ms: row.audio_duration_ms || 0,
+        }
+      : null,
     likes_count: row.likes_count,
     shares_count: row.shares_count,
     impressions_count: row.impressions_count,

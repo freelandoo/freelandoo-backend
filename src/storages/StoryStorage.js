@@ -12,9 +12,26 @@ const STORY_COLUMNS = `
   s.height,
   s.caption,
   s.metadata,
+  s.audio_track_id,
+  s.audio_start_ms,
   s.created_at,
   s.expires_at,
   s.deleted_at
+`;
+
+// Faixa de áudio anexada (mig 108) — colunas extras quando há JOIN com tb_audio_track.
+// Música é metadado: o player toca; nada é queimado.
+const AUDIO_COLUMNS = `
+  at.title       AS audio_title,
+  at.artist      AS audio_artist,
+  at.storage_key AS audio_storage_key,
+  at.cover_key   AS audio_cover_key,
+  at.duration_ms AS audio_duration_ms
+`;
+const AUDIO_JOIN = `
+  LEFT JOIN public.tb_audio_track at
+    ON at.id_audio_track = s.audio_track_id
+   AND at.is_active = TRUE
 `;
 
 class StoryStorage {
@@ -57,11 +74,13 @@ class StoryStorage {
         id_profile, id_user, kind,
         video_url, thumbnail_url, storage_key, thumbnail_key,
         duration_seconds, width, height, caption, metadata,
+        audio_track_id, audio_start_ms, render_meta,
         expires_at
       ) VALUES (
         $1, $2, $3,
         $4, $5, $6, $7,
         $8, $9, $10, $11, COALESCE($12, '{}'::jsonb),
+        $13, COALESCE($14, 0), $15,
         NOW() + INTERVAL '24 hours'
       )
       RETURNING ${STORY_COLUMNS.replace(/s\./g, "")}
@@ -79,6 +98,9 @@ class StoryStorage {
         data.height,
         data.caption,
         data.metadata ? JSON.stringify(data.metadata) : null,
+        data.audio_track_id || null,
+        data.audio_start_ms != null ? data.audio_start_ms : null,
+        data.render_meta ? JSON.stringify(data.render_meta) : null,
       ]
     );
     return rows[0] || null;
@@ -95,6 +117,7 @@ class StoryStorage {
     const { rows } = await conn.query(
       `
       SELECT ${STORY_COLUMNS},
+             ${AUDIO_COLUMNS},
              p.display_name AS profile_display_name,
              p.avatar_url   AS profile_avatar_url,
              p.is_clan      AS profile_is_clan,
@@ -104,6 +127,7 @@ class StoryStorage {
         JOIN public.tb_profile p ON p.id_profile = s.id_profile
         LEFT JOIN public.tb_category c ON c.id_category = p.id_category
         LEFT JOIN public.tb_machine  m ON m.id_machine  = c.id_machine
+        ${AUDIO_JOIN}
        WHERE s.id_user = $1
          AND s.deleted_at IS NULL
          AND s.expires_at > NOW()
@@ -206,6 +230,7 @@ class StoryStorage {
     const { rows } = await conn.query(
       `
       SELECT ${STORY_COLUMNS},
+             ${AUDIO_COLUMNS},
              p.display_name AS profile_display_name,
              p.avatar_url   AS profile_avatar_url,
              p.is_clan      AS profile_is_clan,
@@ -215,6 +240,7 @@ class StoryStorage {
         JOIN public.tb_profile p ON p.id_profile = s.id_profile
         LEFT JOIN public.tb_category c ON c.id_category = p.id_category
         LEFT JOIN public.tb_machine  m ON m.id_machine  = COALESCE(c.id_machine, p.id_machine)
+        ${AUDIO_JOIN}
        WHERE s.id_profile = $1
          AND s.deleted_at IS NULL
          AND s.expires_at > NOW()
@@ -228,8 +254,10 @@ class StoryStorage {
   static async getActiveById(conn, id_story) {
     const { rows } = await conn.query(
       `
-      SELECT ${STORY_COLUMNS}
+      SELECT ${STORY_COLUMNS},
+             ${AUDIO_COLUMNS}
         FROM public.tb_story s
+        ${AUDIO_JOIN}
        WHERE s.id_story = $1
          AND s.deleted_at IS NULL
          AND s.expires_at > NOW()

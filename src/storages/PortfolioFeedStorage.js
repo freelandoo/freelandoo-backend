@@ -38,6 +38,14 @@ function buildCandidateQuery(mode) {
       ppi.engagement_score,
       ppi.feed_kind,
 
+      ppi.audio_track_id,
+      ppi.audio_start_ms,
+      aud.title       AS audio_title,
+      aud.artist      AS audio_artist,
+      aud.storage_key AS audio_storage_key,
+      aud.cover_key   AS audio_cover_key,
+      aud.duration_ms AS audio_duration_ms,
+
       pro.id_profile,
       pro.display_name,
       pro.avatar_url,
@@ -86,6 +94,9 @@ function buildCandidateQuery(mode) {
     LEFT JOIN tb_machine  m   ON m.id_machine    = COALESCE(ca.id_machine, pro.id_machine)
     LEFT JOIN course_feed_publications cfp
       ON cfp.portfolio_item_id = ppi.id_portfolio_item
+    LEFT JOIN tb_audio_track aud
+      ON aud.id_audio_track = ppi.audio_track_id
+     AND aud.is_active = TRUE
 
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(
