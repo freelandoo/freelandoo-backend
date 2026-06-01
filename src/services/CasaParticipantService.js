@@ -270,6 +270,10 @@ class CasaParticipantService {
         cover_url,
         bio: txt(body?.bio, 5000),
         quote: txt(body?.quote, 1000),
+        profession: txt(body?.profession, 120),
+        archetype: txt(body?.archetype, 120),
+        strengths: txt(body?.strengths, 300),
+        risks: txt(body?.risks, 300),
         vault_amount_cents: clampInt(body?.vault_amount_cents, { fallback: 0 }),
         suspicion_pct: clampInt(body?.suspicion_pct, { min: 0, max: 100, fallback: 0 }),
         captures_count: clampInt(body?.captures_count, { fallback: 0 }),
@@ -306,6 +310,10 @@ class CasaParticipantService {
       if (body?.tagline !== undefined) patch.tagline = txt(body.tagline, 220);
       if (body?.bio !== undefined) patch.bio = txt(body.bio, 5000);
       if (body?.quote !== undefined) patch.quote = txt(body.quote, 1000);
+      if (body?.profession !== undefined) patch.profession = txt(body.profession, 120);
+      if (body?.archetype !== undefined) patch.archetype = txt(body.archetype, 120);
+      if (body?.strengths !== undefined) patch.strengths = txt(body.strengths, 300);
+      if (body?.risks !== undefined) patch.risks = txt(body.risks, 300);
       if (body?.vault_amount_cents !== undefined) patch.vault_amount_cents = clampInt(body.vault_amount_cents);
       if (body?.suspicion_pct !== undefined) patch.suspicion_pct = clampInt(body.suspicion_pct, { min: 0, max: 100 });
       if (body?.captures_count !== undefined) patch.captures_count = clampInt(body.captures_count);

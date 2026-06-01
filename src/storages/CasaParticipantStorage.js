@@ -3,6 +3,7 @@
 
 const PARTICIPANT_COLS = `
   id, slug, display_name, tagline, avatar_url, cover_url, bio, quote,
+  profession, archetype, strengths, risks,
   vault_amount_cents, suspicion_pct, captures_count, status, accent_color,
   external_ranking_user_id, is_active, sort_order, created_at, updated_at
 `;
@@ -40,12 +41,14 @@ async function createParticipant(conn, d) {
   const { rows } = await conn.query(
     `INSERT INTO public.casa_participant
        (slug, display_name, tagline, avatar_url, cover_url, bio, quote,
+        profession, archetype, strengths, risks,
         vault_amount_cents, suspicion_pct, captures_count, status, accent_color,
         external_ranking_user_id, is_active, sort_order)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      RETURNING ${PARTICIPANT_COLS}`,
     [
       d.slug, d.display_name, d.tagline, d.avatar_url, d.cover_url, d.bio, d.quote,
+      d.profession, d.archetype, d.strengths, d.risks,
       d.vault_amount_cents ?? 0, d.suspicion_pct ?? 0, d.captures_count ?? 0,
       d.status ?? "active", d.accent_color ?? "magenta",
       d.external_ranking_user_id, d.is_active ?? true, d.sort_order ?? 0,
@@ -56,6 +59,7 @@ async function createParticipant(conn, d) {
 
 const PATCHABLE = [
   "slug", "display_name", "tagline", "avatar_url", "cover_url", "bio", "quote",
+  "profession", "archetype", "strengths", "risks",
   "vault_amount_cents", "suspicion_pct", "captures_count", "status", "accent_color",
   "external_ranking_user_id", "is_active", "sort_order",
 ];
