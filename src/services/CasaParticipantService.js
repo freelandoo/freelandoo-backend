@@ -9,7 +9,7 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CasaParticipantService");
 
-const ACCENTS = new Set(["cyan", "magenta", "gold", "purple", "leaf", "red", "orange"]);
+const ACCENTS = new Set(["cyan", "magenta", "gold", "purple", "leaf", "red", "orange", "gray"]);
 const STATUSES = new Set(["active", "eliminated", "finalist", "winner"]);
 const SENTIMENTS = new Set(["positive", "neutral", "negative"]);
 const SHOW_FLAGS = [
