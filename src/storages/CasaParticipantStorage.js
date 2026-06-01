@@ -4,8 +4,16 @@
 const PARTICIPANT_COLS = `
   id, slug, display_name, tagline, avatar_url, cover_url, bio, quote,
   vault_amount_cents, suspicion_pct, captures_count, status, accent_color,
-  external_ranking_user_id, is_active, sort_order, created_at, updated_at
+  external_ranking_user_id, is_active, sort_order,
+  show_perfil, show_journey, show_secrets, show_theories, show_desempenho,
+  show_cofre, show_suspicion, show_captures, show_store,
+  created_at, updated_at
 `;
+
+const SHOW_COLS = [
+  "show_perfil", "show_journey", "show_secrets", "show_theories", "show_desempenho",
+  "show_cofre", "show_suspicion", "show_captures", "show_store",
+];
 
 // ───────────────────────── Participantes ─────────────────────────
 
@@ -58,6 +66,7 @@ const PATCHABLE = [
   "slug", "display_name", "tagline", "avatar_url", "cover_url", "bio", "quote",
   "vault_amount_cents", "suspicion_pct", "captures_count", "status", "accent_color",
   "external_ranking_user_id", "is_active", "sort_order",
+  ...SHOW_COLS,
 ];
 
 async function updateParticipant(conn, id, patch) {
@@ -211,7 +220,46 @@ async function deleteTheory(conn, id) {
   return { ok: true };
 }
 
+// ──────── Replace em lote (usado pelo full-save do editor inline) ────────
+
+async function replaceJourney(conn, id_participant, items) {
+  await conn.query(`DELETE FROM public.casa_participant_journey WHERE id_participant = $1`, [id_participant]);
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    await conn.query(
+      `INSERT INTO public.casa_participant_journey (id_participant, label, title, description, sentiment, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id_participant, it.label ?? null, it.title, it.description ?? null, it.sentiment ?? "neutral", i]
+    );
+  }
+}
+
+async function replaceSecrets(conn, id_participant, items) {
+  await conn.query(`DELETE FROM public.casa_participant_secret WHERE id_participant = $1`, [id_participant]);
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    await conn.query(
+      `INSERT INTO public.casa_participant_secret (id_participant, content, author_label, revealed, sort_order)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [id_participant, it.content, it.author_label ?? "anônimo", it.revealed ?? true, i]
+    );
+  }
+}
+
+async function replaceTheories(conn, id_participant, items) {
+  await conn.query(`DELETE FROM public.casa_participant_theory WHERE id_participant = $1`, [id_participant]);
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    await conn.query(
+      `INSERT INTO public.casa_participant_theory (id_participant, content, author_label, votes, sort_order)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [id_participant, it.content, it.author_label ?? "audiência", Number(it.votes) || 0, i]
+    );
+  }
+}
+
 module.exports = {
+  replaceJourney, replaceSecrets, replaceTheories,
   listParticipants,
   getParticipantById,
   getParticipantBySlug,

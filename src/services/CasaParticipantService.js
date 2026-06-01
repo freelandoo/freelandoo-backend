@@ -12,6 +12,10 @@ const log = createLogger("CasaParticipantService");
 const ACCENTS = new Set(["cyan", "magenta", "gold"]);
 const STATUSES = new Set(["active", "eliminated", "finalist", "winner"]);
 const SENTIMENTS = new Set(["positive", "neutral", "negative"]);
+const SHOW_FLAGS = [
+  "show_perfil", "show_journey", "show_secrets", "show_theories", "show_desempenho",
+  "show_cofre", "show_suspicion", "show_captures", "show_store",
+];
 
 function clampInt(value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback = 0 } = {}) {
   const n = Number(value);
@@ -322,6 +326,7 @@ class CasaParticipantService {
       if (body?.external_ranking_user_id !== undefined) patch.external_ranking_user_id = txt(body.external_ranking_user_id, 160);
       if (body?.is_active !== undefined) patch.is_active = boolish(body.is_active, true);
       if (body?.sort_order !== undefined) patch.sort_order = clampInt(body.sort_order);
+      for (const k of SHOW_FLAGS) if (body?.[k] !== undefined) patch[k] = boolish(body[k], true);
 
       if (file?.buffer) {
         const kind = body?.upload_kind === "cover" ? "cover" : "avatar";
@@ -334,6 +339,66 @@ class CasaParticipantService {
 
       const participant = await CasaParticipantStorage.updateParticipant(pool, id, patch);
       return { participant };
+    });
+  }
+
+  // Salva TUDO de uma vez (editor inline): campos do participante + flags de
+  // visibilidade + substitui jornada/segredos/teorias. Uma transação só.
+  static async adminSaveFull(id, body = {}) {
+    return runWithLogs(log, "adminSaveFull", () => ({ id }), async () => {
+      const existing = await CasaParticipantStorage.getParticipantById(pool, id);
+      if (!existing) return { error: "Participante não encontrado" };
+      const pb = body.participant || {};
+
+      const patch = {};
+      if (pb.display_name !== undefined) { const v = txt(pb.display_name, 120); if (!v) return { error: "Nome obrigatório" }; patch.display_name = v; }
+      if (pb.slug !== undefined) {
+        const v = txt(pb.slug, 80) || slugify(pb.display_name || existing.display_name);
+        if (v && v !== existing.slug) {
+          const dup = await CasaParticipantStorage.getParticipantBySlug(pool, v);
+          if (dup) return { error: "Slug já cadastrado" };
+        }
+        patch.slug = v;
+      }
+      if (pb.tagline !== undefined) patch.tagline = txt(pb.tagline, 220);
+      if (pb.bio !== undefined) patch.bio = txt(pb.bio, 5000);
+      if (pb.quote !== undefined) patch.quote = txt(pb.quote, 1000);
+      if (pb.vault_amount_cents !== undefined) patch.vault_amount_cents = clampInt(pb.vault_amount_cents);
+      if (pb.suspicion_pct !== undefined) patch.suspicion_pct = clampInt(pb.suspicion_pct, { min: 0, max: 100 });
+      if (pb.captures_count !== undefined) patch.captures_count = clampInt(pb.captures_count);
+      if (pb.accent_color !== undefined) { const v = txt(pb.accent_color, 20); if (!v || !ACCENTS.has(v)) return { error: "Cor inválida" }; patch.accent_color = v; }
+      if (pb.status !== undefined) { const v = txt(pb.status, 24); if (!v || !STATUSES.has(v)) return { error: "Status inválido" }; patch.status = v; }
+      if (pb.external_ranking_user_id !== undefined) patch.external_ranking_user_id = txt(pb.external_ranking_user_id, 160);
+      if (pb.is_active !== undefined) patch.is_active = boolish(pb.is_active, true);
+      if (pb.avatar_url !== undefined) patch.avatar_url = txt(pb.avatar_url, 600);
+      if (pb.cover_url !== undefined) patch.cover_url = txt(pb.cover_url, 600);
+      for (const k of SHOW_FLAGS) if (pb[k] !== undefined) patch[k] = boolish(pb[k], true);
+
+      const journey = Array.isArray(body.journey) ? body.journey
+        .map((j) => ({ label: txt(j.label, 120), title: txt(j.title, 180), description: txt(j.description, 2000), sentiment: SENTIMENTS.has(j.sentiment) ? j.sentiment : "neutral" }))
+        .filter((j) => j.title) : null;
+      const secrets = Array.isArray(body.secrets) ? body.secrets
+        .map((s) => ({ content: txt(s.content, 2000), author_label: txt(s.author_label, 120) || "anônimo", revealed: boolish(s.revealed, true) }))
+        .filter((s) => s.content) : null;
+      const theories = Array.isArray(body.theories) ? body.theories
+        .map((t) => ({ content: txt(t.content, 2000), author_label: txt(t.author_label, 120) || "audiência", votes: clampInt(t.votes, { fallback: 0 }) }))
+        .filter((t) => t.content) : null;
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await CasaParticipantStorage.updateParticipant(client, id, patch);
+        if (journey) await CasaParticipantStorage.replaceJourney(client, id, journey);
+        if (secrets) await CasaParticipantStorage.replaceSecrets(client, id, secrets);
+        if (theories) await CasaParticipantStorage.replaceTheories(client, id, theories);
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+      return this.adminGet(id);
     });
   }
 

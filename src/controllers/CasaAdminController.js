@@ -15,6 +15,9 @@ class CasaAdminController {
   static async update(req, res) {
     return sendServiceResult(res, await CasaParticipantService.adminUpdate(req.params.id, req.body || {}, req.file));
   }
+  static async saveFull(req, res) {
+    return sendServiceResult(res, await CasaParticipantService.adminSaveFull(req.params.id, req.body || {}));
+  }
   static async remove(req, res) {
     return sendServiceResult(res, await CasaParticipantService.adminDelete(req.params.id));
   }

@@ -25,6 +25,7 @@ router.get("/participants", ...admin, asyncHandler(CasaAdminController.list));
 router.post("/participants", ...admin, uploadAvatar.single("file"), asyncHandler(CasaAdminController.create));
 router.post("/uploads", ...admin, uploadAvatar.single("file"), asyncHandler(CasaAdminController.upload));
 router.get("/participants/:id", ...admin, asyncHandler(CasaAdminController.get));
+router.put("/participants/:id/full", ...admin, asyncHandler(CasaAdminController.saveFull));
 router.put("/participants/:id", ...admin, uploadAvatar.single("file"), asyncHandler(CasaAdminController.update));
 router.delete("/participants/:id", ...admin, asyncHandler(CasaAdminController.remove));
 
