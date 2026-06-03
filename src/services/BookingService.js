@@ -6,6 +6,7 @@ const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
 const ClanStorage = require("../storages/ClanStorage");
 const ClanEarningSplitStorage = require("../storages/ClanEarningSplitStorage");
 const StripeService = require("./StripeService");
+const StoreGovernanceService = require("./StoreGovernanceService");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("BookingService");
@@ -66,12 +67,26 @@ class BookingService {
       return { error: "Serviço não encontrado ou inativo" };
     }
 
-    // Valor cobrado: preço do serviço.
-    const charge_amount = service.price_amount;
-    if (charge_amount < PLATFORM_FEE_CENTS) {
+    // Valor base do serviço — define o que o profissional recebe (price − R$10).
+    const service_price = service.price_amount;
+    if (service_price < PLATFORM_FEE_CENTS) {
       return { error: "Valor do serviço inferior à taxa mínima da plataforma" };
     }
-    const professional_amount = charge_amount - PLATFORM_FEE_CENTS;
+    const professional_amount = service_price - PLATFORM_FEE_CENTS;
+
+    // Opt-in de afiliado por serviço (mig 090): comissão ADITIVA embutida no sinal,
+    // base = preço cheio do serviço, sem reduzir o que o profissional recebe. Sem
+    // gross-up de maquininha (booking não grossa-up). Vai pro afiliado se a venda
+    // veio por ?cupom=, senão a plataforma fica.
+    const affiliatesAllowed = service.affiliates_allowed === true;
+    const affiliate_pct = affiliatesAllowed
+      ? await StoreGovernanceService.getAffiliateCommissionPercent()
+      : 0;
+    const affiliate_commission_cents = affiliate_pct > 0
+      ? Math.round((service_price * affiliate_pct) / 100)
+      : 0;
+    // Comprador paga: preço do serviço + comissão embutida.
+    const charge_amount = service_price + affiliate_commission_cents;
 
     // Calcular end_time com base na duração do serviço, ou da regra semanal, ou default 60
     const [sh, sm] = start_time.split(":").map(Number);
@@ -139,7 +154,13 @@ class BookingService {
           client_name,
           client_email,
           user_id: String(user.id_user),
-          ...(coupon_code ? { coupon_code: String(coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
+          // Comissão de afiliado SÓ quando o serviço tem opt-in (gate real).
+          ...(affiliatesAllowed && coupon_code && affiliate_commission_cents > 0
+            ? {
+                coupon_code: String(coupon_code).trim().toUpperCase().slice(0, 40),
+                affiliate_commission_cents: String(affiliate_commission_cents),
+              }
+            : {}),
           charge_amount: String(charge_amount),
           platform_fee: String(PLATFORM_FEE_CENTS),
           professional_amount: String(professional_amount),
