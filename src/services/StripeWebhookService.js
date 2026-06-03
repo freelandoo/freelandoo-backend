@@ -384,15 +384,17 @@ async function handleSubscriptionDeleted(conn, subscription) {
  * Retorna null quando o fluxo não deve gerar comissão.
  *
  * Geram comissão: Loja (produto), Cursos e Booking/Serviços (modelo aditivo,
- * opt-in por item). A assinatura usa fluxo próprio (createFromProfileSubscription).
+ * opt-in por item, comissão embutida via meta.affiliate_commission_cents) e
+ * Conveniência da Casa Views (casa_participant_order, %-base sobre o total).
+ * A assinatura usa fluxo próprio (createFromProfileSubscription).
  * NÃO geram comissão: Poléns, Premium (prêmio), Clã e Manifestação.
- * Conveniência (casa_participant_order) entra em slice próprio.
  */
 function resolveCommissionContext(meta) {
   switch (meta?.type) {
-    case "profile_product_order": return { source_context: "loja_produto" };
-    case "course_purchase":       return { source_context: "course_purchase" };
-    case "booking_deposit":       return { source_context: "booking_deposit" };
+    case "profile_product_order":  return { source_context: "loja_produto" };
+    case "course_purchase":        return { source_context: "course_purchase" };
+    case "booking_deposit":        return { source_context: "booking_deposit" };
+    case "casa_participant_order": return { source_context: "casa_conveniencia" };
     default: return null;
   }
 }
@@ -412,6 +414,13 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
     const id_user_buyer = resolveBuyerUserId(session, meta);
     const total_cents = Number(session?.amount_total || 0);
     if (!total_cents) return;
+    // Aditivo (loja/cursos/serviços/booking): comissão embutida e cravada no
+    // checkout via meta.affiliate_commission_cents. Conveniência não manda esse
+    // campo → cai no %-base sobre o total.
+    const explicitCents = Number(meta.affiliate_commission_cents);
+    const explicit_commission_cents = Number.isFinite(explicitCents) && explicitCents > 0
+      ? explicitCents
+      : null;
     await AffiliateConversionService.createFromGenericPaidOrder(conn, {
       coupon_code: meta.coupon_code,
       id_user_buyer,
@@ -420,6 +429,7 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
       payment_provider: "stripe",
       payment_provider_ref: session.id,
       raw_webhook: session,
+      explicit_commission_cents,
     });
   } catch (err) {
     log.error("affiliate.commission.attribute.fail", { error: err.message });

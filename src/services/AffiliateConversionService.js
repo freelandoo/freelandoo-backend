@@ -507,6 +507,10 @@ async function onOrderStatusChange(
  * @param {string} params.payment_provider_ref - ID externo único (Stripe session/payment intent) — para idempotência
  * @param {Object|null} params.raw_webhook - payload do webhook, opcional
  * @param {Date|null} params.paid_at - data do pagamento, default NOW
+ * @param {number|null} params.explicit_commission_cents - comissão ADITIVA já
+ *   calculada e embutida no preço (loja/cursos/serviços/booking com opt-in). Quando
+ *   presente, é usada como o valor da comissão (ignora o %-base da regra e o
+ *   min_order). Ausente → comportamento %-base sobre total_cents (ex.: Conveniência).
  * @returns {Promise<Object|null>} - conversão criada/aprovada ou null se skip
  */
 async function createFromGenericPaidOrder(client, {
@@ -519,6 +523,7 @@ async function createFromGenericPaidOrder(client, {
   payment_provider_ref,
   raw_webhook = null,
   paid_at = null,
+  explicit_commission_cents = null,
 }) {
   try {
     if (!coupon_code || !payment_provider_ref) return null;
@@ -565,16 +570,29 @@ async function createFromGenericPaidOrder(client, {
     }
 
     const subtotal_cents = toCents(total_cents, 0);
-    const calc = AffiliateRuleResolver.calculate({
-      order_total_cents: subtotal_cents,
-      discount_cents: 0,
-      rule,
-    });
-    if (!calc) {
-      log.info("affiliate.conversion.skip.min_order", {
-        source_context, subtotal_cents, min_order_cents: rule.min_order_cents,
+
+    // Aditivo: comissão já embutida e cravada no checkout (opt-in por item) → usa
+    // o valor explícito. Caso contrário (Conveniência), %-base sobre o total.
+    const explicit = explicit_commission_cents != null ? toCents(explicit_commission_cents, 0) : 0;
+    let commission_cents;
+    let commission_base_cents;
+    if (explicit > 0) {
+      commission_cents = explicit;
+      commission_base_cents = explicit;
+    } else {
+      const calc = AffiliateRuleResolver.calculate({
+        order_total_cents: subtotal_cents,
+        discount_cents: 0,
+        rule,
       });
-      return null;
+      if (!calc) {
+        log.info("affiliate.conversion.skip.min_order", {
+          source_context, subtotal_cents, min_order_cents: rule.min_order_cents,
+        });
+        return null;
+      }
+      commission_cents = calc.commission_cents;
+      commission_base_cents = calc.base_cents;
     }
 
     // Idempotência: se já existe order com (provider, ref), reusa.
@@ -636,14 +654,15 @@ async function createFromGenericPaidOrder(client, {
       status: "PENDING",
       order_total_cents: subtotal_cents,
       discount_cents: 0,
-      commission_base_cents: calc.base_cents,
+      commission_base_cents,
       commission_percent: rule.commission_percent,
-      commission_cents: calc.commission_cents,
+      commission_cents,
       rule_snapshot: {
         ...rule.snapshot,
         source_context,
         payment_provider,
         payment_provider_ref,
+        commission_mode: explicit > 0 ? "additive_explicit" : "percent_base",
       },
     });
 
@@ -663,7 +682,7 @@ async function createFromGenericPaidOrder(client, {
       source_context,
       id_conversion: approved?.id_conversion || conversion.id_conversion,
       id_order: order.id_order,
-      commission_cents: calc.commission_cents,
+      commission_cents,
     });
 
     return approved || conversion;
