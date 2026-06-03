@@ -51,7 +51,11 @@ class CasaParticipantService {
   static async getPublicBySlug(slug) {
     return runWithLogs(log, "getPublicBySlug", () => ({ slug }), async () => {
       const participant = await CasaParticipantStorage.getParticipantBySlug(pool, slug);
-      if (!participant || !participant.is_active) return { error: "Participante não encontrado" };
+      // Inativos/rascunhos NÃO aparecem em listagens (listPublic usa onlyActive),
+      // mas PRECISAM abrir por link direto: é assim que o admin acessa um
+      // participante recém-criado (is_active=false) para editar inline e publicar.
+      // Por isso só barramos quando o participante realmente não existe.
+      if (!participant) return { error: "Participante não encontrado" };
       // Conveniência Views é uma loja ÚNICA global: toda página de participante
       // ESPELHA a mesma vitrine. A atribuição da venda ao participante acontece
       // no checkout (id_participant no pedido), não no produto.
