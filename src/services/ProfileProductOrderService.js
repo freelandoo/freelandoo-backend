@@ -82,7 +82,10 @@ class ProfileProductOrderService {
       if (!option) return { error: "Opção de frete inválida ou expirada — recalcule" };
 
       const unit_seller = Number(product.price_amount) || 0;
-      const pricing = await StoreGovernanceService.computeFeesFor(unit_seller);
+      // Opt-in de afiliado por item (mig 090). Só quando ligado a comissão aditiva
+      // é embutida no preço e o cupom passa a gerar conversão.
+      const affiliatesAllowed = product.affiliates_allowed === true;
+      const pricing = await StoreGovernanceService.computeFeesFor(unit_seller, { affiliatesAllowed });
       const unit_display = pricing.display_price_cents;
       const shipping_cents = option.price_cents;
       // Comprador paga: display_price (já inclui taxas) * qty + frete
@@ -90,6 +93,8 @@ class ProfileProductOrderService {
       const seller_amount_total = unit_seller * quantity;
       const service_fee_total = pricing.service_fee_cents * quantity;
       const processor_fee_total = pricing.processor_fee_cents * quantity;
+      // Comissão de afiliado embutida no display (sem frete) — total do pedido.
+      const affiliate_commission_total = (pricing.affiliate_commission_cents || 0) * quantity;
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
       const successUrl = `${frontend}/account/compras?status=success&session_id={CHECKOUT_SESSION_ID}`;
@@ -110,7 +115,14 @@ class ProfileProductOrderService {
           id_profile_product: String(id_profile_product),
           id_buyer_user: String(user.id_user),
           quantity: String(quantity),
-          ...(body.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
+          // Comissão de afiliado SÓ quando o item tem opt-in: o cupom só gera
+          // conversão se houver comissão embutida (gate real do affiliates_allowed).
+          ...(affiliatesAllowed && body.coupon_code && affiliate_commission_total > 0
+            ? {
+                coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40),
+                affiliate_commission_cents: String(affiliate_commission_total),
+              }
+            : {}),
         },
       });
 
