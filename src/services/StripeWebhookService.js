@@ -381,17 +381,17 @@ async function handleSubscriptionDeleted(conn, subscription) {
 
 /**
  * Mapeia metadata.type → identificador semântico para a conversão de afiliado.
- * Retorna null quando o fluxo não deve gerar comissão (assinatura usa fluxo
- * próprio; clan/manifestation/premium ficam de fora por enquanto).
+ * Retorna null quando o fluxo não deve gerar comissão.
+ *
+ * Geram comissão: Loja (produto), Cursos e Booking/Serviços (modelo aditivo,
+ * opt-in por item). A assinatura usa fluxo próprio (createFromProfileSubscription).
+ * NÃO geram comissão: Poléns, Premium (prêmio), Clã e Manifestação.
+ * Conveniência (casa_participant_order) entra em slice próprio.
  */
 function resolveCommissionContext(meta) {
   switch (meta?.type) {
     case "profile_product_order": return { source_context: "loja_produto" };
-    case "polen_purchase":        return { source_context: "polen_pack" };
     case "course_purchase":       return { source_context: "course_purchase" };
-    case "manifestation":         return { source_context: "manifestation" };
-    case "premium":               return { source_context: "premium" };
-    case "clan_slot":             return { source_context: "clan_slot" };
     case "booking_deposit":       return { source_context: "booking_deposit" };
     default: return null;
   }
