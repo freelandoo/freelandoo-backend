@@ -13,6 +13,7 @@ const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseFeedPostsStorage = require("../storages/CourseFeedPostsStorage");
 const StripeService = require("./StripeService");
+const StoreGovernanceService = require("./StoreGovernanceService");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const { assertMinorPermission } = require("../utils/supervision");
 const { slugify } = require("../utils/slug");
@@ -149,17 +150,24 @@ class CoursesService {
         if (already) {
           return { error: "Você já tem acesso a este curso", status: 400 };
         }
-        const amount = Number(course.price_cents) || 0;
-        if (amount <= 0) {
+        // Fee model completo (igual loja): price_cents é o valor que o vendedor
+        // recebe; o comprador paga o display (serviço + maquininha gross-up +
+        // afiliado embutido quando opt-in). Decisão Alex 2026-06-03.
+        const seller_cents = Number(course.price_cents) || 0;
+        if (seller_cents <= 0) {
           return { error: "Curso sem preço configurado", status: 400 };
         }
+        const affiliatesAllowed = course.affiliates_allowed === true;
+        const pricing = await StoreGovernanceService.computeFeesFor(seller_cents, { affiliatesAllowed });
+        const display = pricing.display_price_cents;
+        const affiliate_commission_cents = pricing.affiliate_commission_cents || 0;
 
         const frontend = String(
           process.env.FRONTEND_URL || "https://freelandoo.com",
         ).replace(/\/$/, "");
 
         const session = await StripeService.createOneTimeCheckoutSession({
-          amount_cents: amount,
+          amount_cents: display,
           currency: "BRL",
           productName: `Curso - ${course.title}`,
           customerEmail: user.email || undefined,
@@ -170,8 +178,17 @@ class CoursesService {
             type: "course_purchase",
             user_id: user.id_user,
             course_id: course.id,
-            amount_cents: String(amount),
-            ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
+            // amount_cents = o que o comprador paga; seller_amount_cents = receita
+            // do dono (vai pra matrícula/revenue, sem as taxas embutidas).
+            amount_cents: String(display),
+            seller_amount_cents: String(seller_cents),
+            // Comissão de afiliado SÓ quando o curso tem opt-in (gate real).
+            ...(affiliatesAllowed && body?.coupon_code && affiliate_commission_cents > 0
+              ? {
+                  coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40),
+                  affiliate_commission_cents: String(affiliate_commission_cents),
+                }
+              : {}),
           },
         });
         return { checkout_url: session.url, session_id: session.id };
@@ -188,7 +205,9 @@ class CoursesService {
     if (meta.type !== "course_purchase") return { ignored: true };
     const courseId = meta.course_id;
     const userId = meta.user_id;
-    const amount = Number(meta.amount_cents) || 0;
+    // Receita do dono = seller value (price_cents), não o display cobrado. Fallback
+    // para amount_cents em sessões legadas (antes do fee model).
+    const amount = Number(meta.seller_amount_cents) || Number(meta.amount_cents) || 0;
     if (!courseId || !userId) {
       return { error: "Metadata inválido" };
     }
@@ -212,7 +231,17 @@ class CoursesService {
       async () => {
         if (!profileId) return { error: "profileId inválido" };
         const rows = await CoursesStorage.listPublicByProfileId(pool, profileId);
-        return { courses: rows.map(publicCourseShape) };
+        const courses = await Promise.all(
+          rows.map(async (row) => {
+            const shaped = publicCourseShape(row);
+            shaped.pricing = await StoreGovernanceService.computeFeesFor(
+              row.price_cents,
+              { affiliatesAllowed: row.affiliates_allowed === true },
+            );
+            return shaped;
+          }),
+        );
+        return { courses };
       },
     );
   }
@@ -234,7 +263,12 @@ class CoursesService {
         if (row.status !== "published") {
           return { error: "Curso não está publicado", status: 404 };
         }
-        return { course: publicCourseShape(row) };
+        const course = publicCourseShape(row);
+        course.pricing = await StoreGovernanceService.computeFeesFor(
+          row.price_cents,
+          { affiliatesAllowed: row.affiliates_allowed === true },
+        );
+        return { course };
       },
     );
   }
