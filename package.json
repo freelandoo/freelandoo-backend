@@ -10,6 +10,7 @@
     "migrate": "node run-migrations.js",
     "migrate:status": "node scripts/migrate-status.js",
     "migrate:remote": "node migrate-remote.js",
+    "arch:scan": "node scripts/arch-scan.js",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
