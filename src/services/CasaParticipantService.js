@@ -104,6 +104,11 @@ class CasaParticipantService {
           user_id: user.id_user,
           product_id: product.id,
           participant_id: participant.id,
+          // Conveniência: comissão de afiliado %-base sobre o total (25% global),
+          // sem opt-in e sem embutir no preço. Captura o ?cupom= do link da página.
+          ...(body.coupon_code
+            ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) }
+            : {}),
         },
       });
 
