@@ -231,20 +231,28 @@ function scanBackend(fns) {
   const routesDir = path.join(BACKEND_ROOT, "src", "routes");
   const servicesDir = path.join(BACKEND_ROOT, "src", "services");
 
-  // Mapa de rotas montadas: lê routes/index.js E app.js (alguns mounts, como
-  // /webhooks, são feitos direto no app.js) -> { arquivoRota: mountPath }
-  const indexSrc = readSafe(path.join(routesDir, "index.js"));
-  const appSrc = readSafe(path.join(BACKEND_ROOT, "src", "app.js"));
-  const combined = indexSrc + "\n" + appSrc;
-  const requireMap = {}; // varName -> routeFileName
-  for (const m of combined.matchAll(/const\s+(\w+)\s*=\s*require\(["']\.(?:\/routes)?\/([\w.]+)["']\)/g)) {
-    requireMap[m[1]] = m[2];
-  }
-  const mounted = {}; // routeFile -> mountPath
-  for (const m of combined.matchAll(/app\.use\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)/g)) {
-    const [, mountPath, varName] = m;
-    const file = requireMap[varName];
-    if (file) mounted[file] = mountPath;
+  // Mapa de rotas montadas. Varre routes/index.js, app.js E todos os arquivos
+  // de rota — porque há mounts ANINHADOS via router.use(...) (ex: courseLessons
+  // é montado dentro de courseModules). require map é por-arquivo (nomes de var
+  // podem repetir entre arquivos). -> { arquivoRota: mountPath }
+  const routeFilesForMount = walk(routesDir).filter((x) => x.endsWith(".routes.js") || x.endsWith("Routes.js"));
+  const mountSources = [
+    path.join(BACKEND_ROOT, "src", "app.js"),
+    path.join(routesDir, "index.js"),
+    ...routeFilesForMount,
+  ];
+  const mounted = {}; // routeFile (basename s/ .js) -> mountPath
+  for (const srcFile of mountSources) {
+    const code = readSafe(srcFile);
+    const localRequire = {}; // varName -> routeFile
+    for (const m of code.matchAll(/const\s+(\w+)\s*=\s*require\(["']\.(?:\/routes)?\/([\w.]+)["']\)/g)) {
+      localRequire[m[1]] = m[2];
+    }
+    for (const m of code.matchAll(/(?:app|router)\.use\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)/g)) {
+      const [, mountPath, varName] = m;
+      const file = localRequire[varName];
+      if (file && !mounted[file]) mounted[file] = mountPath;
+    }
   }
 
   // Grafo de require do backend para detectar service órfão.

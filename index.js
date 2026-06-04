@@ -26,6 +26,20 @@ const server = app.listen(PORT, () => {
   const ArchitectureService = require("./src/services/ArchitectureService");
   setTimeout(() => ArchitectureService.syncOnBoot(), 5 * 1000);
 
+  // Retenção dos logs de rota (arch_route_logs): purga > 30 dias. Roda 6 min
+  // após o boot e a cada 24h, pra tabela não crescer indefinidamente.
+  const ARCH_LOG_RETENTION_DAYS = Number(process.env.ARCH_LOG_RETENTION_DAYS) || 30;
+  const tickArchLogRetention = async () => {
+    try {
+      const result = await ArchitectureService.purgeLogs(ARCH_LOG_RETENTION_DAYS);
+      if (result?.purged) bootLog.info("arch_logs.purged", result);
+    } catch (err) {
+      bootLog.error("arch_logs.retention_error", { message: err.message });
+    }
+  };
+  setTimeout(tickArchLogRetention, 6 * 60 * 1000);
+  setInterval(tickArchLogRetention, 24 * 60 * 60 * 1000);
+
   // Scheduler do ranking: checa e recalcula a cada 2 horas.
   const pool = require("./src/databases");
   const RankingStorage = require("./src/storages/RankingStorage");

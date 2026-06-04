@@ -15,7 +15,7 @@ class ArchitectureAdminController {
 
   static async listFunctions(req, res) {
     const q = req.query || {};
-    return sendServiceResult(res, await ArchitectureService.listFunctions({
+    const filters = {
       status: q.status || undefined,
       kind: q.kind || undefined,
       repo: q.repo || undefined,
@@ -28,7 +28,17 @@ class ArchitectureAdminController {
       order: q.order || "asc",
       page: q.page,
       perPage: q.per_page,
-    }));
+    };
+    if (q.format === "csv") {
+      const result = await ArchitectureService.exportFunctionsCsv(filters);
+      if (result?.csv != null) {
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+        return res.status(200).send(result.csv);
+      }
+      return sendServiceResult(res, result);
+    }
+    return sendServiceResult(res, await ArchitectureService.listFunctions(filters));
   }
 
   static async getFunction(req, res) {

@@ -6,6 +6,27 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ArchitectureService");
 
+function csvCell(value) {
+  if (value == null) return "";
+  const s = Array.isArray(value) ? value.join("; ") : String(value);
+  return /[",\n\r;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function functionsToCsv(rows) {
+  const header = [
+    "area", "title", "kind", "repo", "effective_status", "git_committed",
+    "git_pushed", "last_commit_sha", "last_commit_at", "file_path", "mount_path", "notes",
+  ];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    lines.push([
+      r.area, r.title, r.kind, r.repo, r.effective_status, r.git_committed,
+      r.git_pushed, r.last_commit_sha, r.last_commit_at, r.file_path, r.mount_path, r.notes,
+    ].map(csvCell).join(","));
+  }
+  return lines.join("\r\n");
+}
+
 // Caminho do manifesto gerado pelo scan (scripts/arch-scan.js). Carimbado com
 // git ANTES do deploy, porque produção não enxerga .git em runtime.
 const MANIFEST_PATH = path.join(
@@ -23,6 +44,14 @@ class ArchitectureService {
     return runWithLogs(log, "arch.listFunctions", () => ({ filters }), async () => {
       const { rows, total, page, perPage } = await ArchitectureStorage.listFunctions(pool, filters);
       return { functions: rows, total, page, per_page: perPage };
+    });
+  }
+
+  static exportFunctionsCsv(filters) {
+    return runWithLogs(log, "arch.exportFunctionsCsv", () => ({ filters }), async () => {
+      const { rows } = await ArchitectureStorage.listFunctions(pool, { ...filters, page: 1, perPage: 5000 });
+      const date = new Date().toISOString().slice(0, 10);
+      return { csv: functionsToCsv(rows), filename: `arch-functions-${date}.csv` };
     });
   }
 
