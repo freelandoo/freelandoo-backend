@@ -20,6 +20,12 @@ const server = app.listen(PORT, () => {
   // nav-counts:changed. Frontend conecta via wss://<railway-host>/realtime.
   realtime.init(server);
 
+  // Painel de Arquitetura: carrega o manifesto (scan carimbado com git) para
+  // dentro de arch_functions. Idempotente, preserva curadoria do admin e nunca
+  // derruba o boot. No-op se o manifesto ainda não existe.
+  const ArchitectureService = require("./src/services/ArchitectureService");
+  setTimeout(() => ArchitectureService.syncOnBoot(), 5 * 1000);
+
   // Scheduler do ranking: checa e recalcula a cada 2 horas.
   const pool = require("./src/databases");
   const RankingStorage = require("./src/storages/RankingStorage");

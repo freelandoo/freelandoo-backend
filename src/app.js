@@ -103,6 +103,11 @@ app.use((req, res, next) => {
 const auditAdmin = require("./middlewares/auditAdmin");
 app.use("/admin", auditAdmin);
 
+// Log de rotas persistido (Painel de Arquitetura → aba Logs). Fire-and-forget,
+// foca em erros (>= 400); sucessos só por amostragem. Não derruba request.
+const routeLog = require("./middlewares/routeLog");
+app.use(routeLog);
+
 // rotas
 routes(app);
 
@@ -138,6 +143,9 @@ app.use((err, req, res, next) => {
       url: req.originalUrl || req.url,
     });
   }
+
+  // Detalhe do erro para o routeLog persistir em arch_route_logs (Painel de Arquitetura).
+  res.locals.archError = { message: err?.message, stack: err?.stack };
 
   return res.status(statusCode).json({ error: message });
 });
