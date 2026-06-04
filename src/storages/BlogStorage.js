@@ -2,7 +2,7 @@
 
 const PUBLIC_FIELDS = `
   id, slug, title, excerpt, cover_url, cover_alt, body_md, category, tags,
-  reading_minutes, seo_title, seo_description, author_name, views,
+  status, reading_minutes, seo_title, seo_description, author_name, views,
   published_at, created_at, updated_at
 `;
 
@@ -50,6 +50,18 @@ class BlogStorage {
         WHERE slug = $1 AND status = 'published'
           AND published_at IS NOT NULL AND published_at <= NOW()
         LIMIT 1`,
+      [slug]
+    );
+    return rows[0] || null;
+  }
+
+  // Retorna por slug em qualquer status (publicado ou rascunho). Permite que o
+  // admin abra/edite um rascunho pela URL pública direta — mesmo padrão dos
+  // participantes da Casa Views (abrir inativo por link direto). A página marca
+  // noindex quando não está publicado.
+  static async getAnyBySlug(conn, slug) {
+    const { rows } = await conn.query(
+      `SELECT ${PUBLIC_FIELDS} FROM public.blog_posts WHERE slug = $1 LIMIT 1`,
       [slug]
     );
     return rows[0] || null;

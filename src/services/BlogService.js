@@ -77,15 +77,18 @@ class BlogService {
     return runWithLogs(log, "getPublicBySlug", () => ({ slug }), async () => {
       const normalized = String(slug || "").trim().toLowerCase();
       if (!normalized) return { error: "slug inválido" };
-      const post = await BlogStorage.getPublishedBySlug(pool, normalized);
+      // Qualquer status: rascunho abre por link direto (admin edita inline).
+      const post = await BlogStorage.getAnyBySlug(pool, normalized);
       if (!post) return { error: "Post não encontrado", statusCode: 404 };
       const related = await BlogStorage.listRelated(pool, {
         slug: normalized,
         category: post.category,
         limit: 3,
       });
-      // View count fire-and-forget — não bloqueia a resposta.
-      BlogStorage.incrementViews(pool, normalized).catch(() => {});
+      // View count só para publicados, fire-and-forget.
+      if (post.status === "published") {
+        BlogStorage.incrementViews(pool, normalized).catch(() => {});
+      }
       return { post, related };
     });
   }
