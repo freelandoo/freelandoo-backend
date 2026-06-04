@@ -83,6 +83,8 @@ const audioLibraryRoutes = require("./audioLibrary.routes");
 const audioLibraryAdminRoutes = require("./audioLibraryAdmin.routes");
 const casaPublicRoutes = require("./casaPublic.routes");
 const casaAdminRoutes = require("./casaAdmin.routes");
+const blogRoutes = require("./blog.routes");
+const blogAdminRoutes = require("./blogAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -174,4 +176,6 @@ module.exports = (app) => {
   app.use("/admin/audio-library", audioLibraryAdminRoutes);
   app.use("/casa", casaPublicRoutes);
   app.use("/admin/casa", casaAdminRoutes);
+  app.use("/blog", blogRoutes);
+  app.use("/admin/blog", blogAdminRoutes);
 };
