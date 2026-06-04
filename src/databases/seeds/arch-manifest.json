@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-06-04T21:19:21.315Z",
+  "generated_at": "2026-06-04T21:31:00.391Z",
   "generator": "arch-scan",
   "counts": {
-    "total": 573,
-    "orphan": 40,
+    "total": 575,
+    "orphan": 35,
     "uncommitted": 21
   },
   "functions": [
@@ -105,9 +105,9 @@
       "tags": [],
       "git_committed": true,
       "git_pushed": true,
-      "last_commit_sha": "2a5e8b188857",
-      "last_commit_msg": "feat(blog): edição inline na própria página (sem painel admin)",
-      "last_commit_at": "2026-06-04T02:42:00.000Z"
+      "last_commit_sha": "86e6dc3a9f1b",
+      "last_commit_msg": "feat(arch): slice 3 — painel admin de arquitetura (Resumo/Funcoes/Logs)",
+      "last_commit_at": "2026-06-04T21:22:46.000Z"
     },
     {
       "fn_key": "frontend:page:/administracao/anuidade",
@@ -125,6 +125,23 @@
       "last_commit_sha": "417d7e234743",
       "last_commit_msg": "Update profile activation copy and payment UI",
       "last_commit_at": "2026-05-17T16:45:00.000Z"
+    },
+    {
+      "fn_key": "frontend:page:/administracao/arquitetura",
+      "title": "/administracao/arquitetura",
+      "description": "Página (rota Next.js App Router).",
+      "area": "Admin",
+      "kind": "page",
+      "repo": "frontend",
+      "file_path": "app/(header-only)/administracao/arquitetura/page.tsx",
+      "mount_path": "/administracao/arquitetura",
+      "status": "live",
+      "tags": [],
+      "git_committed": true,
+      "git_pushed": true,
+      "last_commit_sha": "5f31a938b0c7",
+      "last_commit_msg": "feat(arch): slice 4 — botao Exportar CSV no painel (aba Funcoes)",
+      "last_commit_at": "2026-06-04T21:29:38.000Z"
     },
     {
       "fn_key": "frontend:page:/administracao/audios",
@@ -193,6 +210,23 @@
       "last_commit_sha": "ed4dd572bc00",
       "last_commit_msg": "feat(enxame): slice 4 — admin de enxames",
       "last_commit_at": "2026-05-20T16:18:56.000Z"
+    },
+    {
+      "fn_key": "frontend:proxy:/api/admin/architecture/[...path]",
+      "title": "/api/admin/architecture/[...path]",
+      "description": "Proxy / route handler (app/api).",
+      "area": "Admin",
+      "kind": "proxy",
+      "repo": "frontend",
+      "file_path": "app/api/admin/architecture/[...path]/route.ts",
+      "mount_path": "/api/admin/architecture/[...path]",
+      "status": "live",
+      "tags": [],
+      "git_committed": true,
+      "git_pushed": true,
+      "last_commit_sha": "86e6dc3a9f1b",
+      "last_commit_msg": "feat(arch): slice 3 — painel admin de arquitetura (Resumo/Funcoes/Logs)",
+      "last_commit_at": "2026-06-04T21:22:46.000Z"
     },
     {
       "fn_key": "frontend:proxy:/api/admin/audio-library",
@@ -2541,11 +2575,9 @@
       "kind": "route",
       "repo": "backend",
       "file_path": "src/routes/courseLessonComments.routes.js",
-      "mount_path": null,
-      "status": "orphan",
-      "tags": [
-        "nao-montado"
-      ],
+      "mount_path": "/:lessonId/comments",
+      "status": "live",
+      "tags": [],
       "git_committed": true,
       "git_pushed": true,
       "last_commit_sha": "4b3d4f93c16d",
@@ -2577,11 +2609,9 @@
       "kind": "route",
       "repo": "backend",
       "file_path": "src/routes/courseLessonMaterials.routes.js",
-      "mount_path": null,
-      "status": "orphan",
-      "tags": [
-        "nao-montado"
-      ],
+      "mount_path": "/:lessonId/materials",
+      "status": "live",
+      "tags": [],
       "git_committed": true,
       "git_pushed": true,
       "last_commit_sha": "63fb1f6f2883",
@@ -2613,11 +2643,9 @@
       "kind": "route",
       "repo": "backend",
       "file_path": "src/routes/courseLessonQuestions.routes.js",
-      "mount_path": null,
-      "status": "orphan",
-      "tags": [
-        "nao-montado"
-      ],
+      "mount_path": "/:lessonId/questions",
+      "status": "live",
+      "tags": [],
       "git_committed": true,
       "git_pushed": true,
       "last_commit_sha": "99d0da95e105",
@@ -2649,11 +2677,9 @@
       "kind": "route",
       "repo": "backend",
       "file_path": "src/routes/courseLessons.routes.js",
-      "mount_path": null,
-      "status": "orphan",
-      "tags": [
-        "nao-montado"
-      ],
+      "mount_path": "/:moduleId/lessons",
+      "status": "live",
+      "tags": [],
       "git_committed": true,
       "git_pushed": true,
       "last_commit_sha": "49dfb5e66f8e",
@@ -2685,11 +2711,9 @@
       "kind": "route",
       "repo": "backend",
       "file_path": "src/routes/courseModules.routes.js",
-      "mount_path": null,
-      "status": "orphan",
-      "tags": [
-        "nao-montado"
-      ],
+      "mount_path": "/:courseId/modules",
+      "status": "live",
+      "tags": [],
       "git_committed": true,
       "git_pushed": true,
       "last_commit_sha": "49dfb5e66f8e",
@@ -3680,9 +3704,9 @@
       "tags": [],
       "git_committed": true,
       "git_pushed": true,
-      "last_commit_sha": "8ada39864609",
-      "last_commit_msg": "feat(arch): slice 1 — painel de arquitetura (schema + logs + endpoints)",
-      "last_commit_at": "2026-06-04T21:13:41.000Z"
+      "last_commit_sha": "d253fe5ecb86",
+      "last_commit_msg": "feat(arch): slice 4 — export CSV + retencao de logs + mounts aninhados",
+      "last_commit_at": "2026-06-04T21:29:46.000Z"
     },
     {
       "fn_key": "backend:route:audioLibrary.routes",
