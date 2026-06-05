@@ -111,6 +111,36 @@ class ReturnService {
       return { tracked: rows.length, delivered };
     });
   }
+
+  /**
+   * CDC: disputas "não chegou" escaladas há > 10 dias. Consulta o rastreio de
+   * IDA: se NÃO foi entregue, reembolsa automaticamente; se foi entregue, deixa
+   * para o admin decidir (a alegação contradiz o rastreio).
+   */
+  static async processNotArrived() {
+    return runWithLogs(log, "processNotArrived", () => ({}), async () => {
+      const DisputeService = require("./DisputeService");
+      const stale = await DisputeStorage.listStaleNotArrived(pool, { days: 10, limit: 30 });
+      let refunded = 0;
+      for (const d of stale) {
+        try {
+          const order = await ProfileProductOrderStorage.getById(pool, d.ref_id);
+          if (!order?.melhor_envio_order_id) {
+            await DisputeService.systemRefund(d.id, "Produto não chegou (sem rastreio) — reembolso automático");
+            refunded++;
+            continue;
+          }
+          const t = await trackShipment(order.melhor_envio_order_id);
+          if (t.normalized === "delivered_origin") continue; // ida entregue → admin decide
+          await DisputeService.systemRefund(d.id, "Produto não chegou no prazo (rastreio de ida sem entrega) — reembolso automático");
+          refunded++;
+        } catch (err) {
+          log.warn("not_arrived.check_fail", { dispute_id: d.id, message: err.message });
+        }
+      }
+      return { stale: stale.length, refunded };
+    });
+  }
 }
 
 module.exports = ReturnService;

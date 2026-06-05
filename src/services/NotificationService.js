@@ -310,6 +310,47 @@ class NotificationService {
       },
     });
   }
+
+  /**
+   * Proteção de pagamento — avisa o vendedor/prestador que uma disputa foi
+   * aberta (canal do sino). entity_id fica null (dispute_id é BIGINT) — o id vai
+   * no payload para o front linkar.
+   */
+  static async notifyDisputeOpened({ recipient_user_id, recipient_profile_id, actor_user_id, dispute }) {
+    if (!recipient_user_id || !dispute) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: recipient_profile_id || null,
+      type: "dispute_opened",
+      id_actor_user: actor_user_id || null,
+      entity_type: dispute.domain === "product" ? "product_order" : "booking",
+      entity_id: null,
+      payload: {
+        dispute_id: dispute.id,
+        domain: dispute.domain,
+        ref_id: dispute.ref_id,
+        reason_code: dispute.reason_code,
+      },
+    });
+  }
+
+  /** Proteção de pagamento — avisa o comprador/cliente do desfecho da disputa. */
+  static async notifyDisputeResolved({ recipient_user_id, dispute, action, note }) {
+    if (!recipient_user_id || !dispute) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: null,
+      type: "dispute_resolved",
+      id_actor_user: null,
+      entity_type: dispute.domain === "product" ? "product_order" : "booking",
+      entity_id: null,
+      payload: {
+        dispute_id: dispute.id,
+        action: action || null,
+        note: typeof note === "string" ? note.slice(0, 140) : null,
+      },
+    });
+  }
 }
 
 module.exports = NotificationService;

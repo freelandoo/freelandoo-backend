@@ -89,8 +89,13 @@ class ProfileProductOrderService {
       const pricing = await StoreGovernanceService.computeFeesFor(unit_seller, { affiliatesAllowed });
       const unit_display = pricing.display_price_cents;
       const shipping_cents = option.price_cents;
-      // Comprador paga: display_price (já inclui taxas) * qty + frete
-      const total_cents = unit_display * quantity + shipping_cents;
+      // Proteção de pagamento: embute ida + volta. O comprador paga o frete de
+      // ida + um frete reverso estimado (≈ ida) que a plataforma retém para
+      // custear a etiqueta de devolução. Em devolução o reembolso retém esse
+      // return_shipping_cents; nos demais casos reembolsa tudo.
+      const return_shipping_cents = shipping_cents;
+      // Comprador paga: display_price (já inclui taxas) * qty + frete ida + frete volta
+      const total_cents = unit_display * quantity + shipping_cents + return_shipping_cents;
       const seller_amount_total = unit_seller * quantity;
       const service_fee_total = pricing.service_fee_cents * quantity;
       const processor_fee_total = pricing.processor_fee_cents * quantity;
@@ -105,6 +110,7 @@ class ProfileProductOrderService {
         line_items: [
           { name: product.name, amount_cents: unit_display, quantity },
           { name: `Frete — ${option.carrier} ${option.service_name}`, amount_cents: shipping_cents, quantity: 1 },
+          { name: "Proteção de devolução (frete reverso)", amount_cents: return_shipping_cents, quantity: 1 },
         ],
         currency: "BRL",
         customerEmail: buyer.buyer_email,
@@ -135,6 +141,7 @@ class ProfileProductOrderService {
         quantity,
         unit_price_cents: unit_display,
         shipping_cents,
+        return_shipping_cents,
         total_cents,
         seller_amount_cents: seller_amount_total,
         service_fee_cents: service_fee_total,

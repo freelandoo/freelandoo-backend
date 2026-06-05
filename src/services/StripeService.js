@@ -222,11 +222,13 @@ async function cancelSubscriptionImmediate(stripeSubscriptionId) {
   return client().subscriptions.cancel(stripeSubscriptionId);
 }
 
-async function createRefund(chargeId) {
-  return client().refunds.create({
-    charge: chargeId,
-    reason: "requested_by_customer",
-  });
+async function createRefund(chargeId, amountCents) {
+  const params = { charge: chargeId, reason: "requested_by_customer" };
+  // Reembolso parcial (ex.: devolução retém o frete reverso embutido).
+  if (Number.isFinite(amountCents) && amountCents > 0) {
+    params.amount = Math.round(amountCents);
+  }
+  return client().refunds.create(params);
 }
 
 /**
