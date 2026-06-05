@@ -165,6 +165,10 @@ class DisputeService {
   /** Resolve o charge no Stripe para o ref da disputa. Idempotente/tolerante.
    *  amountCents (opcional) faz reembolso parcial (ex.: devolução retém o reverso). */
   static async fireStripeRefund(domain, ref, amountCents) {
+    // Pedido de teste (harness): não chama Stripe — simula reembolso ok.
+    if (domain === "product" && String(ref.order?.stripe_session_id || "").startsWith("TEST-")) {
+      return { ok: true, charge_id: "TEST", mock: true };
+    }
     let charge_id = null;
     if (domain === "product") {
       charge_id = ref.order?.stripe_charge_id || null;
