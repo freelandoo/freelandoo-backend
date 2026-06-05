@@ -14,8 +14,6 @@ const PRODUCT_REASONS = new Set(["product_not_arrived", "product_wrong", "produc
 const BOOKING_REASONS = new Set(["service_no_show", "scam", "other"]);
 // Motivos que podem ser abertos mesmo antes da prova (item nunca cumprido).
 const PRE_PROOF_REASONS = new Set(["product_not_arrived", "service_no_show"]);
-// Motivos que exigem devolução física (logística reversa — Slice 4).
-const RETURN_REASONS = new Set(["product_wrong", "product_defective"]);
 
 class DisputeService {
   /** Carrega order/booking + valida que o solicitante é o comprador/cliente. */
@@ -100,18 +98,6 @@ class DisputeService {
   static async route(dispute, ref, caseRow) {
     const { reason_code } = dispute;
 
-    if (RETURN_REASONS.has(reason_code)) {
-      // Produto errado/defeituoso → devolução física (Slice 4 compra a etiqueta).
-      const updated = await DisputeStorage.updateState(pool, dispute.id, "awaiting_return");
-      try {
-        const ReturnService = require("./ReturnService");
-        await ReturnService.initReturn(updated || dispute, ref);
-      } catch (err) {
-        log.warn("return.init_skip", { dispute_id: dispute.id, message: err.message });
-      }
-      return updated || dispute;
-    }
-
     if (reason_code === "product_not_arrived") {
       const order = ref.order || {};
       const neverShipped = !order.tracking_code && !order.melhor_envio_order_id;
@@ -182,26 +168,6 @@ class DisputeService {
     await ProtectionStorage.markRefunded(pool, caseRow.id);
     log.info("dispute.refunded", { dispute_id: dispute.id, resolved_by, charge_id: refund.charge_id });
     return updated || dispute;
-  }
-
-  /**
-   * Reembolso disparado pelo sistema (ex.: devolução recebida na origem).
-   * Idempotente — no-op se a disputa já está resolvida.
-   */
-  static async systemRefund(dispute_id, note) {
-    return runWithLogs(log, "systemRefund", () => ({ dispute_id }), async () => {
-      const dispute = await DisputeStorage.getById(pool, Number(dispute_id));
-      if (!dispute) return { error: "Disputa não encontrada" };
-      if (dispute.state === "resolved_refund" || dispute.state === "resolved_release") {
-        return { already: true };
-      }
-      const caseRow = await ProtectionStorage.getCaseById(pool, dispute.protection_case_id);
-      const ref = dispute.domain === "product"
-        ? { order: await ProfileProductOrderStorage.getById(pool, dispute.ref_id) }
-        : { booking: (await pool.query(`SELECT * FROM public.tb_profile_bookings WHERE id = $1`, [dispute.ref_id])).rows[0] };
-      const updated = await DisputeService.autoRefund(dispute, ref, caseRow, note || "Reembolso automático", "system");
-      return { ok: true, dispute: updated };
-    });
   }
 
   /** Resolução do admin. */
@@ -306,22 +272,15 @@ class DisputeService {
       const evidence = await DisputeStorage.listEvidence(pool, dispute.id);
       const caseRow = await ProtectionStorage.getCaseById(pool, dispute.protection_case_id);
       const proofs = await ProtectionStorage.listProofs(pool, dispute.protection_case_id);
-      let ret = null;
-      try {
-        const ReturnStorage = require("../storages/ReturnStorage");
-        ret = await ReturnStorage.getByDispute(pool, dispute.id);
-      } catch { /* Slice 4 */ }
       let ref = null;
       if (dispute.domain === "product") {
         ref = await ProfileProductOrderStorage.getById(pool, dispute.ref_id);
       } else {
         ref = (await pool.query(`SELECT * FROM public.tb_profile_bookings WHERE id = $1`, [dispute.ref_id])).rows[0] || null;
       }
-      return { dispute, evidence, case: caseRow, proofs, return: ret, ref };
+      return { dispute, evidence, case: caseRow, proofs, return: null, ref };
     });
   }
 }
-
-DisputeService.RETURN_REASONS = RETURN_REASONS;
 
 module.exports = DisputeService;
