@@ -24,6 +24,19 @@ const SUCCESS_SAMPLE = (() => {
   return Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0;
 })();
 
+// Status de erro "esperados" que NÃO viram log — são ruído, não bug do app, e
+// afogam os erros reais no painel (e incham a tabela à toa). Default: 401
+// (não-autenticado / token expirado, altíssimo volume e zero valor de debug).
+// Ajustável via ARCH_LOG_SKIP_STATUSES="401,404" (vazio = não pula nenhum).
+const SKIP_STATUSES = (() => {
+  const raw = process.env.ARCH_LOG_SKIP_STATUSES;
+  const list = (raw == null ? "401" : raw)
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n));
+  return new Set(list);
+})();
+
 // Caminhos que não geram log (ruído ou risco de loop).
 const SKIP_PREFIXES = [
   "/health",
@@ -47,6 +60,11 @@ function routeLog(req, res, next) {
   res.on("finish", () => {
     const status = res.statusCode;
     const isError = status >= 400;
+
+    // Erros esperados (ruído, ex: 401) não viram log.
+    if (isError && SKIP_STATUSES.has(status)) {
+      return;
+    }
 
     // Decide se persiste: erros sempre; sucessos por amostragem.
     if (!isError && (SUCCESS_SAMPLE <= 0 || Math.random() > SUCCESS_SAMPLE)) {
