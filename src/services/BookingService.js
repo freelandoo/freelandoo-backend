@@ -273,15 +273,11 @@ class BookingService {
     } catch (err) {
       log.error("booking.clan_split.fail", { bookingId: booking.id, error: err.message });
     }
-    // Proteção de pagamento: NÃO cria mais o payout no pagamento. Abre o caso de
-    // proteção (awaiting_fulfillment); o payout só é armado quando o prestador
-    // anexa a prova de chegada, o cliente confirma e a janela de 7d passa sem
-    // disputa (ProtectionService.armLedger).
     try {
-      const ProtectionService = require("./ProtectionService");
-      await ProtectionService.openCase(pool, { domain: "booking", ref_id: booking.id });
+      const BookingPayoutService = require("./BookingPayoutService");
+      await BookingPayoutService.createFromBooking(booking);
     } catch (err) {
-      log.error("booking.protection_open.fail", { bookingId: booking.id, error: err.message });
+      log.error("booking.payout_create.fail", { bookingId: booking.id, error: err.message });
     }
     return booking;
   }

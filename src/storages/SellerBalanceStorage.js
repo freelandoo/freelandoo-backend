@@ -4,8 +4,8 @@ class SellerBalanceStorage {
       `INSERT INTO public.tb_seller_balance (
          id_seller_user, id_seller_profile, id_order,
          gross_cents, platform_fee_cents, shipping_cents, net_cents,
-         status, available_at, protection_case_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         status, available_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (id_order) DO NOTHING
        RETURNING *`,
       [
@@ -13,7 +13,6 @@ class SellerBalanceStorage {
         data.gross_cents, data.platform_fee_cents || 0,
         data.shipping_cents || 0, data.net_cents,
         data.status || "aguardando", data.available_at,
-        data.protection_case_id || null,
       ]
     );
     return r.rows[0] || null;

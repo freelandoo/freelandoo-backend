@@ -5,7 +5,6 @@ const SellerBalanceStorage = require("../storages/SellerBalanceStorage");
 const ShippingService = require("./ShippingService");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
-const ProtectionService = require("./ProtectionService");
 const { purchaseLabel } = require("../integrations/melhorenvio/purchaseLabel");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -237,11 +236,30 @@ class ProfileProductOrderService {
         if (updated) paid = updated;
       }
 
-      // Proteção de pagamento: NÃO cria mais o saldo do vendedor no pagamento.
-      // Abre o caso de proteção (awaiting_fulfillment). O saldo só é armado quando
-      // o lojista anexa a prova de postagem e a janela de 7d passa sem disputa
-      // (ProtectionService.armLedger). Idempotente via UNIQUE(domain, ref_id).
-      await ProtectionService.openCase(client, { domain: "product", ref_id: paid.id_order });
+      // Vendedor recebe o seller_amount_cents cravado no checkout (taxas já foram
+      // embutidas no display que o comprador pagou). Frete fica retido com a plataforma
+      // — ela compra a etiqueta no Melhor Envio.
+      const gross = Number(paid.total_cents) || 0;
+      const shipping = Number(paid.shipping_cents) || 0;
+      const seller_amount = Number(paid.seller_amount_cents) || 0;
+      const service_fee = Number(paid.service_fee_cents) || 0;
+      // platform_fee_cents do tb_seller_balance representa a taxa de serviço
+      // que a plataforma reteve (não inclui a maquininha — essa fica fora).
+      const platform_fee = service_fee;
+      const net = seller_amount;
+      const available_at = new Date(Date.now() + HOLDBACK_DAYS * 24 * 60 * 60 * 1000);
+
+      await SellerBalanceStorage.create(client, {
+        id_seller_user: paid.id_seller_user,
+        id_seller_profile: paid.id_seller_profile,
+        id_order: paid.id_order,
+        gross_cents: gross,
+        platform_fee_cents: platform_fee,
+        shipping_cents: shipping,
+        net_cents: net,
+        status: "aguardando",
+        available_at,
+      });
 
       await client.query("COMMIT");
 

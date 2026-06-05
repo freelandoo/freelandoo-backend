@@ -132,18 +132,6 @@ class ProfileProductOrderStorage {
     return r.rows[0] || null;
   }
 
-  // Lojista confirmou a postagem (prova anexada). Só avança de 'paid' → 'shipped'.
-  static async markShipped(conn, id_order) {
-    const r = await conn.query(
-      `UPDATE public.tb_profile_product_order
-          SET status = 'shipped', updated_at = NOW()
-        WHERE id_order = $1 AND status = 'paid'
-        RETURNING *`,
-      [id_order]
-    );
-    return r.rows[0] || null;
-  }
-
   static async markLabelFailure(conn, id_order, error_message) {
     const r = await conn.query(
       `UPDATE public.tb_profile_product_order

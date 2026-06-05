@@ -13,8 +13,8 @@ class BookingPayoutStorage {
          id_booking, id_profile, id_owner_user, id_profile_service,
          client_name, client_email, client_whatsapp,
          deposit_cents, platform_fee_cents, professional_cents, net_cents,
-         status, available_at, booking_date, booking_start_time, protection_case_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         status, available_at, booking_date, booking_start_time
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT (id_booking) DO NOTHING
        RETURNING *`,
       [
@@ -24,7 +24,6 @@ class BookingPayoutStorage {
         data.professional_cents, data.net_cents,
         data.status || "aguardando", data.available_at,
         data.booking_date || null, data.booking_start_time || null,
-        data.protection_case_id || null,
       ]
     );
     return r.rows[0] || null;
