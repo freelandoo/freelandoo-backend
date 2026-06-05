@@ -171,13 +171,28 @@ class PostReportService {
 
         const urgentTotalCents = urgentAffiliates.reduce((s, a) => s + a.urgent_cents, 0);
 
+        // Disputas (proteção de pagamento) escaladas para o admin decidir.
+        let escalatedDisputes = 0;
+        try {
+          const dq = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM public.tb_dispute WHERE state = 'escalated_admin'`
+          );
+          escalatedDisputes = dq.rows[0]?.c || 0;
+        } catch (err) {
+          log.warn("alertSummary.disputes_failed", { message: err?.message });
+        }
+
         return {
           reported_posts: reportedPosts,
           reported_posts_count: reportedPosts.length,
           urgent_affiliates: urgentAffiliates,
           urgent_affiliates_count: urgentAffiliates.length,
           urgent_total_cents: urgentTotalCents,
-          has_alerts: reportedPosts.length > 0 || urgentAffiliates.length > 0,
+          escalated_disputes_count: escalatedDisputes,
+          has_alerts:
+            reportedPosts.length > 0 ||
+            urgentAffiliates.length > 0 ||
+            escalatedDisputes > 0,
         };
       }
     );
