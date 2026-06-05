@@ -20,8 +20,11 @@ const KINDS = new Set(["trampo", "rest"]);
 // Câmera (presigned/GPU-local): limites do arquivo final gerado no browser.
 const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80MB (espelha uploadStoryVideo legado)
 const MAX_POSTER_BYTES = 3 * 1024 * 1024; // 3MB
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB — story de foto (WebP gerado no browser)
 const VIDEO_CONTENT_TYPE = "video/mp4"; // SEMPRE MP4/H.264 (WebM não toca no iOS)
+const IMAGE_CONTENT_TYPE = "image/webp"; // story de foto: WebP queimado no cliente
 const POSTER_CONTENT_TYPE = "image/webp";
+const DEFAULT_IMAGE_DURATION = 7; // segundos que a foto fica na tela
 const FILTER_META_MAX_CHARS = 4000;
 
 // Sanitiza o filterMeta vindo do cliente: aceita só objeto plano pequeno
@@ -102,6 +105,7 @@ function mapStory(row) {
     id_profile: row.id_profile,
     id_user: row.id_user,
     kind: row.kind,
+    media_type: row.metadata && row.metadata.media_type === "image" ? "image" : "video",
     video_url: row.video_url,
     thumbnail_url: row.thumbnail_url,
     duration_seconds: row.duration_seconds,
@@ -343,16 +347,24 @@ class StoryService {
         const check = await StoryService._assertCanPost(user, id_profile, kind);
         if (check.error) return check;
 
-        const videoKey = presignStory.buildKey(id_profile, kind, "mp4");
+        const isImage = body?.media_type === "image";
+        // Para foto, o "video" slot carrega o WebP (a própria imagem). O poster
+        // continua sendo um WebP (no caso de foto, é a mesma imagem reduzida).
+        const mainExt = isImage ? "webp" : "mp4";
+        const mainType = isImage ? IMAGE_CONTENT_TYPE : VIDEO_CONTENT_TYPE;
+        const mainMax = isImage ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+
+        const videoKey = presignStory.buildKey(id_profile, kind, mainExt);
         const posterKey = presignStory.buildKey(id_profile, kind, "webp", "poster");
         const [videoUrl, posterUrl] = await Promise.all([
-          presignStory.presignPut(videoKey, VIDEO_CONTENT_TYPE),
+          presignStory.presignPut(videoKey, mainType),
           presignStory.presignPut(posterKey, POSTER_CONTENT_TYPE),
         ]);
 
         return {
           expires_in: presignStory.DEFAULT_EXPIRES,
-          video: { key: videoKey, url: videoUrl, content_type: VIDEO_CONTENT_TYPE, max_bytes: MAX_VIDEO_BYTES },
+          media_type: isImage ? "image" : "video",
+          video: { key: videoKey, url: videoUrl, content_type: mainType, max_bytes: mainMax },
           poster: { key: posterKey, url: posterUrl, content_type: POSTER_CONTENT_TYPE, max_bytes: MAX_POSTER_BYTES },
         };
       }
@@ -373,7 +385,11 @@ class StoryService {
         const check = await StoryService._assertCanPost(user, id_profile, kind);
         if (check.error) return check;
 
-        const duration_seconds = normalizeDuration(body?.duration_seconds);
+        const isImage = body?.media_type === "image";
+        // Foto não tem duração própria — usa um tempo padrão de exibição.
+        const duration_seconds = isImage
+          ? DEFAULT_IMAGE_DURATION
+          : normalizeDuration(body?.duration_seconds);
         if (!duration_seconds) {
           return { error: "duration_seconds inválido — informe a duração em segundos (1..60)" };
         }
@@ -387,7 +403,9 @@ class StoryService {
 
         const storageKey = body?.storage_key;
         const thumbnailKey = body?.thumbnail_key || null;
-        if (!presignStory.keyBelongsToProfile(storageKey, id_profile) || !storageKey.endsWith(".mp4")) {
+        const mainExt = isImage ? ".webp" : ".mp4";
+        const mainMaxBytes = isImage ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+        if (!presignStory.keyBelongsToProfile(storageKey, id_profile) || !storageKey.endsWith(mainExt)) {
           return { error: "storage_key inválido" };
         }
         if (thumbnailKey && !presignStory.keyBelongsToProfile(thumbnailKey, id_profile)) {
@@ -414,15 +432,19 @@ class StoryService {
           }
         }
 
-        // Confirma que o vídeo realmente chegou no R2 e respeita os limites.
+        // Confirma que a mídia realmente chegou no R2 e respeita os limites.
         const videoHead = await presignStory.headObject(storageKey);
         if (!videoHead.exists) {
-          return { error: "Upload do vídeo não encontrado no storage. Tente novamente." };
+          return {
+            error: isImage
+              ? "Upload da imagem não encontrado no storage. Tente novamente."
+              : "Upload do vídeo não encontrado no storage. Tente novamente.",
+          };
         }
-        if (videoHead.size > MAX_VIDEO_BYTES) {
+        if (videoHead.size > mainMaxBytes) {
           await presignStory.deleteObject(storageKey);
           if (thumbnailKey) await presignStory.deleteObject(thumbnailKey);
-          return { error: "O vídeo excede o limite de 80MB." };
+          return { error: isImage ? "A imagem excede o limite de 8MB." : "O vídeo excede o limite de 80MB." };
         }
 
         let thumbnailUrl = null;
@@ -439,7 +461,7 @@ class StoryService {
 
         const videoUrl = presignStory.publicUrl(storageKey);
         const metadata = {
-          media_type: "video",
+          media_type: isImage ? "image" : "video",
           source: "camera",
           storage_key: storageKey,
           ...(validThumbKey ? { thumbnail_storage_key: validThumbKey } : {}),
