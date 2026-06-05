@@ -14,7 +14,9 @@ class StoreGovernanceController {
 
   static async pricePreview(req, res) {
     const sellerCents = req.query?.seller_cents;
-    const result = await StoreGovernanceService.pricePreview(sellerCents);
+    const affiliatesAllowed =
+      req.query?.affiliates_allowed === "true" || req.query?.affiliates_allowed === "1";
+    const result = await StoreGovernanceService.pricePreview(sellerCents, { affiliatesAllowed });
     return sendServiceResult(res, result);
   }
 }
