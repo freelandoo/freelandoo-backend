@@ -1,12 +1,15 @@
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
+const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const RankingController = require("../controllers/RankingController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
 
 // Públicos
-router.post("/visit", asyncHandler(RankingController.recordVisit));
+// /visit usa auth OPCIONAL: anônimo registra visita s/ XP; logado popula
+// req.user e concede XP de visita (dedup diário por par user+perfil).
+router.post("/visit", optionalAuthMiddleware, asyncHandler(RankingController.recordVisit));
 router.get("/ratings/:id_profile", asyncHandler(RankingController.getRatings));
 router.get("/public/profile/:id_profile", asyncHandler(RankingController.getPublicProfilePosition));
 router.get("/public/machine/:id_machine", asyncHandler(RankingController.getTopByMachine));
