@@ -229,9 +229,9 @@ module.exports = {
        ),
        upd AS (
          INSERT INTO user_online_time (id_user, date, minutes_online)
-         VALUES ($1, CURRENT_DATE, LEAST($3, $2))
+         VALUES ($1, CURRENT_DATE, LEAST($3::int, $2::int))
          ON CONFLICT (id_user, date) DO UPDATE
-           SET minutes_online = LEAST(user_online_time.minutes_online + $3, $2)
+           SET minutes_online = LEAST(user_online_time.minutes_online + $3::int, $2::int)
          RETURNING minutes_online AS new
        )
        SELECT upd.new, COALESCE(prev.old, 0) AS old
