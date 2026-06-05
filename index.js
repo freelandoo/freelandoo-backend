@@ -82,6 +82,20 @@ const server = app.listen(PORT, () => {
   setTimeout(tickBookingPayouts, 5 * 60 * 1000);
   setInterval(tickBookingPayouts, TWO_HOURS);
 
+  // Job CDC (Proteção de Pagamento): cases cuja janela de disputa de 7d venceu
+  // sem disputa → clear → arma o ledger (seller_balance / booking_payout).
+  const ProtectionService = require("./src/services/ProtectionService");
+  const tickProtectionWindows = async () => {
+    try {
+      const result = await ProtectionService.processWindows();
+      if (result?.cleared) bootLog.info("protection.windows_cleared", result);
+    } catch (err) {
+      bootLog.error("protection.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickProtectionWindows, 6 * 60 * 1000);
+  setInterval(tickProtectionWindows, TWO_HOURS);
+
   // Job: compra etiqueta no Melhor Envio para pedidos pagos cuja compra
   // inicial (no webhook) falhou. Roda 4 min após boot e a cada 30 min.
   const ProfileProductOrderService = require("./src/services/ProfileProductOrderService");
