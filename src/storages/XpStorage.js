@@ -330,6 +330,56 @@ module.exports = {
     return r.rows;
   },
 
+  // Feed amigável para a página de XP do usuário: as N coisas mais recentes
+  // que deram ponto. O tempo online (gravado por minuto) é AGREGADO por hora —
+  // cada bucket vira uma linha tipo "Tempo online (~1h) +15 XP". Os demais
+  // eventos aparecem individualmente. `minutes` só vem para online_time.
+  async getXpFeed(db, id_profile, { limit = 10 } = {}) {
+    const settings = await this.getSettings(db);
+    const onlinePeso = Number(settings?.online_minute_xp) || 0.25;
+
+    const r = await db.query(
+      `WITH online AS (
+         SELECT 'online_time'::varchar(40) AS event_type,
+                date_trunc('hour', created_at)  AS created_at,
+                SUM(xp_amount)::numeric         AS xp_amount,
+                COUNT(*)::int                   AS cnt
+           FROM subprofile_xp_events
+          WHERE id_profile = $1 AND event_type = 'online_time'
+          GROUP BY date_trunc('hour', created_at)
+       ),
+       others AS (
+         SELECT event_type, created_at, xp_amount, 1 AS cnt
+           FROM subprofile_xp_events
+          WHERE id_profile = $1 AND event_type <> 'online_time'
+       ),
+       unified AS (
+         SELECT event_type, created_at, xp_amount, cnt FROM online
+         UNION ALL
+         SELECT event_type, created_at, xp_amount, cnt FROM others
+       )
+       SELECT event_type, created_at, xp_amount, cnt
+         FROM unified
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [id_profile, Math.min(limit, 50)]
+    );
+
+    return r.rows.map((row) => {
+      const xp_amount = Number(row.xp_amount);
+      return {
+        event_type: row.event_type,
+        xp_amount,
+        created_at: row.created_at,
+        count: Number(row.cnt),
+        minutes:
+          row.event_type === "online_time"
+            ? Math.max(1, Math.round(xp_amount / onlinePeso))
+            : null,
+      };
+    });
+  },
+
   // Returns all active non-clan profile IDs for a given user
   async getUserActiveProfileIds(db, id_user) {
     const r = await db.query(

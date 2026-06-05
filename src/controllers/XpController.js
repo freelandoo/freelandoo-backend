@@ -31,4 +31,13 @@ module.exports = {
     const events = await XpStorage.getXpEvents(pool, id, { limit, offset });
     return res.json(events);
   },
+
+  // GET /subprofiles/:id/xp-feed  (público) — feed amigável p/ a página de XP.
+  // Online agregado por hora; demais eventos individuais. Default 10 itens.
+  async getXpFeed(req, res) {
+    const { id } = req.params;
+    const limit = Math.min(parseInt(req.query.limit ?? "10", 10), 50);
+    const feed = await XpStorage.getXpFeed(pool, id, { limit });
+    return res.json({ feed });
+  },
 };
