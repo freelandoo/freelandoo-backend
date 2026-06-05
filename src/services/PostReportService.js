@@ -70,15 +70,18 @@ class PostReportService {
     );
   }
 
-  static async adminUnban(_user, params) {
+  static async adminUnban(user, params) {
     return runWithLogs(
       log,
       "adminUnban",
-      () => ({ id: params?.id }),
+      () => ({ admin: user?.id_user, id: params?.id }),
       async () => {
         const id = String(params?.id || "").trim();
         if (!UUID_RE.test(id)) return { error: "id inválido" };
-        const updated = await PostReportStorage.unban(pool, id);
+        const updated = await PostReportStorage.unban(pool, {
+          id_portfolio_item: id,
+          resolved_by_user_id: user?.id_user,
+        });
         if (!updated) return { error: "Post não encontrado" };
         return { ok: true, post: updated };
       }

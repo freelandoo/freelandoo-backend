@@ -113,15 +113,18 @@ async function listReportedForAlert(db, { limit = 50 } = {}) {
   return r.rows;
 }
 
+// Soft-ban: marca is_banned=TRUE. As queries públicas (feed + perfil) filtram
+// AND is_banned = FALSE, então isso já tira o post do ar em todo lugar. NÃO
+// mexemos em is_active (estado do próprio dono) nem em deleted_at — esta tabela
+// não tem coluna deleted_at; escrever nela derrubava o ban com erro 500 e o
+// botão "Suspender" falhava silenciosamente (o post continuava no feed).
 async function ban(db, { id_portfolio_item, banned_by_user_id }) {
   const r = await db.query(
     `
     UPDATE public.tb_profile_portfolio_item
        SET is_banned = TRUE,
            banned_at = NOW(),
-           banned_by_user_id = $2,
-           deleted_at = NOW(),
-           is_active = FALSE
+           banned_by_user_id = $2
      WHERE id_portfolio_item = $1
      RETURNING id_portfolio_item, is_banned, banned_at, banned_by_user_id
     `,
@@ -130,19 +133,22 @@ async function ban(db, { id_portfolio_item, banned_by_user_id }) {
   return r.rows[0] || null;
 }
 
-async function unban(db, id_portfolio_item) {
+// Restaurar: tira o ban (volta ao feed) e JÁ marca as denúncias como resolvidas,
+// pra o post NÃO reaparecer no modal de alerta do admin. Uma denúncia nova futura
+// zera reports_resolved_at (clearResolved) e o alerta volta a aparecer.
+async function unban(db, { id_portfolio_item, resolved_by_user_id }) {
   const r = await db.query(
     `
     UPDATE public.tb_profile_portfolio_item
        SET is_banned = FALSE,
            banned_at = NULL,
            banned_by_user_id = NULL,
-           deleted_at = NULL,
-           is_active = TRUE
+           reports_resolved_at = NOW(),
+           reports_resolved_by_user_id = $2
      WHERE id_portfolio_item = $1
-     RETURNING id_portfolio_item, is_banned
+     RETURNING id_portfolio_item, is_banned, reports_resolved_at
     `,
-    [id_portfolio_item]
+    [id_portfolio_item, resolved_by_user_id || null]
   );
   return r.rows[0] || null;
 }
