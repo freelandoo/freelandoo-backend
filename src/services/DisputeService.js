@@ -184,6 +184,26 @@ class DisputeService {
     return updated || dispute;
   }
 
+  /**
+   * Reembolso disparado pelo sistema (ex.: devolução recebida na origem).
+   * Idempotente — no-op se a disputa já está resolvida.
+   */
+  static async systemRefund(dispute_id, note) {
+    return runWithLogs(log, "systemRefund", () => ({ dispute_id }), async () => {
+      const dispute = await DisputeStorage.getById(pool, Number(dispute_id));
+      if (!dispute) return { error: "Disputa não encontrada" };
+      if (dispute.state === "resolved_refund" || dispute.state === "resolved_release") {
+        return { already: true };
+      }
+      const caseRow = await ProtectionStorage.getCaseById(pool, dispute.protection_case_id);
+      const ref = dispute.domain === "product"
+        ? { order: await ProfileProductOrderStorage.getById(pool, dispute.ref_id) }
+        : { booking: (await pool.query(`SELECT * FROM public.tb_profile_bookings WHERE id = $1`, [dispute.ref_id])).rows[0] };
+      const updated = await DisputeService.autoRefund(dispute, ref, caseRow, note || "Reembolso automático", "system");
+      return { ok: true, dispute: updated };
+    });
+  }
+
   /** Resolução do admin. */
   static async resolveByAdmin(adminUser, dispute_id, { action, note }) {
     return runWithLogs(log, "resolveByAdmin", () => ({ admin: adminUser?.id_user, dispute_id, action }), async () => {

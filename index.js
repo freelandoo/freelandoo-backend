@@ -111,6 +111,30 @@ const server = app.listen(PORT, () => {
   setTimeout(tickLabels, 4 * 60 * 1000);
   setInterval(tickLabels, HALF_HOUR);
 
+  // Jobs (Proteção de Pagamento — devolução): retry da compra de etiqueta
+  // reversa + rastreio das devoluções em trânsito (reembolsa ao chegar na origem).
+  const ReturnService = require("./src/services/ReturnService");
+  const tickReverseLabels = async () => {
+    try {
+      const r = await ReturnService.processPendingReverse();
+      if (r?.processed) bootLog.info("reverse.retry", r);
+    } catch (err) {
+      bootLog.error("reverse.scheduler_error", { message: err.message });
+    }
+  };
+  const tickReturnTracking = async () => {
+    try {
+      const r = await ReturnService.tickTracking();
+      if (r?.tracked) bootLog.info("reverse.tracking", r);
+    } catch (err) {
+      bootLog.error("reverse.tracking_error", { message: err.message });
+    }
+  };
+  setTimeout(tickReverseLabels, 7 * 60 * 1000);
+  setInterval(tickReverseLabels, HALF_HOUR);
+  setTimeout(tickReturnTracking, 9 * 60 * 1000);
+  setInterval(tickReturnTracking, HALF_HOUR);
+
   // Job diário: reseta histórico do Chat ao Vivo (Global + Máquinas) toda
   // meia-noite de São Paulo. Apaga tb_chat_message, tb_chat_report,
   // tb_chat_moderation_result e tb_chat_presence. Mantém salas, settings
