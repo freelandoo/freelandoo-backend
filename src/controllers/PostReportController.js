@@ -22,8 +22,18 @@ class PostReportController {
     return sendServiceResult(res, result);
   }
 
+  static async adminResolve(req, res) {
+    const result = await PostReportService.adminResolve(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async adminPreview(req, res) {
     const result = await PostReportService.adminPreview(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async alertSummary(req, res) {
+    const result = await PostReportService.alertSummary(req.user);
     return sendServiceResult(res, result);
   }
 }

@@ -52,6 +52,67 @@ async function recountReports(db, id_portfolio_item) {
   );
 }
 
+// Marca as denúncias do post como resolvidas (sem banir) — sai do alerta admin.
+async function resolveReports(db, { id_portfolio_item, resolved_by_user_id }) {
+  const r = await db.query(
+    `
+    UPDATE public.tb_profile_portfolio_item
+       SET reports_resolved_at = NOW(),
+           reports_resolved_by_user_id = $2
+     WHERE id_portfolio_item = $1
+     RETURNING id_portfolio_item, reports_resolved_at
+    `,
+    [id_portfolio_item, resolved_by_user_id]
+  );
+  return r.rows[0] || null;
+}
+
+// Zera a resolução — chamado quando chega uma denúncia NOVA, pra reabrir o alerta.
+async function clearResolved(db, id_portfolio_item) {
+  await db.query(
+    `
+    UPDATE public.tb_profile_portfolio_item
+       SET reports_resolved_at = NULL,
+           reports_resolved_by_user_id = NULL
+     WHERE id_portfolio_item = $1
+    `,
+    [id_portfolio_item]
+  );
+}
+
+// Lista enxuta para o modal de alerta: denunciados, não banidos, não resolvidos.
+async function listReportedForAlert(db, { limit = 50 } = {}) {
+  const r = await db.query(
+    `
+    SELECT
+      ppi.id_portfolio_item::text   AS id,
+      ppi.title,
+      ppi.feed_kind,
+      ppi.report_count,
+      ppi.top_report_reason,
+      pro.display_name              AS owner_name,
+      tu.username                   AS owner_username,
+      (
+        SELECT COALESCE(ppm.thumbnail_url, ppm.media_url)
+          FROM public.tb_profile_portfolio_media ppm
+         WHERE ppm.id_portfolio_item = ppi.id_portfolio_item
+         ORDER BY ppm.sort_order, ppm.created_at
+         LIMIT 1
+      )                             AS thumbnail_url
+      FROM public.tb_profile_portfolio_item ppi
+      JOIN public.tb_profile pro ON pro.id_profile = ppi.id_profile
+      JOIN public.tb_user    tu  ON tu.id_user     = pro.id_user
+     WHERE ppi.report_count > 0
+       AND ppi.is_banned = FALSE
+       AND ppi.reports_resolved_at IS NULL
+     ORDER BY ppi.report_count DESC, ppi.published_at DESC NULLS LAST
+     LIMIT $1
+    `,
+    [limit]
+  );
+  return r.rows;
+}
+
 async function ban(db, { id_portfolio_item, banned_by_user_id }) {
   const r = await db.query(
     `
@@ -122,6 +183,7 @@ async function adminList(db, { q, sort, minReports, limit, offset }) {
       ppi.top_report_reason,
       ppi.is_banned,
       ppi.banned_at,
+      ppi.reports_resolved_at,
       pro.id_profile::text                       AS id_profile,
       pro.display_name                           AS owner_name,
       pro.avatar_url                             AS owner_avatar,
@@ -221,6 +283,9 @@ module.exports = {
   REASON_CATEGORIES,
   insertReport,
   recountReports,
+  resolveReports,
+  clearResolved,
+  listReportedForAlert,
   ban,
   unban,
   adminList,

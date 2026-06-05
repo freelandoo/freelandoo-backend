@@ -34,5 +34,18 @@ router.post(
   [authMiddleware, roleMiddleware("Administrator")],
   asyncHandler(PostReportController.adminUnban)
 );
+// Marca denúncias como resolvidas (sai do alerta, sem banir).
+router.post(
+  "/admin/posts/:id/resolve",
+  [authMiddleware, roleMiddleware("Administrator")],
+  asyncHandler(PostReportController.adminResolve)
+);
+
+// Modal de alerta do admin: posts denunciados pendentes + afiliados urgentes.
+router.get(
+  "/admin/alerts/summary",
+  [authMiddleware, roleMiddleware("Administrator")],
+  asyncHandler(PostReportController.alertSummary)
+);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const PostReportStorage = require("../storages/PostReportStorage");
+const AffiliatePayoutService = require("./AffiliatePayoutService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PostReportService");
@@ -40,6 +41,11 @@ class PostReportService {
 
         // Recalcula contadores mesmo se duplicate (idempotente).
         await PostReportStorage.recountReports(pool, id_portfolio_item);
+
+        // Denúncia inédita reabre o alerta: zera uma resolução anterior do admin.
+        if (inserted) {
+          await PostReportStorage.clearResolved(pool, id_portfolio_item);
+        }
 
         return { ok: true, already_reported: !inserted };
       }
@@ -109,6 +115,66 @@ class PostReportService {
             total,
             total_pages: Math.max(1, Math.ceil(total / limit)),
           },
+        };
+      }
+    );
+  }
+
+  static async adminResolve(user, params) {
+    return runWithLogs(
+      log,
+      "adminResolve",
+      () => ({ admin: user?.id_user, id: params?.id }),
+      async () => {
+        const id = String(params?.id || "").trim();
+        if (!UUID_RE.test(id)) return { error: "id inválido" };
+        const updated = await PostReportStorage.resolveReports(pool, {
+          id_portfolio_item: id,
+          resolved_by_user_id: user.id_user,
+        });
+        if (!updated) return { error: "Post não encontrado" };
+        return { ok: true, post: updated };
+      }
+    );
+  }
+
+  // Resumo para o modal de alerta do admin (1x por login):
+  // posts denunciados pendentes + afiliados com comissão URGENTE (>20d).
+  static async alertSummary(_user) {
+    return runWithLogs(
+      log,
+      "alertSummary",
+      () => ({}),
+      async () => {
+        const reportedPosts = await PostReportStorage.listReportedForAlert(pool, { limit: 50 });
+
+        let urgentAffiliates = [];
+        try {
+          const { items } = await AffiliatePayoutService.summaryByAffiliate({ threshold_days: 20 });
+          urgentAffiliates = (items || [])
+            .filter((a) => Number(a.red_cents) > 0)
+            .map((a) => ({
+              id_affiliate: a.id_affiliate,
+              name: a.user_name,
+              email: a.user_email,
+              urgent_cents: Number(a.red_cents) || 0,
+              unpaid_count: Number(a.unpaid_count) || 0,
+              oldest_unpaid_at: a.oldest_unpaid_at,
+            }));
+        } catch (err) {
+          // Afiliados nunca derruba o alerta de posts.
+          log.warn("alertSummary.affiliates_failed", { message: err?.message });
+        }
+
+        const urgentTotalCents = urgentAffiliates.reduce((s, a) => s + a.urgent_cents, 0);
+
+        return {
+          reported_posts: reportedPosts,
+          reported_posts_count: reportedPosts.length,
+          urgent_affiliates: urgentAffiliates,
+          urgent_affiliates_count: urgentAffiliates.length,
+          urgent_total_cents: urgentTotalCents,
+          has_alerts: reportedPosts.length > 0 || urgentAffiliates.length > 0,
         };
       }
     );
