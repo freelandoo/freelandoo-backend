@@ -34,6 +34,12 @@ const ALLOWED_TOUR_KEYS = new Set([
   "internationalization",
   "notifications",
   "security",
+  "affiliate_path",
+  "explore_path_feed",
+  "explore_path_bees",
+  "explore_path_enxames",
+  "explore_path_ranking",
+  "explore_path_account",
 ]);
 
 const ALLOWED_STATUS = new Set(["not_started", "in_progress", "completed", "skipped"]);
