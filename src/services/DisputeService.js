@@ -79,10 +79,6 @@ class DisputeService {
       });
       await ProtectionStorage.markDisputed(pool, caseRow.id, dispute.id);
 
-      // Avisa o vendedor/prestador (sino). Fire-and-forget.
-      try { await DisputeService.notifyOpened(dispute, ref); }
-      catch (err) { log.warn("notify.open_fail", { dispute_id: dispute.id, message: err.message }); }
-
       // Evidências do comprador (fotos).
       for (const file of files || []) {
         try {
@@ -138,33 +134,8 @@ class DisputeService {
     return updated || dispute;
   }
 
-  // ── Notificações (sino) ────────────────────────────────────────────────────
-  static async notifyOpened(dispute, ref) {
-    const NotificationService = require("./NotificationService");
-    let recipient_user_id = null;
-    let recipient_profile_id = null;
-    if (dispute.domain === "product" && ref?.order) {
-      recipient_user_id = ref.order.id_seller_user;
-      recipient_profile_id = ref.order.id_seller_profile;
-    } else if (dispute.domain === "booking" && ref?.booking) {
-      recipient_user_id = ref.booking.profile_owner_user_id;
-      recipient_profile_id = ref.booking.id_profile;
-    }
-    await NotificationService.notifyDisputeOpened({
-      recipient_user_id, recipient_profile_id, actor_user_id: dispute.opened_by_user_id, dispute,
-    });
-  }
-
-  static async notifyResolved(dispute, ref, action, note) {
-    const NotificationService = require("./NotificationService");
-    let recipient_user_id = dispute.opened_by_user_id;
-    if (dispute.domain === "product" && ref?.order) recipient_user_id = ref.order.id_buyer_user;
-    await NotificationService.notifyDisputeResolved({ recipient_user_id, dispute, action, note });
-  }
-
-  /** Resolve o charge no Stripe para o ref da disputa. Idempotente/tolerante.
-   *  amountCents (opcional) faz reembolso parcial (ex.: devolução retém o reverso). */
-  static async fireStripeRefund(domain, ref, amountCents) {
+  /** Resolve o charge no Stripe para o ref da disputa. Idempotente/tolerante. */
+  static async fireStripeRefund(domain, ref) {
     let charge_id = null;
     if (domain === "product") {
       charge_id = ref.order?.stripe_charge_id || null;
@@ -178,7 +149,7 @@ class DisputeService {
     }
     if (!charge_id) return { error: "Cobrança não localizada para reembolso" };
     try {
-      await StripeService.createRefund(charge_id, amountCents);
+      await StripeService.createRefund(charge_id);
       return { ok: true, charge_id };
     } catch (err) {
       // Já reembolsado conta como sucesso (idempotência).
@@ -200,20 +171,16 @@ class DisputeService {
     }
   }
 
-  /** Reembolsa o comprador (system ou admin) e fecha a disputa + caso.
-   *  amountCents (opcional) → reembolso parcial. */
-  static async autoRefund(dispute, ref, caseRow, note, resolved_by = "system", amountCents) {
-    const refund = await DisputeService.fireStripeRefund(dispute.domain, ref, amountCents);
+  /** Reembolsa o comprador (system ou admin) e fecha a disputa + caso. */
+  static async autoRefund(dispute, ref, caseRow, note, resolved_by = "system") {
+    const refund = await DisputeService.fireStripeRefund(dispute.domain, ref);
     if (refund.error) {
       // Não conseguiu reembolsar automaticamente → sobe pro admin.
       return DisputeService.escalate(dispute, `${note} — falha no reembolso automático, requer admin`);
     }
     const updated = await DisputeStorage.updateState(pool, dispute.id, "resolved_refund", { resolved_by, resolution_note: note });
     await ProtectionStorage.markRefunded(pool, caseRow.id);
-    log.info("dispute.refunded", { dispute_id: dispute.id, resolved_by, charge_id: refund.charge_id, amount: amountCents || "full" });
-    try {
-      await DisputeService.notifyResolved(dispute, ref, "refund", note);
-    } catch (err) { log.warn("notify.refund_fail", { dispute_id: dispute.id, message: err.message }); }
+    log.info("dispute.refunded", { dispute_id: dispute.id, resolved_by, charge_id: refund.charge_id });
     return updated || dispute;
   }
 
@@ -232,14 +199,7 @@ class DisputeService {
       const ref = dispute.domain === "product"
         ? { order: await ProfileProductOrderStorage.getById(pool, dispute.ref_id) }
         : { booking: (await pool.query(`SELECT * FROM public.tb_profile_bookings WHERE id = $1`, [dispute.ref_id])).rows[0] };
-      // Devolução de produto: retém o frete reverso embutido (total - return_shipping).
-      let amountCents;
-      if (dispute.domain === "product" && RETURN_REASONS.has(dispute.reason_code) && ref.order) {
-        const total = Number(ref.order.total_cents) || 0;
-        const retain = Number(ref.order.return_shipping_cents) || 0;
-        if (total > 0 && retain > 0 && retain < total) amountCents = total - retain;
-      }
-      const updated = await DisputeService.autoRefund(dispute, ref, caseRow, note || "Reembolso automático", "system", amountCents);
+      const updated = await DisputeService.autoRefund(dispute, ref, caseRow, note || "Reembolso automático", "system");
       return { ok: true, dispute: updated };
     });
   }

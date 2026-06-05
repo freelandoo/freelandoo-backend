@@ -129,12 +129,6 @@ const server = app.listen(PORT, () => {
     } catch (err) {
       bootLog.error("reverse.tracking_error", { message: err.message });
     }
-    try {
-      const n = await ReturnService.processNotArrived();
-      if (n?.stale) bootLog.info("not_arrived.swept", n);
-    } catch (err) {
-      bootLog.error("not_arrived.error", { message: err.message });
-    }
   };
   setTimeout(tickReverseLabels, 7 * 60 * 1000);
   setInterval(tickReverseLabels, HALF_HOUR);

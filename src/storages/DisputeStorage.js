@@ -99,21 +99,6 @@ class DisputeStorage {
     return r.rows;
   }
 
-  /** Disputas "não chegou" escaladas e antigas (p/ checagem do rastreio de ida). */
-  static async listStaleNotArrived(conn, { days = 10, limit = 30 } = {}) {
-    const r = await conn.query(
-      `SELECT * FROM public.tb_dispute
-        WHERE domain = 'product'
-          AND reason_code = 'product_not_arrived'
-          AND state = 'escalated_admin'
-          AND created_at < NOW() - ($1 || ' days')::interval
-        ORDER BY created_at ASC
-        LIMIT $2`,
-      [String(days), limit]
-    );
-    return r.rows;
-  }
-
   static async countByState(conn) {
     const r = await conn.query(
       `SELECT state, COUNT(*)::int AS c FROM public.tb_dispute GROUP BY state`
