@@ -48,4 +48,23 @@ router.get(
   asyncHandler(ProtectionController.bookingProtectionStatus)
 );
 
+// Disputas do comprador/cliente.
+router.post(
+  "/disputes",
+  authMiddleware,
+  uploadAvatar.array("photos", 5),
+  asyncHandler(ProtectionController.openDispute)
+);
+router.get(
+  "/disputes/:id",
+  authMiddleware,
+  asyncHandler(ProtectionController.getDispute)
+);
+router.post(
+  "/disputes/:id/evidence",
+  authMiddleware,
+  uploadAvatar.array("photos", 5),
+  asyncHandler(ProtectionController.addDisputeEvidence)
+);
+
 module.exports = router;
