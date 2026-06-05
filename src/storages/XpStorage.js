@@ -1,5 +1,6 @@
 // src/storages/XpStorage.js
 const { createLogger } = require("../utils/logger");
+const PolenStorage = require("./PolenStorage");
 
 const log = createLogger("XpStorage");
 
@@ -55,6 +56,7 @@ module.exports = {
       "base_xp_level_1",
       "level_multiplier",
       "max_online_minutes",
+      "polens_per_level",
     ]);
 
     const sets = ["updated_at = NOW()"];
@@ -133,20 +135,73 @@ module.exports = {
          SELECT COALESCE(SUM(xp_amount), 0)::numeric AS total
            FROM subprofile_xp_events
           WHERE id_profile = $1
+       ),
+       prev AS (
+         SELECT xp_level AS old_level, is_clan, id_user
+           FROM tb_profile
+          WHERE id_profile = $1
        )
        UPDATE tb_profile
           SET xp_total = agg.total,
               xp_level = (SELECT ${levelExpr} FROM agg)
-         FROM agg
-        WHERE id_profile = $1
-        RETURNING tb_profile.xp_total, tb_profile.xp_level`,
+         FROM agg, prev
+        WHERE tb_profile.id_profile = $1
+        RETURNING tb_profile.xp_total, tb_profile.xp_level,
+                  prev.old_level, prev.is_clan, prev.id_user`,
       [id_profile, base, mult]
     );
+
+    const row = r.rows[0] ?? null;
+
+    // Crédito de Poléns por subida de nível (só subperfil não-clã, forward-only).
+    // Como xp_total só cresce e o nível é monotônico, o delta > 0 ocorre uma vez
+    // por nível cruzado — sem risco de crédito duplicado.
+    if (row && row.is_clan === false && row.id_user) {
+      const oldLevel = Number(row.old_level) || 0;
+      const newLevel = Number(row.xp_level) || 0;
+      const perLevel = Number(settings.polens_per_level) || 0;
+      if (newLevel > oldLevel && perLevel > 0) {
+        await this.creditLevelUpPolens(db, {
+          user_id: row.id_user,
+          id_profile,
+          old_level: oldLevel,
+          new_level: newLevel,
+          per_level: perLevel,
+        });
+      }
+    }
 
     // Propagate to the clan this profile belongs to (clan XP = AVG of members)
     await this.recalcClanXp(db, id_profile, { base, mult });
 
-    return r.rows[0] ?? null;
+    return row;
+  },
+
+  // Credita Poléns na carteira do usuário dono por cada nível cruzado.
+  // Fire-and-forget safe — nunca derruba o recálculo de XP.
+  async creditLevelUpPolens(db, { user_id, id_profile, old_level, new_level, per_level }) {
+    try {
+      const wallet = await PolenStorage.getOrCreateWallet(db, user_id);
+      for (let lvl = old_level + 1; lvl <= new_level; lvl++) {
+        await PolenStorage.credit(db, {
+          user_id,
+          wallet_id: wallet.id,
+          amount: per_level,
+          type: "earn_level_up",
+          source: "xp_level_up",
+          source_id: `${id_profile}:${lvl}`,
+          metadata: { id_profile, level: lvl, per_level },
+        });
+      }
+      log.info("creditLevelUpPolens.ok", {
+        id_profile,
+        user_id,
+        levels: new_level - old_level,
+        polens: per_level * (new_level - old_level),
+      });
+    } catch (err) {
+      log.error("creditLevelUpPolens.fail", { id_profile, user_id, error: err.message });
+    }
   },
 
   // Update clan xp_total = AVG(members xp_total) and recalculate xp_level.
