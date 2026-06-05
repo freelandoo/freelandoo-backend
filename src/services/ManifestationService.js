@@ -240,6 +240,16 @@ class ManifestationService {
     });
   }
 
+  // Remove a manifestação aplicada do headcard (desativa a ativa do user).
+  // Não apaga o desbloqueio — continua "comprada" e pode ser reaplicada.
+  static async removeManifestation(user) {
+    return runWithLogs(log, "removeManifestation", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      await ManifestationStorage.deactivateActiveForUser(pool, user.id_user);
+      return { message: "Manifestação removida do seu perfil.", active: null };
+    });
+  }
+
   static async createStripeCheckout(user, body = {}) {
     return runWithLogs(log, "createStripeCheckout", () => ({ id_user: user?.id_user, product_id: body?.product_id }), async () => {
       if (!user?.id_user) return { error: "NÃ£o autenticado" };

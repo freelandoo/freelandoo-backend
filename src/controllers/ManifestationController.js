@@ -28,6 +28,10 @@ class ManifestationController {
     return sendServiceResult(res, await ManifestationService.applyManifestation(req.user, req.body || {}));
   }
 
+  static async remove(req, res) {
+    return sendServiceResult(res, await ManifestationService.removeManifestation(req.user));
+  }
+
   static async setProfileApply(req, res) {
     return sendServiceResult(
       res,
