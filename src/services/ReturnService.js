@@ -15,16 +15,6 @@ class ReturnService {
     return runWithLogs(log, "initReturn", () => ({ dispute_id: dispute?.id }), async () => {
       if (!dispute || dispute.domain !== "product") return { skipped: true };
       const ret = await ReturnStorage.create(pool, { dispute_id: dispute.id });
-      // Pedido de teste (harness): não chama Melhor Envio — emite código fake.
-      if (String(ref?.order?.stripe_session_id || "").startsWith("TEST-")) {
-        const updated = await ReturnStorage.markPurchased(pool, ret.id, {
-          me_reverse_order_id: `TEST-REV-${ret.id}`,
-          reverse_tracking_code: `TESTREV${ret.id}`,
-          reverse_auth_code: `TESTAUTH${ret.id}`,
-          reverse_label_url: "https://example.com/etiqueta-reversa-teste.pdf",
-        });
-        return { return: updated || ret };
-      }
       // Compra em background — falha cai no job de retry.
       setImmediate(() => {
         ReturnService.purchaseReverseForReturn(ret.id).catch((err) => {
