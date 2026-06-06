@@ -75,6 +75,7 @@ const bookmarkRoutes = require("./bookmark.routes");
 const earningsRoutes = require("./earnings.routes");
 const postReportsRoutes = require("./postReports.routes");
 const countriesRoutes = require("./countries.routes");
+const regionRoutes = require("./region.routes");
 const navCountsRoutes = require("./navCounts.routes");
 const userTourProgressRoutes = require("./userTourProgress.routes");
 const meOfferingsRoutes = require("./meOfferings.routes");
@@ -169,6 +170,7 @@ module.exports = (app) => {
   app.use("/", earningsRoutes);
   app.use("/", postReportsRoutes);
   app.use("/countries", countriesRoutes);
+  app.use("/regions", regionRoutes);
   app.use("/me", navCountsRoutes);
   app.use("/tours", userTourProgressRoutes);
   app.use("/me", meOfferingsRoutes);

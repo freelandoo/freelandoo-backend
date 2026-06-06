@@ -103,9 +103,11 @@ class ProfileStorage {
     const r = await conn.query(
       `
       INSERT INTO public.tb_profile
-        (id_user, id_category, display_name, bio, avatar_url, estado, municipio, sub_profile_slug)
+        (id_user, id_category, display_name, bio, avatar_url, estado, municipio, sub_profile_slug, id_region)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8)
+        ($1, $2, $3, $4, $5, $6, $7, $8,
+         (SELECT rc.id_region FROM public.tb_region_city rc
+           WHERE rc.uf = $6 AND rc.municipio_norm = fl_norm_city($7)))
       RETURNING
         id_profile, id_user, id_category, display_name, bio, avatar_url,
         estado, municipio, sub_profile_slug, is_active, created_at, updated_at
@@ -468,14 +470,29 @@ class ProfileStorage {
       values.push(payload.avatar_url); // ✅ null limpa
     }
 
+    // Expressões pra recomputar id_region: valor novo (se veio no payload) ou a
+    // coluna atual (avaliada com o valor antigo da linha no UPDATE).
+    let estadoExpr = "estado";
+    let municipioExpr = "municipio";
+
     if (has("estado")) {
+      estadoExpr = `$${idx}`;
       fields.push(`estado = $${idx++}`);
       values.push(payload.estado); // ✅ null limpa
     }
 
     if (has("municipio")) {
+      municipioExpr = `$${idx}`;
       fields.push(`municipio = $${idx++}`);
       values.push(payload.municipio); // ✅ null limpa
+    }
+
+    // Mudou estado e/ou cidade → resolve a região correspondente.
+    if (has("estado") || has("municipio")) {
+      fields.push(
+        `id_region = (SELECT rc.id_region FROM public.tb_region_city rc
+           WHERE rc.uf = ${estadoExpr} AND rc.municipio_norm = fl_norm_city(${municipioExpr}))`
+      );
     }
 
     if (has("is_active")) {

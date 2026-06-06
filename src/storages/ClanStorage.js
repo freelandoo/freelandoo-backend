@@ -8,9 +8,11 @@ class ClanStorage {
       `
       INSERT INTO public.tb_profile
         (id_user, id_category, id_machine, is_clan, display_name, bio,
-         avatar_url, estado, municipio)
+         avatar_url, estado, municipio, id_region)
       VALUES
-        ($1, NULL, $2, TRUE, $3, $4, $5, $6, $7)
+        ($1, NULL, $2, TRUE, $3, $4, $5, $6, $7,
+         (SELECT rc.id_region FROM public.tb_region_city rc
+           WHERE rc.uf = $6 AND rc.municipio_norm = fl_norm_city($7)))
       RETURNING id_profile, id_user, id_machine, is_clan, display_name, bio,
                 avatar_url, estado, municipio, is_active, is_visible,
                 created_at, updated_at
