@@ -23,17 +23,17 @@ class ProfileServiceStorage {
 
   static async create(conn, {
     id_profile, name, description, duration_minutes, price_amount, is_active,
-    affiliates_allowed = false,
+    affiliates_allowed = false, created_by_user = null,
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_service
         (id_profile, name, description, duration_minutes, price_amount, is_active,
-         affiliates_allowed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         affiliates_allowed, created_by_user)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         id_profile, name, description || null, duration_minutes, price_amount,
-        is_active !== false, affiliates_allowed === true,
+        is_active !== false, affiliates_allowed === true, created_by_user || null,
       ]
     );
     return r.rows[0];

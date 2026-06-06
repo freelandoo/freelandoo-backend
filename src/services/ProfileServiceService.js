@@ -15,11 +15,26 @@ const log = createLogger("ProfileServiceService");
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-async function assertOwnerWithProfile(conn, id_profile, id_user) {
+// Gate de gerência clan-aware: pra perfil normal, só o dono; pra clan, QUALQUER
+// membro (retorna a membership pra aplicar "criador edita o seu, dono modera").
+async function assertCanManageProfile(conn, id_profile, id_user) {
   const profile = await ProfileStorage.getProfileById(conn, id_profile);
   if (!profile) return { error: "Perfil não encontrado" };
+  if (profile.is_clan) {
+    const membership = await ClanStorage.getUserMembership(conn, id_profile, id_user);
+    if (!membership) return { error: "Apenas membros do clan podem gerenciar serviços" };
+    return { profile, membership };
+  }
   if (String(profile.id_user) !== String(id_user)) return { error: "Sem permissão para alterar este perfil" };
-  return { profile };
+  return { profile, membership: null };
+}
+
+// Em clan: o dono modera tudo; um membro comum só mexe no que ele mesmo criou.
+// Itens legados (created_by_user NULL) só o dono mexe.
+function canMutateItem({ profile, membership }, item, id_user) {
+  if (!profile.is_clan) return true;
+  if (membership && membership.role === "owner") return true;
+  return item.created_by_user && String(item.created_by_user) === String(id_user);
 }
 
 function validateInput(payload, { partial = false } = {}) {
@@ -81,7 +96,7 @@ class ProfileServiceService {
       if (!user?.id_user) return { error: "Não autenticado" };
       const { id_profile } = params;
       if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
-      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      const own = await assertCanManageProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
       const services = await ProfileServiceStorage.list(pool, id_profile);
       const ids = services.map((s) => Number(s.id_profile_service));
@@ -108,15 +123,23 @@ class ProfileServiceService {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const own = await assertOwnerWithProfile(client, id_profile, user.id_user);
+        const own = await assertCanManageProfile(client, id_profile, user.id_user);
         if (own.error) { await client.query("ROLLBACK"); return { error: own.error }; }
         const memberIds = own.profile.is_clan ? (v.data.member_profile_ids || []) : [];
         if (own.profile.is_clan) {
+          if (memberIds.length === 0) {
+            await client.query("ROLLBACK");
+            return { error: "Anexe pelo menos um perfil do clan ao serviço" };
+          }
           const memErr = await validateClanMembers(client, id_profile, memberIds);
           if (memErr) { await client.query("ROLLBACK"); return memErr; }
         }
         const { member_profile_ids: _ignore, ...serviceFields } = v.data;
-        const service = await ProfileServiceStorage.create(client, { id_profile, ...serviceFields });
+        const service = await ProfileServiceStorage.create(client, {
+          id_profile,
+          ...serviceFields,
+          created_by_user: own.profile.is_clan ? user.id_user : null,
+        });
         if (own.profile.is_clan) {
           await ProfileServiceStorage.setMembers(client, service.id_profile_service, memberIds);
         }
@@ -141,16 +164,24 @@ class ProfileServiceService {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const own = await assertOwnerWithProfile(client, id_profile, user.id_user);
+        const own = await assertCanManageProfile(client, id_profile, user.id_user);
         if (own.error) { await client.query("ROLLBACK"); return { error: own.error }; }
         const existing = await ProfileServiceStorage.getById(client, Number(id_profile_service));
         if (!existing || String(existing.id_profile) !== String(id_profile)) {
           await client.query("ROLLBACK");
           return { error: "Serviço não encontrado" };
         }
+        if (!canMutateItem(own, existing, user.id_user)) {
+          await client.query("ROLLBACK");
+          return { error: "Só o criador do serviço ou o dono do clan podem editá-lo" };
+        }
         const hasMemberUpdate = Object.prototype.hasOwnProperty.call(v.data, "member_profile_ids");
         const memberIdsInput = hasMemberUpdate ? (v.data.member_profile_ids || []) : null;
         if (own.profile.is_clan && memberIdsInput) {
+          if (memberIdsInput.length === 0) {
+            await client.query("ROLLBACK");
+            return { error: "Anexe pelo menos um perfil do clan ao serviço" };
+          }
           const memErr = await validateClanMembers(client, id_profile, memberIdsInput);
           if (memErr) { await client.query("ROLLBACK"); return memErr; }
         }
@@ -183,12 +214,16 @@ class ProfileServiceService {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const own = await assertOwnerWithProfile(client, id_profile, user.id_user);
+        const own = await assertCanManageProfile(client, id_profile, user.id_user);
         if (own.error) { await client.query("ROLLBACK"); return { error: own.error }; }
         const existing = await ProfileServiceStorage.getById(client, Number(id_profile_service));
         if (!existing || String(existing.id_profile) !== String(id_profile)) {
           await client.query("ROLLBACK");
           return { error: "Serviço não encontrado" };
+        }
+        if (!canMutateItem(own, existing, user.id_user)) {
+          await client.query("ROLLBACK");
+          return { error: "Só o criador do serviço ou o dono do clan podem removê-lo" };
         }
         await ProfileServiceStorage.softDelete(client, Number(id_profile_service));
         await client.query("COMMIT");
@@ -230,12 +265,15 @@ class ProfileServiceService {
       if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
       if (!id_profile_service || isNaN(Number(id_profile_service))) return { error: "id_profile_service inválido" };
 
-      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      const own = await assertCanManageProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
 
       const service = await ProfileServiceStorage.getById(pool, Number(id_profile_service));
       if (!service || String(service.id_profile) !== String(id_profile)) {
         return { error: "Serviço não encontrado" };
+      }
+      if (!canMutateItem(own, service, user.id_user)) {
+        return { error: "Só o criador do serviço ou o dono do clan podem editá-lo" };
       }
 
       if (!file || !file.buffer) return { error: "Arquivo não enviado" };
@@ -286,12 +324,18 @@ class ProfileServiceService {
       if (!id_profile_service || isNaN(Number(id_profile_service))) return { error: "id_profile_service inválido" };
       if (!id_service_media || isNaN(Number(id_service_media))) return { error: "id_service_media inválido" };
 
-      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      const own = await assertCanManageProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
 
       const media = await ProfileServiceMediaStorage.findById(pool, Number(id_service_media));
       if (!media || String(media.id_profile_service) !== String(id_profile_service)) {
         return { error: "Mídia não encontrada" };
+      }
+      if (own.profile.is_clan) {
+        const svc = await ProfileServiceStorage.getById(pool, Number(id_profile_service));
+        if (svc && !canMutateItem(own, svc, user.id_user)) {
+          return { error: "Só o criador do serviço ou o dono do clan podem editá-lo" };
+        }
       }
 
       const keysToDelete = [media.storage_key, media.thumbnail_key].filter(Boolean);
@@ -315,7 +359,7 @@ class ProfileServiceService {
       if (!id_profile || !UUID_RE.test(id_profile)) return { error: "id_profile inválido" };
       if (!id_profile_service || isNaN(Number(id_profile_service))) return { error: "id_profile_service inválido" };
 
-      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      const own = await assertCanManageProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
 
       const media = await ProfileServiceMediaStorage.listByService(pool, Number(id_profile_service));
@@ -335,8 +379,15 @@ class ProfileServiceService {
         return { error: "ordered_ids é obrigatório (array de ids)" };
       }
 
-      const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
+      const own = await assertCanManageProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
+
+      if (own.profile.is_clan) {
+        const svc = await ProfileServiceStorage.getById(pool, Number(id_profile_service));
+        if (svc && !canMutateItem(own, svc, user.id_user)) {
+          return { error: "Só o criador do serviço ou o dono do clan podem editá-lo" };
+        }
+      }
 
       await ProfileServiceMediaStorage.reorder(pool, Number(id_profile_service), ordered_ids);
       const media = await ProfileServiceMediaStorage.listByService(pool, Number(id_profile_service));
