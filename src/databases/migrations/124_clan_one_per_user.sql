@@ -18,6 +18,14 @@ UPDATE public.tb_clan_member cm
  WHERE p.id_profile = cm.id_member_profile
    AND cm.id_user IS DISTINCT FROM p.id_user;
 
+-- Limpeza: membresias de clans já deletados são lixo e não devem disputar o
+-- UNIQUE(id_user) (ex.: usuário de teste dono de 2 clans deletados). Sem isso o
+-- índice único falharia. Clans ativos não são tocados.
+DELETE FROM public.tb_clan_member cm
+USING public.tb_profile clan
+WHERE clan.id_profile = cm.id_clan_profile
+  AND clan.deleted_at IS NOT NULL;
+
 ALTER TABLE public.tb_clan_member
   ALTER COLUMN id_user SET NOT NULL;
 
