@@ -1,5 +1,7 @@
 const pool = require("../databases");
 const BookingPayoutStorage = require("../storages/BookingPayoutStorage");
+const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
+const ProfileStorage = require("../storages/ProfileStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("BookingPayoutService");
@@ -14,6 +16,13 @@ class BookingPayoutService {
   static async createFromBooking(booking) {
     return runWithLogs(log, "createFromBooking", () => ({ id_booking: booking?.id }), async () => {
       if (!booking) return { error: "Booking ausente" };
+      // Clan: o líquido é rateado entre os anexados (tb_clan_payout via
+      // BookingService.recordClanSplitForBooking), não vai pro payout único do dono.
+      const profile = await ProfileStorage.getProfileById(pool, booking.id_profile);
+      if (profile?.is_clan) {
+        log.info("skip.clan_booking", { id_booking: booking.id });
+        return { skipped: true, reason: "clan_split" };
+      }
       const deposit = Number(booking.deposit_amount) || 0;
       const platform_fee = Number(booking.platform_fee_amount) || 0;
       const professional = Number(booking.professional_amount) || 0;
@@ -49,8 +58,23 @@ class BookingPayoutService {
       const status = query.status ? String(query.status) : null;
       const limit = Math.min(Math.max(Number(query.limit) || 100, 1), 200);
       const offset = Math.max(Number(query.offset) || 0, 0);
-      const items = await BookingPayoutStorage.listForOwner(pool, user.id_user, { status, limit, offset });
-      const summary = await pool.query(
+      const bookingItems = await BookingPayoutStorage.listForOwner(pool, user.id_user, { status, limit, offset });
+      // Saldo é fonte única: une os splits de clan (serviço/curso) ao saldo.
+      const clanRows = await ClanPayoutStorage.listForOwner(pool, user.id_user, { status, limit, offset });
+      const clanItems = clanRows.map((cp) => ({
+        ...cp,
+        source: "clan",
+        net_cents: cp.amount_cents,
+        professional_cents: cp.amount_cents,
+        profile_display_name: cp.clan_display_name,
+        service_name:
+          cp.source_type === "clan_course" ? "Curso do clan" : "Serviço do clan",
+      }));
+      const items = [...bookingItems.map((b) => ({ ...b, source: "booking" })), ...clanItems]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, limit);
+
+      const bSum = (await pool.query(
         `SELECT
             COALESCE(SUM(CASE WHEN status='aguardando' THEN net_cents END), 0) AS aguardando_cents,
             COALESCE(SUM(CASE WHEN status='aprovado'   THEN net_cents END), 0) AS aprovado_cents,
@@ -62,8 +86,18 @@ class BookingPayoutService {
            FROM public.tb_booking_payout
           WHERE id_owner_user = $1`,
         [user.id_user]
-      );
-      return { items, summary: summary.rows[0] };
+      )).rows[0];
+      const cSum = await ClanPayoutStorage.summaryForOwner(pool, user.id_user);
+      const summary = {
+        aguardando_cents: Number(bSum.aguardando_cents) + Number(cSum.aguardando_cents),
+        aprovado_cents: Number(bSum.aprovado_cents) + Number(cSum.aprovado_cents),
+        pago_cents: Number(bSum.pago_cents) + Number(cSum.pago_cents),
+        revertido_cents: Number(bSum.revertido_cents) + Number(cSum.revertido_cents),
+        aguardando_count: Number(bSum.aguardando_count),
+        aprovado_count: Number(bSum.aprovado_count),
+        pago_count: Number(bSum.pago_count),
+      };
+      return { items, summary };
     });
   }
 
@@ -118,7 +152,13 @@ class BookingPayoutService {
     const id_booking = r.rows[0]?.id;
     if (!id_booking) return { ignored: true };
     const reverted = await BookingPayoutStorage.revertByBooking(pool, id_booking);
-    log.info("payout.reverted_by_refund", { id_booking, reverted: !!reverted });
+    // Clan: reverte também os splits de membros (não há booking payout único).
+    const clanReverted = await ClanPayoutStorage.revertBySource(pool, "clan_service", id_booking);
+    log.info("payout.reverted_by_refund", {
+      id_booking,
+      reverted: !!reverted,
+      clan_reverted: clanReverted.length,
+    });
     return { ok: true, id_booking };
   }
 }

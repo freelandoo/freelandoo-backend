@@ -678,6 +678,22 @@ class ProfileStorage {
     const invalid = subcategoryIds.filter((id) => !found.has(id));
     return { ok: invalid.length === 0, invalid_subcategories: invalid };
   }
+
+  /**
+   * Mapa { id_profile: id_user } para uma lista de subperfis. Usado pelo split
+   * de clan pra creditar o saldo do dono de cada perfil anexado.
+   */
+  static async getOwnerUserMap(conn, profileIds) {
+    if (!profileIds || profileIds.length === 0) return {};
+    const r = await conn.query(
+      `SELECT id_profile, id_user FROM public.tb_profile
+        WHERE id_profile = ANY($1::uuid[])`,
+      [profileIds]
+    );
+    const map = {};
+    for (const row of r.rows) map[row.id_profile] = row.id_user;
+    return map;
+  }
 }
 
 module.exports = ProfileStorage;

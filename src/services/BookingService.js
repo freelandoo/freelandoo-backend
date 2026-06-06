@@ -3,8 +3,7 @@ const BookingStorage = require("../storages/BookingStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
-const ClanStorage = require("../storages/ClanStorage");
-const ClanEarningSplitStorage = require("../storages/ClanEarningSplitStorage");
+const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const { createLogger } = require("../utils/logger");
@@ -283,8 +282,9 @@ class BookingService {
   }
 
   /**
-   * Se o booking pertence a um perfil-clan, registra splits em
-   * tb_clan_earning_split (1 row por membro participante).
+   * Se o booking pertence a um perfil-clan, divide o líquido (professional_amount)
+   * IGUAL entre os perfis anexados ao serviço e credita o SALDO de cada um
+   * (tb_clan_payout, holdback 8 dias). A sobra dos centavos (floor) vai pro 1º.
    * Idempotente: se já houver split pra esse booking, faz no-op.
    */
   static async recordClanSplitForBooking(booking) {
@@ -292,42 +292,46 @@ class BookingService {
     const profile = await ProfileStorage.getProfileById(pool, booking.id_profile);
     if (!profile || !profile.is_clan) return null;
 
-    const already = await ClanEarningSplitStorage.existsForBooking(pool, booking.id);
-    if (already) return null;
+    if (await ClanPayoutStorage.existsForSource(pool, "clan_service", booking.id)) {
+      return null;
+    }
 
     let memberIds = [];
     if (booking.id_profile_service != null) {
       memberIds = await ProfileServiceStorage.getMemberIds(pool, booking.id_profile_service);
     }
-    if (memberIds.length === 0) {
-      const all = await ClanStorage.listMembers(pool, booking.id_profile);
-      memberIds = all.map((m) => m.id_member_profile);
-    }
+    // Serviço de clan exige >=1 anexado na publicação; sem anexados, no-op seguro.
     if (memberIds.length === 0) return null;
 
     const gross = Number(booking.professional_amount) || 0;
     if (gross <= 0) return null;
 
+    const owners = await ProfileStorage.getOwnerUserMap(pool, memberIds);
     const N = memberIds.length;
     const per = Math.floor(gross / N);
     const remainder = gross - per * N;
-    const member_amounts = memberIds.map((id_member_profile, idx) => ({
-      id_member_profile,
-      amount_cents: per + (idx === 0 ? remainder : 0),
-    }));
+    const rows = memberIds
+      .filter((id) => owners[id])
+      .map((id_member_profile, idx) => ({
+        id_member_profile,
+        id_owner_user: owners[id_member_profile],
+        amount_cents: per + (idx === 0 ? remainder : 0),
+      }));
+    if (rows.length === 0) return null;
 
-    const rows = await ClanEarningSplitStorage.createBookingSplits(pool, {
+    const created = await ClanPayoutStorage.createSplits(pool, {
       id_clan_profile: booking.id_profile,
+      source_type: "clan_service",
       source_id: String(booking.id),
-      gross_amount_cents: gross,
-      member_amounts,
+      gross_cents: gross,
+      rows,
     });
     log.info("booking.clan_split.created", {
       bookingId: booking.id,
-      members: rows.length,
+      members: created.length,
       per,
     });
-    return rows;
+    return created;
   }
 }
 
