@@ -42,7 +42,7 @@ function resolveFeedKind(raw, fallback) {
 
 function makeFeedHandler(defaultKind) {
   return async function feedHandler(req, res) {
-    const { id_machine, id_category, estado, municipio, level_min, exclude_ids, cursor, limit, kind, country } =
+    const { id_machine, id_category, estado, id_region, level_min, exclude_ids, cursor, limit, kind, country } =
       req.query;
 
     let normalizedCountry = null;
@@ -57,7 +57,7 @@ function makeFeedHandler(defaultKind) {
         id_machine: parseIntOrNull(id_machine),
         id_category: parseIntOrNull(id_category),
         estado: estado ? String(estado).toUpperCase().slice(0, 2) : null,
-        municipio: municipio || null,
+        id_region: parseIntOrNull(id_region),
         level_min: parseLevelMin(level_min),
         exclude_ids: parseExcludeIds(exclude_ids),
         feed_kind: resolveFeedKind(kind, defaultKind),

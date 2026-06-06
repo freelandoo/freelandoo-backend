@@ -174,7 +174,7 @@ function buildCandidateQuery(mode) {
       AND ($1::int  IS NULL OR COALESCE(ca.id_machine, pro.id_machine) = $1)
       AND ($2::int  IS NULL OR ca.id_category = $2)
       AND ($3::text IS NULL OR pro.estado = $3)
-      AND ($4::text IS NULL OR pro.municipio ILIKE $4)
+      AND ($4::int IS NULL OR pro.id_region = $4)
       AND ($5::uuid[] IS NULL OR NOT (ppi.id_portfolio_item = ANY($5::uuid[])))
       AND ($8::int IS NULL OR pro.xp_level >= $8)
       AND ($9::text IS NULL OR ppi.feed_kind = $9)
@@ -193,7 +193,7 @@ function buildParams({
   id_machine,
   id_category,
   estado,
-  municipio,
+  id_region,
   exclude_ids,
   viewer_id_user,
   level_min,
@@ -205,7 +205,7 @@ function buildParams({
     Number.isFinite(id_machine) ? id_machine : null,                 // $1
     Number.isFinite(id_category) ? id_category : null,                // $2
     estado || null,                                                   // $3
-    municipio ? `%${municipio}%` : null,                              // $4
+    Number.isFinite(id_region) ? id_region : null,                    // $4 (região)
     Array.isArray(exclude_ids) && exclude_ids.length ? exclude_ids : null, // $5
     limit,                                                            // $6
     viewer_id_user || null,                                           // $7

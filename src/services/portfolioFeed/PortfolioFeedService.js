@@ -319,7 +319,7 @@ class PortfolioFeedService {
           id_machine: filters?.id_machine,
           id_category: filters?.id_category,
           estado: filters?.estado,
-          municipio: filters?.municipio,
+          id_region: filters?.id_region,
           level_min: filters?.level_min,
           exclude_ids: filters?.exclude_ids,
           // null = misto (feed + bees); 'feed' ou 'bees' filtra um tipo só.
