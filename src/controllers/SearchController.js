@@ -6,7 +6,7 @@ class SearchController {
     const {
       country,
       estado,
-      municipio,
+      id_region,
       platform,
       nicho,
       category,
@@ -19,6 +19,8 @@ class SearchController {
       limit,
       offset,
     } = req.query;
+
+    const parsedIdRegion = id_region != null && id_region !== "" ? Number(id_region) : null;
 
     // Normaliza country: ISO-2 maiúsculo. "all" desliga o filtro (NULL).
     let normalizedCountry = null;
@@ -42,7 +44,7 @@ class SearchController {
       filters: {
         country: normalizedCountry,
         estado: estado || null,
-        municipio: municipio || null,
+        id_region: Number.isFinite(parsedIdRegion) ? parsedIdRegion : null,
         platform: platform || null,
         nicho: nicho || null,
         category: category || null,
@@ -66,13 +68,13 @@ class SearchController {
   // Busca pública de produtos da Loja — filtros: categoria, estado, cidade, q.
   // ---------------------------------------------------------------------------
   static async searchProducts(req, res) {
-    const { id_product_category, state, city, q, limit, offset } = req.query;
+    const { id_product_category, state, id_region, q, limit, offset } = req.query;
     const parsedCat = id_product_category != null && id_product_category !== ""
       ? Number(id_product_category) : null;
     const parsedLimit = Math.max(1, Math.min(60, Number(limit) || 30));
     const parsedOffset = Math.max(0, Number(offset) || 0);
     const stateUf = state ? String(state).trim().toUpperCase().slice(0, 2) : null;
-    const cityName = city ? String(city).trim().slice(0, 120) : null;
+    const parsedRegion = id_region != null && id_region !== "" ? Number(id_region) : null;
     const search = q ? String(q).trim().slice(0, 80) : null;
 
     const conditions = ["pp.is_active = TRUE", "pp.deleted_at IS NULL", "pp.stock_quantity > 0"];
@@ -85,9 +87,10 @@ class SearchController {
       values.push(stateUf);
       conditions.push(`p.estado = $${values.length}`);
     }
-    if (cityName) {
-      values.push(cityName);
-      conditions.push(`p.municipio = $${values.length}`);
+    // Região agregada: filtra pelo perfil dono (p.id_region).
+    if (Number.isFinite(parsedRegion) && parsedRegion > 0) {
+      values.push(parsedRegion);
+      conditions.push(`p.id_region = $${values.length}`);
     }
     if (search) {
       values.push(`%${search}%`);

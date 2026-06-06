@@ -223,10 +223,11 @@ class ClanService {
         const limit = Math.min(Math.max(Number(query?.limit) || 24, 1), 100);
         const offset = Math.max(Number(query?.offset) || 0, 0);
         const idMachine = query?.id_machine ? Number(query.id_machine) : null;
+        const idRegion = query?.id_region ? Number(query.id_region) : null;
 
         const clans = await SearchStorage.searchClans(pool, {
           estado: query?.estado || null,
-          municipio: query?.municipio || null,
+          id_region: Number.isFinite(idRegion) ? idRegion : null,
           id_machine: Number.isFinite(idMachine) ? idMachine : null,
           machine_slug: query?.machine_slug || null,
           q: query?.q || null,

@@ -6,7 +6,7 @@ module.exports = {
    */
   async searchClans(
     db,
-    { estado, municipio, id_machine, machine_slug, q, limit, offset }
+    { estado, id_region, id_machine, machine_slug, q, limit, offset }
   ) {
     const r = await db.query(
       `
@@ -73,11 +73,11 @@ module.exports = {
           )
         )
         AND (
-          $2::text IS NULL OR clan.municipio ILIKE $2 OR EXISTS (
+          $2::int IS NULL OR clan.id_region = $2 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile
-              AND mpf.municipio ILIKE $2
+              AND mpf.id_region = $2
           )
         )
         AND (
@@ -105,7 +105,7 @@ module.exports = {
       `,
       [
         estado || null,
-        municipio ? `%${municipio}%` : null,
+        Number.isFinite(id_region) ? id_region : null,
         Number.isFinite(id_machine) ? id_machine : null,
         machine_slug || null,
         q ? `%${q}%` : null,
@@ -121,7 +121,7 @@ module.exports = {
     {
       country,
       estado,
-      municipio,
+      id_region,
       platform,
       nicho: _nicho,
       category,
@@ -253,7 +253,7 @@ module.exports = {
 
         -- Filtros geográficos
         AND ($1::text IS NULL OR pro.estado = $1)
-        AND ($2::text IS NULL OR pro.municipio ILIKE $2)
+        AND ($2::int IS NULL OR pro.id_region = $2)
 
         -- Legacy filters (text-based, compat com chamadas antigas)
         AND (
@@ -338,10 +338,10 @@ module.exports = {
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
             WHERE cmf.id_clan_profile = clan.id_profile AND mpf.estado = $1
           ))
-          AND ($2::text IS NULL OR clan.municipio ILIKE $2 OR EXISTS (
+          AND ($2::int IS NULL OR clan.id_region = $2 OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
             JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
-            WHERE cmf.id_clan_profile = clan.id_profile AND mpf.municipio ILIKE $2
+            WHERE cmf.id_clan_profile = clan.id_profile AND mpf.id_region = $2
           ))
           AND ($3::text IS NULL OR EXISTS (
             SELECT 1 FROM tb_clan_member cmf
@@ -408,7 +408,7 @@ module.exports = {
       `,
       [
         estado || null,                            // $1
-        municipio ? `%${municipio}%` : null,       // $2
+        Number.isFinite(id_region) ? id_region : null, // $2 (região agregada)
         category ? `%${category}%` : null,         // $3
         q ? `%${q}%` : null,                       // $4
         platform ? `%${platform}%` : null,         // $5
