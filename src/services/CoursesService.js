@@ -319,9 +319,15 @@ class CoursesService {
       async () => {
         if (!profileId) return { error: "profileId inválido" };
         const rows = await CoursesStorage.listPublicByProfileId(pool, profileId);
+        // Co-autores anexados (cursos de clan): batch pra exibir chips no público.
+        const memberMap = await CourseMemberStorage.getMemberIdsByCourses(
+          pool,
+          rows.map((r) => r.id),
+        );
         const courses = await Promise.all(
           rows.map(async (row) => {
             const shaped = publicCourseShape(row);
+            shaped.member_profile_ids = memberMap.get(String(row.id)) || [];
             shaped.pricing = await StoreGovernanceService.computeFeesFor(
               row.price_cents,
               { affiliatesAllowed: row.affiliates_allowed === true },
