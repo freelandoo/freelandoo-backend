@@ -121,6 +121,17 @@ class ClanService {
             };
           }
 
+          // Regra (mig 124): 1 clan por USUÁRIO — nenhum subperfil do user
+          // pode já estar em outro clan.
+          const userMembership = await ClanStorage.findMembershipByUser(
+            client,
+            id_user
+          );
+          if (userMembership) {
+            await client.query("ROLLBACK");
+            return { error: "Você já participa de um clan (1 clan por usuário)" };
+          }
+
           // 3. Máquina existe e está ativa
           const okMachine = await ClanStorage.machineExistsActive(
             client,
@@ -408,6 +419,17 @@ class ClanService {
             };
           }
 
+          // Regra (mig 124): 1 clan por USUÁRIO — o user do convidado não pode
+          // já estar em outro clan com qualquer subperfil.
+          const invitedUserMembership = await ClanStorage.findMembershipByUser(
+            client,
+            invited.id_user
+          );
+          if (invitedUserMembership) {
+            await client.query("ROLLBACK");
+            return { error: "Este usuário já participa de um clan" };
+          }
+
           // 4. Cria invite (UNIQUE pending impede duplicar)
           let invite;
           try {
@@ -568,6 +590,16 @@ class ClanService {
             return {
               error: "Este sub-perfil já participa de outro clan",
             };
+          }
+
+          // Regra (mig 124): 1 clan por USUÁRIO — revalida no aceite.
+          const acceptUserMembership = await ClanStorage.findMembershipByUser(
+            client,
+            user.id_user
+          );
+          if (acceptUserMembership) {
+            await client.query("ROLLBACK");
+            return { error: "Você já participa de um clan" };
           }
 
           await ClanStorage.addMember(client, {

@@ -65,13 +65,29 @@ class ClanStorage {
     const r = await conn.query(
       `
       INSERT INTO public.tb_clan_member
-        (id_clan_profile, id_member_profile, role)
-      VALUES ($1, $2, $3)
+        (id_clan_profile, id_member_profile, role, id_user)
+      VALUES ($1, $2, $3,
+        (SELECT id_user FROM public.tb_profile WHERE id_profile = $2))
       RETURNING id_clan_profile, id_member_profile, role, joined_at
       `,
       [id_clan_profile, id_member_profile, role || "member"]
     );
     return r.rows[0];
+  }
+
+  /**
+   * Retorna o clan em que o USUÁRIO já está (qualquer subperfil dele), se houver.
+   * Usa o UNIQUE(id_user) da mig 124 para resposta O(1). Regra: 1 clan por user.
+   */
+  static async findMembershipByUser(conn, id_user) {
+    const r = await conn.query(
+      `SELECT id_clan_profile, role
+         FROM public.tb_clan_member
+        WHERE id_user = $1
+        LIMIT 1`,
+      [id_user]
+    );
+    return r.rowCount ? r.rows[0] : null;
   }
 
   static async removeMember(conn, { id_clan_profile, id_member_profile }) {
