@@ -12,6 +12,10 @@
 const pool = require("../databases");
 const CoursesStorage = require("../storages/CoursesStorage");
 const CourseFeedPostsStorage = require("../storages/CourseFeedPostsStorage");
+const CourseMemberStorage = require("../storages/CourseMemberStorage");
+const ClanStorage = require("../storages/ClanStorage");
+const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
+const ProfileStorage = require("../storages/ProfileStorage");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
@@ -68,11 +72,45 @@ async function ensureUniqueSlug(conn, base, exceptId = null) {
 async function profileBelongsToUser(conn, profileId, userId) {
   if (!profileId) return true;
   const { rows } = await conn.query(
-    `SELECT id_user FROM public.tb_profile WHERE id_profile = $1 LIMIT 1`,
+    `SELECT id_user, is_clan FROM public.tb_profile WHERE id_profile = $1 LIMIT 1`,
     [profileId],
   );
   if (!rows.length) return false;
-  return rows[0].id_user === userId;
+  if (rows[0].id_user === userId) return true;
+  // Clan coletivo: qualquer MEMBRO pode vincular/criar curso no clan.
+  if (rows[0].is_clan) {
+    const m = await conn.query(
+      `SELECT 1 FROM public.tb_clan_member cm
+         JOIN public.tb_profile p ON p.id_profile = cm.id_member_profile
+        WHERE cm.id_clan_profile = $1 AND p.id_user = $2 LIMIT 1`,
+      [profileId, userId],
+    );
+    return m.rowCount > 0;
+  }
+  return false;
+}
+
+// Valida que os perfis a anexar são membros do clan. Retorna erro ou null.
+async function validateCourseClanMembers(conn, id_clan_profile, memberIds) {
+  if (!memberIds || memberIds.length === 0) return null;
+  const members = await ClanStorage.listMembers(conn, id_clan_profile);
+  const valid = new Set(members.map((m) => String(m.id_member_profile)));
+  for (const id of memberIds) {
+    if (!valid.has(String(id))) return { error: "Perfil anexado não pertence ao clan" };
+  }
+  return null;
+}
+
+function parseMemberProfileIds(body) {
+  if (!Object.prototype.hasOwnProperty.call(body, "member_profile_ids")) return undefined;
+  const arr = body.member_profile_ids;
+  if (!Array.isArray(arr)) return { error: "member_profile_ids deve ser array" };
+  const seen = new Set();
+  for (const id of arr) {
+    if (typeof id !== "string" || !id.trim()) return { error: "member_profile_ids contém id inválido" };
+    seen.add(id.trim());
+  }
+  return [...seen];
 }
 
 function publicCourseShape(row) {
@@ -217,7 +255,57 @@ class CoursesService {
       amountCents: amount,
       currency: "BRL",
     });
+
+    // Curso de clan: divide o líquido (amount = seller, já pós-taxa) IGUAL entre
+    // os perfis anexados, creditando o Saldo de cada um (tb_clan_payout, 8 dias).
+    try {
+      await CoursesService.recordClanSplitForCourse(courseId, userId, amount);
+    } catch (err) {
+      log.error("course.clan_split.fail", { courseId, error: err.message });
+    }
+
     return { enrollment };
+  }
+
+  /**
+   * Se o curso pertence a um perfil-clan, divide `amount` igual entre os perfis
+   * anexados (tb_course_member) no Saldo de cada um. Idempotente por curso+comprador.
+   */
+  static async recordClanSplitForCourse(courseId, buyerUserId, amount) {
+    if (!courseId || !(amount > 0)) return null;
+    const course = await CoursesStorage.getById(pool, courseId);
+    if (!course || !course.profile_id) return null;
+    const profile = await ProfileStorage.getProfileById(pool, course.profile_id);
+    if (!profile || !profile.is_clan) return null;
+
+    const sourceId = `${courseId}:${buyerUserId}`;
+    if (await ClanPayoutStorage.existsForSource(pool, "clan_course", sourceId)) {
+      return null;
+    }
+
+    const memberIds = await CourseMemberStorage.getMemberIds(pool, courseId);
+    if (memberIds.length === 0) return null;
+
+    const owners = await ProfileStorage.getOwnerUserMap(pool, memberIds);
+    const N = memberIds.length;
+    const per = Math.floor(amount / N);
+    const remainder = amount - per * N;
+    const rows = memberIds
+      .filter((id) => owners[id])
+      .map((id_member_profile, idx) => ({
+        id_member_profile,
+        id_owner_user: owners[id_member_profile],
+        amount_cents: per + (idx === 0 ? remainder : 0),
+      }));
+    if (rows.length === 0) return null;
+
+    return ClanPayoutStorage.createSplits(pool, {
+      id_clan_profile: course.profile_id,
+      source_type: "clan_course",
+      source_id: sourceId,
+      gross_cents: amount,
+      rows,
+    });
   }
 
   /**
@@ -283,10 +371,21 @@ class CoursesService {
         if (!courseId) return { error: "ID inválido" };
         const row = await CoursesStorage.getById(pool, courseId);
         if (!row) return { error: "Curso não encontrado" };
-        if (row.owner_user_id !== user.id_user) {
+        // Curso de clan: criador OU dono do clan podem acessar/gerenciar.
+        let allowed = row.owner_user_id === user.id_user;
+        if (!allowed && row.profile_id) {
+          const prof = await ProfileStorage.getProfileById(pool, row.profile_id);
+          if (prof?.is_clan) {
+            const m = await ClanStorage.getUserMembership(pool, row.profile_id, user.id_user);
+            allowed = !!m && m.role === "owner";
+          }
+        }
+        if (!allowed) {
           return { error: "Sem permissão para acessar este curso" };
         }
-        return { course: publicCourseShape(row) };
+        const shaped = publicCourseShape(row);
+        shaped.member_profile_ids = await CourseMemberStorage.getMemberIds(pool, courseId);
+        return { course: shaped };
       },
     );
   }
@@ -325,10 +424,22 @@ class CoursesService {
         const optInErr = parseAffiliateOptIn(body, optIn);
         if (optInErr) return { error: optInErr };
 
+        const memberIds = parseMemberProfileIds(body);
+        if (memberIds && memberIds.error) return { error: memberIds.error };
+
         const client = await pool.connect();
         try {
           if (!(await profileBelongsToUser(client, profileId, user.id_user))) {
             return { error: "Perfil informado é inválido" };
+          }
+          const profile = profileId
+            ? await ProfileStorage.getProfileById(client, profileId)
+            : null;
+          const isClan = !!profile?.is_clan;
+          const attachIds = isClan && Array.isArray(memberIds) ? memberIds : [];
+          if (isClan && attachIds.length > 0) {
+            const memErr = await validateCourseClanMembers(client, profileId, attachIds);
+            if (memErr) return memErr;
           }
           const slug = await ensureUniqueSlug(client, title);
           const created = await CoursesStorage.create(client, {
@@ -342,7 +453,12 @@ class CoursesService {
             priceCents,
             affiliatesAllowed: optIn.affiliates_allowed,
           });
-          return { course: publicCourseShape(created) };
+          if (isClan) {
+            await CourseMemberStorage.setMembers(client, created.id, attachIds);
+          }
+          const shaped = publicCourseShape(created);
+          shaped.member_profile_ids = attachIds;
+          return { course: shaped };
         } finally {
           client.release();
         }
@@ -363,11 +479,30 @@ class CoursesService {
         try {
           const existing = await CoursesStorage.getById(client, courseId);
           if (!existing) return { error: "Curso não encontrado" };
-          if (existing.owner_user_id !== user.id_user) {
+          // Criador edita o seu; em curso de clan o dono do clan também modera.
+          const courseProfile = existing.profile_id
+            ? await ProfileStorage.getProfileById(client, existing.profile_id)
+            : null;
+          const isClanCourse = !!courseProfile?.is_clan;
+          let isClanOwner = false;
+          if (isClanCourse) {
+            const m = await ClanStorage.getUserMembership(client, existing.profile_id, user.id_user);
+            isClanOwner = !!m && m.role === "owner";
+          }
+          if (existing.owner_user_id !== user.id_user && !isClanOwner) {
             return { error: "Sem permissão para editar este curso" };
           }
 
           const patch = {};
+
+          // Anexos de membros (só curso de clan)
+          const memberIds = parseMemberProfileIds(body);
+          if (memberIds && memberIds.error) return { error: memberIds.error };
+          if (isClanCourse && Array.isArray(memberIds)) {
+            const memErr = await validateCourseClanMembers(client, existing.profile_id, memberIds);
+            if (memErr) return memErr;
+            await CourseMemberStorage.setMembers(client, courseId, memberIds);
+          }
 
           if (body.title !== undefined) {
             const title = sanitizeText(body.title, TITLE_MAX_LEN);
@@ -430,6 +565,13 @@ class CoursesService {
                 return {
                   error: `Preço mínimo para publicar é R$ ${(MIN_PUBLISH_PRICE_CENTS / 100).toFixed(2)}`,
                 };
+              }
+              // Curso de clan: exige >=1 perfil anexado pra ter pra quem dividir.
+              if (isClanCourse) {
+                const attached = await CourseMemberStorage.getMemberIds(client, courseId);
+                if (attached.length === 0) {
+                  return { error: "Anexe pelo menos um perfil do clan ao curso antes de publicar" };
+                }
               }
               patch.status = "published";
               if (!existing.published_at) {
