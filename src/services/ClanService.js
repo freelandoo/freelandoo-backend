@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const ClanStorage = require("../storages/ClanStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
+const ConversationStorage = require("../storages/ConversationStorage");
 const StripeService = require("./StripeService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -164,6 +165,20 @@ class ClanService {
           });
 
           await client.query("COMMIT");
+
+          // Chat de grupo fixo do clan (não bloqueia a criação se falhar)
+          try {
+            await ClanService.syncCreateClanGroup({
+              id_clan_profile: clan.id_profile,
+              owner_profile_id: id_profile_owner,
+              name: clan.display_name,
+            });
+          } catch (err) {
+            log.error("clan.group.create_fail", {
+              id_clan_profile: clan.id_profile,
+              error: err.message,
+            });
+          }
 
           const settings = await ClanStorage.getSettings(pool, clan.id_profile);
           const members = await ClanStorage.listMembers(pool, clan.id_profile);
@@ -615,6 +630,17 @@ class ClanService {
           );
 
           await client.query("COMMIT");
+
+          // Entra no grupo de chat do clan (fire-and-forget)
+          try {
+            await ClanService.addToClanGroup(
+              invite.id_clan_profile,
+              invite.id_invited_profile
+            );
+          } catch (err) {
+            log.error("clan.group.add_fail", { error: err.message });
+          }
+
           return { message: "Convite aceito — você agora faz parte do clan" };
         } catch (err) {
           await client.query("ROLLBACK");
@@ -765,6 +791,14 @@ class ClanService {
           });
 
           await client.query("COMMIT");
+
+          // Sai do grupo de chat do clan (fire-and-forget)
+          try {
+            await ClanService.removeFromClanGroup(id_clan_profile, id_member_profile);
+          } catch (err) {
+            log.error("clan.group.remove_fail", { error: err.message });
+          }
+
           return {
             message: isSelfLeave
               ? "Você saiu do clan"
@@ -1213,6 +1247,47 @@ class ClanService {
         return { items };
       }
     );
+  }
+
+  // ─── Chat de grupo do clan (mig 128) — fire-and-forget ─────────────────
+  /**
+   * Cria (idempotente) a conversa de grupo do clan e coloca o subperfil dono.
+   */
+  static async syncCreateClanGroup({ id_clan_profile, owner_profile_id, name }) {
+    const group = await ConversationStorage.createClanGroup(pool, {
+      id_clan_profile,
+      owner_profile_id,
+      name,
+    });
+    if (group) {
+      await ConversationStorage.addOrReactivateMember(pool, {
+        id_conversation: group.id_conversation,
+        profile_id: owner_profile_id,
+        role: "owner",
+      });
+    }
+    return group;
+  }
+
+  static async addToClanGroup(id_clan_profile, profile_id) {
+    const group = await ConversationStorage.getClanGroup(pool, id_clan_profile);
+    if (!group) return null;
+    await ConversationStorage.addOrReactivateMember(pool, {
+      id_conversation: group.id_conversation,
+      profile_id,
+      role: "member",
+    });
+    return group;
+  }
+
+  static async removeFromClanGroup(id_clan_profile, profile_id) {
+    const group = await ConversationStorage.getClanGroup(pool, id_clan_profile);
+    if (!group) return null;
+    await ConversationStorage.softRemoveMember(pool, {
+      id_conversation: group.id_conversation,
+      profile_id,
+    });
+    return group;
   }
 }
 

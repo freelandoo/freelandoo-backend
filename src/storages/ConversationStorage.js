@@ -386,6 +386,62 @@ class ConversationStorage {
     return rows[0] || null;
   }
 
+  // ─── Grupo de clan (mig 128) ───────────────────────────────────────────
+  static async getClanGroup(conn, id_clan_profile) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.tb_conversation
+        WHERE id_clan_profile = $1 LIMIT 1`,
+      [id_clan_profile]
+    );
+    return rows[0] || null;
+  }
+
+  static async createClanGroup(conn, { id_clan_profile, owner_profile_id, name }) {
+    const key = `clan:${id_clan_profile}`;
+    const { rows } = await conn.query(
+      `
+      INSERT INTO public.tb_conversation (
+        conversation_key, kind, name, owner_profile_id, max_members, id_clan_profile
+      )
+      VALUES ($1, 'group', $2, $3, 500, $4)
+      ON CONFLICT (id_clan_profile) DO NOTHING
+      RETURNING *
+      `,
+      [key, String(name || "Clan").trim().slice(0, 120), owner_profile_id, id_clan_profile]
+    );
+    return rows[0] || (await this.getClanGroup(conn, id_clan_profile));
+  }
+
+  // Adiciona ou reativa (limpa deleted_at) um subperfil no grupo.
+  static async addOrReactivateMember(conn, { id_conversation, profile_id, role = "member" }) {
+    const upd = await conn.query(
+      `UPDATE public.tb_conversation_participant
+          SET deleted_at = NULL, updated_at = NOW()
+        WHERE id_conversation = $1 AND entity_type = 'profile' AND entity_id = $2
+        RETURNING id_conversation`,
+      [id_conversation, profile_id]
+    );
+    if (upd.rowCount > 0) return true;
+    await conn.query(
+      `INSERT INTO public.tb_conversation_participant (id_conversation, entity_type, entity_id, role)
+       VALUES ($1, 'profile', $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [id_conversation, profile_id, role]
+    );
+    return true;
+  }
+
+  static async softRemoveMember(conn, { id_conversation, profile_id }) {
+    const { rowCount } = await conn.query(
+      `UPDATE public.tb_conversation_participant
+          SET deleted_at = NOW(), updated_at = NOW()
+        WHERE id_conversation = $1 AND entity_type = 'profile' AND entity_id = $2
+          AND deleted_at IS NULL`,
+      [id_conversation, profile_id]
+    );
+    return rowCount > 0;
+  }
+
   static async countGroupMembers(conn, id_conversation) {
     const { rows } = await conn.query(
       `
