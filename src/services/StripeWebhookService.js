@@ -406,11 +406,41 @@ function resolveBuyerUserId(session, meta) {
   return null;
 }
 
+// Clans não geram comissão de afiliado (nem vendedor nem indicador). Resolve o
+// perfil-fonte da venda (serviço/booking ou curso) e diz se é clan.
+async function saleIsFromClan(conn, meta) {
+  try {
+    let profileId = null;
+    if (meta?.type === "booking_deposit") {
+      profileId = meta.profile_id || null;
+    } else if (meta?.type === "course_purchase" && meta.course_id) {
+      const r = await conn.query(
+        `SELECT profile_id FROM public.courses WHERE id = $1 LIMIT 1`,
+        [meta.course_id]
+      );
+      profileId = r.rows[0]?.profile_id || null;
+    }
+    if (!profileId) return false;
+    const pr = await conn.query(
+      `SELECT is_clan FROM public.tb_profile WHERE id_profile = $1 LIMIT 1`,
+      [profileId]
+    );
+    return pr.rows[0]?.is_clan === true;
+  } catch {
+    return false;
+  }
+}
+
 async function maybeAttributeCouponCommission(conn, session, meta) {
   try {
     if (!meta?.coupon_code) return;
     const ctx = resolveCommissionContext(meta);
     if (!ctx) return;
+    // Venda de clan não gera comissão de afiliado.
+    if (await saleIsFromClan(conn, meta)) {
+      log.info("affiliate.commission.skip_clan", { type: meta.type });
+      return;
+    }
     const id_user_buyer = resolveBuyerUserId(session, meta);
     const total_cents = Number(session?.amount_total || 0);
     if (!total_cents) return;
