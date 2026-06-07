@@ -43,6 +43,7 @@ const entityFollowRoutes = require("./entityFollow.routes");
 const conversationRoutes = require("./conversation.routes");
 const adminXpRoutes = require("./adminXp.routes");
 const xpRoutes = require("./xp.routes");
+const engagementRoutes = require("./engagement.routes");
 const polenRoutes = require("./polen.routes");
 const adminPolenRoutes = require("./adminPolen.routes");
 const manifestationRoutes = require("./manifestation.routes");
@@ -159,6 +160,7 @@ module.exports = (app) => {
   app.use("/me/stories", storyRoutes);
   app.use("/stories", storyPublicRoutes);
   app.use("/me/notifications", notificationRoutes);
+  app.use("/me/engagement", engagementRoutes);
   app.use("/chat", chatRoutes);
   app.use("/supervision", supervisionRoutes);
   app.use("/me/onboarding", onboardingRoutes);
