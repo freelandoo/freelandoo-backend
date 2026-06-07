@@ -151,6 +151,17 @@ function buildCandidateQuery(mode) {
       AND pro.deleted_at IS NULL
       AND (m.is_active IS NULL OR m.is_active = TRUE)
 
+      -- Feed é visual: só entram posts com pelo menos 1 mídia ativa.
+      -- Publicações de curso (course_feed_publications) ficam isentas.
+      AND (
+        EXISTS (
+          SELECT 1 FROM tb_profile_portfolio_media ppm2
+          WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item
+            AND ppm2.is_active = TRUE
+        )
+        OR cfp.portfolio_item_id IS NOT NULL
+      )
+
       AND (
         pro.is_user_account = TRUE
         OR
