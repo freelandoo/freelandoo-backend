@@ -768,6 +768,93 @@ module.exports = {
     return this.attachXpSummaries(db, r.rows);
   },
 
+  async getTopByRegion(db, { id_region, limit = 10 }) {
+    // Espelha getTopByCity, mas filtra por REGIÃO agregada (tb_profile.id_region,
+    // mig 121). Perfis: id_region casa. Clans: id_region do clan casa OU qualquer
+    // membro tem id_region nessa região. Position computada on-the-fly.
+    const r = await db.query(
+      `WITH base AS (
+         SELECT
+           pro.id_profile,
+           pro.display_name,
+           pro.avatar_url,
+           pro.municipio,
+           pro.estado,
+           u.username,
+           pro.sub_profile_slug,
+           ca.desc_category AS specialty,
+           ca.profession_slug,
+           m.slug AS machine_slug,
+           m.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           FALSE AS is_clan,
+           NULL::int AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile pro ON pro.id_profile = pr.id_profile
+         JOIN tb_user u ON u.id_user = pro.id_user
+         JOIN tb_category ca ON ca.id_category = pro.id_category
+         LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
+         WHERE pro.deleted_at IS NULL
+           AND pro.is_clan = FALSE
+           AND pro.is_user_account = FALSE
+           AND pro.ranking_visible = TRUE
+           AND u.is_minor = FALSE
+           AND pro.id_region = $1
+         UNION ALL
+         SELECT
+           clan.id_profile,
+           clan.display_name,
+           clan.avatar_url,
+           clan.municipio,
+           clan.estado,
+           ou.username,
+           NULL AS sub_profile_slug,
+           NULL AS specialty,
+           NULL AS profession_slug,
+           mc.slug AS machine_slug,
+           mc.name AS machine_name,
+           pr.total_points,
+           pr.avg_rating,
+           pr.ratings_count,
+           pr.visits_count,
+           pr.likes_count,
+           TRUE AS is_clan,
+           (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
+         FROM profile_ranking pr
+         JOIN tb_profile clan ON clan.id_profile = pr.id_profile
+         LEFT JOIN tb_machine mc ON mc.id_machine = clan.id_machine
+         JOIN tb_clan_member ocm
+           ON ocm.id_clan_profile = clan.id_profile AND ocm.role = 'owner'
+         JOIN tb_profile op ON op.id_profile = ocm.id_member_profile
+         JOIN tb_user ou ON ou.id_user = op.id_user
+         WHERE clan.is_clan = TRUE
+           AND clan.deleted_at IS NULL
+           AND clan.is_visible = TRUE
+           AND ou.is_minor = FALSE
+           AND (
+             clan.id_region = $1
+             OR EXISTS (
+               SELECT 1 FROM tb_clan_member cmf
+               JOIN tb_profile mpf ON mpf.id_profile = cmf.id_member_profile
+               WHERE cmf.id_clan_profile = clan.id_profile
+                 AND mpf.id_region = $1
+             )
+           )
+       )
+       SELECT *,
+              ROW_NUMBER() OVER (ORDER BY total_points DESC NULLS LAST, display_name) AS position_region
+         FROM base
+        ORDER BY position_region
+        LIMIT $2`,
+      [id_region, limit]
+    );
+    return this.attachXpSummaries(db, r.rows);
+  },
+
   /**
    * Top N por profession_slug (categoria/profissão).
    */

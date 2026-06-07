@@ -200,6 +200,17 @@ module.exports = {
     return res.json(rows);
   },
 
+  // GET /ranking/public/region?id_region=...  (público)
+  async getTopByRegion(req, res) {
+    const id_region = parseInt(req.query.id_region ?? "", 10);
+    const limit = Math.min(parseInt(req.query.limit ?? "10", 10), 20);
+    if (!Number.isFinite(id_region)) {
+      return res.status(400).json({ error: "id_region obrigatório" });
+    }
+    const rows = await RankingStorage.getTopByRegion(pool, { id_region, limit });
+    return res.json(rows);
+  },
+
   // GET /ranking/public/profession/:profession_slug  (público)
   async getTopByProfession(req, res) {
     const { profession_slug } = req.params;
