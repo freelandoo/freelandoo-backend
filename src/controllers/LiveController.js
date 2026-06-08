@@ -26,6 +26,24 @@ class LiveController {
     const result = await LiveService.joinLive(req.user, req.params);
     return sendServiceResult(res, result);
   }
+
+  // POST /lives/:id_live/viewers — transmissor reporta contagem (atualiza pico)
+  static async reportViewers(req, res) {
+    const result = await LiveService.reportViewers(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result);
+  }
+
+  // GET /lives/gifts — catálogo de presentes ativos
+  static async listGifts(req, res) {
+    const result = await LiveService.listGifts();
+    return sendServiceResult(res, result);
+  }
+
+  // POST /lives/:id_live/gift — envia presente (gasta Poléns)
+  static async sendGift(req, res) {
+    const result = await LiveService.sendGift(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
 }
 
 module.exports = LiveController;

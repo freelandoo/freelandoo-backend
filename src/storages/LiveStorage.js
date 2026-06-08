@@ -92,6 +92,18 @@ module.exports = {
     return rows;
   },
 
+  // Atualiza o pico de espectadores (nunca diminui). Só em live ativa.
+  async bumpPeakViewers(db, { id_live, count }) {
+    const { rows } = await db.query(
+      `UPDATE public.tb_live
+          SET peak_viewers = GREATEST(peak_viewers, $2)
+        WHERE id_live = $1 AND status = 'live'
+        RETURNING peak_viewers`,
+      [id_live, count]
+    );
+    return rows[0] ? rows[0].peak_viewers : null;
+  },
+
   // Encerra a live (só do dono). Idempotente: só afeta linha 'live'.
   async endLive(db, { id_live, id_user }) {
     const { rows } = await db.query(
@@ -102,6 +114,18 @@ module.exports = {
       [id_live, id_user]
     );
     return rows.length > 0;
+  },
+
+  // Registra um presente enviado durante a live (após o débito de Poléns).
+  async insertGiftEvent(db, { id_live, id_live_gift, id_sender_user, polens_spent, message }) {
+    const { rows } = await db.query(
+      `INSERT INTO public.tb_live_gift_event
+         (id_live, id_live_gift, id_sender_user, polens_spent, message)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, created_at`,
+      [id_live, id_live_gift, id_sender_user, polens_spent, message || null]
+    );
+    return rows[0];
   },
 
   // ── Catálogo de presentes ──────────────────────────────────────────────────

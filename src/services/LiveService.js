@@ -5,6 +5,7 @@
 const crypto = require("crypto");
 const pool = require("../databases");
 const LiveStorage = require("../storages/LiveStorage");
+const PolenStorage = require("../storages/PolenStorage");
 const livekit = require("../utils/livekit");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -156,6 +157,117 @@ class LiveService {
         return {
           items: rows.map((r) => mapLive(r, { self_user_id: user?.id_user })),
         };
+      }
+    );
+  }
+
+  // Catálogo de presentes ativos (loja do admin, mig 132).
+  static async listGifts() {
+    return runWithLogs(log, "listGifts", () => ({}), async () => {
+      const gifts = await LiveStorage.listGifts(pool, { onlyActive: true });
+      return { gifts };
+    });
+  }
+
+  // Envia um presente: cobra Poléns do remetente e registra o evento. O cliente
+  // anima na tela de todos via data channel do LiveKit (não passa pelo backend).
+  static async sendGift(user, params = {}, body = {}) {
+    return runWithLogs(
+      log,
+      "sendGift",
+      () => ({ id_user: user?.id_user, id_live: params?.id_live, id_live_gift: body?.id_live_gift }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_live = params?.id_live;
+        const id_live_gift = body?.id_live_gift;
+        if (!id_live || !UUID_RE.test(id_live)) return { error: "id_live inválido" };
+        if (!id_live_gift || !UUID_RE.test(id_live_gift)) return { error: "id_live_gift inválido" };
+
+        const live = await LiveStorage.getById(pool, id_live);
+        if (!live) return { error: "Live não encontrada" };
+        if (live.status !== "live") return { error: "Esta live já encerrou" };
+
+        const gift = await LiveStorage.getGiftById(pool, id_live_gift);
+        if (!gift || gift.is_active === false) return { error: "Presente indisponível" };
+
+        const message = typeof body?.message === "string" ? body.message.trim().slice(0, 120) : null;
+        const amount = Number(gift.price_polens) || 0;
+
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const settings = await PolenStorage.getSettings(client);
+          if (!settings?.is_active) {
+            await client.query("ROLLBACK");
+            return { error: "Sistema de Poléns inativo" };
+          }
+          const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
+          let debit = { wallet };
+          if (amount > 0) {
+            const result = await PolenStorage.debit(client, {
+              user_id: user.id_user,
+              wallet_id: wallet.id,
+              amount,
+              type: "spend_live_gift",
+              source: "live_gift",
+              source_id: crypto.randomUUID(),
+              metadata: { id_live, id_live_gift, gift_name: gift.name },
+            });
+            if (!result) {
+              await client.query("ROLLBACK");
+              return { error: "Saldo de Poléns insuficiente" };
+            }
+            debit = result;
+          }
+          const event = await LiveStorage.insertGiftEvent(client, {
+            id_live,
+            id_live_gift,
+            id_sender_user: user.id_user,
+            polens_spent: amount,
+            message,
+          });
+          await client.query("COMMIT");
+          return {
+            event: { id: event.id, created_at: event.created_at },
+            polens_spent: amount,
+            wallet: debit.wallet,
+            gift: {
+              id_live_gift: gift.id_live_gift,
+              name: gift.name,
+              emoji: gift.emoji,
+              color: gift.color,
+              animation: gift.animation,
+            },
+          };
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
+      }
+    );
+  }
+
+  // O transmissor reporta a contagem atual de espectadores → atualiza o pico.
+  static async reportViewers(user, params = {}, body = {}) {
+    return runWithLogs(
+      log,
+      "reportViewers",
+      () => ({ id_user: user?.id_user, id_live: params?.id_live }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const id_live = params?.id_live;
+        if (!id_live || !UUID_RE.test(id_live)) return { error: "id_live inválido" };
+        const count = Math.max(0, Math.min(Number(body?.count) || 0, 1_000_000));
+
+        const live = await LiveStorage.getById(pool, id_live);
+        if (!live) return { error: "Live não encontrada" };
+        if (live.id_user !== user.id_user) {
+          return { error: "Sem permissão para atualizar esta live" };
+        }
+        const peak = await LiveStorage.bumpPeakViewers(pool, { id_live, count });
+        return { peak_viewers: peak ?? live.peak_viewers, count };
       }
     );
   }
