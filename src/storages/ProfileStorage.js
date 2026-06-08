@@ -346,6 +346,10 @@ class ProfileStorage {
       COALESCE(p.is_user_account, FALSE) AS is_user_account,
       p.created_at,
       p.updated_at,
+      EXISTS (
+        SELECT 1 FROM public.tb_profile_subscription ps3
+         WHERE ps3.id_profile = p.id_profile AND ps3.status = 'active'
+      ) AS is_paid,
 
       COALESCE(subq.subcategories, '[]'::jsonb) AS subcategories,
       COALESCE(stq.statuses, '[]'::jsonb)      AS statuses,

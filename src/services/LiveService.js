@@ -14,6 +14,10 @@ const log = createLogger("LiveService");
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// Fração dos Poléns do presente repassada ao criador da live (1 = 100%).
+// Ajuste aqui se a plataforma passar a reter uma comissão.
+const LIVE_GIFT_CREATOR_SHARE = 1;
+
 function normalizeTitle(value) {
   if (typeof value !== "string") return null;
   const t = value.trim();
@@ -203,6 +207,7 @@ class LiveService {
           }
           const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
           let debit = { wallet };
+          const txId = crypto.randomUUID();
           if (amount > 0) {
             const result = await PolenStorage.debit(client, {
               user_id: user.id_user,
@@ -210,7 +215,7 @@ class LiveService {
               amount,
               type: "spend_live_gift",
               source: "live_gift",
-              source_id: crypto.randomUUID(),
+              source_id: txId,
               metadata: { id_live, id_live_gift, gift_name: gift.name },
             });
             if (!result) {
@@ -219,6 +224,23 @@ class LiveService {
             }
             debit = result;
           }
+
+          // Repasse ao criador: credita o dono da live com os Poléns do presente.
+          // (Se o próprio dono enviar, debita e credita a mesma carteira = neutro.)
+          const creatorShare = Math.round(amount * LIVE_GIFT_CREATOR_SHARE);
+          if (creatorShare > 0) {
+            const creatorWallet = await PolenStorage.getOrCreateWallet(client, live.id_user);
+            await PolenStorage.credit(client, {
+              user_id: live.id_user,
+              wallet_id: creatorWallet.id,
+              amount: creatorShare,
+              type: "earn_live_gift",
+              source: "live_gift_payout",
+              source_id: `${txId}:payout`,
+              metadata: { id_live, id_live_gift, gift_name: gift.name, from_user: user.id_user },
+            });
+          }
+
           const event = await LiveStorage.insertGiftEvent(client, {
             id_live,
             id_live_gift,
@@ -230,6 +252,7 @@ class LiveService {
           return {
             event: { id: event.id, created_at: event.created_at },
             polens_spent: amount,
+            creator_credited: creatorShare,
             wallet: debit.wallet,
             gift: {
               id_live_gift: gift.id_live_gift,
