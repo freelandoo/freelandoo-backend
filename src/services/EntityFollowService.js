@@ -121,7 +121,10 @@ async function resolveActor(conn, user, payload = {}) {
         });
 
   if (!actor) return { error: "Sem permissão para acompanhar por esta entidade" };
-  if (!EntityFollowStorage.isPublicEntity(actor)) {
+  // A conta do usuário (perfil-fantasma) pode acompanhar mesmo sem assinatura —
+  // o follow é a nível de usuário (mig 056). Subperfis/clans continuam exigindo
+  // entidade ativa e publicada para servir de ator legado.
+  if (!actor.is_user_account && !EntityFollowStorage.isPublicEntity(actor)) {
     return { error: "Entidade ativa e publicada é obrigatória" };
   }
 

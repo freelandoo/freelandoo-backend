@@ -48,6 +48,7 @@ function entitySelect(alias = "p") {
     ${alias}.is_visible,
     ${alias}.deleted_at,
     ${alias}.is_clan,
+    ${alias}.is_user_account,
     u.username,
     c.desc_category AS profession_name,
     c.profession_slug,
@@ -224,12 +225,25 @@ class EntityFollowStorage {
   static async listActorOptions(conn, id_user) {
     const { rows } = await conn.query(
       `
-      WITH profile_actors AS (
+      WITH account_actor AS (
+        -- Conta do usuário (perfil-fantasma): ator sempre disponível, mesmo sem
+        -- subperfil pago. Permite que qualquer usuário (inclusive recém-cadastrado)
+        -- acompanhe — o follow é a nível de usuário (mig 056).
+        SELECT ${entitySelect("p")}, NULL::text AS my_role
+          FROM public.tb_profile p
+          ${entityJoins("p")}
+         WHERE p.id_user = $1
+           AND p.is_user_account = TRUE
+           AND p.deleted_at IS NULL
+           AND p.is_active = TRUE
+      ),
+      profile_actors AS (
         SELECT ${entitySelect("p")}, NULL::text AS my_role
           FROM public.tb_profile p
           ${entityJoins("p")}
          WHERE p.id_user = $1
            AND p.is_clan = FALSE
+           AND COALESCE(p.is_user_account, FALSE) = FALSE
            AND ${publicEntityWhere("p")}
       ),
       clan_actors AS (
@@ -245,10 +259,12 @@ class EntityFollowStorage {
          WHERE p.is_clan = TRUE
            AND ${publicEntityWhere("p")}
       )
+      SELECT * FROM account_actor
+      UNION ALL
       SELECT * FROM profile_actors
       UNION ALL
       SELECT * FROM clan_actors
-      ORDER BY type ASC, display_name ASC NULLS LAST
+      ORDER BY is_user_account DESC, type ASC, display_name ASC NULLS LAST
       `,
       [id_user]
     );
