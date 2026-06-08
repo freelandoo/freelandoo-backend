@@ -20,6 +20,7 @@ ALTER TABLE public.polen_transactions
     type IN (
       'earn_rewarded_ad',
       'earn_purchase_stripe',
+      'earn_level_up',
       'earn_live_gift',
       'spend_profile_activation',
       'spend_premium_highlight',
@@ -27,6 +28,7 @@ ALTER TABLE public.polen_transactions
       'spend_post_boost',
       'spend_clan_highlight',
       'spend_manifestation',
+      'spend_premium',
       'spend_live_gift',
       'admin_adjustment',
       'refund',
