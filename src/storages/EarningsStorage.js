@@ -53,6 +53,7 @@ const STORE_QUERY = `
   LEFT JOIN public.tb_profile_product pp
     ON pp.id_profile_product = ppo.id_profile_product
   WHERE sb.id_seller_user = $1
+    AND ($2::uuid IS NULL OR sb.id_seller_profile = $2)
 `;
 
 const SERVICE_QUERY = `
@@ -83,6 +84,7 @@ const SERVICE_QUERY = `
   LEFT JOIN public.tb_profile_service ps
     ON ps.id_profile_service = bp.id_profile_service
   WHERE bp.id_owner_user = $1
+    AND ($2::uuid IS NULL OR bp.id_profile = $2)
 `;
 
 const COURSE_QUERY = `
@@ -109,6 +111,7 @@ const COURSE_QUERY = `
   JOIN public.courses c ON c.id = ce.course_id
   WHERE c.owner_user_id = $1
     AND ce.amount_paid_cents > 0
+    AND $2::uuid IS NULL
 `;
 
 const AFFILIATE_QUERY = `
@@ -139,6 +142,7 @@ const AFFILIATE_QUERY = `
   LEFT JOIN public.tb_coupon cp ON cp.id_coupon = ac.id_coupon
   JOIN public.tb_affiliate af   ON af.id_affiliate = ac.id_affiliate
   WHERE af.id_user = $1
+    AND $2::uuid IS NULL
 `;
 
 function buildUnion(kindFilter) {
@@ -151,8 +155,15 @@ function buildUnion(kindFilter) {
   return parts.join("\nUNION ALL\n");
 }
 
-async function listEarnings(db, { userId, kind, limit = 30, offset = 0 }) {
+function normalizeProfileId(profileId) {
+  if (!profileId || typeof profileId !== "string") return null;
+  // UUID simples — evita injetar lixo no filtro
+  return /^[0-9a-f-]{36}$/i.test(profileId) ? profileId : null;
+}
+
+async function listEarnings(db, { userId, kind, profileId = null, limit = 30, offset = 0 }) {
   const kf = normalizeKindFilter(kind);
+  const pid = normalizeProfileId(profileId);
   const union = buildUnion(kf);
   if (!union) return { items: [], total: 0 };
 
@@ -161,7 +172,7 @@ async function listEarnings(db, { userId, kind, limit = 30, offset = 0 }) {
     SELECT *
       FROM all_rows
      ORDER BY created_at DESC
-     LIMIT $2 OFFSET $3
+     LIMIT $3 OFFSET $4
   `;
   const countSql = `
     WITH all_rows AS (${union})
@@ -169,8 +180,8 @@ async function listEarnings(db, { userId, kind, limit = 30, offset = 0 }) {
   `;
 
   const [rows, count] = await Promise.all([
-    db.query(itemsSql, [userId, limit, offset]),
-    db.query(countSql, [userId]),
+    db.query(itemsSql, [userId, pid, limit, offset]),
+    db.query(countSql, [userId, pid]),
   ]);
 
   return {
@@ -179,7 +190,8 @@ async function listEarnings(db, { userId, kind, limit = 30, offset = 0 }) {
   };
 }
 
-async function aggregates(db, userId) {
+async function aggregates(db, userId, profileId = null) {
+  const pid = normalizeProfileId(profileId);
   const sql = `
     WITH all_rows AS (
       ${buildUnion(null)}
@@ -192,7 +204,7 @@ async function aggregates(db, userId) {
       FROM all_rows
      GROUP BY kind, status
   `;
-  const r = await db.query(sql, [userId]);
+  const r = await db.query(sql, [userId, pid]);
 
   // Reshape: { totals: { received, pending, available, reversed }, by_kind: { service: { received, pending, ... }, ... } }
   const out = {
@@ -212,7 +224,39 @@ async function aggregates(db, userId) {
   return out;
 }
 
+/**
+ * Série diária de ganhos (pro gráfico de barras ganhos × dias).
+ * Soma net_cents de itens recebíveis/recebidos (paid|available) por dia,
+ * usando a data mais relevante disponível (pago > liberado > criado).
+ * Retorna SÓ os dias com movimento; o front preenche os zeros do range.
+ */
+async function dailySeries(db, { userId, profileId = null, from, to }) {
+  const pid = normalizeProfileId(profileId);
+  const sql = `
+    WITH all_rows AS (${buildUnion(null)}),
+    dated AS (
+      SELECT
+        COALESCE(paid_at, available_at, created_at) AS occurred_at,
+        status,
+        net_cents
+      FROM all_rows
+    )
+    SELECT
+      to_char(date_trunc('day', occurred_at), 'YYYY-MM-DD')              AS day,
+      COALESCE(SUM(net_cents) FILTER (WHERE status IN ('paid','available')), 0)::int AS net_cents,
+      COUNT(*) FILTER (WHERE status IN ('paid','available'))::int        AS count
+      FROM dated
+     WHERE occurred_at >= $3::timestamptz
+       AND occurred_at <  $4::timestamptz
+     GROUP BY 1
+     ORDER BY 1
+  `;
+  const r = await db.query(sql, [userId, pid, from, to]);
+  return r.rows;
+}
+
 module.exports = {
   listEarnings,
   aggregates,
+  dailySeries,
 };

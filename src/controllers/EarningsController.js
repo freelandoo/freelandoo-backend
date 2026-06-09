@@ -12,6 +12,11 @@ class EarningsController {
     const result = await CouponSalesService.list(req.user, req.query || {});
     return sendServiceResult(res, result);
   }
+
+  static async series(req, res) {
+    const result = await EarningsService.series(req.user, req.query || {});
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = EarningsController;

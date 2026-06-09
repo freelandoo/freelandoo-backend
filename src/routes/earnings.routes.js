@@ -11,5 +11,6 @@ router.get(
   authMiddleware,
   asyncHandler(EarningsController.listCouponSales)
 );
+router.get("/me/earnings/series", authMiddleware, asyncHandler(EarningsController.series));
 
 module.exports = router;
