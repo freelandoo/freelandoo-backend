@@ -95,6 +95,7 @@ const casaAdminRoutes = require("./casaAdmin.routes");
 const blogRoutes = require("./blog.routes");
 const blogAdminRoutes = require("./blogAdmin.routes");
 const architectureAdminRoutes = require("./architectureAdmin.routes");
+const marketRoutes = require("./market.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -196,6 +197,7 @@ module.exports = (app) => {
   app.use("/casa", casaPublicRoutes);
   app.use("/admin/casa", casaAdminRoutes);
   app.use("/blog", blogRoutes);
+  app.use("/", marketRoutes);
   app.use("/admin/blog", blogAdminRoutes);
   app.use("/admin/architecture", architectureAdminRoutes);
 };

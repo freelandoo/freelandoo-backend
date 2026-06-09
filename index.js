@@ -97,6 +97,23 @@ const server = app.listen(PORT, () => {
   setTimeout(tickLabels, 4 * 60 * 1000);
   setInterval(tickLabels, HALF_HOUR);
 
+  // Snapshot de mercado (Wallet): puxa ações/cotações de fontes externas
+  // (brapi.dev + CoinGecko) e guarda em tb_market_snapshot. Roda NO BACKEND
+  // pra que o Vercel só leia o cache — nunca chame API externa por request.
+  // 1 min após boot, depois a cada 15 min.
+  const MarketService = require("./src/services/MarketService");
+  const FIFTEEN_MIN = 15 * 60 * 1000;
+  const tickMarket = async () => {
+    try {
+      const result = await MarketService.refresh();
+      if (result?.updated) bootLog.info("market.refreshed", result);
+    } catch (err) {
+      bootLog.error("market.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickMarket, 60 * 1000);
+  setInterval(tickMarket, FIFTEEN_MIN);
+
   // Job diário: reseta histórico do Chat ao Vivo (Global + Máquinas) toda
   // meia-noite de São Paulo. Apaga tb_chat_message, tb_chat_report,
   // tb_chat_moderation_result e tb_chat_presence. Mantém salas, settings
