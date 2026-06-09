@@ -45,7 +45,7 @@ class ArchitectureStorage {
       where.push(`is_archived = FALSE`);
     }
     if (q) {
-      where.push(`(title ILIKE $${i} OR description ILIKE $${i} OR fn_key ILIKE $${i} OR file_path ILIKE $${i} OR area ILIKE $${i})`);
+      where.push(`(title ILIKE $${i} OR description ILIKE $${i} OR description_curated ILIKE $${i} OR fn_key ILIKE $${i} OR file_path ILIKE $${i} OR area ILIKE $${i})`);
       params.push(`%${q}%`);
       i++;
     }
@@ -74,7 +74,9 @@ class ArchitectureStorage {
     const total = countRows[0]?.total || 0;
 
     const { rows } = await conn.query(
-      `SELECT *, COALESCE(curated_status, status) AS effective_status
+      `SELECT *,
+              COALESCE(curated_status, status) AS effective_status,
+              COALESCE(description_curated, description) AS description_effective
        FROM public.arch_functions
        ${whereSql}
        ORDER BY ${sortCol} ${sortDir} NULLS LAST, title ASC
@@ -87,7 +89,9 @@ class ArchitectureStorage {
 
   static async getFunctionById(conn, id) {
     const { rows } = await conn.query(
-      `SELECT *, COALESCE(curated_status, status) AS effective_status
+      `SELECT *,
+              COALESCE(curated_status, status) AS effective_status,
+              COALESCE(description_curated, description) AS description_effective
        FROM public.arch_functions WHERE id = $1 LIMIT 1`,
       [id]
     );
@@ -103,7 +107,7 @@ class ArchitectureStorage {
     const params = [];
     let i = 1;
 
-    const allowed = ["curated_status", "notes", "is_archived", "mount_path", "description", "area", "title"];
+    const allowed = ["curated_status", "notes", "is_archived", "mount_path", "description_curated", "area", "title"];
     for (const key of allowed) {
       if (key in fields && fields[key] !== undefined) {
         sets.push(`${key} = $${i++}`);
@@ -124,7 +128,9 @@ class ArchitectureStorage {
       `UPDATE public.arch_functions
        SET ${sets.join(", ")}
        WHERE id = $${i}
-       RETURNING *, COALESCE(curated_status, status) AS effective_status`,
+       RETURNING *,
+                 COALESCE(curated_status, status) AS effective_status,
+                 COALESCE(description_curated, description) AS description_effective`,
       params
     );
     return rows[0] || null;
@@ -144,7 +150,9 @@ class ArchitectureStorage {
          ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'auto',$15,NOW(),NOW())
        ON CONFLICT (fn_key) DO UPDATE SET
          title           = EXCLUDED.title,
-         description      = COALESCE(public.arch_functions.description, EXCLUDED.description),
+         -- narração automática sempre atualiza; o override do admin vive em
+         -- description_curated (preservado, não tocado aqui).
+         description      = EXCLUDED.description,
          area            = EXCLUDED.area,
          kind            = EXCLUDED.kind,
          repo            = EXCLUDED.repo,

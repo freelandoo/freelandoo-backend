@@ -224,6 +224,93 @@ function isButtonLike(name, file) {
 }
 
 // ---------------------------------------------------------------------------
+// narração (descrição da função prática)
+// ---------------------------------------------------------------------------
+// Extrai o comentário-cabeçalho do arquivo (JSDoc /** */ ou bloco de //) como
+// narração humana. A maioria dos services/rotas/páginas do projeto já começa com
+// um comentário explicando o propósito — é a melhor fonte de "o que isso faz".
+function leadingComment(src, fileBase) {
+  if (!src) return null;
+  // pula shebang, "use client"/"use server", imports iniciais e linhas em branco
+  const lines = src.split(/\r?\n/);
+  let idx = 0;
+  while (idx < lines.length) {
+    const t = lines[idx].trim();
+    if (t === "" || t.startsWith("#!") || /^["']use (client|server)["'];?$/.test(t)) { idx++; continue; }
+    break;
+  }
+  const first = (lines[idx] || "").trim();
+  let body = [];
+
+  if (first.startsWith("/*")) {
+    // bloco /* ... */ (inclui JSDoc /** */)
+    for (let j = idx; j < lines.length; j++) {
+      body.push(lines[j]);
+      if (lines[j].includes("*/")) break;
+    }
+    body = body.join("\n")
+      .replace(/^\s*\/\*+/, "")
+      .replace(/\*+\/\s*$/, "")
+      .split(/\r?\n/)
+      .map((l) => l.replace(/^\s*\*+\s?/, "").trim());
+  } else if (first.startsWith("//")) {
+    for (let j = idx; j < lines.length; j++) {
+      const t = lines[j].trim();
+      if (!t.startsWith("//")) break;
+      body.push(t.replace(/^\/\/\s?/, ""));
+    }
+  } else {
+    return null;
+  }
+
+  // descarta uma 1ª linha que é só o caminho/nome do arquivo (ex: "lib/x.ts")
+  if (body.length && fileBase) {
+    const f0 = body[0].toLowerCase();
+    if (f0.includes(fileBase.toLowerCase()) && body[0].length < fileBase.length + 30) body.shift();
+  }
+  // descarta separadores ASCII e tags @jsdoc
+  const text = body
+    .filter((l) => l && !/^[=\-_*~]{3,}$/.test(l) && !/^@\w+/.test(l))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (text.length < 25) return null; // curto demais p/ valer como narração
+  return text.length > 320 ? text.slice(0, 317).trimEnd() + "…" : text;
+}
+
+// Frase-modelo quando não há comentário-cabeçalho aproveitável.
+function templateNarration(kind, meta = {}) {
+  const area = meta.area && meta.area !== "Geral" ? ` da área ${meta.area}` : "";
+  switch (kind) {
+    case "route": {
+      const n = meta.endpoints || 0;
+      const where = meta.mount_path ? `montado em ${meta.mount_path}` : "NÃO montado no app (órfão)";
+      return `Conjunto de rotas${area} — ${n} endpoint${n === 1 ? "" : "s"} HTTP, ${where}.`;
+    }
+    case "service":
+      return `Service${area} — regras de negócio e acesso a dados${meta.mount_path ? "" : " (não requerido por ninguém — órfão)"}.`;
+    case "page":
+      return `Página${area} servida na rota ${meta.url || meta.mount_path || "?"} (Next.js App Router).`;
+    case "proxy":
+      return `Proxy de API${area} em ${meta.url || meta.mount_path || "?"} — encaminha a chamada do browser pro backend (evita CORS).`;
+    case "button":
+      return `Botão/controle de UI${area}${meta.orphan ? " — construído mas não montado em nenhuma página (órfão)" : ""}.`;
+    case "component":
+      return `Componente de UI${area}${meta.orphan ? " — não alcançável a partir das páginas (órfão)" : ""}.`;
+    case "hook":
+      return `Helper/hook${area}${meta.orphan ? " — não importado por ninguém (órfão)" : ""}.`;
+    default:
+      return `Função${area}.`;
+  }
+}
+
+// Narração final: comentário-cabeçalho do arquivo se houver; senão, frase-modelo.
+function narrate(kind, src, fileBase, meta) {
+  return leadingComment(src, fileBase) || templateNarration(kind, meta);
+}
+
+// ---------------------------------------------------------------------------
 // scan backend
 // ---------------------------------------------------------------------------
 function scanBackend(fns) {
@@ -274,11 +361,12 @@ function scanBackend(fns) {
     const mountPath = mounted[key] || null;
     const src = readSafe(f);
     const endpoints = [...src.matchAll(/router\.(get|post|put|delete|patch)\(/g)].length;
+    const area = deriveArea(relPath);
     fns.push({
       fn_key: `backend:route:${key}`,
       title: base,
-      description: `Arquivo de rotas (${endpoints} endpoint${endpoints === 1 ? "" : "s"}).`,
-      area: deriveArea(relPath),
+      description: narrate("route", src, base, { area, endpoints, mount_path: mountPath }),
+      area,
       kind: "route",
       repo: "backend",
       file_path: relPath,
@@ -294,11 +382,12 @@ function scanBackend(fns) {
     const relPath = rel(BACKEND_ROOT, f);
     const base = path.basename(f);
     const required = requiredSet.has(path.normalize(f));
+    const area = deriveArea(relPath);
     fns.push({
       fn_key: `backend:service:${base.replace(/\.js$/, "")}`,
       title: base,
-      description: "Service (camada de negócio).",
-      area: deriveArea(relPath),
+      description: narrate("service", readSafe(f), base, { area, mount_path: required ? "requerido" : null }),
+      area,
       kind: "service",
       repo: "backend",
       file_path: relPath,
@@ -361,7 +450,7 @@ function scanFrontend(fns) {
       fns.push({
         fn_key: `frontend:page:${url}`,
         title: url,
-        description: "Página (rota Next.js App Router).",
+        description: narrate("page", src, base, { area: deriveArea(relPath), url }),
         area: deriveArea(relPath),
         kind: "page",
         repo: "frontend",
@@ -380,7 +469,7 @@ function scanFrontend(fns) {
       fns.push({
         fn_key: `frontend:proxy:${url}`,
         title: url,
-        description: "Proxy / route handler (app/api).",
+        description: narrate("proxy", src, base, { area: deriveArea(relPath), url }),
         area: deriveArea(relPath),
         kind: "proxy",
         repo: "frontend",
@@ -413,9 +502,7 @@ function scanFrontend(fns) {
     fns.push({
       fn_key: `frontend:${kind}:${relPath}`,
       title: name,
-      description: isComponentDir
-        ? `${kind === "button" ? "Botão/controle" : "Componente"} de UI.`
-        : "Helper / hook.",
+      description: narrate(kind, src, base, { area: deriveArea(relPath), orphan: !isReachable }),
       area: deriveArea(relPath),
       kind,
       repo: "frontend",
