@@ -114,6 +114,20 @@ const server = app.listen(PORT, () => {
   setTimeout(tickMarket, 60 * 1000);
   setInterval(tickMarket, FIFTEEN_MIN);
 
+  // Manchetes de economia/política (Wallet): RSS público (InfoMoney/G1), sem
+  // chave. Roda 2 min após boot, depois a cada 30 min. Purga > 7 dias.
+  const NewsService = require("./src/services/NewsService");
+  const tickNews = async () => {
+    try {
+      const result = await NewsService.refresh();
+      if (result?.upserted) bootLog.info("market_news.refreshed", result);
+    } catch (err) {
+      bootLog.error("market_news.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickNews, 2 * 60 * 1000);
+  setInterval(tickNews, HALF_HOUR);
+
   // Job diário: reseta histórico do Chat ao Vivo (Global + Máquinas) toda
   // meia-noite de São Paulo. Apaga tb_chat_message, tb_chat_report,
   // tb_chat_moderation_result e tb_chat_presence. Mantém salas, settings
