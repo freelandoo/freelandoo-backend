@@ -6,9 +6,10 @@
 // serverless por request e rate-limit).
 //
 // Fontes:
-//  - brapi.dev: ações mais negociadas (proxy de "mais vistas"), Ibovespa,
-//    Dólar e Euro. Exige BRAPI_TOKEN no env — sem token, pula sem quebrar.
-//  - CoinGecko (grátis, sem chave): Bitcoin em BRL.
+//  - AwesomeAPI (grátis, sem chave): Dólar, Euro, Rublo e Bitcoin em BRL, já
+//    com variação diária (pctChange). É a fonte das COTAÇÕES — funciona sempre.
+//  - brapi.dev: ações mais negociadas (proxy de "mais vistas") e Ibovespa.
+//    Exige BRAPI_TOKEN no env — sem token, só essas duas seções ficam vazias.
 //
 // Tudo é best-effort: cada fonte é isolada; falha de uma não afeta as outras
 // nem o cache já existente (UPSERT só sobrescreve o que veio).
@@ -20,8 +21,17 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 const log = createLogger("MarketService");
 
 const BRAPI_BASE = "https://brapi.dev/api";
-const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
+const AWESOME_BASE = "https://economia.awesomeapi.com.br/json/last";
 const STOCKS_LIMIT = 8;
+
+// Cotações via AwesomeAPI (sem token). symbol é a chave de UPSERT — BTC mantém
+// "BTC" pra sobrescrever a linha antiga (CoinGecko) sem duplicar.
+const AWESOME_PAIRS = [
+  { pair: "USD-BRL", key: "USDBRL", symbol: "USDBRL", label: "Dólar", rank: 1 },
+  { pair: "EUR-BRL", key: "EURBRL", symbol: "EURBRL", label: "Euro", rank: 2 },
+  { pair: "RUB-BRL", key: "RUBBRL", symbol: "RUBBRL", label: "Rublo", rank: 3 },
+  { pair: "BTC-BRL", key: "BTCBRL", symbol: "BTC", label: "Bitcoin", rank: 4 },
+];
 
 function num(v) {
   const n = Number(v);
@@ -84,59 +94,27 @@ async function fetchIbovespa(token) {
   ];
 }
 
-async function fetchCurrencies(token) {
-  if (!token) return [];
-  const url = `${BRAPI_BASE}/v2/currency?currency=USD-BRL,EUR-BRL&token=${token}`;
+// Cotações (Dólar, Euro, Rublo, Bitcoin) via AwesomeAPI — sem token, com
+// variação diária. bid = preço atual; pctChange = variação % do dia.
+async function fetchAwesomeQuotes() {
+  const url = `${AWESOME_BASE}/${AWESOME_PAIRS.map((p) => p.pair).join(",")}`;
   const data = await fetchJson(url);
-  const list = Array.isArray(data?.currency) ? data.currency : [];
-  const byPair = (pair) => list.find((c) => (c.fromCurrency + c.toCurrency) === pair || c.name === pair);
   const out = [];
-  const usd = byPair("USDBRL") || list.find((c) => c.fromCurrency === "USD");
-  const eur = byPair("EURBRL") || list.find((c) => c.fromCurrency === "EUR");
-  if (usd) {
+  for (const p of AWESOME_PAIRS) {
+    const o = data?.[p.key];
+    if (!o) continue;
     out.push({
-      symbol: "USDBRL",
+      symbol: p.symbol,
       kind: "quote",
-      label: "Dólar",
-      price: num(usd.bidPrice ?? usd.high ?? usd.askPrice),
-      change_pct: num(usd.pctChange ?? usd.percentageChange),
+      label: p.label,
+      price: num(o.bid),
+      change_pct: num(o.pctChange),
       currency: "BRL",
       logo_url: null,
-      rank: 1,
-    });
-  }
-  if (eur) {
-    out.push({
-      symbol: "EURBRL",
-      kind: "quote",
-      label: "Euro",
-      price: num(eur.bidPrice ?? eur.high ?? eur.askPrice),
-      change_pct: num(eur.pctChange ?? eur.percentageChange),
-      currency: "BRL",
-      logo_url: null,
-      rank: 2,
+      rank: p.rank,
     });
   }
   return out;
-}
-
-async function fetchBitcoin() {
-  const url = `${COINGECKO_BASE}/simple/price?ids=bitcoin&vs_currencies=brl&include_24hr_change=true`;
-  const data = await fetchJson(url);
-  const btc = data?.bitcoin;
-  if (!btc) return [];
-  return [
-    {
-      symbol: "BTC",
-      kind: "quote",
-      label: "Bitcoin",
-      price: num(btc.brl),
-      change_pct: num(btc.brl_24h_change),
-      currency: "BRL",
-      logo_url: null,
-      rank: 3,
-    },
-  ];
 }
 
 // ---- Orquestração -----------------------------------------------------------
@@ -162,15 +140,14 @@ class MarketService {
       const token = process.env.BRAPI_TOKEN || null;
       if (!token) {
         log.warn("refresh.no_brapi_token", {
-          msg: "BRAPI_TOKEN ausente — só Bitcoin (CoinGecko) será atualizado.",
+          msg: "BRAPI_TOKEN ausente — cotações (Dólar/Euro/Rublo/BTC) seguem via AwesomeAPI; só ações e Ibovespa ficam vazios.",
         });
       }
 
       const sources = [
+        ["awesome", () => fetchAwesomeQuotes()], // sem token
         ["stocks", () => fetchStocks(token)],
         ["ibovespa", () => fetchIbovespa(token)],
-        ["currencies", () => fetchCurrencies(token)],
-        ["bitcoin", () => fetchBitcoin()],
       ];
 
       const settled = await Promise.allSettled(sources.map(([, fn]) => fn()));

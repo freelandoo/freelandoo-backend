@@ -111,7 +111,7 @@ const server = app.listen(PORT, () => {
       bootLog.error("market.scheduler_error", { message: err.message });
     }
   };
-  setTimeout(tickMarket, 60 * 1000);
+  setTimeout(tickMarket, 20 * 1000);
   setInterval(tickMarket, FIFTEEN_MIN);
 
   // Manchetes de economia/política (Wallet): RSS público (InfoMoney/G1), sem
@@ -125,7 +125,7 @@ const server = app.listen(PORT, () => {
       bootLog.error("market_news.scheduler_error", { message: err.message });
     }
   };
-  setTimeout(tickNews, 2 * 60 * 1000);
+  setTimeout(tickNews, 25 * 1000);
   setInterval(tickNews, HALF_HOUR);
 
   // Job diário: reseta histórico do Chat ao Vivo (Global + Máquinas) toda
