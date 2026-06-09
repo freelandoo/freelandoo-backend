@@ -90,6 +90,37 @@ class ProductRequestController {
     const result = await ProductRequestResponseService.listByRequest(req.user, req.params.id);
     return sendServiceResult(res, result);
   }
+
+  // ─── Conversa (O.S.) ─────────────────────────────────────────────────────
+  static async openConversation(req, res) {
+    const result = await ProductRequestResponseService.openConversation(req.user, req.params.id, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async listMyChats(req, res) {
+    const result = await ProductRequestResponseService.listMyChats(req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async listMyProChats(req, res) {
+    const result = await ProductRequestResponseService.listMyProChats(req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async messages(req, res) {
+    const result = await ProductRequestResponseService.listMessages(req.user, req.params.id_response);
+    return sendServiceResult(res, result);
+  }
+
+  static async sendMessage(req, res) {
+    const result = await ProductRequestResponseService.sendMessage(req.user, req.params.id_response, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async markRead(req, res) {
+    const result = await ProductRequestResponseService.markRead(req.user, req.params.id_response);
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = ProductRequestController;

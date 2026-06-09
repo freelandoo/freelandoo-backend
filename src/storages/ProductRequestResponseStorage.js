@@ -82,6 +82,129 @@ class ProductRequestResponseStorage {
     return rows;
   }
 
+  static async getById(conn, id_response) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.tb_product_request_response WHERE id_response = $1 LIMIT 1`,
+      [id_response]
+    );
+    return rows[0] || null;
+  }
+
+  // ── Thread de mensagens (chat na O.S.) ──────────────────────────────────────
+  static async insertMessage(conn, { id_response, sender, content }) {
+    const { rows } = await conn.query(
+      `INSERT INTO public.tb_product_request_message (id_response, sender, content)
+       VALUES ($1, $2, $3)
+       RETURNING id_message, id_response, sender, content, created_at`,
+      [id_response, sender, content]
+    );
+    // Toca updated_at da resposta para reordenar a lista de O.S.
+    await conn.query(
+      `UPDATE public.tb_product_request_response SET updated_at = NOW() WHERE id_response = $1`,
+      [id_response]
+    );
+    return rows[0];
+  }
+
+  static async listMessages(conn, id_response) {
+    const { rows } = await conn.query(
+      `SELECT id_message, id_response, sender, content, created_at
+         FROM public.tb_product_request_message
+        WHERE id_response = $1
+        ORDER BY created_at ASC`,
+      [id_response]
+    );
+    return rows;
+  }
+
+  static async markReadByBuyer(conn, id_response) {
+    await conn.query(
+      `UPDATE public.tb_product_request_response SET buyer_last_read_at = NOW() WHERE id_response = $1`,
+      [id_response]
+    );
+  }
+
+  static async markReadBySeller(conn, id_response) {
+    await conn.query(
+      `UPDATE public.tb_product_request_response SET seller_last_read_at = NOW() WHERE id_response = $1`,
+      [id_response]
+    );
+  }
+
+  // Lado COMPRADOR: 1 chat por resposta recebida nos pedidos do comprador.
+  static async listChatsForBuyer(conn, id_buyer_user) {
+    const { rows } = await conn.query(
+      `SELECT prr.id_response,
+              prr.status                AS response_status,
+              prr.created_at            AS response_created_at,
+              prr.message               AS seller_message,
+              prr.proposed_price_cents,
+              prr.updated_at,
+              p.id_profile, p.display_name, p.avatar_url, p.sub_profile_slug,
+              su.username               AS seller_username,
+              p.is_clan,
+              pr.id_product_request, pr.title, pr.description, pr.city, pr.state,
+              pr.status                 AS request_status,
+              pcat.name                 AS category_name,
+              lm.content                AS last_message,
+              lm.created_at             AS last_message_at,
+              (SELECT COUNT(*)::INT FROM public.tb_product_request_message m
+                WHERE m.id_response = prr.id_response AND m.sender = 'PRO'
+                  AND (prr.buyer_last_read_at IS NULL OR m.created_at > prr.buyer_last_read_at)
+              ) AS unread_count
+         FROM public.tb_product_request_response prr
+         JOIN public.tb_product_request pr ON pr.id_product_request = prr.id_product_request
+         JOIN public.tb_profile p ON p.id_profile = prr.id_profile
+         JOIN public.tb_user su ON su.id_user = prr.id_seller_user
+    LEFT JOIN public.tb_product_category pcat ON pcat.id_product_category = pr.id_product_category
+    LEFT JOIN LATERAL (
+           SELECT content, created_at FROM public.tb_product_request_message
+            WHERE id_response = prr.id_response ORDER BY created_at DESC LIMIT 1
+         ) lm ON TRUE
+        WHERE pr.id_buyer_user = $1 AND prr.status <> 'canceled'
+        ORDER BY COALESCE(lm.created_at, prr.created_at) DESC`,
+      [id_buyer_user]
+    );
+    return rows;
+  }
+
+  // Lado VENDEDOR: 1 chat por resposta enviada por qualquer subperfil do user.
+  static async listChatsForSeller(conn, id_seller_user) {
+    const { rows } = await conn.query(
+      `SELECT prr.id_response,
+              prr.status                AS response_status,
+              prr.created_at            AS response_created_at,
+              prr.message               AS seller_message,
+              prr.proposed_price_cents,
+              prr.updated_at,
+              prr.id_profile,
+              p.display_name            AS my_profile_name,
+              pr.id_product_request, pr.title, pr.description, pr.city, pr.state,
+              pr.status                 AS request_status,
+              pcat.name                 AS category_name,
+              buyer.username            AS buyer_username,
+              lm.content                AS last_message,
+              lm.created_at             AS last_message_at,
+              (SELECT COUNT(*)::INT FROM public.tb_product_request_message m
+                WHERE m.id_response = prr.id_response AND m.sender = 'USER'
+                  AND (prr.seller_last_read_at IS NULL OR m.created_at > prr.seller_last_read_at)
+              ) AS unread_count
+         FROM public.tb_product_request_response prr
+         JOIN public.tb_product_request pr ON pr.id_product_request = prr.id_product_request
+         JOIN public.tb_profile p ON p.id_profile = prr.id_profile
+         JOIN public.tb_user buyer ON buyer.id_user = pr.id_buyer_user
+    LEFT JOIN public.tb_product_category pcat ON pcat.id_product_category = pr.id_product_category
+    LEFT JOIN LATERAL (
+           SELECT content, created_at FROM public.tb_product_request_message
+            WHERE id_response = prr.id_response ORDER BY created_at DESC LIMIT 1
+         ) lm ON TRUE
+        WHERE prr.id_seller_user = $1 AND prr.status <> 'canceled'
+        ORDER BY COALESCE(lm.created_at, prr.created_at) DESC`,
+      [id_seller_user]
+    );
+    return rows;
+  }
+
   static async countByRequest(conn, id_product_request) {
     const { rows } = await conn.query(
       `SELECT COUNT(*)::INT AS total
