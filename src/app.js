@@ -25,7 +25,11 @@ const allowedOrigins = [
 
 const allowedOriginPatterns = [
   /^https:\/\/([a-z0-9-]+\.)*v0\.dev$/i,
-  /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i,
+  // Vercel: só o alias do projeto e os previews do time freelandoos-projects
+  // (ex.: freelandoo-frontend-<hash>-freelandoos-projects.vercel.app).
+  // Nunca *.vercel.app inteiro — qualquer conta Vercel poderia chamar a API.
+  /^https:\/\/freelandoo-frontend\.vercel\.app$/i,
+  /^https:\/\/[a-z0-9-]+-freelandoos-projects\.vercel\.app$/i,
   /^https:\/\/([a-z0-9-]+\.)*freelandoo\.com\.br$/i,
 ];
 
