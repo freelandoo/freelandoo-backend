@@ -76,9 +76,9 @@ const BROWSER_UA =
 // ---- Fontes individuais (cada uma devolve items[] ou []) --------------------
 
 async function fetchStocks(token) {
-  if (!token) return [];
   // quote/list ordenado por volume ≈ "ações mais vistas/negociadas do dia".
-  const url = `${BRAPI_BASE}/quote/list?sortBy=volume&sortOrder=desc&limit=${STOCKS_LIMIT}&token=${token}`;
+  // Funciona SEM token (testado 2026-06-10); com token só ganha cota maior.
+  const url = `${BRAPI_BASE}/quote/list?sortBy=volume&sortOrder=desc&limit=${STOCKS_LIMIT}${token ? `&token=${token}` : ""}`;
   const data = await fetchJson(url);
   const stocks = Array.isArray(data?.stocks) ? data.stocks : [];
   return stocks.map((s, i) => ({
@@ -261,11 +261,6 @@ class MarketService {
   static async refresh() {
     return runWithLogs(log, "refresh", () => ({}), async () => {
       const token = process.env.BRAPI_TOKEN || null;
-      if (!token) {
-        log.warn("refresh.no_brapi_token", {
-          msg: "BRAPI_TOKEN ausente — ações e Ibovespa caem no fallback Yahoo Finance.",
-        });
-      }
 
       const primary = [
         ["awesome", () => fetchAwesomeQuotes()], // sem token (429 frequente no Railway)
