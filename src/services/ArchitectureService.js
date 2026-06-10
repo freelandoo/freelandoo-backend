@@ -119,7 +119,7 @@ class ArchitectureService {
       let parsed;
       try {
         parsed = JSON.parse(raw);
-      } catch (err) {
+      } catch {
         return { error: "Manifesto inválido (JSON malformado).", statusCode: 400 };
       }
 

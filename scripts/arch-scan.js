@@ -73,13 +73,17 @@ function gitContext(repoRoot) {
       const file = body.includes(" -> ") ? body.split(" -> ")[1] : body;
       dirty.add(file.replace(/^"|"$/g, ""));
     }
-  } catch {}
+  } catch {
+    /* sem git ou repo raso — segue sem dirty-list */
+  }
   for (const ref of ["origin/main", "origin/master"]) {
     try {
       execSync(`git rev-parse --verify ${ref}`, { cwd: repoRoot, stdio: "ignore" });
       hasOrigin = ref;
       break;
-    } catch {}
+    } catch {
+      /* ref não existe — tenta a próxima */
+    }
   }
   return { dirty, hasOrigin };
 }
@@ -141,7 +145,11 @@ function resolveImport(root, fromFile, spec) {
     ...SRC_EXTS.map((e) => path.join(base, "index" + e)),
   ];
   for (const c of candidates) {
-    try { if (fs.statSync(c).isFile()) return path.normalize(c); } catch {}
+    try {
+      if (fs.statSync(c).isFile()) return path.normalize(c);
+    } catch {
+      /* candidato não existe — tenta o próximo */
+    }
   }
   return null;
 }
