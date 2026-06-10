@@ -14,7 +14,7 @@ const CourseLessonsStorage = require("../storages/CourseLessonsStorage");
 const uploadCourseVideoToR2 = require("../integrations/r2/uploadCourseVideoToR2");
 const uploadCourseVideoAssetToR2 = require("../integrations/r2/uploadCourseVideoAssetToR2");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
-const processCourseVideo = require("../integrations/ffmpeg/processCourseVideo");
+const { processCourseVideo } = require("../utils/mediaJobs");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CourseLessonsService");

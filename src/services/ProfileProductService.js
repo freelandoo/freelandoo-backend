@@ -8,7 +8,7 @@ const StoreGovernanceService = require("./StoreGovernanceService");
 const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadProductMediaToR2 = require("../integrations/r2/uploadProductMedia");
-const { processPortfolioMedia } = require("../utils/mediaProcessing");
+const { processPortfolioMedia } = require("../utils/mediaJobs");
 const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 

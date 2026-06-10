@@ -20,6 +20,12 @@ const server = app.listen(PORT, () => {
   // nav-counts:changed. Frontend conecta via wss://<railway-host>/realtime.
   realtime.init(server);
 
+  // F4.S1 — worker de mídia (fork): todo ffmpeg/sharp pesado roda fora deste
+  // processo, com fila (concorrência 1) + status em media_jobs. Se o worker
+  // cair, re-forka com backoff e os uploads caem pro processamento inline.
+  const { startMediaWorker } = require("./src/utils/mediaJobs");
+  startMediaWorker();
+
   // Painel de Arquitetura: carrega o manifesto (scan carimbado com git) para
   // dentro de arch_functions. Idempotente, preserva curadoria do admin e nunca
   // derruba o boot. No-op se o manifesto ainda não existe.

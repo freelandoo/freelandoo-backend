@@ -10,7 +10,7 @@ const {
 } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const ProfileStorage = require("../storages/ProfileStorage");
-const { processConversationAudio } = require("../utils/mediaProcessing");
+const { processConversationAudio } = require("../utils/mediaJobs");
 const {
   uploadConversationAudio,
   deleteConversationAudio,

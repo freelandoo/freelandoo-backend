@@ -2,7 +2,7 @@ const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const crypto = require("crypto");
 const r2 = require("../services/r2Client");
 const pool = require("../databases");
-const { processUserMedia } = require("../utils/mediaProcessing");
+const { processUserMedia } = require("../utils/mediaJobs");
 
 class UserMediaController {
   static async listMyMedia(req, res) {

@@ -6,7 +6,7 @@ const presignStory = require("../integrations/r2/presignStoryUpload");
 const { publicUrl: audioPublicUrl } = require("../integrations/r2/uploadAudioTrack");
 const ChatModerationService = require("./ChatModerationService");
 const ConversationService = require("./ConversationService");
-const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaProcessing");
+const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaJobs");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 

@@ -6,7 +6,7 @@ const ClanStorage = require("../storages/ClanStorage");
 const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadServiceMediaToR2 = require("../integrations/r2/uploadServiceMedia");
-const { processPortfolioMedia } = require("../utils/mediaProcessing");
+const { processPortfolioMedia } = require("../utils/mediaJobs");
 const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 

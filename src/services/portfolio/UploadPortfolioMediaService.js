@@ -4,7 +4,7 @@ const ProfileStorage = require("../../storages/ProfileStorage");
 const PortfolioStorage = require("../../storages/PortfolioStorage");
 const uploadPortfolioMediaToR2 = require("../../integrations/r2/uploadPortfolioMedia");
 const { createLogger, runWithLogs } = require("../../utils/logger");
-const { processPortfolioMedia } = require("../../utils/mediaProcessing");
+const { processPortfolioMedia } = require("../../utils/mediaJobs");
 
 const log = createLogger("UploadPortfolioMediaService");
 
