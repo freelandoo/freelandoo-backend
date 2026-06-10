@@ -97,6 +97,94 @@ class SearchController {
       conditions.push(`(pp.name ILIKE $${values.length} OR pp.description ILIKE $${values.length})`);
     }
 
+    // ── Faixa de preço (centavos) ────────────────────────────────────────────
+    const priceMin = Number(req.query.price_min);
+    const priceMax = Number(req.query.price_max);
+    if (Number.isInteger(priceMin) && priceMin > 0) {
+      values.push(priceMin);
+      conditions.push(`pp.price_amount >= $${values.length}`);
+    }
+    if (Number.isInteger(priceMax) && priceMax > 0) {
+      values.push(priceMax);
+      conditions.push(`pp.price_amount <= $${values.length}`);
+    }
+
+    // ── Subfiltros por atributo (mig 139) ────────────────────────────────────
+    //   attr_<chave>=v1,v2        → produto tem qualquer um dos valores
+    //   attr_<chave>_min/_max     → faixa numérica sobre os valores (ex.: tamanho)
+    //   attr_brand=texto          → match parcial case-insensitive
+    // Chaves restritas a [a-z0-9_] e tudo parametrizado (sem interpolação).
+    const ATTR_RANGE_RE = /^attr_([a-z0-9_]{1,40})_(min|max)$/;
+    const ATTR_KEY_RE = /^attr_([a-z0-9_]{1,40})$/;
+    const attrRanges = new Map();
+    let attrConditions = 0;
+    for (const [rawKey, rawVal] of Object.entries(req.query)) {
+      if (attrConditions >= 12) break;
+      const val = Array.isArray(rawVal) ? rawVal[0] : rawVal;
+      if (val == null || val === "") continue;
+
+      const rangeMatch = ATTR_RANGE_RE.exec(rawKey);
+      if (rangeMatch) {
+        const num = Number(String(val).replace(",", "."));
+        if (!Number.isFinite(num)) continue;
+        const entry = attrRanges.get(rangeMatch[1]) || {};
+        entry[rangeMatch[2]] = num;
+        attrRanges.set(rangeMatch[1], entry);
+        continue;
+      }
+
+      const keyMatch = ATTR_KEY_RE.exec(rawKey);
+      if (!keyMatch) continue;
+      const key = keyMatch[1];
+
+      if (key === "brand") {
+        values.push(`%${String(val).trim().slice(0, 80)}%`);
+        conditions.push(`pp.attributes->>'brand' ILIKE $${values.length}`);
+        attrConditions += 1;
+        continue;
+      }
+
+      const vals = String(val)
+        .split(",")
+        .map((s) => s.trim().slice(0, 80))
+        .filter(Boolean)
+        .slice(0, 20);
+      if (vals.length === 0) continue;
+      values.push(key);
+      const kIdx = values.length;
+      values.push(vals);
+      const vIdx = values.length;
+      conditions.push(`(
+        (jsonb_typeof(pp.attributes->$${kIdx}::text) = 'array' AND pp.attributes->$${kIdx}::text ?| $${vIdx}::text[])
+        OR (pp.attributes->>$${kIdx}::text = ANY($${vIdx}::text[]))
+      )`);
+      attrConditions += 1;
+    }
+
+    // Faixas numéricas: pelo menos UM valor do array dentro de [min, max].
+    for (const [key, range] of attrRanges) {
+      if (attrConditions >= 12) break;
+      values.push(key);
+      const kIdx = values.length;
+      const bounds = [];
+      if (range.min != null) {
+        values.push(range.min);
+        bounds.push(`REPLACE(el, ',', '.')::numeric >= $${values.length}`);
+      }
+      if (range.max != null) {
+        values.push(range.max);
+        bounds.push(`REPLACE(el, ',', '.')::numeric <= $${values.length}`);
+      }
+      if (bounds.length === 0) continue;
+      conditions.push(`(
+        jsonb_typeof(pp.attributes->$${kIdx}::text) = 'array' AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(pp.attributes->$${kIdx}::text) el
+          WHERE el ~ '^[0-9]+([.,][0-9]+)?$' AND ${bounds.join(" AND ")}
+        )
+      )`);
+      attrConditions += 1;
+    }
+
     values.push(parsedLimit);
     values.push(parsedOffset);
 
@@ -109,6 +197,7 @@ class SearchController {
         pp.price_amount,
         pp.currency,
         pp.stock_quantity,
+        pp.attributes,
         pp.id_product_category,
         pc.name AS category_name,
         p.display_name AS profile_display_name,

@@ -55,14 +55,15 @@ class ProfileProductStorage {
     origin_zipcode_override, is_active, id_product_category,
     affiliates_allowed = false,
     delivery_mode = "shipping",
+    attributes = {},
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_product
         (id_profile, name, description, price_amount, stock_quantity,
          weight_grams, height_cm, width_cm, length_cm,
          origin_zipcode_override, is_active, id_product_category,
-         affiliates_allowed, delivery_mode)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         affiliates_allowed, delivery_mode, attributes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         id_profile, name, description || null,
@@ -73,6 +74,7 @@ class ProfileProductStorage {
         id_product_category || null,
         affiliates_allowed === true,
         delivery_mode === "local_pickup" ? "local_pickup" : "shipping",
+        JSON.stringify(attributes && typeof attributes === "object" ? attributes : {}),
       ]
     );
     return r.rows[0];
@@ -83,7 +85,7 @@ class ProfileProductStorage {
       "name", "description", "price_amount", "stock_quantity",
       "weight_grams", "height_cm", "width_cm", "length_cm",
       "origin_zipcode_override", "is_active", "id_product_category",
-      "affiliates_allowed", "delivery_mode",
+      "affiliates_allowed", "delivery_mode", "attributes",
     ];
     const sets = [];
     const values = [];
@@ -91,7 +93,7 @@ class ProfileProductStorage {
     for (const k of allowed) {
       if (Object.prototype.hasOwnProperty.call(fields, k)) {
         sets.push(`${k} = $${i++}`);
-        values.push(fields[k]);
+        values.push(k === "attributes" ? JSON.stringify(fields[k] || {}) : fields[k]);
       }
     }
     if (sets.length === 0) return null;

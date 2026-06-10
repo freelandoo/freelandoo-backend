@@ -121,6 +121,37 @@ function validateInput(payload, { partial = false } = {}) {
     }
   }
 
+  // Atributos filtráveis por categoria (mig 139). Sanitiza: chaves [a-z0-9_],
+  // valores string (ex.: brand) ou array de strings (ex.: sizes, colors).
+  if (Object.prototype.hasOwnProperty.call(payload, "attributes")) {
+    const a = payload.attributes;
+    if (a === null) {
+      out.attributes = {};
+    } else if (typeof a !== "object" || Array.isArray(a)) {
+      return { error: "attributes inválido (esperado objeto)" };
+    } else {
+      const clean = {};
+      for (const k of Object.keys(a).slice(0, 20)) {
+        if (!/^[a-z0-9_]{1,40}$/.test(k)) continue;
+        const v = a[k];
+        if (typeof v === "string") {
+          const s = v.trim().slice(0, 80);
+          if (s) clean[k] = s;
+        } else if (typeof v === "number" && Number.isFinite(v)) {
+          clean[k] = String(v);
+        } else if (Array.isArray(v)) {
+          const arr = v
+            .filter((x) => typeof x === "string" || typeof x === "number")
+            .map((x) => String(x).trim().slice(0, 80))
+            .filter(Boolean)
+            .slice(0, 30);
+          if (arr.length > 0) clean[k] = arr;
+        }
+      }
+      out.attributes = clean;
+    }
+  }
+
   if (Object.prototype.hasOwnProperty.call(payload, "delivery_mode")) {
     const m = String(payload.delivery_mode || "").toLowerCase();
     if (m !== "shipping" && m !== "local_pickup") {
