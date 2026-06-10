@@ -59,7 +59,9 @@ function listMigrationFiles() {
 
 function readMigration(file) {
   const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
-  return { sql, checksum: sha256(sql) };
+  // Checksum sobre conteúdo com EOL normalizado: checkout Windows (CRLF) não
+  // pode divergir do hash gravado pelos boots em produção (checkout LF).
+  return { sql, checksum: sha256(sql.replace(/\r\n/g, "\n")) };
 }
 
 async function bootstrapBackfill(client, files) {
