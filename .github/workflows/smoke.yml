@@ -1,0 +1,42 @@
+# F5.S2 — smoke pós-deploy: após push na main, espera o deploy do Railway
+# subir e confere /health + rotas públicas chave. Falha = e-mail do GitHub.
+name: smoke-pos-deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Espera o deploy e valida /health + rotas chave
+        env:
+          BASE: https://freelandoo-backend-production.up.railway.app
+        run: |
+          set -u
+          # O Railway builda + roda migrations no boot — dá tempo antes de cobrar.
+          echo "aguardando 90s pro deploy iniciar…"
+          sleep 90
+
+          check () {
+            local route="$1"
+            for i in $(seq 1 30); do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$BASE$route" || echo 000)
+              if [ "$code" = "200" ]; then
+                echo "OK  $route ($code)"
+                return 0
+              fi
+              echo "…  $route ($code) tentativa $i/30"
+              sleep 10
+            done
+            echo "FALHOU $route"
+            return 1
+          }
+
+          check /health
+          check /enxames
+          check /polens/products
+          check /public/pricing
+          check /blog/posts

@@ -155,8 +155,21 @@ async function runMigrations() {
     let applied = await getAppliedMap(client);
 
     if (applied.size === 0) {
-      await bootstrapBackfill(client, files);
-      applied = await getAppliedMap(client);
+      // O backfill existe pro PRIMEIRO boot do runner em banco LEGADO (schema
+      // já criado pelos boots antigos, sem schema_migrations). Num banco
+      // VIRGEM (ex.: Postgres local de teste — F5.S1) ele marcaria tudo como
+      // aplicado sem rodar nada; detecta pelo tb_user, que existe desde a 000.
+      const { rows } = await client.query(
+        "SELECT to_regclass('public.tb_user') AS t"
+      );
+      if (rows[0]?.t) {
+        await bootstrapBackfill(client, files);
+        applied = await getAppliedMap(client);
+      } else {
+        log.warn("migrations.fresh_database", {
+          msg: "banco virgem detectado (sem tb_user) — aplicando todas as migrations do zero.",
+        });
+      }
     }
 
     const pending = [];

@@ -105,9 +105,12 @@ class ProfileStorage {
       INSERT INTO public.tb_profile
         (id_user, id_category, display_name, bio, avatar_url, estado, municipio, sub_profile_slug, id_region)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8,
+        -- ::text nas DUAS posições de $6/$7: o mesmo parâmetro em posição de
+        -- coluna (varchar) e de expressão (text) deduz tipos inconsistentes
+        -- num schema reconstruído das migrations (F5.S1).
+        ($1, $2, $3, $4, $5, $6::text, $7::text, $8,
          (SELECT rc.id_region FROM public.tb_region_city rc
-           WHERE rc.uf = $6 AND rc.municipio_norm = fl_norm_city($7)))
+           WHERE rc.uf = $6::text AND rc.municipio_norm = fl_norm_city($7::text)))
       RETURNING
         id_profile, id_user, id_category, display_name, bio, avatar_url,
         estado, municipio, sub_profile_slug, is_active, created_at, updated_at
@@ -481,14 +484,16 @@ class ProfileStorage {
     let municipioExpr = "municipio";
 
     if (has("estado")) {
-      estadoExpr = `$${idx}`;
-      fields.push(`estado = $${idx++}`);
+      // ::text nas DUAS posições: o mesmo $ em posição de coluna (varchar) e
+      // de expressão (text) deduz tipos inconsistentes (F5.S1).
+      estadoExpr = `$${idx}::text`;
+      fields.push(`estado = $${idx++}::text`);
       values.push(payload.estado); // ✅ null limpa
     }
 
     if (has("municipio")) {
-      municipioExpr = `$${idx}`;
-      fields.push(`municipio = $${idx++}`);
+      municipioExpr = `$${idx}::text`;
+      fields.push(`municipio = $${idx++}::text`);
       values.push(payload.municipio); // ✅ null limpa
     }
 
