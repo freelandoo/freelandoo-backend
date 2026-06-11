@@ -1,20 +1,8 @@
 const { createLogger } = require("../../utils/logger");
 const { lookupZipcode } = require("../viacep/lookup");
+const { BASE_URL, IS_PRODUCTION, authHeaders } = require("./config");
 
 const log = createLogger("melhorenvio.purchase");
-
-const SANDBOX_BASE = "https://sandbox.melhorenvio.com.br/api/v2";
-
-function authHeaders() {
-  const token = process.env.MELHOR_ENVIO_SANDBOX_TOKEN;
-  if (!token) throw new Error("MELHOR_ENVIO_SANDBOX_TOKEN não configurado");
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    "User-Agent": "Freelandoo (alex.rodriguus@gmail.com)",
-  };
-}
 
 function clampDim(value, fallback = 2) {
   const n = Number(value);
@@ -33,7 +21,7 @@ function sanitize(s, max = 120) {
 }
 
 async function meFetch(path, init = {}) {
-  const url = `${SANDBOX_BASE}${path}`;
+  const url = `${BASE_URL}${path}`;
   const res = await fetch(url, { ...init, headers: { ...authHeaders(), ...(init.headers || {}) } });
   const text = await res.text();
   let data = null;
@@ -80,7 +68,17 @@ async function purchaseLabel(ctx) {
   }
 
   const fromName = sanitize(seller.nome, 80) || "Freelandoo Vendedor";
-  const fromDoc = onlyDigits(seller.origin_document) || "00000000000"; // sandbox placeholder
+  // Em produção o Melhor Envio valida CPF/CNPJ (dígitos verificadores) — o
+  // placeholder do sandbox seria recusado. Falha cedo com mensagem clara,
+  // que fica gravada em markLabelFailure e visível no admin.
+  let fromDoc = onlyDigits(seller.origin_document);
+  if (IS_PRODUCTION) {
+    if (fromDoc.length !== 11 && fromDoc.length !== 14) {
+      throw new Error("Vendedor sem CPF/CNPJ válido cadastrado — obrigatório para emitir etiqueta em produção");
+    }
+  } else {
+    fromDoc = fromDoc || "00000000000"; // sandbox placeholder
+  }
   const fromPhone = onlyDigits(seller.telefone) || "11999999999";
 
   const from = {
@@ -98,11 +96,20 @@ async function purchaseLabel(ctx) {
     state_abbr: sanitize(originAddr.uf, 2) || "SP",
   };
 
+  let toDoc = onlyDigits(order.buyer_document);
+  if (IS_PRODUCTION) {
+    if (toDoc.length !== 11 && toDoc.length !== 14) {
+      throw new Error("Pedido sem CPF do comprador — o checkout precisa coletar CPF antes de emitir etiqueta em produção");
+    }
+  } else {
+    toDoc = toDoc || "00000000000"; // sandbox placeholder; buyer CPF não é coletado hoje
+  }
+
   const to = {
     name: sanitize(order.buyer_name, 80) || "Comprador",
     phone: onlyDigits(order.buyer_whatsapp) || "11999999999",
     email: sanitize(order.buyer_email, 120) || "buyer@example.com",
-    document: "00000000000", // placeholder; buyer CPF não é coletado hoje
+    document: toDoc,
     address: sanitize(dest.street, 160) || "Endereço",
     complement: sanitize(dest.complement, 60) || "",
     number: sanitize(dest.number, 20) || "S/N",

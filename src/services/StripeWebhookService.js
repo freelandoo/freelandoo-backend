@@ -467,6 +467,51 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
 }
 
 /**
+ * Entrega (fulfillment) de uma checkout session PAGA. Compartilhado entre
+ * checkout.session.completed (métodos síncronos: cartão) e
+ * checkout.session.async_payment_succeeded (métodos assíncronos: Pix/boleto).
+ * Os confirmadores downstream são idempotentes por session id, então receber
+ * os dois eventos para a mesma session não duplica nada.
+ */
+async function fulfillCheckoutSession(session) {
+  const meta = session.metadata || {};
+  if (meta.type === "booking_deposit") {
+    // Booking deposit payment
+    const paymentIntentId = typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id || null;
+    await BookingService.confirmBookingFromWebhook(session.id, paymentIntentId);
+  } else if (meta.type === "clan_slot") {
+    const paymentIntentId = typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id || null;
+    await ClanService.confirmSlotPurchaseFromWebhook(
+      session.id,
+      paymentIntentId
+    );
+  } else if (meta.type === "manifestation") {
+    await ManifestationService.confirmStripeSession(session);
+  } else if (meta.type === "polen_purchase") {
+    await PolenProductService.confirmStripeSession(session);
+  } else if (meta.type === "premium") {
+    await PremiumService.confirmStripeSession(session);
+  } else if (meta.type === "course_purchase") {
+    const CoursesService = require("./CoursesService");
+    await CoursesService.confirmStripeSession(session);
+  } else if (meta.type === "profile_product_order") {
+    await ProfileProductOrderService.confirmStripeSession(session);
+  } else if (meta.type === "casa_participant_order") {
+    await CasaParticipantService.confirmStripeSession(session);
+  } else {
+    // Subscription checkout
+    await handleCheckoutCompleted(pool, session);
+  }
+  // Atribuição de comissão para fluxos não-assinatura quando o cupom
+  // veio capturado via ?cupom= no link. Idempotente por (provider, ref).
+  await maybeAttributeCouponCommission(pool, session, meta);
+}
+
+/**
  * Processa um evento Stripe já verificado. Idempotente via tb_stripe_webhook_event.
  */
 async function processEvent(event) {
@@ -484,41 +529,33 @@ async function processEvent(event) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
-      const meta = session.metadata || {};
-      if (meta.type === "booking_deposit") {
-        // Booking deposit payment
-        const paymentIntentId = typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : session.payment_intent?.id || null;
-        await BookingService.confirmBookingFromWebhook(session.id, paymentIntentId);
-      } else if (meta.type === "clan_slot") {
-        const paymentIntentId = typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : session.payment_intent?.id || null;
-        await ClanService.confirmSlotPurchaseFromWebhook(
-          session.id,
-          paymentIntentId
-        );
-      } else if (meta.type === "manifestation") {
-        await ManifestationService.confirmStripeSession(session);
-      } else if (meta.type === "polen_purchase") {
-        await PolenProductService.confirmStripeSession(session);
-      } else if (meta.type === "premium") {
-        await PremiumService.confirmStripeSession(session);
-      } else if (meta.type === "course_purchase") {
-        const CoursesService = require("./CoursesService");
-        await CoursesService.confirmStripeSession(session);
-      } else if (meta.type === "profile_product_order") {
-        await ProfileProductOrderService.confirmStripeSession(session);
-      } else if (meta.type === "casa_participant_order") {
-        await CasaParticipantService.confirmStripeSession(session);
-      } else {
-        // Subscription checkout
-        await handleCheckoutCompleted(pool, session);
+      // Métodos assíncronos (Pix/boleto): o completed chega com payment_status
+      // "unpaid" ANTES do dinheiro cair. A entrega acontece só no
+      // async_payment_succeeded — sem este guard, ativaríamos perfil/poléns/
+      // pedido sem pagamento confirmado.
+      if (session.payment_status === "unpaid") {
+        log.info("checkout.completed.awaiting_async_payment", {
+          session_id: session.id,
+          meta_type: session.metadata?.type || null,
+        });
+        break;
       }
-      // Atribuição de comissão para fluxos não-assinatura quando o cupom
-      // veio capturado via ?cupom= no link. Idempotente por (provider, ref).
-      await maybeAttributeCouponCommission(pool, session, meta);
+      await fulfillCheckoutSession(session);
+      break;
+    }
+    case "checkout.session.async_payment_succeeded": {
+      await fulfillCheckoutSession(event.data.object);
+      break;
+    }
+    case "checkout.session.async_payment_failed": {
+      const session = event.data.object;
+      // Pagamento assíncrono expirou/falhou (ex.: Pix não pago no prazo).
+      // Nenhum estado foi entregue (o completed unpaid foi ignorado acima);
+      // a linha pendente segue o mesmo caminho de uma session abandonada.
+      log.warn("checkout.async_payment_failed", {
+        session_id: session.id,
+        meta_type: session.metadata?.type || null,
+      });
       break;
     }
     case "invoice.payment_succeeded":

@@ -1,19 +1,7 @@
 const { createLogger } = require("../../utils/logger");
+const { BASE_URL, authHeaders } = require("./config");
 
 const log = createLogger("melhorenvio");
-
-const SANDBOX_BASE = "https://sandbox.melhorenvio.com.br/api/v2";
-
-function authHeaders() {
-  const token = process.env.MELHOR_ENVIO_SANDBOX_TOKEN;
-  if (!token) throw new Error("MELHOR_ENVIO_SANDBOX_TOKEN não configurado");
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    "User-Agent": "Freelandoo (alex.rodriguus@gmail.com)",
-  };
-}
 
 function clampDim(value, fallback = 2) {
   const n = Number(value);
@@ -22,7 +10,7 @@ function clampDim(value, fallback = 2) {
 }
 
 /**
- * Calcula opções de frete via Melhor Envio sandbox.
+ * Calcula opções de frete via Melhor Envio (sandbox ou produção — ver config).
  * @param {Object} input
  * @param {string} input.origin_zipcode - CEP origem (8 dígitos).
  * @param {string} input.destination_zipcode - CEP destino (8 dígitos).
@@ -54,7 +42,7 @@ async function calculateShipping({ origin_zipcode, destination_zipcode, product 
     ],
   };
 
-  const res = await fetch(`${SANDBOX_BASE}/me/shipment/calculate`, {
+  const res = await fetch(`${BASE_URL}/me/shipment/calculate`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(body),
