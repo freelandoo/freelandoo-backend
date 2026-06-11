@@ -2,20 +2,21 @@ class ProductRequestStorage {
   static async create(conn, {
     id_buyer_user, id_product_category, title, description,
     city, state, min_price_cents, max_price_cents,
-    reference_image_url, reference_image_key,
+    reference_image_url, reference_image_key, attributes,
   }) {
     const { rows } = await conn.query(
       `INSERT INTO public.tb_product_request
         (id_buyer_user, id_product_category, title, description,
          city, state, min_price_cents, max_price_cents,
-         reference_image_url, reference_image_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         reference_image_url, reference_image_key, attributes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
        RETURNING *`,
       [
         id_buyer_user, id_product_category, title, description,
         city, state,
         min_price_cents ?? null, max_price_cents ?? null,
         reference_image_url || null, reference_image_key || null,
+        JSON.stringify(attributes || {}),
       ]
     );
     return rows[0];

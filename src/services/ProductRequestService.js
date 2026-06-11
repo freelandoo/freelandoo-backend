@@ -50,6 +50,26 @@ function validate(payload) {
     return { error: "Preço mínimo não pode ser maior que o máximo" };
   }
 
+  // Atributos estruturados (mig 142) — espelham os subfiltros da Loja.
+  // Formato aceito: { chave: "valor" | ["valor", ...] }; chaves [a-z0-9_],
+  // valores string. Tudo opcional; o que não passar é descartado em silêncio.
+  out.attributes = {};
+  if (payload?.attributes && typeof payload.attributes === "object" && !Array.isArray(payload.attributes)) {
+    const KEY_RE = /^[a-z0-9_]{1,40}$/;
+    let keys = 0;
+    for (const [key, raw] of Object.entries(payload.attributes)) {
+      if (!KEY_RE.test(key) || keys >= 16) continue;
+      const list = (Array.isArray(raw) ? raw : [raw])
+        .filter((v) => typeof v === "string")
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0 && v.length <= 80)
+        .slice(0, 20);
+      if (list.length === 0) continue;
+      out.attributes[key] = list;
+      keys += 1;
+    }
+  }
+
   return { data: out };
 }
 

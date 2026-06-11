@@ -73,6 +73,7 @@ class ProductRequestMatchingService {
                 pr.status,
                 pr.created_at,
                 pr.id_product_category,
+                pr.attributes,
                 pc.name AS category_name,
                 pc.slug AS category_slug,
                 u.username AS buyer_username,
