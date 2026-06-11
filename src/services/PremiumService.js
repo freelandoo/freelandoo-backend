@@ -4,6 +4,7 @@ const PremiumStorage = require("../storages/PremiumStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const StripeService = require("./StripeService");
+const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PremiumService");
@@ -257,6 +258,34 @@ class PremiumService {
         return { error: "Perfil já tem premium ativo", failed_id: existing?.id };
       }
 
+      // Re-checa a cota de vagas da cidade no webhook (defesa em profundidade):
+      // dois checkouts simultâneos na última vaga não podem estourar o limite.
+      if (meta.uf && meta.city_name) {
+        const pricing = await PremiumStorage.resolvePricing(client, {
+          uf: meta.uf,
+          city_name: meta.city_name,
+        });
+        const slots = Number(pricing?.slots);
+        if (Number.isFinite(slots)) {
+          const taken = await PremiumStorage.countActiveByCity(client, {
+            uf: meta.uf,
+            city_name: meta.city_name,
+          });
+          if (taken >= slots) {
+            if (existing?.id) await PremiumStorage.markFailed(client, existing.id);
+            await client.query("COMMIT");
+            if (paymentIntent) {
+              try {
+                await StripeService.createRefundForPaymentIntent(paymentIntent);
+              } catch (err) {
+                log.error("premium.confirm.refund_fail", { paymentIntent, message: err.message });
+              }
+            }
+            return { error: "Cidade lotada — sem vagas premium", failed_id: existing?.id };
+          }
+        }
+      }
+
       let pending = existing;
       if (!pending) {
         pending = await PremiumStorage.createPending(client, {
@@ -293,6 +322,14 @@ class PremiumService {
     const premium = await PremiumStorage.getByPaymentIntent(pool, paymentIntentId);
     if (!premium) return { ignored: true };
     if (premium.refunded_at) return { premium, duplicate: true };
+    if (!isFullRefund(charge)) {
+      log.warn("refund.partial_ignored", {
+        premium_id: premium.id,
+        amount: charge.amount,
+        amount_refunded: charge.amount_refunded,
+      });
+      return { partial: true };
+    }
 
     const updated = await PremiumStorage.markRefunded(pool, premium.id);
     return { premium: updated };

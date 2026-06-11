@@ -3,6 +3,7 @@ const PolenProductStorage = require("../storages/PolenProductStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const StripeService = require("./StripeService");
 const uploadPolenProductImageToR2 = require("../integrations/r2/uploadPolenProductImage");
+const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PolenProductService");
@@ -258,6 +259,14 @@ class PolenProductService {
     const purchase = await PolenProductStorage.getPurchaseByPaymentIntent(pool, paymentIntentId);
     if (!purchase) return { ignored: true };
     if (purchase.status === "refunded") return { purchase, duplicate: true };
+    if (!isFullRefund(charge)) {
+      log.warn("refund.partial_ignored", {
+        purchase_id: purchase.id,
+        amount: charge.amount,
+        amount_refunded: charge.amount_refunded,
+      });
+      return { partial: true };
+    }
 
     const client = await pool.connect();
     try {

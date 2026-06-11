@@ -193,6 +193,24 @@ class BookingStorage {
   }
 
   /**
+   * Expira um booking pelo session_id quando a checkout session expira/falha
+   * (libera o slot imediatamente, sem esperar o job de idade).
+   */
+  static async expireBySessionId(conn, sessionId) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile_bookings
+         SET status = 'expired',
+             payment_status = 'canceled',
+             updated_at = NOW()
+       WHERE stripe_checkout_session_id = $1
+         AND status = 'pending_payment'
+       RETURNING id`,
+      [sessionId]
+    );
+    return r.rows[0] || null;
+  }
+
+  /**
    * Expira bookings pending_payment criados há mais de X minutos.
    */
   static async expireStaleBookings(conn, minutes = 15) {

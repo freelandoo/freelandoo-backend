@@ -5,6 +5,7 @@ const CasaStoreStorage = require("../storages/CasaStoreStorage");
 const StripeService = require("./StripeService");
 const uploadCasaParticipantMediaToR2 = require("../integrations/r2/uploadCasaParticipantMedia");
 const { slugify } = require("../utils/slug");
+const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CasaParticipantService");
@@ -219,6 +220,14 @@ class CasaParticipantService {
       (paymentIntentId ? await CasaProductStorage.getOrderByPaymentIntent(pool, paymentIntentId) : null);
     if (!order) return { ignored: true };
     if (order.status === "refunded") return { order, duplicate: true };
+    if (!isFullRefund(charge)) {
+      log.warn("refund.partial_ignored", {
+        order_id: order.id,
+        amount: charge.amount,
+        amount_refunded: charge.amount_refunded,
+      });
+      return { partial: true };
+    }
 
     const client = await pool.connect();
     try {

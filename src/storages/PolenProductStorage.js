@@ -150,6 +150,17 @@ class PolenProductStorage {
     return rows[0] || null;
   }
 
+  static async markPurchaseExpiredBySession(conn, sessionId) {
+    const { rows } = await conn.query(
+      `UPDATE public.polen_purchases
+          SET status = 'expired', updated_at = NOW()
+        WHERE stripe_session_id = $1 AND status = 'pending'
+        RETURNING *`,
+      [sessionId]
+    );
+    return rows[0] || null;
+  }
+
   static async listPurchasesForUser(conn, userId, { limit = 30, offset = 0 } = {}) {
     const { rows } = await conn.query(
       `SELECT pp.*, p.name AS product_name, p.image_url AS product_image_url

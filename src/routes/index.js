@@ -97,6 +97,7 @@ const blogAdminRoutes = require("./blogAdmin.routes");
 const architectureAdminRoutes = require("./architectureAdmin.routes");
 const marketRoutes = require("./market.routes");
 const walletFinanceRoutes = require("./walletFinance.routes");
+const paymentOpsRoutes = require("./paymentOps.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -202,4 +203,5 @@ module.exports = (app) => {
   app.use("/", walletFinanceRoutes);
   app.use("/admin/blog", blogAdminRoutes);
   app.use("/admin/architecture", architectureAdminRoutes);
+  app.use("/", paymentOpsRoutes);
 };

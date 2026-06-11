@@ -75,8 +75,13 @@ const server = app.listen(PORT, () => {
   setTimeout(tickSellerBalances, 3 * 60 * 1000);
   setInterval(tickSellerBalances, TWO_HOURS);
 
-  // Job CDC: libera payouts de booking (agendamentos) após holdback.
+  // Job CDC: libera payouts de booking (agendamentos) E os splits de clan
+  // (serviço/curso) após o holdback de 8 dias. O releaseDue de clan existia mas
+  // nunca era agendado — o Saldo dos membros ficava preso em "aguardando"
+  // (projeto PayDebug, D2).
   const BookingPayoutStorage = require("./src/storages/BookingPayoutStorage");
+  const ClanPayoutStorage = require("./src/storages/ClanPayoutStorage");
+  const BookingPayoutService = require("./src/services/BookingPayoutService");
   const tickBookingPayouts = async () => {
     try {
       const rows = await BookingPayoutStorage.releaseDue(pool);
@@ -84,9 +89,53 @@ const server = app.listen(PORT, () => {
     } catch (err) {
       bootLog.error("booking_payouts.scheduler_error", { message: err.message });
     }
+    try {
+      const clanRows = await ClanPayoutStorage.releaseDue(pool);
+      if (clanRows.length) bootLog.info("clan_payouts.released", { count: clanRows.length });
+    } catch (err) {
+      bootLog.error("clan_payouts.scheduler_error", { message: err.message });
+    }
+    try {
+      const recon = await BookingPayoutService.reconcileMissing();
+      if (recon?.created) bootLog.info("booking_payouts.reconciled", recon);
+    } catch (err) {
+      bootLog.error("booking_payouts.reconcile_error", { message: err.message });
+    }
   };
   setTimeout(tickBookingPayouts, 5 * 60 * 1000);
   setInterval(tickBookingPayouts, TWO_HOURS);
+
+  // Job: expira bookings pending_payment abandonados (checkout nunca pago) para
+  // liberar o horário da agenda. Janela generosa (env, default 24h) por causa
+  // do Pix — o sinal preciso é o checkout.session.expired no webhook; este é a
+  // rede de segurança. Roda 6 min após boot e a cada 2h (projeto PayDebug, D2).
+  const BookingStorage = require("./src/storages/BookingStorage");
+  const BOOKING_EXPIRE_MIN = Number(process.env.BOOKING_PENDING_EXPIRE_MIN) || 1440;
+  const tickExpireBookings = async () => {
+    try {
+      const rows = await BookingStorage.expireStaleBookings(pool, BOOKING_EXPIRE_MIN);
+      if (rows.length) bootLog.info("bookings.expired", { count: rows.length });
+    } catch (err) {
+      bootLog.error("bookings.expire_scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickExpireBookings, 6 * 60 * 1000);
+  setInterval(tickExpireBookings, TWO_HOURS);
+
+  // Job: reconciliação de pagamentos — para webhooks perdidos, cruza pendentes
+  // antigos com o estado real da session no Stripe e re-entrega os que já foram
+  // pagos. Roda 7 min após boot e a cada 2h (projeto PayDebug, D6).
+  const PaymentReconciliationService = require("./src/services/PaymentReconciliationService");
+  const tickPaymentReconcile = async () => {
+    try {
+      const result = await PaymentReconciliationService.run();
+      if (result?.recovered) bootLog.info("payments.reconciled", result);
+    } catch (err) {
+      bootLog.error("payments.reconcile_scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickPaymentReconcile, 7 * 60 * 1000);
+  setInterval(tickPaymentReconcile, TWO_HOURS);
 
   // Job: compra etiqueta no Melhor Envio para pedidos pagos cuja compra
   // inicial (no webhook) falhou. Roda 4 min após boot e a cada 30 min.

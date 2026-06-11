@@ -13,6 +13,12 @@ const PremiumService = require("./PremiumService");
 const ProfileProductOrderService = require("./ProfileProductOrderService");
 const CasaParticipantService = require("./CasaParticipantService");
 const XpStorage = require("../storages/XpStorage");
+const BookingStorage = require("../storages/BookingStorage");
+const ProfileProductOrderStorage = require("../storages/ProfileProductOrderStorage");
+const PolenProductStorage = require("../storages/PolenProductStorage");
+const PremiumStorage = require("../storages/PremiumStorage");
+const CasaProductStorage = require("../storages/CasaProductStorage");
+const { isFullRefund } = require("../utils/refunds");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("StripeWebhookService");
@@ -230,6 +236,16 @@ async function handleInvoiceFailed(conn, invoice) {
  * Se já foi pago, a lógica em onOrderStatusChange marca como disputed.
  */
 async function handleChargeRefunded(conn, charge) {
+  // Reembolso parcial não reverte a ativação inteira — tratamento manual.
+  if (!isFullRefund(charge)) {
+    log.warn("charge.refunded.partial_ignored", {
+      charge_id: charge.id,
+      amount: charge.amount,
+      amount_refunded: charge.amount_refunded,
+    });
+    return;
+  }
+
   const paymentIntentId =
     typeof charge.payment_intent === "string"
       ? charge.payment_intent
@@ -475,57 +491,122 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
  */
 async function fulfillCheckoutSession(session) {
   const meta = session.metadata || {};
+  const paymentIntentId = typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : session.payment_intent?.id || null;
+
+  let result;
   if (meta.type === "booking_deposit") {
-    // Booking deposit payment
-    const paymentIntentId = typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent?.id || null;
-    await BookingService.confirmBookingFromWebhook(session.id, paymentIntentId);
+    result = await BookingService.confirmBookingFromWebhook(session.id, paymentIntentId);
   } else if (meta.type === "clan_slot") {
-    const paymentIntentId = typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent?.id || null;
-    await ClanService.confirmSlotPurchaseFromWebhook(
-      session.id,
-      paymentIntentId
-    );
+    result = await ClanService.confirmSlotPurchaseFromWebhook(session.id, paymentIntentId);
   } else if (meta.type === "manifestation") {
-    await ManifestationService.confirmStripeSession(session);
+    result = await ManifestationService.confirmStripeSession(session);
   } else if (meta.type === "polen_purchase") {
-    await PolenProductService.confirmStripeSession(session);
+    result = await PolenProductService.confirmStripeSession(session);
   } else if (meta.type === "premium") {
-    await PremiumService.confirmStripeSession(session);
+    result = await PremiumService.confirmStripeSession(session);
   } else if (meta.type === "course_purchase") {
     const CoursesService = require("./CoursesService");
-    await CoursesService.confirmStripeSession(session);
+    result = await CoursesService.confirmStripeSession(session);
   } else if (meta.type === "profile_product_order") {
-    await ProfileProductOrderService.confirmStripeSession(session);
+    result = await ProfileProductOrderService.confirmStripeSession(session);
   } else if (meta.type === "casa_participant_order") {
-    await CasaParticipantService.confirmStripeSession(session);
+    result = await CasaParticipantService.confirmStripeSession(session);
   } else {
-    // Subscription checkout
-    await handleCheckoutCompleted(pool, session);
+    // Subscription/ativação — devolve undefined (gera comissão por outro caminho).
+    result = await handleCheckoutCompleted(pool, session);
   }
-  // Atribuição de comissão para fluxos não-assinatura quando o cupom
-  // veio capturado via ?cupom= no link. Idempotente por (provider, ref).
+
+  // A entrega falhou (estoque esgotado, premium já ativo, perfil já ativado…)
+  // quando o confirmador devolve error/canceled. Nesse caso NÃO atribui comissão
+  // de afiliado — senão o afiliado ganharia por uma venda que foi estornada.
+  const delivered =
+    !result ||
+    (!result.error && !result.canceled && !result.order_canceled);
+  if (!delivered) {
+    log.info("commission.skip_undelivered", {
+      session_id: session.id,
+      meta_type: meta.type || null,
+      reason: result?.error || (result?.canceled ? "canceled" : "order_canceled"),
+    });
+    return result;
+  }
+
+  // Atribuição de comissão para fluxos não-assinatura quando o cupom veio
+  // capturado via ?cupom= no link. Idempotente por (provider, ref).
   await maybeAttributeCouponCommission(pool, session, meta);
+  return result;
 }
 
 /**
- * Processa um evento Stripe já verificado. Idempotente via tb_stripe_webhook_event.
+ * Expira/cancela os registros pendentes de uma checkout session que NUNCA foi
+ * paga (checkout.session.expired) ou cujo pagamento assíncrono falhou
+ * (async_payment_failed). Sem isto, pedidos/poléns/premium/ativações ficavam
+ * "pendente" para sempre e o slot da agenda ficava bloqueado. Idempotente:
+ * só mexe em linhas ainda pendentes.
  */
-async function processEvent(event) {
-  const inserted = await StripeWebhookEventStorage.recordIfNew(pool, {
-    event_id: event.id,
-    event_type: event.type,
-    payload: event,
-  });
-
-  if (!inserted) {
-    log.info("duplicate.skip", { event_id: event.id, type: event.type });
-    return { duplicate: true };
+async function expireCheckoutSession(session, reason) {
+  const meta = session.metadata || {};
+  try {
+    switch (meta.type) {
+      case "booking_deposit": {
+        const expired = await BookingStorage.expireBySessionId(pool, session.id);
+        if (expired) log.info("expire.booking", { session_id: session.id, reason });
+        break;
+      }
+      case "polen_purchase": {
+        const expired = await PolenProductStorage.markPurchaseExpiredBySession(pool, session.id);
+        if (expired) log.info("expire.polen", { session_id: session.id, reason });
+        break;
+      }
+      case "premium": {
+        const pending = await PremiumStorage.getByStripeSession(pool, session.id);
+        if (pending && !pending.is_active) {
+          await PremiumStorage.markFailed(pool, pending.id);
+          log.info("expire.premium", { session_id: session.id, reason });
+        }
+        break;
+      }
+      case "profile_product_order": {
+        const order = await ProfileProductOrderStorage.getByStripeSession(pool, session.id);
+        if (order && order.status === "pending") {
+          await ProfileProductOrderStorage.markCanceled(pool, order.id_order);
+          log.info("expire.order", { session_id: session.id, reason });
+        }
+        break;
+      }
+      case "casa_participant_order": {
+        await CasaProductStorage.markOrderCanceled(pool, session.id);
+        log.info("expire.casa", { session_id: session.id, reason });
+        break;
+      }
+      case "manifestation":
+      case "clan_slot":
+        // Sem linha pendente persistida (o registro só nasce na confirmação).
+        break;
+      default: {
+        // Ativação/assinatura.
+        const sub = await ProfileSubscriptionStorage.findBySessionId(pool, session.id);
+        if (sub && sub.status === "pending") {
+          await ProfileSubscriptionStorage.updateBySessionId(pool, session.id, {
+            status: "expired",
+          });
+          log.info("expire.subscription", { session_id: session.id, reason });
+        }
+      }
+    }
+  } catch (err) {
+    log.error("expire.fail", { session_id: session.id, reason, message: err.message });
   }
+}
 
+/**
+ * O switch de roteamento de eventos. Separado de processEvent para que o
+ * controle de idempotência/retry (claim → done/failed) e a reconciliação
+ * (reprocessEvent) compartilhem exatamente a mesma lógica de despacho.
+ */
+async function dispatchEvent(event) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
@@ -549,13 +630,24 @@ async function processEvent(event) {
     }
     case "checkout.session.async_payment_failed": {
       const session = event.data.object;
-      // Pagamento assíncrono expirou/falhou (ex.: Pix não pago no prazo).
-      // Nenhum estado foi entregue (o completed unpaid foi ignorado acima);
-      // a linha pendente segue o mesmo caminho de uma session abandonada.
+      // Pagamento assíncrono falhou (ex.: Pix não pago no prazo). Limpa o
+      // registro pendente para o comprador não ver "processando" eternamente.
       log.warn("checkout.async_payment_failed", {
         session_id: session.id,
         meta_type: session.metadata?.type || null,
       });
+      await expireCheckoutSession(session, "async_payment_failed");
+      break;
+    }
+    case "checkout.session.expired": {
+      const session = event.data.object;
+      // Session abandonada/expirada sem pagamento — libera estoque/slot e
+      // marca o pendente como expirado.
+      log.info("checkout.session.expired", {
+        session_id: session.id,
+        meta_type: session.metadata?.type || null,
+      });
+      await expireCheckoutSession(session, "expired");
       break;
     }
     case "invoice.payment_succeeded":
@@ -590,8 +682,53 @@ async function processEvent(event) {
     default:
       log.debug("unhandled.event", { type: event.type });
   }
-
-  return { ok: true };
 }
 
-module.exports = { processEvent };
+/**
+ * Processa um evento Stripe já verificado. At-least-once via
+ * tb_stripe_webhook_event: o evento é reivindicado como 'pending', e só vira
+ * 'done' se o despacho terminar sem erro. Se estourar, fica 'failed' e o
+ * retry do Stripe (ou o admin) reprocessa — em vez de perder o pagamento.
+ */
+async function processEvent(event) {
+  const { duplicate } = await StripeWebhookEventStorage.claim(pool, {
+    event_id: event.id,
+    event_type: event.type,
+    payload: event,
+  });
+
+  if (duplicate) {
+    log.info("duplicate.skip", { event_id: event.id, type: event.type });
+    return { duplicate: true };
+  }
+
+  try {
+    await dispatchEvent(event);
+    await StripeWebhookEventStorage.markDone(pool, event.id);
+    return { ok: true };
+  } catch (err) {
+    await StripeWebhookEventStorage.markFailed(pool, event.id, err.message);
+    // Re-lança: o controller devolve 500, o Stripe re-tenta e o claim
+    // re-reivindica a linha 'failed' para uma nova tentativa.
+    throw err;
+  }
+}
+
+/**
+ * Reprocessa um evento já armazenado (botão admin / reconciliação). Usa o
+ * payload persistido. Marca 'done' em caso de sucesso, 'failed' caso contrário.
+ */
+async function reprocessEvent(event_id) {
+  const row = await StripeWebhookEventStorage.getByEventId(pool, event_id);
+  if (!row) return { error: "event_not_found" };
+  try {
+    await dispatchEvent(row.payload);
+    await StripeWebhookEventStorage.markDone(pool, event_id);
+    return { ok: true, event_id };
+  } catch (err) {
+    await StripeWebhookEventStorage.markFailed(pool, event_id, err.message);
+    return { error: err.message, event_id };
+  }
+}
+
+module.exports = { processEvent, reprocessEvent, fulfillCheckoutSession, dispatchEvent };

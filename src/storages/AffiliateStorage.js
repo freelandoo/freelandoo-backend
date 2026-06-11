@@ -759,6 +759,7 @@ class AffiliateStorage {
       WHERE id_affiliate = $1
         AND status = 'APPROVED'
         AND eligible_at <= NOW()
+        AND (holdback_until IS NULL OR holdback_until <= NOW())
         AND id_payout_item IS NULL
         AND disputed = FALSE
       ORDER BY eligible_at ASC
@@ -784,6 +785,7 @@ class AffiliateStorage {
       WHERE id_affiliate = $1
         AND status = 'APPROVED'
         AND eligible_at <= NOW()
+        AND (holdback_until IS NULL OR holdback_until <= NOW())
         AND id_payout_item IS NULL
         AND disputed = FALSE
         AND id_conversion = ANY($2::uuid[])

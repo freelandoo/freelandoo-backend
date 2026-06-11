@@ -23,6 +23,7 @@ const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2"
 const { assertMinorPermission } = require("../utils/supervision");
 const { slugify } = require("../utils/slug");
 const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
+const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CoursesService");
@@ -293,6 +294,14 @@ class CoursesService {
     const enrollment = await CoursesStorage.getEnrollmentByPaymentIntent(pool, paymentIntentId);
     if (!enrollment) return { ignored: true };
     if (enrollment.status === "refunded") return { enrollment, duplicate: true };
+    if (!isFullRefund(charge)) {
+      log.warn("refund.partial_ignored", {
+        enrollment_id: enrollment.id,
+        amount: charge.amount,
+        amount_refunded: charge.amount_refunded,
+      });
+      return { partial: true };
+    }
 
     const client = await pool.connect();
     try {

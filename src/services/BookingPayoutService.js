@@ -2,6 +2,7 @@ const pool = require("../databases");
 const BookingPayoutStorage = require("../storages/BookingPayoutStorage");
 const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("BookingPayoutService");
@@ -151,15 +152,65 @@ class BookingPayoutService {
     );
     const id_booking = r.rows[0]?.id;
     if (!id_booking) return { ignored: true };
+    if (!isFullRefund(charge)) {
+      log.warn("refund.partial_ignored", {
+        id_booking,
+        amount: charge.amount,
+        amount_refunded: charge.amount_refunded,
+      });
+      return { partial: true };
+    }
     const reverted = await BookingPayoutStorage.revertByBooking(pool, id_booking);
     // Clan: reverte também os splits de membros (não há booking payout único).
     const clanReverted = await ClanPayoutStorage.revertBySource(pool, "clan_service", id_booking);
+    // Estorno também cancela o agendamento (o cliente não vê mais "confirmado").
+    await pool.query(
+      `UPDATE public.tb_profile_bookings
+          SET status = 'canceled', payment_status = 'refunded', updated_at = NOW()
+        WHERE id = $1 AND status NOT IN ('canceled','expired')`,
+      [id_booking]
+    );
     log.info("payout.reverted_by_refund", {
       id_booking,
       reverted: !!reverted,
       clan_reverted: clanReverted.length,
     });
     return { ok: true, id_booking };
+  }
+
+  /**
+   * Reconciliação: bookings confirmados/pagos que ficaram SEM linha de payout
+   * (a criação no webhook falhou e só logou). Recria o payout + o split de clan.
+   * Idempotente: createFromBooking tem UNIQUE em id_booking e o split é no-op
+   * se já existir. Roda no scheduler do boot.
+   */
+  static async reconcileMissing() {
+    return runWithLogs(log, "reconcileMissing", () => ({}), async () => {
+      const { rows } = await pool.query(
+        `SELECT b.*
+           FROM public.tb_profile_bookings b
+           LEFT JOIN public.tb_booking_payout p ON p.id_booking = b.id
+          WHERE b.status = 'confirmed'
+            AND b.payment_status = 'paid'
+            AND p.id_payout IS NULL
+            AND b.created_at > NOW() - INTERVAL '30 days'
+          ORDER BY b.created_at ASC
+          LIMIT 50`
+      );
+      if (rows.length === 0) return { processed: 0 };
+      const BookingService = require("./BookingService");
+      let created = 0;
+      for (const booking of rows) {
+        try {
+          const r = await BookingPayoutService.createFromBooking(booking);
+          if (r?.payout) created++;
+          await BookingService.recordClanSplitForBooking(booking);
+        } catch (err) {
+          log.error("reconcile.booking_fail", { id_booking: booking.id, message: err.message });
+        }
+      }
+      return { processed: rows.length, created };
+    });
   }
 }
 

@@ -6,6 +6,7 @@ const ShippingService = require("./ShippingService");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const { purchaseLabel } = require("../integrations/melhorenvio/purchaseLabel");
+const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ProfileProductOrderService");
@@ -209,14 +210,30 @@ class ProfileProductOrderService {
       );
 
       if (!decremented) {
-        // Estoque insuficiente na hora do webhook — cancela e dispara refund
+        // Estoque insuficiente na hora do webhook — cancela e dispara refund.
         await ProfileProductOrderStorage.markCanceled(client, existing.id_order);
+        // Persiste as refs Stripe ANTES de fechar: assim um charge.refunded
+        // posterior localiza o pedido (e não cria comissão de afiliado fantasma).
+        if (payment_intent_id || charge_id) {
+          await client.query(
+            `UPDATE public.tb_profile_product_order
+                SET stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, $2),
+                    stripe_charge_id = COALESCE(stripe_charge_id, $3),
+                    updated_at = NOW()
+              WHERE id_order = $1`,
+            [existing.id_order, payment_intent_id || null, charge_id || null]
+          );
+        }
         await client.query("COMMIT");
         log.warn("confirm.out_of_stock_canceled", { id_order: existing.id_order });
-        if (charge_id) {
-          try { await StripeService.createRefund(charge_id); } catch (err) {
-            log.error("confirm.refund_fail", { charge_id, message: err.message });
-          }
+        // Devolve o dinheiro: por charge se disponível, senão pelo PaymentIntent
+        // (não deixa o comprador pagando por um pedido cancelado).
+        try {
+          if (charge_id) await StripeService.createRefund(charge_id);
+          else if (payment_intent_id) await StripeService.createRefundForPaymentIntent(payment_intent_id);
+          else log.error("confirm.refund_no_ref", { id_order: existing.id_order });
+        } catch (err) {
+          log.error("confirm.refund_fail", { id_order: existing.id_order, message: err.message });
         }
         return { error: "out_of_stock", canceled: true };
       }
@@ -406,6 +423,16 @@ class ProfileProductOrderService {
       order = await ProfileProductOrderStorage.getByPaymentIntent(pool, payment_intent_id);
     }
     if (!order) return { ignored: true };
+
+    // Reembolso parcial (ex.: só o frete) não reverte estoque/saldo inteiros.
+    if (!isFullRefund(charge)) {
+      log.warn("refund.partial_ignored", {
+        id_order: order.id_order,
+        amount: charge.amount,
+        amount_refunded: charge.amount_refunded,
+      });
+      return { partial: true };
+    }
 
     const client = await pool.connect();
     try {
