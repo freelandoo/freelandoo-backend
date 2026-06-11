@@ -577,6 +577,13 @@ async function processEvent(event) {
       const BookingPayoutService = require("./BookingPayoutService");
       const bookingResult = await BookingPayoutService.handleChargeRefunded(charge);
       if (bookingResult && !bookingResult.ignored) break;
+      const polenResult = await PolenProductService.handleChargeRefunded(charge);
+      if (polenResult && !polenResult.ignored) break;
+      const premiumResult = await PremiumService.handleChargeRefunded(charge);
+      if (premiumResult && !premiumResult.ignored) break;
+      const CoursesService = require("./CoursesService");
+      const courseResult = await CoursesService.handleChargeRefunded(charge);
+      if (courseResult && !courseResult.ignored) break;
       await handleChargeRefunded(pool, charge);
       break;
     }

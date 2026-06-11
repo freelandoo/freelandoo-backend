@@ -187,18 +187,70 @@ class CoursesStorage {
    */
   static async upsertEnrollment(
     conn,
-    { courseId, userId, amountCents, currency = "BRL" },
+    {
+      courseId,
+      userId,
+      amountCents,
+      currency = "BRL",
+      stripeSessionId = null,
+      stripePaymentIntent = null,
+      totalCents = null,
+      feeCents = 0,
+    },
   ) {
     const { rows } = await conn.query(
       `INSERT INTO public.course_enrollments
-         (course_id, user_id, amount_paid_cents, currency, status)
-       VALUES ($1, $2, $3, $4, 'active')
+         (course_id, user_id, amount_paid_cents, currency, status,
+          stripe_session_id, stripe_payment_intent, total_cents, fee_cents, refunded_at)
+       VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, NULL)
        ON CONFLICT (course_id, user_id) DO UPDATE
-         SET status = 'active', updated_at = NOW()
+         SET status = 'active',
+             amount_paid_cents = EXCLUDED.amount_paid_cents,
+             currency = EXCLUDED.currency,
+             stripe_session_id = COALESCE(EXCLUDED.stripe_session_id, public.course_enrollments.stripe_session_id),
+             stripe_payment_intent = COALESCE(EXCLUDED.stripe_payment_intent, public.course_enrollments.stripe_payment_intent),
+             total_cents = COALESCE(EXCLUDED.total_cents, public.course_enrollments.total_cents),
+             fee_cents = EXCLUDED.fee_cents,
+             refunded_at = NULL,
+             updated_at = NOW()
        RETURNING *`,
-      [courseId, userId, amountCents, currency],
+      [
+        courseId,
+        userId,
+        amountCents,
+        currency,
+        stripeSessionId,
+        stripePaymentIntent,
+        totalCents,
+        feeCents,
+      ],
     );
     return rows[0];
+  }
+
+  static async getEnrollmentByPaymentIntent(conn, paymentIntentId) {
+    if (!paymentIntentId) return null;
+    const { rows } = await conn.query(
+      `SELECT *
+         FROM public.course_enrollments
+        WHERE stripe_payment_intent = $1
+        LIMIT 1`,
+      [paymentIntentId],
+    );
+    return rows[0] || null;
+  }
+
+  static async markEnrollmentRefunded(conn, id) {
+    const { rows } = await conn.query(
+      `UPDATE public.course_enrollments
+          SET status = 'refunded',
+              refunded_at = COALESCE(refunded_at, NOW()),
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [id],
+    );
+    return rows[0] || null;
   }
 
   static async hasActiveEnrollment(conn, courseId, userId) {

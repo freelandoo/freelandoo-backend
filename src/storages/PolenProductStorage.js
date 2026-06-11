@@ -113,6 +113,15 @@ class PolenProductStorage {
     return rows[0] || null;
   }
 
+  static async getPurchaseByPaymentIntent(conn, paymentIntentId) {
+    if (!paymentIntentId) return null;
+    const { rows } = await conn.query(
+      `SELECT * FROM public.polen_purchases WHERE stripe_payment_intent = $1 LIMIT 1`,
+      [paymentIntentId]
+    );
+    return rows[0] || null;
+  }
+
   static async markPurchasePaid(conn, id, { polens_credited, stripe_payment_intent }) {
     const { rows } = await conn.query(
       `UPDATE public.polen_purchases
@@ -124,6 +133,19 @@ class PolenProductStorage {
         WHERE id = $1
         RETURNING *`,
       [id, polens_credited, stripe_payment_intent || null]
+    );
+    return rows[0] || null;
+  }
+
+  static async markPurchaseRefunded(conn, id) {
+    const { rows } = await conn.query(
+      `UPDATE public.polen_purchases
+          SET status = 'refunded',
+              refunded_at = COALESCE(refunded_at, NOW()),
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [id]
     );
     return rows[0] || null;
   }

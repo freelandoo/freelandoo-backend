@@ -230,6 +230,18 @@ async function createRefund(chargeId) {
 }
 
 /**
+ * Reembolsa pelo PaymentIntent (sem precisar resolver o charge antes). Usado
+ * nos caminhos "pagou mas não recebeu" dos webhooks (estoque esgotado,
+ * premium já ativo) — devolve o dinheiro em vez de deixar o pagamento órfão.
+ */
+async function createRefundForPaymentIntent(paymentIntentId) {
+  return client().refunds.create({
+    payment_intent: paymentIntentId,
+    reason: "requested_by_customer",
+  });
+}
+
+/**
  * Verifica a assinatura do webhook e devolve o evento parseado.
  * `rawBody` deve ser Buffer (express.raw).
  */
@@ -299,6 +311,7 @@ module.exports = {
   retrievePaymentIntent,
   cancelSubscriptionImmediate,
   createRefund,
+  createRefundForPaymentIntent,
   constructWebhookEvent,
   createCoupon,
   createPromotionCode,

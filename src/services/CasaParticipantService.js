@@ -163,11 +163,22 @@ class CasaParticipantService {
       }
 
       // Reserva estoque (NULL = ilimitado).
+      const refundPaymentIntent =
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id || null;
       const reserved = await CasaStoreStorage.reserveStock(client, product.id);
       if (!reserved) {
         // sem estoque: cancela o pedido, mas não derruba o webhook
         await CasaProductStorage.markOrderCanceled(client, session.id);
         await client.query("COMMIT");
+        if (refundPaymentIntent) {
+          try {
+            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+          } catch (err) {
+            log.error("casa.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
+          }
+        }
         return { error: "Produto esgotado no momento da confirmação", order_canceled: true };
       }
 

@@ -18,6 +18,7 @@ const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
+const AffiliateConversionService = require("./AffiliateConversionService");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const { assertMinorPermission } = require("../utils/supervision");
 const { slugify } = require("../utils/slug");
@@ -50,6 +51,11 @@ function parsePriceCents(value) {
 function normalizeStatus(value) {
   const s = String(value || "").toLowerCase();
   return ["draft", "published", "paused"].includes(s) ? s : null;
+}
+
+function toCents(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : fallback;
 }
 
 async function ensureUniqueSlug(conn, base, exceptId = null) {
@@ -220,6 +226,8 @@ class CoursesService {
             // do dono (vai pra matrícula/revenue, sem as taxas embutidas).
             amount_cents: String(display),
             seller_amount_cents: String(seller_cents),
+            service_fee_cents: String(pricing.service_fee_cents || 0),
+            total_cents: String(display),
             // Comissão de afiliado SÓ quando o curso tem opt-in (gate real).
             ...(affiliatesAllowed && body?.coupon_code && affiliate_commission_cents > 0
               ? {
@@ -245,7 +253,13 @@ class CoursesService {
     const userId = meta.user_id;
     // Receita do dono = seller value (price_cents), não o display cobrado. Fallback
     // para amount_cents em sessões legadas (antes do fee model).
-    const amount = Number(meta.seller_amount_cents) || Number(meta.amount_cents) || 0;
+    const amount = toCents(meta.seller_amount_cents, toCents(meta.amount_cents, 0));
+    const totalCents = toCents(session?.amount_total, toCents(meta.total_cents, toCents(meta.amount_cents, amount)));
+    const feeCents = toCents(meta.service_fee_cents, Math.max(0, totalCents - amount));
+    const paymentIntent =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id || null;
     if (!courseId || !userId) {
       return { error: "Metadata inválido" };
     }
@@ -254,6 +268,10 @@ class CoursesService {
       userId,
       amountCents: amount,
       currency: "BRL",
+      stripeSessionId: session.id,
+      stripePaymentIntent: paymentIntent,
+      totalCents,
+      feeCents,
     });
 
     // Curso de clan: divide o líquido (amount = seller, já pós-taxa) IGUAL entre
@@ -265,6 +283,68 @@ class CoursesService {
     }
 
     return { enrollment };
+  }
+
+  static async handleChargeRefunded(charge) {
+    const paymentIntentId =
+      typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id || null;
+    if (!paymentIntentId) return { ignored: true };
+
+    const enrollment = await CoursesStorage.getEnrollmentByPaymentIntent(pool, paymentIntentId);
+    if (!enrollment) return { ignored: true };
+    if (enrollment.status === "refunded") return { enrollment, duplicate: true };
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const updated = await CoursesStorage.markEnrollmentRefunded(client, enrollment.id);
+      await ClanPayoutStorage.revertBySource(
+        client,
+        "clan_course",
+        `${enrollment.course_id}:${enrollment.user_id}`,
+      );
+
+      let order = null;
+      if (enrollment.stripe_session_id) {
+        const bySession = await client.query(
+          `SELECT * FROM public.tb_order
+            WHERE payment_provider = 'stripe' AND payment_provider_ref = $1
+            LIMIT 1`,
+          [enrollment.stripe_session_id],
+        );
+        order = bySession.rows[0] || null;
+      }
+      if (!order) {
+        const byPaymentIntent = await client.query(
+          `SELECT * FROM public.tb_order
+            WHERE payment_provider = 'stripe' AND payment_provider_ref = $1
+            LIMIT 1`,
+          [paymentIntentId],
+        );
+        order = byPaymentIntent.rows[0] || null;
+      }
+      if (order) {
+        await AffiliateConversionService.onOrderStatusChange(client, {
+          order,
+          newStatus: "CANCELED",
+          source: "stripe_webhook",
+          source_event_id: `charge.refunded:${charge.id}`,
+          payload: {
+            charge_id: charge.id,
+            amount_refunded: charge.amount_refunded,
+            course_enrollment_id: enrollment.id,
+          },
+        });
+      }
+
+      await client.query("COMMIT");
+      return { enrollment: updated };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   /**

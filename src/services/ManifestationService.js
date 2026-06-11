@@ -285,6 +285,10 @@ class ManifestationService {
   static async confirmStripeSession(session) {
     const meta = session.metadata || {};
     if (meta.type !== "manifestation") return { ignored: true };
+    const refundPaymentIntent =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id || null;
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -296,11 +300,25 @@ class ManifestationService {
       const product = await ManifestationStorage.getProductById(client, meta.product_id);
       if (!product || !product.is_active) {
         await client.query("ROLLBACK");
+        if (refundPaymentIntent) {
+          try {
+            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+          } catch (err) {
+            log.error("manifestation.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
+          }
+        }
         return { error: "Manifestação não encontrada" };
       }
       const reserved = await ManifestationStorage.reserveStock(client, product.id);
       if (!reserved) {
         await client.query("ROLLBACK");
+        if (refundPaymentIntent) {
+          try {
+            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+          } catch (err) {
+            log.error("manifestation.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
+          }
+        }
         return { error: "Manifestação indisponível" };
       }
       const paymentIntent =
@@ -317,8 +335,20 @@ class ManifestationService {
         stripe_session_id: session.id,
         stripe_payment_intent: paymentIntent,
       });
+      if (!unlock) {
+        await ManifestationStorage.restoreStock(client, product.id);
+        await client.query("COMMIT");
+        if (paymentIntent) {
+          try {
+            await StripeService.createRefundForPaymentIntent(paymentIntent);
+          } catch (err) {
+            log.error("manifestation.confirm.refund_fail", { paymentIntent, message: err.message });
+          }
+        }
+        return { manifestation: null, duplicate: true };
+      }
       await client.query("COMMIT");
-      return { manifestation: unlock, duplicate: !unlock };
+      return { manifestation: unlock, duplicate: false };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

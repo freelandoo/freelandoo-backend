@@ -1,6 +1,6 @@
 // src/storages/AdminTransactionsStorage.js
 //
-// Extrato único de RECEITA da plataforma (Entradas). Une as 6 fontes de
+// Extrato único de RECEITA da plataforma (Entradas). Une as 7 fontes de
 // dinheiro que a plataforma GANHA e fica. Repasses (payout de terceiros) NÃO
 // entram aqui — ficam na seção Repasses.
 //
@@ -36,6 +36,7 @@ module.exports = {
         LEFT JOIN tb_profile pro ON pro.id_profile  = ps.id_profile
         LEFT JOIN tb_category ca ON ca.id_category  = pro.id_category
         WHERE ps.paid_at IS NOT NULL
+          AND ps.refunded_at IS NULL
       ),
       fees AS (
         -- 2) Taxa de agendamento (só a taxa da plataforma, não o bruto)
@@ -133,6 +134,29 @@ module.exports = {
           AND um.refunded_at IS NULL
           AND COALESCE(um.amount_cents, 0) > 0
       ),
+      courses AS (
+        -- 7) Comissão de Cursos (fee_cents = taxa da plataforma persistida na
+        --    matrícula desde a mig 143; vendas anteriores não têm fee gravada).
+        --    Contexto = dono do curso (vendedor).
+        SELECT
+          ce.enrolled_at                  AS occurred_at,
+          ou.id_user                      AS id_user,
+          ou.nome                         AS user_name,
+          ou.email                        AS user_email,
+          pro.id_profile                  AS id_profile,
+          pro.display_name                AS profile_name,
+          ca.desc_category                AS profile_category,
+          'comissao_curso'                AS tipo,
+          ce.fee_cents                    AS amount_cents
+        FROM course_enrollments ce
+        JOIN courses  co  ON co.id      = ce.course_id
+        JOIN tb_user  ou  ON ou.id_user = co.owner_user_id
+        LEFT JOIN tb_profile pro ON pro.id_profile = co.profile_id
+        LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
+        WHERE COALESCE(ce.fee_cents, 0) > 0
+          AND ce.refunded_at IS NULL
+          AND ce.status = 'active'
+      ),
       all_tx AS (
         SELECT * FROM subs
         UNION ALL SELECT * FROM fees
@@ -140,6 +164,7 @@ module.exports = {
         UNION ALL SELECT * FROM polens
         UNION ALL SELECT * FROM premium
         UNION ALL SELECT * FROM manifestation
+        UNION ALL SELECT * FROM courses
       )
       SELECT *
       FROM all_tx

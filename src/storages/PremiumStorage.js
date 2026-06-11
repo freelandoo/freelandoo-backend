@@ -169,10 +169,46 @@ class PremiumStorage {
     return rows[0] || null;
   }
 
+  static async markFailed(conn, id) {
+    const { rows } = await conn.query(
+      `UPDATE public.profile_premium
+          SET status = 'failed',
+              is_active = FALSE,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [id]
+    );
+    return rows[0] || null;
+  }
+
   static async getByStripeSession(conn, sessionId) {
     const { rows } = await conn.query(
       `SELECT * FROM public.profile_premium WHERE stripe_session_id = $1 LIMIT 1`,
       [sessionId]
+    );
+    return rows[0] || null;
+  }
+
+  static async getByPaymentIntent(conn, paymentIntentId) {
+    if (!paymentIntentId) return null;
+    const { rows } = await conn.query(
+      `SELECT * FROM public.profile_premium WHERE stripe_payment_intent = $1 LIMIT 1`,
+      [paymentIntentId]
+    );
+    return rows[0] || null;
+  }
+
+  static async markRefunded(conn, id) {
+    const { rows } = await conn.query(
+      `UPDATE public.profile_premium
+          SET status = CASE WHEN status = 'active' THEN 'expired' ELSE 'failed' END,
+              is_active = FALSE,
+              refunded_at = COALESCE(refunded_at, NOW()),
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [id]
     );
     return rows[0] || null;
   }

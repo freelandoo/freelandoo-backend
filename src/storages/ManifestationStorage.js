@@ -629,6 +629,16 @@ class ManifestationStorage {
     return rows[0] || null;
   }
 
+  static async restoreStock(conn, productId) {
+    await conn.query(
+      `UPDATE public.manifestation_products
+          SET stock = CASE WHEN stock IS NULL THEN NULL ELSE stock + 1 END,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [productId]
+    );
+  }
+
   static async createUserManifestation(conn, data) {
     const { rows } = await conn.query(
       `INSERT INTO public.user_manifestations

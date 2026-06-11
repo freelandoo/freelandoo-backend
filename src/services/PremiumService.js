@@ -236,21 +236,26 @@ class PremiumService {
         return { premium: existing, duplicate: true };
       }
 
+      const paymentIntent = typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id || null;
+
       // Cota e regra "1 ativo por perfil" são checadas de novo no webhook
       // (defesa em profundidade — usuário pode ter ativo via Poléns enquanto Stripe processava).
       if (await PremiumStorage.hasActiveForProfile(client, meta.profile_id)) {
         // Se já está ativo por outro caminho, marca esta sessão como failed pra não confundir.
-        await client.query(
-          `UPDATE public.profile_premium SET status = 'failed', updated_at = NOW() WHERE id = $1`,
-          [existing?.id]
-        );
+        if (existing?.id) await PremiumStorage.markFailed(client, existing.id);
+        const refundPaymentIntent = paymentIntent;
         await client.query("COMMIT");
+        if (refundPaymentIntent) {
+          try {
+            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+          } catch (err) {
+            log.error("premium.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
+          }
+        }
         return { error: "Perfil já tem premium ativo", failed_id: existing?.id };
       }
-
-      const paymentIntent = typeof session.payment_intent === "string"
-        ? session.payment_intent
-        : session.payment_intent?.id || null;
 
       let pending = existing;
       if (!pending) {
@@ -278,6 +283,19 @@ class PremiumService {
     } finally {
       client.release();
     }
+  }
+
+  static async handleChargeRefunded(charge) {
+    const paymentIntentId =
+      typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id || null;
+    if (!paymentIntentId) return { ignored: true };
+
+    const premium = await PremiumStorage.getByPaymentIntent(pool, paymentIntentId);
+    if (!premium) return { ignored: true };
+    if (premium.refunded_at) return { premium, duplicate: true };
+
+    const updated = await PremiumStorage.markRefunded(pool, premium.id);
+    return { premium: updated };
   }
 
   // ---------- Admin ----------

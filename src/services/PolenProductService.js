@@ -250,6 +250,48 @@ class PolenProductService {
     }
   }
 
+  static async handleChargeRefunded(charge) {
+    const paymentIntentId =
+      typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id || null;
+    if (!paymentIntentId) return { ignored: true };
+
+    const purchase = await PolenProductStorage.getPurchaseByPaymentIntent(pool, paymentIntentId);
+    if (!purchase) return { ignored: true };
+    if (purchase.status === "refunded") return { purchase, duplicate: true };
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const credited = Number(purchase.polens_credited) || 0;
+      let reversal = null;
+      if (credited > 0) {
+        const wallet = await PolenStorage.getOrCreateWallet(client, purchase.user_id);
+        reversal = await PolenStorage.reverseCredit(client, {
+          user_id: purchase.user_id,
+          wallet_id: wallet.id,
+          amount: credited,
+          source: "polen_purchase_refund",
+          source_id: String(purchase.id),
+          metadata: {
+            purchase_id: purchase.id,
+            product_id: purchase.product_id,
+            stripe_payment_intent: paymentIntentId,
+            stripe_charge_id: charge.id || null,
+            amount_refunded: charge.amount_refunded || null,
+          },
+        });
+      }
+      const updated = await PolenProductStorage.markPurchaseRefunded(client, purchase.id);
+      await client.query("COMMIT");
+      return { purchase: updated, reversal };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   static async adminUploadImage(file) {
     return runWithLogs(log, "adminUploadImage", () => ({ name: file?.originalname }), async () => {
       if (!file?.buffer) return { error: "Arquivo obrigatório" };

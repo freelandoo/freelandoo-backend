@@ -117,6 +117,43 @@ class PolenStorage {
     return { wallet: walletRows[0], transaction: txRows[0] };
   }
 
+  static async reverseCredit(conn, { user_id, wallet_id, amount, source, source_id, metadata }) {
+    const value = Math.abs(Number(amount) || 0);
+    if (value <= 0) return null;
+    const { rows } = await conn.query(
+      `WITH inserted AS (
+         INSERT INTO public.polen_transactions
+           (user_id, wallet_id, type, amount, source, source_id, status, metadata)
+         VALUES ($1, $2, 'reversal', $3, $4, $5, 'posted', $6)
+         ON CONFLICT DO NOTHING
+         RETURNING *
+       ),
+       updated_wallet AS (
+         UPDATE public.polen_wallets
+            SET balance = balance + (SELECT amount FROM inserted),
+                updated_at = NOW()
+          WHERE id = $2
+            AND user_id = $1
+            AND EXISTS (SELECT 1 FROM inserted)
+          RETURNING *
+       )
+       SELECT
+         (SELECT row_to_json(updated_wallet) FROM updated_wallet) AS wallet,
+         (SELECT row_to_json(inserted) FROM inserted) AS transaction`,
+      [
+        user_id,
+        wallet_id,
+        -value,
+        source || null,
+        source_id || null,
+        metadata || {},
+      ]
+    );
+    const row = rows[0] || {};
+    if (!row.transaction) return null;
+    return { wallet: row.wallet, transaction: row.transaction };
+  }
+
   static async createRewardEvent(conn, data) {
     const { rows } = await conn.query(
       `INSERT INTO public.rewarded_ad_events
