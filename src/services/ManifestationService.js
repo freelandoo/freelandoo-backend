@@ -252,7 +252,7 @@ class ManifestationService {
 
   static async createStripeCheckout(user, body = {}) {
     return runWithLogs(log, "createStripeCheckout", () => ({ id_user: user?.id_user, product_id: body?.product_id }), async () => {
-      if (!user?.id_user) return { error: "NÃ£o autenticado" };
+      if (!user?.id_user) return { error: "Não autenticado" };
       const product = await ManifestationStorage.getProductById(pool, body.product_id);
       if (!product || !product.is_active) return { error: "Produto nÃ£o encontrado" };
       const amount = Number(product.price_cents) || 0;
@@ -359,7 +359,7 @@ class ManifestationService {
 
   static async setProfileApply(user, profileId, body = {}) {
     return runWithLogs(log, "setProfileApply", () => ({ id_user: user?.id_user, profileId }), async () => {
-      if (!user?.id_user) return { error: "NÃ£o autenticado" };
+      if (!user?.id_user) return { error: "Não autenticado" };
       const active = await ManifestationStorage.getActiveForUser(pool, user.id_user);
       if (!active) return { error: "VocÃª nÃ£o tem manifestaÃ§Ã£o ativa" };
       const profile = await ManifestationStorage.getOwnedProfileForApply(pool, {
