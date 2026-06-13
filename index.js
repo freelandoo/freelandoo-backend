@@ -203,6 +203,21 @@ const server = app.listen(PORT, () => {
   // meia-noite de São Paulo. Apaga tb_chat_message, tb_chat_report,
   // tb_chat_moderation_result e tb_chat_presence. Mantém salas, settings
   // e reputação por usuário. Não há objetos em R2 — chat ao vivo é texto-only.
+  // Job: retenção da ferramenta /comprimir. Apaga objetos de temp-compress/ no
+  // R2 com mais de 3h — rede de segurança caso o lifecycle do bucket não esteja
+  // configurado ou só expire por dia. Roda 10 min após boot e a cada 1h.
+  const presignCompress = require("./src/integrations/r2/presignCompressUpload");
+  const tickCompressSweep = async () => {
+    try {
+      const result = await presignCompress.sweepExpired();
+      if (result?.deleted) bootLog.info("compress.swept", result);
+    } catch (err) {
+      bootLog.error("compress.sweep_error", { message: err.message });
+    }
+  };
+  setTimeout(tickCompressSweep, 10 * 60 * 1000);
+  setInterval(tickCompressSweep, 60 * 60 * 1000);
+
   const ChatStorage = require("./src/storages/ChatStorage");
   const SP_TZ = "America/Sao_Paulo";
   const msUntilNextMidnightSP = () => {

@@ -643,6 +643,77 @@ async function processUserMedia(file) {
   throw httpError("Tipo de arquivo nao permitido");
 }
 
+/**
+ * Comprime um vídeo já em disco (ferramenta /comprimir). Diferente de
+ * processVideo, NÃO corta aspect ratio nem opera em buffer — só reduz peso
+ * preservando o enquadramento (downscale do lado maior pra até `maxLongSide`).
+ * Trabalha de arquivo→arquivo: o vídeo grande é baixado do R2 pro disco e o
+ * ffmpeg roda num processo separado, então a memória do Node não segura os
+ * bytes do vídeo. Retorna o caminho de saída + tamanho.
+ *
+ * Faz um 2º passe mais agressivo se a 1ª saída ainda passar de `targetBytes`.
+ */
+async function compressVideoFile(inputPath, outDir, options = {}) {
+  const maxLongSide = options.maxLongSide || 1280;
+  const targetBytes = options.targetBytes || 80 * MB;
+
+  async function encode(outPath, crf, longSide) {
+    // scale: limita o lado maior a `longSide` sem nunca ampliar (min() vs dims
+    // originais) e força dimensões pares (force_divisible_by=2 — exigência do x264).
+    const filter =
+      `scale=min(${longSide}\\,iw):min(${longSide}\\,ih)` +
+      `:force_original_aspect_ratio=decrease:force_divisible_by=2`;
+    await runFfmpeg(
+      [
+        "-y",
+        "-i",
+        inputPath,
+        "-map_metadata",
+        "-1",
+        "-vf",
+        filter,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        String(crf),
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        outPath,
+      ],
+      9 * 60 * 1000
+    );
+  }
+
+  const firstPath = path.join(outDir, "output.mp4");
+  await encode(firstPath, 28, maxLongSide);
+  let outputPath = firstPath;
+  let size = (await fs.stat(firstPath)).size;
+
+  if (size > targetBytes) {
+    // Ainda grande — 2º passe com mais compressão e resolução menor.
+    const secondPath = path.join(outDir, "output-2.mp4");
+    try {
+      await encode(secondPath, 32, Math.min(maxLongSide, 960));
+      const secondSize = (await fs.stat(secondPath)).size;
+      if (secondSize < size) {
+        await fs.rm(firstPath, { force: true }).catch(() => {});
+        outputPath = secondPath;
+        size = secondSize;
+      }
+    } catch {
+      // mantém a 1ª saída se o 2º passe falhar
+    }
+  }
+
+  return { outputPath, size };
+}
+
 module.exports = {
   POST_IMAGE_MAX_BYTES,
   AVATAR_IMAGE_MAX_BYTES,
@@ -658,4 +729,5 @@ module.exports = {
   processConversationAudio,
   getVideoDuration,
   splitVideoIntoChunks,
+  compressVideoFile,
 };

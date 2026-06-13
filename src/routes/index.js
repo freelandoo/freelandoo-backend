@@ -62,6 +62,7 @@ const userPublicRoutes = require("./userPublic.routes");
 const portfolioCommentRoutes = require("./portfolioComment.routes");
 const storyRoutes = require("./storyRoutes");
 const storyPublicRoutes = require("./storyPublicRoutes");
+const compressRoutes = require("./compressRoutes");
 const notificationRoutes = require("./notificationRoutes");
 const chatRoutes = require("./chatRoutes");
 const supervisionRoutes = require("./supervision.routes");
@@ -168,6 +169,7 @@ module.exports = (app) => {
   app.use("/portfolio", portfolioCommentRoutes);
   app.use("/me/stories", storyRoutes);
   app.use("/stories", storyPublicRoutes);
+  app.use("/me/compress", compressRoutes);
   app.use("/me/notifications", notificationRoutes);
   app.use("/me/engagement", engagementRoutes);
   app.use("/chat", chatRoutes);
