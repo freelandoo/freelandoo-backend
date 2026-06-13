@@ -213,7 +213,7 @@ class CoursesStorage {
              fee_cents = EXCLUDED.fee_cents,
              refunded_at = NULL,
              updated_at = NOW()
-       RETURNING *`,
+       RETURNING *, (xmax = 0) AS was_inserted`,
       [
         courseId,
         userId,

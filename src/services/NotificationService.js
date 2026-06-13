@@ -284,6 +284,87 @@ class NotificationService {
     });
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Comercial (Slice C): venda de produto, agendamento recebido, venda de curso.
+  // Recipient é sempre o VENDEDOR/profissional (user). Idempotência fica a cargo
+  // de quem chama (todos os 3 hooks só disparam na transição real do pagamento).
+  // ──────────────────────────────────────────────────────────────────────────
+
+  static async notifyProductSale({
+    seller_user_id,
+    seller_profile_id,
+    buyer_user_id,
+    id_order,
+    amount_cents,
+    product_title,
+  }) {
+    if (!seller_user_id || !id_order) return null;
+    return safeNotify({
+      id_recipient_user: seller_user_id,
+      id_recipient_profile: seller_profile_id || null,
+      type: "product_sale",
+      id_actor_user: buyer_user_id || null,
+      entity_type: "product_order",
+      entity_id: id_order,
+      payload: {
+        amount_cents: Number.isFinite(amount_cents) ? amount_cents : null,
+        preview: typeof product_title === "string" ? product_title.slice(0, 140) : null,
+      },
+    });
+  }
+
+  static async notifyBookingReceived({
+    owner_user_id,
+    id_profile,
+    id_booking,
+    client_user_id,
+    amount_cents,
+    preview,
+  }) {
+    if (!id_booking) return null;
+    const recipient =
+      owner_user_id ||
+      (id_profile
+        ? await NotificationStorage.resolveProfileOwnerUserId(pool, id_profile)
+        : null);
+    if (!recipient) return null;
+    return safeNotify({
+      id_recipient_user: recipient,
+      id_recipient_profile: id_profile,
+      type: "booking_received",
+      id_actor_user: client_user_id || null,
+      entity_type: "booking",
+      entity_id: id_booking,
+      payload: {
+        amount_cents: Number.isFinite(amount_cents) ? amount_cents : null,
+        preview: typeof preview === "string" ? preview.slice(0, 140) : null,
+      },
+    });
+  }
+
+  static async notifyCourseSale({
+    owner_user_id,
+    owner_profile_id,
+    buyer_user_id,
+    id_course,
+    amount_cents,
+    course_title,
+  }) {
+    if (!owner_user_id || !id_course) return null;
+    return safeNotify({
+      id_recipient_user: owner_user_id,
+      id_recipient_profile: owner_profile_id || null,
+      type: "course_sale",
+      id_actor_user: buyer_user_id || null,
+      entity_type: "course",
+      entity_id: id_course,
+      payload: {
+        amount_cents: Number.isFinite(amount_cents) ? amount_cents : null,
+        preview: typeof course_title === "string" ? course_title.slice(0, 140) : null,
+      },
+    });
+  }
+
   /**
    * Notificação de pedido de permissão: menor pede ao responsável para
    * liberar um toggle (ex.: can_sell_courses).

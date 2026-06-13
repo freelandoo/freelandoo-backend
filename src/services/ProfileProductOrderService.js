@@ -5,6 +5,7 @@ const SellerBalanceStorage = require("../storages/SellerBalanceStorage");
 const ShippingService = require("./ShippingService");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
+const NotificationService = require("./NotificationService");
 const { purchaseLabel } = require("../integrations/melhorenvio/purchaseLabel");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -279,6 +280,16 @@ class ProfileProductOrderService {
       });
 
       await client.query("COMMIT");
+
+      // Notifica o vendedor (fire-and-forget). Só chega aqui na transição real
+      // pra 'paid' (o guard no topo barra reprocessamento do webhook).
+      NotificationService.notifyProductSale({
+        seller_user_id: paid.id_seller_user,
+        seller_profile_id: paid.id_seller_profile,
+        buyer_user_id: paid.id_buyer_user,
+        id_order: paid.id_order,
+        amount_cents: net,
+      }).catch(() => {});
 
       // Fire-and-forget: compra etiqueta no Melhor Envio. Falhas não bloqueiam
       // o webhook — vão pro job de retry.

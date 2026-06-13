@@ -19,6 +19,7 @@ const ProfileStorage = require("../storages/ProfileStorage");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const AffiliateConversionService = require("./AffiliateConversionService");
+const NotificationService = require("./NotificationService");
 const uploadCourseImageToR2 = require("../integrations/r2/uploadCourseImageToR2");
 const { assertMinorPermission } = require("../utils/supervision");
 const { slugify } = require("../utils/slug");
@@ -281,6 +282,26 @@ class CoursesService {
       await CoursesService.recordClanSplitForCourse(courseId, userId, amount);
     } catch (err) {
       log.error("course.clan_split.fail", { courseId, error: err.message });
+    }
+
+    // Notifica o dono do curso só na 1ª matrícula (was_inserted) — webhook é
+    // at-least-once, então DO UPDATE em retry não deve renotificar.
+    if (enrollment?.was_inserted) {
+      try {
+        const course = await CoursesStorage.getById(pool, courseId);
+        if (course) {
+          NotificationService.notifyCourseSale({
+            owner_user_id: course.owner_user_id,
+            owner_profile_id: course.profile_id,
+            buyer_user_id: userId,
+            id_course: courseId,
+            amount_cents: amount,
+            course_title: course.title,
+          }).catch(() => {});
+        }
+      } catch (err) {
+        log.warn("course.notify_sale.fail", { courseId, error: err.message });
+      }
     }
 
     return { enrollment };

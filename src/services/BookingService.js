@@ -6,6 +6,7 @@ const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
 const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
+const NotificationService = require("./NotificationService");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("BookingService");
@@ -267,6 +268,15 @@ class BookingService {
       return null;
     }
     log.info("booking.confirmed", { bookingId: booking.id, sessionId });
+    // Notifica o profissional (fire-and-forget). confirmBySessionId só transita
+    // bookings 'pending_payment' → na retry do webhook retorna null e não chega aqui.
+    NotificationService.notifyBookingReceived({
+      owner_user_id: booking.profile_owner_user_id,
+      id_profile: booking.id_profile,
+      id_booking: booking.id,
+      client_user_id: booking.id_client_user,
+      amount_cents: Number(booking.professional_amount) || null,
+    }).catch(() => {});
     try {
       await BookingService.recordClanSplitForBooking(booking);
     } catch (err) {
