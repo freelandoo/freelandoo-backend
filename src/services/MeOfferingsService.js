@@ -36,10 +36,11 @@ class MeOfferingsService {
                p.sub_profile_slug,
                u.username,
                (
+                 -- tb_profile_product_media não tem deleted_at (delete físico
+                 -- com ON DELETE CASCADE, mig 063); capa = primeira por sort.
                  SELECT media_url FROM public.tb_profile_product_media m
                   WHERE m.id_profile_product = pp.id_profile_product
-                    AND m.deleted_at IS NULL
-                  ORDER BY m.created_at ASC LIMIT 1
+                  ORDER BY m.sort_order ASC, m.created_at ASC LIMIT 1
                ) AS image_url
              FROM public.tb_profile_product pp
              JOIN public.tb_profile p ON p.id_profile = pp.id_profile
