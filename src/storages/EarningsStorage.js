@@ -255,8 +255,41 @@ async function dailySeries(db, { userId, profileId = null, from, to }) {
   return r.rows;
 }
 
+/**
+ * Faturamento mensal "realizado" (status paid|available) num intervalo — base do
+ * termômetro do teto MEI. Usa a MESMA união de fontes do extrato (single source
+ * of truth). Datado por paid_at > available_at > created_at. Retorna só os meses
+ * com movimento ('YYYY-MM'); o service preenche os zeros.
+ */
+async function monthlyRealizedForRange(db, { userId, from, to }) {
+  const sql = `
+    WITH all_rows AS (${buildUnion(null)}),
+    dated AS (
+      SELECT
+        COALESCE(paid_at, available_at, created_at) AS occurred_at,
+        status,
+        net_cents
+      FROM all_rows
+      WHERE status IN ('paid','available')
+    )
+    SELECT
+      to_char(date_trunc('month', occurred_at), 'YYYY-MM')   AS month,
+      COALESCE(SUM(net_cents), 0)::bigint                     AS net_cents,
+      COUNT(*)::int                                           AS count
+      FROM dated
+     WHERE occurred_at >= $3::timestamptz
+       AND occurred_at <  $4::timestamptz
+     GROUP BY 1
+     ORDER BY 1
+  `;
+  // buildUnion usa $1 (userId) e $2 (profileId, aqui sempre null = todas as fontes).
+  const r = await db.query(sql, [userId, null, from, to]);
+  return r.rows;
+}
+
 module.exports = {
   listEarnings,
   aggregates,
   dailySeries,
+  monthlyRealizedForRange,
 };
