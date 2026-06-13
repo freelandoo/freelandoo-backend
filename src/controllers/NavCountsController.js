@@ -2,6 +2,7 @@ const ConversationService = require("../services/ConversationService");
 const ServiceRequestService = require("../services/ServiceRequestService");
 const CourseRequestService = require("../services/CourseRequestService");
 const NotificationService = require("../services/NotificationService");
+const ChatService = require("../services/ChatService");
 
 function safeResult(promise) {
   return promise
@@ -20,14 +21,16 @@ class NavCountsController {
         conversations: { total: 0, by_actor: [] },
         serviceRequests: { has_new: false, unread_chats: 0 },
         notifications: { unread_count: 0 },
+        chat: { global: false, machines: [], total: 0 },
       });
     }
 
-    const [conv, sr, cr, notif] = await Promise.all([
+    const [conv, sr, cr, notif, chat] = await Promise.all([
       safeResult(ConversationService.unreadSummary(req.user)),
       safeResult(ServiceRequestService.badgeForUser(req.user)),
       safeResult(CourseRequestService.badgeForUser(req.user)),
       safeResult(NotificationService.unreadCount(req.user)),
+      safeResult(ChatService.unreadSummary(req.user)),
     ]);
 
     const conversations =
@@ -51,7 +54,16 @@ class NavCountsController {
         ? { unread_count: Number(notif.unread) || Number(notif.unread_count) || 0 }
         : { unread_count: 0 };
 
-    return res.json({ conversations, serviceRequests, notifications });
+    const chatBadges =
+      chat && !chat.error
+        ? {
+            global: !!chat.global,
+            machines: Array.isArray(chat.machines) ? chat.machines : [],
+            total: Number(chat.total) || 0,
+          }
+        : { global: false, machines: [], total: 0 };
+
+    return res.json({ conversations, serviceRequests, notifications, chat: chatBadges });
   }
 }
 

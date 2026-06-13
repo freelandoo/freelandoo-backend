@@ -9,6 +9,11 @@ class ChatController {
     return sendServiceResult(res, result);
   }
 
+  static async unread(req, res) {
+    const result = await ChatService.unreadSummary(req.user);
+    return sendServiceResult(res, result);
+  }
+
   static async join(req, res) {
     const result = await ChatService.joinRoom(req.user, req.body);
     return sendServiceResult(res, result);

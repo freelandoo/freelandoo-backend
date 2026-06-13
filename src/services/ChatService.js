@@ -2,6 +2,7 @@
 
 const pool = require("../databases");
 const ChatStorage = require("../storages/ChatStorage");
+const ChatReadStorage = require("../storages/ChatReadStorage");
 const ChatModerationService = require("./ChatModerationService");
 const {
   assertMinorPermission,
@@ -25,6 +26,12 @@ const UUID_RE =
  * - Comprime espaços/newlines excessivos.
  * - Limita comprimento.
  */
+// Escopo de não-lido de uma sala (não a instância): 'global' ou 'machine:<id>'.
+function scopeForRoom(room) {
+  if (!room) return null;
+  return room.type === "global" ? "global" : `machine:${room.id_machine}`;
+}
+
 function sanitizeContent(raw) {
   if (typeof raw !== "string") return "";
   let s = raw
@@ -284,6 +291,12 @@ class ChatService {
           id_user: user.id_user,
         });
 
+        // marca o escopo (global/enxame) como lido — apaga a bolinha de não-lido
+        await ChatReadStorage.markRead(pool, {
+          id_user: user.id_user,
+          scope: scopeForRoom(room),
+        }).catch(() => {});
+
         const rows = await ChatStorage.listMessages(pool, {
           id_chat_room,
           before,
@@ -390,6 +403,12 @@ class ChatService {
           id_user: user.id_user,
         });
 
+        // quem envia está lendo → marca o escopo como lido
+        await ChatReadStorage.markRead(pool, {
+          id_user: user.id_user,
+          scope: scopeForRoom(room),
+        }).catch(() => {});
+
         // re-lê com enriquecimento (mesmo formato do list)
         const enriched = await ChatStorage.listMessages(pool, {
           id_chat_room,
@@ -459,6 +478,45 @@ class ChatService {
           log.warn("report.post_hook_fail", { id_chat_message, message: err.message });
         }
         return { ok: true };
+      }
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // Não-lido (bolinhas): quais escopos têm mensagem nova desde a última leitura
+  // ------------------------------------------------------------------
+  static async unreadSummary(user) {
+    return runWithLogs(
+      log,
+      "unreadSummary",
+      () => ({ id_user: user?.id_user }),
+      async () => {
+        if (!user?.id_user) {
+          return { global: false, machines: [], total: 0 };
+        }
+        const [activity, reads] = await Promise.all([
+          ChatReadStorage.activityByScope(pool, user.id_user),
+          ChatReadStorage.readByScope(pool, user.id_user),
+        ]);
+        let global = false;
+        const machines = [];
+        for (const row of activity) {
+          const lastRead = reads.get(row.scope);
+          const lastMsg = row.last_msg_at ? new Date(row.last_msg_at).getTime() : 0;
+          const seen = lastRead ? new Date(lastRead).getTime() : 0;
+          if (lastMsg <= seen) continue; // já lido
+          if (row.scope === "global") {
+            global = true;
+          } else if (row.scope.startsWith("machine:")) {
+            const id_machine = Number(row.scope.slice("machine:".length));
+            if (Number.isFinite(id_machine)) machines.push(id_machine);
+          }
+        }
+        return {
+          global,
+          machines,
+          total: (global ? 1 : 0) + machines.length,
+        };
       }
     );
   }

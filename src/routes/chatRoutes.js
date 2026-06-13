@@ -11,6 +11,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get("/machines", asyncHandler(ChatController.machines));
+router.get("/unread", asyncHandler(ChatController.unread));
 router.post("/join", asyncHandler(ChatController.join));
 
 router.post("/rooms/:id_chat_room/heartbeat", asyncHandler(ChatController.heartbeat));
