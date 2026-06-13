@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const pool = require("../databases");
 const LiveStorage = require("../storages/LiveStorage");
 const PolenStorage = require("../storages/PolenStorage");
+const NotificationService = require("./NotificationService");
 const livekit = require("../utils/livekit");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -249,6 +250,17 @@ class LiveService {
             message,
           });
           await client.query("COMMIT");
+
+          // Notifica o dono da live que recebeu um presente (fire-and-forget, WS).
+          // safeNotify pula se o próprio dono enviar (sender == host).
+          NotificationService.notifyLiveGift({
+            host_user_id: live.id_user,
+            sender_user_id: user.id_user,
+            id_live,
+            gift_name: gift.name,
+            polens: amount,
+          }).catch(() => {});
+
           return {
             event: { id: event.id, created_at: event.created_at },
             polens_spent: amount,

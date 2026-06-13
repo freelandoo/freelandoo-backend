@@ -3,6 +3,7 @@ const ClanStorage = require("../storages/ClanStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
 const ConversationStorage = require("../storages/ConversationStorage");
 const StripeService = require("./StripeService");
+const NotificationService = require("./NotificationService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 async function assertClanOwner(conn, id_clan_profile, id_user) {
@@ -463,6 +464,15 @@ class ClanService {
           }
 
           await client.query("COMMIT");
+
+          // Notifica o dono do subperfil convidado (fire-and-forget, realtime WS).
+          NotificationService.notifyClanInvite({
+            invited_user_id: invited.id_user,
+            actor_user_id: user.id_user,
+            id_clan_profile,
+            clan_name: clan.display_name,
+          }).catch(() => {});
+
           return { message: "Convite enviado", invite };
         } catch (err) {
           await client.query("ROLLBACK");
@@ -630,6 +640,13 @@ class ClanService {
           );
 
           await client.query("COMMIT");
+
+          // Notifica o dono do clan que um membro entrou (fire-and-forget, WS).
+          NotificationService.notifyClanMemberJoined({
+            id_clan_profile: invite.id_clan_profile,
+            member_user_id: user.id_user,
+            member_profile_id: invite.id_invited_profile,
+          }).catch(() => {});
 
           // Entra no grupo de chat do clan (fire-and-forget)
           try {

@@ -390,6 +390,72 @@ class NotificationService {
     });
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Social extra (Slice F): clan e presente em live. Todos 1:1, fire-and-forget.
+  // ──────────────────────────────────────────────────────────────────────────
+  static async notifyClanInvite({
+    invited_user_id,
+    actor_user_id,
+    id_clan_profile,
+    clan_name,
+  }) {
+    if (!invited_user_id || !id_clan_profile) return null;
+    return safeNotify({
+      id_recipient_user: invited_user_id,
+      id_recipient_profile: null,
+      type: "clan_invite",
+      id_actor_user: actor_user_id || null,
+      entity_type: "clan",
+      entity_id: id_clan_profile,
+      payload: { preview: typeof clan_name === "string" ? clan_name.slice(0, 140) : null },
+    });
+  }
+
+  static async notifyClanMemberJoined({
+    owner_user_id,
+    id_clan_profile,
+    member_user_id,
+    member_profile_id,
+  }) {
+    if (!id_clan_profile) return null;
+    const recipient =
+      owner_user_id ||
+      (await NotificationStorage.resolveProfileOwnerUserId(pool, id_clan_profile));
+    if (!recipient) return null;
+    return safeNotify({
+      id_recipient_user: recipient,
+      id_recipient_profile: id_clan_profile,
+      type: "clan_member_joined",
+      id_actor_user: member_user_id || null,
+      id_actor_profile: member_profile_id || null,
+      entity_type: "clan",
+      entity_id: id_clan_profile,
+      payload: {},
+    });
+  }
+
+  static async notifyLiveGift({
+    host_user_id,
+    sender_user_id,
+    id_live,
+    gift_name,
+    polens,
+  }) {
+    if (!host_user_id || !id_live) return null;
+    return safeNotify({
+      id_recipient_user: host_user_id,
+      id_recipient_profile: null,
+      type: "live_gift_received",
+      id_actor_user: sender_user_id || null,
+      entity_type: "live",
+      entity_id: id_live,
+      payload: {
+        preview: typeof gift_name === "string" ? gift_name.slice(0, 60) : null,
+        polens: Number.isFinite(polens) ? polens : null,
+      },
+    });
+  }
+
   /**
    * Notificação de pedido de permissão: menor pede ao responsável para
    * liberar um toggle (ex.: can_sell_courses).
