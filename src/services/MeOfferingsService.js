@@ -52,6 +52,7 @@ class MeOfferingsService {
           );
           result.products = rows.map((r) => ({
             id: r.id,
+            id_profile: r.id_profile,
             kind: "product",
             name: r.name,
             description: r.description,
@@ -89,6 +90,7 @@ class MeOfferingsService {
           );
           result.services = rows.map((r) => ({
             id: r.id,
+            id_profile: r.id_profile,
             kind: "service",
             name: r.name,
             description: r.description,
@@ -130,6 +132,7 @@ class MeOfferingsService {
             price_cents: r.price_cents,
             image_url: r.cover_url,
             slug: r.slug,
+            status: r.status,
             published: !!r.published_at,
             profile_display_name: r.profile_display_name,
             username: r.username,
