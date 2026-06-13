@@ -10,6 +10,7 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs/promises");
 const presign = require("../integrations/r2/presignCompressUpload");
+const CompressJobStorage = require("../storages/CompressJobStorage");
 const { compressVideoFile } = require("../utils/mediaProcessing");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -17,10 +18,28 @@ const log = createLogger("CompressService");
 
 const MB = 1024 * 1024;
 const MAX_INPUT_BYTES = 500 * MB; // teto de entrada (o ponto é comprimir o que é grande)
-const ALLOWED_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+const ALLOWED_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+
+// Limite por hora, por conta (ffmpeg no Railway = custo de CPU). Conta paga =
+// dono de subperfil com assinatura ativa.
+const HOURLY_LIMIT_FREE = 2;
+const HOURLY_LIMIT_PAID = 10;
 
 function err(message) {
   return { error: message };
+}
+
+// Resolve o teto da hora para o usuário e checa o uso atual.
+// Retorna { limit, used, ok }.
+async function checkQuota(id_user) {
+  const isPaid = await CompressJobStorage.isPaidUser(id_user);
+  const limit = isPaid ? HOURLY_LIMIT_PAID : HOURLY_LIMIT_FREE;
+  const used = await CompressJobStorage.countRecent(id_user, 60);
+  return { limit, used, ok: used < limit, isPaid };
+}
+
+function quotaMessage(limit) {
+  return `Você atingiu o limite de ${limit} ${limit === 1 ? "vídeo" : "vídeos"} por hora. Tente de novo mais tarde.`;
 }
 
 class CompressService {
@@ -38,6 +57,10 @@ class CompressService {
         const ext = presign.extForType(contentType);
         if (!ext) return err("Formato de vídeo não aceito. Envie MP4, WebM ou MOV.");
 
+        // Falha cedo (antes do upload de até 500MB) se a cota da hora estourou.
+        const quota = await checkQuota(user.id_user);
+        if (!quota.ok) return err(quotaMessage(quota.limit));
+
         const { base } = presign.buildJob(user.id_user);
         const key = presign.inputKey(base, ext);
         const url = await presign.presignPut(key, contentType);
@@ -45,6 +68,7 @@ class CompressService {
         return {
           expires_in: presign.DEFAULT_EXPIRES,
           max_bytes: MAX_INPUT_BYTES,
+          quota: { limit: quota.limit, used: quota.used, remaining: quota.limit - quota.used, is_paid: quota.isPaid },
           input: { key, url, content_type: contentType, max_bytes: MAX_INPUT_BYTES },
         };
       }
@@ -61,6 +85,14 @@ class CompressService {
         const storageKey = body?.storage_key;
         if (!presign.keyBelongsToUser(storageKey, user.id_user) || !/\/input\.(mp4|webm|mov)$/.test(storageKey)) {
           return err("storage_key inválido");
+        }
+
+        // Recheca a cota aqui também — é o passo caro (ffmpeg). O upload-url pode
+        // ter passado, mas outra aba/job pode ter consumido a cota nesse meio.
+        const quota = await checkQuota(user.id_user);
+        if (!quota.ok) {
+          await presign.deleteObject(storageKey);
+          return err(quotaMessage(quota.limit));
         }
 
         const head = await presign.headObject(storageKey);
@@ -80,6 +112,10 @@ class CompressService {
         const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "fl-compress-"));
         const inputPath = path.join(tempDir, "input");
         try {
+          // Registra o uso ANTES do ffmpeg — o custo (CPU) é gasto a partir daqui,
+          // então a cota deve contar mesmo que o encode falhe depois.
+          await CompressJobStorage.record(user.id_user, originalBytes);
+
           await presign.downloadToFile(storageKey, inputPath);
 
           let outputPath, size;

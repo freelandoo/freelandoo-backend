@@ -207,12 +207,19 @@ const server = app.listen(PORT, () => {
   // R2 com mais de 3h — rede de segurança caso o lifecycle do bucket não esteja
   // configurado ou só expire por dia. Roda 10 min após boot e a cada 1h.
   const presignCompress = require("./src/integrations/r2/presignCompressUpload");
+  const CompressJobStorage = require("./src/storages/CompressJobStorage");
   const tickCompressSweep = async () => {
     try {
       const result = await presignCompress.sweepExpired();
       if (result?.deleted) bootLog.info("compress.swept", result);
     } catch (err) {
       bootLog.error("compress.sweep_error", { message: err.message });
+    }
+    try {
+      const purge = await CompressJobStorage.purgeOld();
+      if (purge?.purged) bootLog.info("compress.jobs_purged", purge);
+    } catch (err) {
+      bootLog.error("compress.jobs_purge_error", { message: err.message });
     }
   };
   setTimeout(tickCompressSweep, 10 * 60 * 1000);
