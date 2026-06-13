@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const NotificationStorage = require("../storages/NotificationStorage");
+const ExpiringStorage = require("../storages/ExpiringStorage");
 const realtime = require("../realtime/socket");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -388,6 +389,88 @@ class NotificationService {
       entity_id: id_request,
       payload: { kind: kind === "course" ? "course" : "service" },
     });
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Financeiro (Slice E): comissão de afiliado confirmada + avisos de expiração.
+  // ──────────────────────────────────────────────────────────────────────────
+  static async notifyAffiliateCommission({
+    affiliate_user_id,
+    id_conversion,
+    amount_cents,
+  }) {
+    if (!affiliate_user_id || !id_conversion) return null;
+    return safeNotify({
+      id_recipient_user: affiliate_user_id,
+      id_recipient_profile: null,
+      type: "affiliate_commission_released",
+      id_actor_user: null,
+      entity_type: "affiliate_conversion",
+      entity_id: id_conversion,
+      payload: { amount_cents: Number.isFinite(amount_cents) ? amount_cents : null },
+    });
+  }
+
+  /**
+   * Aviso de expiração próxima (assinatura/premium/manifestação). Dedupe por
+   * índice parcial (mig 152): no máximo 1 não-lido por (user, type, entity_id).
+   * `expiringType` ∈ subscription_expiring | premium_expiring | manifestation_expiring.
+   */
+  static async notifyExpiring({
+    recipient_user_id,
+    expiringType,
+    entity_id,
+    days_left,
+    label,
+  }) {
+    if (!recipient_user_id || !entity_id) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: null,
+      type: expiringType,
+      id_actor_user: null,
+      entity_type: "expiration",
+      entity_id,
+      payload: {
+        days_left: Number.isFinite(days_left) ? days_left : null,
+        preview: typeof label === "string" ? label.slice(0, 140) : null,
+      },
+    });
+  }
+
+  /**
+   * Varre assinatura/premium/manifestação que expiram em até `days` dias e
+   * notifica os donos. Chamado por job agendado (Railway, não polling no front).
+   * Dedupe via índice parcial (mig 152): re-rodar não cria duplicata não-lida.
+   */
+  static async sweepExpiring(days = 3) {
+    return runWithLogs(
+      log,
+      "sweepExpiring",
+      () => ({ days }),
+      async () => {
+        const daysLeft = (d) =>
+          Math.max(1, Math.ceil((new Date(d).getTime() - Date.now()) / 86400000));
+        let sent = 0;
+        const groups = [
+          ["subscription_expiring", await ExpiringStorage.subscriptionsExpiringSoon(days)],
+          ["premium_expiring", await ExpiringStorage.premiumExpiringSoon(days)],
+          ["manifestation_expiring", await ExpiringStorage.manifestationsExpiringSoon(days)],
+        ];
+        for (const [type, rows] of groups) {
+          for (const row of rows) {
+            const r = await NotificationService.notifyExpiring({
+              recipient_user_id: row.id_user,
+              expiringType: type,
+              entity_id: row.entity_id,
+              days_left: daysLeft(row.expires_at),
+            });
+            if (r) sent += 1;
+          }
+        }
+        return { sent };
+      }
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────────────

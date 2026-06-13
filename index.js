@@ -225,6 +225,21 @@ const server = app.listen(PORT, () => {
   setTimeout(tickCompressSweep, 10 * 60 * 1000);
   setInterval(tickCompressSweep, 60 * 60 * 1000);
 
+  // Job: avisos de expiração no sino (assinatura/premium/manifestação a vencer
+  // em até 3 dias). Roda no backend (não é polling do front) 9 min após boot e
+  // a cada 12h. Dedupe por índice (mig 152) evita reenvio do mesmo aviso.
+  const NotificationService = require("./src/services/NotificationService");
+  const tickExpiringSweep = async () => {
+    try {
+      const result = await NotificationService.sweepExpiring(3);
+      if (result?.sent) bootLog.info("notifications.expiring_sent", result);
+    } catch (err) {
+      bootLog.error("notifications.expiring_error", { message: err.message });
+    }
+  };
+  setTimeout(tickExpiringSweep, 9 * 60 * 1000);
+  setInterval(tickExpiringSweep, 12 * 60 * 60 * 1000);
+
   const ChatStorage = require("./src/storages/ChatStorage");
   const SP_TZ = "America/Sao_Paulo";
   const msUntilNextMidnightSP = () => {

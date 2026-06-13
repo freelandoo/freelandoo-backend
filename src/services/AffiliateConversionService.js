@@ -1,6 +1,7 @@
 const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateRuleResolver = require("./AffiliateRuleResolver");
 const XpStorage = require("../storages/XpStorage");
+const NotificationService = require("./NotificationService");
 const pool = require("../databases");
 const { createLogger } = require("../utils/logger");
 
@@ -452,6 +453,14 @@ async function onOrderStatusChange(
               source_id: conversion.id_conversion,
             });
           }
+
+          // Notifica o afiliado da comissão confirmada (fire-and-forget, WS).
+          // Roda 1x por conversão: o evento já é deduplicado por recordConversionEvent.
+          NotificationService.notifyAffiliateCommission({
+            affiliate_user_id: affiliate.id_user,
+            id_conversion: conversion.id_conversion,
+            amount_cents: conversion.commission_cents,
+          }).catch(() => {});
         }
       } catch (xpErr) {
         log.error("affiliate.xp.award.fail", { error: xpErr.message });
