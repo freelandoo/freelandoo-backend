@@ -47,4 +47,4 @@ ALTER TABLE public.tb_notification
     'clan_invite',
     'clan_member_joined',
     'live_gift_received'
-  ));
+  )) NOT VALID;
