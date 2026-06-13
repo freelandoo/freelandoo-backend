@@ -6,6 +6,7 @@ const VALID_ACTIONS = new Set([
   "publish_content",
   "publish_offer",
   "purchase",
+  "platform_purchase",
   "affiliate",
 ]);
 
