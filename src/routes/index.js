@@ -82,6 +82,7 @@ const siteTextRoutes = require("./siteText.routes");
 const siteTextAdminRoutes = require("./siteTextAdmin.routes");
 const earningsRoutes = require("./earnings.routes");
 const meiRoutes = require("./mei.routes");
+const bookingReminderRoutes = require("./bookingReminder.routes");
 const postReportsRoutes = require("./postReports.routes");
 const countriesRoutes = require("./countries.routes");
 const regionRoutes = require("./region.routes");
@@ -189,6 +190,7 @@ module.exports = (app) => {
   app.use("/admin/site-texts", siteTextAdminRoutes);
   app.use("/", earningsRoutes);
   app.use("/", meiRoutes);
+  app.use("/", bookingReminderRoutes);
   app.use("/", postReportsRoutes);
   app.use("/countries", countriesRoutes);
   app.use("/regions", regionRoutes);

@@ -115,7 +115,7 @@ class BookingAvailabilityService {
     if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
 
     const settings = await BookingSettingsStorage.get(pool, id_profile);
-    return { settings: settings || { deposit_amount: 1000, platform_fee_amount: 1000, currency: "BRL", allow_booking: false } };
+    return { settings: settings || { deposit_amount: 1000, platform_fee_amount: 1000, currency: "BRL", allow_booking: false, reminder_enabled: true, reminder_hours_before: 24 } };
   }
 
   static async saveBookingSettings(user, params, body) {
@@ -129,6 +129,14 @@ class BookingAvailabilityService {
     const payload = { id_profile };
     if (Object.prototype.hasOwnProperty.call(body || {}, "allow_booking")) {
       payload.allow_booking = !!body.allow_booking;
+    }
+    if (Object.prototype.hasOwnProperty.call(body || {}, "reminder_enabled")) {
+      payload.reminder_enabled = !!body.reminder_enabled;
+    }
+    if (Object.prototype.hasOwnProperty.call(body || {}, "reminder_hours_before")) {
+      // Janela de antecedência: 1h–168h (1 semana). Default 24.
+      const h = parseInt(body.reminder_hours_before, 10);
+      payload.reminder_hours_before = Number.isFinite(h) ? Math.min(168, Math.max(1, h)) : 24;
     }
 
     const saved = await BookingSettingsStorage.upsert(pool, payload);

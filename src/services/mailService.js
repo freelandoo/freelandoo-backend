@@ -119,7 +119,50 @@ async function sendPasswordResetEmail({ to, name, link }) {
   }
 }
 
+async function sendBookingReminderEmail({ to, clientName, proName, dateLabel, timeLabel, confirmUrl }) {
+  log.info("sendBookingReminderEmail.start", { to });
+  try {
+    const response = await getResend().emails.send({
+      from: defaultFrom,
+      to,
+      subject: `Lembrete: seu horário com ${proName} em ${dateLabel}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#0B0B0D">
+          <h2>Olá, ${clientName} 👋</h2>
+          <p>Passando para lembrar do seu horário com <strong>${proName}</strong>:</p>
+          <p style="font-size:18px;margin:16px 0">
+            📅 <strong>${dateLabel}</strong> &nbsp;·&nbsp; ⏰ <strong>${timeLabel}</strong>
+          </p>
+          <p>Você consegue comparecer? Toque para confirmar:</p>
+          <p style="margin:24px 0">
+            <a href="${confirmUrl}"
+               style="display:inline-block;padding:12px 22px;background:#16B79A;color:#06251F;
+                      border-radius:6px;text-decoration:none;font-weight:bold">
+              Confirmar presença
+            </a>
+          </p>
+          <p style="font-size:13px;color:#555">
+            Se precisar remarcar, é só responder por lá ou avisar com antecedência.
+          </p>
+          <hr />
+          <p style="font-size:12px;color:#888">Lembrete automático enviado pela Freelandoo.</p>
+        </div>
+      `,
+    });
+    if (response.error) {
+      log.error("sendBookingReminderEmail.resend_error", response.error);
+      throw response.error;
+    }
+    log.info("sendBookingReminderEmail.ok", { id: response.data?.id });
+    return response.data;
+  } catch (error) {
+    log.error("sendBookingReminderEmail.fail", error);
+    throw error;
+  }
+}
+
 module.exports = {
   sendActivationEmail,
   sendPasswordResetEmail,
+  sendBookingReminderEmail,
 };

@@ -122,6 +122,22 @@ const server = app.listen(PORT, () => {
   setTimeout(tickExpireBookings, 6 * 60 * 1000);
   setInterval(tickExpireBookings, TWO_HOURS);
 
+  // Job: lembrete de horário (anti-no-show). Varre bookings confirmados dentro
+  // da janela de antecedência do subperfil (reminder_hours_before, default 24h)
+  // ainda sem lembrete e dispara e-mail ao cliente com link de confirmação.
+  // Roda 8 min após boot e a cada 30 min.
+  const BookingReminderService = require("./src/services/BookingReminderService");
+  const tickBookingReminders = async () => {
+    try {
+      const result = await BookingReminderService.runDue();
+      if (result?.sent || result?.skipped) bootLog.info("booking_reminders.run", result);
+    } catch (err) {
+      bootLog.error("booking_reminders.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickBookingReminders, 8 * 60 * 1000);
+  setInterval(tickBookingReminders, 30 * 60 * 1000);
+
   // Job: reconciliação de pagamentos — para webhooks perdidos, cruza pendentes
   // antigos com o estado real da session no Stripe e re-entrega os que já foram
   // pagos. Roda 7 min após boot e a cada 2h (projeto PayDebug, D6).
