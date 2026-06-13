@@ -365,6 +365,31 @@ class NotificationService {
     });
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Chamados / O.S. (Slice D): um profissional respondeu ao seu chamado.
+  // Recipient = quem abriu o chamado (requester). Chamado só na 1ª resposta
+  // daquele subperfil (quem chama checa que não havia resposta antes).
+  // ──────────────────────────────────────────────────────────────────────────
+  static async notifyServiceResponse({
+    requester_user_id,
+    responder_user_id,
+    responder_profile_id,
+    id_request,
+    kind, // 'service' | 'course'
+  }) {
+    if (!requester_user_id || !id_request) return null;
+    return safeNotify({
+      id_recipient_user: requester_user_id,
+      id_recipient_profile: null,
+      type: "service_response_received",
+      id_actor_user: responder_user_id || null,
+      id_actor_profile: responder_profile_id || null,
+      entity_type: "service_request",
+      entity_id: id_request,
+      payload: { kind: kind === "course" ? "course" : "service" },
+    });
+  }
+
   /**
    * Notificação de pedido de permissão: menor pede ao responsável para
    * liberar um toggle (ex.: can_sell_courses).

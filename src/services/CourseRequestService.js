@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const CourseRequestStorage = require("../storages/CourseRequestStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const NotificationService = require("./NotificationService");
 const realtime = require("../realtime/socket");
 const {
   assertNotMinorForServiceRequest,
@@ -189,11 +190,22 @@ class CourseRequestService {
           return { error: "Perfil não corresponde ao Enxame/Profissão do pedido" };
         }
       }
+      const existing = await CourseRequestStorage.getResponseByPair(pool, id_request, id_profile);
       let resp;
       if (action === "accept") {
         resp = await CourseRequestStorage.upsertResponseAccept(pool, { id_request, id_profile, id_course });
       } else {
         resp = await CourseRequestStorage.upsertResponseReject(pool, { id_request, id_profile });
+      }
+      // Notifica o autor do pedido só no 1º "aceito" do profissional.
+      if (!existing && action === "accept" && req.id_user) {
+        NotificationService.notifyServiceResponse({
+          requester_user_id: req.id_user,
+          responder_user_id: user.id_user,
+          responder_profile_id: id_profile,
+          id_request,
+          kind: "course",
+        }).catch(() => {});
       }
       return { response: resp };
     });

@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const ServiceRequestStorage = require("../storages/ServiceRequestStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const NotificationService = require("./NotificationService");
 const realtime = require("../realtime/socket");
 const {
   assertNotMinorForServiceRequest,
@@ -325,6 +326,17 @@ class ServiceRequestService {
         resp = await ServiceRequestStorage.upsertResponseAccept(pool, { id_request, id_profile });
       } else {
         resp = await ServiceRequestStorage.upsertResponseReject(pool, { id_request, id_profile });
+      }
+      // Notifica o autor do chamado só no 1º contato do profissional (não em
+      // reject, não em re-resposta). Realtime via WebSocket dentro do safeNotify.
+      if (!existing && (action === "open" || action === "accept") && req.id_user) {
+        NotificationService.notifyServiceResponse({
+          requester_user_id: req.id_user,
+          responder_user_id: user.id_user,
+          responder_profile_id: id_profile,
+          id_request,
+          kind: "service",
+        }).catch(() => {});
       }
       return { response: resp };
     });
