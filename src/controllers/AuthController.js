@@ -3,7 +3,13 @@ const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class AuthController {
   static async signup(req, res) {
-    const result = await AuthService.signup(req.body);
+    const ip =
+      (req.headers["x-forwarded-for"] || "").toString().split(",")[0].trim() ||
+      req.ip ||
+      null;
+    const user_agent =
+      (req.headers["user-agent"] || "").toString().slice(0, 1000) || null;
+    const result = await AuthService.signup(req.body, { ip, user_agent });
     return sendServiceResult(res, result, 201);
   }
 

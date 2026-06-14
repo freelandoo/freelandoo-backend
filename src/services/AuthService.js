@@ -6,8 +6,17 @@ const { OAuth2Client } = require("google-auth-library");
 const pool = require("../databases");
 
 const AuthStorage = require("../storages/AuthStorage");
+const ConsentStorage = require("../storages/ConsentStorage");
+const { SIGNUP_TERMS_VERSION, SIGNUP_ACTION_KEY } = require("../utils/terms");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// needs_terms = o usuário ainda não aceitou a versão atual dos Termos no cadastro.
+// True força a tela /aceitar-termos no frontend antes de liberar o uso.
+async function computeNeedsTerms(conn, id_user) {
+  const consents = await ConsentStorage.listForUser(conn, id_user);
+  return (consents[SIGNUP_ACTION_KEY] || 0) < SIGNUP_TERMS_VERSION;
+}
 const {
   sendActivationEmail,
   sendPasswordResetEmail,
@@ -34,7 +43,7 @@ class AuthService {
     return { available: !exists, username: v.username };
   }
 
-  static async signup(payload) {
+  static async signup(payload, meta = {}) {
     const client = await pool.connect();
     return runWithLogs(
       log,
@@ -171,6 +180,17 @@ class AuthService {
             expiresAt,
           });
 
+          // O cadastro por e-mail/senha já exige o aceite afirmativo (checkbox no
+          // formulário). Grava a prova de consentimento (versão + ip + ua) na mesma
+          // transação para que esse usuário não caia na tela /aceitar-termos depois.
+          await ConsentStorage.upsert(client, {
+            id_user: user.id_user,
+            action_key: SIGNUP_ACTION_KEY,
+            terms_version: SIGNUP_TERMS_VERSION,
+            ip: meta.ip || null,
+            user_agent: meta.user_agent || null,
+          });
+
           await client.query("COMMIT");
 
           const activationLink = `${process.env.FRONTEND_URL}/activate?token=${token}`;
@@ -225,10 +245,14 @@ class AuthService {
           { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
         );
 
+        const needs_terms = await computeNeedsTerms(pool, user.id_user);
+
         return {
           message: "Login realizado com sucesso",
           token,
           email_verified: !!user.ativo,
+          needs_terms,
+          terms_version: SIGNUP_TERMS_VERSION,
           user: {
             id_user: user.id_user,
             nome: user.nome,
@@ -284,6 +308,7 @@ class AuthService {
 
         const client = await pool.connect();
         try {
+          let isNew = false;
           // 1) Já existe user com esse google_sub?
           let user = await AuthStorage.findUserByGoogleSub(client, googleSub);
 
@@ -311,6 +336,7 @@ class AuthService {
                 email,
                 googleSub,
               });
+              isNew = true;
               await client.query("COMMIT");
             } catch (err) {
               await client.query("ROLLBACK");
@@ -324,10 +350,18 @@ class AuthService {
             { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
           );
 
+          // O login com Google NÃO grava aceite: o usuário ainda não viu os Termos
+          // nesse fluxo. needs_terms vem true para conta nova (e para qualquer conta
+          // sem aceite da versão atual) → frontend leva à tela /aceitar-termos.
+          const needs_terms = await computeNeedsTerms(client, user.id_user);
+
           return {
             message: "Login com Google realizado com sucesso",
             token,
             email_verified: true,
+            is_new: isNew,
+            needs_terms,
+            terms_version: SIGNUP_TERMS_VERSION,
             user: {
               id_user: user.id_user,
               nome: user.nome,

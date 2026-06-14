@@ -3,6 +3,7 @@ const ConsentStorage = require("../storages/ConsentStorage");
 
 // Ações conhecidas — recusa qualquer chave fora desta lista.
 const VALID_ACTIONS = new Set([
+  "signup", // aceite geral dos Termos/Privacidade no cadastro (mig 129)
   "publish_content",
   "publish_offer",
   "purchase",
