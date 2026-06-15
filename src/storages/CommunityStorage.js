@@ -1,0 +1,219 @@
+// src/storages/CommunityStorage.js
+// SQL puro da Comunidade (tipo is_community em tb_profile). Membros são USERS.
+// Espelha o estilo de ClanStorage: métodos estáticos recebendo `conn`.
+
+class CommunityStorage {
+  // ─── Entitlement (tetos por user) ───────────────────────────────────────────
+  // Garante a linha default (1/1) e devolve os tetos atuais.
+  static async getEntitlement(conn, id_user) {
+    await conn.query(
+      `INSERT INTO public.tb_community_entitlement (id_user)
+         VALUES ($1)
+       ON CONFLICT (id_user) DO NOTHING`,
+      [id_user]
+    );
+    const r = await conn.query(
+      `SELECT id_user, create_cap, member_cap, updated_at
+         FROM public.tb_community_entitlement
+        WHERE id_user = $1
+        LIMIT 1`,
+      [id_user]
+    );
+    return r.rows[0];
+  }
+
+  static async countOwned(conn, id_user) {
+    const r = await conn.query(
+      `SELECT COUNT(*)::int AS n
+         FROM public.tb_profile
+        WHERE id_leader_user = $1
+          AND is_community = TRUE
+          AND deleted_at IS NULL`,
+      [id_user]
+    );
+    return r.rows[0].n;
+  }
+
+  static async countMemberships(conn, id_user) {
+    const r = await conn.query(
+      `SELECT COUNT(*)::int AS n
+         FROM public.tb_community_member m
+         JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
+        WHERE m.id_user = $1
+          AND p.deleted_at IS NULL`,
+      [id_user]
+    );
+    return r.rows[0].n;
+  }
+
+  // Nível/XP do user = subperfil (não-clã, não-comunidade) de maior XP.
+  // has_subprofile = se o user tem ao menos 1 subperfil ativo.
+  static async getHighestSubprofile(conn, id_user) {
+    const r = await conn.query(
+      `SELECT COALESCE(MAX(xp_level), 0)::int       AS lvl,
+              COALESCE(MAX(xp_total), 0)::numeric    AS xp,
+              COUNT(*)::int                          AS subprofiles
+         FROM public.tb_profile
+        WHERE id_user = $1
+          AND is_clan = FALSE
+          AND is_community = FALSE
+          AND deleted_at IS NULL`,
+      [id_user]
+    );
+    const row = r.rows[0];
+    return {
+      lvl: Number(row.lvl) || 0,
+      xp: Number(row.xp) || 0,
+      has_subprofile: Number(row.subprofiles) > 0,
+    };
+  }
+
+  // ─── Criação ────────────────────────────────────────────────────────────────
+  static async createCommunity(
+    conn,
+    { id_user, id_machine, display_name, bio, avatar_url, theme }
+  ) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_profile
+         (id_user, id_category, id_machine, is_community, id_leader_user,
+          community_theme, display_name, bio, avatar_url)
+       VALUES
+         ($1, NULL, $2, TRUE, $1, $3, $4, $5, $6)
+       RETURNING id_profile, id_user, id_machine, is_community, id_leader_user,
+                 community_theme, display_name, bio, avatar_url, is_active,
+                 is_visible, xp_total, xp_level, created_at, updated_at`,
+      [
+        id_user,
+        id_machine,
+        theme ? JSON.stringify(theme) : null,
+        display_name,
+        bio ?? null,
+        avatar_url ?? null,
+      ]
+    );
+    return r.rows[0];
+  }
+
+  // ─── Leitura ─────────────────────────────────────────────────────────────────
+  static async getById(conn, id_community) {
+    const r = await conn.query(
+      `SELECT p.id_profile, p.id_machine, p.is_community, p.id_leader_user,
+              p.community_theme, p.display_name, p.bio, p.avatar_url,
+              p.xp_total, p.xp_level, p.created_at, p.updated_at,
+              m.name AS enxame_name,
+              (SELECT COUNT(*)::int FROM public.tb_community_member cm
+                WHERE cm.id_community_profile = p.id_profile) AS member_count
+         FROM public.tb_profile p
+         LEFT JOIN public.tb_machine m ON m.id_machine = p.id_machine
+        WHERE p.id_profile = $1
+          AND p.is_community = TRUE
+          AND p.deleted_at IS NULL
+        LIMIT 1`,
+      [id_community]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async listPublic(conn, { q, id_machine, limit = 30, offset = 0 } = {}) {
+    const params = [];
+    const where = ["p.is_community = TRUE", "p.deleted_at IS NULL"];
+    if (q) {
+      params.push(`%${q}%`);
+      where.push(`p.display_name ILIKE $${params.length}`);
+    }
+    if (id_machine) {
+      params.push(id_machine);
+      where.push(`p.id_machine = $${params.length}`);
+    }
+    params.push(Math.min(Number(limit) || 30, 60));
+    params.push(Number(offset) || 0);
+    const r = await conn.query(
+      `SELECT p.id_profile, p.id_machine, p.display_name, p.avatar_url,
+              p.community_theme, p.xp_total, p.xp_level,
+              m.name AS enxame_name,
+              (SELECT COUNT(*)::int FROM public.tb_community_member cm
+                WHERE cm.id_community_profile = p.id_profile) AS member_count
+         FROM public.tb_profile p
+         LEFT JOIN public.tb_machine m ON m.id_machine = p.id_machine
+        WHERE ${where.join(" AND ")}
+        ORDER BY p.xp_total DESC, p.created_at DESC
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    return r.rows;
+  }
+
+  static async updateTheme(conn, id_community, theme) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile
+          SET community_theme = $2, updated_at = NOW()
+        WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
+        RETURNING id_profile, community_theme`,
+      [id_community, theme ? JSON.stringify(theme) : null]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  // ─── Membros (user-level) ─────────────────────────────────────────────────────
+  static async addMember(conn, id_community, id_user, role = "member") {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_member (id_community_profile, id_user, role)
+         VALUES ($1, $2, $3)
+       ON CONFLICT (id_community_profile, id_user) DO NOTHING
+       RETURNING id_community_profile, id_user, role, joined_at`,
+      [id_community, id_user, role]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async removeMember(conn, id_community, id_user) {
+    const r = await conn.query(
+      `DELETE FROM public.tb_community_member
+        WHERE id_community_profile = $1 AND id_user = $2`,
+      [id_community, id_user]
+    );
+    return r.rowCount > 0;
+  }
+
+  static async getMembership(conn, id_community, id_user) {
+    const r = await conn.query(
+      `SELECT id_community_profile, id_user, role, joined_at
+         FROM public.tb_community_member
+        WHERE id_community_profile = $1 AND id_user = $2
+        LIMIT 1`,
+      [id_community, id_user]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async listMembers(conn, id_community) {
+    const r = await conn.query(
+      `SELECT m.id_user, m.role, m.joined_at,
+              u.nome AS user_name,
+              u.username AS user_username,
+              hp.id_profile AS top_profile_id,
+              hp.display_name AS top_profile_name,
+              hp.avatar_url AS top_profile_avatar,
+              hp.xp_level AS top_profile_level
+         FROM public.tb_community_member m
+         JOIN public.tb_user u ON u.id_user = m.id_user
+         LEFT JOIN LATERAL (
+           SELECT id_profile, display_name, avatar_url, xp_level
+             FROM public.tb_profile
+            WHERE id_user = m.id_user
+              AND is_clan = FALSE
+              AND is_community = FALSE
+              AND deleted_at IS NULL
+            ORDER BY xp_total DESC
+            LIMIT 1
+         ) hp ON TRUE
+        WHERE m.id_community_profile = $1
+        ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'vice' THEN 1 ELSE 2 END,
+                 m.joined_at ASC`,
+      [id_community]
+    );
+    return r.rows;
+  }
+}
+
+module.exports = CommunityStorage;
