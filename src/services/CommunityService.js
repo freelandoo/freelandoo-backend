@@ -318,6 +318,126 @@ class CommunityService {
     );
   }
 
+  // ─── Benchmark (público) ──────────────────────────────────────────────────────
+  static async getBenchmark(params) {
+    return runWithLogs(
+      log,
+      "getBenchmark",
+      () => ({ id_profile: params?.id_profile }),
+      async () => {
+        const benchmark = await CommunityStorage.getBenchmark(pool, params.id_profile);
+        if (!benchmark) return { error: "Comunidade não encontrada", statusCode: 404 };
+        const percentile =
+          benchmark.total > 0
+            ? Math.max(1, Math.round((benchmark.position / benchmark.total) * 100))
+            : null;
+        return { benchmark: { ...benchmark, percentile } };
+      }
+    );
+  }
+
+  // ─── Metas coletivas ─────────────────────────────────────────────────────────
+  static async getGoal(params) {
+    return runWithLogs(
+      log,
+      "getGoal",
+      () => ({ id_profile: params?.id_profile }),
+      async () => {
+        const goal = await CommunityStorage.getActiveGoal(pool, params.id_profile);
+        return { goal };
+      }
+    );
+  }
+
+  static async setGoal(user, params, body) {
+    return runWithLogs(
+      log,
+      "setGoal",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+        const title = String(body?.title || "").trim();
+        if (!title) return { error: "Dê um nome para a meta." };
+        if (title.length > 120) return { error: "O título deve ter no máximo 120 caracteres." };
+        const metric = ["xp", "posts", "members"].includes(body?.metric) ? body.metric : "xp";
+        const target = Number(body?.target_value);
+        if (!Number.isFinite(target) || target <= 0) {
+          return { error: "Defina um alvo válido (maior que zero)." };
+        }
+        const goal = await CommunityStorage.setGoal(pool, params.id_profile, {
+          title,
+          metric,
+          target_value: target,
+          ends_at: body?.ends_at || null,
+          created_by_user: user.id_user,
+        });
+        return { goal };
+      }
+    );
+  }
+
+  static async clearGoal(user, params) {
+    return runWithLogs(
+      log,
+      "clearGoal",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+        return CommunityStorage.clearGoal(pool, params.id_profile);
+      }
+    );
+  }
+
+  // ─── Mural do líder ───────────────────────────────────────────────────────────
+  static async listAnnouncements(params) {
+    return runWithLogs(
+      log,
+      "listAnnouncements",
+      () => ({ id_profile: params?.id_profile }),
+      async () => {
+        const announcements = await CommunityStorage.listAnnouncements(pool, params.id_profile);
+        return { announcements };
+      }
+    );
+  }
+
+  static async createAnnouncement(user, params, body) {
+    return runWithLogs(
+      log,
+      "createAnnouncement",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+        const text = String(body?.body || "").trim();
+        if (!text) return { error: "Escreva o recado." };
+        if (text.length > 1000) return { error: "O recado deve ter no máximo 1000 caracteres." };
+        const announcement = await CommunityStorage.createAnnouncement(pool, params.id_profile, {
+          body: text,
+          is_pinned: !!body?.is_pinned,
+          created_by_user: user.id_user,
+        });
+        return { announcement };
+      }
+    );
+  }
+
+  static async deleteAnnouncement(user, params) {
+    return runWithLogs(
+      log,
+      "deleteAnnouncement",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile, id: params?.id_announcement }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+        const ok = await CommunityStorage.deleteAnnouncement(pool, params.id_profile, params.id_announcement);
+        return { ok };
+      }
+    );
+  }
+
   // ─── Tema (só líder) ──────────────────────────────────────────────────────────
   static async updateTheme(user, params, body) {
     return runWithLogs(

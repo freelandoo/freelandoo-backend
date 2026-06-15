@@ -15,5 +15,17 @@ router.get(
   "/:id_profile/feed",
   asyncHandler(CommunityController.getFeed)
 );
+router.get(
+  "/:id_profile/benchmark",
+  asyncHandler(CommunityController.getBenchmark)
+);
+router.get(
+  "/:id_profile/goal",
+  asyncHandler(CommunityController.getGoal)
+);
+router.get(
+  "/:id_profile/announcements",
+  asyncHandler(CommunityController.listAnnouncements)
+);
 
 module.exports = router;

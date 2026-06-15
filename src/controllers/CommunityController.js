@@ -102,6 +102,41 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async getBenchmark(req, res) {
+    const result = await CommunityService.getBenchmark(req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async getGoal(req, res) {
+    const result = await CommunityService.getGoal(req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async setGoal(req, res) {
+    const result = await CommunityService.setGoal(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result);
+  }
+
+  static async clearGoal(req, res) {
+    const result = await CommunityService.clearGoal(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async listAnnouncements(req, res) {
+    const result = await CommunityService.listAnnouncements(req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async createAnnouncement(req, res) {
+    const result = await CommunityService.createAnnouncement(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async deleteAnnouncement(req, res) {
+    const result = await CommunityService.deleteAnnouncement(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async join(req, res) {
     const result = await CommunityService.join(req.user, req.params);
     return sendServiceResult(res, result, 201);

@@ -63,6 +63,30 @@ router.post(
   asyncHandler(CommunityController.uploadAvatar)
 );
 
+// Metas coletivas (só líder).
+router.put(
+  "/:id_profile/goal",
+  authMiddleware,
+  asyncHandler(CommunityController.setGoal)
+);
+router.delete(
+  "/:id_profile/goal",
+  authMiddleware,
+  asyncHandler(CommunityController.clearGoal)
+);
+
+// Mural do líder (só líder).
+router.post(
+  "/:id_profile/announcements",
+  authMiddleware,
+  asyncHandler(CommunityController.createAnnouncement)
+);
+router.delete(
+  "/:id_profile/announcements/:id_announcement",
+  authMiddleware,
+  asyncHandler(CommunityController.deleteAnnouncement)
+);
+
 router.post(
   "/:id_profile/join",
   authMiddleware,

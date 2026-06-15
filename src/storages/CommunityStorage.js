@@ -271,11 +271,12 @@ class CommunityStorage {
               hp.id_profile AS top_profile_id,
               hp.display_name AS top_profile_name,
               hp.avatar_url AS top_profile_avatar,
-              hp.xp_level AS top_profile_level
+              hp.xp_level AS top_profile_level,
+              COALESCE(hp.xp_total, 0) AS top_profile_xp
          FROM public.tb_community_member m
          JOIN public.tb_user u ON u.id_user = m.id_user
          LEFT JOIN LATERAL (
-           SELECT id_profile, display_name, avatar_url, xp_level
+           SELECT id_profile, display_name, avatar_url, xp_level, xp_total
              FROM public.tb_profile
             WHERE id_user = m.id_user
               AND is_clan = FALSE
@@ -290,6 +291,147 @@ class CommunityStorage {
       [id_community]
     );
     return r.rows;
+  }
+
+  // ─── Benchmark: posição da comunidade entre as do mesmo enxame ───────────────
+  static async getBenchmark(conn, id_community) {
+    const r = await conn.query(
+      `WITH ranked AS (
+         SELECT id_profile, id_machine, xp_total, xp_level,
+                ROW_NUMBER() OVER (PARTITION BY id_machine ORDER BY xp_total DESC, created_at ASC) AS pos,
+                COUNT(*)     OVER (PARTITION BY id_machine) AS total
+           FROM public.tb_profile
+          WHERE is_community = TRUE AND deleted_at IS NULL
+       )
+       SELECT r.pos::int AS position, r.total::int AS total,
+              r.xp_total, r.xp_level, m.name AS enxame_name
+         FROM ranked r
+         LEFT JOIN public.tb_machine m ON m.id_machine = r.id_machine
+        WHERE r.id_profile = $1
+        LIMIT 1`,
+      [id_community]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  // ─── Metas coletivas ─────────────────────────────────────────────────────────
+  // Valor atual da métrica da comunidade (xp_total | nº de posts | nº de membros).
+  static async _metricValue(conn, id_community, metric, sinceISO) {
+    if (metric === "members") {
+      const r = await conn.query(
+        `SELECT COUNT(*)::numeric AS v FROM public.tb_community_member WHERE id_community_profile = $1`,
+        [id_community]
+      );
+      return Number(r.rows[0].v);
+    }
+    if (metric === "posts") {
+      const r = await conn.query(
+        `SELECT COUNT(*)::numeric AS v
+           FROM public.tb_profile_portfolio_item
+          WHERE id_profile = $1 AND is_active = TRUE AND is_banned = FALSE
+            AND ($2::timestamptz IS NULL OR created_at >= $2)`,
+        [id_community, sinceISO || null]
+      );
+      return Number(r.rows[0].v);
+    }
+    // xp (default)
+    const r = await conn.query(
+      `SELECT COALESCE(xp_total, 0)::numeric AS v FROM public.tb_profile WHERE id_profile = $1`,
+      [id_community]
+    );
+    return Number(r.rows[0].v);
+  }
+
+  static async getActiveGoal(conn, id_community) {
+    const r = await conn.query(
+      `SELECT id, id_community_profile, title, metric, target_value, baseline_value,
+              ends_at, created_at
+         FROM public.tb_community_goal
+        WHERE id_community_profile = $1 AND is_active = TRUE
+        LIMIT 1`,
+      [id_community]
+    );
+    if (!r.rowCount) return null;
+    const g = r.rows[0];
+    // posts conta a partir da criação da meta; xp/members usam baseline salvo.
+    const since = g.metric === "posts" ? g.created_at : null;
+    const current = await this._metricValue(conn, id_community, g.metric, since);
+    const baseline = g.metric === "posts" ? 0 : Number(g.baseline_value);
+    const progress = Math.max(0, current - baseline);
+    const target = Number(g.target_value);
+    return {
+      id: g.id,
+      title: g.title,
+      metric: g.metric,
+      target_value: target,
+      progress,
+      percent: target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : 0,
+      ends_at: g.ends_at,
+      created_at: g.created_at,
+    };
+  }
+
+  // Define/substitui a meta ativa (desativa a anterior). baseline = valor atual.
+  static async setGoal(conn, id_community, { title, metric, target_value, ends_at, created_by_user }) {
+    const m = ["xp", "posts", "members"].includes(metric) ? metric : "xp";
+    const baseline = m === "posts" ? 0 : await this._metricValue(conn, id_community, m, null);
+    await conn.query(
+      `UPDATE public.tb_community_goal SET is_active = FALSE, updated_at = NOW()
+        WHERE id_community_profile = $1 AND is_active = TRUE`,
+      [id_community]
+    );
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_goal
+         (id_community_profile, title, metric, target_value, baseline_value, ends_at, created_by_user)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [id_community, title, m, target_value, baseline, ends_at || null, created_by_user || null]
+    );
+    return this.getActiveGoal(conn, id_community);
+  }
+
+  static async clearGoal(conn, id_community) {
+    await conn.query(
+      `UPDATE public.tb_community_goal SET is_active = FALSE, updated_at = NOW()
+        WHERE id_community_profile = $1 AND is_active = TRUE`,
+      [id_community]
+    );
+    return { ok: true };
+  }
+
+  // ─── Mural do líder (recados) ────────────────────────────────────────────────
+  static async listAnnouncements(conn, id_community, limit = 20) {
+    const r = await conn.query(
+      `SELECT a.id, a.body, a.is_pinned, a.created_at,
+              u.username AS author_username, u.nome AS author_name
+         FROM public.tb_community_announcement a
+         LEFT JOIN public.tb_user u ON u.id_user = a.created_by_user
+        WHERE a.id_community_profile = $1
+        ORDER BY a.is_pinned DESC, a.created_at DESC
+        LIMIT $2`,
+      [id_community, Math.min(Number(limit) || 20, 50)]
+    );
+    return r.rows;
+  }
+
+  static async createAnnouncement(conn, id_community, { body, is_pinned, created_by_user }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_announcement
+         (id_community_profile, body, is_pinned, created_by_user)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, body, is_pinned, created_at`,
+      [id_community, body, !!is_pinned, created_by_user || null]
+    );
+    return r.rows[0];
+  }
+
+  static async deleteAnnouncement(conn, id_community, id_announcement) {
+    const r = await conn.query(
+      `DELETE FROM public.tb_community_announcement
+        WHERE id = $1 AND id_community_profile = $2`,
+      [id_announcement, id_community]
+    );
+    return r.rowCount > 0;
   }
 
   // ─── Feed/Bees da comunidade (itens de portfólio do perfil-comunidade) ──────
