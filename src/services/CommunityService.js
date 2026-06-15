@@ -231,6 +231,93 @@ class CommunityService {
     );
   }
 
+  // ─── Edição de perfil (só líder) ──────────────────────────────────────────────
+  // Guard reutilizável: carrega a comunidade e confirma que o user é o líder.
+  static async _assertLeader(id_user, id_profile) {
+    if (!id_user) return { error: "Usuário não autenticado" };
+    const community = await CommunityStorage.getById(pool, id_profile);
+    if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+    if (String(community.id_leader_user) !== String(id_user)) {
+      return { error: "Apenas o líder pode editar a comunidade." };
+    }
+    return { community };
+  }
+
+  static async updateProfile(user, params, body) {
+    return runWithLogs(
+      log,
+      "updateProfile",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+
+        const patch = {};
+        if (body?.display_name !== undefined) {
+          const name = String(body.display_name || "").trim();
+          if (!name) return { error: "O nome da comunidade é obrigatório." };
+          if (name.length > 80) {
+            return { error: "O nome deve ter no máximo 80 caracteres." };
+          }
+          patch.display_name = name;
+        }
+        if (body?.bio !== undefined) {
+          const bio = body.bio ? String(body.bio).trim() : null;
+          if (bio && bio.length > 200) {
+            return { error: "A bio deve ter no máximo 200 caracteres." };
+          }
+          patch.bio = bio;
+        }
+        if (Object.keys(patch).length === 0) {
+          return { error: "Nada para atualizar." };
+        }
+        const updated = await CommunityStorage.updateProfile(
+          pool,
+          params.id_profile,
+          patch
+        );
+        return updated || { error: "Comunidade não encontrada", statusCode: 404 };
+      }
+    );
+  }
+
+  // Persiste a URL já enviada ao R2 (o controller faz o upload).
+  static async setAvatar(user, params, avatar_url) {
+    return runWithLogs(
+      log,
+      "setAvatar",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+        const updated = await CommunityStorage.setAvatar(
+          pool,
+          params.id_profile,
+          avatar_url
+        );
+        return updated || { error: "Comunidade não encontrada", statusCode: 404 };
+      }
+    );
+  }
+
+  static async setBanner(user, params, banner_url) {
+    return runWithLogs(
+      log,
+      "setBanner",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+        const updated = await CommunityStorage.setBanner(
+          pool,
+          params.id_profile,
+          banner_url
+        );
+        return updated || { error: "Comunidade não encontrada", statusCode: 404 };
+      }
+    );
+  }
+
   // ─── Tema (só líder) ──────────────────────────────────────────────────────────
   static async updateTheme(user, params, body) {
     return runWithLogs(

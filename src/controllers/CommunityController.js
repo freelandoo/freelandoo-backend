@@ -2,6 +2,8 @@ const CommunityService = require("../services/CommunityService");
 const CommunitySlotService = require("../services/CommunitySlotService");
 const CommunityLeadershipService = require("../services/CommunityLeadershipService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
+const uploadCommunityBannerToR2 = require("../integrations/r2/uploadCommunityBanner");
+const uploadProfileAvatarToR2 = require("../integrations/r2/uploadProfileAvatar");
 
 class CommunityController {
   static async createSlotCheckout(req, res) {
@@ -64,6 +66,39 @@ class CommunityController {
       req.params,
       req.body || {}
     );
+    return sendServiceResult(res, result);
+  }
+
+  static async updateProfile(req, res) {
+    const result = await CommunityService.updateProfile(
+      req.user,
+      req.params,
+      req.body || {}
+    );
+    return sendServiceResult(res, result);
+  }
+
+  static async uploadBanner(req, res) {
+    if (!req.file) {
+      return res.status(400).json({ error: "Envie uma imagem de banner." });
+    }
+    const url = await uploadCommunityBannerToR2({
+      id_profile: req.params.id_profile,
+      file: req.file,
+    });
+    const result = await CommunityService.setBanner(req.user, req.params, url);
+    return sendServiceResult(res, result);
+  }
+
+  static async uploadAvatar(req, res) {
+    if (!req.file) {
+      return res.status(400).json({ error: "Envie uma imagem de avatar." });
+    }
+    const url = await uploadProfileAvatarToR2({
+      id_profile: req.params.id_profile,
+      file: req.file,
+    });
+    const result = await CommunityService.setAvatar(req.user, req.params, url);
     return sendServiceResult(res, result);
   }
 

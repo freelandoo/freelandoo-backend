@@ -104,11 +104,54 @@ class CommunityStorage {
     return r.rows[0];
   }
 
+  // ─── Edição de perfil (só líder; guard no service) ──────────────────────────
+  static async updateProfile(conn, id_community, { display_name, bio }) {
+    const sets = ["updated_at = NOW()"];
+    const vals = [id_community];
+    let idx = 2;
+    if (display_name !== undefined) {
+      sets.push(`display_name = $${idx++}`);
+      vals.push(display_name);
+    }
+    if (bio !== undefined) {
+      sets.push(`bio = $${idx++}`);
+      vals.push(bio);
+    }
+    const r = await conn.query(
+      `UPDATE public.tb_profile SET ${sets.join(", ")}
+        WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
+        RETURNING id_profile, display_name, bio`,
+      vals
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async setAvatar(conn, id_community, avatar_url) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile SET avatar_url = $2, updated_at = NOW()
+        WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
+        RETURNING id_profile, avatar_url`,
+      [id_community, avatar_url]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async setBanner(conn, id_community, banner_url) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile SET community_banner_url = $2, updated_at = NOW()
+        WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
+        RETURNING id_profile, community_banner_url AS banner_url`,
+      [id_community, banner_url]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
   // ─── Leitura ─────────────────────────────────────────────────────────────────
   static async getById(conn, id_community) {
     const r = await conn.query(
       `SELECT p.id_profile, p.id_machine, p.is_community, p.id_leader_user,
               p.community_theme, p.display_name, p.bio, p.avatar_url,
+              p.community_banner_url AS banner_url,
               p.xp_total, p.xp_level, p.created_at, p.updated_at,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
@@ -139,6 +182,7 @@ class CommunityStorage {
     params.push(Number(offset) || 0);
     const r = await conn.query(
       `SELECT p.id_profile, p.id_machine, p.display_name, p.avatar_url,
+              p.community_banner_url AS banner_url,
               p.community_theme, p.xp_total, p.xp_level,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
@@ -157,6 +201,7 @@ class CommunityStorage {
   static async listForUser(conn, id_user) {
     const r = await conn.query(
       `SELECT p.id_profile, p.id_machine, p.display_name, p.avatar_url,
+              p.community_banner_url AS banner_url,
               p.community_theme, p.xp_total, p.xp_level,
               m.role,
               mac.name AS enxame_name,

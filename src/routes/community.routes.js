@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
+const uploadAvatar = require("../middlewares/uploadAvatar");
 const CommunityController = require("../controllers/CommunityController");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -39,6 +40,27 @@ router.patch(
   "/:id_profile/theme",
   authMiddleware,
   asyncHandler(CommunityController.updateTheme)
+);
+
+// Edição de perfil da comunidade (só líder; guard no service).
+router.patch(
+  "/:id_profile/profile",
+  authMiddleware,
+  asyncHandler(CommunityController.updateProfile)
+);
+
+router.post(
+  "/:id_profile/banner",
+  authMiddleware,
+  uploadAvatar.single("banner"),
+  asyncHandler(CommunityController.uploadBanner)
+);
+
+router.post(
+  "/:id_profile/avatar",
+  authMiddleware,
+  uploadAvatar.single("avatar"),
+  asyncHandler(CommunityController.uploadAvatar)
 );
 
 router.post(
