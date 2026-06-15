@@ -143,6 +143,28 @@ class CommunityStorage {
     return r.rows;
   }
 
+  // Comunidades em que o user participa (qualquer papel), com seu papel.
+  static async listForUser(conn, id_user) {
+    const r = await conn.query(
+      `SELECT p.id_profile, p.id_machine, p.display_name, p.avatar_url,
+              p.community_theme, p.xp_total, p.xp_level,
+              m.role,
+              mac.name AS enxame_name,
+              (SELECT COUNT(*)::int FROM public.tb_community_member cm
+                WHERE cm.id_community_profile = p.id_profile) AS member_count
+         FROM public.tb_community_member m
+         JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
+         LEFT JOIN public.tb_machine mac ON mac.id_machine = p.id_machine
+        WHERE m.id_user = $1
+          AND p.is_community = TRUE
+          AND p.deleted_at IS NULL
+        ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'vice' THEN 1 ELSE 2 END,
+                 m.joined_at ASC`,
+      [id_user]
+    );
+    return r.rows;
+  }
+
   static async updateTheme(conn, id_community, theme) {
     const r = await conn.query(
       `UPDATE public.tb_profile

@@ -38,6 +38,11 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async listMine(req, res) {
+    const result = await CommunityService.listMine(req.user);
+    return sendServiceResult(res, result);
+  }
+
   static async getMembers(req, res) {
     const result = await CommunityService.getMembers(req.params);
     return sendServiceResult(res, result);

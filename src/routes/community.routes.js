@@ -11,6 +11,8 @@ router.get(
   asyncHandler(CommunityController.getCreationEligibility)
 );
 
+router.get("/me", authMiddleware, asyncHandler(CommunityController.listMine));
+
 // Bundle R$100 (+1 criar / +1 entrar). Antes das rotas /:id_profile.
 router.post(
   "/slots/checkout",

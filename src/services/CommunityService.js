@@ -158,6 +158,20 @@ class CommunityService {
     );
   }
 
+  static async listMine(user) {
+    return runWithLogs(
+      log,
+      "listMine",
+      () => ({ id_user: user?.id_user }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado" };
+        const communities = await CommunityStorage.listForUser(pool, id_user);
+        return { communities };
+      }
+    );
+  }
+
   static async getFeed(params, query) {
     return runWithLogs(
       log,
