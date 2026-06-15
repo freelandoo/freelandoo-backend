@@ -46,8 +46,8 @@ class CommunitySlotService {
           productName: "Ingresso de Comunidade (+1 criar / +1 entrar)",
           customerEmail: userEmail,
           clientReferenceId: String(purchase.id_purchase),
-          successUrl: `${baseUrl}/comunidade?slot_purchase=success`,
-          cancelUrl: `${baseUrl}/comunidade?slot_purchase=cancel`,
+          successUrl: `${baseUrl}/comunidades?slot_purchase=success`,
+          cancelUrl: `${baseUrl}/comunidades?slot_purchase=cancel`,
           metadata: {
             type: "community_slot",
             id_purchase: String(purchase.id_purchase),
