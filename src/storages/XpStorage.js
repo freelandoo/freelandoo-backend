@@ -275,12 +275,15 @@ module.exports = {
       const xp_amount = Number(settings[field] ?? 0) * units;
       if (xp_amount <= 0) return;
 
-      // Only award to non-clan active subprofiles
+      // Only award to non-clan, non-community active subprofiles. Comunidades
+      // têm XP computado (espelho do líder + acumulador), nunca por evento —
+      // senão um like num post da comunidade zeraria/sobrescreveria o XP.
       const profCheck = await db.query(
         `SELECT 1
            FROM tb_profile
           WHERE id_profile = $1
             AND is_clan = FALSE
+            AND is_community = FALSE
             AND deleted_at IS NULL`,
         [id_profile]
       );
@@ -454,6 +457,7 @@ module.exports = {
          FROM tb_profile
         WHERE id_user = $1
           AND is_clan = FALSE
+          AND is_community = FALSE
           AND deleted_at IS NULL
           AND is_active = TRUE`,
       [id_user]
