@@ -214,6 +214,117 @@ class CommunityStorage {
     );
     return r.rows;
   }
+
+  // ─── Bundle R$100 (slot purchase + entitlement) ─────────────────────────────
+  static async createSlotPurchase(conn, { id_user_payer, amount_cents = 10000 }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_slot_purchase (id_user_payer, amount_cents)
+         VALUES ($1, $2)
+       RETURNING id_purchase, id_user_payer, amount_cents, status, created_at`,
+      [id_user_payer, amount_cents]
+    );
+    return r.rows[0];
+  }
+
+  static async setSlotPurchaseSession(conn, id_purchase, session_id) {
+    await conn.query(
+      `UPDATE public.tb_community_slot_purchase
+          SET stripe_session_id = $2
+        WHERE id_purchase = $1`,
+      [id_purchase, session_id]
+    );
+  }
+
+  static async getSlotPurchaseBySession(conn, session_id) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_slot_purchase
+        WHERE stripe_session_id = $1
+        LIMIT 1`,
+      [session_id]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  // Marca a compra como aplicada (idempotente: só se applied_at IS NULL).
+  // Retorna o id_user se aplicou AGORA; null se já estava aplicada / inexistente.
+  static async markSlotPurchaseApplied(conn, session_id, payment_intent_id) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_slot_purchase
+          SET status = 'paid', paid_at = NOW(), applied_at = NOW(),
+              stripe_payment_intent_id = COALESCE($2, stripe_payment_intent_id)
+        WHERE stripe_session_id = $1 AND applied_at IS NULL
+        RETURNING id_user_payer`,
+      [session_id, payment_intent_id]
+    );
+    return r.rowCount ? r.rows[0].id_user_payer : null;
+  }
+
+  // +1/+1 (capado em 3). Cria a linha em 2/2 se ainda não existir.
+  static async incrementEntitlement(conn, id_user) {
+    await conn.query(
+      `INSERT INTO public.tb_community_entitlement (id_user, create_cap, member_cap)
+         VALUES ($1, 2, 2)
+       ON CONFLICT (id_user) DO UPDATE
+         SET create_cap = LEAST(3, public.tb_community_entitlement.create_cap + 1),
+             member_cap = LEAST(3, public.tb_community_entitlement.member_cap + 1),
+             updated_at = NOW()`,
+      [id_user]
+    );
+  }
+
+  static async getAppliedPurchaseByPaymentIntent(conn, payment_intent_id) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_slot_purchase
+        WHERE stripe_payment_intent_id = $1
+          AND applied_at IS NOT NULL
+          AND status = 'paid'
+        LIMIT 1`,
+      [payment_intent_id]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async markSlotPurchaseRefunded(conn, id_purchase) {
+    await conn.query(
+      `UPDATE public.tb_community_slot_purchase
+          SET status = 'refunded'
+        WHERE id_purchase = $1`,
+      [id_purchase]
+    );
+  }
+
+  // -1/-1 no reembolso, sem ir abaixo de 1 nem abaixo do que o user já usa
+  // (não dá pra "des-criar" comunidades / des-participar à força).
+  static async decrementEntitlement(conn, id_user) {
+    await conn.query(
+      `UPDATE public.tb_community_entitlement e
+          SET create_cap = GREATEST(
+                1,
+                (SELECT COUNT(*) FROM public.tb_profile p
+                  WHERE p.id_leader_user = $1 AND p.is_community = TRUE AND p.deleted_at IS NULL),
+                e.create_cap - 1),
+              member_cap = GREATEST(
+                1,
+                (SELECT COUNT(*) FROM public.tb_community_member m
+                   JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
+                  WHERE m.id_user = $1 AND p.deleted_at IS NULL),
+                e.member_cap - 1),
+              updated_at = NOW()
+        WHERE e.id_user = $1`,
+      [id_user]
+    );
+  }
+
+  static async markSlotPurchaseExpiredBySession(conn, session_id) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_slot_purchase
+          SET status = 'canceled'
+        WHERE stripe_session_id = $1 AND status = 'pending'
+        RETURNING id_purchase`,
+      [session_id]
+    );
+    return r.rowCount > 0;
+  }
 }
 
 module.exports = CommunityStorage;

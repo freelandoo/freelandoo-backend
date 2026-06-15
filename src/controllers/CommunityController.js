@@ -1,7 +1,13 @@
 const CommunityService = require("../services/CommunityService");
+const CommunitySlotService = require("../services/CommunitySlotService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class CommunityController {
+  static async createSlotCheckout(req, res) {
+    const result = await CommunitySlotService.createCheckout(req.user);
+    return sendServiceResult(res, result, 201);
+  }
+
   static async create(req, res) {
     const result = await CommunityService.create(req.user, req.body);
     return sendServiceResult(res, result, 201);

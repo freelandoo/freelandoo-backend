@@ -12,6 +12,8 @@ const PolenProductService = require("./PolenProductService");
 const PremiumService = require("./PremiumService");
 const ProfileProductOrderService = require("./ProfileProductOrderService");
 const CasaParticipantService = require("./CasaParticipantService");
+const CommunitySlotService = require("./CommunitySlotService");
+const CommunityStorage = require("../storages/CommunityStorage");
 const XpStorage = require("../storages/XpStorage");
 const BookingStorage = require("../storages/BookingStorage");
 const ProfileProductOrderStorage = require("../storages/ProfileProductOrderStorage");
@@ -250,6 +252,15 @@ async function handleChargeRefunded(conn, charge) {
     typeof charge.payment_intent === "string"
       ? charge.payment_intent
       : charge.payment_intent?.id || null;
+
+  // Bundle de comunidade (R$100): estorno total reverte o teto +1/+1.
+  // Encerra cedo — não é assinatura/pedido com comissão de afiliado.
+  const communityReverted = await CommunitySlotService.revertRefundByPaymentIntent(
+    conn,
+    paymentIntentId,
+    charge.id
+  );
+  if (communityReverted) return;
 
   let profileSubscription =
     (await ProfileSubscriptionStorage.findByChargeId(conn, charge.id)) ||
@@ -500,6 +511,8 @@ async function fulfillCheckoutSession(session) {
     result = await BookingService.confirmBookingFromWebhook(session.id, paymentIntentId);
   } else if (meta.type === "clan_slot") {
     result = await ClanService.confirmSlotPurchaseFromWebhook(session.id, paymentIntentId);
+  } else if (meta.type === "community_slot") {
+    result = await CommunitySlotService.confirmStripeSession(session);
   } else if (meta.type === "manifestation") {
     result = await ManifestationService.confirmStripeSession(session);
   } else if (meta.type === "polen_purchase") {
@@ -585,6 +598,14 @@ async function expireCheckoutSession(session, reason) {
       case "clan_slot":
         // Sem linha pendente persistida (o registro só nasce na confirmação).
         break;
+      case "community_slot": {
+        const ex = await CommunityStorage.markSlotPurchaseExpiredBySession(
+          pool,
+          session.id
+        );
+        if (ex) log.info("expire.community_slot", { session_id: session.id, reason });
+        break;
+      }
       default: {
         // Ativação/assinatura.
         const sub = await ProfileSubscriptionStorage.findBySessionId(pool, session.id);

@@ -196,6 +196,37 @@ function sessionIdFromUrl(checkoutUrl) {
   return m[1];
 }
 
+async function deliverChargeRefunded(charge) {
+  const event = {
+    id: `evt_e2e_${crypto.randomUUID().replace(/-/g, "")}`,
+    object: "event",
+    api_version: "2024-06-20",
+    created: Math.floor(Date.now() / 1000),
+    type: "charge.refunded",
+    livemode: false,
+    data: { object: charge },
+  };
+  const payload = JSON.stringify(event);
+  const signature = stripe.webhooks.generateTestHeaderString({
+    payload,
+    secret: WEBHOOK_SECRET,
+  });
+  const res = await fetch(`${BASE}/webhooks/stripe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "stripe-signature": signature },
+    body: payload,
+  });
+  assert.equal(res.status, 200, `webhook refund retornou ${res.status}`);
+}
+
+async function communityCaps(id_user) {
+  const rows = await q(
+    `SELECT create_cap, member_cap FROM tb_community_entitlement WHERE id_user = $1`,
+    [id_user]
+  );
+  return rows[0] || { create_cap: 1, member_cap: 1 };
+}
+
 // ─── Seed: user + perfil ────────────────────────────────────────────────────
 
 async function createUserWithProfile(label) {
@@ -496,6 +527,57 @@ async function flowLoja(buyer, seller) {
   );
 }
 
+// ─── Fluxo 5: Bundle de Comunidade R$100 (+1 criar / +1 entrar) ─────────────
+
+async function flowCommunitySlot(user) {
+  section("Fluxo 5 — Bundle de Comunidade R$100 (Stripe)");
+
+  const before = await communityCaps(user.id_user);
+
+  const create = await api("POST", "/communities/slots/checkout", {
+    token: user.token,
+    body: {},
+  });
+  assert.ok(
+    create.status < 400 && create.json?.url,
+    `checkout do bundle falhou (${create.status}): ${JSON.stringify(create.json)}`
+  );
+  const sessionId = sessionIdFromUrl(create.json.url);
+  pass("checkout do bundle cria sessão", sessionId);
+
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  assert.equal(session.amount_total, 10000, "bundle deve custar R$100,00");
+  const pi = await confirmedPaymentIntent(session.amount_total);
+  await deliverCheckoutCompleted(sessionId, { paymentIntentId: pi.id });
+
+  const after = await communityCaps(user.id_user);
+  assert.equal(after.create_cap, before.create_cap + 1, `create_cap esperado ${before.create_cap + 1}, veio ${after.create_cap}`);
+  assert.equal(after.member_cap, before.member_cap + 1, `member_cap esperado ${before.member_cap + 1}, veio ${after.member_cap}`);
+  pass(`entitlement subiu para ${after.create_cap}/${after.member_cap} após pagamento`);
+
+  // Idempotência: o MESMO pagamento entregue de novo não pode subir o teto outra vez.
+  await deliverCheckoutCompleted(sessionId, { paymentIntentId: pi.id });
+  const again = await communityCaps(user.id_user);
+  assert.equal(again.create_cap, after.create_cap, "webhook duplicado subiu o teto de novo!");
+  assert.equal(again.member_cap, after.member_cap, "webhook duplicado subiu o teto de novo!");
+  pass("webhook re-entregue é idempotente (sem +1 duplo)");
+
+  // Estorno total reverte o teto (sem ir abaixo de 1 / do que o user já usa).
+  await deliverChargeRefunded({
+    id: `ch_e2e_${crypto.randomUUID().replace(/-/g, "")}`,
+    object: "charge",
+    payment_intent: pi.id,
+    amount: session.amount_total,
+    amount_refunded: session.amount_total,
+    refunded: true,
+    status: "succeeded",
+  });
+  const refunded = await communityCaps(user.id_user);
+  assert.equal(refunded.create_cap, before.create_cap, `estorno deveria voltar create_cap a ${before.create_cap}, veio ${refunded.create_cap}`);
+  assert.equal(refunded.member_cap, before.member_cap, `estorno deveria voltar member_cap a ${before.member_cap}, veio ${refunded.member_cap}`);
+  pass(`estorno total reverteu o teto para ${refunded.create_cap}/${refunded.member_cap}`);
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -520,6 +602,7 @@ async function main() {
       const seller = await createUserWithProfile("seller");
       await flowLoja(user, seller);
     },
+    () => flowCommunitySlot(user),
   ]) {
     try {
       await flow();
