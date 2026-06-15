@@ -18,6 +18,19 @@ router.post(
   asyncHandler(CommunityController.createSlotCheckout)
 );
 
+// Votação de liderança. Antes das rotas /:id_profile.
+router.get(
+  "/votes/pending",
+  authMiddleware,
+  asyncHandler(CommunityController.listPendingVotes)
+);
+
+router.post(
+  "/votes/:id_vote/ballot",
+  authMiddleware,
+  asyncHandler(CommunityController.castBallot)
+);
+
 router.post("/", authMiddleware, asyncHandler(CommunityController.create));
 
 router.patch(

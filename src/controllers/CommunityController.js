@@ -1,10 +1,25 @@
 const CommunityService = require("../services/CommunityService");
 const CommunitySlotService = require("../services/CommunitySlotService");
+const CommunityLeadershipService = require("../services/CommunityLeadershipService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class CommunityController {
   static async createSlotCheckout(req, res) {
     const result = await CommunitySlotService.createCheckout(req.user);
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async listPendingVotes(req, res) {
+    const result = await CommunityLeadershipService.listPending(req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async castBallot(req, res) {
+    const result = await CommunityLeadershipService.castBallot(
+      req.user,
+      req.params,
+      req.body || {}
+    );
     return sendServiceResult(res, result, 201);
   }
 

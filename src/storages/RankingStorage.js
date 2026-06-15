@@ -290,6 +290,15 @@ module.exports = {
 
     await db.query(`UPDATE ranking_config SET last_recalculated_at = NOW() WHERE id = 1`);
 
+    // Fecha votações de liderança vencidas (janela de 7 dias) a cada heartbeat —
+    // independente do rollover de temporada. Require lazy + try isolado.
+    try {
+      const CommunityLeadershipService = require("../services/CommunityLeadershipService");
+      await CommunityLeadershipService.resolveDueVotes(db);
+    } catch {
+      /* votação de liderança indisponível — não afeta o ranking */
+    }
+
     const count = await db.query(`SELECT COUNT(*) FROM profile_ranking`);
     return {
       success: true,
