@@ -158,6 +158,26 @@ class CommunityService {
     );
   }
 
+  static async getFeed(params, query) {
+    return runWithLogs(
+      log,
+      "getFeed",
+      () => ({ id_profile: params?.id_profile, kind: query?.kind }),
+      async () => {
+        const kindRaw = query?.kind;
+        const kind = kindRaw === "bees" || kindRaw === "feed" ? kindRaw : null;
+        const items = await CommunityStorage.listItems(
+          pool,
+          params.id_profile,
+          kind,
+          query?.limit,
+          query?.offset
+        );
+        return { items };
+      }
+    );
+  }
+
   static async getCreationEligibility(user) {
     return runWithLogs(
       log,

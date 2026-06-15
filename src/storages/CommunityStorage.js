@@ -215,6 +215,40 @@ class CommunityStorage {
     return r.rows;
   }
 
+  // ─── Feed/Bees da comunidade (itens de portfólio do perfil-comunidade) ──────
+  // feed_kind: 'feed' (posts) | 'bees' (vídeos 9:16) | null (todos).
+  static async listItems(conn, id_community, feed_kind, limit = 24, offset = 0) {
+    const r = await conn.query(
+      `SELECT i.id_portfolio_item, i.title, i.description, i.feed_kind,
+              i.created_at,
+              COALESCE(mq.media, '[]'::jsonb) AS media
+         FROM public.tb_profile_portfolio_item i
+         LEFT JOIN LATERAL (
+           SELECT jsonb_agg(
+             jsonb_build_object(
+               'id_portfolio_media', m.id_portfolio_media,
+               'media_url', m.media_url,
+               'media_type', m.media_type,
+               'thumbnail_url', m.thumbnail_url,
+               'sort_order', m.sort_order,
+               'width', m.width,
+               'height', m.height
+             ) ORDER BY m.sort_order, m.created_at
+           ) AS media
+           FROM public.tb_profile_portfolio_media m
+           WHERE m.id_portfolio_item = i.id_portfolio_item AND m.is_active = true
+         ) mq ON TRUE
+        WHERE i.id_profile = $1
+          AND i.is_active = true
+          AND i.is_banned = false
+          AND ($2::text IS NULL OR i.feed_kind = $2)
+        ORDER BY i.created_at DESC
+        LIMIT $3 OFFSET $4`,
+      [id_community, feed_kind || null, Math.min(Number(limit) || 24, 60), Number(offset) || 0]
+    );
+    return r.rows;
+  }
+
   // ─── Bundle R$100 (slot purchase + entitlement) ─────────────────────────────
   static async createSlotPurchase(conn, { id_user_payer, amount_cents = 10000 }) {
     const r = await conn.query(

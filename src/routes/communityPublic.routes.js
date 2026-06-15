@@ -11,5 +11,9 @@ router.get(
   "/:id_profile/members",
   asyncHandler(CommunityController.getMembers)
 );
+router.get(
+  "/:id_profile/feed",
+  asyncHandler(CommunityController.getFeed)
+);
 
 module.exports = router;

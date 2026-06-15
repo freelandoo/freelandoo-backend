@@ -43,6 +43,11 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async getFeed(req, res) {
+    const result = await CommunityService.getFeed(req.params, req.query);
+    return sendServiceResult(res, result);
+  }
+
   static async getCreationEligibility(req, res) {
     const result = await CommunityService.getCreationEligibility(req.user);
     return sendServiceResult(res, result);
