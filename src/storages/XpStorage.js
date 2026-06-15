@@ -174,6 +174,18 @@ module.exports = {
     // Propagate to the clan this profile belongs to (clan XP = AVG of members)
     await this.recalcClanXp(db, id_profile, { base, mult });
 
+    // Propaga para as comunidades lideradas por este user (XP da comunidade =
+    // espelho do XP do líder + acumulador). Require lazy: evita ciclo de import
+    // (CommunityXpService → XpStorage). Fire-and-forget safe.
+    if (row && row.id_user) {
+      try {
+        const CommunityXpService = require("../services/CommunityXpService");
+        await CommunityXpService.recalcForLeaderUser(db, row.id_user);
+      } catch (err) {
+        log.error("recalcCommunityXp.fail", { id_profile, error: err.message });
+      }
+    }
+
     return row;
   },
 

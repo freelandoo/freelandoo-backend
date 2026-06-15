@@ -349,6 +349,25 @@ module.exports = {
       // 4. Zera o placar para a nova temporada começar do zero.
       await db.query(`DELETE FROM profile_ranking`);
 
+      // 5. Ciclo das comunidades para a temporada que ENCERROU: aplica
+      //    acumulador (+1/membro), recalcula XP e tira snapshot. Require lazy +
+      //    try/catch para nunca derrubar o rollover de temporada dos perfis.
+      //    Os serviços logam internamente. A abertura das votações (Slice 5) é
+      //    isolada num try próprio porque o serviço pode ainda não existir.
+      const endedSeason = current.season_number;
+      try {
+        const CommunityRankingService = require("../services/CommunityRankingService");
+        await CommunityRankingService.runCycle(db, endedSeason);
+      } catch {
+        /* ciclo de comunidade indisponível — não derruba o rollover */
+      }
+      try {
+        const CommunityLeadershipService = require("../services/CommunityLeadershipService");
+        await CommunityLeadershipService.openEligibleVotes(db, endedSeason);
+      } catch {
+        /* votação de liderança ainda não disponível (Slice 5) */
+      }
+
       rolled += 1;
       current = await this.getConfig(db);
     }
