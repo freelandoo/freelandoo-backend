@@ -2,6 +2,8 @@
 // SQL puro da Comunidade (tipo is_community em tb_profile). Membros são USERS.
 // Espelha o estilo de ClanStorage: métodos estáticos recebendo `conn`.
 
+const ProfileStorage = require("./ProfileStorage");
+
 class CommunityStorage {
   // ─── Entitlement (tetos por user) ───────────────────────────────────────────
   // Garante a linha default (1/1) e devolve os tetos atuais.
@@ -73,15 +75,22 @@ class CommunityStorage {
     conn,
     { id_user, id_machine, display_name, bio, avatar_url, theme }
   ) {
+    // tb_profile.sub_profile_slug é NOT NULL — gera um slug único por user
+    // (mesma convenção dos subperfis: slugify(display_name) + sufixo anti-colisão).
+    const sub_profile_slug = await ProfileStorage.resolveUniqueSubProfileSlug(
+      conn,
+      { id_user, display_name }
+    );
+
     const r = await conn.query(
       `INSERT INTO public.tb_profile
          (id_user, id_category, id_machine, is_community, id_leader_user,
-          community_theme, display_name, bio, avatar_url)
+          community_theme, display_name, bio, avatar_url, sub_profile_slug)
        VALUES
-         ($1, NULL, $2, TRUE, $1, $3, $4, $5, $6)
+         ($1, NULL, $2, TRUE, $1, $3, $4, $5, $6, $7)
        RETURNING id_profile, id_user, id_machine, is_community, id_leader_user,
-                 community_theme, display_name, bio, avatar_url, is_active,
-                 is_visible, xp_total, xp_level, created_at, updated_at`,
+                 community_theme, display_name, bio, avatar_url, sub_profile_slug,
+                 is_active, is_visible, xp_total, xp_level, created_at, updated_at`,
       [
         id_user,
         id_machine,
@@ -89,6 +98,7 @@ class CommunityStorage {
         display_name,
         bio ?? null,
         avatar_url ?? null,
+        sub_profile_slug,
       ]
     );
     return r.rows[0];
