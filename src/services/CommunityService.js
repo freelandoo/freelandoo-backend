@@ -143,6 +143,7 @@ class CommunityService {
         const communities = await CommunityStorage.listPublic(pool, {
           q: query?.q,
           id_machine: query?.id_machine,
+          id_region: query?.id_region,
           limit: query?.limit,
           offset: query?.offset,
         });

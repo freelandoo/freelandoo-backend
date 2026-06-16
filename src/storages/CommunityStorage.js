@@ -82,12 +82,27 @@ class CommunityStorage {
       { id_user, display_name }
     );
 
+    // Região da comunidade = a do subperfil de maior XP do criador (que tenha
+    // região). Permite filtrar comunidades por região no ranking e na vitrine.
     const r = await conn.query(
       `INSERT INTO public.tb_profile
          (id_user, id_category, id_machine, is_community, id_leader_user,
-          community_theme, display_name, bio, avatar_url, sub_profile_slug)
+          community_theme, display_name, bio, avatar_url, sub_profile_slug,
+          id_region, estado, municipio)
        VALUES
-         ($1, NULL, $2, TRUE, $1, $3, $4, $5, $6, $7)
+         ($1, NULL, $2, TRUE, $1, $3, $4, $5, $6, $7,
+          (SELECT p.id_region FROM public.tb_profile p
+             WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
+               AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
+             ORDER BY p.xp_total DESC LIMIT 1),
+          (SELECT p.estado FROM public.tb_profile p
+             WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
+               AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
+             ORDER BY p.xp_total DESC LIMIT 1),
+          (SELECT p.municipio FROM public.tb_profile p
+             WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
+               AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
+             ORDER BY p.xp_total DESC LIMIT 1))
        RETURNING id_profile, id_user, id_machine, is_community, id_leader_user,
                  community_theme, display_name, bio, avatar_url, sub_profile_slug,
                  is_active, is_visible, xp_total, xp_level, created_at, updated_at`,
@@ -167,7 +182,7 @@ class CommunityStorage {
     return r.rowCount ? r.rows[0] : null;
   }
 
-  static async listPublic(conn, { q, id_machine, limit = 30, offset = 0 } = {}) {
+  static async listPublic(conn, { q, id_machine, id_region, limit = 30, offset = 0 } = {}) {
     const params = [];
     const where = ["p.is_community = TRUE", "p.deleted_at IS NULL"];
     if (q) {
@@ -178,12 +193,17 @@ class CommunityStorage {
       params.push(id_machine);
       where.push(`p.id_machine = $${params.length}`);
     }
+    if (id_region) {
+      params.push(id_region);
+      where.push(`p.id_region = $${params.length}`);
+    }
     params.push(Math.min(Number(limit) || 30, 60));
     params.push(Number(offset) || 0);
     const r = await conn.query(
       `SELECT p.id_profile, p.id_machine, p.display_name, p.avatar_url,
               p.community_banner_url AS banner_url,
               p.community_theme, p.xp_total, p.xp_level,
+              p.estado, p.municipio, p.id_region,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
                 WHERE cm.id_community_profile = p.id_profile) AS member_count
