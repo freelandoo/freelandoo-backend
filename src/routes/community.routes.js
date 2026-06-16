@@ -99,6 +99,18 @@ router.delete(
   asyncHandler(CommunityController.unlinkFeedItem)
 );
 
+// Recado: nota só-texto no feed da comunidade (membro publica; autor/líder apaga).
+router.post(
+  "/:id_profile/recado",
+  authMiddleware,
+  asyncHandler(CommunityController.createRecado)
+);
+router.delete(
+  "/:id_profile/recado/:id_feed_item",
+  authMiddleware,
+  asyncHandler(CommunityController.deleteRecado)
+);
+
 router.post(
   "/:id_profile/join",
   authMiddleware,

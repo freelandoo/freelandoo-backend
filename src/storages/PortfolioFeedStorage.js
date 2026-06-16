@@ -85,7 +85,11 @@ function buildCandidateQuery(mode) {
           WHERE ubi.id_portfolio_item = ppi.id_portfolio_item
             AND ubi.id_user = $7::uuid
         ) THEN TRUE ELSE FALSE
-      END                                                  AS viewer_has_bookmarked
+      END                                                  AS viewer_has_bookmarked,
+
+      comm.community_id,
+      comm.community_name,
+      comm.community_avatar
 
     FROM tb_profile_portfolio_item ppi
     JOIN tb_profile pro       ON pro.id_profile  = ppi.id_profile
@@ -140,6 +144,20 @@ function buildCandidateQuery(mode) {
         AND psm.phone_number_normalized IS NOT NULL
       LIMIT 1
     ) wa ON TRUE
+
+    LEFT JOIN LATERAL (
+      SELECT cp.id_profile     AS community_id,
+             cp.display_name   AS community_name,
+             cp.avatar_url     AS community_avatar
+      FROM tb_community_feed_item cfi
+      JOIN tb_profile cp
+        ON cp.id_profile = cfi.id_community_profile
+       AND cp.is_community = TRUE
+       AND cp.deleted_at IS NULL
+      WHERE cfi.id_portfolio_item = ppi.id_portfolio_item
+      ORDER BY cfi.created_at DESC
+      LIMIT 1
+    ) comm ON TRUE
 
     WHERE ppi.status   = 'published'
       AND ppi.is_active = TRUE

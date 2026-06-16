@@ -283,6 +283,15 @@ function shapeRow(row) {
     public_profile_url,
     whatsapp_url,
     social_links: row.social_links || [],
+    // Comunidade à qual o post está ligado (mig 160) — alimenta o botão
+    // "Acessar comunidade" no header do card do /feed. Null se não pertence.
+    community: row.community_id
+      ? {
+          id_profile: row.community_id,
+          display_name: row.community_name || null,
+          avatar_url: row.community_avatar || null,
+        }
+      : null,
   };
 }
 

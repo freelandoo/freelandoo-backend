@@ -326,8 +326,14 @@ class CommunityService {
     );
   }
 
-  // ─── Feed estilo grupo (posts dos membros) ──────────────────────────────────
-  // Feed unificado (posts + bees), cronológico, no shape FeedPost do /feed.
+  // ─── Feed estilo grupo (posts dos membros + recados só-texto) ───────────────
+  // Feed unificado (posts + bees + recados), cronológico, no shape FeedPost do
+  // /feed. Posts e recados saem de fontes distintas e são mesclados em JS por uma
+  // chave de ordenação comum (ts, key textual): post → uuid; recado → 'r<id>'.
+  static _isoTs(ts) {
+    return ts instanceof Date ? ts.toISOString() : String(ts);
+  }
+
   static async getFeedPosts(params, query, viewer) {
     return runWithLogs(
       log,
@@ -335,36 +341,121 @@ class CommunityService {
       () => ({ id_profile: params?.id_profile, cursor: query?.cursor || null }),
       async () => {
         let before_ts = null;
-        let before_id = null;
+        let before_key = null;
         if (query?.cursor) {
           try {
             const decoded = Buffer.from(String(query.cursor), "base64").toString("utf8");
             const sep = decoded.lastIndexOf("|");
             if (sep > 0) {
               before_ts = decoded.slice(0, sep);
-              before_id = decoded.slice(sep + 1);
+              before_key = decoded.slice(sep + 1);
             }
           } catch {
             /* cursor inválido — começa do início */
           }
         }
         const limit = Math.min(Math.max(Number(query?.limit) || 12, 1), 24);
-        const rows = await CommunityStorage.listCommunityFeedPosts(pool, params.id_profile, {
-          viewer_id_user: viewer?.id_user || null,
-          limit: limit + 1, // +1 para saber se há próxima página
-          before_ts,
-          before_id,
+
+        // +1 em cada fonte garante que o top-`limit` da mescla está completo.
+        const [postRows, recadoRows] = await Promise.all([
+          CommunityStorage.listCommunityFeedPosts(pool, params.id_profile, {
+            viewer_id_user: viewer?.id_user || null,
+            limit: limit + 1,
+            before_ts,
+            before_key,
+          }),
+          CommunityStorage.listCommunityRecados(pool, params.id_profile, {
+            limit: limit + 1,
+            before_ts,
+            before_key,
+          }),
+        ]);
+
+        const shape = (row, isRecado) => {
+          const item = PortfolioFeedService.shapeRow(row);
+          if (isRecado) {
+            item.is_recado = true;
+            item.recado_id = Number(row.recado_id);
+            item.author_user_id = row.id_author_user || null;
+          }
+          return {
+            item,
+            _ts: new Date(this._isoTs(row.published_at)).getTime() || 0,
+            _iso: this._isoTs(row.published_at),
+            _key: String(row.post_id),
+          };
+        };
+
+        const merged = [
+          ...postRows.map((r) => shape(r, false)),
+          ...recadoRows.map((r) => shape(r, true)),
+        ].sort((a, b) => {
+          if (a._ts !== b._ts) return b._ts - a._ts;
+          return a._key < b._key ? 1 : a._key > b._key ? -1 : 0;
         });
-        const hasMore = rows.length > limit;
-        const page = hasMore ? rows.slice(0, limit) : rows;
-        const items = page.map((row) => PortfolioFeedService.shapeRow(row));
+
+        const hasMore = merged.length > limit;
+        const page = hasMore ? merged.slice(0, limit) : merged;
+        const items = page.map((x) => x.item);
         let next_cursor = null;
-        if (hasMore) {
+        if (hasMore && page.length) {
           const last = page[page.length - 1];
-          const ts = last.published_at instanceof Date ? last.published_at.toISOString() : last.published_at;
-          next_cursor = Buffer.from(`${ts}|${last.post_id}`, "utf8").toString("base64");
+          next_cursor = Buffer.from(`${last._iso}|${last._key}`, "utf8").toString("base64");
         }
         return { items, next_cursor, has_more: hasMore };
+      }
+    );
+  }
+
+  // Cria um recado (nota só-texto) no feed da comunidade. Só membros publicam.
+  static async createRecado(user, params, body) {
+    return runWithLogs(
+      log,
+      "createRecado",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado" };
+        const text = String(body?.body || "").trim();
+        if (!text) return { error: "Escreva o recado." };
+        if (text.length > 2000) {
+          return { error: "O recado deve ter no máximo 2000 caracteres." };
+        }
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+        const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
+        if (!membership) {
+          return { error: "Você precisa ser membro para publicar na comunidade." };
+        }
+        const id = await CommunityStorage.createRecado(pool, params.id_profile, {
+          body: text,
+          id_author_user: id_user,
+        });
+        return { ok: true, id };
+      }
+    );
+  }
+
+  // Remove um recado: o próprio autor OU o líder da comunidade.
+  static async deleteRecado(user, params) {
+    return runWithLogs(
+      log,
+      "deleteRecado",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile, id: params?.id_feed_item }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado" };
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+        const item = await CommunityStorage.getFeedItem(pool, params.id_feed_item);
+        if (!item || item.kind !== "recado" || String(item.id_community_profile) !== String(params.id_profile)) {
+          return { error: "Recado não encontrado", statusCode: 404 };
+        }
+        const isLeader = String(community.id_leader_user) === String(id_user);
+        const isAuthor = String(item.id_author_user) === String(id_user);
+        if (!isLeader && !isAuthor) return { error: "Sem permissão para remover." };
+        const ok = await CommunityStorage.deleteRecado(pool, params.id_profile, params.id_feed_item);
+        return { ok };
       }
     );
   }

@@ -518,7 +518,7 @@ class CommunityStorage {
 
   // Feed unificado (posts + bees, cronológico) na MESMA projeção do /feed.
   // Sem o gate de assinatura da vitrine: o que vale é ser membro + post válido.
-  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_id }) {
+  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 24);
     const r = await conn.query(
       `SELECT
@@ -594,10 +594,95 @@ class CommunityStorage {
            SELECT 1 FROM public.tb_profile_portfolio_media ppm2
            WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item AND ppm2.is_active = TRUE
          )
-         AND ($4::timestamptz IS NULL OR (ppi.published_at, ppi.id_portfolio_item) < ($4::timestamptz, $5::uuid))
+         AND ($4::timestamptz IS NULL OR (ppi.published_at, ppi.id_portfolio_item::text) < ($4::timestamptz, $5::text))
        ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC
        LIMIT $3`,
-      [id_community, viewer_id_user || null, lim, before_ts || null, before_id || null]
+      [id_community, viewer_id_user || null, lim, before_ts || null, before_key || null]
+    );
+    return r.rows;
+  }
+
+  // ─── Recados (posts só-texto, exclusivos do feed da comunidade) ──────────────
+  // Cria um recado. Aliases das colunas seguem o shape que PortfolioFeedService
+  // .shapeRow espera (post_id 'r<id>', description=body, contadores zerados etc.),
+  // para reusar o mesmo cartão FeedPost do /feed sem código de shape duplicado.
+  static async createRecado(conn, id_community, { body, id_author_user }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_feed_item
+         (id_community_profile, id_portfolio_item, id_author_user, kind, body)
+       VALUES ($1, NULL, $2, 'recado', $3)
+       RETURNING id`,
+      [id_community, id_author_user, body]
+    );
+    return r.rows[0].id;
+  }
+
+  static async getFeedItem(conn, id_feed_item) {
+    const r = await conn.query(
+      `SELECT id, id_community_profile, id_author_user, kind
+         FROM public.tb_community_feed_item
+        WHERE id = $1
+        LIMIT 1`,
+      [id_feed_item]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async deleteRecado(conn, id_community, id_feed_item) {
+    const r = await conn.query(
+      `DELETE FROM public.tb_community_feed_item
+        WHERE id = $1 AND id_community_profile = $2 AND kind = 'recado'`,
+      [id_feed_item, id_community]
+    );
+    return r.rowCount > 0;
+  }
+
+  // Lista recados (texto) já no shape FeedPost (via shapeRow). Identidade do autor
+  // = subperfil de maior XP (mesmo critério do ranking de temporada). Paginação
+  // unificada com os posts via chave textual ('r' || id) na MESMA stream.
+  static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key }) {
+    const lim = Math.min(Math.max(Number(limit) || 12, 1), 25);
+    const r = await conn.query(
+      `SELECT
+         ('r' || cfi.id::text)                               AS post_id,
+         cfi.id                                              AS recado_id,
+         cfi.id_author_user,
+         NULL::text                                          AS title,
+         cfi.body                                            AS description,
+         NULL::text                                          AS project_url,
+         'portfolio'::text                                   AS source_type,
+         NULL::uuid                                          AS source_course_id,
+         cfi.created_at                                      AS published_at,
+         0 AS likes_count, 0 AS shares_count, 0 AS impressions_count,
+         0 AS profile_clicks_count, 0 AS whatsapp_clicks_count,
+         0 AS social_clicks_count, 0 AS comments_count, 0 AS engagement_score,
+         'feed'::text                                        AS feed_kind,
+         NULL::uuid AS audio_track_id, NULL::int AS audio_start_ms,
+         hp.id_profile, hp.display_name, hp.avatar_url, hp.estado, hp.municipio,
+         hp.is_clan, hp.sub_profile_slug, hp.xp_level,
+         u.username,
+         COALESCE(ca.id_machine, hp.id_machine)              AS id_machine,
+         m.slug AS machine_slug, m.name AS machine_name,
+         m.color_from, m.color_to, m.color_glow, m.color_ring, m.color_accent, m.color_text,
+         ca.id_category, ca.desc_category AS profession_name, ca.profession_slug
+       FROM public.tb_community_feed_item cfi
+       JOIN public.tb_user u ON u.id_user = cfi.id_author_user
+       LEFT JOIN LATERAL (
+         SELECT p.id_profile, p.display_name, p.avatar_url, p.estado, p.municipio,
+                p.is_clan, p.sub_profile_slug, p.xp_level, p.id_machine, p.id_category
+           FROM public.tb_profile p
+          WHERE p.id_user = cfi.id_author_user
+            AND p.is_clan = FALSE AND p.is_community = FALSE AND p.deleted_at IS NULL
+          ORDER BY p.xp_total DESC LIMIT 1
+       ) hp ON TRUE
+       LEFT JOIN public.tb_category ca ON ca.id_category = hp.id_category
+       LEFT JOIN public.tb_machine  m  ON m.id_machine = COALESCE(ca.id_machine, hp.id_machine)
+      WHERE cfi.id_community_profile = $1
+        AND cfi.kind = 'recado'
+        AND ($2::timestamptz IS NULL OR (cfi.created_at, ('r' || cfi.id::text)) < ($2::timestamptz, $3::text))
+      ORDER BY cfi.created_at DESC, cfi.id DESC
+      LIMIT $4`,
+      [id_community, before_ts || null, before_key || null, lim]
     );
     return r.rows;
   }

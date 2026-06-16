@@ -122,6 +122,16 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async createRecado(req, res) {
+    const result = await CommunityService.createRecado(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async deleteRecado(req, res) {
+    const result = await CommunityService.deleteRecado(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async getBenchmark(req, res) {
     const result = await CommunityService.getBenchmark(req.params);
     return sendServiceResult(res, result);
