@@ -487,12 +487,16 @@ class CommunityService {
   }
 
   // ─── Mural do líder ───────────────────────────────────────────────────────────
-  static async listAnnouncements(params) {
+  // Mural é privado: só membros (líder incluso) leem os recados.
+  static async listAnnouncements(params, viewer) {
     return runWithLogs(
       log,
       "listAnnouncements",
-      () => ({ id_profile: params?.id_profile }),
+      () => ({ id_profile: params?.id_profile, viewer: viewer?.id_user ? "auth" : "anon" }),
       async () => {
+        if (!viewer?.id_user) return { announcements: [] };
+        const membership = await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user);
+        if (!membership) return { announcements: [] };
         const announcements = await CommunityStorage.listAnnouncements(pool, params.id_profile);
         return { announcements };
       }

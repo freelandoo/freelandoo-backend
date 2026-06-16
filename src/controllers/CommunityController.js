@@ -138,7 +138,7 @@ class CommunityController {
   }
 
   static async listAnnouncements(req, res) {
-    const result = await CommunityService.listAnnouncements(req.params);
+    const result = await CommunityService.listAnnouncements(req.params, req.user);
     return sendServiceResult(res, result);
   }
 

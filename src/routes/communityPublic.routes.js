@@ -24,8 +24,10 @@ router.get(
   "/:id_profile/goal",
   asyncHandler(CommunityController.getGoal)
 );
+// Mural é privado (só membros) — auth opcional p/ resolver a membership.
 router.get(
   "/:id_profile/announcements",
+  optionalAuthMiddleware,
   asyncHandler(CommunityController.listAnnouncements)
 );
 // Feed estilo grupo (posts + bees dos membros). Viewer opcional p/ "curtiu?".
