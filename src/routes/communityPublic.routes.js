@@ -36,5 +36,10 @@ router.get(
   optionalAuthMiddleware,
   asyncHandler(CommunityController.getFeedPosts)
 );
+// Retorno de link de share (1 ponto pro membro). Público — chamado pela rota /cs.
+router.post(
+  "/:id_profile/share-return",
+  asyncHandler(CommunityController.logShareReturn)
+);
 
 module.exports = router;

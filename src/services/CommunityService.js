@@ -369,6 +369,30 @@ class CommunityService {
     );
   }
 
+  // Registra o retorno de um link de share (público; chamado pela rota /cs).
+  static async logShareReturn(params, body) {
+    return runWithLogs(
+      log,
+      "logShareReturn",
+      () => ({ id_profile: params?.id_profile, member: body?.id_member_user }),
+      async () => {
+        const id_member_user = body?.id_member_user;
+        const id_portfolio_item = body?.id_portfolio_item;
+        const visitor_hash = body?.visitor_hash;
+        if (!id_member_user || !id_portfolio_item || !visitor_hash) {
+          return { ok: false };
+        }
+        const counted = await CommunityStorage.logShareReturn(pool, {
+          id_community: params.id_profile,
+          id_member_user,
+          id_portfolio_item,
+          visitor_hash,
+        });
+        return { ok: true, counted };
+      }
+    );
+  }
+
   // Liga um post/bee do membro ao feed da comunidade (chamado pelo composer).
   static async linkFeedItem(user, params, body) {
     return runWithLogs(

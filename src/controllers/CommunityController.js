@@ -117,6 +117,11 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async logShareReturn(req, res) {
+    const result = await CommunityService.logShareReturn(req.params, req.body || {});
+    return sendServiceResult(res, result);
+  }
+
   static async getBenchmark(req, res) {
     const result = await CommunityService.getBenchmark(req.params);
     return sendServiceResult(res, result);

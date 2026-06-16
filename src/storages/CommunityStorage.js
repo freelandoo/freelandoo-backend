@@ -498,6 +498,24 @@ class CommunityStorage {
     return r.rowCount > 0;
   }
 
+  // Registra um "retorno" via link de share (1 ponto). Só conta se o atribuído
+  // é membro; dedupe por (comunidade, membro, post, visitante).
+  static async logShareReturn(conn, { id_community, id_member_user, id_portfolio_item, visitor_hash }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_share_return
+         (id_community_profile, id_member_user, id_portfolio_item, visitor_hash)
+       SELECT $1, $2, $3, $4
+        WHERE EXISTS (
+          SELECT 1 FROM public.tb_community_member m
+           WHERE m.id_community_profile = $1 AND m.id_user = $2
+        )
+       ON CONFLICT (id_community_profile, id_member_user, id_portfolio_item, visitor_hash) DO NOTHING
+       RETURNING id`,
+      [id_community, id_member_user, id_portfolio_item, visitor_hash]
+    );
+    return r.rowCount > 0;
+  }
+
   // Feed unificado (posts + bees, cronológico) na MESMA projeção do /feed.
   // Sem o gate de assinatura da vitrine: o que vale é ser membro + post válido.
   static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_id }) {
