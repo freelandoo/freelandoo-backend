@@ -87,6 +87,18 @@ router.delete(
   asyncHandler(CommunityController.deleteAnnouncement)
 );
 
+// Feed estilo grupo: liga (membro) / desliga (autor ou líder) um post.
+router.post(
+  "/:id_profile/feed",
+  authMiddleware,
+  asyncHandler(CommunityController.linkFeedItem)
+);
+router.delete(
+  "/:id_profile/feed/:id_portfolio_item",
+  authMiddleware,
+  asyncHandler(CommunityController.unlinkFeedItem)
+);
+
 router.post(
   "/:id_profile/join",
   authMiddleware,

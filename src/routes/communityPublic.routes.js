@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const CommunityController = require("../controllers/CommunityController");
+const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const asyncHandler = require("../utils/asyncHandler");
 
 // Comunidades são públicas/indexadas: leitura sem autenticação.
@@ -26,6 +27,12 @@ router.get(
 router.get(
   "/:id_profile/announcements",
   asyncHandler(CommunityController.listAnnouncements)
+);
+// Feed estilo grupo (posts + bees dos membros). Viewer opcional p/ "curtiu?".
+router.get(
+  "/:id_profile/feed-posts",
+  optionalAuthMiddleware,
+  asyncHandler(CommunityController.getFeedPosts)
 );
 
 module.exports = router;

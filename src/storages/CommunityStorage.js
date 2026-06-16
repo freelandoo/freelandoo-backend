@@ -399,6 +399,128 @@ class CommunityStorage {
     return { ok: true };
   }
 
+  // ─── Feed estilo grupo (posts dos membros) ──────────────────────────────────
+  // Liga um post/bee (portfolio-item de um membro) ao feed da comunidade.
+  static async linkFeedItem(conn, id_community, id_portfolio_item, id_author_user) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_feed_item
+         (id_community_profile, id_portfolio_item, id_author_user)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id_community_profile, id_portfolio_item) DO NOTHING
+       RETURNING id`,
+      [id_community, id_portfolio_item, id_author_user || null]
+    );
+    return r.rowCount > 0;
+  }
+
+  static async unlinkFeedItem(conn, id_community, id_portfolio_item) {
+    const r = await conn.query(
+      `DELETE FROM public.tb_community_feed_item
+        WHERE id_community_profile = $1 AND id_portfolio_item = $2`,
+      [id_community, id_portfolio_item]
+    );
+    return r.rowCount > 0;
+  }
+
+  // Confirma que o portfolio-item pertence a um perfil do usuário (anti-spoof).
+  static async itemBelongsToUser(conn, id_portfolio_item, id_user) {
+    const r = await conn.query(
+      `SELECT 1
+         FROM public.tb_profile_portfolio_item ppi
+         JOIN public.tb_profile p ON p.id_profile = ppi.id_profile
+        WHERE ppi.id_portfolio_item = $1 AND p.id_user = $2
+        LIMIT 1`,
+      [id_portfolio_item, id_user]
+    );
+    return r.rowCount > 0;
+  }
+
+  // Feed unificado (posts + bees, cronológico) na MESMA projeção do /feed.
+  // Sem o gate de assinatura da vitrine: o que vale é ser membro + post válido.
+  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_id }) {
+    const lim = Math.min(Math.max(Number(limit) || 12, 1), 24);
+    const r = await conn.query(
+      `SELECT
+         ppi.id_portfolio_item                                AS post_id,
+         ppi.title, ppi.description, ppi.project_url,
+         CASE WHEN cfp.course_id IS NOT NULL THEN 'course' ELSE 'portfolio' END AS source_type,
+         cfp.course_id                                        AS source_course_id,
+         ppi.published_at, ppi.likes_count, ppi.shares_count,
+         ppi.impressions_count, ppi.profile_clicks_count,
+         ppi.whatsapp_clicks_count, ppi.social_clicks_count,
+         ppi.comments_count, ppi.engagement_score, ppi.feed_kind,
+         ppi.audio_track_id, ppi.audio_start_ms,
+         aud.title AS audio_title, aud.artist AS audio_artist,
+         aud.storage_key AS audio_storage_key, aud.cover_key AS audio_cover_key,
+         aud.duration_ms AS audio_duration_ms,
+         pro.id_profile, pro.display_name, pro.avatar_url, pro.estado, pro.municipio,
+         pro.is_clan, pro.sub_profile_slug, pro.xp_level,
+         tu.username,
+         COALESCE(ca.id_machine, pro.id_machine)              AS id_machine,
+         m.slug AS machine_slug, m.name AS machine_name,
+         m.color_from, m.color_to, m.color_glow, m.color_ring, m.color_accent, m.color_text,
+         ca.id_category, ca.desc_category AS profession_name, ca.profession_slug,
+         COALESCE(media.media_json, '[]'::jsonb)              AS media,
+         COALESCE(social.links_json, '[]'::jsonb)             AS social_links,
+         wa.phone_number_normalized                           AS whatsapp_phone,
+         CASE WHEN $2::uuid IS NOT NULL AND EXISTS (
+           SELECT 1 FROM portfolio_likes pl
+           WHERE pl.id_portfolio_item = ppi.id_portfolio_item AND pl.id_user = $2::uuid
+         ) THEN TRUE ELSE FALSE END                           AS viewer_has_liked,
+         CASE WHEN $2::uuid IS NOT NULL AND EXISTS (
+           SELECT 1 FROM user_bookmark_item ubi
+           WHERE ubi.id_portfolio_item = ppi.id_portfolio_item AND ubi.id_user = $2::uuid
+         ) THEN TRUE ELSE FALSE END                           AS viewer_has_bookmarked
+       FROM public.tb_community_feed_item cfi
+       JOIN public.tb_profile_portfolio_item ppi ON ppi.id_portfolio_item = cfi.id_portfolio_item
+       JOIN public.tb_profile pro ON pro.id_profile = ppi.id_profile
+       JOIN public.tb_user tu     ON tu.id_user = pro.id_user
+       LEFT JOIN public.tb_category ca ON ca.id_category = pro.id_category
+       LEFT JOIN public.tb_machine  m  ON m.id_machine = COALESCE(ca.id_machine, pro.id_machine)
+       LEFT JOIN public.course_feed_publications cfp ON cfp.portfolio_item_id = ppi.id_portfolio_item
+       LEFT JOIN public.tb_audio_track aud ON aud.id_audio_track = ppi.audio_track_id AND aud.is_active = TRUE
+       LEFT JOIN LATERAL (
+         SELECT jsonb_agg(jsonb_build_object(
+           'url', ppm.media_url, 'type', ppm.media_type, 'thumbnail_url', ppm.thumbnail_url
+         ) ORDER BY ppm.sort_order, ppm.created_at) AS media_json
+         FROM public.tb_profile_portfolio_media ppm
+         WHERE ppm.id_portfolio_item = ppi.id_portfolio_item AND ppm.is_active = TRUE
+       ) media ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT jsonb_agg(jsonb_build_object(
+           'social_id', psm.id_profile_social_media, 'type', soty.desc_social_media_type, 'url', psm.url
+         ) ORDER BY psm.id_profile_social_media) AS links_json
+         FROM public.tb_profile_social_media psm
+         JOIN public.tb_social_media_type soty ON soty.id_social_media_type = psm.id_social_media_type
+         WHERE psm.id_profile = pro.id_profile AND psm.is_active = TRUE
+           AND soty.desc_social_media_type <> 'WhatsApp'
+       ) social ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT psm.phone_number_normalized
+         FROM public.tb_profile_social_media psm
+         JOIN public.tb_social_media_type soty ON soty.id_social_media_type = psm.id_social_media_type
+         WHERE psm.id_profile = pro.id_profile AND psm.is_active = TRUE
+           AND soty.desc_social_media_type = 'WhatsApp'
+           AND psm.phone_number_normalized IS NOT NULL
+         LIMIT 1
+       ) wa ON TRUE
+       WHERE cfi.id_community_profile = $1
+         AND ppi.status = 'published'
+         AND ppi.is_active = TRUE
+         AND ppi.is_banned = FALSE
+         AND pro.deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM public.tb_profile_portfolio_media ppm2
+           WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item AND ppm2.is_active = TRUE
+         )
+         AND ($4::timestamptz IS NULL OR (ppi.published_at, ppi.id_portfolio_item) < ($4::timestamptz, $5::uuid))
+       ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC
+       LIMIT $3`,
+      [id_community, viewer_id_user || null, lim, before_ts || null, before_id || null]
+    );
+    return r.rows;
+  }
+
   // ─── Mural do líder (recados) ────────────────────────────────────────────────
   static async listAnnouncements(conn, id_community, limit = 20) {
     const r = await conn.query(

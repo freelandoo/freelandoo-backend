@@ -102,6 +102,21 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async getFeedPosts(req, res) {
+    const result = await CommunityService.getFeedPosts(req.params, req.query, req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async linkFeedItem(req, res) {
+    const result = await CommunityService.linkFeedItem(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async unlinkFeedItem(req, res) {
+    const result = await CommunityService.unlinkFeedItem(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async getBenchmark(req, res) {
     const result = await CommunityService.getBenchmark(req.params);
     return sendServiceResult(res, result);

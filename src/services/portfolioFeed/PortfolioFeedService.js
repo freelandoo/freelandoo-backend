@@ -361,6 +361,9 @@ class PortfolioFeedService {
 
 module.exports = PortfolioFeedService;
 module.exports.slugify = slugify;
+// Reutilizado pelo feed da comunidade (CommunityStorage/Service) para produzir
+// o MESMO shape FeedPost que o card do /feed consome.
+module.exports.shapeRow = shapeRow;
 module.exports._internal = {
   parseCursor,
   generateSeed,

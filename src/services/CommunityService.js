@@ -4,6 +4,7 @@
 
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
+const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunityService");
@@ -314,6 +315,101 @@ class CommunityService {
           banner_url
         );
         return updated || { error: "Comunidade não encontrada", statusCode: 404 };
+      }
+    );
+  }
+
+  // ─── Feed estilo grupo (posts dos membros) ──────────────────────────────────
+  // Feed unificado (posts + bees), cronológico, no shape FeedPost do /feed.
+  static async getFeedPosts(params, query, viewer) {
+    return runWithLogs(
+      log,
+      "getFeedPosts",
+      () => ({ id_profile: params?.id_profile, cursor: query?.cursor || null }),
+      async () => {
+        let before_ts = null;
+        let before_id = null;
+        if (query?.cursor) {
+          try {
+            const decoded = Buffer.from(String(query.cursor), "base64").toString("utf8");
+            const sep = decoded.lastIndexOf("|");
+            if (sep > 0) {
+              before_ts = decoded.slice(0, sep);
+              before_id = decoded.slice(sep + 1);
+            }
+          } catch {
+            /* cursor inválido — começa do início */
+          }
+        }
+        const limit = Math.min(Math.max(Number(query?.limit) || 12, 1), 24);
+        const rows = await CommunityStorage.listCommunityFeedPosts(pool, params.id_profile, {
+          viewer_id_user: viewer?.id_user || null,
+          limit: limit + 1, // +1 para saber se há próxima página
+          before_ts,
+          before_id,
+        });
+        const hasMore = rows.length > limit;
+        const page = hasMore ? rows.slice(0, limit) : rows;
+        const items = page.map((row) => PortfolioFeedService.shapeRow(row));
+        let next_cursor = null;
+        if (hasMore) {
+          const last = page[page.length - 1];
+          const ts = last.published_at instanceof Date ? last.published_at.toISOString() : last.published_at;
+          next_cursor = Buffer.from(`${ts}|${last.post_id}`, "utf8").toString("base64");
+        }
+        return { items, next_cursor, has_more: hasMore };
+      }
+    );
+  }
+
+  // Liga um post/bee do membro ao feed da comunidade (chamado pelo composer).
+  static async linkFeedItem(user, params, body) {
+    return runWithLogs(
+      log,
+      "linkFeedItem",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado" };
+        const id_portfolio_item = body?.id_portfolio_item;
+        if (!id_portfolio_item) return { error: "Post não informado." };
+
+        // Precisa ser membro da comunidade.
+        const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
+        if (!membership) {
+          return { error: "Você precisa ser membro para publicar na comunidade." };
+        }
+        // E o post tem que ser dele (anti-spoof).
+        const owns = await CommunityStorage.itemBelongsToUser(pool, id_portfolio_item, id_user);
+        if (!owns) return { error: "Este post não é seu." };
+
+        const linked = await CommunityStorage.linkFeedItem(
+          pool,
+          params.id_profile,
+          id_portfolio_item,
+          id_user
+        );
+        return { ok: true, linked };
+      }
+    );
+  }
+
+  // Remove um post do feed da comunidade: o próprio autor OU o líder.
+  static async unlinkFeedItem(user, params) {
+    return runWithLogs(
+      log,
+      "unlinkFeedItem",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile, item: params?.id_portfolio_item }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado" };
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+        const isLeader = String(community.id_leader_user) === String(id_user);
+        const owns = await CommunityStorage.itemBelongsToUser(pool, params.id_portfolio_item, id_user);
+        if (!isLeader && !owns) return { error: "Sem permissão para remover." };
+        const ok = await CommunityStorage.unlinkFeedItem(pool, params.id_profile, params.id_portfolio_item);
+        return { ok };
       }
     );
   }
