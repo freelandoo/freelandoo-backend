@@ -5,11 +5,18 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
+const PolenStorage = require("../storages/PolenStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunityService");
 
 const REQUIRED_LEVEL_TO_CREATE = 5;
+
+// Temporada (meta): prêmio bancado pela plataforma, mínimos anti-abuso.
+const GOAL_PRIZE_POLENS = 100;
+const GOAL_MIN_DAYS = 30;
+const GOAL_MIN_MEMBERS = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 class CommunityService {
   // ─── Criação ────────────────────────────────────────────────────────────────
@@ -433,14 +440,94 @@ class CommunityService {
   }
 
   // ─── Metas coletivas ─────────────────────────────────────────────────────────
+  // Monta o objeto da temporada (campos + ranking + progresso agregado).
+  static _assembleGoal(goal, ranking) {
+    const totalScore = ranking.reduce((s, r) => s + (Number(r.score) || 0), 0);
+    const target = goal.target_value != null ? Number(goal.target_value) : null;
+    const winner = goal.winner_user_id
+      ? ranking.find((r) => String(r.id_user) === String(goal.winner_user_id)) || null
+      : null;
+    return {
+      id: goal.id,
+      title: goal.title,
+      metric: goal.metric,
+      target_value: target,
+      prize_polens: Number(goal.prize_polens) || 0,
+      status: goal.status,
+      starts_at: goal.starts_at,
+      ends_at: goal.ends_at,
+      closed_at: goal.closed_at,
+      progress: totalScore,
+      percent: target && target > 0 ? Math.min(100, Math.round((totalScore / target) * 100)) : null,
+      winner_user_id: goal.winner_user_id || null,
+      winner: winner
+        ? { id_user: winner.id_user, name: winner.display_name || winner.user_name, avatar_url: winner.avatar_url, score: winner.score }
+        : null,
+      ranking: ranking.slice(0, 20).map((r) => ({
+        id_user: r.id_user,
+        name: r.display_name || r.user_name,
+        username: r.username || null,
+        avatar_url: r.avatar_url || null,
+        xp_level: r.xp_level ?? null,
+        score: Number(r.score) || 0,
+        posts: r.posts != null ? Number(r.posts) : undefined,
+        eng: r.eng != null ? Number(r.eng) : undefined,
+      })),
+    };
+  }
+
+  // Encerra a temporada vencida e credita o prêmio ao #1 (idempotente).
+  static async _closeAndPay(goal, ranking) {
+    const top = ranking[0];
+    const winnerUserId = top && top.score > 0 ? top.id_user : null;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const closed = await CommunityStorage.closeGoal(client, goal.id, winnerUserId);
+      if (closed && winnerUserId && Number(goal.prize_polens) > 0) {
+        const wallet = await PolenStorage.getOrCreateWallet(client, winnerUserId);
+        await PolenStorage.credit(client, {
+          user_id: winnerUserId,
+          wallet_id: wallet.id,
+          amount: Number(goal.prize_polens),
+          type: "earn_community_goal",
+          source: "community_goal",
+          source_id: String(goal.id),
+          metadata: { id_goal: goal.id, id_community: goal.id_community_profile, metric: goal.metric },
+        });
+        await CommunityStorage.markPrizePaid(client, goal.id);
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      try { await client.query("ROLLBACK"); } catch { /* noop */ }
+      log.error("closeAndPay.fail", { id_goal: goal.id, error: err.message });
+    } finally {
+      client.release();
+    }
+  }
+
   static async getGoal(params) {
     return runWithLogs(
       log,
       "getGoal",
       () => ({ id_profile: params?.id_profile }),
       async () => {
-        const goal = await CommunityStorage.getActiveGoal(pool, params.id_profile);
-        return { goal };
+        const goal = await CommunityStorage.getActiveGoalRow(pool, params.id_profile);
+        if (!goal) return { goal: null };
+
+        const now = Date.now();
+        const endsTs = goal.ends_at ? new Date(goal.ends_at).getTime() : null;
+        const due = goal.status === "active" && endsTs && endsTs < now;
+        // Mede até agora (temporada viva) ou até o fim (encerrada).
+        const asOf = endsTs && endsTs < now ? goal.ends_at : new Date().toISOString();
+        const ranking = await CommunityStorage.getGoalRanking(pool, goal, asOf);
+
+        if (due) {
+          await this._closeAndPay(goal, ranking);
+          const refreshed = await CommunityStorage.getActiveGoalRow(pool, params.id_profile);
+          return { goal: this._assembleGoal(refreshed || goal, ranking) };
+        }
+        return { goal: this._assembleGoal(goal, ranking) };
       }
     );
   }
@@ -453,22 +540,43 @@ class CommunityService {
       async () => {
         const guard = await this._assertLeader(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
+
         const title = String(body?.title || "").trim();
-        if (!title) return { error: "Dê um nome para a meta." };
+        if (!title) return { error: "Dê um nome para a temporada." };
         if (title.length > 120) return { error: "O título deve ter no máximo 120 caracteres." };
-        const metric = ["xp", "posts", "members"].includes(body?.metric) ? body.metric : "xp";
-        const target = Number(body?.target_value);
-        if (!Number.isFinite(target) || target <= 0) {
-          return { error: "Defina um alvo válido (maior que zero)." };
+
+        const metric = CommunityStorage.GOAL_METRICS.includes(body?.metric) ? body.metric : "xp";
+
+        // Prazo obrigatório, mínimo 30 dias.
+        const endsTs = body?.ends_at ? new Date(body.ends_at).getTime() : NaN;
+        if (!Number.isFinite(endsTs)) return { error: "Defina o prazo da temporada." };
+        if (endsTs < Date.now() + GOAL_MIN_DAYS * DAY_MS) {
+          return { error: `O prazo deve ser de pelo menos ${GOAL_MIN_DAYS} dias.`, min_days: GOAL_MIN_DAYS };
         }
-        const goal = await CommunityStorage.setGoal(pool, params.id_profile, {
+
+        // Gate anti-abuso: comunidade precisa de >= 5 membros pra valer prêmio.
+        const community = guard.community;
+        const memberCount = Number(community?.member_count) || 0;
+        if (memberCount < GOAL_MIN_MEMBERS) {
+          return { error: `A comunidade precisa de pelo menos ${GOAL_MIN_MEMBERS} membros para ativar uma temporada.`, min_members: GOAL_MIN_MEMBERS, member_count: memberCount };
+        }
+
+        // Alvo é opcional (só a barra agregada); a temporada vale pelo ranking.
+        let target = null;
+        if (body?.target_value != null && body.target_value !== "") {
+          const tv = Number(body.target_value);
+          if (Number.isFinite(tv) && tv > 0) target = tv;
+        }
+
+        await CommunityStorage.setGoal(pool, params.id_profile, {
           title,
           metric,
           target_value: target,
-          ends_at: body?.ends_at || null,
+          ends_at: new Date(endsTs).toISOString(),
+          prize_polens: GOAL_PRIZE_POLENS,
           created_by_user: user.id_user,
         });
-        return { goal };
+        return this.getGoal(params);
       }
     );
   }

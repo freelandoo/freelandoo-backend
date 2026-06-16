@@ -314,67 +314,111 @@ class CommunityStorage {
     return r.rowCount ? r.rows[0] : null;
   }
 
-  // ─── Metas coletivas ─────────────────────────────────────────────────────────
-  // Valor atual da métrica da comunidade (xp_total | nº de posts | nº de membros).
-  static async _metricValue(conn, id_community, metric, sinceISO) {
-    if (metric === "members") {
-      const r = await conn.query(
-        `SELECT COUNT(*)::numeric AS v FROM public.tb_community_member WHERE id_community_profile = $1`,
-        [id_community]
-      );
-      return Number(r.rows[0].v);
-    }
-    if (metric === "posts") {
-      const r = await conn.query(
-        `SELECT COUNT(*)::numeric AS v
-           FROM public.tb_profile_portfolio_item
-          WHERE id_profile = $1 AND is_active = TRUE AND is_banned = FALSE
-            AND ($2::timestamptz IS NULL OR created_at >= $2)`,
-        [id_community, sinceISO || null]
-      );
-      return Number(r.rows[0].v);
-    }
-    // xp (default)
-    const r = await conn.query(
-      `SELECT COALESCE(xp_total, 0)::numeric AS v FROM public.tb_profile WHERE id_profile = $1`,
-      [id_community]
-    );
-    return Number(r.rows[0].v);
-  }
+  // ─── Meta = Temporada (ranking por métrica + prêmio ao #1) ───────────────────
+  static GOAL_METRICS = ["xp", "posts", "shares"];
 
-  static async getActiveGoal(conn, id_community) {
+  static async getActiveGoalRow(conn, id_community) {
     const r = await conn.query(
-      `SELECT id, id_community_profile, title, metric, target_value, baseline_value,
-              ends_at, created_at
+      `SELECT id, id_community_profile, title, metric, target_value, prize_polens,
+              status, winner_user_id, prize_paid, starts_at, ends_at, closed_at, created_at
          FROM public.tb_community_goal
         WHERE id_community_profile = $1 AND is_active = TRUE
         LIMIT 1`,
       [id_community]
     );
-    if (!r.rowCount) return null;
-    const g = r.rows[0];
-    // posts conta a partir da criação da meta; xp/members usam baseline salvo.
-    const since = g.metric === "posts" ? g.created_at : null;
-    const current = await this._metricValue(conn, id_community, g.metric, since);
-    const baseline = g.metric === "posts" ? 0 : Number(g.baseline_value);
-    const progress = Math.max(0, current - baseline);
-    const target = Number(g.target_value);
-    return {
-      id: g.id,
-      title: g.title,
-      metric: g.metric,
-      target_value: target,
-      progress,
-      percent: target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : 0,
-      ends_at: g.ends_at,
-      created_at: g.created_at,
-    };
+    return r.rowCount ? r.rows[0] : null;
   }
 
-  // Define/substitui a meta ativa (desativa a anterior). baseline = valor atual.
-  static async setGoal(conn, id_community, { title, metric, target_value, ends_at, created_by_user }) {
-    const m = ["xp", "posts", "members"].includes(metric) ? metric : "xp";
-    const baseline = m === "posts" ? 0 : await this._metricValue(conn, id_community, m, null);
+  // Ranking dos membros por métrica, dentro de [starts_at, asOf]. Identidade via
+  // subperfil de maior XP. Retorna ordenado desc (já com score normalizado).
+  static async getGoalRanking(conn, goal, asOf) {
+    const ident = `
+      LEFT JOIN LATERAL (
+        SELECT display_name, avatar_url, xp_level, xp_total
+          FROM public.tb_profile
+         WHERE id_user = m.id_user AND is_clan = FALSE AND is_community = FALSE AND deleted_at IS NULL
+         ORDER BY xp_total DESC LIMIT 1
+      ) hp ON TRUE`;
+    const idc = goal.id_community_profile;
+
+    if (goal.metric === "posts") {
+      const r = await conn.query(
+        `SELECT m.id_user, u.nome AS user_name, u.username,
+                hp.display_name, hp.avatar_url, hp.xp_level,
+                COUNT(cfi.id)::int AS posts,
+                COALESCE(SUM(COALESCE(ppi.likes_count,0) + COALESCE(ppi.comments_count,0)),0)::int AS eng
+           FROM public.tb_community_member m
+           JOIN public.tb_user u ON u.id_user = m.id_user
+           ${ident}
+           LEFT JOIN public.tb_community_feed_item cfi
+             ON cfi.id_community_profile = $1 AND cfi.id_author_user = m.id_user
+            AND cfi.created_at >= $2 AND cfi.created_at <= $3
+           LEFT JOIN public.tb_profile_portfolio_item ppi
+             ON ppi.id_portfolio_item = cfi.id_portfolio_item
+          WHERE m.id_community_profile = $1
+          GROUP BY m.id_user, u.nome, u.username, hp.display_name, hp.avatar_url, hp.xp_level
+          ORDER BY eng DESC, posts DESC`,
+        [idc, goal.starts_at, asOf]
+      );
+      return r.rows.map((x) => ({ ...x, posts: Number(x.posts), eng: Number(x.eng), score: Number(x.eng) }));
+    }
+
+    if (goal.metric === "shares") {
+      const r = await conn.query(
+        `SELECT m.id_user, u.nome AS user_name, u.username,
+                hp.display_name, hp.avatar_url, hp.xp_level,
+                COUNT(sr.id)::int AS score
+           FROM public.tb_community_member m
+           JOIN public.tb_user u ON u.id_user = m.id_user
+           ${ident}
+           LEFT JOIN public.tb_community_share_return sr
+             ON sr.id_community_profile = $1 AND sr.id_member_user = m.id_user
+            AND sr.created_at >= $2 AND sr.created_at <= $3
+          WHERE m.id_community_profile = $1
+          GROUP BY m.id_user, u.nome, u.username, hp.display_name, hp.avatar_url, hp.xp_level
+          ORDER BY score DESC`,
+        [idc, goal.starts_at, asOf]
+      );
+      return r.rows.map((x) => ({ ...x, score: Number(x.score) }));
+    }
+
+    // xp (default): delta = XP atual − baseline capturado no início.
+    const r = await conn.query(
+      `SELECT m.id_user, u.nome AS user_name, u.username,
+              hp.display_name, hp.avatar_url, hp.xp_level,
+              GREATEST(0, COALESCE(hp.xp_total,0) - COALESCE(b.baseline_xp, COALESCE(hp.xp_total,0)))::int AS score
+         FROM public.tb_community_member m
+         JOIN public.tb_user u ON u.id_user = m.id_user
+         ${ident}
+         LEFT JOIN public.tb_community_goal_member b ON b.id_goal = $2 AND b.id_user = m.id_user
+        WHERE m.id_community_profile = $1
+        ORDER BY score DESC`,
+      [idc, goal.id]
+    );
+    return r.rows.map((x) => ({ ...x, score: Number(x.score) }));
+  }
+
+  // Snapshot do XP de cada membro no início (não sobrescreve — late joiners
+  // entram com baseline = XP do momento, delta 0).
+  static async seedGoalBaselines(conn, id_goal, id_community) {
+    await conn.query(
+      `INSERT INTO public.tb_community_goal_member (id_goal, id_user, baseline_xp)
+       SELECT $1, m.id_user, COALESCE((
+                SELECT p.xp_total FROM public.tb_profile p
+                 WHERE p.id_user = m.id_user AND p.is_clan = FALSE
+                   AND p.is_community = FALSE AND p.deleted_at IS NULL
+                 ORDER BY p.xp_total DESC LIMIT 1
+              ), 0)
+         FROM public.tb_community_member m
+        WHERE m.id_community_profile = $2
+       ON CONFLICT (id_goal, id_user) DO NOTHING`,
+      [id_goal, id_community]
+    );
+  }
+
+  // Cria/substitui a temporada ativa (desativa a anterior, paga ou não).
+  static async setGoal(conn, id_community, { title, metric, target_value, ends_at, prize_polens, created_by_user }) {
+    const m = this.GOAL_METRICS.includes(metric) ? metric : "xp";
     await conn.query(
       `UPDATE public.tb_community_goal SET is_active = FALSE, updated_at = NOW()
         WHERE id_community_profile = $1 AND is_active = TRUE`,
@@ -382,12 +426,31 @@ class CommunityStorage {
     );
     const r = await conn.query(
       `INSERT INTO public.tb_community_goal
-         (id_community_profile, title, metric, target_value, baseline_value, ends_at, created_by_user)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (id_community_profile, title, metric, target_value, baseline_value,
+          ends_at, prize_polens, status, starts_at, created_by_user)
+       VALUES ($1, $2, $3, $4, 0, $5, $6, 'active', NOW(), $7)
        RETURNING id`,
-      [id_community, title, m, target_value, baseline, ends_at || null, created_by_user || null]
+      [id_community, title, m, target_value ?? null, ends_at, prize_polens, created_by_user || null]
     );
-    return this.getActiveGoal(conn, id_community);
+    const id_goal = r.rows[0].id;
+    await this.seedGoalBaselines(conn, id_goal, id_community);
+    return id_goal;
+  }
+
+  // Encerra a temporada (uma vez só, via guard status='active').
+  static async closeGoal(conn, id_goal, winner_user_id) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_goal
+          SET status = 'closed', closed_at = NOW(), winner_user_id = $2
+        WHERE id = $1 AND status = 'active'
+        RETURNING id`,
+      [id_goal, winner_user_id || null]
+    );
+    return r.rowCount > 0;
+  }
+
+  static async markPrizePaid(conn, id_goal) {
+    await conn.query(`UPDATE public.tb_community_goal SET prize_paid = TRUE WHERE id = $1`, [id_goal]);
   }
 
   static async clearGoal(conn, id_community) {
