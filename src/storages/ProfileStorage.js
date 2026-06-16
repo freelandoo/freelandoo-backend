@@ -515,6 +515,21 @@ class ProfileStorage {
       values.push(payload.origin_zipcode); // string 8 dígitos ou null
     }
 
+    if (has("origin_document")) {
+      fields.push(`origin_document = $${idx++}`);
+      values.push(payload.origin_document); // CPF/CNPJ só dígitos ou null
+    }
+
+    if (has("origin_number")) {
+      fields.push(`origin_number = $${idx++}`);
+      values.push(payload.origin_number);
+    }
+
+    if (has("origin_complement")) {
+      fields.push(`origin_complement = $${idx++}`);
+      values.push(payload.origin_complement);
+    }
+
     if (fields.length === 0) return null;
 
     const r = await conn.query(

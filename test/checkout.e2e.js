@@ -481,6 +481,7 @@ async function flowLoja(buyer, seller) {
       shipping_service_id: option.service_id,
       buyer_name: "Comprador E2E",
       buyer_email: "buyer-e2e@checkout.test",
+      buyer_document: "11144477735",
       destination_full_address: {
         street: "Av. Rio Branco",
         number: "1",

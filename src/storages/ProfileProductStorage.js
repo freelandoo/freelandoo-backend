@@ -142,6 +142,9 @@ class ProfileProductStorage {
       `SELECT pp.*,
               pr.id_user AS owner_id_user,
               pr.origin_zipcode AS profile_origin_zipcode,
+              pr.origin_document AS profile_origin_document,
+              pr.origin_number AS profile_origin_number,
+              pr.origin_complement AS profile_origin_complement,
               pr.is_clan AS profile_is_clan,
               (SELECT TRUE FROM public.tb_profile_subscription psub
                 WHERE psub.id_profile = pp.id_profile

@@ -8,6 +8,7 @@ const StoreGovernanceService = require("./StoreGovernanceService");
 const NotificationService = require("./NotificationService");
 const { purchaseLabel } = require("../integrations/melhorenvio/purchaseLabel");
 const { isFullRefund } = require("../utils/refunds");
+const { normalizeDocument } = require("../utils/documents");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ProfileProductOrderService");
@@ -44,10 +45,16 @@ class ProfileProductOrderService {
       const shippingServiceId = body.shipping_service_id != null ? String(body.shipping_service_id) : null;
       if (!shippingServiceId) return { error: "Selecione uma opção de frete" };
 
+      // CPF/CNPJ do destinatário — obrigatório no checkout para que a etiqueta
+      // do Melhor Envio possa ser emitida em produção (valida dígito verificador).
+      const buyer_document = normalizeDocument(body.buyer_document);
+      if (!buyer_document) return { error: "Informe um CPF ou CNPJ válido para o envio" };
+
       const buyer = {
         buyer_name: sanitizeText(body.buyer_name, 160),
         buyer_email: sanitizeText(body.buyer_email, 160),
         buyer_whatsapp: sanitizeText(body.buyer_whatsapp, 40),
+        buyer_document,
       };
       if (!buyer.buyer_name) return { error: "Nome do comprador é obrigatório" };
       if (!buyer.buyer_email) return { error: "E-mail do comprador é obrigatório" };
@@ -349,6 +356,9 @@ class ProfileProductOrderService {
             email: seller.email,
             telefone: seller.telefone,
             origin_zipcode: product.origin_zipcode_override || product.profile_origin_zipcode,
+            origin_document: product.profile_origin_document,
+            origin_number: product.profile_origin_number,
+            origin_complement: product.profile_origin_complement,
           },
         });
         const updated = await ProfileProductOrderStorage.markLabelPurchased(pool, id_order, result);

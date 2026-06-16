@@ -7,7 +7,7 @@ class ProfileProductOrderStorage {
          seller_amount_cents, service_fee_cents, processor_fee_cents, processor_fee_source,
          shipping_service_id, shipping_service_name, shipping_carrier,
          destination_zipcode, destination_full_address,
-         buyer_name, buyer_email, buyer_whatsapp,
+         buyer_name, buyer_email, buyer_whatsapp, buyer_document,
          stripe_session_id, status
        ) VALUES (
          $1,$2,$3,$4,
@@ -15,8 +15,8 @@ class ProfileProductOrderStorage {
          $9,$10,$11,$12,
          $13,$14,$15,
          $16,$17,
-         $18,$19,$20,
-         $21,$22
+         $18,$19,$20,$21,
+         $22,$23
        ) RETURNING *`,
       [
         data.id_buyer_user, data.id_profile_product, data.id_seller_profile, data.id_seller_user,
@@ -27,7 +27,7 @@ class ProfileProductOrderStorage {
         data.processor_fee_source || "fallback",
         data.shipping_service_id || null, data.shipping_service_name || null, data.shipping_carrier || null,
         data.destination_zipcode, data.destination_full_address ? JSON.stringify(data.destination_full_address) : null,
-        data.buyer_name || null, data.buyer_email || null, data.buyer_whatsapp || null,
+        data.buyer_name || null, data.buyer_email || null, data.buyer_whatsapp || null, data.buyer_document || null,
         data.stripe_session_id, data.status || "pending",
       ]
     );

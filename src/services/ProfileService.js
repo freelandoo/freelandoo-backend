@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const ProfileStorage = require("../storages/ProfileStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
+const { normalizeDocument } = require("../utils/documents");
 
 const log = createLogger("ProfileService");
 
@@ -247,6 +248,33 @@ class ProfileService {
           }
         }
 
+        if (Object.prototype.hasOwnProperty.call(payload, "origin_document")) {
+          const raw = payload.origin_document;
+          if (raw === null || raw === "") {
+            payload.origin_document = null;
+          } else {
+            const doc = normalizeDocument(raw);
+            if (!doc) {
+              return { error: "CPF/CNPJ de origem inválido." };
+            }
+            payload.origin_document = doc;
+          }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(payload, "origin_number")) {
+          const raw = payload.origin_number;
+          payload.origin_number = raw === null || raw === ""
+            ? null
+            : String(raw).trim().slice(0, 20);
+        }
+
+        if (Object.prototype.hasOwnProperty.call(payload, "origin_complement")) {
+          const raw = payload.origin_complement;
+          payload.origin_complement = raw === null || raw === ""
+            ? null
+            : String(raw).trim().slice(0, 120);
+        }
+
         const hasAnyField = [
           "id_category",
           "display_name",
@@ -257,6 +285,9 @@ class ProfileService {
           "is_active",
           "subcategories",
           "origin_zipcode",
+          "origin_document",
+          "origin_number",
+          "origin_complement",
         ].some((k) => Object.prototype.hasOwnProperty.call(payload, k));
 
         if (!hasAnyField) return { error: "Nenhum campo para atualizar" };
