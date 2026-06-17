@@ -306,6 +306,7 @@ class AuthService {
             email_verified: !!user.ativo,
             is_minor: !!user.is_minor,
             responsible_user_id: user.responsible_user_id || null,
+            onboarding_tour_done: !!user.onboarding_tour_done,
           },
         };
       }
@@ -400,6 +401,9 @@ class AuthService {
           // nesse fluxo. needs_terms vem true para conta nova (e para qualquer conta
           // sem aceite da versão atual) → frontend leva à tela /aceitar-termos.
           const needs_terms = await computeNeedsTerms(client, user.id_user);
+          const onboarding_tour_done = isNew
+            ? false
+            : await AuthStorage.getOnboardingTourDone(client, user.id_user);
 
           return {
             message: "Login com Google realizado com sucesso",
@@ -415,6 +419,7 @@ class AuthService {
               email_verified: true,
               is_minor: !!user.is_minor,
               responsible_user_id: user.responsible_user_id || null,
+              onboarding_tour_done,
             },
           };
         } finally {

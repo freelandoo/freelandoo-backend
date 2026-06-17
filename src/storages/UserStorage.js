@@ -22,6 +22,7 @@ module.exports = {
         tu.preferred_country,
         tu.is_minor,
         tu.responsible_user_id,
+        tu.onboarding_tour_done,
 
         -- Roles (nível do user)
         COALESCE(r.roles, '[]'::jsonb) AS roles,

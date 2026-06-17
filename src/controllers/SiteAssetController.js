@@ -2,9 +2,10 @@ const pool = require("../databases");
 const SiteAssetStorage = require("../storages/SiteAssetStorage");
 const uploadSiteAssetToR2 = require("../integrations/r2/uploadSiteAsset");
 
-// Slot válido: prefixo home_(buyer|seller)_<...>. Espelha lib/site-asset-slots.ts do front.
+// Slot válido: home_(buyer|seller)_<...> ou tour_<...> (banners do tour de
+// boas-vindas). Espelha lib/site-asset-slots.ts do front.
 function isValidSlot(slot) {
-  return /^home_(buyer|seller)_[a-z0-9_]+$/.test(slot);
+  return /^(home_(buyer|seller)|tour)_[a-z0-9_]+$/.test(slot);
 }
 
 module.exports = {

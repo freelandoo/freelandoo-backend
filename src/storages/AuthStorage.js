@@ -146,7 +146,8 @@ class AuthStorage {
         senha,
         ativo,
         is_minor,
-        responsible_user_id
+        responsible_user_id,
+        onboarding_tour_done
       FROM tb_user
       WHERE LOWER(TRIM(email)) = $1
       LIMIT 1
@@ -154,6 +155,22 @@ class AuthStorage {
       [email]
     );
     return r.rowCount ? r.rows[0] : null;
+  }
+
+  // Flag do tour de boas-vindas (mig 165). Usada para decidir o redirect pós-auth.
+  static async getOnboardingTourDone(db, id_user) {
+    const r = await db.query(
+      `SELECT onboarding_tour_done FROM tb_user WHERE id_user = $1 LIMIT 1`,
+      [id_user]
+    );
+    return r.rowCount ? !!r.rows[0].onboarding_tour_done : false;
+  }
+
+  static async setOnboardingTourDone(db, id_user, done = true) {
+    await db.query(
+      `UPDATE tb_user SET onboarding_tour_done = $2 WHERE id_user = $1`,
+      [id_user, done]
+    );
   }
 
   static async createActivationToken(client, { id_user, token, expiresAt }) {

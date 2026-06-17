@@ -7,12 +7,20 @@ const DeleteMeService = require("../services/user/DeleteMeService");
 const ExportMeService = require("../services/user/ExportMeService");
 const UpdatePreferredLocaleService = require("../services/user/UpdatePreferredLocaleService");
 const UpdatePreferredCountryService = require("../services/user/UpdatePreferredCountryService");
+const AuthStorage = require("../storages/AuthStorage");
 
 class UserController {
   static async me(req, res) {
     const { id_user } = req.user;
     const user = await GetMeService.execute({ db: pool, id_user });
     return res.json(user);
+  }
+
+  // Marca o tour de boas-vindas como concluído (ou pulado). Idempotente.
+  static async completeOnboarding(req, res) {
+    const { id_user } = req.user;
+    await AuthStorage.setOnboardingTourDone(pool, id_user, true);
+    return res.json({ ok: true, onboarding_tour_done: true });
   }
 
   static async creator(req, res) {

@@ -9,6 +9,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const router = express.Router();
 
 router.get("/me", authMiddleware, asyncHandler(UserController.me));
+router.post("/me/onboarding/complete", authMiddleware, asyncHandler(UserController.completeOnboarding));
 router.put("/me", authMiddleware, asyncHandler(UserController.updateMe));
 router.delete("/me", authMiddleware, asyncHandler(UserController.deleteMe));
 router.get("/me/export", authMiddleware, asyncHandler(UserController.exportMe));

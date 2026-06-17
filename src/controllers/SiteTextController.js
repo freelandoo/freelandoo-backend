@@ -1,9 +1,10 @@
 const pool = require("../databases");
 const SiteTextStorage = require("../storages/SiteTextStorage");
 
-// Slot válido: home_(buyer|seller)_<...>. Espelha o front.
+// Slot válido: home_(buyer|seller)_<...> ou tour_<...> (textos do tour de
+// boas-vindas, editáveis pelo admin). Espelha o front.
 function isValidSlot(slot) {
-  return /^home_(buyer|seller)_[a-z0-9_]+$/.test(slot);
+  return /^(home_(buyer|seller)|tour)_[a-z0-9_]+$/.test(slot);
 }
 
 module.exports = {
