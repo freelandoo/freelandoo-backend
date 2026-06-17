@@ -7,6 +7,7 @@ const pool = require("../databases");
 
 const AuthStorage = require("../storages/AuthStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const TourSettingsStorage = require("../storages/TourSettingsStorage");
 const ConsentStorage = require("../storages/ConsentStorage");
 const { SIGNUP_TERMS_VERSION, SIGNUP_ACTION_KEY } = require("../utils/terms");
 
@@ -292,6 +293,11 @@ class AuthService {
         );
 
         const needs_terms = await computeNeedsTerms(pool, user.id_user);
+        const isAdmin = await AuthStorage.isAdmin(pool, user.id_user);
+        const tourSettings = await TourSettingsStorage.getSettings(pool);
+        const show_tour = TourSettingsStorage.shouldShow(
+          tourSettings, isAdmin, !!user.onboarding_tour_done
+        );
 
         return {
           message: "Login realizado com sucesso",
@@ -299,6 +305,7 @@ class AuthService {
           email_verified: !!user.ativo,
           needs_terms,
           terms_version: SIGNUP_TERMS_VERSION,
+          show_tour,
           user: {
             id_user: user.id_user,
             nome: user.nome,
@@ -307,6 +314,7 @@ class AuthService {
             is_minor: !!user.is_minor,
             responsible_user_id: user.responsible_user_id || null,
             onboarding_tour_done: !!user.onboarding_tour_done,
+            is_admin: isAdmin,
           },
         };
       }
@@ -404,6 +412,11 @@ class AuthService {
           const onboarding_tour_done = isNew
             ? false
             : await AuthStorage.getOnboardingTourDone(client, user.id_user);
+          const isAdmin = isNew ? false : await AuthStorage.isAdmin(client, user.id_user);
+          const tourSettings = await TourSettingsStorage.getSettings(client);
+          const show_tour = TourSettingsStorage.shouldShow(
+            tourSettings, isAdmin, onboarding_tour_done
+          );
 
           return {
             message: "Login com Google realizado com sucesso",
@@ -412,6 +425,7 @@ class AuthService {
             is_new: isNew,
             needs_terms,
             terms_version: SIGNUP_TERMS_VERSION,
+            show_tour,
             user: {
               id_user: user.id_user,
               nome: user.nome,
@@ -420,6 +434,7 @@ class AuthService {
               is_minor: !!user.is_minor,
               responsible_user_id: user.responsible_user_id || null,
               onboarding_tour_done,
+              is_admin: isAdmin,
             },
           };
         } finally {

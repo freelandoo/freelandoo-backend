@@ -173,6 +173,20 @@ class AuthStorage {
     );
   }
 
+  // É administrador? (tb_user_role × tb_role.desc_role = 'Administrator')
+  static async isAdmin(db, id_user) {
+    const r = await db.query(
+      `SELECT 1
+         FROM tb_user_role ur
+         JOIN tb_role r ON r.id_role = ur.id_role
+        WHERE ur.id_user = $1 AND ur.is_active = TRUE AND r.is_active = TRUE
+          AND r.desc_role = 'Administrator'
+        LIMIT 1`,
+      [id_user]
+    );
+    return r.rowCount > 0;
+  }
+
   static async createActivationToken(client, { id_user, token, expiresAt }) {
     await client.query(
       `
