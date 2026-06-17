@@ -13,6 +13,8 @@ const PremiumService = require("./PremiumService");
 const ProfileProductOrderService = require("./ProfileProductOrderService");
 const CasaParticipantService = require("./CasaParticipantService");
 const CommunitySlotService = require("./CommunitySlotService");
+const XpBoostService = require("./XpBoostService");
+const XpBoostStorage = require("../storages/XpBoostStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
 const XpStorage = require("../storages/XpStorage");
 const BookingStorage = require("../storages/BookingStorage");
@@ -517,6 +519,8 @@ async function fulfillCheckoutSession(session) {
     result = await ManifestationService.confirmStripeSession(session);
   } else if (meta.type === "polen_purchase") {
     result = await PolenProductService.confirmStripeSession(session);
+  } else if (meta.type === "xp_boost") {
+    result = await XpBoostService.confirmStripeSession(session);
   } else if (meta.type === "premium") {
     result = await PremiumService.confirmStripeSession(session);
   } else if (meta.type === "course_purchase") {
@@ -571,6 +575,11 @@ async function expireCheckoutSession(session, reason) {
       case "polen_purchase": {
         const expired = await PolenProductStorage.markPurchaseExpiredBySession(pool, session.id);
         if (expired) log.info("expire.polen", { session_id: session.id, reason });
+        break;
+      }
+      case "xp_boost": {
+        const expired = await XpBoostStorage.markExpiredBySession(pool, session.id);
+        if (expired) log.info("expire.xp_boost", { session_id: session.id, reason });
         break;
       }
       case "premium": {
@@ -692,6 +701,8 @@ async function dispatchEvent(event) {
       if (bookingResult && !bookingResult.ignored) break;
       const polenResult = await PolenProductService.handleChargeRefunded(charge);
       if (polenResult && !polenResult.ignored) break;
+      const xpBoostResult = await XpBoostService.handleChargeRefunded(charge);
+      if (xpBoostResult && !xpBoostResult.ignored) break;
       const premiumResult = await PremiumService.handleChargeRefunded(charge);
       if (premiumResult && !premiumResult.ignored) break;
       const CoursesService = require("./CoursesService");

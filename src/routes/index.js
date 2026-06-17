@@ -54,6 +54,7 @@ const liveAdminRoutes = require("./liveAdmin.routes");
 const liveRoutes = require("./live.routes");
 const polenProductsRoutes = require("./polenProducts.routes");
 const polenProductsAdminRoutes = require("./polenProductsAdmin.routes");
+const xpBoostRoutes = require("./xpBoost.routes");
 const premiumRoutes = require("./premium.routes");
 const premiumAdminRoutes = require("./premiumAdmin.routes");
 const coursesRoutes = require("./courses.routes");
@@ -166,6 +167,7 @@ module.exports = (app) => {
   app.use("/lives", liveRoutes);
   app.use("/polens", polenProductsRoutes);
   app.use("/admin/polens", polenProductsAdminRoutes);
+  app.use("/xp-boost", xpBoostRoutes);
   app.use("/premium", premiumRoutes);
   app.use("/admin/premium", premiumAdminRoutes);
   app.use("/me/courses", coursesRoutes);
