@@ -76,35 +76,45 @@
 1. Criar/ativar conta de PRODUÇÃO no melhorenvio.com.br (a do sandbox é
    separada) — dados da empresa, **saldo em carteira** (a plataforma paga as
    etiquetas do próprio saldo ME; sem saldo, o `checkout` da etiqueta falha).
-2. Gerar token: Painel → Integrações → Tokens (mesmos escopos do sandbox:
-   shipping-calculate, cart, checkout, generate, print, tracking).
+2. Gerar o token no **Painel → Integrações → Área Dev → Cadastrar Aplicativo**
+   (a API é OAuth2; o callback pode ser a URL do backend). Para o modelo do
+   Freelandoo — **a plataforma é dona de UMA conta ME** que paga todas as
+   etiquetas do próprio saldo — basta o token gerado para o próprio app/conta
+   (JWT longo, ~1 ano, igual ao de sandbox que expira em 2027); **não** é
+   preciso o fluxo 3-legged de autorização de terceiros. Escopos:
+   `shipping-calculate`, `cart-read`, `cart-write`, `shipping-checkout`,
+   `shipping-generate`, `shipping-print` (+ tracking).
 3. No Railway:
    - `MELHOR_ENVIO_ENV=production`
    - `MELHOR_ENVIO_TOKEN=<token novo>`
    - (opcional) `MELHOR_ENVIO_CONTACT_EMAIL=...`
-4. Anotar a data de expiração do token (JWT ~1 ano) e rotacionar antes.
+4. Anotar a data de expiração do token e rotacionar antes (sem refresh
+   automático — o token é estático no env; ver `config.js`).
+5. **Preflight antes da 1ª compra real**: chamar
+   `GET /admin/payments/shipping-health` (admin) — confirma o ambiente
+   (`production`), valida o token contra `/me`, mostra a conta ME autenticada
+   e o **saldo da carteira**. Se `ok=false` ou saldo zerado, resolver antes de
+   emitir etiqueta de verdade.
 
-### ⚠️ BLOQUEADOR: CPF/CNPJ não é coletado
+### CPF/CNPJ — RESOLVIDO (mig 164, 2026-06-16)
 
-O ME de produção **valida CPF/CNPJ de remetente e destinatário** (o sandbox
-aceitava `00000000000`). Hoje o schema não tem documento nem do vendedor nem
-do comprador. O código agora **falha cedo com mensagem clara** em produção
-(gravada em `markLabelFailure`), em vez de mandar placeholder e tomar erro
-opaco da API.
+> Era o bloqueador desta seção. **Já está fechado no código.**
 
-Antes de ligar `MELHOR_ENVIO_ENV=production`, precisa de uma feature:
+O ME de produção valida CPF/CNPJ de remetente e destinatário (o sandbox
+aceitava `00000000000`). A coleta foi implementada:
 
-- CPF/CNPJ do **vendedor**: campo no cadastro/settings do perfil vendedor
-  (passar como `seller.origin_document` em `ProfileProductOrderService.purchaseLabelForOrder`).
-- CPF do **comprador**: coletar no checkout da Loja (coluna `buyer_document`
-  em `tb_profile_product_order` + campo no front; o `purchaseLabel` já lê
-  `order.buyer_document`).
-- LGPD: citar a coleta de CPF na política de privacidade (uso: emissão de
-  etiqueta/transporte).
+- CPF/CNPJ do **vendedor** → `seller.origin_document` (perfil vendedor),
+  passado em `ProfileProductOrderService.purchaseLabelForOrder`.
+- CPF/CNPJ do **comprador** → coletado e validado no checkout da Loja
+  (`buyer_document` em `tb_profile_product_order`); `purchaseLabel` já o usa.
+- `purchaseLabel` ainda **falha cedo com mensagem clara** em produção se algum
+  documento vier inválido (gravada em `markLabelFailure`, visível no admin),
+  em vez de mandar placeholder e tomar erro opaco da API.
 
-**Importante**: o cálculo de frete (cotação) NÃO exige documentos — dá pra
-ligar produção só para cotações reais enquanto a coleta de CPF não existe,
-sabendo que a compra de etiqueta vai falhar com a mensagem clara acima.
+`npm run test:checkout` cobre o fluxo (22/22). Não há mais pré-requisito de
+código para ligar `MELHOR_ENVIO_ENV=production` — só os passos de admin acima.
+
+**Nota**: o cálculo de frete (cotação) nunca exigiu documentos.
 
 ## 4. Ordem sugerida de virada
 

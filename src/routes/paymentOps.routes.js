@@ -28,5 +28,10 @@ router.post(
   adminGuard,
   asyncHandler(PaymentOpsController.reconcileNow)
 );
+router.get(
+  "/admin/payments/shipping-health",
+  adminGuard,
+  asyncHandler(PaymentOpsController.shippingHealth)
+);
 
 module.exports = router;

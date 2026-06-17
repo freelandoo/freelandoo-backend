@@ -3,6 +3,7 @@ const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage
 const PaymentOpsStorage = require("../storages/PaymentOpsStorage");
 const StripeWebhookService = require("../services/StripeWebhookService");
 const PaymentReconciliationService = require("../services/PaymentReconciliationService");
+const { checkHealth: checkShippingHealth } = require("../integrations/melhorenvio/health");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("PaymentOpsController");
@@ -53,6 +54,20 @@ class PaymentOpsController {
       limit: Math.min(Math.max(Number(req.body?.limit) || 100, 1), 300),
     });
     log.info("reconcile.manual", { by: req.user?.id_user, ...result });
+    return res.json(result);
+  }
+
+  // GET /admin/payments/shipping-health  → preflight do Melhor Envio
+  // (ambiente, validade do token, conta autenticada e saldo da carteira).
+  // Usar antes da 1ª compra real pra confirmar a virada sandbox→produção.
+  static async shippingHealth(req, res) {
+    const result = await checkShippingHealth();
+    log.info("shipping.health", {
+      by: req.user?.id_user,
+      environment: result.environment,
+      ok: result.ok,
+      balance: result.balance,
+    });
     return res.json(result);
   }
 }
