@@ -486,10 +486,16 @@ class CommunityStorage {
   // Liga um post/bee (portfolio-item de um membro) ao feed da comunidade.
   static async linkFeedItem(conn, id_community, id_portfolio_item, id_author_user) {
     const r = await conn.query(
+      // kind herda o DEFAULT 'post' (mig 162). O índice único virou PARCIAL na
+      // mig 162 (WHERE id_portfolio_item IS NOT NULL), então o ON CONFLICT
+      // PRECISA repetir o predicado — senão o Postgres não infere o índice e
+      // estoura 42P10 ("no unique or exclusion constraint matching"), quebrando
+      // todo link de post no feed da comunidade.
       `INSERT INTO public.tb_community_feed_item
          (id_community_profile, id_portfolio_item, id_author_user)
        VALUES ($1, $2, $3)
-       ON CONFLICT (id_community_profile, id_portfolio_item) DO NOTHING
+       ON CONFLICT (id_community_profile, id_portfolio_item)
+         WHERE id_portfolio_item IS NOT NULL DO NOTHING
        RETURNING id`,
       [id_community, id_portfolio_item, id_author_user || null]
     );
