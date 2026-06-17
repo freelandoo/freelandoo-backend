@@ -6,6 +6,7 @@ const { OAuth2Client } = require("google-auth-library");
 const pool = require("../databases");
 
 const AuthStorage = require("../storages/AuthStorage");
+const ProfileStorage = require("../storages/ProfileStorage");
 const ConsentStorage = require("../storages/ConsentStorage");
 const { SIGNUP_TERMS_VERSION, SIGNUP_ACTION_KEY } = require("../utils/terms");
 
@@ -66,6 +67,12 @@ class AuthService {
           const email = normalizeEmail(payload.email);
           const estado = payload.estado ? String(payload.estado).trim().toUpperCase() : null;
           const municipio = payload.municipio ? String(payload.municipio).trim() : null;
+          // Localização do perfil agora é por REGIÃO (cadastro envia id_region).
+          // Mantemos o fallback por município (estado+municipio) pra retrocompat.
+          const id_region =
+            payload.id_region != null && String(payload.id_region).trim() !== ""
+              ? Number(payload.id_region)
+              : null;
 
           if (!nome || !email || !senha || !data_nascimento) {
             return {
@@ -125,6 +132,23 @@ class AuthService {
             }
           }
 
+          // Região (opcional): se informada, precisa existir e bater com o estado.
+          if (id_region != null) {
+            if (!Number.isInteger(id_region)) {
+              return { error: "Região inválida" };
+            }
+            const regRow = await client.query(
+              `SELECT uf FROM public.tb_region WHERE id_region = $1 AND is_active = TRUE LIMIT 1`,
+              [id_region]
+            );
+            if (!regRow.rowCount) {
+              return { error: "Região não encontrada" };
+            }
+            if (estado && String(regRow.rows[0].uf).toUpperCase() !== estado) {
+              return { error: "A região selecionada não pertence ao estado escolhido" };
+            }
+          }
+
           const senhaHash = await bcrypt.hash(senha, 10);
 
           await client.query("BEGIN");
@@ -155,17 +179,39 @@ class AuthService {
           }
 
           if (id_category) {
+            const profileDisplayName =
+              (display_name && String(display_name).trim()) || nome;
+
+            // sub_profile_slug é NOT-NULL (mig 020). Resolve com o mesmo helper
+            // do CRUD de perfis (cuida de colisão por usuário).
+            const sub_profile_slug = await ProfileStorage.resolveUniqueSubProfileSlug(
+              client,
+              { id_user: user.id_user, display_name: profileDisplayName }
+            );
+
+            // id_region (mig 121): usa o informado; senão resolve pela cidade.
+            // ::text nas posições de $6/$7 — mesmo motivo de createProfile (F5.S1).
             await client.query(
-              `INSERT INTO tb_profile (id_user, id_category, display_name, bio, avatar_url, estado, municipio, is_active)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, false)`,
+              `INSERT INTO tb_profile
+                 (id_user, id_category, display_name, bio, avatar_url,
+                  estado, municipio, sub_profile_slug, id_region, is_active)
+               VALUES
+                 ($1, $2, $3, $4, $5, $6::text, $7::text, $8,
+                  COALESCE($9::int,
+                    (SELECT rc.id_region FROM public.tb_region_city rc
+                      WHERE rc.uf = $6::text
+                        AND rc.municipio_norm = fl_norm_city($7::text))),
+                  false)`,
               [
                 user.id_user,
                 id_category,
-                (display_name && String(display_name).trim()) || nome,
+                profileDisplayName,
                 (bio && String(bio).trim()) || null,
                 (avatar_url && String(avatar_url).trim()) || null,
                 estado,
                 municipio,
+                sub_profile_slug,
+                id_region,
               ]
             );
           }
