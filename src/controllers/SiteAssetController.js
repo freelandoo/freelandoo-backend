@@ -33,4 +33,15 @@ module.exports = {
     });
     return res.status(201).json({ asset });
   },
+
+  async remove(req, res) {
+    const slot_key = String(req.params.slot_key || "").trim();
+    if (!isValidSlot(slot_key)) {
+      return res.status(400).json({ error: "slot inválido" });
+    }
+    // Remove só a linha do banco (o objeto no R2 fica órfão — custo baixo e
+    // outros slots podem referenciar a mesma key). O slot some do mapa público.
+    await SiteAssetStorage.remove(pool, slot_key);
+    return res.json({ ok: true });
+  },
 };

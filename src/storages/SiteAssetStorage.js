@@ -22,6 +22,13 @@ class SiteAssetStorage {
     );
     return r.rows[0];
   }
+
+  static async remove(conn, slot_key) {
+    await conn.query(`DELETE FROM public.tb_site_asset WHERE slot_key = $1`, [
+      slot_key,
+    ]);
+    return true;
+  }
 }
 
 module.exports = SiteAssetStorage;

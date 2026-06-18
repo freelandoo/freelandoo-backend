@@ -16,4 +16,7 @@ router.post(
   asyncHandler(SiteAssetController.upload)
 );
 
+// Admin remove a imagem de um slot (usado para apagar slides do carrossel).
+router.delete("/:slot_key", ...admin, asyncHandler(SiteAssetController.remove));
+
 module.exports = router;
