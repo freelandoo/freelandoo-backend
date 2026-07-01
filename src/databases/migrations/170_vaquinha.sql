@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS public.vaquinha_settings (
 INSERT INTO public.vaquinha_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- ─── Feature flag (Painel de Controle) ───────────────────────────────────────
-INSERT INTO public.tb_feature_flag (flag_key, label, description, is_enabled)
+INSERT INTO public.tb_feature_flag (flag_key, label, description)
 VALUES (
   'vaquinha',
   'Vaquinhas',
