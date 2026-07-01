@@ -2,10 +2,14 @@ const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const uploadAvatar = require("../middlewares/uploadAvatar");
 const asyncHandler = require("../utils/asyncHandler");
+const requireFeature = require("../middlewares/requireFeature");
 const ProductRequestController = require("../controllers/ProductRequestController");
 
 const router = Router();
 const auth = [authMiddleware];
+
+// "Pedir Produto" faz parte da Loja/Produtos.
+router.use(requireFeature("store"));
 
 router.post("/", ...auth, uploadAvatar.single("reference_image"), asyncHandler(ProductRequestController.create));
 router.get("/me", ...auth, asyncHandler(ProductRequestController.listMine));

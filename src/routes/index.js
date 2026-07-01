@@ -105,6 +105,8 @@ const architectureAdminRoutes = require("./architectureAdmin.routes");
 const marketRoutes = require("./market.routes");
 const walletFinanceRoutes = require("./walletFinance.routes");
 const paymentOpsRoutes = require("./paymentOps.routes");
+const featureFlagRoutes = require("./featureFlag.routes");
+const featureFlagAdminRoutes = require("./featureFlagAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -220,4 +222,6 @@ module.exports = (app) => {
   app.use("/admin/blog", blogAdminRoutes);
   app.use("/admin/architecture", architectureAdminRoutes);
   app.use("/", paymentOpsRoutes);
+  app.use("/feature-flags", featureFlagRoutes);
+  app.use("/admin/feature-flags", featureFlagAdminRoutes);
 };
