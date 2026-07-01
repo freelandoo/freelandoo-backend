@@ -530,6 +530,9 @@ async function fulfillCheckoutSession(session) {
     result = await ProfileProductOrderService.confirmStripeSession(session);
   } else if (meta.type === "casa_participant_order") {
     result = await CasaParticipantService.confirmStripeSession(session);
+  } else if (meta.type === "donation") {
+    const VaquinhaService = require("./VaquinhaService");
+    result = await VaquinhaService.confirmStripeSession(session);
   } else {
     // Subscription/ativação — devolve undefined (gera comissão por outro caminho).
     result = await handleCheckoutCompleted(pool, session);
@@ -708,6 +711,9 @@ async function dispatchEvent(event) {
       const CoursesService = require("./CoursesService");
       const courseResult = await CoursesService.handleChargeRefunded(charge);
       if (courseResult && !courseResult.ignored) break;
+      const VaquinhaService = require("./VaquinhaService");
+      const vaquinhaResult = await VaquinhaService.handleChargeRefunded(charge);
+      if (vaquinhaResult && !vaquinhaResult.ignored) break;
       await handleChargeRefunded(pool, charge);
       break;
     }

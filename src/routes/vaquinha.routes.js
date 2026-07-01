@@ -1,0 +1,26 @@
+const { Router } = require("express");
+const VaquinhaController = require("../controllers/VaquinhaController");
+const authMiddleware = require("../middlewares/authMiddleware");
+const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
+const requireFeature = require("../middlewares/requireFeature");
+const asyncHandler = require("../utils/asyncHandler");
+
+const router = Router();
+
+// Vaquinha desligada no Painel de Controle → bloqueia tudo (criação e doações).
+router.use(requireFeature("vaquinha"));
+
+// ─── Dono (auth) ───────────────────────────────────────────────────────────
+router.get("/me/vaquinha", authMiddleware, asyncHandler(VaquinhaController.getMine));
+router.post("/me/vaquinha", authMiddleware, asyncHandler(VaquinhaController.create));
+router.patch("/me/vaquinha/:id", authMiddleware, asyncHandler(VaquinhaController.update));
+router.post("/me/vaquinha/:id/close", authMiddleware, asyncHandler(VaquinhaController.close));
+router.post("/me/vaquinha/:id/posts", authMiddleware, asyncHandler(VaquinhaController.createPost));
+router.delete("/me/vaquinha/posts/:postId", authMiddleware, asyncHandler(VaquinhaController.deletePost));
+
+// ─── Público ───────────────────────────────────────────────────────────────
+router.get("/vaquinhas/:slug", asyncHandler(VaquinhaController.getPublic));
+router.get("/vaquinhas/:slug/posts", asyncHandler(VaquinhaController.listPosts));
+router.post("/vaquinhas/:slug/donate", optionalAuthMiddleware, asyncHandler(VaquinhaController.donate));
+
+module.exports = router;

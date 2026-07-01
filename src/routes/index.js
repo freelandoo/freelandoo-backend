@@ -107,6 +107,8 @@ const walletFinanceRoutes = require("./walletFinance.routes");
 const paymentOpsRoutes = require("./paymentOps.routes");
 const featureFlagRoutes = require("./featureFlag.routes");
 const featureFlagAdminRoutes = require("./featureFlagAdmin.routes");
+const vaquinhaRoutes = require("./vaquinha.routes");
+const vaquinhaAdminRoutes = require("./vaquinhaAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -224,4 +226,6 @@ module.exports = (app) => {
   app.use("/", paymentOpsRoutes);
   app.use("/feature-flags", featureFlagRoutes);
   app.use("/admin/feature-flags", featureFlagAdminRoutes);
+  app.use("/", vaquinhaRoutes);
+  app.use("/admin/vaquinha", vaquinhaAdminRoutes);
 };
