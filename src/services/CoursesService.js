@@ -545,13 +545,23 @@ class CoursesService {
 
         const client = await pool.connect();
         try {
+          // Cursos são exclusivos de subperfis ATIVOS (pagos) — regra Alex
+          // 2026-07-01. O nível do user não cria mais cursos; é obrigatório
+          // vincular a um subperfil pago. Clans mantêm o fluxo próprio.
+          if (!profileId) {
+            return { error: "Selecione um subperfil ativo para criar o curso.", status: 403 };
+          }
           if (!(await profileBelongsToUser(client, profileId, user.id_user))) {
             return { error: "Perfil informado é inválido" };
           }
-          const profile = profileId
-            ? await ProfileStorage.getProfileById(client, profileId)
-            : null;
-          const isClan = !!profile?.is_clan;
+          const profile = await ProfileStorage.getProfileById(client, profileId);
+          if (!profile) {
+            return { error: "Perfil informado é inválido" };
+          }
+          const isClan = !!profile.is_clan;
+          if (!isClan && !profile.is_paid) {
+            return { error: "Só subperfis ativos podem criar cursos.", status: 403 };
+          }
           const attachIds = isClan && Array.isArray(memberIds) ? memberIds : [];
           if (isClan && attachIds.length > 0) {
             const memErr = await validateCourseClanMembers(client, profileId, attachIds);
