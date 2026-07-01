@@ -10,8 +10,14 @@ module.exports = {
   async create(req, res) {
     return sendServiceResult(res, await VaquinhaService.create(req.user, req.body || {}), 201);
   },
+  async getOrCreate(req, res) {
+    return sendServiceResult(res, await VaquinhaService.getOrCreate(req.user));
+  },
   async update(req, res) {
     return sendServiceResult(res, await VaquinhaService.update(req.user, req.params.id, req.body || {}));
+  },
+  async uploadCover(req, res) {
+    return sendServiceResult(res, await VaquinhaService.uploadCover(req.user, req.params.id, req.file || null));
   },
   async close(req, res) {
     return sendServiceResult(res, await VaquinhaService.close(req.user, req.params.id));

@@ -14,7 +14,9 @@ router.use(requireFeature("vaquinha"));
 // ─── Dono (auth) ───────────────────────────────────────────────────────────
 router.get("/me/vaquinha", authMiddleware, asyncHandler(VaquinhaController.getMine));
 router.post("/me/vaquinha", authMiddleware, asyncHandler(VaquinhaController.create));
+router.post("/me/vaquinha/start", authMiddleware, asyncHandler(VaquinhaController.getOrCreate));
 router.patch("/me/vaquinha/:id", authMiddleware, asyncHandler(VaquinhaController.update));
+router.post("/me/vaquinha/:id/cover", authMiddleware, uploadPortfolioMedia.single("cover"), asyncHandler(VaquinhaController.uploadCover));
 router.post("/me/vaquinha/:id/close", authMiddleware, asyncHandler(VaquinhaController.close));
 router.post("/me/vaquinha/:id/posts", authMiddleware, uploadPortfolioMedia.single("media"), asyncHandler(VaquinhaController.createPost));
 router.delete("/me/vaquinha/posts/:postId", authMiddleware, asyncHandler(VaquinhaController.deletePost));

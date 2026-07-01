@@ -6,11 +6,18 @@ const VaquinhaStorage = require("../storages/VaquinhaStorage");
 const StripeService = require("./StripeService");
 const { processPortfolioMedia } = require("../utils/mediaJobs");
 const uploadVaquinhaMediaToR2 = require("../integrations/r2/uploadVaquinhaMedia");
+const uploadVaquinhaCoverToR2 = require("../integrations/r2/uploadVaquinhaCover");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("VaquinhaService");
 const HOLDBACK_DAYS = 8;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Placeholders da vaquinha criada "na própria pele" (nasce ativa e editável
+// inline na própria página, sem formulário prévio).
+const DRAFT_TITLE = "Minha vaquinha";
+const DRAFT_GOAL_CENTS = 100000; // R$ 1.000
+const DRAFT_DEADLINE_DAYS = 30;
 
 function slugify(s) {
   return (
@@ -64,6 +71,29 @@ class VaquinhaService {
       await VaquinhaStorage.closeExpiredForUser(pool, user.id_user);
       const v = await VaquinhaStorage.getActiveByUser(pool, user.id_user);
       return { vaquinha: v ? publicShape(v) : null };
+    });
+  }
+
+  // Cria-ou-abre: se já existe uma vaquinha ativa, retorna ela; senão cria uma
+  // nova já ativa com placeholders (editável inline na própria página).
+  static async getOrCreate(user) {
+    return runWithLogs(log, "getOrCreate", () => ({ id_user: user?.id_user }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      await VaquinhaStorage.closeExpiredForUser(pool, user.id_user);
+      const existing = await VaquinhaStorage.getActiveByUser(pool, user.id_user);
+      if (existing) return { vaquinha: publicShape(existing) };
+
+      const slug = await uniqueSlug(pool, DRAFT_TITLE);
+      const created = await VaquinhaStorage.create(pool, {
+        id_user: user.id_user,
+        title: DRAFT_TITLE,
+        slug,
+        bio: null,
+        cover_url: null,
+        goal_cents: DRAFT_GOAL_CENTS,
+        deadline: new Date(Date.now() + DRAFT_DEADLINE_DAYS * DAY_MS),
+      });
+      return { vaquinha: publicShape(created), created: true };
     });
   }
 
@@ -129,7 +159,34 @@ class VaquinhaService {
         if (!Number.isFinite(g) || g <= 0) return { error: "Meta inválida", statusCode: 400 };
         fields.goal_cents = g;
       }
+      if (body.deadline !== undefined) {
+        const settings = await VaquinhaStorage.getSettings(pool);
+        const deadlineMs = new Date(body.deadline).getTime();
+        if (!Number.isFinite(deadlineMs)) return { error: "Prazo inválido", statusCode: 400 };
+        if (deadlineMs <= Date.now()) return { error: "O prazo precisa ser no futuro", statusCode: 400 };
+        if (deadlineMs > Date.now() + Number(settings.max_days) * DAY_MS + DAY_MS) {
+          return { error: `O prazo máximo é de ${settings.max_days} dias`, statusCode: 400 };
+        }
+        fields.deadline = new Date(deadlineMs);
+      }
       const updated = await VaquinhaStorage.update(pool, id, fields);
+      return { vaquinha: publicShape(updated) };
+    });
+  }
+
+  // Upload da capa (banner) — imagem para R2 (vaquinha-covers/<id>/).
+  static async uploadCover(user, id, file) {
+    return runWithLogs(log, "uploadCover", () => ({ id_user: user?.id_user, id }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const v = await VaquinhaStorage.getById(pool, id);
+      if (!v || v.id_user !== user.id_user) return { error: "Vaquinha não encontrada", statusCode: 404 };
+      if (v.status !== "active") return { error: "Vaquinha encerrada", statusCode: 400 };
+      if (!file?.buffer) return { error: "Imagem obrigatória", statusCode: 400 };
+      if (!String(file.mimetype || "").toLowerCase().startsWith("image/")) {
+        return { error: "Envie uma imagem", statusCode: 400 };
+      }
+      const { url } = await uploadVaquinhaCoverToR2({ id_vaquinha: id, file });
+      const updated = await VaquinhaStorage.update(pool, id, { cover_url: url });
       return { vaquinha: publicShape(updated) };
     });
   }
