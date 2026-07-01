@@ -17,7 +17,7 @@ module.exports = {
     return sendServiceResult(res, await VaquinhaService.close(req.user, req.params.id));
   },
   async createPost(req, res) {
-    return sendServiceResult(res, await VaquinhaService.createPost(req.user, req.params.id, req.body || {}), 201);
+    return sendServiceResult(res, await VaquinhaService.createPost(req.user, req.params.id, req.body || {}, req.file || null), 201);
   },
   async deletePost(req, res) {
     return sendServiceResult(res, await VaquinhaService.deletePost(req.user, req.params.postId));

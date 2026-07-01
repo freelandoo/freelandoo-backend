@@ -3,6 +3,7 @@ const VaquinhaController = require("../controllers/VaquinhaController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const requireFeature = require("../middlewares/requireFeature");
+const uploadPortfolioMedia = require("../middlewares/uploadPortfolioMedia");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -15,7 +16,7 @@ router.get("/me/vaquinha", authMiddleware, asyncHandler(VaquinhaController.getMi
 router.post("/me/vaquinha", authMiddleware, asyncHandler(VaquinhaController.create));
 router.patch("/me/vaquinha/:id", authMiddleware, asyncHandler(VaquinhaController.update));
 router.post("/me/vaquinha/:id/close", authMiddleware, asyncHandler(VaquinhaController.close));
-router.post("/me/vaquinha/:id/posts", authMiddleware, asyncHandler(VaquinhaController.createPost));
+router.post("/me/vaquinha/:id/posts", authMiddleware, uploadPortfolioMedia.single("media"), asyncHandler(VaquinhaController.createPost));
 router.delete("/me/vaquinha/posts/:postId", authMiddleware, asyncHandler(VaquinhaController.deletePost));
 
 // ─── Público ───────────────────────────────────────────────────────────────

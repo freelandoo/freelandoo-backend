@@ -4,6 +4,8 @@
 const pool = require("../databases");
 const VaquinhaStorage = require("../storages/VaquinhaStorage");
 const StripeService = require("./StripeService");
+const { processPortfolioMedia } = require("../utils/mediaJobs");
+const uploadVaquinhaMediaToR2 = require("../integrations/r2/uploadVaquinhaMedia");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("VaquinhaService");
@@ -286,7 +288,7 @@ class VaquinhaService {
   }
 
   // ─── Posts (só na página da vaquinha) ─────────────────────────────────────
-  static async createPost(user, id, body = {}) {
+  static async createPost(user, id, body = {}, file = null) {
     return runWithLogs(log, "createPost", () => ({ id_user: user?.id_user, id }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
       const v = await VaquinhaStorage.getById(pool, id);
@@ -294,15 +296,32 @@ class VaquinhaService {
       const kind = ["post", "bee", "text"].includes(body.kind) ? body.kind : "post";
       const caption = String(body.caption || "").slice(0, 3000);
       if (kind === "text" && !caption.trim()) return { error: "Escreva algo", statusCode: 400 };
-      if (kind !== "text" && !body.media_url) return { error: "Mídia obrigatória", statusCode: 400 };
+      if (kind !== "text" && !file?.buffer) return { error: "Mídia obrigatória", statusCode: 400 };
+
+      let media_url = null;
+      let thumbnail_url = null;
+      let media_type = null;
+      if (kind !== "text" && file?.buffer) {
+        const mimetype = String(file.mimetype || "").toLowerCase();
+        media_type = mimetype.startsWith("image/") ? "image" : mimetype.startsWith("video/") ? "video" : null;
+        if (!media_type) return { error: "Tipo de arquivo não permitido", statusCode: 400 };
+        // bee = vídeo vertical (preserva aspecto); post = imagem 4:5 / vídeo 4:5.
+        const processed = await processPortfolioMedia(file, media_type, {
+          feedKind: kind === "bee" ? "bees" : "feed",
+        });
+        const r2 = await uploadVaquinhaMediaToR2({ id_vaquinha: id, file: processed });
+        media_url = r2.url;
+        thumbnail_url = r2.thumbnail_url;
+      }
+
       const post = await VaquinhaStorage.createPost(pool, {
         id_vaquinha: id,
         id_user: user.id_user,
         kind,
         caption,
-        media_url: body.media_url || null,
-        thumbnail_url: body.thumbnail_url || null,
-        media_type: body.media_type || null,
+        media_url,
+        thumbnail_url,
+        media_type,
       });
       return { post };
     });
