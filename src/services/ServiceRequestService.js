@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const ServiceRequestStorage = require("../storages/ServiceRequestStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const WebhookDispatchService = require("./WebhookDispatchService");
 const NotificationService = require("./NotificationService");
 const realtime = require("../realtime/socket");
 const {
@@ -419,6 +420,25 @@ class ServiceRequestService {
           realtime.emitToUser(proUserId, "nav-counts:changed", { reason: "os_message", id_response });
         }
       } catch { /* realtime é best-effort */ }
+
+      // Webhook da API de Atendimento: O.S. está SEMPRE no escopo do vendedor.
+      // Só dispara quando o COMPRADOR (USER) fala — resposta do PRO não gera evento.
+      try {
+        if (ctx.side === "USER") {
+          const whProProfile = await ProfileStorage.getProfileById(pool, ctx.response.id_profile);
+          if (whProProfile?.id_user) {
+            WebhookDispatchService.onOsMessage({
+              id_response,
+              request: ctx.request,
+              response: ctx.response,
+              message: msg,
+              recipientUserId: whProProfile.id_user,
+            }).catch(() => {});
+          }
+        }
+      } catch {
+        /* fire-and-forget */
+      }
 
       return { message: msg };
     });

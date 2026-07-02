@@ -10,6 +10,7 @@ const {
 } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const ProfileStorage = require("../storages/ProfileStorage");
+const WebhookDispatchService = require("./WebhookDispatchService");
 const { processConversationAudio } = require("../utils/mediaJobs");
 const {
   uploadConversationAudio,
@@ -533,6 +534,30 @@ class ConversationService {
                   /* fire-and-forget */
                 }
               })();
+            }
+          } catch {
+            /* fire-and-forget */
+          }
+
+          // Webhook da API de Atendimento (fire-and-forget): empurra a mensagem
+          // pras conexões ativas do DONO do lado receptor, se a conversa estiver
+          // no escopo (direta nova ou scope_personal). Anti-loop: só o receptor
+          // recebe evento — quem enviou (app ou api) nunca recebe eco.
+          try {
+            if ((conv.kind || "direct") === "direct") {
+              const whOtherId = await ConversationStorage.otherEntityId(conv, actorRes.actor_id);
+              if (whOtherId) {
+                const whProfile = await ProfileStorage.getProfileById(pool, whOtherId);
+                if (whProfile?.id_user && whProfile.id_user !== user.id_user) {
+                  WebhookDispatchService.onDirectMessage({
+                    conversation: conv,
+                    message,
+                    senderProfileId: actorRes.actor_id,
+                    recipientProfile: whProfile,
+                    recipientUserId: whProfile.id_user,
+                  }).catch(() => {});
+                }
+              }
             }
           } catch {
             /* fire-and-forget */

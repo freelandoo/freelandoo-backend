@@ -26,6 +26,12 @@ const server = app.listen(PORT, () => {
   const { startMediaWorker } = require("./src/utils/mediaJobs");
   startMediaWorker();
 
+  // Webhook da API de Atendimento: retry de entregas pendentes (backoff
+  // 1min→6h, 5 tentativas). Entrega imediata acontece no send; isto é a
+  // rede de segurança.
+  const WebhookDispatchService = require("./src/services/WebhookDispatchService");
+  WebhookDispatchService.startSweeper();
+
   // Painel de Arquitetura: carrega o manifesto (scan carimbado com git) para
   // dentro de arch_functions. Idempotente, preserva curadoria do admin e nunca
   // derruba o boot. No-op se o manifesto ainda não existe.
