@@ -43,6 +43,7 @@ const serviceRequestRoutes = require("./serviceRequest.routes");
 const portfolioFeedRoutes = require("./portfolioFeed.routes");
 const entityFollowRoutes = require("./entityFollow.routes");
 const conversationRoutes = require("./conversation.routes");
+const apiConnectionRoutes = require("./apiConnection.routes");
 const adminXpRoutes = require("./adminXp.routes");
 const xpRoutes = require("./xp.routes");
 const engagementRoutes = require("./engagement.routes");
@@ -162,6 +163,7 @@ module.exports = (app) => {
   app.use("/feed", portfolioFeedRoutes);
   app.use("/entity-follows", entityFollowRoutes);
   app.use("/conversations", conversationRoutes);
+  app.use("/me/api-connections", apiConnectionRoutes);
   app.use("/admin", adminXpRoutes);
   app.use("/subprofiles", xpRoutes);
   app.use("/polens", polenRoutes);
