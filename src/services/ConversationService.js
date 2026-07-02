@@ -60,6 +60,7 @@ function mapMessage(row) {
     sender_user_id: row.sender_user_id,
     body: row.body,
     kind: row.kind || "text",
+    sent_via: row.sent_via || "app",
     status: row.status,
     audio_url: row.audio_url || null,
     audio_duration_seconds: row.audio_duration_seconds || null,
@@ -327,7 +328,13 @@ class ConversationService {
         });
 
         return {
-          items: result.items.map(mapMessage),
+          // Selo "via atendimento" é privado do dono: sent_via só sai nas
+          // mensagens enviadas pelo próprio viewer.
+          items: result.items.map((m) => {
+            const mapped = mapMessage(m);
+            if (String(m.sender_user_id) !== String(user.id_user)) delete mapped.sent_via;
+            return mapped;
+          }),
           next_cursor: result.next_cursor,
           has_more: result.has_more,
         };
@@ -335,7 +342,7 @@ class ConversationService {
     );
   }
 
-  static async sendMessage(user, payload) {
+  static async sendMessage(user, payload, opts = {}) {
     return runWithLogs(
       log,
       "sendMessage",
@@ -419,11 +426,14 @@ class ConversationService {
             conv = created.conversation;
           }
 
+          // opts NUNCA vem do body HTTP — só o ExtMessagingService passa
+          // { sent_via: "api" } (selo "via atendimento" do dono).
           const message = await MessageStorage.create(client, {
             id_conversation: conv.id_conversation,
             sender_entity_id: actorRes.actor_id,
             sender_user_id: user.id_user,
             body,
+            sent_via: opts.sent_via === "api" ? "api" : "app",
           });
 
           await ConversationStorage.updateLastMessage(client, {

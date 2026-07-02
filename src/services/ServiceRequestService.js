@@ -362,11 +362,20 @@ class ServiceRequestService {
       if (ctx.error) return ctx;
       const messages = await ServiceRequestStorage.listMessages(pool, id_response);
       await ServiceRequestStorage.markRead(pool, id_response, ctx.side);
-      return { messages, side: ctx.side, response: ctx.response };
+      // Selo "via atendimento" é privado: sent_via só sai nas mensagens do
+      // próprio lado do viewer.
+      return {
+        messages: messages.map((m) => ({
+          ...m,
+          sent_via: m.sender === ctx.side ? m.sent_via || "app" : undefined,
+        })),
+        side: ctx.side,
+        response: ctx.response,
+      };
     });
   }
 
-  static async sendMessage(user, id_response, body) {
+  static async sendMessage(user, id_response, body, opts = {}) {
     return runWithLogs(log, "sendMessage", () => ({ id_user: user?.id_user, id_response }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
       if (!isUuid(id_response)) return { error: "id_response inválido" };
@@ -379,10 +388,13 @@ class ServiceRequestService {
       if (terminal.includes(ctx.response.status)) {
         return { error: "Conversa encerrada" };
       }
+      // opts NUNCA vem do body HTTP — só o ExtMessagingService passa
+      // { sent_via: "api" } (selo "via atendimento" do dono).
       const msg = await ServiceRequestStorage.createMessage(pool, {
         id_response,
         sender: ctx.side,
         content,
+        sent_via: opts.sent_via === "api" ? "api" : "app",
       });
       await ServiceRequestStorage.markRead(pool, id_response, ctx.side);
 

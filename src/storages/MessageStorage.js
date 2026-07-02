@@ -39,7 +39,7 @@ class MessageStorage {
     return listLimit(value);
   }
 
-  static async create(conn, { id_conversation, sender_entity_id, sender_user_id, body }) {
+  static async create(conn, { id_conversation, sender_entity_id, sender_user_id, body, sent_via = "app" }) {
     const { rows } = await conn.query(
       `
       INSERT INTO public.tb_message (
@@ -47,12 +47,13 @@ class MessageStorage {
         sender_entity_type, sender_entity_id,
         sender_user_id,
         body,
-        kind
+        kind,
+        sent_via
       )
-      VALUES ($1, 'profile', $2, $3, $4, 'text')
+      VALUES ($1, 'profile', $2, $3, $4, 'text', $5)
       RETURNING *
       `,
-      [id_conversation, sender_entity_id, sender_user_id, body]
+      [id_conversation, sender_entity_id, sender_user_id, body, sent_via]
     );
     return rows[0] || null;
   }

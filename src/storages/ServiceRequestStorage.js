@@ -497,7 +497,7 @@ class ServiceRequestStorage {
   // ---------- Messages ----------
   static async listMessages(conn, id_response) {
     const r = await conn.query(
-      `SELECT id_message, id_response, sender, content, created_at
+      `SELECT id_message, id_response, sender, content, sent_via, created_at
          FROM public.tb_service_request_message
         WHERE id_response = $1
         ORDER BY created_at ASC`,
@@ -506,12 +506,12 @@ class ServiceRequestStorage {
     return r.rows;
   }
 
-  static async createMessage(conn, { id_response, sender, content }) {
+  static async createMessage(conn, { id_response, sender, content, sent_via = "app" }) {
     const r = await conn.query(
-      `INSERT INTO public.tb_service_request_message (id_response, sender, content)
-       VALUES ($1, $2, $3)
-       RETURNING id_message, id_response, sender, content, created_at`,
-      [id_response, sender, content]
+      `INSERT INTO public.tb_service_request_message (id_response, sender, content, sent_via)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id_message, id_response, sender, content, sent_via, created_at`,
+      [id_response, sender, content, sent_via]
     );
     return r.rows[0];
   }
