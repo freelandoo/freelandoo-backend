@@ -3,6 +3,7 @@
 const { Router } = require("express");
 const requireFeature = require("../middlewares/requireFeature");
 const apiConnectionAuth = require("../middlewares/apiConnectionAuth");
+const requireConnectionKind = require("../middlewares/requireConnectionKind");
 const extRateLimit = require("../middlewares/extRateLimit");
 const ExtMessagingController = require("../controllers/ExtMessagingController");
 const asyncHandler = require("../utils/asyncHandler");
@@ -11,6 +12,7 @@ const router = Router();
 
 router.use(requireFeature("atendimento_api"));
 router.use(apiConnectionAuth);
+router.use(requireConnectionKind("atendimento"));
 router.use(extRateLimit);
 
 router.get("/me", asyncHandler(ExtMessagingController.me));

@@ -1,7 +1,8 @@
 // src/middlewares/apiConnectionAuth.js
-// Autentica requests do /ext/v1 pelo token pessoal (Bearer flnd_atd_...).
-// Injeta req.apiConnection e req.user (o DONO da conexão) — os services
-// internos reusados (ConversationService etc.) enxergam o dono normalmente.
+// Autentica requests do /ext/v1[/data] pelo token pessoal (Bearer flnd_atd_ ou
+// flnd_data_). Injeta req.apiConnection (com .kind) e req.user (o DONO) — os
+// services internos reusados enxergam o dono normalmente. O guard de kind
+// (requireConnectionKind) é montado por rota para separar atendimento × dados.
 const pool = require("../databases");
 const ApiConnectionStorage = require("../storages/ApiConnectionStorage");
 const ApiConnectionService = require("../services/ApiConnectionService");
@@ -12,7 +13,7 @@ const log = createLogger("apiConnectionAuth");
 async function apiConnectionAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const [, token] = header.split(" ");
-  if (!token || !token.startsWith(ApiConnectionService.TOKEN_PREFIX)) {
+  if (!token || !ApiConnectionService.isKnownTokenPrefix(token)) {
     return res.status(401).json({ error: "Token de API não informado ou inválido" });
   }
   try {

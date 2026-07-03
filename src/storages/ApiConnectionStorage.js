@@ -2,35 +2,38 @@
 // SQL puro das conexões de API (tokens pessoais) e da fila de webhook.
 
 class ApiConnectionStorage {
-  static async listForUser(conn, id_user) {
+  // kind opcional: filtra por 'atendimento' | 'data'. Sem kind = todos (compat).
+  static async listForUser(conn, id_user, kind) {
     const { rows } = await conn.query(
       `SELECT id_connection, name, token_prefix, scope_personal, webhook_url,
-              status, last_used_at, last_ip, created_at, revoked_at
+              kind, status, last_used_at, last_ip, created_at, revoked_at
          FROM public.tb_api_connection
         WHERE id_user = $1
+          AND ($2::varchar IS NULL OR kind = $2)
         ORDER BY created_at DESC`,
-      [id_user]
+      [id_user, kind || null]
     );
     return rows;
   }
 
-  static async countActiveForUser(conn, id_user) {
+  static async countActiveForUser(conn, id_user, kind) {
     const { rows } = await conn.query(
       `SELECT COUNT(*)::int AS c
          FROM public.tb_api_connection
-        WHERE id_user = $1 AND status = 'active'`,
-      [id_user]
+        WHERE id_user = $1 AND status = 'active'
+          AND ($2::varchar IS NULL OR kind = $2)`,
+      [id_user, kind || null]
     );
     return rows[0]?.c || 0;
   }
 
-  static async create(conn, { id_user, name, token_hash, token_prefix, scope_personal, webhook_secret }) {
+  static async create(conn, { id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind }) {
     const { rows } = await conn.query(
       `INSERT INTO public.tb_api_connection
-         (id_user, name, token_hash, token_prefix, scope_personal, webhook_secret)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id_connection, name, token_prefix, scope_personal, status, created_at`,
-      [id_user, name, token_hash, token_prefix, scope_personal, webhook_secret]
+         (id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind)
+       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'atendimento'))
+       RETURNING id_connection, name, token_prefix, scope_personal, kind, status, created_at`,
+      [id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind || null]
     );
     return rows[0] || null;
   }
@@ -38,7 +41,7 @@ class ApiConnectionStorage {
   static async getActiveByTokenHash(conn, token_hash) {
     const { rows } = await conn.query(
       `SELECT id_connection, id_user, name, scope_personal, webhook_url,
-              webhook_secret, status, created_at
+              webhook_secret, kind, status, created_at
          FROM public.tb_api_connection
         WHERE token_hash = $1 AND status = 'active'`,
       [token_hash]

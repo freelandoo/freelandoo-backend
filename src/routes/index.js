@@ -44,7 +44,9 @@ const portfolioFeedRoutes = require("./portfolioFeed.routes");
 const entityFollowRoutes = require("./entityFollow.routes");
 const conversationRoutes = require("./conversation.routes");
 const apiConnectionRoutes = require("./apiConnection.routes");
+const dataApiConnectionRoutes = require("./dataApiConnection.routes");
 const extRoutes = require("./ext.routes");
+const extDataRoutes = require("./extData.routes");
 const adminXpRoutes = require("./adminXp.routes");
 const xpRoutes = require("./xp.routes");
 const engagementRoutes = require("./engagement.routes");
@@ -165,6 +167,9 @@ module.exports = (app) => {
   app.use("/entity-follows", entityFollowRoutes);
   app.use("/conversations", conversationRoutes);
   app.use("/me/api-connections", apiConnectionRoutes);
+  app.use("/me/data-connections", dataApiConnectionRoutes);
+  // /ext/v1/data ANTES de /ext/v1 para não ser engolido pelo gate de atendimento.
+  app.use("/ext/v1/data", extDataRoutes);
   app.use("/ext/v1", extRoutes);
   app.use("/admin", adminXpRoutes);
   app.use("/subprofiles", xpRoutes);
