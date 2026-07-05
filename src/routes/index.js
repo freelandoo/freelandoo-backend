@@ -113,6 +113,8 @@ const featureFlagRoutes = require("./featureFlag.routes");
 const featureFlagAdminRoutes = require("./featureFlagAdmin.routes");
 const vaquinhaRoutes = require("./vaquinha.routes");
 const vaquinhaAdminRoutes = require("./vaquinhaAdmin.routes");
+const atendimentoIaRoutes = require("./atendimentoIa.routes");
+const atendimentoIaAdminRoutes = require("./atendimentoIaAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -237,4 +239,6 @@ module.exports = (app) => {
   app.use("/admin/feature-flags", featureFlagAdminRoutes);
   app.use("/", vaquinhaRoutes);
   app.use("/admin/vaquinha", vaquinhaAdminRoutes);
+  app.use("/me/atendimento-ia", atendimentoIaRoutes);
+  app.use("/admin/atendimento-ia", atendimentoIaAdminRoutes);
 };

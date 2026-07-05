@@ -32,6 +32,12 @@ const server = app.listen(PORT, () => {
   const WebhookDispatchService = require("./src/services/WebhookDispatchService");
   WebhookDispatchService.startSweeper();
 
+  // Atendimento IA: retry do provisionamento do bot (backoff 1min→6h, 8
+  // tentativas). O push imediato acontece no webhook; isto é a rede de
+  // segurança pra quando o bot estiver fora do ar.
+  const AtendimentoIaProvisionService = require("./src/services/AtendimentoIaProvisionService");
+  AtendimentoIaProvisionService.startSweeper();
+
   // Painel de Arquitetura: carrega o manifesto (scan carimbado com git) para
   // dentro de arch_functions. Idempotente, preserva curadoria do admin e nunca
   // derruba o boot. No-op se o manifesto ainda não existe.

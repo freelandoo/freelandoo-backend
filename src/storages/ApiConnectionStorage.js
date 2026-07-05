@@ -6,7 +6,7 @@ class ApiConnectionStorage {
   static async listForUser(conn, id_user, kind) {
     const { rows } = await conn.query(
       `SELECT id_connection, name, token_prefix, scope_personal, webhook_url,
-              kind, status, last_used_at, last_ip, created_at, revoked_at
+              kind, status, managed_by, last_used_at, last_ip, created_at, revoked_at
          FROM public.tb_api_connection
         WHERE id_user = $1
           AND ($2::varchar IS NULL OR kind = $2)
@@ -16,24 +16,38 @@ class ApiConnectionStorage {
     return rows;
   }
 
+  // Conexões GERENCIADAS (Atendimento IA) não contam no teto do user.
   static async countActiveForUser(conn, id_user, kind) {
     const { rows } = await conn.query(
       `SELECT COUNT(*)::int AS c
          FROM public.tb_api_connection
         WHERE id_user = $1 AND status = 'active'
+          AND managed_by IS NULL
           AND ($2::varchar IS NULL OR kind = $2)`,
       [id_user, kind || null]
     );
     return rows[0]?.c || 0;
   }
 
-  static async create(conn, { id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind }) {
+  static async create(conn, { id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind, managed_by }) {
     const { rows } = await conn.query(
       `INSERT INTO public.tb_api_connection
-         (id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind)
-       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'atendimento'))
-       RETURNING id_connection, name, token_prefix, scope_personal, kind, status, created_at`,
-      [id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind || null]
+         (id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind, managed_by)
+       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'atendimento'), $8)
+       RETURNING id_connection, name, token_prefix, scope_personal, kind, status, managed_by, created_at`,
+      [id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind || null, managed_by || null]
+    );
+    return rows[0] || null;
+  }
+
+  // Revogação interna de conexão gerenciada (sem guard de dono — uso do sistema).
+  static async revokeManaged(conn, id_connection) {
+    const { rows } = await conn.query(
+      `UPDATE public.tb_api_connection
+          SET status = 'revoked', revoked_at = NOW()
+        WHERE id_connection = $1 AND status = 'active' AND managed_by IS NOT NULL
+        RETURNING id_connection, status, revoked_at`,
+      [id_connection]
     );
     return rows[0] || null;
   }
@@ -51,7 +65,7 @@ class ApiConnectionStorage {
 
   static async getByIdForUser(conn, { id_connection, id_user }) {
     const { rows } = await conn.query(
-      `SELECT id_connection, id_user, name, status
+      `SELECT id_connection, id_user, name, status, managed_by
          FROM public.tb_api_connection
         WHERE id_connection = $1 AND id_user = $2`,
       [id_connection, id_user]

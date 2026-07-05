@@ -14,6 +14,7 @@ const ProfileProductOrderService = require("./ProfileProductOrderService");
 const CasaParticipantService = require("./CasaParticipantService");
 const CommunitySlotService = require("./CommunitySlotService");
 const CommunityMembershipService = require("./CommunityMembershipService");
+const AtendimentoIaService = require("./AtendimentoIaService");
 const XpBoostService = require("./XpBoostService");
 const XpBoostStorage = require("../storages/XpBoostStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
@@ -196,6 +197,8 @@ async function handleInvoicePaid(conn, invoice) {
     const sponsorship = await VaquinhaService.handleSponsorshipInvoicePaid(invoice, subscriptionId);
     if (sponsorship && !sponsorship.ignored) return;
   }
+  const atendimentoIa = await AtendimentoIaService.handleInvoicePaid(invoice, subscriptionId);
+  if (atendimentoIa && !atendimentoIa.ignored) return;
 
   const row = await ProfileSubscriptionStorage.findBySubscriptionId(
     conn,
@@ -214,6 +217,10 @@ async function handleInvoicePaid(conn, invoice) {
       }
       if (metaType === "vaquinha_sponsorship" && typeof VaquinhaService.handleSponsorshipInvoicePaidByMetadata === "function") {
         await VaquinhaService.handleSponsorshipInvoicePaidByMetadata(invoice, subscription);
+        return;
+      }
+      if (metaType === "atendimento_ia") {
+        await AtendimentoIaService.handleInvoicePaidByMetadata(invoice, subscription);
         return;
       }
     } catch (err) {
@@ -263,6 +270,8 @@ async function handleInvoiceFailed(conn, invoice) {
     const sponsorship = await VaquinhaService.handleSponsorshipInvoiceFailed(subscriptionId);
     if (sponsorship && !sponsorship.ignored) return;
   }
+  const atendimentoIa = await AtendimentoIaService.handleInvoiceFailed(subscriptionId);
+  if (atendimentoIa && !atendimentoIa.ignored) return;
 
   await ProfileSubscriptionStorage.updateBySubscriptionId(conn, subscriptionId, {
     status: "past_due",
@@ -419,6 +428,8 @@ async function handleSubscriptionDeleted(conn, subscription) {
     const sponsorship = await VaquinhaService.handleSponsorshipDeleted(subscription);
     if (sponsorship && !sponsorship.ignored) return;
   }
+  const atendimentoIa = await AtendimentoIaService.handleSubscriptionDeleted(subscription);
+  if (atendimentoIa && !atendimentoIa.ignored) return;
 
   const row = await ProfileSubscriptionStorage.findBySubscriptionId(
     conn,
@@ -561,6 +572,8 @@ async function fulfillCheckoutSession(session) {
     result = await CommunitySlotService.confirmStripeSession(session);
   } else if (meta.type === "community_membership") {
     result = await CommunityMembershipService.confirmStripeSession(session);
+  } else if (meta.type === "atendimento_ia") {
+    result = await AtendimentoIaService.confirmStripeSession(session);
   } else if (meta.type === "manifestation") {
     result = await ManifestationService.confirmStripeSession(session);
   } else if (meta.type === "polen_purchase") {
@@ -678,6 +691,11 @@ async function expireCheckoutSession(session, reason) {
         if (ex) log.info("expire.vaquinha_sponsorship", { session_id: session.id, reason });
         break;
       }
+      case "atendimento_ia": {
+        const ex = await AtendimentoIaService.expireBySession(session.id);
+        if (ex) log.info("expire.atendimento_ia", { session_id: session.id, reason });
+        break;
+      }
       default: {
         // Ativação/assinatura.
         const sub = await ProfileSubscriptionStorage.findBySessionId(pool, session.id);
@@ -776,6 +794,8 @@ async function dispatchEvent(event) {
       if (vaquinhaResult && !vaquinhaResult.ignored) break;
       const membershipResult = await CommunityMembershipService.handleChargeRefunded(charge);
       if (membershipResult && !membershipResult.ignored) break;
+      const atendimentoIaResult = await AtendimentoIaService.handleChargeRefunded(charge);
+      if (atendimentoIaResult && !atendimentoIaResult.ignored) break;
       await handleChargeRefunded(pool, charge);
       break;
     }

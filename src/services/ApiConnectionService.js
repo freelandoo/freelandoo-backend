@@ -87,6 +87,10 @@ class ApiConnectionService {
       });
       if (!existing) return { error: "Conexão não encontrada" };
       if (existing.status === "revoked") return { error: "Conexão já revogada" };
+      // Conexões gerenciadas morrem junto com a assinatura que as criou.
+      if (existing.managed_by) {
+        return { error: "Conexão gerenciada pelo Atendimento IA — cancele a assinatura para removê-la.", statusCode: 403 };
+      }
       const revoked = await ApiConnectionStorage.revoke(pool, {
         id_connection,
         id_user: user.id_user,
