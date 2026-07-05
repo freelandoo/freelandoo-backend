@@ -167,6 +167,8 @@ class CommunityStorage {
       `SELECT p.id_profile, p.id_machine, p.is_community, p.id_leader_user,
               p.community_theme, p.display_name, p.bio, p.avatar_url,
               p.community_banner_url AS banner_url,
+              p.community_privacy AS privacy,
+              p.community_monthly_cents AS monthly_cents,
               p.xp_total, p.xp_level, p.created_at, p.updated_at,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
@@ -204,6 +206,8 @@ class CommunityStorage {
               p.community_banner_url AS banner_url,
               p.community_theme, p.xp_total, p.xp_level,
               p.estado, p.municipio, p.id_region,
+              p.community_privacy AS privacy,
+              p.community_monthly_cents AS monthly_cents,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
                 WHERE cm.id_community_profile = p.id_profile) AS member_count
@@ -891,6 +895,229 @@ class CommunityStorage {
       [session_id]
     );
     return r.rowCount > 0;
+  }
+
+  // ─── Privacidade (mig 173) ───────────────────────────────────────────────────
+  static async setPrivacy(conn, id_community, { privacy, monthly_cents }) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile
+          SET community_privacy = $2,
+              community_monthly_cents = $3,
+              updated_at = NOW()
+        WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
+        RETURNING id_profile, community_privacy AS privacy,
+                  community_monthly_cents AS monthly_cents`,
+      [id_community, privacy, monthly_cents ?? null]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  // Configuração global (taxa da plataforma + mensalidade mínima) — singleton.
+  static async getSettings(conn) {
+    const r = await conn.query(`SELECT * FROM public.community_settings WHERE id = 1 LIMIT 1`);
+    return r.rows[0] || { id: 1, platform_fee_percent: 10, min_monthly_cents: 500 };
+  }
+
+  // ─── Post exclusivo de comunidade privada ────────────────────────────────────
+  static async setItemExclusiveCommunity(conn, id_portfolio_item, id_community_or_null) {
+    await conn.query(
+      `UPDATE public.tb_profile_portfolio_item
+          SET id_exclusive_community = $2
+        WHERE id_portfolio_item = $1`,
+      [id_portfolio_item, id_community_or_null]
+    );
+  }
+
+  static async getItemExclusiveCommunity(conn, id_portfolio_item) {
+    const r = await conn.query(
+      `SELECT id_exclusive_community FROM public.tb_profile_portfolio_item
+        WHERE id_portfolio_item = $1 LIMIT 1`,
+      [id_portfolio_item]
+    );
+    return r.rowCount ? r.rows[0].id_exclusive_community : null;
+  }
+
+  // O item já está ligado ao feed de OUTRA comunidade? (bloqueia exclusividade)
+  static async itemLinkedElsewhere(conn, id_portfolio_item, id_community) {
+    const r = await conn.query(
+      `SELECT 1 FROM public.tb_community_feed_item
+        WHERE id_portfolio_item = $1 AND id_community_profile <> $2
+        LIMIT 1`,
+      [id_portfolio_item, id_community]
+    );
+    return r.rowCount > 0;
+  }
+
+  // ─── Assinatura de membro (tb_community_member_sub) ──────────────────────────
+  static async createPendingMemberSub(conn, { id_community_profile, id_user, monthly_cents }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_member_sub
+         (id_community_profile, id_user, monthly_cents)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [id_community_profile, id_user, monthly_cents]
+    );
+    return r.rows[0];
+  }
+
+  static async setMemberSubSession(conn, id_sub, session_id) {
+    await conn.query(
+      `UPDATE public.tb_community_member_sub
+          SET stripe_session_id = $2, updated_at = NOW()
+        WHERE id_sub = $1`,
+      [id_sub, session_id]
+    );
+  }
+
+  static async getMemberSubById(conn, id_sub) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_member_sub WHERE id_sub = $1 LIMIT 1`,
+      [id_sub]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async getMemberSubBySession(conn, session_id) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_member_sub WHERE stripe_session_id = $1 LIMIT 1`,
+      [session_id]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async getMemberSubBySubscriptionId(conn, subscription_id) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_member_sub WHERE stripe_subscription_id = $1 LIMIT 1`,
+      [subscription_id]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  // Assinatura "viva" (pending/active/past_due) do user nesta comunidade.
+  static async getLiveMemberSub(conn, id_community, id_user) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_member_sub
+        WHERE id_community_profile = $1 AND id_user = $2
+          AND status IN ('pending','active','past_due')
+        LIMIT 1`,
+      [id_community, id_user]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async listLiveMemberSubs(conn, id_community) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_member_sub
+        WHERE id_community_profile = $1
+          AND status IN ('pending','active','past_due')`,
+      [id_community]
+    );
+    return r.rows;
+  }
+
+  static async activateMemberSub(conn, id_sub, { stripe_subscription_id, stripe_customer_id }) {
+    await conn.query(
+      `UPDATE public.tb_community_member_sub
+          SET status = 'active',
+              activated_at = COALESCE(activated_at, NOW()),
+              stripe_subscription_id = COALESCE($2, stripe_subscription_id),
+              stripe_customer_id = COALESCE($3, stripe_customer_id),
+              updated_at = NOW()
+        WHERE id_sub = $1`,
+      [id_sub, stripe_subscription_id || null, stripe_customer_id || null]
+    );
+  }
+
+  static async markMemberSubStatusBySubscriptionId(conn, subscription_id, status) {
+    await conn.query(
+      `UPDATE public.tb_community_member_sub
+          SET status = $2, updated_at = NOW()
+        WHERE stripe_subscription_id = $1
+          AND status IN ('pending','active','past_due')`,
+      [subscription_id, status]
+    );
+  }
+
+  static async markMemberSubCanceled(conn, id_sub) {
+    await conn.query(
+      `UPDATE public.tb_community_member_sub
+          SET status = 'canceled', canceled_at = COALESCE(canceled_at, NOW()), updated_at = NOW()
+        WHERE id_sub = $1 AND status <> 'canceled'`,
+      [id_sub]
+    );
+  }
+
+  static async markMemberSubExpiredBySession(conn, session_id) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_member_sub
+          SET status = 'expired', updated_at = NOW()
+        WHERE stripe_session_id = $1 AND status = 'pending'
+        RETURNING id_sub`,
+      [session_id]
+    );
+    return r.rowCount > 0;
+  }
+
+  // ─── Pagamento mensal (tb_community_member_payment) ──────────────────────────
+  // Idempotente por stripe_invoice_id. Retorna a linha se inseriu AGORA.
+  static async insertMemberPayment(conn, p) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_member_payment
+         (id_sub, id_community_profile, id_owner_user, gross_cents, platform_fee_cents,
+          net_cents, stripe_invoice_id, stripe_payment_intent_id, stripe_charge_id, available_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (stripe_invoice_id) DO NOTHING
+       RETURNING *`,
+      [p.id_sub, p.id_community_profile, p.id_owner_user, p.gross_cents, p.platform_fee_cents,
+       p.net_cents, p.stripe_invoice_id, p.stripe_payment_intent_id || null,
+       p.stripe_charge_id || null, p.available_at]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async getMemberPaymentByCharge(conn, { chargeId, paymentIntentId }) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_member_payment
+        WHERE status <> 'revertido' AND (
+          ($1::text IS NOT NULL AND stripe_charge_id = $1) OR
+          ($2::text IS NOT NULL AND stripe_payment_intent_id = $2)
+        ) LIMIT 1`,
+      [chargeId || null, paymentIntentId || null]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async revertMemberPayment(conn, id_payment) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_member_payment
+          SET status = 'revertido', reverted_at = NOW(), updated_at = NOW()
+        WHERE id_payment = $1 AND status <> 'revertido'
+        RETURNING *`,
+      [id_payment]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  // Resumo pro líder: assinantes ativos + acumulados por status de repasse.
+  static async getMembershipSummary(conn, id_community) {
+    const subs = await conn.query(
+      `SELECT COUNT(*) FILTER (WHERE status = 'active')::int   AS active_subs,
+              COUNT(*) FILTER (WHERE status = 'past_due')::int AS past_due_subs
+         FROM public.tb_community_member_sub
+        WHERE id_community_profile = $1`,
+      [id_community]
+    );
+    const pays = await conn.query(
+      `SELECT COALESCE(SUM(net_cents) FILTER (WHERE status = 'aguardando'), 0)::bigint AS waiting_cents,
+              COALESCE(SUM(net_cents) FILTER (WHERE status = 'aprovado'),   0)::bigint AS available_cents,
+              COALESCE(SUM(net_cents) FILTER (WHERE status = 'pago'),       0)::bigint AS paid_cents,
+              COALESCE(SUM(net_cents) FILTER (WHERE status <> 'revertido'), 0)::bigint AS total_net_cents,
+              COUNT(*)::int AS payments_count
+         FROM public.tb_community_member_payment
+        WHERE id_community_profile = $1`,
+      [id_community]
+    );
+    return { ...subs.rows[0], ...pays.rows[0] };
   }
 }
 

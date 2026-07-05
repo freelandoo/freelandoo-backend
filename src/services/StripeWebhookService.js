@@ -13,6 +13,7 @@ const PremiumService = require("./PremiumService");
 const ProfileProductOrderService = require("./ProfileProductOrderService");
 const CasaParticipantService = require("./CasaParticipantService");
 const CommunitySlotService = require("./CommunitySlotService");
+const CommunityMembershipService = require("./CommunityMembershipService");
 const XpBoostService = require("./XpBoostService");
 const XpBoostStorage = require("../storages/XpBoostStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
@@ -186,11 +187,38 @@ async function handleInvoicePaid(conn, invoice) {
       : invoice.subscription?.id || null;
   if (!subscriptionId) return;
 
+  // Assinaturas recorrentes próprias (comunidade privada / bolsa patrocínio)
+  // têm linha própria — roteia por elas antes da assinatura de perfil.
+  const membership = await CommunityMembershipService.handleInvoicePaid(invoice, subscriptionId);
+  if (membership && !membership.ignored) return;
+  const VaquinhaService = require("./VaquinhaService");
+  if (typeof VaquinhaService.handleSponsorshipInvoicePaid === "function") {
+    const sponsorship = await VaquinhaService.handleSponsorshipInvoicePaid(invoice, subscriptionId);
+    if (sponsorship && !sponsorship.ignored) return;
+  }
+
   const row = await ProfileSubscriptionStorage.findBySubscriptionId(
     conn,
     subscriptionId
   );
   if (!row) {
+    // invoice.paid pode chegar ANTES do checkout.session.completed — nesse caso
+    // nossa linha ainda não tem o subscription id. A metadata da subscription
+    // (subscription_data.metadata) diz de quem é a fatura.
+    try {
+      const subscription = await StripeService.retrieveSubscription(subscriptionId);
+      const metaType = subscription?.metadata?.type || null;
+      if (metaType === "community_membership") {
+        await CommunityMembershipService.handleInvoicePaidByMetadata(invoice, subscription);
+        return;
+      }
+      if (metaType === "vaquinha_sponsorship" && typeof VaquinhaService.handleSponsorshipInvoicePaidByMetadata === "function") {
+        await VaquinhaService.handleSponsorshipInvoicePaidByMetadata(invoice, subscription);
+        return;
+      }
+    } catch (err) {
+      log.warn("invoice.paid.subscription_lookup_fail", { subscriptionId, message: err.message });
+    }
     log.warn("invoice.paid.row_missing", { subscriptionId });
     return;
   }
@@ -227,6 +255,14 @@ async function handleInvoiceFailed(conn, invoice) {
       ? invoice.subscription
       : invoice.subscription?.id || null;
   if (!subscriptionId) return;
+
+  const membership = await CommunityMembershipService.handleInvoiceFailed(subscriptionId);
+  if (membership && !membership.ignored) return;
+  const VaquinhaService = require("./VaquinhaService");
+  if (typeof VaquinhaService.handleSponsorshipInvoiceFailed === "function") {
+    const sponsorship = await VaquinhaService.handleSponsorshipInvoiceFailed(subscriptionId);
+    if (sponsorship && !sponsorship.ignored) return;
+  }
 
   await ProfileSubscriptionStorage.updateBySubscriptionId(conn, subscriptionId, {
     status: "past_due",
@@ -376,6 +412,14 @@ async function handleChargeRefunded(conn, charge) {
 }
 
 async function handleSubscriptionDeleted(conn, subscription) {
+  const membership = await CommunityMembershipService.handleSubscriptionDeleted(subscription);
+  if (membership && !membership.ignored) return;
+  const VaquinhaService = require("./VaquinhaService");
+  if (typeof VaquinhaService.handleSponsorshipDeleted === "function") {
+    const sponsorship = await VaquinhaService.handleSponsorshipDeleted(subscription);
+    if (sponsorship && !sponsorship.ignored) return;
+  }
+
   const row = await ProfileSubscriptionStorage.findBySubscriptionId(
     conn,
     subscription.id
@@ -515,6 +559,8 @@ async function fulfillCheckoutSession(session) {
     result = await ClanService.confirmSlotPurchaseFromWebhook(session.id, paymentIntentId);
   } else if (meta.type === "community_slot") {
     result = await CommunitySlotService.confirmStripeSession(session);
+  } else if (meta.type === "community_membership") {
+    result = await CommunityMembershipService.confirmStripeSession(session);
   } else if (meta.type === "manifestation") {
     result = await ManifestationService.confirmStripeSession(session);
   } else if (meta.type === "polen_purchase") {
@@ -618,6 +664,11 @@ async function expireCheckoutSession(session, reason) {
         if (ex) log.info("expire.community_slot", { session_id: session.id, reason });
         break;
       }
+      case "community_membership": {
+        const ex = await CommunityMembershipService.expireBySession(session.id);
+        if (ex) log.info("expire.community_membership", { session_id: session.id, reason });
+        break;
+      }
       default: {
         // Ativação/assinatura.
         const sub = await ProfileSubscriptionStorage.findBySessionId(pool, session.id);
@@ -714,6 +765,8 @@ async function dispatchEvent(event) {
       const VaquinhaService = require("./VaquinhaService");
       const vaquinhaResult = await VaquinhaService.handleChargeRefunded(charge);
       if (vaquinhaResult && !vaquinhaResult.ignored) break;
+      const membershipResult = await CommunityMembershipService.handleChargeRefunded(charge);
+      if (membershipResult && !membershipResult.ignored) break;
       await handleChargeRefunded(pool, charge);
       break;
     }

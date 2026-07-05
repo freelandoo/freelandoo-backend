@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const uploadAvatar = require("../middlewares/uploadAvatar");
+const requireFeature = require("../middlewares/requireFeature");
 const CommunityController = require("../controllers/CommunityController");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -40,6 +41,29 @@ router.patch(
   "/:id_profile/theme",
   authMiddleware,
   asyncHandler(CommunityController.updateTheme)
+);
+
+// Privacidade (público/privado + mensalidade) — só líder; flag no Painel.
+router.patch(
+  "/:id_profile/privacy",
+  authMiddleware,
+  requireFeature("comunidade_privada"),
+  asyncHandler(CommunityController.updatePrivacy)
+);
+
+// Entrada paga em comunidade privada (assinatura mensal Stripe).
+router.post(
+  "/:id_profile/membership/checkout",
+  authMiddleware,
+  requireFeature("comunidade_privada"),
+  asyncHandler(CommunityController.createMembershipCheckout)
+);
+
+// Resumo das mensalidades (só líder).
+router.get(
+  "/:id_profile/membership/summary",
+  authMiddleware,
+  asyncHandler(CommunityController.getMembershipSummary)
 );
 
 // Edição de perfil da comunidade (só líder; guard no service).

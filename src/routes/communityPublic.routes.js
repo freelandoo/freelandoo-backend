@@ -7,13 +7,20 @@ const asyncHandler = require("../utils/asyncHandler");
 const router = Router();
 
 router.get("/", asyncHandler(CommunityController.listPublic));
-router.get("/:id_profile", asyncHandler(CommunityController.getById));
+// Auth opcional: resolve membership/assinatura do viewer (comunidade privada).
+router.get(
+  "/:id_profile",
+  optionalAuthMiddleware,
+  asyncHandler(CommunityController.getById)
+);
 router.get(
   "/:id_profile/members",
   asyncHandler(CommunityController.getMembers)
 );
+// Auth opcional: comunidade privada só mostra o feed para membros.
 router.get(
   "/:id_profile/feed",
+  optionalAuthMiddleware,
   asyncHandler(CommunityController.getFeed)
 );
 router.get(

@@ -162,6 +162,8 @@ function buildCandidateQuery(mode) {
     WHERE ppi.status   = 'published'
       AND ppi.is_active = TRUE
       AND ppi.is_banned = FALSE
+      -- Post exclusivo de comunidade privada não entra no feed/bees global.
+      AND ppi.id_exclusive_community IS NULL
       AND tu.ativo      = TRUE
       AND pro.is_active = TRUE
       AND (pro.is_visible = TRUE OR pro.is_user_account = TRUE)

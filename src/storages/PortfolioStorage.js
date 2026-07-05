@@ -287,6 +287,8 @@ class PortfolioStorage {
       WHERE i.id_portfolio_item = $1
         AND i.is_active = true
         AND i.is_banned = false
+        -- Post exclusivo de comunidade privada não tem página pública /p/.
+        AND i.id_exclusive_community IS NULL
         AND pro.deleted_at IS NULL
       LIMIT 1
       `,
@@ -422,6 +424,7 @@ class PortfolioStorage {
       WHERE i.id_profile = ANY($3::uuid[])
         AND i.is_active = true
         AND i.is_banned = false
+        AND i.id_exclusive_community IS NULL
         AND ($4::text IS NULL OR i.feed_kind = $4::text)
         AND NOT EXISTS (
           SELECT 1
@@ -556,6 +559,8 @@ class PortfolioStorage {
       WHERE i.id_profile = $1
         AND i.is_active = true
         AND i.is_banned = false
+        -- Post exclusivo de comunidade privada fica só no feed da comunidade.
+        AND i.id_exclusive_community IS NULL
         AND ($3::text IS NULL OR i.feed_kind = $3::text)
       ORDER BY
         i.is_featured DESC,

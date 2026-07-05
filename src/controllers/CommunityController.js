@@ -1,6 +1,7 @@
 const CommunityService = require("../services/CommunityService");
 const CommunitySlotService = require("../services/CommunitySlotService");
 const CommunityLeadershipService = require("../services/CommunityLeadershipService");
+const CommunityMembershipService = require("../services/CommunityMembershipService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 const uploadCommunityBannerToR2 = require("../integrations/r2/uploadCommunityBanner");
 const uploadProfileAvatarToR2 = require("../integrations/r2/uploadProfileAvatar");
@@ -31,7 +32,22 @@ class CommunityController {
   }
 
   static async getById(req, res) {
-    const result = await CommunityService.getById(req.params);
+    const result = await CommunityService.getById(req.params, req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async updatePrivacy(req, res) {
+    const result = await CommunityService.updatePrivacy(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result);
+  }
+
+  static async createMembershipCheckout(req, res) {
+    const result = await CommunityMembershipService.createCheckout(req.user, req.params);
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async getMembershipSummary(req, res) {
+    const result = await CommunityMembershipService.getSummary(req.user, req.params);
     return sendServiceResult(res, result);
   }
 
@@ -51,7 +67,7 @@ class CommunityController {
   }
 
   static async getFeed(req, res) {
-    const result = await CommunityService.getFeed(req.params, req.query);
+    const result = await CommunityService.getFeed(req.params, req.query, req.user);
     return sendServiceResult(res, result);
   }
 

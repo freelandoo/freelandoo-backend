@@ -69,6 +69,53 @@ async function createSubscriptionCheckoutSession({
 }
 
 /**
+ * Cria checkout session em modo `subscription` com price_data ad-hoc MENSAL
+ * (sem Product/Price no dashboard — mesmo espírito do one-time com price_data).
+ * Usado por mensalidade de comunidade privada e bolsa patrocínio. O metadata é
+ * replicado em subscription_data.metadata para o webhook conseguir rotear
+ * faturas recorrentes (invoice.paid) mesmo sem a checkout session em mãos.
+ */
+async function createMonthlySubscriptionCheckoutSession({
+  amount_cents,
+  currency = "BRL",
+  productName,
+  customerEmail,
+  customerId,
+  clientReferenceId,
+  successUrl,
+  cancelUrl,
+  metadata,
+}) {
+  const stripe = client();
+
+  const params = {
+    mode: "subscription",
+    line_items: [
+      {
+        price_data: {
+          currency: String(currency).toLowerCase(),
+          product_data: { name: productName },
+          unit_amount: amount_cents,
+          recurring: { interval: "month" },
+        },
+        quantity: 1,
+      },
+    ],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    client_reference_id: clientReferenceId,
+    allow_promotion_codes: false,
+    metadata: metadata || {},
+    subscription_data: { metadata: metadata || {} },
+  };
+
+  if (customerId) params.customer = customerId;
+  else if (customerEmail) params.customer_email = customerEmail;
+
+  return stripe.checkout.sessions.create(params);
+}
+
+/**
  * Cria checkout session em modo `payment` (one-time) para ATIVAÇÃO do perfil.
  * R$ 300 vitalício — sem renovação. Aceita cupom (promotion code) opcional.
  *

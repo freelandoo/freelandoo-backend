@@ -118,7 +118,9 @@ class CommunityService {
   }
 
   // ─── Leitura ─────────────────────────────────────────────────────────────────
-  static async getById(params) {
+  // viewer (opcional) resolve membership/assinatura — a página precisa saber se
+  // mostra o feed ou a trava de comunidade privada.
+  static async getById(params, viewer) {
     return runWithLogs(
       log,
       "getById",
@@ -129,9 +131,81 @@ class CommunityService {
           params.id_profile
         );
         if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
-        return { community };
+
+        let viewer_membership = null;
+        let viewer_sub_status = null;
+        if (viewer?.id_user) {
+          const m = await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user);
+          viewer_membership = m ? m.role : null;
+          const sub = await CommunityStorage.getLiveMemberSub(pool, params.id_profile, viewer.id_user);
+          viewer_sub_status = sub ? sub.status : null;
+        }
+        return {
+          community: {
+            ...community,
+            viewer_is_member: !!viewer_membership,
+            viewer_role: viewer_membership,
+            viewer_sub_status,
+          },
+        };
       }
     );
+  }
+
+  // ─── Privacidade (comunidade privada com mensalidade) ────────────────────────
+  static async updatePrivacy(user, params, body) {
+    return runWithLogs(
+      log,
+      "updatePrivacy",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile, privacy: body?.privacy }),
+      async () => {
+        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        if (guard.error) return guard;
+
+        const privacy = body?.privacy === "private" ? "private" : body?.privacy === "public" ? "public" : null;
+        if (!privacy) return { error: "Privacidade inválida (public|private).", statusCode: 400 };
+
+        if (privacy === "private") {
+          const settings = await CommunityStorage.getSettings(pool);
+          const monthly = Math.round(Number(body?.monthly_cents));
+          if (!Number.isFinite(monthly) || monthly < Number(settings.min_monthly_cents)) {
+            return {
+              error: `A mensalidade mínima é R$ ${(Number(settings.min_monthly_cents) / 100).toFixed(2)}.`,
+              statusCode: 400,
+              min_monthly_cents: Number(settings.min_monthly_cents),
+            };
+          }
+          const updated = await CommunityStorage.setPrivacy(pool, params.id_profile, {
+            privacy: "private",
+            monthly_cents: monthly,
+          });
+          return { ok: true, ...updated };
+        }
+
+        // private → public: membros atuais ficam (viraram gratuitos); as
+        // assinaturas param de cobrar no fim do ciclo já pago.
+        const updated = await CommunityStorage.setPrivacy(pool, params.id_profile, {
+          privacy: "public",
+          monthly_cents: null,
+        });
+        const CommunityMembershipService = require("./CommunityMembershipService");
+        CommunityMembershipService.releaseAllSubscriptions(params.id_profile).catch((err) =>
+          log.error("updatePrivacy.release_fail", { id_profile: params.id_profile, error: err.message })
+        );
+        return { ok: true, ...updated };
+      }
+    );
+  }
+
+  // Comunidade privada: feed só para membros (líder incluso via membership).
+  static async _assertCanViewPrivateContent(id_community, viewer) {
+    const community = await CommunityStorage.getById(pool, id_community);
+    if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+    if (community.privacy !== "private") return { community };
+    if (!viewer?.id_user) return { locked: true, community };
+    const membership = await CommunityStorage.getMembership(pool, id_community, viewer.id_user);
+    if (!membership) return { locked: true, community };
+    return { community };
   }
 
   static async listPublic(query) {
@@ -181,12 +255,15 @@ class CommunityService {
     );
   }
 
-  static async getFeed(params, query) {
+  static async getFeed(params, query, viewer) {
     return runWithLogs(
       log,
       "getFeed",
       () => ({ id_profile: params?.id_profile, kind: query?.kind }),
       async () => {
+        const gate = await this._assertCanViewPrivateContent(params.id_profile, viewer);
+        if (gate.error) return gate;
+        if (gate.locked) return { items: [], locked: true };
         const kindRaw = query?.kind;
         const kind = kindRaw === "bees" || kindRaw === "feed" ? kindRaw : null;
         const items = await CommunityStorage.listItems(
@@ -341,6 +418,9 @@ class CommunityService {
       "getFeedPosts",
       () => ({ id_profile: params?.id_profile, cursor: query?.cursor || null }),
       async () => {
+        const gate = await this._assertCanViewPrivateContent(params.id_profile, viewer);
+        if (gate.error) return gate;
+        if (gate.locked) return { items: [], next_cursor: null, has_more: false, locked: true };
         let before_ts = null;
         let before_key = null;
         if (query?.cursor) {
@@ -506,12 +586,34 @@ class CommunityService {
         const owns = await CommunityStorage.itemBelongsToUser(pool, id_portfolio_item, id_user);
         if (!owns) return { error: "Este post não é seu." };
 
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+        // Post exclusivo de OUTRA comunidade privada não pode ser republicado.
+        const exclusiveOf = await CommunityStorage.getItemExclusiveCommunity(pool, id_portfolio_item);
+        if (exclusiveOf && String(exclusiveOf) !== String(params.id_profile)) {
+          return { error: "Este post é exclusivo de outra comunidade privada." };
+        }
+
+        // Comunidade privada: o post vira EXCLUSIVO dela (some do /feed, bees e
+        // perfil público — "fica só lá dentro"). Só se não estiver ligado a
+        // nenhuma outra comunidade.
+        if (community.privacy === "private") {
+          const elsewhere = await CommunityStorage.itemLinkedElsewhere(pool, id_portfolio_item, params.id_profile);
+          if (elsewhere) {
+            return { error: "Este post já está publicado em outra comunidade e não pode virar exclusivo." };
+          }
+        }
+
         const linked = await CommunityStorage.linkFeedItem(
           pool,
           params.id_profile,
           id_portfolio_item,
           id_user
         );
+        if (community.privacy === "private") {
+          await CommunityStorage.setItemExclusiveCommunity(pool, id_portfolio_item, params.id_profile);
+        }
         return { ok: true, linked };
       }
     );
@@ -532,6 +634,11 @@ class CommunityService {
         const owns = await CommunityStorage.itemBelongsToUser(pool, params.id_portfolio_item, id_user);
         if (!isLeader && !owns) return { error: "Sem permissão para remover." };
         const ok = await CommunityStorage.unlinkFeedItem(pool, params.id_profile, params.id_portfolio_item);
+        // Se o post era exclusivo DESTA comunidade, volta a ser público.
+        const exclusiveOf = await CommunityStorage.getItemExclusiveCommunity(pool, params.id_portfolio_item);
+        if (exclusiveOf && String(exclusiveOf) === String(params.id_profile)) {
+          await CommunityStorage.setItemExclusiveCommunity(pool, params.id_portfolio_item, null);
+        }
         return { ok };
       }
     );
@@ -819,6 +926,17 @@ class CommunityService {
             return { ok: true, role: existing.role };
           }
 
+          // Comunidade privada: a entrada é paga (assinatura mensal). O front
+          // recebe requires_payment e chama /membership/checkout.
+          if (community.privacy === "private" && Number(community.monthly_cents) > 0) {
+            await client.query("ROLLBACK");
+            return {
+              ok: false,
+              requires_payment: true,
+              monthly_cents: Number(community.monthly_cents),
+            };
+          }
+
           const sub = await CommunityStorage.getHighestSubprofile(
             client,
             id_user
@@ -888,6 +1006,9 @@ class CommunityService {
               "O líder não pode sair; transfira a liderança ou exclua a comunidade.",
           };
         }
+        // Membro pagante saindo → cancela a assinatura Stripe (imediato).
+        const CommunityMembershipService = require("./CommunityMembershipService");
+        await CommunityMembershipService.cancelForUser(params.id_profile, id_user);
         await CommunityStorage.removeMember(pool, params.id_profile, id_user);
         return { ok: true };
       }
