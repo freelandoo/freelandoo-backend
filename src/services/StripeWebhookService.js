@@ -579,6 +579,9 @@ async function fulfillCheckoutSession(session) {
   } else if (meta.type === "donation") {
     const VaquinhaService = require("./VaquinhaService");
     result = await VaquinhaService.confirmStripeSession(session);
+  } else if (meta.type === "vaquinha_sponsorship") {
+    const VaquinhaService = require("./VaquinhaService");
+    result = await VaquinhaService.confirmSponsorshipSession(session);
   } else {
     // Subscription/ativação — devolve undefined (gera comissão por outro caminho).
     result = await handleCheckoutCompleted(pool, session);
@@ -667,6 +670,12 @@ async function expireCheckoutSession(session, reason) {
       case "community_membership": {
         const ex = await CommunityMembershipService.expireBySession(session.id);
         if (ex) log.info("expire.community_membership", { session_id: session.id, reason });
+        break;
+      }
+      case "vaquinha_sponsorship": {
+        const VaquinhaService = require("./VaquinhaService");
+        const ex = await VaquinhaService.expireSponsorshipBySession(session.id);
+        if (ex) log.info("expire.vaquinha_sponsorship", { session_id: session.id, reason });
         break;
       }
       default: {

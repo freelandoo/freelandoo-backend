@@ -45,6 +45,7 @@ function publicShape(v) {
   return {
     id_vaquinha: v.id_vaquinha,
     id_user: v.id_user,
+    kind: v.kind || "vaquinha",
     title: v.title,
     slug: v.slug,
     bio: v.bio,
@@ -59,8 +60,11 @@ function publicShape(v) {
   };
 }
 
+// Bolsa não tem prazo — só "expira" se for encerrada manualmente.
 function isExpired(v) {
-  return v.status !== "active" || new Date(v.deadline).getTime() < Date.now();
+  if (v.status !== "active") return true;
+  if (v.kind === "bolsa" || !v.deadline) return false;
+  return new Date(v.deadline).getTime() < Date.now();
 }
 
 class VaquinhaService {
@@ -110,12 +114,17 @@ class VaquinhaService {
         return { error: "Meta inválida", statusCode: 400 };
       }
 
-      const deadlineMs = new Date(body.deadline).getTime();
-      if (!Number.isFinite(deadlineMs)) return { error: "Prazo inválido", statusCode: 400 };
-      const maxMs = Date.now() + Number(settings.max_days) * DAY_MS;
-      if (deadlineMs <= Date.now()) return { error: "O prazo precisa ser no futuro", statusCode: 400 };
-      if (deadlineMs > maxMs + DAY_MS) {
-        return { error: `O prazo máximo é de ${settings.max_days} dias`, statusCode: 400 };
+      const kind = body.kind === "bolsa" ? "bolsa" : "vaquinha";
+      let deadline = null;
+      if (kind === "vaquinha") {
+        const deadlineMs = new Date(body.deadline).getTime();
+        if (!Number.isFinite(deadlineMs)) return { error: "Prazo inválido", statusCode: 400 };
+        const maxMs = Date.now() + Number(settings.max_days) * DAY_MS;
+        if (deadlineMs <= Date.now()) return { error: "O prazo precisa ser no futuro", statusCode: 400 };
+        if (deadlineMs > maxMs + DAY_MS) {
+          return { error: `O prazo máximo é de ${settings.max_days} dias`, statusCode: 400 };
+        }
+        deadline = new Date(deadlineMs);
       }
 
       // Fecha a anterior vencida antes de checar a regra de "1 ativa".
@@ -133,7 +142,8 @@ class VaquinhaService {
         bio: String(body.bio || "").slice(0, 3000),
         cover_url: body.cover_url ? String(body.cover_url).slice(0, 500) : null,
         goal_cents,
-        deadline: new Date(deadlineMs),
+        deadline,
+        kind,
       });
       return { vaquinha: publicShape(created) };
     });
@@ -169,6 +179,33 @@ class VaquinhaService {
         }
         fields.deadline = new Date(deadlineMs);
       }
+
+      // Troca de tipo: vaquinha ⇄ bolsa patrocínio.
+      if (body.kind !== undefined && body.kind !== v.kind) {
+        if (!["vaquinha", "bolsa"].includes(body.kind)) {
+          return { error: "Tipo inválido (vaquinha|bolsa)", statusCode: 400 };
+        }
+        if (body.kind === "bolsa") {
+          // Bolsa não tem validade — o prazo é apagado.
+          fields.kind = "bolsa";
+          fields.deadline = null;
+        } else {
+          // bolsa → vaquinha: só sem patrocínios vivos (senão as cobranças
+          // mensais ficariam órfãs) e com um novo prazo definido.
+          const live = await VaquinhaStorage.listLiveSponsorships(pool, id);
+          if (live.length > 0) {
+            return {
+              error: "Encerre os patrocínios ativos antes de voltar para vaquinha.",
+              statusCode: 409,
+            };
+          }
+          if (fields.deadline === undefined || fields.deadline === null) {
+            return { error: "Defina um prazo para a vaquinha.", statusCode: 400 };
+          }
+          fields.kind = "vaquinha";
+        }
+      }
+
       const updated = await VaquinhaStorage.update(pool, id, fields);
       return { vaquinha: publicShape(updated) };
     });
@@ -197,22 +234,63 @@ class VaquinhaService {
       const v = await VaquinhaStorage.getById(pool, id);
       if (!v || v.id_user !== user.id_user) return { error: "Vaquinha não encontrada", statusCode: 404 };
       const updated = await VaquinhaStorage.setStatus(pool, id, "ended");
+      // Bolsa encerrada → cancela as assinaturas dos patrocinadores (imediato).
+      const live = await VaquinhaStorage.listLiveSponsorships(pool, id);
+      for (const s of live) {
+        if (s.stripe_subscription_id) {
+          try {
+            await StripeService.cancelSubscriptionImmediate(s.stripe_subscription_id);
+          } catch (err) {
+            log.warn("close.cancel_sponsorship_fail", { id_sponsorship: s.id_sponsorship, message: err.message });
+          }
+        }
+        await VaquinhaStorage.markSponsorshipCanceled(pool, s.id_sponsorship);
+      }
       return { vaquinha: publicShape(updated) };
     });
   }
 
   // ─── Público ───────────────────────────────────────────────────────────────
-  static async getPublic(slug) {
+  // user (opcional) resolve o patrocínio do próprio viewer numa bolsa.
+  static async getPublic(slug, user = null) {
     return runWithLogs(log, "getPublic", () => ({ slug }), async () => {
       const v = await VaquinhaStorage.getBySlug(pool, slug);
       if (!v || v.status === "canceled") return { error: "Vaquinha não encontrada", statusCode: 404 };
-      // Encerramento preguiçoso ao passar do prazo.
-      if (v.status === "active" && new Date(v.deadline).getTime() < Date.now()) {
+      // Encerramento preguiçoso ao passar do prazo (bolsa não tem prazo).
+      if (
+        v.status === "active" &&
+        v.kind !== "bolsa" &&
+        v.deadline &&
+        new Date(v.deadline).getTime() < Date.now()
+      ) {
         await VaquinhaStorage.setStatus(pool, v.id_vaquinha, "ended");
         v.status = "ended";
       }
       const donors = await VaquinhaStorage.listPaidDonations(pool, v.id_vaquinha, { limit: 30 });
       const settings = await VaquinhaStorage.getSettings(pool);
+
+      let sponsors = [];
+      let my_sponsorship = null;
+      if (v.kind === "bolsa") {
+        const rows = await VaquinhaStorage.listActiveSponsorsPublic(pool, v.id_vaquinha, { limit: 30 });
+        sponsors = rows.map((s) => ({
+          id_sponsorship: s.id_sponsorship,
+          sponsor_name: s.sponsor_name || "Anônimo",
+          monthly_cents: Number(s.monthly_cents),
+          since: s.activated_at,
+        }));
+        if (user?.id_user) {
+          const mine = await VaquinhaStorage.getLiveSponsorshipForUser(pool, v.id_vaquinha, user.id_user);
+          if (mine) {
+            my_sponsorship = {
+              id_sponsorship: mine.id_sponsorship,
+              monthly_cents: Number(mine.monthly_cents),
+              status: mine.status,
+            };
+          }
+        }
+      }
+
       return {
         vaquinha: publicShape(v),
         donors: donors.map((d) => ({
@@ -222,6 +300,8 @@ class VaquinhaService {
           amount_cents: Number(d.gross_cents),
           paid_at: d.paid_at,
         })),
+        sponsors,
+        my_sponsorship,
         min_donation_cents: Number(settings.min_donation_cents),
       };
     });
@@ -233,6 +313,9 @@ class VaquinhaService {
       const v = await VaquinhaStorage.getBySlug(pool, slug);
       if (!v) return { error: "Vaquinha não encontrada", statusCode: 404 };
       if (isExpired(v)) return { error: "Esta vaquinha já foi encerrada", statusCode: 400 };
+      if (v.kind === "bolsa") {
+        return { error: "Bolsa patrocínio aceita apenas patrocínio mensal.", statusCode: 400 };
+      }
 
       const settings = await VaquinhaStorage.getSettings(pool);
       const gross_cents = Math.round(Number(body.amount_cents));
@@ -327,6 +410,196 @@ class VaquinhaService {
     return { ok: true };
   }
 
+  // ─── Bolsa Patrocínio (assinatura mensal, Stripe) ─────────────────────────
+  // Cria o checkout recorrente do patrocínio. Exige login (o patrocinador
+  // gerencia/cancela pela própria página da bolsa).
+  static async sponsor(user, slug, body = {}) {
+    return runWithLogs(log, "sponsor", () => ({ id_user: user?.id_user, slug }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const v = await VaquinhaStorage.getBySlug(pool, slug);
+      if (!v) return { error: "Bolsa não encontrada", statusCode: 404 };
+      if (v.kind !== "bolsa") return { error: "Esta campanha não aceita patrocínio mensal.", statusCode: 400 };
+      if (v.status !== "active") return { error: "Esta bolsa já foi encerrada", statusCode: 400 };
+      if (v.id_user === user.id_user) {
+        return { error: "Você não pode patrocinar a própria bolsa.", statusCode: 400 };
+      }
+
+      const settings = await VaquinhaStorage.getSettings(pool);
+      const monthly_cents = Math.round(Number(body.amount_cents));
+      if (!Number.isFinite(monthly_cents) || monthly_cents < Number(settings.min_donation_cents)) {
+        return {
+          error: `Patrocínio mínimo de R$ ${(settings.min_donation_cents / 100).toFixed(2)}/mês`,
+          statusCode: 400,
+        };
+      }
+
+      const live = await VaquinhaStorage.getLiveSponsorshipForUser(pool, v.id_vaquinha, user.id_user);
+      if (live && live.status !== "pending") {
+        return { error: "Você já patrocina esta bolsa.", statusCode: 409 };
+      }
+
+      const sponsor_name = String(body.sponsor_name || "").trim().slice(0, 80) || "Anônimo";
+      // Reusa a linha pending (checkout abandonado) ou cria uma nova.
+      const row =
+        live ||
+        (await VaquinhaStorage.createSponsorship(pool, {
+          id_vaquinha: v.id_vaquinha,
+          id_sponsor_user: user.id_user,
+          sponsor_name,
+          monthly_cents,
+        }));
+
+      const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
+      const session = await StripeService.createMonthlySubscriptionCheckoutSession({
+        amount_cents: Number(row.monthly_cents) || monthly_cents,
+        currency: "BRL",
+        productName: `Patrocínio mensal — ${v.title}`,
+        customerEmail: user?.email || undefined,
+        clientReferenceId: user.id_user,
+        successUrl: `${frontend}/vaquinha/${v.slug}?patrocinio=sucesso&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${frontend}/vaquinha/${v.slug}?patrocinio=cancelado`,
+        metadata: {
+          type: "vaquinha_sponsorship",
+          id_sponsorship: String(row.id_sponsorship),
+          id_vaquinha: String(v.id_vaquinha),
+        },
+      });
+
+      await VaquinhaStorage.setSponsorshipSession(pool, row.id_sponsorship, session.id);
+      return { checkout_url: session.url, session_id: session.id };
+    });
+  }
+
+  // Patrocinador cancela o próprio patrocínio (imediato; o mês pago não é
+  // estornado — é patrocínio, não acesso).
+  static async cancelSponsorship(user, slug) {
+    return runWithLogs(log, "cancelSponsorship", () => ({ id_user: user?.id_user, slug }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const v = await VaquinhaStorage.getBySlug(pool, slug);
+      if (!v) return { error: "Bolsa não encontrada", statusCode: 404 };
+      const live = await VaquinhaStorage.getLiveSponsorshipForUser(pool, v.id_vaquinha, user.id_user);
+      if (!live) return { error: "Você não patrocina esta bolsa.", statusCode: 404 };
+      if (live.stripe_subscription_id) {
+        try {
+          await StripeService.cancelSubscriptionImmediate(live.stripe_subscription_id);
+        } catch (err) {
+          log.warn("cancelSponsorship.stripe_fail", { id_sponsorship: live.id_sponsorship, message: err.message });
+        }
+      }
+      await VaquinhaStorage.markSponsorshipCanceled(pool, live.id_sponsorship);
+      return { ok: true };
+    });
+  }
+
+  // Webhook checkout.session.completed (mode=subscription do patrocínio).
+  static async confirmSponsorshipSession(session) {
+    const meta = session?.metadata || {};
+    if (meta.type !== "vaquinha_sponsorship") return { ignored: true };
+    const subscriptionId =
+      typeof session.subscription === "string" ? session.subscription : session.subscription?.id || null;
+    const customerId =
+      typeof session.customer === "string" ? session.customer : session.customer?.id || null;
+
+    let row = await VaquinhaStorage.getSponsorshipBySession(pool, session.id);
+    if (!row && meta.id_sponsorship) row = await VaquinhaStorage.getSponsorshipById(pool, meta.id_sponsorship);
+    if (!row) return { error: "Patrocínio não encontrado" };
+
+    await VaquinhaStorage.activateSponsorship(pool, row.id_sponsorship, {
+      stripe_subscription_id: subscriptionId,
+      stripe_customer_id: customerId,
+    });
+    return { ok: true, already: row.status === "active" };
+  }
+
+  // Webhook invoice.paid: cada fatura mensal vira uma "doação" paga (payout com
+  // holdback + contador). Idempotente por invoice id. { ignored } se a
+  // subscription não é de patrocínio.
+  static async handleSponsorshipInvoicePaid(invoice, subscriptionId) {
+    const row = await VaquinhaStorage.getSponsorshipBySubscriptionId(pool, subscriptionId);
+    if (!row) return { ignored: true };
+    return this._recordSponsorInvoice(invoice, subscriptionId, row);
+  }
+
+  // Fallback pela metadata da subscription (invoice.paid antes do completed).
+  static async handleSponsorshipInvoicePaidByMetadata(invoice, subscription) {
+    const meta = subscription?.metadata || {};
+    if (meta.type !== "vaquinha_sponsorship" || !meta.id_sponsorship) return { ignored: true };
+    const row = await VaquinhaStorage.getSponsorshipById(pool, meta.id_sponsorship);
+    if (!row) return { error: "Patrocínio não encontrado" };
+    await VaquinhaStorage.activateSponsorship(pool, row.id_sponsorship, {
+      stripe_subscription_id: subscription.id,
+      stripe_customer_id:
+        typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id || null,
+    });
+    return this._recordSponsorInvoice(invoice, subscription.id, row);
+  }
+
+  static async _recordSponsorInvoice(invoice, subscriptionId, sponsorship) {
+    const gross = Number(invoice.amount_paid) || 0;
+    if (gross <= 0) return { ok: true, zero: true };
+
+    const v = await VaquinhaStorage.getById(pool, sponsorship.id_vaquinha);
+    if (!v) return { error: "Bolsa não encontrada" };
+
+    const settings = await VaquinhaStorage.getSettings(pool);
+    const feePercent = Number(settings.platform_fee_percent) || 0;
+    const fee = Math.round((gross * feePercent) / 100);
+
+    const paymentIntentId =
+      typeof invoice.payment_intent === "string" ? invoice.payment_intent : invoice.payment_intent?.id || null;
+    const chargeId = typeof invoice.charge === "string" ? invoice.charge : invoice.charge?.id || null;
+
+    const donation = await VaquinhaStorage.createPaidSponsorDonation(pool, {
+      id_vaquinha: sponsorship.id_vaquinha,
+      id_donor_user: sponsorship.id_sponsor_user,
+      donor_name: sponsorship.sponsor_name || "Anônimo",
+      gross_cents: gross,
+      platform_fee_cents: fee,
+      net_cents: Math.max(0, gross - fee),
+      id_sponsorship: sponsorship.id_sponsorship,
+      stripe_invoice_id: invoice.id,
+      stripe_payment_intent_id: paymentIntentId,
+      stripe_charge_id: chargeId,
+    });
+    if (!donation) return { ok: true, already: true };
+
+    await VaquinhaStorage.insertPayout(pool, {
+      id_donation: donation.id_donation,
+      id_vaquinha: donation.id_vaquinha,
+      id_owner_user: v.id_user,
+      gross_cents: Number(donation.gross_cents),
+      platform_fee_cents: Number(donation.platform_fee_cents),
+      net_cents: Number(donation.net_cents),
+      available_at: new Date(Date.now() + HOLDBACK_DAYS * DAY_MS),
+    });
+    // Patrocinador conta como apoiador 1x (na primeira fatura); as renovações
+    // só somam o valor arrecadado.
+    const isFirst = invoice.billing_reason === "subscription_create";
+    await VaquinhaStorage.bumpRaised(pool, donation.id_vaquinha, Number(donation.gross_cents), isFirst ? 1 : 0);
+    // Renovação em dia → volta a active (pode vir de past_due).
+    await VaquinhaStorage.markSponsorshipStatusBySubscriptionId(pool, subscriptionId, "active");
+    return { ok: true };
+  }
+
+  static async handleSponsorshipInvoiceFailed(subscriptionId) {
+    const row = await VaquinhaStorage.getSponsorshipBySubscriptionId(pool, subscriptionId);
+    if (!row) return { ignored: true };
+    await VaquinhaStorage.markSponsorshipStatusBySubscriptionId(pool, subscriptionId, "past_due");
+    return { ok: true };
+  }
+
+  static async handleSponsorshipDeleted(subscription) {
+    const row = await VaquinhaStorage.getSponsorshipBySubscriptionId(pool, subscription.id);
+    if (!row) return { ignored: true };
+    await VaquinhaStorage.markSponsorshipCanceled(pool, row.id_sponsorship);
+    return { ok: true };
+  }
+
+  // Webhook checkout.session.expired do patrocínio (nunca pago).
+  static async expireSponsorshipBySession(sessionId) {
+    return VaquinhaStorage.markSponsorshipExpiredBySession(pool, sessionId);
+  }
+
   // Webhook charge.refunded: reverte a doação e o Saldo (não-owner de outra charge → null).
   static async handleChargeRefunded(charge) {
     return runWithLogs(log, "handleChargeRefunded", () => ({ charge: charge?.id }), async () => {
@@ -339,7 +612,10 @@ class VaquinhaService {
       if (!donation) return null; // não é uma doação nossa
       await VaquinhaStorage.markDonationRefunded(pool, donation.id_donation);
       await VaquinhaStorage.revertPayoutByDonation(pool, donation.id_donation);
-      await VaquinhaStorage.bumpRaised(pool, donation.id_vaquinha, -Number(donation.gross_cents), -1);
+      // Fatura de patrocínio estornada só reverte o valor (o patrocinador
+      // contou como apoiador 1x na primeira fatura, não por ciclo).
+      const donorDelta = donation.id_sponsorship ? 0 : -1;
+      await VaquinhaStorage.bumpRaised(pool, donation.id_vaquinha, -Number(donation.gross_cents), donorDelta);
       return { reverted: true };
     });
   }

@@ -31,13 +31,21 @@ module.exports = {
 
   // ─── Público ───────────────────────────────────────────────────────────────
   async getPublic(req, res) {
-    return sendServiceResult(res, await VaquinhaService.getPublic(req.params.slug));
+    return sendServiceResult(res, await VaquinhaService.getPublic(req.params.slug, req.user || null));
   },
   async listPosts(req, res) {
     return sendServiceResult(res, await VaquinhaService.listPosts(req.params.slug, req.query || {}));
   },
   async donate(req, res) {
     return sendServiceResult(res, await VaquinhaService.donate(req.user || null, req.params.slug, req.body || {}));
+  },
+
+  // ─── Bolsa Patrocínio (assinatura mensal) ───────────────────────────────────
+  async sponsor(req, res) {
+    return sendServiceResult(res, await VaquinhaService.sponsor(req.user, req.params.slug, req.body || {}), 201);
+  },
+  async cancelSponsorship(req, res) {
+    return sendServiceResult(res, await VaquinhaService.cancelSponsorship(req.user, req.params.slug));
   },
 
   // ─── Admin ─────────────────────────────────────────────────────────────────

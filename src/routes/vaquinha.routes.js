@@ -22,8 +22,13 @@ router.post("/me/vaquinha/:id/posts", authMiddleware, uploadPortfolioMedia.singl
 router.delete("/me/vaquinha/posts/:postId", authMiddleware, asyncHandler(VaquinhaController.deletePost));
 
 // ─── Público ───────────────────────────────────────────────────────────────
-router.get("/vaquinhas/:slug", asyncHandler(VaquinhaController.getPublic));
+// Auth opcional no detalhe: resolve o patrocínio do próprio viewer (bolsa).
+router.get("/vaquinhas/:slug", optionalAuthMiddleware, asyncHandler(VaquinhaController.getPublic));
 router.get("/vaquinhas/:slug/posts", asyncHandler(VaquinhaController.listPosts));
 router.post("/vaquinhas/:slug/donate", optionalAuthMiddleware, asyncHandler(VaquinhaController.donate));
+
+// ─── Bolsa Patrocínio (assinatura mensal; exige login) ──────────────────────
+router.post("/vaquinhas/:slug/sponsor", authMiddleware, asyncHandler(VaquinhaController.sponsor));
+router.post("/vaquinhas/:slug/sponsor/cancel", authMiddleware, asyncHandler(VaquinhaController.cancelSponsorship));
 
 module.exports = router;
