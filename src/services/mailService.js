@@ -4,7 +4,7 @@ const { createLogger } = require("../utils/logger");
 const log = createLogger("mailService");
 
 const defaultFrom =
-  process.env.RESEND_FROM || "Creators Views <sistema@viewsstars.com.br>";
+  process.env.RESEND_FROM || "Freelandoo <sistema@freelandoo.com.br>";
 
 function getResend() {
   const key = process.env.RESEND_API_KEY;
@@ -24,7 +24,7 @@ async function sendActivationEmail({ to, name, link }) {
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
           <h2>Olá, ${name} 👋</h2>
-          <p>Obrigado por se cadastrar no <strong>Creators Views</strong>.</p>
+          <p>Obrigado por se cadastrar no <strong>Freelandoo</strong>.</p>
 
           <p>Clique no botão abaixo para ativar sua conta:</p>
 
