@@ -8,6 +8,8 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const requireFeature = require("../middlewares/requireFeature");
 const { auth: authLimiter } = require("../middlewares/rateLimit");
+const uploadPortfolioMedia = require("../middlewares/uploadPortfolioMedia");
+const AcademySocialController = require("../controllers/AcademySocialController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -37,6 +39,27 @@ router.post(
   "/academies/:id/members/:memberId/measurements",
   authMiddleware,
   asyncHandler(require("../controllers/FitnessController").addMemberMeasurement)
+);
+
+// ─── Social da academia (fase 4) ─────────────────────────────────────────────
+// Feed e ranking públicos (vitrine); postar/compartilhar exige auth.
+router.get("/academies/:id/posts", asyncHandler(AcademySocialController.listPosts));
+router.post(
+  "/academies/:id/posts",
+  authMiddleware,
+  uploadPortfolioMedia.single("media"),
+  asyncHandler(AcademySocialController.createPost)
+);
+router.delete("/academies/:id/posts/:postId", authMiddleware, asyncHandler(AcademySocialController.deletePost));
+router.post("/academies/:id/posts/:postId/share", authMiddleware, asyncHandler(AcademySocialController.sharePost));
+router.get("/academies/:id/ranking", asyncHandler(AcademySocialController.ranking));
+router.get("/academies/:id/goals", asyncHandler(AcademySocialController.getGoals));
+router.put("/academies/:id/goals", authMiddleware, asyncHandler(AcademySocialController.setGoals));
+router.post(
+  "/academies/:id/media",
+  authMiddleware,
+  uploadPortfolioMedia.single("media"),
+  asyncHandler(AcademySocialController.uploadMedia)
 );
 
 // ─── Treinos (staff: professor/dono — guard no service) ─────────────────────
