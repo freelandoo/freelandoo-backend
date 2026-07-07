@@ -57,6 +57,10 @@ const corsOptions = {
   exposedHeaders: ["X-Request-Id", "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"],
   credentials: true,
   optionsSuccessStatus: 200,
+  // Browser cacheia o preflight OPTIONS por 24h — o front agora faz chamadas
+  // recorrentes direto aqui (heartbeat, chat ao vivo, lives) pra economizar
+  // Vercel; sem maxAge cada POST pagaria um OPTIONS extra.
+  maxAge: 86400,
 };
 
 // Helmet com defaults — `contentSecurityPolicy: false` porque a API
