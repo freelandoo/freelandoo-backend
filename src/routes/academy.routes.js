@@ -38,6 +38,15 @@ router.post(
   authMiddleware,
   asyncHandler(require("../controllers/FitnessController").addMemberMeasurement)
 );
+
+// ─── Treinos (staff: professor/dono — guard no service) ─────────────────────
+const WorkoutController = require("../controllers/WorkoutController");
+router.get("/academies/:id/exercises", authMiddleware, asyncHandler(WorkoutController.listExercises));
+router.get("/academies/:id/training-grid", authMiddleware, asyncHandler(WorkoutController.trainingGrid));
+router.get("/academies/:id/members/:memberId/plans", authMiddleware, asyncHandler(WorkoutController.memberPlans));
+router.post("/academies/:id/members/:memberId/plans", authMiddleware, asyncHandler(WorkoutController.createPlan));
+router.patch("/academies/:id/plans/:planId", authMiddleware, asyncHandler(WorkoutController.updatePlan));
+router.delete("/academies/:id/plans/:planId", authMiddleware, asyncHandler(WorkoutController.deletePlan));
 router.post("/academies/:id/professors", authMiddleware, asyncHandler(AcademyController.addProfessor));
 router.delete("/academies/:id/professors/:userId", authMiddleware, asyncHandler(AcademyController.removeProfessor));
 
