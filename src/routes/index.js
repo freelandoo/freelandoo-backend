@@ -115,6 +115,7 @@ const vaquinhaRoutes = require("./vaquinha.routes");
 const vaquinhaAdminRoutes = require("./vaquinhaAdmin.routes");
 const atendimentoIaRoutes = require("./atendimentoIa.routes");
 const atendimentoIaAdminRoutes = require("./atendimentoIaAdmin.routes");
+const academyRoutes = require("./academy.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -241,4 +242,6 @@ module.exports = (app) => {
   app.use("/admin/vaquinha", vaquinhaAdminRoutes);
   app.use("/me/atendimento-ia", atendimentoIaRoutes);
   app.use("/admin/atendimento-ia", atendimentoIaAdminRoutes);
+  // Fitness & Academias (paths absolutos no próprio router: /academies + /me/*)
+  app.use("/", academyRoutes);
 };

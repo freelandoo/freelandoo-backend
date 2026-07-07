@@ -38,6 +38,12 @@ const server = app.listen(PORT, () => {
   const AtendimentoIaProvisionService = require("./src/services/AtendimentoIaProvisionService");
   AtendimentoIaProvisionService.startSweeper();
 
+  // Fitness & Academias: sync pull das Gym Provider APIs (catraca+pagamentos,
+  // ~10min, cursores em tb_academy). Idempotente por external_id; erro marca
+  // sync_status da academia e nunca derruba o boot.
+  const AcademySyncService = require("./src/services/AcademySyncService");
+  AcademySyncService.startSweeper();
+
   // Painel de Arquitetura: carrega o manifesto (scan carimbado com git) para
   // dentro de arch_functions. Idempotente, preserva curadoria do admin e nunca
   // derruba o boot. No-op se o manifesto ainda não existe.
