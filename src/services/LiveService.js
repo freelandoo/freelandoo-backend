@@ -8,6 +8,7 @@ const LiveStorage = require("../storages/LiveStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const NotificationService = require("./NotificationService");
 const livekit = require("../utils/livekit");
+const realtime = require("../realtime/socket");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("LiveService");
@@ -87,6 +88,7 @@ class LiveService {
 
         // 1 live ativa por perfil: se já existe, reaproveita (reemite token).
         let live = await LiveStorage.getActiveByProfile(pool, id_profile);
+        const isNew = !live;
         if (!live) {
           const room_name = `live_${id_profile}_${crypto.randomBytes(4).toString("hex")}`;
           try {
@@ -106,6 +108,10 @@ class LiveService {
           }
         }
         if (!live) return { error: "Não foi possível abrir a live" };
+
+        // Avisa os clientes que a lista de lives mudou (selo do /bees escuta
+        // em vez de fazer poll de 60s).
+        if (isNew) realtime.emitToAll("lives:changed", { reason: "started" });
 
         const token = await livekit.broadcasterToken(
           live.room_name,
@@ -146,6 +152,8 @@ class LiveService {
         });
         // Derruba a sala no LiveKit (best-effort).
         if (existing.room_name) await livekit.deleteRoom(existing.room_name);
+
+        realtime.emitToAll("lives:changed", { reason: "ended" });
 
         return { ended: ended || existing.status === "ended", id_live };
       }
