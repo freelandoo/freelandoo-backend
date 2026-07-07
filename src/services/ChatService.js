@@ -4,6 +4,7 @@ const pool = require("../databases");
 const ChatStorage = require("../storages/ChatStorage");
 const ChatReadStorage = require("../storages/ChatReadStorage");
 const ChatModerationService = require("./ChatModerationService");
+const realtime = require("../realtime/socket");
 const {
   assertMinorPermission,
   assertMachineAllowed,
@@ -416,8 +417,17 @@ class ChatService {
           limit: 1,
         });
         const message = enriched.length > 0 ? mapMessage(enriched[0]) : null;
+        const finalMessage = message || mapMessage({ ...inserted });
 
-        return { message: message || mapMessage({ ...inserted }) };
+        // Push pra quem está na sala (WebSocket) — o front não faz mais poll
+        // curto de mensagens; sem esse emit, mensagem nova só apareceria no
+        // fallback lento.
+        realtime.emitToChatRoom(id_chat_room, "chat:message", {
+          id_chat_room,
+          message: finalMessage,
+        });
+
+        return { message: finalMessage };
       }
     );
   }
@@ -442,6 +452,10 @@ class ChatService {
           return { error: "Sem permissão para apagar" };
         }
         await ChatStorage.softDeleteMessage(pool, id_chat_message);
+        realtime.emitToChatRoom(message.id_chat_room, "chat:message:deleted", {
+          id_chat_room: message.id_chat_room,
+          id_chat_message,
+        });
         return { ok: true };
       }
     );
