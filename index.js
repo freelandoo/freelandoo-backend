@@ -44,6 +44,12 @@ const server = app.listen(PORT, () => {
   const AcademySyncService = require("./src/services/AcademySyncService");
   AcademySyncService.startSweeper();
 
+  // Catálogo de alimentos (TACO curada): seed idempotente fill-if-absent.
+  // Falha não derruba o boot (fitness fica sem catálogo até o próximo deploy).
+  const { seedTacoFoods } = require("./scripts/seed-taco");
+  const foodPool = require("./src/databases");
+  seedTacoFoods(foodPool).catch((err) => console.error("seed TACO falhou:", err.message));
+
   // Painel de Arquitetura: carrega o manifesto (scan carimbado com git) para
   // dentro de arch_functions. Idempotente, preserva curadoria do admin e nunca
   // derruba o boot. No-op se o manifesto ainda não existe.

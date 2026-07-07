@@ -32,6 +32,12 @@ router.delete("/academies/:id/link", authMiddleware, asyncHandler(AcademyControl
 
 // ─── Gestão (dono) / staff ──────────────────────────────────────────────────
 router.get("/academies/:id/members", authMiddleware, asyncHandler(AcademyController.listMembers));
+// Avaliação física registrada pelo professor/dono (guard staff no service).
+router.post(
+  "/academies/:id/members/:memberId/measurements",
+  authMiddleware,
+  asyncHandler(require("../controllers/FitnessController").addMemberMeasurement)
+);
 router.post("/academies/:id/professors", authMiddleware, asyncHandler(AcademyController.addProfessor));
 router.delete("/academies/:id/professors/:userId", authMiddleware, asyncHandler(AcademyController.removeProfessor));
 
