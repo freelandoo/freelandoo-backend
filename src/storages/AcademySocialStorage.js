@@ -181,21 +181,41 @@ module.exports = {
   async getGoals(db, id_academy) {
     const r = await db.query(`SELECT * FROM public.tb_academy_goal WHERE id_academy = $1`, [id_academy]);
     return (
-      r.rows[0] || { id_academy, freq_target_month: 12, posts_target_month: 4, shares_target_month: 4 }
+      r.rows[0] || {
+        id_academy,
+        freq_target_month: 12,
+        posts_target_month: 4,
+        shares_target_month: 4,
+        season_started_at: null,
+        season_days: 30,
+      }
     );
   },
 
-  async setGoals(db, id_academy, { freq_target_month, posts_target_month, shares_target_month }) {
+  // Upsert das metas + controle da temporada (mig 182). start_season inicia uma
+  // janela de N dias a partir de agora; end_season a encerra (volta ao mês).
+  async setGoals(db, id_academy, patch) {
+    const cur = await this.getGoals(db, id_academy);
+    const freq = patch.freq_target_month != null ? patch.freq_target_month : cur.freq_target_month;
+    const posts = patch.posts_target_month != null ? patch.posts_target_month : cur.posts_target_month;
+    const shares = patch.shares_target_month != null ? patch.shares_target_month : cur.shares_target_month;
+    const days = patch.season_days != null ? patch.season_days : cur.season_days || 30;
+    let seasonStart = cur.season_started_at;
+    if (patch.start_season) seasonStart = new Date();
+    else if (patch.end_season) seasonStart = null;
     const r = await db.query(
-      `INSERT INTO public.tb_academy_goal (id_academy, freq_target_month, posts_target_month, shares_target_month)
-       VALUES ($1,$2,$3,$4)
+      `INSERT INTO public.tb_academy_goal
+         (id_academy, freq_target_month, posts_target_month, shares_target_month, season_started_at, season_days)
+       VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (id_academy) DO UPDATE SET
          freq_target_month = EXCLUDED.freq_target_month,
          posts_target_month = EXCLUDED.posts_target_month,
          shares_target_month = EXCLUDED.shares_target_month,
+         season_started_at = EXCLUDED.season_started_at,
+         season_days = EXCLUDED.season_days,
          updated_at = NOW()
        RETURNING *`,
-      [id_academy, freq_target_month, posts_target_month, shares_target_month]
+      [id_academy, freq, posts, shares, seasonStart, days]
     );
     return r.rows[0];
   },

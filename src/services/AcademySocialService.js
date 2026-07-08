@@ -22,6 +22,32 @@ function monthRange(monthRaw) {
   return { month: m, monthStart, nextMonth: next.toISOString().slice(0, 10) };
 }
 
+// Janela do ranking: se há temporada ativa (mig 182), usa [início, início+dias);
+// senão, o mês corrente. Datas em YYYY-MM-DD (granularidade de dia).
+function rankingWindow(goals, monthRaw) {
+  const start = goals && goals.season_started_at ? new Date(goals.season_started_at) : null;
+  if (start && !Number.isNaN(start.getTime())) {
+    const days = Number(goals.season_days) || 30;
+    const end = new Date(start.getTime());
+    end.setUTCDate(end.getUTCDate() + days);
+    const now = new Date();
+    const daysLeft = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86400000));
+    return {
+      windowStart: start.toISOString().slice(0, 10),
+      windowEnd: end.toISOString().slice(0, 10),
+      season: {
+        active: now.getTime() < end.getTime(),
+        started_at: start.toISOString(),
+        ends_at: end.toISOString(),
+        days: days,
+        days_left: daysLeft,
+      },
+    };
+  }
+  const { monthStart, nextMonth } = monthRange(monthRaw);
+  return { windowStart: monthStart, windowEnd: nextMonth, season: null };
+}
+
 function publicPost(p) {
   return {
     id_post: p.id_post,
@@ -182,11 +208,14 @@ class AcademySocialService {
   // ─── Metas ─────────────────────────────────────────────────────────────────
   static async getGoals(id_academy) {
     const goals = await AcademySocialStorage.getGoals(pool, id_academy);
+    const { season } = rankingWindow(goals, null);
     return {
       goals: {
         freq_target_month: goals.freq_target_month,
         posts_target_month: goals.posts_target_month,
         shares_target_month: goals.shares_target_month,
+        season_days: goals.season_days || 30,
+        season,
       },
     };
   }
@@ -202,12 +231,22 @@ class AcademySocialService {
       if (!Number.isFinite(freq) || freq < 1 || freq > 31) return { error: "Meta de frequência inválida (1–31 dias)" };
       if (!Number.isFinite(posts) || posts < 0 || posts > 100) return { error: "Meta de posts inválida (0–100)" };
       if (!Number.isFinite(shares) || shares < 0 || shares > 100) return { error: "Meta de compartilhamentos inválida (0–100)" };
-      const goals = await AcademySocialStorage.setGoals(pool, id_academy, {
+      // Temporada (mig 182): janela de 30/60/90 dias que o dono inicia/encerra.
+      const patch = {
         freq_target_month: freq,
         posts_target_month: posts,
         shares_target_month: shares,
-      });
-      return { goals };
+      };
+      if (payload?.season_days != null) {
+        const days = Math.round(Number(payload.season_days));
+        if (![30, 60, 90].includes(days)) return { error: "Duração inválida (30, 60 ou 90 dias)" };
+        patch.season_days = days;
+      }
+      if (payload?.start_season) patch.start_season = true;
+      if (payload?.end_season) patch.end_season = true;
+      const goals = await AcademySocialStorage.setGoals(pool, id_academy, patch);
+      const { season } = rankingWindow(goals, null);
+      return { goals: { ...goals, season } };
     });
   }
 
@@ -216,17 +255,17 @@ class AcademySocialService {
     return runWithLogs(log, "ranking", () => ({ id_academy }), async () => {
       const academy = await AcademyStorage.getById(pool, id_academy);
       if (!academy || !academy.is_active) return { error: "Academia não encontrada" };
-      const { month, monthStart, nextMonth } = monthRange(monthRaw);
-      const [rows, goals] = await Promise.all([
-        AcademySocialStorage.monthlyRanking(pool, id_academy, monthStart, nextMonth),
-        AcademySocialStorage.getGoals(pool, id_academy),
-      ]);
+      const goals = await AcademySocialStorage.getGoals(pool, id_academy);
+      const { windowStart, windowEnd, season } = rankingWindow(goals, monthRaw);
+      const rows = await AcademySocialStorage.monthlyRanking(pool, id_academy, windowStart, windowEnd);
       return {
-        month,
+        month: season ? null : monthRange(monthRaw).month,
+        season,
         goals: {
           freq_target_month: goals.freq_target_month,
           posts_target_month: goals.posts_target_month,
           shares_target_month: goals.shares_target_month,
+          season_days: goals.season_days || 30,
         },
         members: rows.map((r) => ({
           id_member: r.id_member,
