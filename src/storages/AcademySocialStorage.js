@@ -221,16 +221,25 @@ module.exports = {
   },
 
   // ─── Ranking mensal ────────────────────────────────────────────────────────
-  // Por membro vinculado: dias distintos de catraca, posts e shares recebidos
-  // dentro do mês [monthStart, nextMonth).
-  async monthlyRanking(db, id_academy, monthStart, nextMonth) {
+  // Por membro vinculado, na janela [windowStart, windowEnd): dias distintos de
+  // catraca (freq), posts publicados no feed da academia (mig 181) e shares
+  // recebidos por esses posts. Avatar = 1º subperfil do membro (igual ranking
+  // oficial). Posts/shares vêm de tb_academy_feed_item (o mural antigo,
+  // tb_academy_post, deixou de ser usado na UI desde o Slice 3).
+  async monthlyRanking(db, id_academy, windowStart, windowEnd) {
     const r = await db.query(
       `SELECT m.id_member, m.id_user, u.username, u.nome AS user_nome, m.member_name,
+              av.avatar_url,
               COALESCE(freq.days, 0)::int AS freq_days,
               COALESCE(posts.n, 0)::int AS posts_count,
               COALESCE(shares.n, 0)::int AS shares_count
          FROM public.tb_academy_member m
          JOIN public.tb_user u ON u.id_user = m.id_user
+         LEFT JOIN LATERAL (
+           SELECT p.avatar_url FROM public.tb_profile p
+            WHERE p.id_user = m.id_user AND p.deleted_at IS NULL AND p.avatar_url IS NOT NULL
+            ORDER BY p.created_at ASC LIMIT 1
+         ) av ON TRUE
          LEFT JOIN LATERAL (
            SELECT COUNT(DISTINCT ev.occurred_at::date) AS days
              FROM public.tb_academy_access_event ev
@@ -239,21 +248,20 @@ module.exports = {
          ) freq ON TRUE
          LEFT JOIN LATERAL (
            SELECT COUNT(*) AS n
-             FROM public.tb_academy_post p
-            WHERE p.id_academy = m.id_academy AND p.id_user = m.id_user
-              AND p.deleted_at IS NULL
-              AND p.created_at >= $2::date AND p.created_at < $3::date
+             FROM public.tb_academy_feed_item afi
+            WHERE afi.id_academy = m.id_academy AND afi.id_author_user = m.id_user
+              AND afi.created_at >= $2::date AND afi.created_at < $3::date
          ) posts ON TRUE
          LEFT JOIN LATERAL (
-           SELECT COALESCE(SUM(p.share_count), 0) AS n
-             FROM public.tb_academy_post p
-            WHERE p.id_academy = m.id_academy AND p.id_user = m.id_user
-              AND p.deleted_at IS NULL
-              AND p.created_at >= $2::date AND p.created_at < $3::date
+           SELECT COALESCE(SUM(ppi.shares_count), 0) AS n
+             FROM public.tb_academy_feed_item afi
+             JOIN public.tb_profile_portfolio_item ppi ON ppi.id_portfolio_item = afi.id_portfolio_item
+            WHERE afi.id_academy = m.id_academy AND afi.id_author_user = m.id_user
+              AND afi.created_at >= $2::date AND afi.created_at < $3::date
          ) shares ON TRUE
         WHERE m.id_academy = $1
         ORDER BY freq_days DESC, posts_count DESC, u.nome ASC NULLS LAST`,
-      [id_academy, monthStart, nextMonth]
+      [id_academy, windowStart, windowEnd]
     );
     return r.rows;
   },

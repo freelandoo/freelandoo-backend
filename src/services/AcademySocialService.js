@@ -271,6 +271,7 @@ class AcademySocialService {
           id_member: r.id_member,
           nome: r.user_nome || r.username || r.member_name,
           username: r.username,
+          avatar_url: r.avatar_url || null,
           freq_days: r.freq_days,
           posts_count: r.posts_count,
           shares_count: Number(r.shares_count),
