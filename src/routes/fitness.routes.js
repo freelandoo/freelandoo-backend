@@ -1,17 +1,19 @@
 // src/routes/fitness.routes.js
-// Diário fitness (fase 2). Flag fitness_academias + gate de acesso (matrícula
-// ativa OU subperfil pago) em TODAS as rotas. Montado em /fitness.
+// Diário fitness PESSOAL (água/calorias/medidas/metas/propostas). Desde a
+// mig 180 não exige mais matrícula/assinatura (gate requireFitnessAccess
+// removido): flag + auth bastam — conectar academia é opcional e só habilita
+// frequência/mensalidades/professor. Montado em /fitness.
 const { Router } = require("express");
 const FitnessController = require("../controllers/FitnessController");
+const FitnessProposalController = require("../controllers/FitnessProposalController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const requireFeature = require("../middlewares/requireFeature");
-const requireFitnessAccess = require("../middlewares/requireFitnessAccess");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
 
 router.use(requireFeature("fitness_academias"));
-router.use(authMiddleware, requireFitnessAccess);
+router.use(authMiddleware);
 
 router.get("/summary", asyncHandler(FitnessController.summary));
 
@@ -34,5 +36,9 @@ router.post("/measurements", asyncHandler(FitnessController.addMeasurement));
 
 // Metas
 router.put("/settings", asyncHandler(FitnessController.setSettings));
+
+// Propostas do professor (mig 180): aluno lista e confirma/recusa.
+router.get("/proposals", asyncHandler(FitnessProposalController.listForStudent));
+router.post("/proposals/resolve", asyncHandler(FitnessProposalController.resolve));
 
 module.exports = router;

@@ -34,12 +34,20 @@ router.delete("/academies/:id/link", authMiddleware, asyncHandler(AcademyControl
 
 // ─── Gestão (dono) / staff ──────────────────────────────────────────────────
 router.get("/academies/:id/members", authMiddleware, asyncHandler(AcademyController.listMembers));
-// Avaliação física registrada pelo professor/dono (guard staff no service).
+// Avaliação física do professor/dono — desde a mig 180 vira PROPOSTA que o
+// aluno confirma no /fitness (guard staff no service).
 router.post(
   "/academies/:id/members/:memberId/measurements",
   authMiddleware,
   asyncHandler(require("../controllers/FitnessController").addMemberMeasurement)
 );
+
+// Propostas de alteração (mig 180): genérica (measurement/kcal_goal/plan_create),
+// lista pendentes do membro e cancelamento pelo staff.
+const FitnessProposalController = require("../controllers/FitnessProposalController");
+router.post("/academies/:id/members/:memberId/proposals", authMiddleware, asyncHandler(FitnessProposalController.propose));
+router.get("/academies/:id/members/:memberId/proposals", authMiddleware, asyncHandler(FitnessProposalController.listForMember));
+router.delete("/academies/:id/proposals/:proposalId", authMiddleware, asyncHandler(FitnessProposalController.cancel));
 
 // ─── Social da academia (fase 4) ─────────────────────────────────────────────
 // Feed e ranking públicos (vitrine); postar/compartilhar exige auth.

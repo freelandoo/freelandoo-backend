@@ -1,5 +1,8 @@
 // src/controllers/WorkoutController.js
+// Mutações de ficha pelo staff (create/update/delete) viram PROPOSTA desde a
+// mig 180 — o aluno confirma no /fitness. Respostas retornam { proposal }.
 const WorkoutService = require("../services/WorkoutService");
+const FitnessProposalService = require("../services/FitnessProposalService");
 const sendServiceResult = require("../utils/sendServiceResult");
 
 module.exports = {
@@ -34,18 +37,33 @@ module.exports = {
   },
 
   async createPlan(req, res) {
-    const result = await WorkoutService.createPlan(req.user.id_user, req.params.id, req.params.memberId, req.body || {});
+    const result = await FitnessProposalService.propose(req.user.id_user, req.params.id, req.params.memberId, {
+      ...(req.body || {}),
+      kind: "plan_create",
+    });
     return sendServiceResult(res, result, 201);
   },
 
   async updatePlan(req, res) {
-    const result = await WorkoutService.updatePlan(req.user.id_user, req.params.planId, req.body || {});
-    return sendServiceResult(res, result);
+    const result = await FitnessProposalService.proposeForPlan(
+      req.user.id_user,
+      req.params.id,
+      req.params.planId,
+      "plan_update",
+      req.body || {}
+    );
+    return sendServiceResult(res, result, 201);
   },
 
   async deletePlan(req, res) {
-    const result = await WorkoutService.deletePlan(req.user.id_user, req.params.planId);
-    return sendServiceResult(res, result);
+    const result = await FitnessProposalService.proposeForPlan(
+      req.user.id_user,
+      req.params.id,
+      req.params.planId,
+      "plan_delete",
+      req.body || {}
+    );
+    return sendServiceResult(res, result, 201);
   },
 
   async trainingGrid(req, res) {

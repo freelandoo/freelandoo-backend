@@ -141,6 +141,21 @@ module.exports = {
     return r.rows[0] || { id_user, daily_kcal_goal: 2000, water_goal_ml: 2000 };
   },
 
+  // Aceite de proposta do professor: mexe SÓ na meta de calorias, preservando
+  // a meta de água que o aluno configurou (default 2000 se nunca configurou).
+  async setKcalGoal(db, id_user, daily_kcal_goal) {
+    const r = await db.query(
+      `INSERT INTO public.tb_fitness_settings (id_user, daily_kcal_goal, water_goal_ml)
+       VALUES ($1,$2,2000)
+       ON CONFLICT (id_user) DO UPDATE SET
+         daily_kcal_goal = EXCLUDED.daily_kcal_goal,
+         updated_at = NOW()
+       RETURNING *`,
+      [id_user, daily_kcal_goal]
+    );
+    return r.rows[0];
+  },
+
   async setSettings(db, id_user, { daily_kcal_goal, water_goal_ml }) {
     const r = await db.query(
       `INSERT INTO public.tb_fitness_settings (id_user, daily_kcal_goal, water_goal_ml)

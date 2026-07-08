@@ -1,5 +1,6 @@
 // src/controllers/FitnessController.js
 const FitnessService = require("../services/FitnessService");
+const FitnessProposalService = require("../services/FitnessProposalService");
 const sendServiceResult = require("../utils/sendServiceResult");
 
 module.exports = {
@@ -53,13 +54,12 @@ module.exports = {
     return res.json(result);
   },
 
+  // Desde a mig 180 a avaliação do professor vira PROPOSTA (aluno confirma).
   async addMemberMeasurement(req, res) {
-    const result = await FitnessService.addMemberMeasurement(
-      req.user.id_user,
-      req.params.id,
-      req.params.memberId,
-      req.body || {}
-    );
+    const result = await FitnessProposalService.propose(req.user.id_user, req.params.id, req.params.memberId, {
+      ...(req.body || {}),
+      kind: "measurement",
+    });
     return sendServiceResult(res, result, 201);
   },
 

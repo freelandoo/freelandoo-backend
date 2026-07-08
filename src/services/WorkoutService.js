@@ -3,9 +3,12 @@
 // para membros da PRÓPRIA academia; o aluno vê as fichas ativas no dia e dá
 // check por exercício (todos checados ⇒ sessão concluída; destick reabre).
 // Privacidade: aluno só o dele; staff só membros da academia dele.
+// Desde a mig 180 as MUTAÇÕES de staff (criar/editar/excluir ficha) não vivem
+// mais aqui: viram proposta no FitnessProposalService, que o aluno confirma.
 const pool = require("../databases");
 const WorkoutStorage = require("../storages/WorkoutStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
+const FitnessProposalStorage = require("../storages/FitnessProposalStorage");
 const AcademyService = require("./AcademyService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -48,24 +51,6 @@ async function hydratePlan(plan, date) {
       checked: checkedIds.has(ex.id_plan_exercise),
     })),
   };
-}
-
-function sanitizeExercises(raw) {
-  if (!Array.isArray(raw) || raw.length === 0) return { error: "A ficha precisa de pelo menos 1 exercício" };
-  if (raw.length > 30) return { error: "Máximo de 30 exercícios por ficha" };
-  const exercises = [];
-  for (const ex of raw) {
-    if (!ex || !ex.id_exercise) return { error: "Exercício inválido" };
-    const sets = Math.round(Number(ex.sets));
-    if (!Number.isFinite(sets) || sets < 1 || sets > 20) return { error: "Séries inválidas (1–20)" };
-    const reps = String(ex.reps || "10").slice(0, 20);
-    const load = ex.load_kg === null || ex.load_kg === undefined || ex.load_kg === "" ? null : Number(ex.load_kg);
-    if (load !== null && (!Number.isFinite(load) || load < 0 || load > 1000)) return { error: "Carga inválida" };
-    const rest = ex.rest_seconds === null || ex.rest_seconds === undefined || ex.rest_seconds === "" ? null : Math.round(Number(ex.rest_seconds));
-    if (rest !== null && (!Number.isFinite(rest) || rest < 0 || rest > 900)) return { error: "Descanso inválido (0–900s)" };
-    exercises.push({ id_exercise: ex.id_exercise, sets, reps, load_kg: load, rest_seconds: rest });
-  }
-  return { exercises };
 }
 
 class WorkoutService {
@@ -148,67 +133,23 @@ class WorkoutService {
           WHERE id_user = $1 ORDER BY measured_at DESC LIMIT 10`,
         [member.id_user]
       );
+      const settings = await pool.query(
+        `SELECT daily_kcal_goal FROM public.tb_fitness_settings WHERE id_user = $1`,
+        [member.id_user]
+      );
+      const proposals = await FitnessProposalStorage.listPendingForMember(pool, member.id_member);
       return {
         member: {
           id_member: member.id_member,
           member_name: member.member_name,
           membership_status: member.membership_status,
+          daily_kcal_goal: settings.rows[0] ? settings.rows[0].daily_kcal_goal : null,
         },
         plans,
         measurements: measurements.rows,
+        proposals,
       };
     });
-  }
-
-  static async createPlan(id_user, id_academy, id_member, payload) {
-    return runWithLogs(log, "plan.create", () => ({ id_academy, id_member }), async () => {
-      const guard = await AcademyService.assertStaff(id_academy, id_user);
-      if (guard.error) return guard;
-      const member = await AcademyStorage.getMemberById(pool, id_member);
-      if (!member || member.id_academy !== id_academy) return { error: "Membro não encontrado" };
-      const nome = String(payload?.nome || "").trim();
-      if (!nome) return { error: "Nome da ficha é obrigatório (ex.: Treino A)" };
-      const check = sanitizeExercises(payload?.exercises);
-      if (check.error) return check;
-      const plan = await WorkoutStorage.createPlan(pool, {
-        id_academy,
-        id_member,
-        created_by: id_user,
-        nome: nome.slice(0, 60),
-        notes: payload?.notes ? String(payload.notes).slice(0, 2000) : null,
-      });
-      await WorkoutStorage.replacePlanExercises(pool, plan.id_plan, check.exercises);
-      return { plan: await hydratePlan(plan, today()) };
-    });
-  }
-
-  static async updatePlan(id_user, id_plan, payload) {
-    return runWithLogs(log, "plan.update", () => ({ id_plan }), async () => {
-      const plan = await WorkoutStorage.getPlanById(pool, id_plan);
-      if (!plan) return { error: "Ficha não encontrada" };
-      const guard = await AcademyService.assertStaff(plan.id_academy, id_user);
-      if (guard.error) return guard;
-      const updated = await WorkoutStorage.updatePlan(pool, id_plan, {
-        nome: payload?.nome ? String(payload.nome).trim().slice(0, 60) : undefined,
-        notes: payload?.notes === undefined ? undefined : payload.notes ? String(payload.notes).slice(0, 2000) : null,
-        is_active: payload?.is_active,
-      });
-      if (Array.isArray(payload?.exercises)) {
-        const check = sanitizeExercises(payload.exercises);
-        if (check.error) return check;
-        await WorkoutStorage.replacePlanExercises(pool, id_plan, check.exercises);
-      }
-      return { plan: await hydratePlan(updated, today()) };
-    });
-  }
-
-  static async deletePlan(id_user, id_plan) {
-    const plan = await WorkoutStorage.getPlanById(pool, id_plan);
-    if (!plan) return { error: "Ficha não encontrada" };
-    const guard = await AcademyService.assertStaff(plan.id_academy, id_user);
-    if (guard.error) return guard;
-    await WorkoutStorage.deletePlan(pool, id_plan);
-    return { ok: true };
   }
 
   static async trainingGrid(id_user, id_academy, dateRaw) {

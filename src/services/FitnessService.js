@@ -1,12 +1,12 @@
 // src/services/FitnessService.js
 // Diário fitness (fase 2): resumo do dia, contador de calorias (TACO local +
-// Open Food Facts com cache em tb_food), água, medidas e metas. Acesso já
-// passou pelo requireFitnessAccess; privacidade: cada user só mexe no próprio
-// diário (professor registra medição via rota da academia, com guard próprio).
+// Open Food Facts com cache em tb_food), água, medidas e metas. O painel é
+// PESSOAL (qualquer user logado, flag on) — academia é opcional. Privacidade:
+// cada user só mexe no próprio diário; edição do professor vira proposta
+// (FitnessProposalService) que o aluno confirma.
 const pool = require("../databases");
 const FitnessStorage = require("../storages/FitnessStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
-const AcademyService = require("./AcademyService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("fitness-service");
@@ -227,18 +227,6 @@ class FitnessService {
   static async listMeasurements(id_user) {
     const measurements = await FitnessStorage.listMeasurements(pool, id_user, 30);
     return { measurements };
-  }
-
-  // Professor/dono registra medição de um membro da academia dele (avaliação
-  // física). Guard: staff da MESMA academia do membro.
-  static async addMemberMeasurement(actor_id_user, id_academy, id_member, payload) {
-    return runWithLogs(log, "member.measure", () => ({ id_academy, id_member }), async () => {
-      const guard = await AcademyService.assertStaff(id_academy, actor_id_user);
-      if (guard.error) return guard;
-      const member = await AcademyStorage.getMemberById(pool, id_member);
-      if (!member || member.id_academy !== id_academy) return { error: "Membro não encontrado" };
-      return this.addMeasurement(member.id_user, payload, actor_id_user);
-    });
   }
 
   // ─── Metas ─────────────────────────────────────────────────────────────────
