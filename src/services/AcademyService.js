@@ -107,12 +107,18 @@ class AcademyService {
       const professors = await AcademyStorage.listProfessors(pool, academy.id_academy);
       const base = is_owner ? ownerAcademy(academy) : publicAcademy(academy);
       const members = await AcademyStorage.listMembers(pool, academy.id_academy);
+      // Alvo de DM da academia = 1º subperfil do dono (a academia "recebe
+      // mensagens como um subperfil"). Não expor pro próprio dono.
+      const owner_profile_id = is_owner
+        ? null
+        : await AcademyStorage.getChatProfileForUser(pool, academy.id_owner_user);
       return {
         academy: {
           ...base,
           member_count: members.length,
           is_owner,
           is_professor,
+          owner_profile_id,
           professors: professors.map((p) => ({ id_user: p.id_user, username: p.username, nome: p.user_nome })),
           my_membership: my_membership
             ? {

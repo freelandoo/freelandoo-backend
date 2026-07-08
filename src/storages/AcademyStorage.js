@@ -43,6 +43,19 @@ module.exports = {
     return r.rows[0] || null;
   },
 
+  // Subperfil (oldest, não-deletado) de um usuário para receber DM — a academia
+  // "recebe mensagens como um subperfil" abrindo conversa com o dono. DM é
+  // entity_type=profile, então precisamos de um id_profile alvo.
+  async getChatProfileForUser(db, id_user) {
+    const r = await db.query(
+      `SELECT id_profile FROM public.tb_profile
+        WHERE id_user = $1 AND deleted_at IS NULL
+        ORDER BY created_at ASC LIMIT 1`,
+      [id_user]
+    );
+    return r.rows[0] ? r.rows[0].id_profile : null;
+  },
+
   async slugExists(db, slug) {
     const r = await db.query(`SELECT 1 FROM public.tb_academy WHERE slug = $1`, [slug]);
     return r.rowCount > 0;
