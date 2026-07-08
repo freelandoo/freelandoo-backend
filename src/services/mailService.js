@@ -6,6 +6,11 @@ const log = createLogger("mailService");
 const defaultFrom =
   process.env.RESEND_FROM || "Freelandoo <sistema@freelandoo.com.br>";
 
+// Banner do email de ativação (hospedado no R2). Env sobrescreve o fallback.
+const activationBannerUrl =
+  process.env.ACTIVATION_EMAIL_BANNER_URL ||
+  "https://pub-3b9774a0af714847979058ea5677a840.r2.dev/email-assets/welcome-activation.png";
+
 function getResend() {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
@@ -20,37 +25,59 @@ async function sendActivationEmail({ to, name, link }) {
     const response = await getResend().emails.send({
       from: defaultFrom,
       to,
-      subject: "Ative sua conta",
+      subject: "Ative sua conta na Freelandoo",
       html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
-          <h2>Olá, ${name} 👋</h2>
-          <p>Obrigado por se cadastrar no <strong>Freelandoo</strong>.</p>
-
-          <p>Clique no botão abaixo para ativar sua conta:</p>
-
-          <p style="margin:24px 0">
-            <a href="${link}"
-               style="
-                 display:inline-block;
-                 padding:12px 20px;
-                 background:#6c5ce7;
-                 color:#ffffff;
-                 border-radius:6px;
-                 text-decoration:none;
-                 font-weight:bold;
-               ">
-              Ativar conta
-            </a>
-          </p>
-
-          <p style="font-size:14px;color:#555">
-            Este link expira em 24 horas.
-          </p>
-
-          <hr />
-          <p style="font-size:12px;color:#888">
-            Se você não criou uma conta, pode ignorar este email.
-          </p>
+        <div style="margin:0;padding:0;background:#0B0B0D">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B0B0D">
+            <tr>
+              <td align="center" style="padding:0">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;font-family:Arial,Helvetica,sans-serif">
+                  <!-- Banner clicável -->
+                  <tr>
+                    <td style="padding:0;line-height:0">
+                      <a href="${link}" target="_blank" style="display:block;text-decoration:none">
+                        <img src="${activationBannerUrl}"
+                             alt="Bem-vindo à Freelandoo — Ative seu email para liberar seu acesso"
+                             width="600"
+                             style="display:block;width:100%;max-width:600px;height:auto;border:0" />
+                      </a>
+                    </td>
+                  </tr>
+                  <!-- Botão real (fallback caso imagens estejam bloqueadas / reforço da ação) -->
+                  <tr>
+                    <td align="center" style="background:#0B0B0D;padding:28px 24px 12px 24px">
+                      <table role="presentation" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td align="center" bgcolor="#F5C518" style="background:#F5C518">
+                            <a href="${link}" target="_blank"
+                               style="display:inline-block;padding:16px 44px;font-size:18px;font-weight:bold;
+                                      color:#0B0B0D;text-decoration:none;font-family:Arial,Helvetica,sans-serif;
+                                      letter-spacing:0.5px">
+                              ATIVAR EMAIL
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <!-- Texto de apoio -->
+                  <tr>
+                    <td align="center" style="background:#0B0B0D;padding:8px 24px 28px 24px">
+                      <p style="margin:0 0 6px 0;font-size:14px;color:#9A9AA0;font-family:Arial,Helvetica,sans-serif">
+                        Se o botão não funcionar, copie e cole este link no navegador:
+                      </p>
+                      <p style="margin:0 0 18px 0;font-size:13px;word-break:break-all">
+                        <a href="${link}" target="_blank" style="color:#F5C518;text-decoration:underline">${link}</a>
+                      </p>
+                      <p style="margin:0;font-size:13px;color:#6B6B70;font-family:Arial,Helvetica,sans-serif">
+                        Este link expira em 24 horas. Se você não criou uma conta na Freelandoo, pode ignorar este email.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </div>
       `,
     });
