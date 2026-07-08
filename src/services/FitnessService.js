@@ -272,6 +272,55 @@ class FitnessService {
     });
   }
 
+  // Busca direta por código de barras (EAN/UPC) no Open Food Facts. Mais
+  // confiável que a busca textual quando o produto tem o código na embalagem.
+  // Devolve o mesmo formato de searchOff, então o cache + diário reaproveitam.
+  static async searchOffByBarcode(code) {
+    return runWithLogs(log, "off.barcode", () => ({ code }), async () => {
+      const clean = String(code || "").replace(/\D/g, "");
+      if (clean.length < 8 || clean.length > 14) {
+        return { error: "Código de barras inválido" };
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), OFF_TIMEOUT_MS);
+      try {
+        const url =
+          `https://world.openfoodfacts.org/api/v2/product/${clean}.json` +
+          "?fields=code,product_name,nutriments";
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { "User-Agent": "Freelandoo-Fitness/1.0 (contato: freelandoogroup@gmail.com)" },
+        });
+        if (!res.ok) return { error: "Busca de produtos indisponível no momento" };
+        const data = await res.json();
+        const p = data && data.product;
+        if (!data || data.status !== 1 || !p) {
+          return { error: "Produto não encontrado para este código" };
+        }
+        const n = p.nutriments || {};
+        const kcal = Number(n["energy-kcal_100g"]);
+        if (!p.product_name || !Number.isFinite(kcal)) {
+          return { error: "Produto sem informação nutricional (kcal)" };
+        }
+        return {
+          food: {
+            external_ref: String(p.code || clean),
+            nome: String(p.product_name).slice(0, 120),
+            kcal_100g: Math.round(kcal * 100) / 100,
+            protein_g: Math.round((Number(n.proteins_100g) || 0) * 100) / 100,
+            carbs_g: Math.round((Number(n.carbohydrates_100g) || 0) * 100) / 100,
+            fat_g: Math.round((Number(n.fat_100g) || 0) * 100) / 100,
+          },
+        };
+      } catch (err) {
+        const timedOut = err && err.name === "AbortError";
+        return { error: timedOut ? "Busca de produtos demorou demais" : "Busca de produtos indisponível no momento" };
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+  }
+
   static async cacheOffFood(payload) {
     const { external_ref, nome, kcal_100g } = payload || {};
     if (!external_ref || !nome || !Number.isFinite(Number(kcal_100g))) {

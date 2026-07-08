@@ -24,6 +24,11 @@ module.exports = {
     return sendServiceResult(res, result);
   },
 
+  async searchOffByBarcode(req, res) {
+    const result = await FitnessService.searchOffByBarcode(req.query.code);
+    return sendServiceResult(res, result);
+  },
+
   async cacheOffFood(req, res) {
     const result = await FitnessService.cacheOffFood(req.body || {});
     return sendServiceResult(res, result, 201);

@@ -21,6 +21,7 @@ router.get("/indicators", asyncHandler(FitnessController.indicators));
 // Alimentos
 router.get("/foods", asyncHandler(FitnessController.searchFoods));
 router.get("/foods/off", asyncHandler(FitnessController.searchOff));
+router.get("/foods/off/barcode", asyncHandler(FitnessController.searchOffByBarcode));
 router.post("/foods/off/cache", asyncHandler(FitnessController.cacheOffFood));
 router.post("/foods/custom", asyncHandler(FitnessController.createCustomFood));
 
