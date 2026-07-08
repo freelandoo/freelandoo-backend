@@ -60,6 +60,10 @@ router.post(
 );
 router.delete("/academies/:id/posts/:postId", authMiddleware, asyncHandler(AcademySocialController.deletePost));
 router.post("/academies/:id/posts/:postId/share", authMiddleware, asyncHandler(AcademySocialController.sharePost));
+// Feed no sistema de portfólio (mig 181): listagem pública (projeção do /feed)
+// e link do post recém-criado pelo composer (auth; membro/staff).
+router.get("/academies/:id/feed-posts", optionalAuthMiddleware, asyncHandler(AcademySocialController.getFeedPosts));
+router.post("/academies/:id/feed", authMiddleware, asyncHandler(AcademySocialController.linkFeedItem));
 router.get("/academies/:id/ranking", asyncHandler(AcademySocialController.ranking));
 router.get("/academies/:id/goals", asyncHandler(AcademySocialController.getGoals));
 router.put("/academies/:id/goals", authMiddleware, asyncHandler(AcademySocialController.setGoals));

@@ -292,6 +292,16 @@ function shapeRow(row) {
           avatar_url: row.community_avatar || null,
         }
       : null,
+    // Academia à qual o post está ligado (mig 181) — alimenta o chip "Acessar
+    // academia" no header do card do /feed. Null se não pertence.
+    academy: row.academy_id
+      ? {
+          id_academy: row.academy_id,
+          slug: row.academy_slug || null,
+          nome: row.academy_name || null,
+          avatar_url: row.academy_avatar || null,
+        }
+      : null,
   };
 }
 

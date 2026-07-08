@@ -89,7 +89,12 @@ function buildCandidateQuery(mode) {
 
       comm.community_id,
       comm.community_name,
-      comm.community_avatar
+      comm.community_avatar,
+
+      acad.academy_id,
+      acad.academy_name,
+      acad.academy_slug,
+      acad.academy_avatar
 
     FROM tb_profile_portfolio_item ppi
     JOIN tb_profile pro       ON pro.id_profile  = ppi.id_profile
@@ -158,6 +163,20 @@ function buildCandidateQuery(mode) {
       ORDER BY cfi.created_at DESC
       LIMIT 1
     ) comm ON TRUE
+
+    LEFT JOIN LATERAL (
+      SELECT a.id_academy   AS academy_id,
+             a.nome         AS academy_name,
+             a.slug         AS academy_slug,
+             a.avatar_url   AS academy_avatar
+      FROM tb_academy_feed_item afi
+      JOIN tb_academy a
+        ON a.id_academy = afi.id_academy
+       AND a.is_active = TRUE
+      WHERE afi.id_portfolio_item = ppi.id_portfolio_item
+      ORDER BY afi.created_at DESC
+      LIMIT 1
+    ) acad ON TRUE
 
     WHERE ppi.status   = 'published'
       AND ppi.is_active = TRUE

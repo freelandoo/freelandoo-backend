@@ -7,6 +7,7 @@ const pool = require("../databases");
 const AcademySocialStorage = require("../storages/AcademySocialStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
 const AcademyService = require("./AcademyService");
+const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
 const uploadAcademyMediaToR2 = require("../integrations/r2/uploadAcademyMedia");
 const { processPortfolioMedia } = require("../utils/mediaProcessing");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -104,6 +105,78 @@ class AcademySocialService {
     if (!post || post.id_academy !== id_academy) return { error: "Post não encontrado" };
     const share_count = await AcademySocialStorage.incrementShare(pool, id_post);
     return { share_count };
+  }
+
+  // ─── Feed no sistema de portfólio (mig 181) ─────────────────────────────────
+  // Liga um post/bee (portfolio-item do autor) ao feed da academia — o post sobe
+  // TAMBÉM no /feed global com a tag da academia (igual comunidade). Postar exige
+  // vínculo (membro) ou staff (dono/professor).
+  static async linkFeedItem(user, id_academy, body) {
+    return runWithLogs(log, "feed.link", () => ({ id_academy, id_user: user?.id_user }), async () => {
+      const id_user = user?.id_user;
+      if (!id_user) return { error: "Usuário não autenticado" };
+      const id_portfolio_item = body?.id_portfolio_item;
+      if (!id_portfolio_item) return { error: "Post não informado." };
+
+      const academy = await AcademyStorage.getById(pool, id_academy);
+      if (!academy || !academy.is_active) return { error: "Academia não encontrada", statusCode: 404 };
+
+      const isOwner = academy.id_owner_user === id_user;
+      const member = await AcademyStorage.getMember(pool, id_academy, id_user);
+      const isProfessor = await AcademyStorage.isProfessor(pool, id_academy, id_user);
+      if (!isOwner && !member && !isProfessor) {
+        return { error: "Só membros vinculados podem postar na academia", statusCode: 403 };
+      }
+
+      // Anti-spoof: o post tem que ser de um perfil do próprio usuário.
+      const owns = await AcademySocialStorage.itemBelongsToUser(pool, id_portfolio_item, id_user);
+      if (!owns) return { error: "Este post não é seu." };
+
+      const linked = await AcademySocialStorage.linkFeedItem(pool, id_academy, id_portfolio_item, id_user);
+      return { ok: true, linked };
+    });
+  }
+
+  // Feed da academia (posts do sistema de portfólio) na projeção do /feed.
+  static async getFeedPosts(id_academy, query, viewer) {
+    return runWithLogs(log, "feed.posts", () => ({ id_academy, cursor: query?.cursor || null }), async () => {
+      const academy = await AcademyStorage.getById(pool, id_academy);
+      if (!academy || !academy.is_active) return { error: "Academia não encontrada", statusCode: 404 };
+
+      let before_ts = null;
+      let before_key = null;
+      if (query?.cursor) {
+        try {
+          const decoded = Buffer.from(String(query.cursor), "base64").toString("utf8");
+          const sep = decoded.lastIndexOf("|");
+          if (sep > 0) {
+            before_ts = decoded.slice(0, sep);
+            before_key = decoded.slice(sep + 1);
+          }
+        } catch {
+          /* cursor inválido — começa do início */
+        }
+      }
+      const limit = Math.min(Math.max(Number(query?.limit) || 12, 1), 24);
+
+      const rows = await AcademySocialStorage.listAcademyFeedPosts(pool, id_academy, {
+        viewer_id_user: viewer?.id_user || null,
+        limit: limit + 1,
+        before_ts,
+        before_key,
+      });
+
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const items = page.map((r) => PortfolioFeedService.shapeRow(r));
+      let next_cursor = null;
+      if (hasMore && page.length) {
+        const last = page[page.length - 1];
+        const iso = last.published_at ? new Date(last.published_at).toISOString() : new Date().toISOString();
+        next_cursor = Buffer.from(`${iso}|${String(last.post_id)}`, "utf8").toString("base64");
+      }
+      return { items, next_cursor, has_more: hasMore };
+    });
   }
 
   // ─── Metas ─────────────────────────────────────────────────────────────────

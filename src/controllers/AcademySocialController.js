@@ -26,6 +26,16 @@ module.exports = {
     return sendServiceResult(res, result);
   },
 
+  async getFeedPosts(req, res) {
+    const result = await AcademySocialService.getFeedPosts(req.params.id, req.query || {}, req.user);
+    return sendServiceResult(res, result);
+  },
+
+  async linkFeedItem(req, res) {
+    const result = await AcademySocialService.linkFeedItem(req.user, req.params.id, req.body || {});
+    return sendServiceResult(res, result, 201);
+  },
+
   async getGoals(req, res) {
     const result = await AcademySocialService.getGoals(req.params.id);
     return res.json(result);
