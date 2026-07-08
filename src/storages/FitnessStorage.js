@@ -3,14 +3,18 @@
 // medidas corporais e metas pessoais.
 module.exports = {
   // ─── Alimentos ─────────────────────────────────────────────────────────────
+  // Busca insensível a acento via translate() (sem depender da extensão
+  // unaccent): "acaraje" acha "Acarajé", "pao" acha "Pão".
   async searchFoods(db, q, limit = 20) {
+    const FOLD_FROM = "áàâãäéèêëíìîïóòôõöúùûüçñ";
+    const FOLD_TO = "aaaaaeeeeiiiiooooouuuucn";
     const r = await db.query(
       `SELECT id_food, source, nome, kcal_100g, protein_g, carbs_g, fat_g
          FROM public.tb_food
-        WHERE nome ILIKE $1
+        WHERE translate(lower(nome), $3, $4) LIKE '%' || translate(lower($1), $3, $4) || '%'
         ORDER BY (source = 'taco') DESC, nome ASC
         LIMIT $2`,
-      [`%${q}%`, limit]
+      [q, limit, FOLD_FROM, FOLD_TO]
     );
     return r.rows;
   },
