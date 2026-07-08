@@ -1,9 +1,9 @@
 // scripts/seed-taco.js
-// Seed idempotente do catálogo de alimentos (subset curado da TACO/UNICAMP,
-// valores por 100g). Fill-if-absent por (source='taco', external_ref) — nunca
-// sobrescreve. Roda no boot (index.js) e também via CLI:
-//   node scripts/seed-taco.js
-// Para importar a TACO completa depois: ampliar src/databases/data/taco-foods.json.
+// Seed idempotente do catálogo de alimentos — TACO/UNICAMP COMPLETA (667
+// entradas: 134 curadas originais + 533 da tabela oficial de 597, deduplicada
+// por tokens do nome; valores por 100g). Fill-if-absent por
+// (source='taco', external_ref) — nunca sobrescreve. Roda no boot (index.js)
+// e também via CLI: node scripts/seed-taco.js.
 const path = require("path");
 const fs = require("fs");
 

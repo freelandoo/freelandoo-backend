@@ -1,136 +1,5338 @@
 [
-  {"ref":"taco-arroz-branco-cozido","nome":"Arroz branco cozido","kcal":128,"p":2.5,"c":28.1,"g":0.2},
-  {"ref":"taco-arroz-integral-cozido","nome":"Arroz integral cozido","kcal":124,"p":2.6,"c":25.8,"g":1.0},
-  {"ref":"taco-feijao-carioca-cozido","nome":"Feijão carioca cozido","kcal":76,"p":4.8,"c":13.6,"g":0.5},
-  {"ref":"taco-feijao-preto-cozido","nome":"Feijão preto cozido","kcal":77,"p":4.5,"c":14.0,"g":0.5},
-  {"ref":"taco-lentilha-cozida","nome":"Lentilha cozida","kcal":93,"p":6.3,"c":16.3,"g":0.5},
-  {"ref":"taco-grao-de-bico-cozido","nome":"Grão-de-bico cozido","kcal":164,"p":8.9,"c":27.4,"g":2.6},
-  {"ref":"taco-macarrao-cozido","nome":"Macarrão cozido","kcal":122,"p":3.9,"c":25.0,"g":0.6},
-  {"ref":"taco-batata-inglesa-cozida","nome":"Batata inglesa cozida","kcal":52,"p":1.2,"c":11.9,"g":0.0},
-  {"ref":"taco-batata-doce-cozida","nome":"Batata-doce cozida","kcal":77,"p":0.6,"c":18.4,"g":0.1},
-  {"ref":"taco-mandioca-cozida","nome":"Mandioca cozida","kcal":125,"p":0.6,"c":30.1,"g":0.3},
-  {"ref":"taco-inhame-cozido","nome":"Inhame cozido","kcal":97,"p":2.1,"c":23.2,"g":0.1},
-  {"ref":"taco-milho-verde-cozido","nome":"Milho verde cozido","kcal":98,"p":3.2,"c":17.1,"g":2.4},
-  {"ref":"taco-cuscuz-milho","nome":"Cuscuz de milho cozido","kcal":113,"p":2.2,"c":25.3,"g":0.7},
-  {"ref":"taco-tapioca","nome":"Tapioca (goma hidratada)","kcal":240,"p":0.0,"c":59.4,"g":0.0},
-  {"ref":"taco-aveia-flocos","nome":"Aveia em flocos","kcal":394,"p":13.9,"c":66.6,"g":8.5},
-  {"ref":"taco-pao-frances","nome":"Pão francês","kcal":300,"p":8.0,"c":58.6,"g":3.1},
-  {"ref":"taco-pao-integral","nome":"Pão de forma integral","kcal":253,"p":9.4,"c":49.9,"g":2.9},
-  {"ref":"taco-pao-de-queijo","nome":"Pão de queijo assado","kcal":363,"p":5.1,"c":34.2,"g":24.6},
-  {"ref":"taco-biscoito-cream-cracker","nome":"Biscoito cream cracker","kcal":432,"p":10.1,"c":68.7,"g":14.4},
-  {"ref":"taco-farofa-mandioca","nome":"Farofa de mandioca temperada","kcal":406,"p":2.1,"c":79.1,"g":9.1},
-  {"ref":"taco-polenta-cozida","nome":"Polenta cozida","kcal":103,"p":2.3,"c":23.3,"g":0.2},
-  {"ref":"taco-frango-peito-grelhado","nome":"Peito de frango grelhado","kcal":159,"p":32.0,"c":0.0,"g":2.5},
-  {"ref":"taco-frango-coxa-assada","nome":"Coxa de frango assada c/ pele","kcal":215,"p":28.1,"c":0.0,"g":11.0},
-  {"ref":"taco-frango-file-empanado","nome":"Frango empanado frito","kcal":293,"p":15.3,"c":15.9,"g":18.4},
-  {"ref":"taco-carne-patinho-grelhado","nome":"Patinho grelhado (bovino)","kcal":219,"p":35.9,"c":0.0,"g":7.3},
-  {"ref":"taco-carne-acem-cozido","nome":"Acém cozido (bovino)","kcal":212,"p":27.3,"c":0.0,"g":10.7},
-  {"ref":"taco-carne-contra-file-grelhado","nome":"Contrafilé grelhado","kcal":278,"p":32.4,"c":0.0,"g":15.5},
-  {"ref":"taco-carne-picanha-grelhada","nome":"Picanha grelhada","kcal":289,"p":26.4,"c":0.0,"g":19.7},
-  {"ref":"taco-carne-moida-cozida","nome":"Carne moída refogada","kcal":212,"p":26.7,"c":0.0,"g":10.9},
-  {"ref":"taco-figado-bovino-grelhado","nome":"Fígado bovino grelhado","kcal":225,"p":29.9,"c":4.6,"g":9.0},
-  {"ref":"taco-carne-porco-lombo-assado","nome":"Lombo de porco assado","kcal":210,"p":35.7,"c":0.0,"g":6.4},
-  {"ref":"taco-bisteca-porco-grelhada","nome":"Bisteca de porco grelhada","kcal":280,"p":29.4,"c":0.0,"g":17.4},
-  {"ref":"taco-linguica-porco-frita","nome":"Linguiça de porco frita","kcal":280,"p":19.5,"c":0.0,"g":21.9},
-  {"ref":"taco-tilapia-grelhada","nome":"Tilápia grelhada","kcal":119,"p":26.2,"c":0.0,"g":1.2},
-  {"ref":"taco-salmao-grelhado","nome":"Salmão grelhado","kcal":243,"p":26.1,"c":0.0,"g":14.5},
-  {"ref":"taco-sardinha-assada","nome":"Sardinha assada","kcal":164,"p":32.2,"c":0.0,"g":3.9},
-  {"ref":"taco-atum-conserva","nome":"Atum em conserva (óleo)","kcal":166,"p":26.2,"c":0.0,"g":6.0},
-  {"ref":"taco-camarao-cozido","nome":"Camarão cozido","kcal":90,"p":19.0,"c":0.0,"g":1.0},
-  {"ref":"taco-ovo-cozido","nome":"Ovo de galinha cozido","kcal":146,"p":13.3,"c":0.6,"g":9.5},
-  {"ref":"taco-ovo-frito","nome":"Ovo frito","kcal":240,"p":15.6,"c":1.2,"g":18.6},
-  {"ref":"taco-leite-integral","nome":"Leite integral","kcal":61,"p":2.9,"c":4.5,"g":3.2},
-  {"ref":"taco-leite-desnatado","nome":"Leite desnatado","kcal":35,"p":3.4,"c":4.9,"g":0.2},
-  {"ref":"taco-iogurte-natural","nome":"Iogurte natural","kcal":51,"p":4.1,"c":1.9,"g":3.0},
-  {"ref":"taco-iogurte-desnatado","nome":"Iogurte natural desnatado","kcal":41,"p":3.8,"c":5.8,"g":0.3},
-  {"ref":"taco-queijo-minas-frescal","nome":"Queijo minas frescal","kcal":264,"p":17.4,"c":3.2,"g":20.2},
-  {"ref":"taco-queijo-mucarela","nome":"Queijo muçarela","kcal":330,"p":22.6,"c":3.0,"g":25.2},
-  {"ref":"taco-queijo-prato","nome":"Queijo prato","kcal":360,"p":22.7,"c":1.9,"g":29.1},
-  {"ref":"taco-requeijao","nome":"Requeijão cremoso","kcal":257,"p":9.6,"c":2.4,"g":23.4},
-  {"ref":"taco-manteiga","nome":"Manteiga com sal","kcal":726,"p":0.4,"c":0.1,"g":82.4},
-  {"ref":"taco-margarina","nome":"Margarina com sal","kcal":596,"p":0.0,"c":0.0,"g":67.0},
-  {"ref":"taco-alface","nome":"Alface crespa","kcal":11,"p":1.3,"c":1.7,"g":0.2},
-  {"ref":"taco-tomate","nome":"Tomate cru","kcal":15,"p":1.1,"c":3.1,"g":0.2},
-  {"ref":"taco-cenoura-crua","nome":"Cenoura crua","kcal":34,"p":1.3,"c":7.7,"g":0.2},
-  {"ref":"taco-cenoura-cozida","nome":"Cenoura cozida","kcal":30,"p":0.8,"c":6.7,"g":0.2},
-  {"ref":"taco-beterraba-cozida","nome":"Beterraba cozida","kcal":32,"p":1.3,"c":7.2,"g":0.1},
-  {"ref":"taco-brocolis-cozido","nome":"Brócolis cozido","kcal":20,"p":2.1,"c":4.4,"g":0.5},
-  {"ref":"taco-couve-refogada","nome":"Couve manteiga refogada","kcal":90,"p":3.1,"c":8.7,"g":5.7},
-  {"ref":"taco-couve-flor-cozida","nome":"Couve-flor cozida","kcal":19,"p":1.2,"c":3.9,"g":0.3},
-  {"ref":"taco-abobrinha-cozida","nome":"Abobrinha italiana cozida","kcal":15,"p":1.1,"c":3.0,"g":0.2},
-  {"ref":"taco-abobora-cozida","nome":"Abóbora moranga cozida","kcal":29,"p":1.4,"c":6.0,"g":0.7},
-  {"ref":"taco-chuchu-cozido","nome":"Chuchu cozido","kcal":19,"p":0.4,"c":4.8,"g":0.0},
-  {"ref":"taco-pepino","nome":"Pepino cru","kcal":10,"p":0.9,"c":2.0,"g":0.0},
-  {"ref":"taco-pimentao-verde","nome":"Pimentão verde cru","kcal":21,"p":1.1,"c":4.9,"g":0.2},
-  {"ref":"taco-cebola","nome":"Cebola crua","kcal":39,"p":1.7,"c":8.9,"g":0.1},
-  {"ref":"taco-repolho-cru","nome":"Repolho branco cru","kcal":17,"p":0.9,"c":3.9,"g":0.1},
-  {"ref":"taco-espinafre-refogado","nome":"Espinafre refogado","kcal":67,"p":2.7,"c":4.6,"g":5.4},
-  {"ref":"taco-quiabo-cozido","nome":"Quiabo cozido","kcal":25,"p":1.6,"c":5.4,"g":0.2},
-  {"ref":"taco-vagem-cozida","nome":"Vagem cozida","kcal":25,"p":1.5,"c":5.3,"g":0.2},
-  {"ref":"taco-banana-prata","nome":"Banana prata","kcal":98,"p":1.3,"c":26.0,"g":0.1},
-  {"ref":"taco-banana-nanica","nome":"Banana nanica","kcal":92,"p":1.4,"c":23.8,"g":0.1},
-  {"ref":"taco-maca","nome":"Maçã Fuji","kcal":56,"p":0.3,"c":15.2,"g":0.0},
-  {"ref":"taco-laranja","nome":"Laranja pera","kcal":37,"p":1.0,"c":8.9,"g":0.1},
-  {"ref":"taco-mamao","nome":"Mamão papaia","kcal":40,"p":0.5,"c":10.4,"g":0.1},
-  {"ref":"taco-manga","nome":"Manga Tommy","kcal":51,"p":0.9,"c":12.8,"g":0.2},
-  {"ref":"taco-abacaxi","nome":"Abacaxi","kcal":48,"p":0.9,"c":12.3,"g":0.1},
-  {"ref":"taco-melancia","nome":"Melancia","kcal":33,"p":0.9,"c":8.1,"g":0.0},
-  {"ref":"taco-melao","nome":"Melão","kcal":29,"p":0.7,"c":7.5,"g":0.0},
-  {"ref":"taco-uva","nome":"Uva Itália","kcal":53,"p":0.7,"c":13.6,"g":0.2},
-  {"ref":"taco-morango","nome":"Morango","kcal":30,"p":0.9,"c":6.8,"g":0.3},
-  {"ref":"taco-abacate","nome":"Abacate","kcal":96,"p":1.2,"c":6.0,"g":8.4},
-  {"ref":"taco-limao","nome":"Limão Tahiti","kcal":32,"p":0.9,"c":11.1,"g":0.1},
-  {"ref":"taco-goiaba","nome":"Goiaba vermelha","kcal":54,"p":1.1,"c":13.0,"g":0.4},
-  {"ref":"taco-kiwi","nome":"Kiwi","kcal":51,"p":1.3,"c":11.5,"g":0.6},
-  {"ref":"taco-pera","nome":"Pera Williams","kcal":53,"p":0.6,"c":14.0,"g":0.1},
-  {"ref":"taco-acai-polpa","nome":"Açaí polpa (sem açúcar)","kcal":58,"p":0.8,"c":6.2,"g":3.9},
-  {"ref":"taco-coco-agua","nome":"Água de coco","kcal":22,"p":0.0,"c":5.3,"g":0.0},
-  {"ref":"taco-castanha-para","nome":"Castanha-do-pará","kcal":643,"p":14.5,"c":15.1,"g":63.5},
-  {"ref":"taco-castanha-caju","nome":"Castanha de caju torrada","kcal":570,"p":18.5,"c":29.1,"g":46.3},
-  {"ref":"taco-amendoim-torrado","nome":"Amendoim torrado","kcal":606,"p":22.5,"c":18.7,"g":54.0},
-  {"ref":"taco-pasta-amendoim","nome":"Pasta de amendoim","kcal":589,"p":25.0,"c":20.0,"g":50.0},
-  {"ref":"taco-azeite-oliva","nome":"Azeite de oliva","kcal":884,"p":0.0,"c":0.0,"g":100.0},
-  {"ref":"taco-oleo-soja","nome":"Óleo de soja","kcal":884,"p":0.0,"c":0.0,"g":100.0},
-  {"ref":"taco-acucar-cristal","nome":"Açúcar cristal","kcal":387,"p":0.3,"c":99.6,"g":0.0},
-  {"ref":"taco-mel","nome":"Mel de abelha","kcal":309,"p":0.0,"c":84.0,"g":0.0},
-  {"ref":"taco-chocolate-ao-leite","nome":"Chocolate ao leite","kcal":540,"p":7.2,"c":59.6,"g":30.3},
-  {"ref":"taco-chocolate-amargo","nome":"Chocolate meio amargo","kcal":475,"p":4.9,"c":62.4,"g":29.9},
-  {"ref":"taco-doce-de-leite","nome":"Doce de leite","kcal":306,"p":5.5,"c":59.5,"g":6.0},
-  {"ref":"taco-brigadeiro","nome":"Brigadeiro","kcal":370,"p":4.3,"c":67.5,"g":10.0},
-  {"ref":"taco-sorvete-creme","nome":"Sorvete de creme","kcal":186,"p":3.7,"c":24.0,"g":8.5},
-  {"ref":"taco-bolo-chocolate","nome":"Bolo de chocolate","kcal":410,"p":6.2,"c":54.5,"g":18.5},
-  {"ref":"taco-coxinha-frango","nome":"Coxinha de frango frita","kcal":283,"p":9.4,"c":34.2,"g":12.1},
-  {"ref":"taco-pastel-carne","nome":"Pastel de carne frito","kcal":388,"p":10.5,"c":40.0,"g":20.7},
-  {"ref":"taco-pizza-mucarela","nome":"Pizza de muçarela","kcal":289,"p":11.8,"c":33.2,"g":12.0},
-  {"ref":"taco-hamburguer-bovino","nome":"Hambúrguer bovino grelhado","kcal":248,"p":19.0,"c":3.5,"g":17.5},
-  {"ref":"taco-batata-frita","nome":"Batata frita","kcal":267,"p":4.0,"c":35.6,"g":13.1},
-  {"ref":"taco-salgadinho-milho","nome":"Salgadinho de milho","kcal":510,"p":6.5,"c":60.0,"g":27.0},
-  {"ref":"taco-refrigerante-cola","nome":"Refrigerante tipo cola","kcal":37,"p":0.0,"c":9.5,"g":0.0},
-  {"ref":"taco-suco-laranja-natural","nome":"Suco de laranja natural","kcal":37,"p":0.7,"c":8.7,"g":0.1},
-  {"ref":"taco-cafe-coado","nome":"Café coado (sem açúcar)","kcal":4,"p":0.2,"c":0.7,"g":0.0},
-  {"ref":"taco-cerveja","nome":"Cerveja pilsen","kcal":41,"p":0.6,"c":3.3,"g":0.0},
-  {"ref":"taco-vinho-tinto","nome":"Vinho tinto seco","kcal":83,"p":0.2,"c":2.6,"g":0.0},
-  {"ref":"taco-whey-concentrado","nome":"Whey protein concentrado (pó)","kcal":400,"p":78.0,"c":8.0,"g":6.5},
-  {"ref":"taco-granola","nome":"Granola","kcal":421,"p":10.0,"c":68.0,"g":12.0},
-  {"ref":"taco-quinoa-cozida","nome":"Quinoa cozida","kcal":120,"p":4.4,"c":21.3,"g":1.9},
-  {"ref":"taco-chia","nome":"Semente de chia","kcal":486,"p":16.5,"c":42.1,"g":30.7},
-  {"ref":"taco-linhaca","nome":"Semente de linhaça","kcal":495,"p":14.1,"c":43.3,"g":32.3},
-  {"ref":"taco-ricota","nome":"Ricota","kcal":140,"p":12.6,"c":3.8,"g":8.1},
-  {"ref":"taco-cottage","nome":"Queijo cottage","kcal":98,"p":11.1,"c":3.4,"g":4.3},
-  {"ref":"taco-peito-peru-defumado","nome":"Peito de peru defumado","kcal":94,"p":17.0,"c":1.5,"g":2.0},
-  {"ref":"taco-presunto-magro","nome":"Presunto cozido magro","kcal":94,"p":14.3,"c":1.0,"g":3.5},
-  {"ref":"taco-mortadela","nome":"Mortadela","kcal":269,"p":11.9,"c":5.8,"g":21.9},
-  {"ref":"taco-salsicha","nome":"Salsicha","kcal":296,"p":13.5,"c":2.1,"g":25.7},
-  {"ref":"taco-bacon-frito","nome":"Bacon frito","kcal":541,"p":27.0,"c":0.6,"g":47.0},
-  {"ref":"taco-strogonoff-frango","nome":"Estrogonofe de frango","kcal":157,"p":13.7,"c":3.4,"g":9.7},
-  {"ref":"taco-feijoada","nome":"Feijoada","kcal":117,"p":8.7,"c":11.6,"g":6.5},
-  {"ref":"taco-arroz-carreteiro","nome":"Arroz carreteiro","kcal":154,"p":9.9,"c":18.5,"g":4.6},
-  {"ref":"taco-sopa-legumes","nome":"Sopa de legumes com carne","kcal":52,"p":3.2,"c":5.0,"g":2.2},
-  {"ref":"taco-vitamina-banana","nome":"Vitamina de banana com leite","kcal":80,"p":2.2,"c":15.0,"g":1.5},
-  {"ref":"taco-omelete","nome":"Omelete simples","kcal":268,"p":15.9,"c":1.1,"g":22.0},
-  {"ref":"taco-panqueca-carne","nome":"Panqueca de carne","kcal":220,"p":11.0,"c":18.0,"g":11.5},
-  {"ref":"taco-lasanha-bolonhesa","nome":"Lasanha à bolonhesa","kcal":164,"p":8.8,"c":15.0,"g":7.8},
-  {"ref":"taco-pure-batata","nome":"Purê de batata","kcal":90,"p":1.8,"c":13.0,"g":3.4},
-  {"ref":"taco-salada-maionese","nome":"Salada de maionese","kcal":184,"p":1.8,"c":15.0,"g":13.0},
-  {"ref":"taco-torta-frango","nome":"Torta de frango assada","kcal":310,"p":10.0,"c":30.0,"g":16.5}
+ {
+  "ref": "taco-arroz-branco-cozido",
+  "nome": "Arroz branco cozido",
+  "kcal": 128,
+  "p": 2.5,
+  "c": 28.1,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-arroz-integral-cozido",
+  "nome": "Arroz integral cozido",
+  "kcal": 124,
+  "p": 2.6,
+  "c": 25.8,
+  "g": 1.0
+ },
+ {
+  "ref": "taco-feijao-carioca-cozido",
+  "nome": "Feijão carioca cozido",
+  "kcal": 76,
+  "p": 4.8,
+  "c": 13.6,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-feijao-preto-cozido",
+  "nome": "Feijão preto cozido",
+  "kcal": 77,
+  "p": 4.5,
+  "c": 14.0,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-lentilha-cozida",
+  "nome": "Lentilha cozida",
+  "kcal": 93,
+  "p": 6.3,
+  "c": 16.3,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-grao-de-bico-cozido",
+  "nome": "Grão-de-bico cozido",
+  "kcal": 164,
+  "p": 8.9,
+  "c": 27.4,
+  "g": 2.6
+ },
+ {
+  "ref": "taco-macarrao-cozido",
+  "nome": "Macarrão cozido",
+  "kcal": 122,
+  "p": 3.9,
+  "c": 25.0,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-batata-inglesa-cozida",
+  "nome": "Batata inglesa cozida",
+  "kcal": 52,
+  "p": 1.2,
+  "c": 11.9,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-batata-doce-cozida",
+  "nome": "Batata-doce cozida",
+  "kcal": 77,
+  "p": 0.6,
+  "c": 18.4,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-mandioca-cozida",
+  "nome": "Mandioca cozida",
+  "kcal": 125,
+  "p": 0.6,
+  "c": 30.1,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-inhame-cozido",
+  "nome": "Inhame cozido",
+  "kcal": 97,
+  "p": 2.1,
+  "c": 23.2,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-milho-verde-cozido",
+  "nome": "Milho verde cozido",
+  "kcal": 98,
+  "p": 3.2,
+  "c": 17.1,
+  "g": 2.4
+ },
+ {
+  "ref": "taco-cuscuz-milho",
+  "nome": "Cuscuz de milho cozido",
+  "kcal": 113,
+  "p": 2.2,
+  "c": 25.3,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-tapioca",
+  "nome": "Tapioca (goma hidratada)",
+  "kcal": 240,
+  "p": 0.0,
+  "c": 59.4,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-aveia-flocos",
+  "nome": "Aveia em flocos",
+  "kcal": 394,
+  "p": 13.9,
+  "c": 66.6,
+  "g": 8.5
+ },
+ {
+  "ref": "taco-pao-frances",
+  "nome": "Pão francês",
+  "kcal": 300,
+  "p": 8.0,
+  "c": 58.6,
+  "g": 3.1
+ },
+ {
+  "ref": "taco-pao-integral",
+  "nome": "Pão de forma integral",
+  "kcal": 253,
+  "p": 9.4,
+  "c": 49.9,
+  "g": 2.9
+ },
+ {
+  "ref": "taco-pao-de-queijo",
+  "nome": "Pão de queijo assado",
+  "kcal": 363,
+  "p": 5.1,
+  "c": 34.2,
+  "g": 24.6
+ },
+ {
+  "ref": "taco-biscoito-cream-cracker",
+  "nome": "Biscoito cream cracker",
+  "kcal": 432,
+  "p": 10.1,
+  "c": 68.7,
+  "g": 14.4
+ },
+ {
+  "ref": "taco-farofa-mandioca",
+  "nome": "Farofa de mandioca temperada",
+  "kcal": 406,
+  "p": 2.1,
+  "c": 79.1,
+  "g": 9.1
+ },
+ {
+  "ref": "taco-polenta-cozida",
+  "nome": "Polenta cozida",
+  "kcal": 103,
+  "p": 2.3,
+  "c": 23.3,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-frango-peito-grelhado",
+  "nome": "Peito de frango grelhado",
+  "kcal": 159,
+  "p": 32.0,
+  "c": 0.0,
+  "g": 2.5
+ },
+ {
+  "ref": "taco-frango-coxa-assada",
+  "nome": "Coxa de frango assada c/ pele",
+  "kcal": 215,
+  "p": 28.1,
+  "c": 0.0,
+  "g": 11.0
+ },
+ {
+  "ref": "taco-frango-file-empanado",
+  "nome": "Frango empanado frito",
+  "kcal": 293,
+  "p": 15.3,
+  "c": 15.9,
+  "g": 18.4
+ },
+ {
+  "ref": "taco-carne-patinho-grelhado",
+  "nome": "Patinho grelhado (bovino)",
+  "kcal": 219,
+  "p": 35.9,
+  "c": 0.0,
+  "g": 7.3
+ },
+ {
+  "ref": "taco-carne-acem-cozido",
+  "nome": "Acém cozido (bovino)",
+  "kcal": 212,
+  "p": 27.3,
+  "c": 0.0,
+  "g": 10.7
+ },
+ {
+  "ref": "taco-carne-contra-file-grelhado",
+  "nome": "Contrafilé grelhado",
+  "kcal": 278,
+  "p": 32.4,
+  "c": 0.0,
+  "g": 15.5
+ },
+ {
+  "ref": "taco-carne-picanha-grelhada",
+  "nome": "Picanha grelhada",
+  "kcal": 289,
+  "p": 26.4,
+  "c": 0.0,
+  "g": 19.7
+ },
+ {
+  "ref": "taco-carne-moida-cozida",
+  "nome": "Carne moída refogada",
+  "kcal": 212,
+  "p": 26.7,
+  "c": 0.0,
+  "g": 10.9
+ },
+ {
+  "ref": "taco-figado-bovino-grelhado",
+  "nome": "Fígado bovino grelhado",
+  "kcal": 225,
+  "p": 29.9,
+  "c": 4.6,
+  "g": 9.0
+ },
+ {
+  "ref": "taco-carne-porco-lombo-assado",
+  "nome": "Lombo de porco assado",
+  "kcal": 210,
+  "p": 35.7,
+  "c": 0.0,
+  "g": 6.4
+ },
+ {
+  "ref": "taco-bisteca-porco-grelhada",
+  "nome": "Bisteca de porco grelhada",
+  "kcal": 280,
+  "p": 29.4,
+  "c": 0.0,
+  "g": 17.4
+ },
+ {
+  "ref": "taco-linguica-porco-frita",
+  "nome": "Linguiça de porco frita",
+  "kcal": 280,
+  "p": 19.5,
+  "c": 0.0,
+  "g": 21.9
+ },
+ {
+  "ref": "taco-tilapia-grelhada",
+  "nome": "Tilápia grelhada",
+  "kcal": 119,
+  "p": 26.2,
+  "c": 0.0,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-salmao-grelhado",
+  "nome": "Salmão grelhado",
+  "kcal": 243,
+  "p": 26.1,
+  "c": 0.0,
+  "g": 14.5
+ },
+ {
+  "ref": "taco-sardinha-assada",
+  "nome": "Sardinha assada",
+  "kcal": 164,
+  "p": 32.2,
+  "c": 0.0,
+  "g": 3.9
+ },
+ {
+  "ref": "taco-atum-conserva",
+  "nome": "Atum em conserva (óleo)",
+  "kcal": 166,
+  "p": 26.2,
+  "c": 0.0,
+  "g": 6.0
+ },
+ {
+  "ref": "taco-camarao-cozido",
+  "nome": "Camarão cozido",
+  "kcal": 90,
+  "p": 19.0,
+  "c": 0.0,
+  "g": 1.0
+ },
+ {
+  "ref": "taco-ovo-cozido",
+  "nome": "Ovo de galinha cozido",
+  "kcal": 146,
+  "p": 13.3,
+  "c": 0.6,
+  "g": 9.5
+ },
+ {
+  "ref": "taco-ovo-frito",
+  "nome": "Ovo frito",
+  "kcal": 240,
+  "p": 15.6,
+  "c": 1.2,
+  "g": 18.6
+ },
+ {
+  "ref": "taco-leite-integral",
+  "nome": "Leite integral",
+  "kcal": 61,
+  "p": 2.9,
+  "c": 4.5,
+  "g": 3.2
+ },
+ {
+  "ref": "taco-leite-desnatado",
+  "nome": "Leite desnatado",
+  "kcal": 35,
+  "p": 3.4,
+  "c": 4.9,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-iogurte-natural",
+  "nome": "Iogurte natural",
+  "kcal": 51,
+  "p": 4.1,
+  "c": 1.9,
+  "g": 3.0
+ },
+ {
+  "ref": "taco-iogurte-desnatado",
+  "nome": "Iogurte natural desnatado",
+  "kcal": 41,
+  "p": 3.8,
+  "c": 5.8,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-queijo-minas-frescal",
+  "nome": "Queijo minas frescal",
+  "kcal": 264,
+  "p": 17.4,
+  "c": 3.2,
+  "g": 20.2
+ },
+ {
+  "ref": "taco-queijo-mucarela",
+  "nome": "Queijo muçarela",
+  "kcal": 330,
+  "p": 22.6,
+  "c": 3.0,
+  "g": 25.2
+ },
+ {
+  "ref": "taco-queijo-prato",
+  "nome": "Queijo prato",
+  "kcal": 360,
+  "p": 22.7,
+  "c": 1.9,
+  "g": 29.1
+ },
+ {
+  "ref": "taco-requeijao",
+  "nome": "Requeijão cremoso",
+  "kcal": 257,
+  "p": 9.6,
+  "c": 2.4,
+  "g": 23.4
+ },
+ {
+  "ref": "taco-manteiga",
+  "nome": "Manteiga com sal",
+  "kcal": 726,
+  "p": 0.4,
+  "c": 0.1,
+  "g": 82.4
+ },
+ {
+  "ref": "taco-margarina",
+  "nome": "Margarina com sal",
+  "kcal": 596,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 67.0
+ },
+ {
+  "ref": "taco-alface",
+  "nome": "Alface crespa",
+  "kcal": 11,
+  "p": 1.3,
+  "c": 1.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-tomate",
+  "nome": "Tomate cru",
+  "kcal": 15,
+  "p": 1.1,
+  "c": 3.1,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-cenoura-crua",
+  "nome": "Cenoura crua",
+  "kcal": 34,
+  "p": 1.3,
+  "c": 7.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-cenoura-cozida",
+  "nome": "Cenoura cozida",
+  "kcal": 30,
+  "p": 0.8,
+  "c": 6.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-beterraba-cozida",
+  "nome": "Beterraba cozida",
+  "kcal": 32,
+  "p": 1.3,
+  "c": 7.2,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-brocolis-cozido",
+  "nome": "Brócolis cozido",
+  "kcal": 20,
+  "p": 2.1,
+  "c": 4.4,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-couve-refogada",
+  "nome": "Couve manteiga refogada",
+  "kcal": 90,
+  "p": 3.1,
+  "c": 8.7,
+  "g": 5.7
+ },
+ {
+  "ref": "taco-couve-flor-cozida",
+  "nome": "Couve-flor cozida",
+  "kcal": 19,
+  "p": 1.2,
+  "c": 3.9,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-abobrinha-cozida",
+  "nome": "Abobrinha italiana cozida",
+  "kcal": 15,
+  "p": 1.1,
+  "c": 3.0,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-abobora-cozida",
+  "nome": "Abóbora moranga cozida",
+  "kcal": 29,
+  "p": 1.4,
+  "c": 6.0,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-chuchu-cozido",
+  "nome": "Chuchu cozido",
+  "kcal": 19,
+  "p": 0.4,
+  "c": 4.8,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-pepino",
+  "nome": "Pepino cru",
+  "kcal": 10,
+  "p": 0.9,
+  "c": 2.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-pimentao-verde",
+  "nome": "Pimentão verde cru",
+  "kcal": 21,
+  "p": 1.1,
+  "c": 4.9,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-cebola",
+  "nome": "Cebola crua",
+  "kcal": 39,
+  "p": 1.7,
+  "c": 8.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-repolho-cru",
+  "nome": "Repolho branco cru",
+  "kcal": 17,
+  "p": 0.9,
+  "c": 3.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-espinafre-refogado",
+  "nome": "Espinafre refogado",
+  "kcal": 67,
+  "p": 2.7,
+  "c": 4.6,
+  "g": 5.4
+ },
+ {
+  "ref": "taco-quiabo-cozido",
+  "nome": "Quiabo cozido",
+  "kcal": 25,
+  "p": 1.6,
+  "c": 5.4,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-vagem-cozida",
+  "nome": "Vagem cozida",
+  "kcal": 25,
+  "p": 1.5,
+  "c": 5.3,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-banana-prata",
+  "nome": "Banana prata",
+  "kcal": 98,
+  "p": 1.3,
+  "c": 26.0,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-banana-nanica",
+  "nome": "Banana nanica",
+  "kcal": 92,
+  "p": 1.4,
+  "c": 23.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-maca",
+  "nome": "Maçã Fuji",
+  "kcal": 56,
+  "p": 0.3,
+  "c": 15.2,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-laranja",
+  "nome": "Laranja pera",
+  "kcal": 37,
+  "p": 1.0,
+  "c": 8.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-mamao",
+  "nome": "Mamão papaia",
+  "kcal": 40,
+  "p": 0.5,
+  "c": 10.4,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-manga",
+  "nome": "Manga Tommy",
+  "kcal": 51,
+  "p": 0.9,
+  "c": 12.8,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-abacaxi",
+  "nome": "Abacaxi",
+  "kcal": 48,
+  "p": 0.9,
+  "c": 12.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-melancia",
+  "nome": "Melancia",
+  "kcal": 33,
+  "p": 0.9,
+  "c": 8.1,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-melao",
+  "nome": "Melão",
+  "kcal": 29,
+  "p": 0.7,
+  "c": 7.5,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-uva",
+  "nome": "Uva Itália",
+  "kcal": 53,
+  "p": 0.7,
+  "c": 13.6,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-morango",
+  "nome": "Morango",
+  "kcal": 30,
+  "p": 0.9,
+  "c": 6.8,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-abacate",
+  "nome": "Abacate",
+  "kcal": 96,
+  "p": 1.2,
+  "c": 6.0,
+  "g": 8.4
+ },
+ {
+  "ref": "taco-limao",
+  "nome": "Limão Tahiti",
+  "kcal": 32,
+  "p": 0.9,
+  "c": 11.1,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-goiaba",
+  "nome": "Goiaba vermelha",
+  "kcal": 54,
+  "p": 1.1,
+  "c": 13.0,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-kiwi",
+  "nome": "Kiwi",
+  "kcal": 51,
+  "p": 1.3,
+  "c": 11.5,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-pera",
+  "nome": "Pera Williams",
+  "kcal": 53,
+  "p": 0.6,
+  "c": 14.0,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-acai-polpa",
+  "nome": "Açaí polpa (sem açúcar)",
+  "kcal": 58,
+  "p": 0.8,
+  "c": 6.2,
+  "g": 3.9
+ },
+ {
+  "ref": "taco-coco-agua",
+  "nome": "Água de coco",
+  "kcal": 22,
+  "p": 0.0,
+  "c": 5.3,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-castanha-para",
+  "nome": "Castanha-do-pará",
+  "kcal": 643,
+  "p": 14.5,
+  "c": 15.1,
+  "g": 63.5
+ },
+ {
+  "ref": "taco-castanha-caju",
+  "nome": "Castanha de caju torrada",
+  "kcal": 570,
+  "p": 18.5,
+  "c": 29.1,
+  "g": 46.3
+ },
+ {
+  "ref": "taco-amendoim-torrado",
+  "nome": "Amendoim torrado",
+  "kcal": 606,
+  "p": 22.5,
+  "c": 18.7,
+  "g": 54.0
+ },
+ {
+  "ref": "taco-pasta-amendoim",
+  "nome": "Pasta de amendoim",
+  "kcal": 589,
+  "p": 25.0,
+  "c": 20.0,
+  "g": 50.0
+ },
+ {
+  "ref": "taco-azeite-oliva",
+  "nome": "Azeite de oliva",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-oleo-soja",
+  "nome": "Óleo de soja",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-acucar-cristal",
+  "nome": "Açúcar cristal",
+  "kcal": 387,
+  "p": 0.3,
+  "c": 99.6,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-mel",
+  "nome": "Mel de abelha",
+  "kcal": 309,
+  "p": 0.0,
+  "c": 84.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-chocolate-ao-leite",
+  "nome": "Chocolate ao leite",
+  "kcal": 540,
+  "p": 7.2,
+  "c": 59.6,
+  "g": 30.3
+ },
+ {
+  "ref": "taco-chocolate-amargo",
+  "nome": "Chocolate meio amargo",
+  "kcal": 475,
+  "p": 4.9,
+  "c": 62.4,
+  "g": 29.9
+ },
+ {
+  "ref": "taco-doce-de-leite",
+  "nome": "Doce de leite",
+  "kcal": 306,
+  "p": 5.5,
+  "c": 59.5,
+  "g": 6.0
+ },
+ {
+  "ref": "taco-brigadeiro",
+  "nome": "Brigadeiro",
+  "kcal": 370,
+  "p": 4.3,
+  "c": 67.5,
+  "g": 10.0
+ },
+ {
+  "ref": "taco-sorvete-creme",
+  "nome": "Sorvete de creme",
+  "kcal": 186,
+  "p": 3.7,
+  "c": 24.0,
+  "g": 8.5
+ },
+ {
+  "ref": "taco-bolo-chocolate",
+  "nome": "Bolo de chocolate",
+  "kcal": 410,
+  "p": 6.2,
+  "c": 54.5,
+  "g": 18.5
+ },
+ {
+  "ref": "taco-coxinha-frango",
+  "nome": "Coxinha de frango frita",
+  "kcal": 283,
+  "p": 9.4,
+  "c": 34.2,
+  "g": 12.1
+ },
+ {
+  "ref": "taco-pastel-carne",
+  "nome": "Pastel de carne frito",
+  "kcal": 388,
+  "p": 10.5,
+  "c": 40.0,
+  "g": 20.7
+ },
+ {
+  "ref": "taco-pizza-mucarela",
+  "nome": "Pizza de muçarela",
+  "kcal": 289,
+  "p": 11.8,
+  "c": 33.2,
+  "g": 12.0
+ },
+ {
+  "ref": "taco-hamburguer-bovino",
+  "nome": "Hambúrguer bovino grelhado",
+  "kcal": 248,
+  "p": 19.0,
+  "c": 3.5,
+  "g": 17.5
+ },
+ {
+  "ref": "taco-batata-frita",
+  "nome": "Batata frita",
+  "kcal": 267,
+  "p": 4.0,
+  "c": 35.6,
+  "g": 13.1
+ },
+ {
+  "ref": "taco-salgadinho-milho",
+  "nome": "Salgadinho de milho",
+  "kcal": 510,
+  "p": 6.5,
+  "c": 60.0,
+  "g": 27.0
+ },
+ {
+  "ref": "taco-refrigerante-cola",
+  "nome": "Refrigerante tipo cola",
+  "kcal": 37,
+  "p": 0.0,
+  "c": 9.5,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-suco-laranja-natural",
+  "nome": "Suco de laranja natural",
+  "kcal": 37,
+  "p": 0.7,
+  "c": 8.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-cafe-coado",
+  "nome": "Café coado (sem açúcar)",
+  "kcal": 4,
+  "p": 0.2,
+  "c": 0.7,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-cerveja",
+  "nome": "Cerveja pilsen",
+  "kcal": 41,
+  "p": 0.6,
+  "c": 3.3,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-vinho-tinto",
+  "nome": "Vinho tinto seco",
+  "kcal": 83,
+  "p": 0.2,
+  "c": 2.6,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-whey-concentrado",
+  "nome": "Whey protein concentrado (pó)",
+  "kcal": 400,
+  "p": 78.0,
+  "c": 8.0,
+  "g": 6.5
+ },
+ {
+  "ref": "taco-granola",
+  "nome": "Granola",
+  "kcal": 421,
+  "p": 10.0,
+  "c": 68.0,
+  "g": 12.0
+ },
+ {
+  "ref": "taco-quinoa-cozida",
+  "nome": "Quinoa cozida",
+  "kcal": 120,
+  "p": 4.4,
+  "c": 21.3,
+  "g": 1.9
+ },
+ {
+  "ref": "taco-chia",
+  "nome": "Semente de chia",
+  "kcal": 486,
+  "p": 16.5,
+  "c": 42.1,
+  "g": 30.7
+ },
+ {
+  "ref": "taco-linhaca",
+  "nome": "Semente de linhaça",
+  "kcal": 495,
+  "p": 14.1,
+  "c": 43.3,
+  "g": 32.3
+ },
+ {
+  "ref": "taco-ricota",
+  "nome": "Ricota",
+  "kcal": 140,
+  "p": 12.6,
+  "c": 3.8,
+  "g": 8.1
+ },
+ {
+  "ref": "taco-cottage",
+  "nome": "Queijo cottage",
+  "kcal": 98,
+  "p": 11.1,
+  "c": 3.4,
+  "g": 4.3
+ },
+ {
+  "ref": "taco-peito-peru-defumado",
+  "nome": "Peito de peru defumado",
+  "kcal": 94,
+  "p": 17.0,
+  "c": 1.5,
+  "g": 2.0
+ },
+ {
+  "ref": "taco-presunto-magro",
+  "nome": "Presunto cozido magro",
+  "kcal": 94,
+  "p": 14.3,
+  "c": 1.0,
+  "g": 3.5
+ },
+ {
+  "ref": "taco-mortadela",
+  "nome": "Mortadela",
+  "kcal": 269,
+  "p": 11.9,
+  "c": 5.8,
+  "g": 21.9
+ },
+ {
+  "ref": "taco-salsicha",
+  "nome": "Salsicha",
+  "kcal": 296,
+  "p": 13.5,
+  "c": 2.1,
+  "g": 25.7
+ },
+ {
+  "ref": "taco-bacon-frito",
+  "nome": "Bacon frito",
+  "kcal": 541,
+  "p": 27.0,
+  "c": 0.6,
+  "g": 47.0
+ },
+ {
+  "ref": "taco-strogonoff-frango",
+  "nome": "Estrogonofe de frango",
+  "kcal": 157,
+  "p": 13.7,
+  "c": 3.4,
+  "g": 9.7
+ },
+ {
+  "ref": "taco-feijoada",
+  "nome": "Feijoada",
+  "kcal": 117,
+  "p": 8.7,
+  "c": 11.6,
+  "g": 6.5
+ },
+ {
+  "ref": "taco-arroz-carreteiro",
+  "nome": "Arroz carreteiro",
+  "kcal": 154,
+  "p": 9.9,
+  "c": 18.5,
+  "g": 4.6
+ },
+ {
+  "ref": "taco-sopa-legumes",
+  "nome": "Sopa de legumes com carne",
+  "kcal": 52,
+  "p": 3.2,
+  "c": 5.0,
+  "g": 2.2
+ },
+ {
+  "ref": "taco-vitamina-banana",
+  "nome": "Vitamina de banana com leite",
+  "kcal": 80,
+  "p": 2.2,
+  "c": 15.0,
+  "g": 1.5
+ },
+ {
+  "ref": "taco-omelete",
+  "nome": "Omelete simples",
+  "kcal": 268,
+  "p": 15.9,
+  "c": 1.1,
+  "g": 22.0
+ },
+ {
+  "ref": "taco-panqueca-carne",
+  "nome": "Panqueca de carne",
+  "kcal": 220,
+  "p": 11.0,
+  "c": 18.0,
+  "g": 11.5
+ },
+ {
+  "ref": "taco-lasanha-bolonhesa",
+  "nome": "Lasanha à bolonhesa",
+  "kcal": 164,
+  "p": 8.8,
+  "c": 15.0,
+  "g": 7.8
+ },
+ {
+  "ref": "taco-pure-batata",
+  "nome": "Purê de batata",
+  "kcal": 90,
+  "p": 1.8,
+  "c": 13.0,
+  "g": 3.4
+ },
+ {
+  "ref": "taco-salada-maionese",
+  "nome": "Salada de maionese",
+  "kcal": 184,
+  "p": 1.8,
+  "c": 15.0,
+  "g": 13.0
+ },
+ {
+  "ref": "taco-torta-frango",
+  "nome": "Torta de frango assada",
+  "kcal": 310,
+  "p": 10.0,
+  "c": 30.0,
+  "g": 16.5
+ },
+ {
+  "ref": "taco-abacate-cru",
+  "nome": "Abacate, cru",
+  "kcal": 96,
+  "p": 1.2,
+  "c": 6.0,
+  "g": 8.4
+ },
+ {
+  "ref": "taco-abacaxi-cru",
+  "nome": "Abacaxi, cru",
+  "kcal": 48,
+  "p": 0.9,
+  "c": 12.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-abacaxi-polpa-congelada",
+  "nome": "Abacaxi, polpa, congelada",
+  "kcal": 31,
+  "p": 0.5,
+  "c": 7.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-abadejo-file-congelado-assado",
+  "nome": "Abadejo, filé, congelado, assado",
+  "kcal": 112,
+  "p": 23.5,
+  "c": 0.0,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-abadejo-file-congelado-cru",
+  "nome": "Abadejo, filé, congelado, cru",
+  "kcal": 59,
+  "p": 13.1,
+  "c": 0.0,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-abadejo-file-congelado-grelhado",
+  "nome": "Abadejo, filé, congelado, grelhado",
+  "kcal": 130,
+  "p": 27.6,
+  "c": 0.0,
+  "g": 1.3
+ },
+ {
+  "ref": "taco-abadejo-file-congelado-cozido",
+  "nome": "Abadejo, filé, congelado,cozido",
+  "kcal": 91,
+  "p": 19.3,
+  "c": 0.0,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-abiu-cru",
+  "nome": "Abiu, cru",
+  "kcal": 62,
+  "p": 0.8,
+  "c": 14.9,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-abobrinha-italiana-crua",
+  "nome": "Abobrinha, italiana, crua",
+  "kcal": 19,
+  "p": 1.1,
+  "c": 4.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-abobrinha-italiana-refogada",
+  "nome": "Abobrinha, italiana, refogada",
+  "kcal": 24,
+  "p": 1.1,
+  "c": 4.2,
+  "g": 0.8
+ },
+ {
+  "ref": "taco-abobrinha-paulista-crua",
+  "nome": "Abobrinha, paulista, crua",
+  "kcal": 31,
+  "p": 0.6,
+  "c": 7.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-abobora-cabotian-cozida",
+  "nome": "Abóbora, cabotian, cozida",
+  "kcal": 48,
+  "p": 1.4,
+  "c": 10.8,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-abobora-cabotian-crua",
+  "nome": "Abóbora, cabotian, crua",
+  "kcal": 39,
+  "p": 1.7,
+  "c": 8.4,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-abobora-menina-brasileira-crua",
+  "nome": "Abóbora, menina brasileira, crua",
+  "kcal": 14,
+  "p": 0.6,
+  "c": 3.3,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-abobora-moranga-crua",
+  "nome": "Abóbora, moranga, crua",
+  "kcal": 12,
+  "p": 1.0,
+  "c": 2.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-abobora-moranga-refogada",
+  "nome": "Abóbora, moranga, refogada",
+  "kcal": 29,
+  "p": 0.4,
+  "c": 6.0,
+  "g": 0.8
+ },
+ {
+  "ref": "taco-abobora-pescoco-crua",
+  "nome": "Abóbora, pescoço, crua",
+  "kcal": 24,
+  "p": 0.7,
+  "c": 6.1,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-acaraje",
+  "nome": "Acarajé",
+  "kcal": 289,
+  "p": 8.3,
+  "c": 19.1,
+  "g": 19.9
+ },
+ {
+  "ref": "taco-acelga-crua",
+  "nome": "Acelga, crua",
+  "kcal": 21,
+  "p": 1.4,
+  "c": 4.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-acerola-crua",
+  "nome": "Acerola, crua",
+  "kcal": 33,
+  "p": 0.9,
+  "c": 8.0,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-acerola-polpa-congelada",
+  "nome": "Acerola, polpa, congelada",
+  "kcal": 22,
+  "p": 0.6,
+  "c": 5.5,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-achocolatado-po",
+  "nome": "Achocolatado, pó",
+  "kcal": 401,
+  "p": 4.2,
+  "c": 91.2,
+  "g": 2.2
+ },
+ {
+  "ref": "taco-agriao-cru",
+  "nome": "Agrião, cru",
+  "kcal": 17,
+  "p": 2.7,
+  "c": 2.3,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-aipo-cru",
+  "nome": "Aipo, cru",
+  "kcal": 19,
+  "p": 0.8,
+  "c": 4.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-alface-americana-crua",
+  "nome": "Alface, americana, crua",
+  "kcal": 9,
+  "p": 0.6,
+  "c": 1.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-alface-crespa-crua",
+  "nome": "Alface, crespa, crua",
+  "kcal": 11,
+  "p": 1.3,
+  "c": 1.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-alface-lisa-crua",
+  "nome": "Alface, lisa, crua",
+  "kcal": 14,
+  "p": 1.7,
+  "c": 2.4,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-alface-roxa-crua",
+  "nome": "Alface, roxa, crua",
+  "kcal": 13,
+  "p": 0.9,
+  "c": 2.5,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-alfavaca-crua",
+  "nome": "Alfavaca, crua",
+  "kcal": 29,
+  "p": 2.7,
+  "c": 5.2,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-alho-cru",
+  "nome": "Alho, cru",
+  "kcal": 113,
+  "p": 7.0,
+  "c": 23.9,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-alho-poro-cru",
+  "nome": "Alho-poró, cru",
+  "kcal": 32,
+  "p": 1.4,
+  "c": 6.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-almeirao-cru",
+  "nome": "Almeirão, cru",
+  "kcal": 18,
+  "p": 1.8,
+  "c": 3.3,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-almeirao-refogado",
+  "nome": "Almeirão, refogado",
+  "kcal": 65,
+  "p": 1.7,
+  "c": 5.7,
+  "g": 4.8
+ },
+ {
+  "ref": "taco-ameixa-calda-enlatada",
+  "nome": "Ameixa, calda, enlatada",
+  "kcal": 183,
+  "p": 0.4,
+  "c": 46.9,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-ameixa-crua",
+  "nome": "Ameixa, crua",
+  "kcal": 53,
+  "p": 0.8,
+  "c": 13.9,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-ameixa-em-calda-enlatada-drenada",
+  "nome": "Ameixa, em calda, enlatada, drenada",
+  "kcal": 177,
+  "p": 1.0,
+  "c": 47.7,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-amendoim-grao-cru",
+  "nome": "Amendoim, grão, cru",
+  "kcal": 544,
+  "p": 27.2,
+  "c": 20.3,
+  "g": 43.9
+ },
+ {
+  "ref": "taco-amendoim-torrado-salgado",
+  "nome": "Amendoim, torrado, salgado",
+  "kcal": 606,
+  "p": 22.5,
+  "c": 18.7,
+  "g": 54.0
+ },
+ {
+  "ref": "taco-amendoa-torrada-salgada",
+  "nome": "Amêndoa, torrada, salgada",
+  "kcal": 581,
+  "p": 18.6,
+  "c": 29.5,
+  "g": 47.3
+ },
+ {
+  "ref": "taco-apresuntado",
+  "nome": "Apresuntado",
+  "kcal": 129,
+  "p": 13.4,
+  "c": 2.9,
+  "g": 6.7
+ },
+ {
+  "ref": "taco-arroz-integral-cru",
+  "nome": "Arroz, integral, cru",
+  "kcal": 360,
+  "p": 7.3,
+  "c": 77.5,
+  "g": 1.9
+ },
+ {
+  "ref": "taco-arroz-tipo-1-cozido",
+  "nome": "Arroz, tipo 1, cozido",
+  "kcal": 128,
+  "p": 2.5,
+  "c": 28.1,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-arroz-tipo-1-cru",
+  "nome": "Arroz, tipo 1, cru",
+  "kcal": 358,
+  "p": 7.2,
+  "c": 78.8,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-arroz-tipo-2-cozido",
+  "nome": "Arroz, tipo 2, cozido",
+  "kcal": 130,
+  "p": 2.6,
+  "c": 28.2,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-arroz-tipo-2-cru",
+  "nome": "Arroz, tipo 2, cru",
+  "kcal": 358,
+  "p": 7.2,
+  "c": 78.9,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-atemoia-crua",
+  "nome": "Atemóia, crua",
+  "kcal": 97,
+  "p": 1.0,
+  "c": 25.3,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-atum-fresco-cru",
+  "nome": "Atum, fresco, cru",
+  "kcal": 118,
+  "p": 25.7,
+  "c": 0.0,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-aveia-flocos-crua",
+  "nome": "Aveia, flocos, crua",
+  "kcal": 394,
+  "p": 13.9,
+  "c": 66.6,
+  "g": 8.5
+ },
+ {
+  "ref": "taco-azeite-de-dende",
+  "nome": "Azeite, de dendê",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-azeite-de-oliva-extra-virgem",
+  "nome": "Azeite, de oliva, extra virgem",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-azeitona-preta-conserva",
+  "nome": "Azeitona, preta, conserva",
+  "kcal": 194,
+  "p": 1.2,
+  "c": 5.5,
+  "g": 20.3
+ },
+ {
+  "ref": "taco-azeitona-verde-conserva",
+  "nome": "Azeitona, verde, conserva",
+  "kcal": 137,
+  "p": 0.9,
+  "c": 4.1,
+  "g": 14.2
+ },
+ {
+  "ref": "taco-acai-polpa-com-xarope-de-guarana-e-glucose",
+  "nome": "Açaí, polpa, com xarope de guaraná e glucose",
+  "kcal": 110,
+  "p": 0.7,
+  "c": 21.5,
+  "g": 3.7
+ },
+ {
+  "ref": "taco-acai-polpa-congelada",
+  "nome": "Açaí, polpa, congelada",
+  "kcal": 58,
+  "p": 0.8,
+  "c": 6.2,
+  "g": 3.9
+ },
+ {
+  "ref": "taco-acucar-mascavo",
+  "nome": "Açúcar, mascavo",
+  "kcal": 369,
+  "p": 0.8,
+  "c": 94.5,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-acucar-refinado",
+  "nome": "Açúcar, refinado",
+  "kcal": 387,
+  "p": 0.3,
+  "c": 99.5,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-bacalhau-salgado-cru",
+  "nome": "Bacalhau, salgado, cru",
+  "kcal": 136,
+  "p": 29.0,
+  "c": 0.0,
+  "g": 1.3
+ },
+ {
+  "ref": "taco-bacalhau-salgado-refogado",
+  "nome": "Bacalhau, salgado, refogado",
+  "kcal": 140,
+  "p": 24.0,
+  "c": 1.2,
+  "g": 3.6
+ },
+ {
+  "ref": "taco-baiao-de-dois-arroz-e-feijao-de-corda",
+  "nome": "Baião de dois, arroz e feijão-de-corda",
+  "kcal": 136,
+  "p": 6.2,
+  "c": 20.4,
+  "g": 3.2
+ },
+ {
+  "ref": "taco-banana-da-terra-crua",
+  "nome": "Banana, da terra, crua",
+  "kcal": 128,
+  "p": 1.4,
+  "c": 33.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-banana-doce-em-barra",
+  "nome": "Banana, doce em barra",
+  "kcal": 280,
+  "p": 2.2,
+  "c": 75.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-banana-figo-crua",
+  "nome": "Banana, figo, crua",
+  "kcal": 105,
+  "p": 1.1,
+  "c": 27.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-banana-maca-crua",
+  "nome": "Banana, maçã, crua",
+  "kcal": 87,
+  "p": 1.8,
+  "c": 22.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-banana-nanica-crua",
+  "nome": "Banana, nanica, crua",
+  "kcal": 92,
+  "p": 1.4,
+  "c": 23.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-banana-ouro-crua",
+  "nome": "Banana, ouro, crua",
+  "kcal": 112,
+  "p": 1.5,
+  "c": 29.3,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-banana-pacova-crua",
+  "nome": "Banana, pacova, crua",
+  "kcal": 78,
+  "p": 1.2,
+  "c": 20.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-banana-prata-crua",
+  "nome": "Banana, prata, crua",
+  "kcal": 98,
+  "p": 1.3,
+  "c": 26.0,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-barreado",
+  "nome": "Barreado",
+  "kcal": 165,
+  "p": 18.3,
+  "c": 0.2,
+  "g": 9.5
+ },
+ {
+  "ref": "taco-batata-baroa-cozida",
+  "nome": "Batata, baroa, cozida",
+  "kcal": 80,
+  "p": 0.9,
+  "c": 18.9,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-batata-baroa-crua",
+  "nome": "Batata, baroa, crua",
+  "kcal": 101,
+  "p": 1.0,
+  "c": 24.0,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-batata-doce-crua",
+  "nome": "Batata, doce, crua",
+  "kcal": 118,
+  "p": 1.3,
+  "c": 28.2,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-batata-frita-tipo-chips-industrializada",
+  "nome": "Batata, frita, tipo chips, industrializada",
+  "kcal": 543,
+  "p": 5.6,
+  "c": 51.2,
+  "g": 36.6
+ },
+ {
+  "ref": "taco-batata-inglesa-crua",
+  "nome": "Batata, inglesa, crua",
+  "kcal": 64,
+  "p": 1.8,
+  "c": 14.7,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-batata-inglesa-frita",
+  "nome": "Batata, inglesa, frita",
+  "kcal": 267,
+  "p": 5.0,
+  "c": 35.6,
+  "g": 13.1
+ },
+ {
+  "ref": "taco-batata-inglesa-saute",
+  "nome": "Batata, inglesa, sauté",
+  "kcal": 68,
+  "p": 1.3,
+  "c": 14.1,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-bebida-isotonica-sabores-variados",
+  "nome": "Bebida isotônica, sabores variados",
+  "kcal": 26,
+  "p": 0.0,
+  "c": 6.4,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-bebida-lactea-pessego",
+  "nome": "Bebida láctea, pêssego",
+  "kcal": 55,
+  "p": 2.1,
+  "c": 7.6,
+  "g": 1.9
+ },
+ {
+  "ref": "taco-berinjela-cozida",
+  "nome": "Berinjela, cozida",
+  "kcal": 19,
+  "p": 0.7,
+  "c": 4.5,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-berinjela-crua",
+  "nome": "Berinjela, crua",
+  "kcal": 20,
+  "p": 1.2,
+  "c": 4.4,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-beterraba-crua",
+  "nome": "Beterraba, crua",
+  "kcal": 49,
+  "p": 1.9,
+  "c": 11.1,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-bife-a-cavalo-com-contra-file",
+  "nome": "Bife à cavalo, com contra filé",
+  "kcal": 291,
+  "p": 23.7,
+  "c": 0.0,
+  "g": 21.1
+ },
+ {
+  "ref": "taco-biscoito-doce-maisena",
+  "nome": "Biscoito, doce, maisena",
+  "kcal": 443,
+  "p": 8.1,
+  "c": 75.2,
+  "g": 12.0
+ },
+ {
+  "ref": "taco-biscoito-doce-recheado-com-chocolate",
+  "nome": "Biscoito, doce, recheado com chocolate",
+  "kcal": 472,
+  "p": 6.4,
+  "c": 70.5,
+  "g": 19.6
+ },
+ {
+  "ref": "taco-biscoito-doce-recheado-com-morango",
+  "nome": "Biscoito, doce, recheado com morango",
+  "kcal": 471,
+  "p": 5.7,
+  "c": 71.0,
+  "g": 19.6
+ },
+ {
+  "ref": "taco-biscoito-doce-wafer-recheado-de-chocolate",
+  "nome": "Biscoito, doce, wafer, recheado de chocolate",
+  "kcal": 502,
+  "p": 5.6,
+  "c": 67.5,
+  "g": 24.7
+ },
+ {
+  "ref": "taco-biscoito-doce-wafer-recheado-de-morango",
+  "nome": "Biscoito, doce, wafer, recheado de morango",
+  "kcal": 513,
+  "p": 4.5,
+  "c": 67.4,
+  "g": 26.4
+ },
+ {
+  "ref": "taco-biscoito-polvilho-doce",
+  "nome": "Biscoito, polvilho doce",
+  "kcal": 438,
+  "p": 1.3,
+  "c": 80.5,
+  "g": 12.2
+ },
+ {
+  "ref": "taco-biscoito-salgado-cream-cracker",
+  "nome": "Biscoito, salgado, cream cracker",
+  "kcal": 432,
+  "p": 10.1,
+  "c": 68.7,
+  "g": 14.4
+ },
+ {
+  "ref": "taco-bolinho-de-arroz",
+  "nome": "Bolinho de arroz",
+  "kcal": 274,
+  "p": 8.0,
+  "c": 41.7,
+  "g": 8.3
+ },
+ {
+  "ref": "taco-bolo-mistura-para",
+  "nome": "Bolo, mistura para",
+  "kcal": 419,
+  "p": 6.2,
+  "c": 84.7,
+  "g": 6.1
+ },
+ {
+  "ref": "taco-bolo-pronto-aipim",
+  "nome": "Bolo, pronto, aipim",
+  "kcal": 324,
+  "p": 4.4,
+  "c": 47.9,
+  "g": 12.7
+ },
+ {
+  "ref": "taco-bolo-pronto-chocolate",
+  "nome": "Bolo, pronto, chocolate",
+  "kcal": 410,
+  "p": 6.2,
+  "c": 54.7,
+  "g": 18.5
+ },
+ {
+  "ref": "taco-bolo-pronto-coco",
+  "nome": "Bolo, pronto, coco",
+  "kcal": 333,
+  "p": 5.7,
+  "c": 52.3,
+  "g": 11.3
+ },
+ {
+  "ref": "taco-bolo-pronto-milho",
+  "nome": "Bolo, pronto, milho",
+  "kcal": 311,
+  "p": 4.8,
+  "c": 45.1,
+  "g": 12.4
+ },
+ {
+  "ref": "taco-brocolis-cru",
+  "nome": "Brócolis, cru",
+  "kcal": 25,
+  "p": 3.6,
+  "c": 4.0,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-cacau-cru",
+  "nome": "Cacau, cru",
+  "kcal": 74,
+  "p": 1.0,
+  "c": 19.4,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-cafe-infusao-10",
+  "nome": "Café, infusão 10%",
+  "kcal": 9,
+  "p": 0.7,
+  "c": 1.5,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-cafe-po-torrado",
+  "nome": "Café, pó, torrado",
+  "kcal": 419,
+  "p": 14.7,
+  "c": 65.8,
+  "g": 11.9
+ },
+ {
+  "ref": "taco-caju-cru",
+  "nome": "Caju, cru",
+  "kcal": 43,
+  "p": 1.0,
+  "c": 10.3,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-caju-polpa-congelada",
+  "nome": "Caju, polpa, congelada",
+  "kcal": 37,
+  "p": 0.5,
+  "c": 9.4,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-caju-suco-concentrado-envasado",
+  "nome": "Caju, suco concentrado, envasado",
+  "kcal": 45,
+  "p": 0.4,
+  "c": 10.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-caja-polpa-congelada",
+  "nome": "Cajá, polpa, congelada",
+  "kcal": 26,
+  "p": 0.6,
+  "c": 6.4,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-caja-manga-cru",
+  "nome": "Cajá-Manga, cru",
+  "kcal": 46,
+  "p": 1.3,
+  "c": 11.4,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-caldo-de-carne-tablete",
+  "nome": "Caldo de carne, tablete",
+  "kcal": 241,
+  "p": 7.8,
+  "c": 15.1,
+  "g": 16.6
+ },
+ {
+  "ref": "taco-caldo-de-galinha-tablete",
+  "nome": "Caldo de galinha, tablete",
+  "kcal": 251,
+  "p": 6.3,
+  "c": 10.6,
+  "g": 20.4
+ },
+ {
+  "ref": "taco-camarao-a-baiana",
+  "nome": "Camarão à baiana",
+  "kcal": 101,
+  "p": 7.9,
+  "c": 3.2,
+  "g": 6.0
+ },
+ {
+  "ref": "taco-camarao-rio-grande-grande-cozido",
+  "nome": "Camarão, Rio Grande, grande, cozido",
+  "kcal": 90,
+  "p": 19.0,
+  "c": 0.0,
+  "g": 1.0
+ },
+ {
+  "ref": "taco-camarao-rio-grande-grande-cru",
+  "nome": "Camarão, Rio Grande, grande, cru",
+  "kcal": 47,
+  "p": 10.0,
+  "c": 0.0,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-camarao-sete-barbas-sem-cabeca-com-casca-frito",
+  "nome": "Camarão, Sete Barbas, sem cabeça, com casca, frito",
+  "kcal": 231,
+  "p": 18.4,
+  "c": 2.9,
+  "g": 15.6
+ },
+ {
+  "ref": "taco-cana-aguardente-1",
+  "nome": "Cana, aguardente 1",
+  "kcal": 216,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-cana-caldo-de",
+  "nome": "Cana, caldo de",
+  "kcal": 65,
+  "p": 0.0,
+  "c": 18.2,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-canjica-branca-crua",
+  "nome": "Canjica, branca, crua",
+  "kcal": 358,
+  "p": 7.2,
+  "c": 78.1,
+  "g": 1.0
+ },
+ {
+  "ref": "taco-canjica-com-leite-integral",
+  "nome": "Canjica, com leite integral",
+  "kcal": 112,
+  "p": 2.4,
+  "c": 23.6,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-capuccino-po",
+  "nome": "Capuccino, pó",
+  "kcal": 417,
+  "p": 11.3,
+  "c": 73.6,
+  "g": 8.6
+ },
+ {
+  "ref": "taco-caqui-chocolate-cru",
+  "nome": "Caqui, chocolate, cru",
+  "kcal": 71,
+  "p": 0.4,
+  "c": 19.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-carambola-crua",
+  "nome": "Carambola, crua",
+  "kcal": 46,
+  "p": 0.9,
+  "c": 11.5,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-caranguejo-cozido",
+  "nome": "Caranguejo, cozido",
+  "kcal": 83,
+  "p": 18.5,
+  "c": 0.0,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-carne-bovina-acem-moido-cozido",
+  "nome": "Carne, bovina, acém, moído, cozido",
+  "kcal": 212,
+  "p": 26.7,
+  "c": 0.0,
+  "g": 10.9
+ },
+ {
+  "ref": "taco-carne-bovina-acem-moido-cru",
+  "nome": "Carne, bovina, acém, moído, cru",
+  "kcal": 137,
+  "p": 19.4,
+  "c": 0.0,
+  "g": 5.9
+ },
+ {
+  "ref": "taco-carne-bovina-acem-sem-gordura-cozido",
+  "nome": "Carne, bovina, acém, sem gordura, cozido",
+  "kcal": 215,
+  "p": 27.3,
+  "c": 0.0,
+  "g": 10.9
+ },
+ {
+  "ref": "taco-carne-bovina-acem-sem-gordura-cru",
+  "nome": "Carne, bovina, acém, sem gordura, cru",
+  "kcal": 144,
+  "p": 20.8,
+  "c": 0.0,
+  "g": 6.1
+ },
+ {
+  "ref": "taco-carne-bovina-almondegas-cruas",
+  "nome": "Carne, bovina, almôndegas, cruas",
+  "kcal": 189,
+  "p": 12.3,
+  "c": 9.8,
+  "g": 11.2
+ },
+ {
+  "ref": "taco-carne-bovina-almondegas-fritas",
+  "nome": "Carne, bovina, almôndegas, fritas",
+  "kcal": 272,
+  "p": 18.2,
+  "c": 14.3,
+  "g": 15.8
+ },
+ {
+  "ref": "taco-carne-bovina-bucho-cozido",
+  "nome": "Carne, bovina, bucho, cozido",
+  "kcal": 133,
+  "p": 21.6,
+  "c": 0.0,
+  "g": 4.5
+ },
+ {
+  "ref": "taco-carne-bovina-bucho-cru",
+  "nome": "Carne, bovina, bucho, cru",
+  "kcal": 137,
+  "p": 20.5,
+  "c": 0.0,
+  "g": 5.5
+ },
+ {
+  "ref": "taco-carne-bovina-capa-de-contra-file-com-gordura-crua",
+  "nome": "Carne, bovina, capa de contra-filé, com gordura, crua",
+  "kcal": 217,
+  "p": 19.2,
+  "c": 0.0,
+  "g": 15.0
+ },
+ {
+  "ref": "taco-carne-bovina-capa-de-contra-file-com-gordura-grelhada",
+  "nome": "Carne, bovina, capa de contra-filé, com gordura, grelhada",
+  "kcal": 312,
+  "p": 30.7,
+  "c": 0.0,
+  "g": 20.0
+ },
+ {
+  "ref": "taco-carne-bovina-charque-cozido",
+  "nome": "Carne, bovina, charque, cozido",
+  "kcal": 263,
+  "p": 36.4,
+  "c": 0.0,
+  "g": 11.9
+ },
+ {
+  "ref": "taco-carne-bovina-charque-cru",
+  "nome": "Carne, bovina, charque, cru",
+  "kcal": 249,
+  "p": 22.7,
+  "c": 0.0,
+  "g": 16.8
+ },
+ {
+  "ref": "taco-carne-bovina-contra-file-de-costela-cru",
+  "nome": "Carne, bovina, contra-filé de costela, cru",
+  "kcal": 202,
+  "p": 19.8,
+  "c": 0.0,
+  "g": 13.1
+ },
+ {
+  "ref": "taco-carne-bovina-contra-file-de-costela-grelhado",
+  "nome": "Carne, bovina, contra-filé de costela, grelhado",
+  "kcal": 275,
+  "p": 29.9,
+  "c": 0.0,
+  "g": 16.3
+ },
+ {
+  "ref": "taco-carne-bovina-contra-file-com-gordura-cru",
+  "nome": "Carne, bovina, contra-filé, com gordura, cru",
+  "kcal": 206,
+  "p": 21.1,
+  "c": 0.0,
+  "g": 12.8
+ },
+ {
+  "ref": "taco-carne-bovina-contra-file-com-gordura-grelhado",
+  "nome": "Carne, bovina, contra-filé, com gordura, grelhado",
+  "kcal": 278,
+  "p": 32.4,
+  "c": 0.0,
+  "g": 15.5
+ },
+ {
+  "ref": "taco-carne-bovina-contra-file-a-milanesa",
+  "nome": "Carne, bovina, contra-filé, à milanesa",
+  "kcal": 352,
+  "p": 20.6,
+  "c": 12.2,
+  "g": 24.0
+ },
+ {
+  "ref": "taco-carne-bovina-costela-assada",
+  "nome": "Carne, bovina, costela, assada",
+  "kcal": 373,
+  "p": 28.8,
+  "c": 0.0,
+  "g": 27.7
+ },
+ {
+  "ref": "taco-carne-bovina-costela-crua",
+  "nome": "Carne, bovina, costela, crua",
+  "kcal": 358,
+  "p": 16.7,
+  "c": 0.0,
+  "g": 31.8
+ },
+ {
+  "ref": "taco-carne-bovina-coxao-duro-sem-gordura-cozido",
+  "nome": "Carne, bovina, coxão duro, sem gordura, cozido",
+  "kcal": 217,
+  "p": 31.9,
+  "c": 0.0,
+  "g": 8.9
+ },
+ {
+  "ref": "taco-carne-bovina-coxao-duro-sem-gordura-cru",
+  "nome": "Carne, bovina, coxão duro, sem gordura, cru",
+  "kcal": 148,
+  "p": 21.5,
+  "c": 0.0,
+  "g": 6.2
+ },
+ {
+  "ref": "taco-carne-bovina-coxao-mole-sem-gordura-cozido",
+  "nome": "Carne, bovina, coxão mole, sem gordura, cozido",
+  "kcal": 219,
+  "p": 32.4,
+  "c": 0.0,
+  "g": 8.9
+ },
+ {
+  "ref": "taco-carne-bovina-coxao-mole-sem-gordura-cru",
+  "nome": "Carne, bovina, coxão mole, sem gordura, cru",
+  "kcal": 169,
+  "p": 21.2,
+  "c": 0.0,
+  "g": 8.7
+ },
+ {
+  "ref": "taco-carne-bovina-cupim-assado",
+  "nome": "Carne, bovina, cupim, assado",
+  "kcal": 330,
+  "p": 28.6,
+  "c": 0.0,
+  "g": 23.0
+ },
+ {
+  "ref": "taco-carne-bovina-cupim-cru",
+  "nome": "Carne, bovina, cupim, cru",
+  "kcal": 221,
+  "p": 19.5,
+  "c": 0.0,
+  "g": 15.3
+ },
+ {
+  "ref": "taco-carne-bovina-file-mingnon-sem-gordura-cru",
+  "nome": "Carne, bovina, filé mingnon, sem gordura, cru",
+  "kcal": 143,
+  "p": 21.6,
+  "c": 0.0,
+  "g": 5.6
+ },
+ {
+  "ref": "taco-carne-bovina-file-mingnon-sem-gordura-grelhado",
+  "nome": "Carne, bovina, filé mingnon, sem gordura, grelhado",
+  "kcal": 220,
+  "p": 32.8,
+  "c": 0.0,
+  "g": 8.8
+ },
+ {
+  "ref": "taco-carne-bovina-flanco-sem-gordura-cozido",
+  "nome": "Carne, bovina, flanco, sem gordura, cozido",
+  "kcal": 196,
+  "p": 29.4,
+  "c": 0.0,
+  "g": 7.8
+ },
+ {
+  "ref": "taco-carne-bovina-flanco-sem-gordura-cru",
+  "nome": "Carne, bovina, flanco, sem gordura, cru",
+  "kcal": 141,
+  "p": 20.0,
+  "c": 0.0,
+  "g": 6.2
+ },
+ {
+  "ref": "taco-carne-bovina-fraldinha-com-gordura-cozida",
+  "nome": "Carne, bovina, fraldinha, com gordura, cozida",
+  "kcal": 338,
+  "p": 24.2,
+  "c": 0.0,
+  "g": 26.0
+ },
+ {
+  "ref": "taco-carne-bovina-fraldinha-com-gordura-crua",
+  "nome": "Carne, bovina, fraldinha, com gordura, crua",
+  "kcal": 221,
+  "p": 17.6,
+  "c": 0.0,
+  "g": 16.1
+ },
+ {
+  "ref": "taco-carne-bovina-figado-cru",
+  "nome": "Carne, bovina, fígado, cru",
+  "kcal": 141,
+  "p": 20.7,
+  "c": 1.1,
+  "g": 5.4
+ },
+ {
+  "ref": "taco-carne-bovina-figado-grelhado",
+  "nome": "Carne, bovina, fígado, grelhado",
+  "kcal": 225,
+  "p": 29.9,
+  "c": 4.2,
+  "g": 9.0
+ },
+ {
+  "ref": "taco-carne-bovina-lagarto-cozido",
+  "nome": "Carne, bovina, lagarto, cozido",
+  "kcal": 222,
+  "p": 32.9,
+  "c": 0.0,
+  "g": 9.1
+ },
+ {
+  "ref": "taco-carne-bovina-lagarto-cru",
+  "nome": "Carne, bovina, lagarto, cru",
+  "kcal": 135,
+  "p": 20.5,
+  "c": 0.0,
+  "g": 5.2
+ },
+ {
+  "ref": "taco-carne-bovina-lingua-cozida",
+  "nome": "Carne, bovina, língua, cozida",
+  "kcal": 315,
+  "p": 21.4,
+  "c": 0.0,
+  "g": 24.8
+ },
+ {
+  "ref": "taco-carne-bovina-lingua-crua",
+  "nome": "Carne, bovina, língua, crua",
+  "kcal": 215,
+  "p": 17.1,
+  "c": 0.0,
+  "g": 15.8
+ },
+ {
+  "ref": "taco-carne-bovina-maminha-crua",
+  "nome": "Carne, bovina, maminha, crua",
+  "kcal": 153,
+  "p": 20.9,
+  "c": 0.0,
+  "g": 7.0
+ },
+ {
+  "ref": "taco-carne-bovina-maminha-grelhada",
+  "nome": "Carne, bovina, maminha, grelhada",
+  "kcal": 153,
+  "p": 30.7,
+  "c": 0.0,
+  "g": 2.4
+ },
+ {
+  "ref": "taco-carne-bovina-miolo-de-alcatra-sem-gordura-cru",
+  "nome": "Carne, bovina, miolo de alcatra, sem gordura, cru",
+  "kcal": 163,
+  "p": 21.6,
+  "c": 0.0,
+  "g": 7.8
+ },
+ {
+  "ref": "taco-carne-bovina-miolo-de-alcatra-sem-gordura-grelhado",
+  "nome": "Carne, bovina, miolo de alcatra, sem gordura, grelhado",
+  "kcal": 241,
+  "p": 31.9,
+  "c": 0.0,
+  "g": 11.6
+ },
+ {
+  "ref": "taco-carne-bovina-musculo-sem-gordura-cozido",
+  "nome": "Carne, bovina, músculo, sem gordura, cozido",
+  "kcal": 194,
+  "p": 31.2,
+  "c": 0.0,
+  "g": 6.7
+ },
+ {
+  "ref": "taco-carne-bovina-musculo-sem-gordura-cru",
+  "nome": "Carne, bovina, músculo, sem gordura, cru",
+  "kcal": 142,
+  "p": 21.6,
+  "c": 0.0,
+  "g": 5.5
+ },
+ {
+  "ref": "taco-carne-bovina-paleta-com-gordura-crua",
+  "nome": "Carne, bovina, paleta, com gordura, crua",
+  "kcal": 159,
+  "p": 21.4,
+  "c": 0.0,
+  "g": 7.5
+ },
+ {
+  "ref": "taco-carne-bovina-paleta-sem-gordura-cozida",
+  "nome": "Carne, bovina, paleta, sem gordura, cozida",
+  "kcal": 194,
+  "p": 29.7,
+  "c": 0.0,
+  "g": 7.4
+ },
+ {
+  "ref": "taco-carne-bovina-patinho-sem-gordura-cru",
+  "nome": "Carne, bovina, patinho, sem gordura, cru",
+  "kcal": 133,
+  "p": 21.7,
+  "c": 0.0,
+  "g": 4.5
+ },
+ {
+  "ref": "taco-carne-bovina-patinho-sem-gordura-grelhado",
+  "nome": "Carne, bovina, patinho, sem gordura, grelhado",
+  "kcal": 219,
+  "p": 35.9,
+  "c": 0.0,
+  "g": 7.3
+ },
+ {
+  "ref": "taco-carne-bovina-peito-sem-gordura-cozido",
+  "nome": "Carne, bovina, peito, sem gordura, cozido",
+  "kcal": 338,
+  "p": 22.2,
+  "c": 0.0,
+  "g": 27.0
+ },
+ {
+  "ref": "taco-carne-bovina-peito-sem-gordura-cru",
+  "nome": "Carne, bovina, peito, sem gordura, cru",
+  "kcal": 259,
+  "p": 17.6,
+  "c": 0.0,
+  "g": 20.4
+ },
+ {
+  "ref": "taco-carne-bovina-picanha-com-gordura-crua",
+  "nome": "Carne, bovina, picanha, com gordura, crua",
+  "kcal": 213,
+  "p": 18.8,
+  "c": 0.0,
+  "g": 14.7
+ },
+ {
+  "ref": "taco-carne-bovina-picanha-com-gordura-grelhada",
+  "nome": "Carne, bovina, picanha, com gordura, grelhada",
+  "kcal": 289,
+  "p": 26.4,
+  "c": 0.0,
+  "g": 19.5
+ },
+ {
+  "ref": "taco-carne-bovina-seca-cozida",
+  "nome": "Carne, bovina, seca, cozida",
+  "kcal": 313,
+  "p": 26.9,
+  "c": 0.0,
+  "g": 21.9
+ },
+ {
+  "ref": "taco-carne-bovina-seca-crua",
+  "nome": "Carne, bovina, seca, crua",
+  "kcal": 313,
+  "p": 19.7,
+  "c": 0.0,
+  "g": 25.4
+ },
+ {
+  "ref": "taco-caruru-cru",
+  "nome": "Caruru, cru",
+  "kcal": 34,
+  "p": 3.2,
+  "c": 6.0,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-cara-cozido",
+  "nome": "Cará, cozido",
+  "kcal": 78,
+  "p": 1.5,
+  "c": 18.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-cara-cru",
+  "nome": "Cará, cru",
+  "kcal": 96,
+  "p": 2.3,
+  "c": 23.0,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-castanha-de-caju-torrada-salgada",
+  "nome": "Castanha-de-caju, torrada, salgada",
+  "kcal": 570,
+  "p": 18.5,
+  "c": 29.1,
+  "g": 46.3
+ },
+ {
+  "ref": "taco-castanha-do-brasil-crua",
+  "nome": "Castanha-do-Brasil, crua",
+  "kcal": 643,
+  "p": 14.5,
+  "c": 15.1,
+  "g": 63.5
+ },
+ {
+  "ref": "taco-catalonha-crua",
+  "nome": "Catalonha, crua",
+  "kcal": 24,
+  "p": 1.9,
+  "c": 4.8,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-catalonha-refogada",
+  "nome": "Catalonha, refogada",
+  "kcal": 63,
+  "p": 1.9,
+  "c": 4.8,
+  "g": 4.8
+ },
+ {
+  "ref": "taco-cacao-posta-com-farinha-de-trigo-frita",
+  "nome": "Cação, posta, com farinha de trigo, frita",
+  "kcal": 208,
+  "p": 25.0,
+  "c": 3.1,
+  "g": 10.0
+ },
+ {
+  "ref": "taco-cacao-posta-cozida",
+  "nome": "Cação, posta, cozida",
+  "kcal": 116,
+  "p": 25.6,
+  "c": 0.0,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-cacao-posta-crua",
+  "nome": "Cação, posta, crua",
+  "kcal": 83,
+  "p": 17.9,
+  "c": 0.0,
+  "g": 0.8
+ },
+ {
+  "ref": "taco-cebolinha-crua",
+  "nome": "Cebolinha, crua",
+  "kcal": 20,
+  "p": 1.9,
+  "c": 3.4,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-cereais-milho-flocos-com-sal",
+  "nome": "Cereais, milho, flocos, com sal",
+  "kcal": 370,
+  "p": 7.3,
+  "c": 80.8,
+  "g": 1.6
+ },
+ {
+  "ref": "taco-cereais-mingau-milho-infantil",
+  "nome": "Cereais, mingau, milho, infantil",
+  "kcal": 394,
+  "p": 6.4,
+  "c": 87.3,
+  "g": 1.1
+ },
+ {
+  "ref": "taco-cereais-mistura-para-vitamina-trigo-cevada-e-aveia",
+  "nome": "Cereais, mistura para vitamina, trigo, cevada e aveia",
+  "kcal": 381,
+  "p": 8.9,
+  "c": 81.6,
+  "g": 2.1
+ },
+ {
+  "ref": "taco-cereal-matinal-milho",
+  "nome": "Cereal matinal, milho",
+  "kcal": 365,
+  "p": 7.2,
+  "c": 83.8,
+  "g": 1.0
+ },
+ {
+  "ref": "taco-cereal-matinal-milho-acucar",
+  "nome": "Cereal matinal, milho, açúcar",
+  "kcal": 377,
+  "p": 4.7,
+  "c": 88.8,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-cerveja-pilsen-2",
+  "nome": "Cerveja, pilsen 2",
+  "kcal": 41,
+  "p": 0.6,
+  "c": 3.3,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-chantilly-spray-com-gordura-vegetal",
+  "nome": "Chantilly, spray, com gordura vegetal",
+  "kcal": 315,
+  "p": 0.5,
+  "c": 16.9,
+  "g": 27.3
+ },
+ {
+  "ref": "taco-charuto-de-repolho",
+  "nome": "Charuto, de repolho",
+  "kcal": 78,
+  "p": 6.8,
+  "c": 10.1,
+  "g": 1.1
+ },
+ {
+  "ref": "taco-chicoria-crua",
+  "nome": "Chicória, crua",
+  "kcal": 14,
+  "p": 1.1,
+  "c": 2.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-chocolate-ao-leite-com-castanha-do-para",
+  "nome": "Chocolate, ao leite, com castanha do Pará",
+  "kcal": 559,
+  "p": 7.4,
+  "c": 55.4,
+  "g": 34.2
+ },
+ {
+  "ref": "taco-chocolate-ao-leite-dietetico",
+  "nome": "Chocolate, ao leite, dietético",
+  "kcal": 557,
+  "p": 6.9,
+  "c": 56.3,
+  "g": 33.8
+ },
+ {
+  "ref": "taco-chuchu-cru",
+  "nome": "Chuchu, cru",
+  "kcal": 17,
+  "p": 0.7,
+  "c": 4.1,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-cha-erva-doce-infusao-5",
+  "nome": "Chá, erva-doce, infusão 5%",
+  "kcal": 1,
+  "p": 0.0,
+  "c": 0.4,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-cha-mate-infusao-5",
+  "nome": "Chá, mate, infusão 5%",
+  "kcal": 3,
+  "p": 0.0,
+  "c": 0.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-cha-preto-infusao-5",
+  "nome": "Chá, preto, infusão 5%",
+  "kcal": 2,
+  "p": 0.0,
+  "c": 0.6,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-ciriguela-crua",
+  "nome": "Ciriguela, crua",
+  "kcal": 76,
+  "p": 1.4,
+  "c": 18.9,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-cocada-branca",
+  "nome": "Cocada branca",
+  "kcal": 449,
+  "p": 1.1,
+  "c": 81.4,
+  "g": 13.6
+ },
+ {
+  "ref": "taco-coco-cru",
+  "nome": "Coco, cru",
+  "kcal": 406,
+  "p": 3.7,
+  "c": 10.4,
+  "g": 42.0
+ },
+ {
+  "ref": "taco-coco-verde-cru",
+  "nome": "Coco, verde, cru",
+  "kcal": 0,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-coentro-folhas-desidratadas",
+  "nome": "Coentro, folhas desidratadas",
+  "kcal": 309,
+  "p": 20.9,
+  "c": 48.0,
+  "g": 10.4
+ },
+ {
+  "ref": "taco-corimba-cru",
+  "nome": "Corimba, cru",
+  "kcal": 128,
+  "p": 17.4,
+  "c": -0.0,
+  "g": 6.0
+ },
+ {
+  "ref": "taco-corimbata-assado",
+  "nome": "Corimbatá, assado",
+  "kcal": 261,
+  "p": 19.9,
+  "c": 0.0,
+  "g": 19.6
+ },
+ {
+  "ref": "taco-corimbata-cozido",
+  "nome": "Corimbatá, cozido",
+  "kcal": 239,
+  "p": 20.1,
+  "c": 0.0,
+  "g": 16.9
+ },
+ {
+  "ref": "taco-corvina-de-agua-doce-crua",
+  "nome": "Corvina de água doce, crua",
+  "kcal": 101,
+  "p": 18.9,
+  "c": 0.0,
+  "g": 2.2
+ },
+ {
+  "ref": "taco-corvina-do-mar-crua",
+  "nome": "Corvina do mar, crua",
+  "kcal": 94,
+  "p": 18.6,
+  "c": 0.0,
+  "g": 1.6
+ },
+ {
+  "ref": "taco-corvina-grande-assada",
+  "nome": "Corvina grande, assada",
+  "kcal": 147,
+  "p": 26.8,
+  "c": 0.0,
+  "g": 3.6
+ },
+ {
+  "ref": "taco-corvina-grande-cozida",
+  "nome": "Corvina grande, cozida",
+  "kcal": 100,
+  "p": 23.4,
+  "c": 0.0,
+  "g": 2.6
+ },
+ {
+  "ref": "taco-couve-manteiga-crua",
+  "nome": "Couve, manteiga, crua",
+  "kcal": 27,
+  "p": 2.9,
+  "c": 4.3,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-couve-flor-crua",
+  "nome": "Couve-flor, crua",
+  "kcal": 23,
+  "p": 1.9,
+  "c": 4.5,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-creme-de-leite",
+  "nome": "Creme de Leite",
+  "kcal": 221,
+  "p": 1.5,
+  "c": 4.5,
+  "g": 22.5
+ },
+ {
+  "ref": "taco-creme-de-arroz-po",
+  "nome": "Creme de arroz, pó",
+  "kcal": 386,
+  "p": 7.0,
+  "c": 83.9,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-creme-de-milho-po",
+  "nome": "Creme de milho, pó",
+  "kcal": 333,
+  "p": 4.8,
+  "c": 86.1,
+  "g": 1.6
+ },
+ {
+  "ref": "taco-croquete-de-carne-cru",
+  "nome": "Croquete, de carne, cru",
+  "kcal": 246,
+  "p": 12.0,
+  "c": 13.9,
+  "g": 15.6
+ },
+ {
+  "ref": "taco-croquete-de-carne-frito",
+  "nome": "Croquete, de carne, frito",
+  "kcal": 347,
+  "p": 16.9,
+  "c": 18.1,
+  "g": 22.7
+ },
+ {
+  "ref": "taco-cupuacu-cru",
+  "nome": "Cupuaçu, cru",
+  "kcal": 49,
+  "p": 1.2,
+  "c": 10.4,
+  "g": 1.0
+ },
+ {
+  "ref": "taco-cupuacu-polpa-congelada",
+  "nome": "Cupuaçu, polpa, congelada",
+  "kcal": 49,
+  "p": 0.8,
+  "c": 11.4,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-curau-milho-verde",
+  "nome": "Curau, milho verde",
+  "kcal": 78,
+  "p": 2.4,
+  "c": 13.9,
+  "g": 1.6
+ },
+ {
+  "ref": "taco-curau-milho-verde-mistura-para",
+  "nome": "Curau, milho verde, mistura para",
+  "kcal": 402,
+  "p": 2.2,
+  "c": 79.8,
+  "g": 13.4
+ },
+ {
+  "ref": "taco-cuscuz-de-milho-cozido-com-sal",
+  "nome": "Cuscuz, de milho, cozido com sal",
+  "kcal": 113,
+  "p": 2.2,
+  "c": 25.3,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-cuscuz-paulista",
+  "nome": "Cuscuz, paulista",
+  "kcal": 142,
+  "p": 2.6,
+  "c": 22.5,
+  "g": 4.6
+ },
+ {
+  "ref": "taco-cuxa-molho",
+  "nome": "Cuxá, molho",
+  "kcal": 80,
+  "p": 5.6,
+  "c": 5.7,
+  "g": 3.6
+ },
+ {
+  "ref": "taco-dobradinha",
+  "nome": "Dobradinha",
+  "kcal": 125,
+  "p": 19.8,
+  "c": 0.0,
+  "g": 4.4
+ },
+ {
+  "ref": "taco-doce-de-abobora-cremoso",
+  "nome": "Doce, de abóbora, cremoso",
+  "kcal": 199,
+  "p": 0.9,
+  "c": 54.6,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-doce-de-leite-cremoso",
+  "nome": "Doce, de leite, cremoso",
+  "kcal": 306,
+  "p": 5.5,
+  "c": 59.5,
+  "g": 6.0
+ },
+ {
+  "ref": "taco-dourada-de-agua-doce-fresca",
+  "nome": "Dourada de água doce, fresca",
+  "kcal": 131,
+  "p": 18.8,
+  "c": 0.0,
+  "g": 5.6
+ },
+ {
+  "ref": "taco-empada-de-frango-pre-cozida-assada",
+  "nome": "Empada de frango, pré-cozida, assada",
+  "kcal": 358,
+  "p": 6.9,
+  "c": 47.5,
+  "g": 15.6
+ },
+ {
+  "ref": "taco-empada-de-frango-pre-cozida",
+  "nome": "Empada, de frango, pré-cozida",
+  "kcal": 377,
+  "p": 7.3,
+  "c": 35.5,
+  "g": 22.9
+ },
+ {
+  "ref": "taco-ervilha-em-vagem",
+  "nome": "Ervilha, em vagem",
+  "kcal": 88,
+  "p": 7.5,
+  "c": 14.2,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-ervilha-enlatada-drenada",
+  "nome": "Ervilha, enlatada, drenada",
+  "kcal": 74,
+  "p": 4.6,
+  "c": 13.4,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-espinafre-nova-zelandia-cru",
+  "nome": "Espinafre, Nova Zelândia, cru",
+  "kcal": 16,
+  "p": 2.0,
+  "c": 2.6,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-espinafre-nova-zelandia-refogado",
+  "nome": "Espinafre, Nova Zelândia, refogado",
+  "kcal": 67,
+  "p": 2.7,
+  "c": 4.2,
+  "g": 5.4
+ },
+ {
+  "ref": "taco-estrogonofe-de-carne",
+  "nome": "Estrogonofe de carne",
+  "kcal": 173,
+  "p": 15.0,
+  "c": 3.0,
+  "g": 10.8
+ },
+ {
+  "ref": "taco-farinha-de-arroz-enriquecida",
+  "nome": "Farinha, de arroz, enriquecida",
+  "kcal": 363,
+  "p": 1.3,
+  "c": 85.5,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-farinha-de-centeio-integral",
+  "nome": "Farinha, de centeio, integral",
+  "kcal": 336,
+  "p": 12.5,
+  "c": 73.3,
+  "g": 1.8
+ },
+ {
+  "ref": "taco-farinha-de-mandioca-crua",
+  "nome": "Farinha, de mandioca, crua",
+  "kcal": 361,
+  "p": 1.6,
+  "c": 87.9,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-farinha-de-mandioca-torrada",
+  "nome": "Farinha, de mandioca, torrada",
+  "kcal": 365,
+  "p": 1.2,
+  "c": 89.2,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-farinha-de-mesocarpo-de-babacu-crua",
+  "nome": "Farinha, de mesocarpo de babaçu, crua",
+  "kcal": 329,
+  "p": 1.4,
+  "c": 79.2,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-farinha-de-milho-amarela",
+  "nome": "Farinha, de milho, amarela",
+  "kcal": 351,
+  "p": 7.2,
+  "c": 79.1,
+  "g": 1.5
+ },
+ {
+  "ref": "taco-farinha-de-puba",
+  "nome": "Farinha, de puba",
+  "kcal": 360,
+  "p": 1.6,
+  "c": 87.3,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-farinha-de-rosca",
+  "nome": "Farinha, de rosca",
+  "kcal": 371,
+  "p": 11.4,
+  "c": 75.8,
+  "g": 1.5
+ },
+ {
+  "ref": "taco-farinha-de-trigo",
+  "nome": "Farinha, de trigo",
+  "kcal": 360,
+  "p": 9.8,
+  "c": 75.1,
+  "g": 1.4
+ },
+ {
+  "ref": "taco-farinha-lactea-de-cereais",
+  "nome": "Farinha, láctea, de cereais",
+  "kcal": 415,
+  "p": 11.9,
+  "c": 77.8,
+  "g": 5.8
+ },
+ {
+  "ref": "taco-feijao-tropeiro-mineiro",
+  "nome": "Feijão tropeiro mineiro",
+  "kcal": 152,
+  "p": 10.2,
+  "c": 19.6,
+  "g": 6.8
+ },
+ {
+  "ref": "taco-feijao-broto-cru",
+  "nome": "Feijão, broto, cru",
+  "kcal": 39,
+  "p": 4.2,
+  "c": 7.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-feijao-carioca-cru",
+  "nome": "Feijão, carioca, cru",
+  "kcal": 329,
+  "p": 20.0,
+  "c": 61.2,
+  "g": 1.3
+ },
+ {
+  "ref": "taco-feijao-fradinho-cozido",
+  "nome": "Feijão, fradinho, cozido",
+  "kcal": 78,
+  "p": 5.1,
+  "c": 13.5,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-feijao-fradinho-cru",
+  "nome": "Feijão, fradinho, cru",
+  "kcal": 339,
+  "p": 20.2,
+  "c": 61.2,
+  "g": 2.4
+ },
+ {
+  "ref": "taco-feijao-jalo-cozido",
+  "nome": "Feijão, jalo, cozido",
+  "kcal": 93,
+  "p": 6.1,
+  "c": 16.5,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-feijao-jalo-cru",
+  "nome": "Feijão, jalo, cru",
+  "kcal": 328,
+  "p": 20.1,
+  "c": 61.5,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-feijao-preto-cru",
+  "nome": "Feijão, preto, cru",
+  "kcal": 324,
+  "p": 21.3,
+  "c": 58.8,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-feijao-rajado-cozido",
+  "nome": "Feijão, rajado, cozido",
+  "kcal": 85,
+  "p": 5.5,
+  "c": 15.3,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-feijao-rajado-cru",
+  "nome": "Feijão, rajado, cru",
+  "kcal": 326,
+  "p": 17.3,
+  "c": 62.9,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-feijao-rosinha-cozido",
+  "nome": "Feijão, rosinha, cozido",
+  "kcal": 68,
+  "p": 4.5,
+  "c": 11.8,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-feijao-rosinha-cru",
+  "nome": "Feijão, rosinha, cru",
+  "kcal": 337,
+  "p": 20.9,
+  "c": 62.2,
+  "g": 1.3
+ },
+ {
+  "ref": "taco-feijao-roxo-cozido",
+  "nome": "Feijão, roxo, cozido",
+  "kcal": 77,
+  "p": 5.7,
+  "c": 12.9,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-feijao-roxo-cru",
+  "nome": "Feijão, roxo, cru",
+  "kcal": 331,
+  "p": 22.2,
+  "c": 60.0,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-fermento-em-po-quimico",
+  "nome": "Fermento em pó, químico",
+  "kcal": 90,
+  "p": 0.5,
+  "c": 43.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-fermento-biologico-levedura-tablete",
+  "nome": "Fermento, biológico, levedura, tablete",
+  "kcal": 90,
+  "p": 17.0,
+  "c": 7.7,
+  "g": 1.5
+ },
+ {
+  "ref": "taco-figo-cru",
+  "nome": "Figo, cru",
+  "kcal": 41,
+  "p": 1.0,
+  "c": 10.2,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-figo-enlatado-em-calda",
+  "nome": "Figo, enlatado, em calda",
+  "kcal": 184,
+  "p": 0.6,
+  "c": 50.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-frango-asa-com-pele-crua",
+  "nome": "Frango, asa, com pele, crua",
+  "kcal": 213,
+  "p": 18.1,
+  "c": 0.0,
+  "g": 15.1
+ },
+ {
+  "ref": "taco-frango-caipira-inteiro-com-pele-cozido",
+  "nome": "Frango, caipira, inteiro, com pele, cozido",
+  "kcal": 243,
+  "p": 23.9,
+  "c": 0.0,
+  "g": 15.6
+ },
+ {
+  "ref": "taco-frango-com-acafrao",
+  "nome": "Frango, com açafrão",
+  "kcal": 113,
+  "p": 9.7,
+  "c": 4.1,
+  "g": 6.2
+ },
+ {
+  "ref": "taco-frango-coracao-cru",
+  "nome": "Frango, coração, cru",
+  "kcal": 222,
+  "p": 12.6,
+  "c": 0.0,
+  "g": 18.6
+ },
+ {
+  "ref": "taco-frango-coracao-grelhado",
+  "nome": "Frango, coração, grelhado",
+  "kcal": 207,
+  "p": 22.4,
+  "c": 0.6,
+  "g": 12.1
+ },
+ {
+  "ref": "taco-frango-coxa-com-pele-assada",
+  "nome": "Frango, coxa, com pele, assada",
+  "kcal": 215,
+  "p": 28.5,
+  "c": 0.1,
+  "g": 10.4
+ },
+ {
+  "ref": "taco-frango-coxa-com-pele-crua",
+  "nome": "Frango, coxa, com pele, crua",
+  "kcal": 161,
+  "p": 17.1,
+  "c": 0.0,
+  "g": 9.8
+ },
+ {
+  "ref": "taco-frango-coxa-sem-pele-cozida",
+  "nome": "Frango, coxa, sem pele, cozida",
+  "kcal": 167,
+  "p": 26.9,
+  "c": 0.0,
+  "g": 5.8
+ },
+ {
+  "ref": "taco-frango-file-a-milanesa",
+  "nome": "Frango, filé, à milanesa",
+  "kcal": 221,
+  "p": 28.5,
+  "c": 7.5,
+  "g": 7.8
+ },
+ {
+  "ref": "taco-frango-figado-cru",
+  "nome": "Frango, fígado, cru",
+  "kcal": 106,
+  "p": 17.6,
+  "c": -0.0,
+  "g": 3.5
+ },
+ {
+  "ref": "taco-frango-inteiro-com-pele-cru",
+  "nome": "Frango, inteiro, com pele, cru",
+  "kcal": 226,
+  "p": 16.4,
+  "c": 0.0,
+  "g": 17.3
+ },
+ {
+  "ref": "taco-frango-inteiro-sem-pele-assado",
+  "nome": "Frango, inteiro, sem pele, assado",
+  "kcal": 187,
+  "p": 28.0,
+  "c": 0.0,
+  "g": 7.5
+ },
+ {
+  "ref": "taco-frango-inteiro-sem-pele-cozido",
+  "nome": "Frango, inteiro, sem pele, cozido",
+  "kcal": 170,
+  "p": 25.0,
+  "c": 0.0,
+  "g": 7.1
+ },
+ {
+  "ref": "taco-frango-peito-com-pele-assado",
+  "nome": "Frango, peito, com pele, assado",
+  "kcal": 212,
+  "p": 33.4,
+  "c": 0.0,
+  "g": 7.6
+ },
+ {
+  "ref": "taco-frango-peito-com-pele-cru",
+  "nome": "Frango, peito, com pele, cru",
+  "kcal": 149,
+  "p": 20.8,
+  "c": 0.0,
+  "g": 6.7
+ },
+ {
+  "ref": "taco-frango-peito-sem-pele-cozido",
+  "nome": "Frango, peito, sem pele, cozido",
+  "kcal": 163,
+  "p": 31.5,
+  "c": 0.0,
+  "g": 3.2
+ },
+ {
+  "ref": "taco-frango-peito-sem-pele-grelhado",
+  "nome": "Frango, peito, sem pele, grelhado",
+  "kcal": 159,
+  "p": 32.0,
+  "c": 0.0,
+  "g": 2.5
+ },
+ {
+  "ref": "taco-frango-sobrecoxa-com-pele-assada",
+  "nome": "Frango, sobrecoxa, com pele, assada",
+  "kcal": 260,
+  "p": 28.7,
+  "c": 0.0,
+  "g": 15.2
+ },
+ {
+  "ref": "taco-frango-sobrecoxa-com-pele-crua",
+  "nome": "Frango, sobrecoxa, com pele, crua",
+  "kcal": 255,
+  "p": 15.5,
+  "c": 0.0,
+  "g": 20.9
+ },
+ {
+  "ref": "taco-fruta-pao-crua",
+  "nome": "Fruta-pão, crua",
+  "kcal": 67,
+  "p": 1.1,
+  "c": 17.2,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-fecula-de-mandioca",
+  "nome": "Fécula, de mandioca",
+  "kcal": 331,
+  "p": 0.5,
+  "c": 81.1,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-gelatina-sabores-variados-po",
+  "nome": "Gelatina, sabores variados, pó",
+  "kcal": 380,
+  "p": 8.9,
+  "c": 89.2,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-geleia-mocoto-natural",
+  "nome": "Geléia, mocotó, natural",
+  "kcal": 106,
+  "p": 2.1,
+  "c": 24.2,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-gergelim-semente",
+  "nome": "Gergelim, semente",
+  "kcal": 584,
+  "p": 21.2,
+  "c": 21.6,
+  "g": 50.4
+ },
+ {
+  "ref": "taco-glicose-de-milho",
+  "nome": "Glicose de milho",
+  "kcal": 292,
+  "p": 0.0,
+  "c": 79.4,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-goiaba-branca-com-casca-crua",
+  "nome": "Goiaba, branca, com casca, crua",
+  "kcal": 52,
+  "p": 0.9,
+  "c": 12.4,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-goiaba-doce-em-pasta",
+  "nome": "Goiaba, doce em pasta",
+  "kcal": 269,
+  "p": 0.6,
+  "c": 74.1,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-goiaba-doce-cascao",
+  "nome": "Goiaba, doce, cascão",
+  "kcal": 286,
+  "p": 0.4,
+  "c": 78.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-goiaba-vermelha-com-casca-crua",
+  "nome": "Goiaba, vermelha, com casca, crua",
+  "kcal": 54,
+  "p": 1.1,
+  "c": 13.0,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-graviola-crua",
+  "nome": "Graviola, crua",
+  "kcal": 62,
+  "p": 0.8,
+  "c": 15.8,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-graviola-polpa-congelada",
+  "nome": "Graviola, polpa, congelada",
+  "kcal": 38,
+  "p": 0.6,
+  "c": 9.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-grao-de-bico-cru",
+  "nome": "Grão-de-bico, cru",
+  "kcal": 355,
+  "p": 21.2,
+  "c": 57.9,
+  "g": 5.4
+ },
+ {
+  "ref": "taco-guandu-cru",
+  "nome": "Guandu, cru",
+  "kcal": 344,
+  "p": 19.0,
+  "c": 64.0,
+  "g": 2.1
+ },
+ {
+  "ref": "taco-hamburguer-bovino-cru",
+  "nome": "Hambúrguer, bovino, cru",
+  "kcal": 215,
+  "p": 13.2,
+  "c": 4.2,
+  "g": 16.2
+ },
+ {
+  "ref": "taco-hamburguer-bovino-frito",
+  "nome": "Hambúrguer, bovino, frito",
+  "kcal": 258,
+  "p": 20.0,
+  "c": 6.3,
+  "g": 17.0
+ },
+ {
+  "ref": "taco-inhame-cru",
+  "nome": "Inhame, cru",
+  "kcal": 97,
+  "p": 2.1,
+  "c": 23.2,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-iogurte-sabor-abacaxi",
+  "nome": "Iogurte, sabor abacaxi",
+  "kcal": 0,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-iogurte-sabor-morango",
+  "nome": "Iogurte, sabor morango",
+  "kcal": 70,
+  "p": 2.7,
+  "c": 9.7,
+  "g": 2.3
+ },
+ {
+  "ref": "taco-iogurte-sabor-pessego",
+  "nome": "Iogurte, sabor pêssego",
+  "kcal": 68,
+  "p": 2.5,
+  "c": 9.4,
+  "g": 2.3
+ },
+ {
+  "ref": "taco-jabuticaba-crua",
+  "nome": "Jabuticaba, crua",
+  "kcal": 58,
+  "p": 0.6,
+  "c": 15.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-jaca-crua",
+  "nome": "Jaca, crua",
+  "kcal": 88,
+  "p": 1.4,
+  "c": 22.5,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-jambo-cru",
+  "nome": "Jambo, cru",
+  "kcal": 27,
+  "p": 0.9,
+  "c": 6.5,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-jamelao-cru",
+  "nome": "Jamelão, cru",
+  "kcal": 41,
+  "p": 0.5,
+  "c": 10.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-jilo-cru",
+  "nome": "Jiló, cru",
+  "kcal": 27,
+  "p": 1.4,
+  "c": 6.2,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-jurubeba-crua",
+  "nome": "Jurubeba, crua",
+  "kcal": 126,
+  "p": 4.4,
+  "c": 23.1,
+  "g": 3.9
+ },
+ {
+  "ref": "taco-kiwi-cru",
+  "nome": "Kiwi, cru",
+  "kcal": 51,
+  "p": 1.3,
+  "c": 11.5,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-lambari-congelado-cru",
+  "nome": "Lambari, congelado, cru",
+  "kcal": 131,
+  "p": 16.8,
+  "c": 0.0,
+  "g": 6.5
+ },
+ {
+  "ref": "taco-lambari-congelado-frito",
+  "nome": "Lambari, congelado, frito",
+  "kcal": 327,
+  "p": 28.4,
+  "c": 0.0,
+  "g": 22.8
+ },
+ {
+  "ref": "taco-lambari-fresco-cru",
+  "nome": "Lambari, fresco,cru",
+  "kcal": 152,
+  "p": 15.7,
+  "c": 0.0,
+  "g": 9.4
+ },
+ {
+  "ref": "taco-laranja-baia-crua",
+  "nome": "Laranja, baía, crua",
+  "kcal": 45,
+  "p": 1.0,
+  "c": 11.5,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-laranja-baia-suco",
+  "nome": "Laranja, baía, suco",
+  "kcal": 37,
+  "p": 0.7,
+  "c": 8.7,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-laranja-da-terra-crua",
+  "nome": "Laranja, da terra, crua",
+  "kcal": 51,
+  "p": 1.1,
+  "c": 12.9,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-laranja-da-terra-suco",
+  "nome": "Laranja, da terra, suco",
+  "kcal": 41,
+  "p": 0.7,
+  "c": 9.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-laranja-lima-crua",
+  "nome": "Laranja, lima, crua",
+  "kcal": 46,
+  "p": 1.1,
+  "c": 11.5,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-laranja-lima-suco",
+  "nome": "Laranja, lima, suco",
+  "kcal": 39,
+  "p": 0.7,
+  "c": 9.2,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-laranja-pera-crua",
+  "nome": "Laranja, pêra, crua",
+  "kcal": 37,
+  "p": 1.0,
+  "c": 8.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-laranja-pera-suco",
+  "nome": "Laranja, pêra, suco",
+  "kcal": 33,
+  "p": 0.7,
+  "c": 7.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-laranja-valencia-crua",
+  "nome": "Laranja, valência, crua",
+  "kcal": 46,
+  "p": 0.8,
+  "c": 11.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-laranja-valencia-suco",
+  "nome": "Laranja, valência, suco",
+  "kcal": 36,
+  "p": 0.5,
+  "c": 8.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-lasanha-massa-fresca-cozida",
+  "nome": "Lasanha, massa fresca, cozida",
+  "kcal": 164,
+  "p": 5.8,
+  "c": 32.5,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-lasanha-massa-fresca-crua",
+  "nome": "Lasanha, massa fresca, crua",
+  "kcal": 220,
+  "p": 7.0,
+  "c": 45.1,
+  "g": 1.3
+ },
+ {
+  "ref": "taco-leite-condensado",
+  "nome": "Leite, condensado",
+  "kcal": 313,
+  "p": 7.7,
+  "c": 57.0,
+  "g": 6.7
+ },
+ {
+  "ref": "taco-leite-de-cabra",
+  "nome": "Leite, de cabra",
+  "kcal": 66,
+  "p": 3.1,
+  "c": 5.2,
+  "g": 3.8
+ },
+ {
+  "ref": "taco-leite-de-coco",
+  "nome": "Leite, de coco",
+  "kcal": 166,
+  "p": 1.0,
+  "c": 2.2,
+  "g": 18.4
+ },
+ {
+  "ref": "taco-leite-de-vaca-achocolatado",
+  "nome": "Leite, de vaca, achocolatado",
+  "kcal": 83,
+  "p": 2.1,
+  "c": 14.2,
+  "g": 2.2
+ },
+ {
+  "ref": "taco-leite-de-vaca-desnatado-uht",
+  "nome": "Leite, de vaca, desnatado, UHT",
+  "kcal": 0,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-leite-de-vaca-desnatado-po",
+  "nome": "Leite, de vaca, desnatado, pó",
+  "kcal": 362,
+  "p": 34.7,
+  "c": 53.0,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-leite-de-vaca-integral",
+  "nome": "Leite, de vaca, integral",
+  "kcal": 0,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-leite-de-vaca-integral-po",
+  "nome": "Leite, de vaca, integral, pó",
+  "kcal": 497,
+  "p": 25.4,
+  "c": 39.2,
+  "g": 26.9
+ },
+ {
+  "ref": "taco-leite-fermentado",
+  "nome": "Leite, fermentado",
+  "kcal": 70,
+  "p": 1.9,
+  "c": 15.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-lentilha-crua",
+  "nome": "Lentilha, crua",
+  "kcal": 339,
+  "p": 23.2,
+  "c": 62.0,
+  "g": 0.8
+ },
+ {
+  "ref": "taco-limao-cravo-suco",
+  "nome": "Limão, cravo, suco",
+  "kcal": 14,
+  "p": 0.3,
+  "c": 5.2,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-limao-galego-suco",
+  "nome": "Limão, galego, suco",
+  "kcal": 22,
+  "p": 0.6,
+  "c": 7.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-limao-tahiti-cru",
+  "nome": "Limão, tahiti, cru",
+  "kcal": 32,
+  "p": 0.9,
+  "c": 11.1,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-linguica-frango-crua",
+  "nome": "Lingüiça, frango, crua",
+  "kcal": 218,
+  "p": 14.2,
+  "c": 0.0,
+  "g": 17.4
+ },
+ {
+  "ref": "taco-linguica-frango-frita",
+  "nome": "Lingüiça, frango, frita",
+  "kcal": 245,
+  "p": 18.3,
+  "c": 0.0,
+  "g": 18.5
+ },
+ {
+  "ref": "taco-linguica-frango-grelhada",
+  "nome": "Lingüiça, frango, grelhada",
+  "kcal": 244,
+  "p": 18.2,
+  "c": 0.0,
+  "g": 18.4
+ },
+ {
+  "ref": "taco-linguica-porco-crua",
+  "nome": "Lingüiça, porco, crua",
+  "kcal": 227,
+  "p": 16.1,
+  "c": 0.0,
+  "g": 17.6
+ },
+ {
+  "ref": "taco-linguica-porco-grelhada",
+  "nome": "Lingüiça, porco, grelhada",
+  "kcal": 296,
+  "p": 23.2,
+  "c": 0.0,
+  "g": 21.9
+ },
+ {
+  "ref": "taco-macarrao-instantaneo",
+  "nome": "Macarrão, instantâneo",
+  "kcal": 436,
+  "p": 8.8,
+  "c": 62.4,
+  "g": 17.2
+ },
+ {
+  "ref": "taco-macarrao-molho-bolognesa",
+  "nome": "Macarrão, molho bolognesa",
+  "kcal": 120,
+  "p": 4.9,
+  "c": 22.5,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-macarrao-trigo-cru",
+  "nome": "Macarrão, trigo, cru",
+  "kcal": 371,
+  "p": 10.0,
+  "c": 77.9,
+  "g": 1.3
+ },
+ {
+  "ref": "taco-macarrao-trigo-cru-com-ovos",
+  "nome": "Macarrão, trigo, cru, com ovos",
+  "kcal": 371,
+  "p": 10.3,
+  "c": 76.6,
+  "g": 2.0
+ },
+ {
+  "ref": "taco-macauba-crua",
+  "nome": "Macaúba, crua",
+  "kcal": 404,
+  "p": 2.1,
+  "c": 13.9,
+  "g": 40.7
+ },
+ {
+  "ref": "taco-maionese-tradicional-com-ovos",
+  "nome": "Maionese, tradicional com ovos",
+  "kcal": 302,
+  "p": 0.6,
+  "c": 7.9,
+  "g": 30.5
+ },
+ {
+  "ref": "taco-mamao-verde-doce-em-calda-drenado",
+  "nome": "Mamão verde, doce em calda, drenado",
+  "kcal": 209,
+  "p": 0.3,
+  "c": 57.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-mamao-formosa-cru",
+  "nome": "Mamão, Formosa, cru",
+  "kcal": 45,
+  "p": 0.8,
+  "c": 11.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-mamao-papaia-cru",
+  "nome": "Mamão, Papaia, cru",
+  "kcal": 40,
+  "p": 0.5,
+  "c": 10.4,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-mamao-doce-em-calda-drenado",
+  "nome": "Mamão, doce em calda, drenado",
+  "kcal": 196,
+  "p": 0.2,
+  "c": 54.0,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-mandioca-crua",
+  "nome": "Mandioca, crua",
+  "kcal": 151,
+  "p": 1.1,
+  "c": 36.2,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-mandioca-frita",
+  "nome": "Mandioca, frita",
+  "kcal": 300,
+  "p": 1.4,
+  "c": 50.3,
+  "g": 11.2
+ },
+ {
+  "ref": "taco-manga-haden-crua",
+  "nome": "Manga, Haden, crua",
+  "kcal": 64,
+  "p": 0.4,
+  "c": 16.7,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-manga-palmer-crua",
+  "nome": "Manga, Palmer, crua",
+  "kcal": 72,
+  "p": 0.4,
+  "c": 19.4,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-manga-tommy-atkins-crua",
+  "nome": "Manga, Tommy Atkins, crua",
+  "kcal": 51,
+  "p": 0.9,
+  "c": 12.8,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-manga-polpa-congelada",
+  "nome": "Manga, polpa, congelada",
+  "kcal": 48,
+  "p": 0.4,
+  "c": 12.5,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-manicoba",
+  "nome": "Maniçoba",
+  "kcal": 134,
+  "p": 10.0,
+  "c": 3.4,
+  "g": 8.7
+ },
+ {
+  "ref": "taco-manjericao-cru",
+  "nome": "Manjericão, cru",
+  "kcal": 21,
+  "p": 2.0,
+  "c": 3.6,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-manjuba-com-farinha-de-trigo-frita",
+  "nome": "Manjuba, com farinha de trigo, frita",
+  "kcal": 344,
+  "p": 23.4,
+  "c": 10.2,
+  "g": 22.6
+ },
+ {
+  "ref": "taco-manjuba-frita",
+  "nome": "Manjuba, frita",
+  "kcal": 349,
+  "p": 30.1,
+  "c": 0.0,
+  "g": 24.5
+ },
+ {
+  "ref": "taco-maracuja-cru",
+  "nome": "Maracujá, cru",
+  "kcal": 68,
+  "p": 2.0,
+  "c": 12.3,
+  "g": 2.1
+ },
+ {
+  "ref": "taco-maracuja-polpa-congelada",
+  "nome": "Maracujá, polpa, congelada",
+  "kcal": 39,
+  "p": 0.8,
+  "c": 9.6,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-maracuja-suco-concentrado-envasado",
+  "nome": "Maracujá, suco concentrado, envasado",
+  "kcal": 42,
+  "p": 0.8,
+  "c": 9.6,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-margarina-com-oleo-hidrogenado-com-sal-65-de-lipideos",
+  "nome": "Margarina, com óleo hidrogenado, com sal (65% de lipídeos)",
+  "kcal": 596,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 67.4
+ },
+ {
+  "ref": "taco-margarina-com-oleo-hidrogenado-sem-sal-80-de-lipideos",
+  "nome": "Margarina, com óleo hidrogenado, sem sal (80% de lipídeos)",
+  "kcal": 723,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 81.7
+ },
+ {
+  "ref": "taco-margarina-com-oleo-interesterificado-com-sal-65-de-lipideos",
+  "nome": "Margarina, com óleo interesterificado, com sal (65%de lipídeos)",
+  "kcal": 594,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 67.2
+ },
+ {
+  "ref": "taco-maria-mole",
+  "nome": "Maria mole",
+  "kcal": 257,
+  "p": 9.6,
+  "c": 2.4,
+  "g": 23.4
+ },
+ {
+  "ref": "taco-maria-mole-coco-queimado",
+  "nome": "Maria mole, coco queimado",
+  "kcal": 307,
+  "p": 3.9,
+  "c": 75.1,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-marmelada",
+  "nome": "Marmelada",
+  "kcal": 257,
+  "p": 0.4,
+  "c": 70.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-maxixe-cru",
+  "nome": "Maxixe, cru",
+  "kcal": 14,
+  "p": 1.4,
+  "c": 2.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-maca-argentina-com-casca-crua",
+  "nome": "Maçã, Argentina, com casca, crua",
+  "kcal": 63,
+  "p": 0.2,
+  "c": 16.6,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-maca-fuji-com-casca-crua",
+  "nome": "Maçã, Fuji, com casca, crua",
+  "kcal": 56,
+  "p": 0.3,
+  "c": 15.2,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-melado",
+  "nome": "Melado",
+  "kcal": 297,
+  "p": 0.0,
+  "c": 76.6,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-melancia-crua",
+  "nome": "Melancia, crua",
+  "kcal": 33,
+  "p": 0.9,
+  "c": 8.1,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-melao-cru",
+  "nome": "Melão, cru",
+  "kcal": 29,
+  "p": 0.7,
+  "c": 7.5,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-merluza-file-assado",
+  "nome": "Merluza, filé, assado",
+  "kcal": 122,
+  "p": 26.6,
+  "c": 0.0,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-merluza-file-cru",
+  "nome": "Merluza, filé, cru",
+  "kcal": 89,
+  "p": 16.6,
+  "c": 0.0,
+  "g": 2.0
+ },
+ {
+  "ref": "taco-merluza-file-frito",
+  "nome": "Merluza, filé, frito",
+  "kcal": 192,
+  "p": 26.9,
+  "c": 0.0,
+  "g": 8.5
+ },
+ {
+  "ref": "taco-mexerica-murcote-crua",
+  "nome": "Mexerica, Murcote, crua",
+  "kcal": 58,
+  "p": 0.9,
+  "c": 14.9,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-mexerica-rio-crua",
+  "nome": "Mexerica, Rio, crua",
+  "kcal": 37,
+  "p": 0.7,
+  "c": 9.3,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-milho-amido-cru",
+  "nome": "Milho, amido, cru",
+  "kcal": 361,
+  "p": 0.6,
+  "c": 87.1,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-milho-fuba-cru",
+  "nome": "Milho, fubá, cru",
+  "kcal": 353,
+  "p": 7.2,
+  "c": 78.9,
+  "g": 1.9
+ },
+ {
+  "ref": "taco-milho-verde-cru",
+  "nome": "Milho, verde, cru",
+  "kcal": 138,
+  "p": 6.6,
+  "c": 28.6,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-milho-verde-enlatado-drenado",
+  "nome": "Milho, verde, enlatado, drenado",
+  "kcal": 98,
+  "p": 3.2,
+  "c": 17.1,
+  "g": 2.4
+ },
+ {
+  "ref": "taco-mingau-tradicional-po",
+  "nome": "Mingau tradicional, pó",
+  "kcal": 373,
+  "p": 0.6,
+  "c": 89.3,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-morango-cru",
+  "nome": "Morango, cru",
+  "kcal": 30,
+  "p": 0.9,
+  "c": 6.8,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-mostarda-folha-crua",
+  "nome": "Mostarda, folha, crua",
+  "kcal": 18,
+  "p": 2.1,
+  "c": 3.2,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-nabo-cru",
+  "nome": "Nabo, cru",
+  "kcal": 18,
+  "p": 1.2,
+  "c": 4.1,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-nhoque-batata-cozido",
+  "nome": "Nhoque, batata, cozido",
+  "kcal": 181,
+  "p": 5.9,
+  "c": 36.8,
+  "g": 1.9
+ },
+ {
+  "ref": "taco-noz-crua",
+  "nome": "Noz, crua",
+  "kcal": 620,
+  "p": 14.0,
+  "c": 18.4,
+  "g": 59.4
+ },
+ {
+  "ref": "taco-nespera-crua",
+  "nome": "Nêspera, crua",
+  "kcal": 43,
+  "p": 0.3,
+  "c": 11.5,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-omelete-de-queijo",
+  "nome": "Omelete, de queijo",
+  "kcal": 268,
+  "p": 15.6,
+  "c": 0.4,
+  "g": 22.0
+ },
+ {
+  "ref": "taco-ovo-de-codorna-inteiro-cru",
+  "nome": "Ovo, de codorna, inteiro, cru",
+  "kcal": 177,
+  "p": 13.7,
+  "c": 0.8,
+  "g": 12.7
+ },
+ {
+  "ref": "taco-ovo-de-galinha-clara-cozida-10minutos",
+  "nome": "Ovo, de galinha, clara, cozida/10minutos",
+  "kcal": 59,
+  "p": 13.4,
+  "c": 0.0,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-ovo-de-galinha-gema-cozida-10minutos",
+  "nome": "Ovo, de galinha, gema, cozida/10minutos",
+  "kcal": 353,
+  "p": 15.9,
+  "c": 1.6,
+  "g": 30.8
+ },
+ {
+  "ref": "taco-ovo-de-galinha-inteiro-cozido-10minutos",
+  "nome": "Ovo, de galinha, inteiro, cozido/10minutos",
+  "kcal": 146,
+  "p": 13.3,
+  "c": 0.6,
+  "g": 9.5
+ },
+ {
+  "ref": "taco-ovo-de-galinha-inteiro-cru",
+  "nome": "Ovo, de galinha, inteiro, cru",
+  "kcal": 143,
+  "p": 13.0,
+  "c": 1.6,
+  "g": 8.9
+ },
+ {
+  "ref": "taco-ovo-de-galinha-inteiro-frito",
+  "nome": "Ovo, de galinha, inteiro, frito",
+  "kcal": 240,
+  "p": 15.6,
+  "c": 1.2,
+  "g": 18.6
+ },
+ {
+  "ref": "taco-palmito-jucara-em-conserva",
+  "nome": "Palmito, Juçara, em conserva",
+  "kcal": 23,
+  "p": 1.8,
+  "c": 4.3,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-palmito-pupunha-em-conserva",
+  "nome": "Palmito, pupunha, em conserva",
+  "kcal": 29,
+  "p": 2.5,
+  "c": 5.5,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-pamonha-barra-para-cozimento-pre-cozida",
+  "nome": "Pamonha, barra para cozimento, pré-cozida",
+  "kcal": 171,
+  "p": 2.6,
+  "c": 30.7,
+  "g": 4.8
+ },
+ {
+  "ref": "taco-pastel-de-carne-cru",
+  "nome": "Pastel, de carne, cru",
+  "kcal": 289,
+  "p": 10.7,
+  "c": 42.0,
+  "g": 8.8
+ },
+ {
+  "ref": "taco-pastel-de-queijo-cru",
+  "nome": "Pastel, de queijo, cru",
+  "kcal": 308,
+  "p": 9.9,
+  "c": 45.9,
+  "g": 9.6
+ },
+ {
+  "ref": "taco-pastel-de-queijo-frito",
+  "nome": "Pastel, de queijo, frito",
+  "kcal": 422,
+  "p": 8.7,
+  "c": 48.1,
+  "g": 22.7
+ },
+ {
+  "ref": "taco-pastel-massa-crua",
+  "nome": "Pastel, massa, crua",
+  "kcal": 310,
+  "p": 6.9,
+  "c": 57.4,
+  "g": 5.5
+ },
+ {
+  "ref": "taco-pastel-massa-frita",
+  "nome": "Pastel, massa, frita",
+  "kcal": 570,
+  "p": 6.0,
+  "c": 49.3,
+  "g": 40.9
+ },
+ {
+  "ref": "taco-pacoca-amendoim",
+  "nome": "Paçoca, amendoim",
+  "kcal": 487,
+  "p": 16.0,
+  "c": 52.4,
+  "g": 26.1
+ },
+ {
+  "ref": "taco-pequi-cru",
+  "nome": "Pequi, cru",
+  "kcal": 205,
+  "p": 2.3,
+  "c": 13.0,
+  "g": 18.0
+ },
+ {
+  "ref": "taco-peru-congelado-assado",
+  "nome": "Peru, congelado, assado",
+  "kcal": 163,
+  "p": 26.2,
+  "c": 0.0,
+  "g": 5.7
+ },
+ {
+  "ref": "taco-peru-congelado-cru",
+  "nome": "Peru, congelado, cru",
+  "kcal": 94,
+  "p": 18.1,
+  "c": 0.0,
+  "g": 1.8
+ },
+ {
+  "ref": "taco-pescada-branca-crua",
+  "nome": "Pescada, branca, crua",
+  "kcal": 111,
+  "p": 16.3,
+  "c": 0.0,
+  "g": 4.6
+ },
+ {
+  "ref": "taco-pescada-branca-frita",
+  "nome": "Pescada, branca, frita",
+  "kcal": 223,
+  "p": 27.4,
+  "c": 0.0,
+  "g": 11.8
+ },
+ {
+  "ref": "taco-pescada-file-com-farinha-de-trigo-frito",
+  "nome": "Pescada, filé, com farinha de trigo, frito",
+  "kcal": 283,
+  "p": 21.4,
+  "c": 5.0,
+  "g": 19.1
+ },
+ {
+  "ref": "taco-pescada-file-cru",
+  "nome": "Pescada, filé, cru",
+  "kcal": 107,
+  "p": 16.6,
+  "c": 0.0,
+  "g": 4.0
+ },
+ {
+  "ref": "taco-pescada-file-frito",
+  "nome": "Pescada, filé, frito",
+  "kcal": 154,
+  "p": 28.6,
+  "c": 0.0,
+  "g": 3.6
+ },
+ {
+  "ref": "taco-pescada-file-molho-escabeche",
+  "nome": "Pescada, filé, molho escabeche",
+  "kcal": 142,
+  "p": 11.8,
+  "c": 5.0,
+  "g": 8.0
+ },
+ {
+  "ref": "taco-pescadinha-crua",
+  "nome": "Pescadinha, crua",
+  "kcal": 76,
+  "p": 15.5,
+  "c": 0.0,
+  "g": 1.1
+ },
+ {
+  "ref": "taco-pimentao-amarelo-cru",
+  "nome": "Pimentão, amarelo, cru",
+  "kcal": 28,
+  "p": 1.2,
+  "c": 6.0,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-pimentao-vermelho-cru",
+  "nome": "Pimentão, vermelho, cru",
+  "kcal": 23,
+  "p": 1.0,
+  "c": 5.5,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-pinha-crua",
+  "nome": "Pinha, crua",
+  "kcal": 88,
+  "p": 1.5,
+  "c": 22.4,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-pinhao-cozido",
+  "nome": "Pinhão, cozido",
+  "kcal": 174,
+  "p": 3.0,
+  "c": 43.9,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-pintado-assado",
+  "nome": "Pintado, assado",
+  "kcal": 192,
+  "p": 36.5,
+  "c": 0.0,
+  "g": 4.0
+ },
+ {
+  "ref": "taco-pintado-cru",
+  "nome": "Pintado, cru",
+  "kcal": 91,
+  "p": 18.6,
+  "c": 0.0,
+  "g": 1.3
+ },
+ {
+  "ref": "taco-pintado-grelhado",
+  "nome": "Pintado, grelhado",
+  "kcal": 152,
+  "p": 30.8,
+  "c": 0.0,
+  "g": 2.3
+ },
+ {
+  "ref": "taco-pipoca-com-oleo-de-soja-sem-sal",
+  "nome": "Pipoca, com óleo de soja, sem sal",
+  "kcal": 448,
+  "p": 9.9,
+  "c": 70.3,
+  "g": 15.9
+ },
+ {
+  "ref": "taco-pitanga-crua",
+  "nome": "Pitanga, crua",
+  "kcal": 41,
+  "p": 0.9,
+  "c": 10.2,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-pitanga-polpa-congelada",
+  "nome": "Pitanga, polpa, congelada",
+  "kcal": 19,
+  "p": 0.3,
+  "c": 4.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-polenta-pre-cozida",
+  "nome": "Polenta, pré-cozida",
+  "kcal": 103,
+  "p": 2.3,
+  "c": 23.3,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-polvilho-doce",
+  "nome": "Polvilho, doce",
+  "kcal": 351,
+  "p": 0.4,
+  "c": 86.8,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-porco-bisteca-crua",
+  "nome": "Porco, bisteca, crua",
+  "kcal": 164,
+  "p": 21.5,
+  "c": 0.0,
+  "g": 8.0
+ },
+ {
+  "ref": "taco-porco-bisteca-frita",
+  "nome": "Porco, bisteca, frita",
+  "kcal": 311,
+  "p": 33.7,
+  "c": 0.0,
+  "g": 18.5
+ },
+ {
+  "ref": "taco-porco-costela-assada",
+  "nome": "Porco, costela, assada",
+  "kcal": 402,
+  "p": 30.2,
+  "c": 0.0,
+  "g": 30.3
+ },
+ {
+  "ref": "taco-porco-costela-crua",
+  "nome": "Porco, costela, crua",
+  "kcal": 256,
+  "p": 18.0,
+  "c": 0.0,
+  "g": 19.8
+ },
+ {
+  "ref": "taco-porco-lombo-cru",
+  "nome": "Porco, lombo, cru",
+  "kcal": 176,
+  "p": 22.6,
+  "c": 0.0,
+  "g": 8.8
+ },
+ {
+  "ref": "taco-porco-orelha-salgada-crua",
+  "nome": "Porco, orelha, salgada, crua",
+  "kcal": 258,
+  "p": 18.5,
+  "c": 0.0,
+  "g": 19.9
+ },
+ {
+  "ref": "taco-porco-pernil-assado",
+  "nome": "Porco, pernil, assado",
+  "kcal": 262,
+  "p": 32.1,
+  "c": 0.0,
+  "g": 13.9
+ },
+ {
+  "ref": "taco-porco-pernil-cru",
+  "nome": "Porco, pernil, cru",
+  "kcal": 186,
+  "p": 20.1,
+  "c": 0.0,
+  "g": 11.1
+ },
+ {
+  "ref": "taco-porco-rabo-salgado-cru",
+  "nome": "Porco, rabo, salgado, cru",
+  "kcal": 377,
+  "p": 15.6,
+  "c": 0.0,
+  "g": 34.5
+ },
+ {
+  "ref": "taco-porquinho-cru",
+  "nome": "Porquinho, cru",
+  "kcal": 93,
+  "p": 20.5,
+  "c": 0.0,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-presunto-com-capa-de-gordura",
+  "nome": "Presunto, com capa de gordura",
+  "kcal": 128,
+  "p": 14.4,
+  "c": 1.4,
+  "g": 6.8
+ },
+ {
+  "ref": "taco-pupunha-cozida",
+  "nome": "Pupunha, cozida",
+  "kcal": 219,
+  "p": 2.5,
+  "c": 29.6,
+  "g": 12.8
+ },
+ {
+  "ref": "taco-pao-aveia-forma",
+  "nome": "Pão, aveia, forma",
+  "kcal": 343,
+  "p": 12.3,
+  "c": 59.6,
+  "g": 5.7
+ },
+ {
+  "ref": "taco-pao-de-queijo-cru",
+  "nome": "Pão, de queijo, cru",
+  "kcal": 295,
+  "p": 3.6,
+  "c": 38.5,
+  "g": 14.0
+ },
+ {
+  "ref": "taco-pao-de-soja",
+  "nome": "Pão, de soja",
+  "kcal": 309,
+  "p": 11.3,
+  "c": 56.5,
+  "g": 3.6
+ },
+ {
+  "ref": "taco-pao-gluten-forma",
+  "nome": "Pão, glúten, forma",
+  "kcal": 253,
+  "p": 12.0,
+  "c": 44.1,
+  "g": 2.7
+ },
+ {
+  "ref": "taco-pao-milho-forma",
+  "nome": "Pão, milho, forma",
+  "kcal": 292,
+  "p": 8.3,
+  "c": 56.4,
+  "g": 3.1
+ },
+ {
+  "ref": "taco-pao-trigo-forma-integral",
+  "nome": "Pão, trigo, forma, integral",
+  "kcal": 253,
+  "p": 9.4,
+  "c": 49.9,
+  "g": 3.7
+ },
+ {
+  "ref": "taco-pao-trigo-frances",
+  "nome": "Pão, trigo, francês",
+  "kcal": 300,
+  "p": 8.0,
+  "c": 58.6,
+  "g": 3.1
+ },
+ {
+  "ref": "taco-pao-trigo-sovado",
+  "nome": "Pão, trigo, sovado",
+  "kcal": 311,
+  "p": 8.4,
+  "c": 61.5,
+  "g": 2.8
+ },
+ {
+  "ref": "taco-pe-de-moleque-amendoim",
+  "nome": "Pé-de-moleque, amendoim",
+  "kcal": 503,
+  "p": 13.2,
+  "c": 54.7,
+  "g": 28.0
+ },
+ {
+  "ref": "taco-pera-park-crua",
+  "nome": "Pêra, Park, crua",
+  "kcal": 61,
+  "p": 0.2,
+  "c": 16.1,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-pera-williams-crua",
+  "nome": "Pêra, Williams, crua",
+  "kcal": 53,
+  "p": 0.6,
+  "c": 14.0,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-pessego-aurora-cru",
+  "nome": "Pêssego, Aurora, cru",
+  "kcal": 36,
+  "p": 0.8,
+  "c": 9.3,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-pessego-enlatado-em-calda",
+  "nome": "Pêssego, enlatado, em calda",
+  "kcal": 63,
+  "p": 0.7,
+  "c": 16.9,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-queijo-minas-meia-cura",
+  "nome": "Queijo, minas, meia cura",
+  "kcal": 321,
+  "p": 21.2,
+  "c": 3.6,
+  "g": 24.6
+ },
+ {
+  "ref": "taco-queijo-mozarela",
+  "nome": "Queijo, mozarela",
+  "kcal": 330,
+  "p": 22.6,
+  "c": 3.0,
+  "g": 25.2
+ },
+ {
+  "ref": "taco-queijo-parmesao",
+  "nome": "Queijo, parmesão",
+  "kcal": 453,
+  "p": 35.6,
+  "c": 1.7,
+  "g": 33.5
+ },
+ {
+  "ref": "taco-queijo-pasteurizado",
+  "nome": "Queijo, pasteurizado",
+  "kcal": 303,
+  "p": 9.4,
+  "c": 5.7,
+  "g": 27.4
+ },
+ {
+  "ref": "taco-queijo-petit-suisse-morango",
+  "nome": "Queijo, petit suisse, morango",
+  "kcal": 121,
+  "p": 5.8,
+  "c": 18.5,
+  "g": 2.8
+ },
+ {
+  "ref": "taco-queijo-ricota",
+  "nome": "Queijo, ricota",
+  "kcal": 140,
+  "p": 12.6,
+  "c": 3.8,
+  "g": 8.1
+ },
+ {
+  "ref": "taco-quiabo-cru",
+  "nome": "Quiabo, cru",
+  "kcal": 30,
+  "p": 1.9,
+  "c": 6.4,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-quibe-assado",
+  "nome": "Quibe, assado",
+  "kcal": 136,
+  "p": 14.6,
+  "c": 12.9,
+  "g": 2.7
+ },
+ {
+  "ref": "taco-quibe-cru",
+  "nome": "Quibe, cru",
+  "kcal": 109,
+  "p": 12.4,
+  "c": 10.8,
+  "g": 1.7
+ },
+ {
+  "ref": "taco-quibe-frito",
+  "nome": "Quibe, frito",
+  "kcal": 254,
+  "p": 14.9,
+  "c": 12.3,
+  "g": 15.8
+ },
+ {
+  "ref": "taco-quibebe",
+  "nome": "Quibebe",
+  "kcal": 86,
+  "p": 8.6,
+  "c": 6.6,
+  "g": 2.7
+ },
+ {
+  "ref": "taco-quindim",
+  "nome": "Quindim",
+  "kcal": 411,
+  "p": 4.7,
+  "c": 46.3,
+  "g": 24.4
+ },
+ {
+  "ref": "taco-rabanete-cru",
+  "nome": "Rabanete, cru",
+  "kcal": 14,
+  "p": 1.4,
+  "c": 2.7,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-rapadura",
+  "nome": "Rapadura",
+  "kcal": 352,
+  "p": 1.0,
+  "c": 90.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-refrigerante-tipo-guarana",
+  "nome": "Refrigerante, tipo guaraná",
+  "kcal": 39,
+  "p": 0.0,
+  "c": 10.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-refrigerante-tipo-laranja",
+  "nome": "Refrigerante, tipo laranja",
+  "kcal": 46,
+  "p": 0.0,
+  "c": 11.8,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-refrigerante-tipo-limao",
+  "nome": "Refrigerante, tipo limão",
+  "kcal": 40,
+  "p": 0.0,
+  "c": 10.3,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-refrigerante-tipo-agua-tonica",
+  "nome": "Refrigerante, tipo água tônica",
+  "kcal": 31,
+  "p": 0.0,
+  "c": 8.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-repolho-roxo-cru",
+  "nome": "Repolho, roxo, cru",
+  "kcal": 31,
+  "p": 1.9,
+  "c": 7.2,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-repolho-roxo-refogado",
+  "nome": "Repolho, roxo, refogado",
+  "kcal": 42,
+  "p": 1.8,
+  "c": 7.6,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-roma-crua",
+  "nome": "Romã, crua",
+  "kcal": 56,
+  "p": 0.4,
+  "c": 15.1,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-rucula-crua",
+  "nome": "Rúcula, crua",
+  "kcal": 13,
+  "p": 1.8,
+  "c": 2.2,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-sal-dietetico",
+  "nome": "Sal, dietético",
+  "kcal": 0,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-sal-grosso",
+  "nome": "Sal, grosso",
+  "kcal": 0,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-salada-de-legumes-com-maionese",
+  "nome": "Salada, de legumes, com maionese",
+  "kcal": 96,
+  "p": 1.1,
+  "c": 8.9,
+  "g": 7.0
+ },
+ {
+  "ref": "taco-salada-de-legumes-cozida-no-vapor",
+  "nome": "Salada, de legumes, cozida no vapor",
+  "kcal": 35,
+  "p": 2.0,
+  "c": 7.1,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-salame",
+  "nome": "Salame",
+  "kcal": 398,
+  "p": 25.8,
+  "c": 2.9,
+  "g": 30.6
+ },
+ {
+  "ref": "taco-salmao-file-com-pele-fresco-grelhado",
+  "nome": "Salmão, filé, com pele, fresco,  grelhado",
+  "kcal": 229,
+  "p": 23.9,
+  "c": 0.0,
+  "g": 14.0
+ },
+ {
+  "ref": "taco-salmao-sem-pele-fresco-cru",
+  "nome": "Salmão, sem pele, fresco, cru",
+  "kcal": 170,
+  "p": 19.3,
+  "c": 0.0,
+  "g": 9.7
+ },
+ {
+  "ref": "taco-salmao-sem-pele-fresco-grelhado",
+  "nome": "Salmão, sem pele, fresco, grelhado",
+  "kcal": 243,
+  "p": 26.1,
+  "c": 0.0,
+  "g": 14.5
+ },
+ {
+  "ref": "taco-salpicao-de-frango",
+  "nome": "Salpicão, de frango",
+  "kcal": 148,
+  "p": 13.9,
+  "c": 4.6,
+  "g": 7.8
+ },
+ {
+  "ref": "taco-salsa-crua",
+  "nome": "Salsa, crua",
+  "kcal": 33,
+  "p": 3.3,
+  "c": 5.7,
+  "g": 0.6
+ },
+ {
+  "ref": "taco-sarapatel",
+  "nome": "Sarapatel",
+  "kcal": 123,
+  "p": 18.5,
+  "c": 1.1,
+  "g": 4.4
+ },
+ {
+  "ref": "taco-sardinha-conserva-em-oleo",
+  "nome": "Sardinha, conserva em óleo",
+  "kcal": 285,
+  "p": 15.9,
+  "c": 0.0,
+  "g": 24.0
+ },
+ {
+  "ref": "taco-sardinha-frita",
+  "nome": "Sardinha, frita",
+  "kcal": 257,
+  "p": 33.4,
+  "c": 0.0,
+  "g": 12.7
+ },
+ {
+  "ref": "taco-sardinha-inteira-crua",
+  "nome": "Sardinha, inteira, crua",
+  "kcal": 114,
+  "p": 21.1,
+  "c": 0.0,
+  "g": 2.6
+ },
+ {
+  "ref": "taco-seleta-de-legumes-enlatada",
+  "nome": "Seleta de legumes, enlatada",
+  "kcal": 57,
+  "p": 3.4,
+  "c": 12.7,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-serralha-crua",
+  "nome": "Serralha, crua",
+  "kcal": 30,
+  "p": 2.7,
+  "c": 4.9,
+  "g": 0.7
+ },
+ {
+  "ref": "taco-shoyu",
+  "nome": "Shoyu",
+  "kcal": 61,
+  "p": 3.3,
+  "c": 11.6,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-soja-extrato-soluvel-natural-fluido",
+  "nome": "Soja, extrato solúvel, natural, fluido",
+  "kcal": 39,
+  "p": 2.4,
+  "c": 4.3,
+  "g": 1.6
+ },
+ {
+  "ref": "taco-soja-extrato-soluvel-po",
+  "nome": "Soja, extrato solúvel, pó",
+  "kcal": 459,
+  "p": 35.7,
+  "c": 28.5,
+  "g": 26.2
+ },
+ {
+  "ref": "taco-soja-farinha",
+  "nome": "Soja, farinha",
+  "kcal": 404,
+  "p": 36.0,
+  "c": 38.4,
+  "g": 14.6
+ },
+ {
+  "ref": "taco-soja-queijo-tofu",
+  "nome": "Soja, queijo (tofu)",
+  "kcal": 64,
+  "p": 6.6,
+  "c": 2.1,
+  "g": 4.0
+ },
+ {
+  "ref": "taco-tabule",
+  "nome": "Tabule",
+  "kcal": 57,
+  "p": 2.0,
+  "c": 10.6,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-tacaca",
+  "nome": "Tacacá",
+  "kcal": 47,
+  "p": 7.0,
+  "c": 3.4,
+  "g": 0.4
+ },
+ {
+  "ref": "taco-taioba-crua",
+  "nome": "Taioba, crua",
+  "kcal": 34,
+  "p": 2.9,
+  "c": 5.4,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-tamarindo-cru",
+  "nome": "Tamarindo, cru",
+  "kcal": 276,
+  "p": 3.2,
+  "c": 72.5,
+  "g": 0.5
+ },
+ {
+  "ref": "taco-tangerina-ponca-crua",
+  "nome": "Tangerina, Poncã, crua",
+  "kcal": 38,
+  "p": 0.8,
+  "c": 9.6,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-tangerina-ponca-suco",
+  "nome": "Tangerina, Poncã, suco",
+  "kcal": 36,
+  "p": 0.5,
+  "c": 8.8,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-tapioca-com-manteiga",
+  "nome": "Tapioca, com manteiga",
+  "kcal": 348,
+  "p": 0.1,
+  "c": 63.6,
+  "g": 10.9
+ },
+ {
+  "ref": "taco-tempero-a-base-de-sal",
+  "nome": "Tempero a base de sal",
+  "kcal": 21,
+  "p": 2.7,
+  "c": 2.1,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-tomate-com-semente-cru",
+  "nome": "Tomate, com semente, cru",
+  "kcal": 15,
+  "p": 1.1,
+  "c": 3.1,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-tomate-extrato",
+  "nome": "Tomate, extrato",
+  "kcal": 61,
+  "p": 2.4,
+  "c": 15.0,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-tomate-molho-industrializado",
+  "nome": "Tomate, molho industrializado",
+  "kcal": 38,
+  "p": 1.4,
+  "c": 7.7,
+  "g": 0.9
+ },
+ {
+  "ref": "taco-tomate-pure",
+  "nome": "Tomate, purê",
+  "kcal": 28,
+  "p": 1.4,
+  "c": 6.9,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-tomate-salada",
+  "nome": "Tomate, salada",
+  "kcal": 21,
+  "p": 0.8,
+  "c": 5.1,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-torrada-pao-frances",
+  "nome": "Torrada, pão francês",
+  "kcal": 377,
+  "p": 10.5,
+  "c": 74.6,
+  "g": 3.3
+ },
+ {
+  "ref": "taco-toucinho-cru",
+  "nome": "Toucinho, cru",
+  "kcal": 593,
+  "p": 11.5,
+  "c": 0.0,
+  "g": 60.3
+ },
+ {
+  "ref": "taco-toucinho-frito",
+  "nome": "Toucinho, frito",
+  "kcal": 697,
+  "p": 27.3,
+  "c": 0.0,
+  "g": 64.3
+ },
+ {
+  "ref": "taco-tremoco-cru",
+  "nome": "Tremoço, cru",
+  "kcal": 381,
+  "p": 33.6,
+  "c": 43.8,
+  "g": 10.3
+ },
+ {
+  "ref": "taco-tremoco-em-conserva",
+  "nome": "Tremoço, em conserva",
+  "kcal": 121,
+  "p": 11.1,
+  "c": 12.4,
+  "g": 3.8
+ },
+ {
+  "ref": "taco-tucuma-cru",
+  "nome": "Tucumã, cru",
+  "kcal": 262,
+  "p": 2.1,
+  "c": 26.5,
+  "g": 19.1
+ },
+ {
+  "ref": "taco-tucunare-file-congelado-cru",
+  "nome": "Tucunaré, filé, congelado, cru",
+  "kcal": 88,
+  "p": 18.0,
+  "c": -0.0,
+  "g": 1.2
+ },
+ {
+  "ref": "taco-tucupi-com-pimenta-de-cheiro",
+  "nome": "Tucupi, com pimenta-de-cheiro",
+  "kcal": 27,
+  "p": 2.1,
+  "c": 4.7,
+  "g": 0.3
+ },
+ {
+  "ref": "taco-umbu-cru",
+  "nome": "Umbu, cru",
+  "kcal": 37,
+  "p": 0.8,
+  "c": 9.4,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-umbu-polpa-congelada",
+  "nome": "Umbu, polpa, congelada",
+  "kcal": 34,
+  "p": 0.5,
+  "c": 8.8,
+  "g": 0.1
+ },
+ {
+  "ref": "taco-uva-italia-crua",
+  "nome": "Uva, Itália, crua",
+  "kcal": 53,
+  "p": 0.7,
+  "c": 13.6,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-uva-rubi-crua",
+  "nome": "Uva, Rubi, crua",
+  "kcal": 49,
+  "p": 0.6,
+  "c": 12.7,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-uva-suco-concentrado-envasado",
+  "nome": "Uva, suco concentrado, envasado",
+  "kcal": 58,
+  "p": 0.0,
+  "c": 14.7,
+  "g": 0.0
+ },
+ {
+  "ref": "taco-vaca-atolada",
+  "nome": "Vaca atolada",
+  "kcal": 145,
+  "p": 5.1,
+  "c": 10.1,
+  "g": 9.3
+ },
+ {
+  "ref": "taco-vagem-crua",
+  "nome": "Vagem, crua",
+  "kcal": 25,
+  "p": 1.8,
+  "c": 5.3,
+  "g": 0.2
+ },
+ {
+  "ref": "taco-vatapa",
+  "nome": "Vatapá",
+  "kcal": 255,
+  "p": 6.0,
+  "c": 9.7,
+  "g": 23.2
+ },
+ {
+  "ref": "taco-virado-a-paulista",
+  "nome": "Virado à paulista",
+  "kcal": 307,
+  "p": 10.2,
+  "c": 14.1,
+  "g": 25.6
+ },
+ {
+  "ref": "taco-yakisoba",
+  "nome": "Yakisoba",
+  "kcal": 113,
+  "p": 7.5,
+  "c": 18.3,
+  "g": 2.6
+ },
+ {
+  "ref": "taco-oleo-de-babacu",
+  "nome": "Óleo, de babaçu",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-oleo-de-canola",
+  "nome": "Óleo, de canola",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-oleo-de-girassol",
+  "nome": "Óleo, de girassol",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-oleo-de-milho",
+  "nome": "Óleo, de milho",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ },
+ {
+  "ref": "taco-oleo-de-pequi",
+  "nome": "Óleo, de pequi",
+  "kcal": 884,
+  "p": 0.0,
+  "c": 0.0,
+  "g": 100.0
+ }
 ]
