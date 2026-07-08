@@ -87,6 +87,23 @@ module.exports = {
     return r.rows[0];
   },
 
+  // Série diária de calorias/macros (aba Indicadores).
+  async kcalDailySeries(db, id_user, fromDate) {
+    const r = await db.query(
+      `SELECT log_date::text AS date,
+              SUM(kcal)::float AS kcal,
+              SUM(protein_g)::float AS protein_g,
+              SUM(carbs_g)::float AS carbs_g,
+              SUM(fat_g)::float AS fat_g
+         FROM public.tb_fitness_food_log
+        WHERE id_user = $1 AND log_date >= $2
+        GROUP BY log_date
+        ORDER BY log_date ASC`,
+      [id_user, fromDate]
+    );
+    return r.rows;
+  },
+
   // ─── Água ──────────────────────────────────────────────────────────────────
   async setWater(db, id_user, log_date, total_ml) {
     const r = await db.query(
@@ -105,6 +122,33 @@ module.exports = {
       [id_user, log_date]
     );
     return r.rows[0] ? r.rows[0].total_ml : 0;
+  },
+
+  // Série diária de água (aba Indicadores).
+  async waterDailySeries(db, id_user, fromDate) {
+    const r = await db.query(
+      `SELECT log_date::text AS date, total_ml
+         FROM public.tb_fitness_water_log
+        WHERE id_user = $1 AND log_date >= $2
+        ORDER BY log_date ASC`,
+      [id_user, fromDate]
+    );
+    return r.rows;
+  },
+
+  // Série de peso ascendente (últimos N pontos com peso preenchido).
+  async weightSeries(db, id_user, limit = 40) {
+    const r = await db.query(
+      `SELECT * FROM (
+         SELECT measured_at, weight_kg::float AS weight_kg
+           FROM public.tb_fitness_measurement
+          WHERE id_user = $1 AND weight_kg IS NOT NULL
+          ORDER BY measured_at DESC
+          LIMIT $2
+       ) s ORDER BY measured_at ASC`,
+      [id_user, limit]
+    );
+    return r.rows;
   },
 
   // ─── Medidas ───────────────────────────────────────────────────────────────

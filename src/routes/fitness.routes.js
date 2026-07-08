@@ -16,6 +16,7 @@ router.use(requireFeature("fitness_academias"));
 router.use(authMiddleware);
 
 router.get("/summary", asyncHandler(FitnessController.summary));
+router.get("/indicators", asyncHandler(FitnessController.indicators));
 
 // Alimentos
 router.get("/foods", asyncHandler(FitnessController.searchFoods));

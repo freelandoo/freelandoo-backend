@@ -9,6 +9,11 @@ module.exports = {
     return sendServiceResult(res, result);
   },
 
+  async indicators(req, res) {
+    const result = await FitnessService.indicators(req.user.id_user);
+    return sendServiceResult(res, result);
+  },
+
   async searchFoods(req, res) {
     const result = await FitnessService.searchFoods(req.query.q);
     return res.json(result);

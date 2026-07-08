@@ -86,6 +86,142 @@ class FitnessService {
     });
   }
 
+  // ─── Indicadores (aba do painel) ───────────────────────────────────────────
+  // Agrega o que já registramos em métricas de saúde/consistência: IMC,
+  // tendência de peso, médias e aderência de calorias/água, proteína por kg,
+  // distribuição de macros, sequência de registro, treinos e frequência.
+  static async indicators(id_user) {
+    return runWithLogs(log, "indicators", () => ({ id_user }), async () => {
+      const WorkoutStorage = require("../storages/WorkoutStorage");
+      const todayStr = today();
+      const d30 = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+      const from30 = d30.toISOString().slice(0, 10);
+      const from7 = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const from14 = new Date(Date.now() - 13 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+      const [settings, latest, weightRows, kcalRows, waterRows, memberships] = await Promise.all([
+        FitnessStorage.getSettings(pool, id_user),
+        FitnessStorage.latestMeasurement(pool, id_user),
+        FitnessStorage.weightSeries(pool, id_user, 40),
+        FitnessStorage.kcalDailySeries(pool, id_user, from30),
+        FitnessStorage.waterDailySeries(pool, id_user, from30),
+        AcademyStorage.listMembershipsByUser(pool, id_user),
+      ]);
+
+      const weight = latest && latest.weight_kg ? Number(latest.weight_kg) : null;
+      const height = latest && latest.height_cm ? Number(latest.height_cm) : null;
+
+      // IMC (OMS)
+      let bmi = null;
+      if (weight && height) {
+        const v = weight / Math.pow(height / 100, 2);
+        const klass =
+          v < 18.5 ? "underweight" : v < 25 ? "normal" : v < 30 ? "overweight" : v < 35 ? "obese1" : v < 40 ? "obese2" : "obese3";
+        bmi = { value: Math.round(v * 10) / 10, class: klass, weight_kg: weight, height_cm: height };
+      }
+
+      // Peso: série + deltas
+      const wSeries = weightRows.map((r) => ({ date: r.measured_at, weight_kg: Number(r.weight_kg) }));
+      let delta30 = null;
+      if (wSeries.length >= 2) {
+        const base = wSeries.find((p) => new Date(p.date) >= d30) || wSeries[0];
+        delta30 = Math.round((wSeries[wSeries.length - 1].weight_kg - base.weight_kg) * 10) / 10;
+      }
+
+      // Calorias: médias sobre dias REGISTRADOS + aderência (não estourou a meta)
+      const goalKcal = Number(settings.daily_kcal_goal);
+      const kcal7 = kcalRows.filter((r) => r.date >= from7);
+      const avg = (arr, f) => (arr.length ? Math.round(arr.reduce((a, r) => a + f(r), 0) / arr.length) : null);
+      const kcalOnTarget = kcalRows.filter((r) => r.kcal > 0 && r.kcal <= goalKcal).length;
+      const proteinAvg30 = avg(kcalRows, (r) => r.protein_g);
+      const carbsAvg30 = avg(kcalRows, (r) => r.carbs_g);
+      const fatAvg30 = avg(kcalRows, (r) => r.fat_g);
+      // Distribuição calórica dos macros (P/C 4 kcal/g, G 9 kcal/g)
+      let macroPct = null;
+      if (proteinAvg30 !== null) {
+        const pK = proteinAvg30 * 4;
+        const cK = (carbsAvg30 || 0) * 4;
+        const fK = (fatAvg30 || 0) * 9;
+        const tot = pK + cK + fK;
+        if (tot > 0) {
+          macroPct = {
+            protein: Math.round((pK / tot) * 100),
+            carbs: Math.round((cK / tot) * 100),
+            fat: Math.round((fK / tot) * 100),
+          };
+        }
+      }
+
+      // Água
+      const goalWater = Number(settings.water_goal_ml);
+      const water7 = waterRows.filter((r) => r.date >= from7);
+      const waterOnTarget = waterRows.filter((r) => Number(r.total_ml) >= goalWater).length;
+
+      // Sequência de registro do diário (comida OU água), terminando hoje/ontem
+      const loggedDays = new Set([...kcalRows.map((r) => r.date), ...waterRows.map((r) => r.date)]);
+      let streak = 0;
+      const cursor = new Date(`${todayStr}T12:00:00Z`);
+      if (!loggedDays.has(todayStr)) cursor.setUTCDate(cursor.getUTCDate() - 1); // hoje ainda não registrou → conta a partir de ontem
+      while (loggedDays.has(cursor.toISOString().slice(0, 10))) {
+        streak += 1;
+        cursor.setUTCDate(cursor.getUTCDate() - 1);
+      }
+
+      // Treinos concluídos + frequência de academia (soma dos vínculos)
+      let sessions7 = 0;
+      let sessions30 = 0;
+      let frequency30 = null;
+      for (const m of memberships) {
+        sessions7 += await WorkoutStorage.countSessionsCompleted(pool, m.id_member, from7);
+        sessions30 += await WorkoutStorage.countSessionsCompleted(pool, m.id_member, from30);
+        const days = await AcademyStorage.countDistinctDays(pool, m.id_member, d30);
+        frequency30 = (frequency30 || 0) + days;
+      }
+
+      // Séries dos gráficos: últimos 14 dias preenchidos (dia sem registro = 0)
+      const kcalByDate = new Map(kcalRows.map((r) => [r.date, Math.round(r.kcal)]));
+      const waterByDate = new Map(waterRows.map((r) => [r.date, Number(r.total_ml)]));
+      const chart14 = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+        chart14.push({ date: d, kcal: kcalByDate.get(d) || 0, water_ml: waterByDate.get(d) || 0 });
+      }
+
+      return {
+        bmi,
+        weight: { series: wSeries.slice(-20), delta_30d: delta30 },
+        kcal: {
+          goal: goalKcal,
+          avg_7d: avg(kcal7, (r) => r.kcal),
+          avg_30d: avg(kcalRows, (r) => r.kcal),
+          days_logged_30d: kcalRows.length,
+          days_on_target_30d: kcalOnTarget,
+        },
+        macros: {
+          protein_avg_g: proteinAvg30,
+          carbs_avg_g: carbsAvg30,
+          fat_avg_g: fatAvg30,
+          protein_g_per_kg: proteinAvg30 !== null && weight ? Math.round((proteinAvg30 / weight) * 100) / 100 : null,
+          pct: macroPct,
+        },
+        water: {
+          goal: goalWater,
+          avg_7d: avg(water7, (r) => Number(r.total_ml)),
+          avg_30d: avg(waterRows, (r) => Number(r.total_ml)),
+          days_on_target_30d: waterOnTarget,
+          ml_per_kg:
+            waterRows.length && weight
+              ? Math.round(waterRows.reduce((a, r) => a + Number(r.total_ml), 0) / waterRows.length / weight)
+              : null,
+        },
+        streak_days: streak,
+        workouts: { sessions_7d: sessions7, sessions_30d: sessions30 },
+        academy: memberships.length ? { frequency_30d: frequency30 || 0 } : null,
+        chart_14d: chart14,
+      };
+    });
+  }
+
   // ─── Alimentos ─────────────────────────────────────────────────────────────
   static async searchFoods(q) {
     const query = String(q || "").trim();
