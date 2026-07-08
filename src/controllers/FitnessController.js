@@ -1,7 +1,7 @@
 // src/controllers/FitnessController.js
 const FitnessService = require("../services/FitnessService");
 const FitnessProposalService = require("../services/FitnessProposalService");
-const sendServiceResult = require("../utils/sendServiceResult");
+const { sendServiceResult } = require("../utils/sendServiceResult");
 
 module.exports = {
   async summary(req, res) {

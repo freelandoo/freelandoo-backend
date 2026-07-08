@@ -2,7 +2,7 @@
 const AcademyService = require("../services/AcademyService");
 const AcademyLinkService = require("../services/AcademyLinkService");
 const AcademySyncService = require("../services/AcademySyncService");
-const sendServiceResult = require("../utils/sendServiceResult");
+const { sendServiceResult } = require("../utils/sendServiceResult");
 
 module.exports = {
   async create(req, res) {

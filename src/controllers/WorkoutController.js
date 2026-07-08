@@ -3,7 +3,7 @@
 // mig 180 — o aluno confirma no /fitness. Respostas retornam { proposal }.
 const WorkoutService = require("../services/WorkoutService");
 const FitnessProposalService = require("../services/FitnessProposalService");
-const sendServiceResult = require("../utils/sendServiceResult");
+const { sendServiceResult } = require("../utils/sendServiceResult");
 
 module.exports = {
   // Aluno

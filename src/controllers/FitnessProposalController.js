@@ -1,6 +1,6 @@
 // src/controllers/FitnessProposalController.js
 const FitnessProposalService = require("../services/FitnessProposalService");
-const sendServiceResult = require("../utils/sendServiceResult");
+const { sendServiceResult } = require("../utils/sendServiceResult");
 
 module.exports = {
   // ─── Staff (professor/dono) ────────────────────────────────────────────────

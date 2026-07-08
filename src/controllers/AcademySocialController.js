@@ -1,6 +1,6 @@
 // src/controllers/AcademySocialController.js
 const AcademySocialService = require("../services/AcademySocialService");
-const sendServiceResult = require("../utils/sendServiceResult");
+const { sendServiceResult } = require("../utils/sendServiceResult");
 
 module.exports = {
   async listPosts(req, res) {
