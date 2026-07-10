@@ -20,7 +20,7 @@ const BEE_SELECT = `
   p.display_name, p.avatar_url, p.is_clan, p.sub_profile_slug,
   p.municipio, p.estado,
   u.username,
-  c.id_category, c.name AS profession_name, c.slug AS profession_slug,
+  c.id_category, c.desc_category AS profession_name, c.profession_slug,
   m.id_machine, m.slug AS machine_slug, m.name AS machine_name,
   m.color_from, m.color_to, m.color_glow, m.color_ring, m.color_accent, m.color_text,
   at.title AS audio_title, at.artist AS audio_artist,
