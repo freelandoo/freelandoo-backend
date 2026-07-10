@@ -230,6 +230,92 @@ class StoryStorage {
     return rows;
   }
 
+  /**
+   * Faixa de bees AGRUPADA POR USUÁRIO (Bees v2, pedido do Alex 2026-07-10):
+   * 1 linha por USER que o viewer acompanha (via qualquer subperfil dele) com
+   * >=1 bee vivo. O tile mostra a foto do USER (tb_user.avatar). O próprio
+   * viewer fica FORA da lista — o tile dele é o "Postar" do front.
+   */
+  static async listFeedByUser(conn, { viewer_user_id }) {
+    const { rows } = await conn.query(
+      `
+      WITH followed_users AS (
+        SELECT DISTINCT p.id_user
+          FROM public.tb_user_follow uf
+          JOIN public.tb_profile p ON p.id_profile = uf.target_profile_id
+         WHERE uf.follower_user_id = $1
+           AND uf.deleted_at IS NULL
+           AND p.deleted_at IS NULL
+           AND p.is_active = TRUE
+           AND p.id_user <> $1
+      ),
+      active_stories AS (
+        SELECT
+          s.id_user,
+          BOOL_OR(NOT EXISTS (
+            SELECT 1 FROM public.tb_story_view v
+             WHERE v.id_story = s.id_story
+               AND v.id_viewer_user = $1
+          )) AS has_unviewed,
+          MAX(s.created_at) AS last_posted_at,
+          COUNT(*)::int    AS active_count
+        FROM public.tb_story s
+        JOIN followed_users fu ON fu.id_user = s.id_user
+        JOIN public.tb_profile p ON p.id_profile = s.id_profile
+        WHERE ${BEE_ALIVE_SQL}
+          AND s.kind IN ('bee', 'rest')
+          AND p.deleted_at IS NULL
+          AND p.is_active = TRUE
+        GROUP BY s.id_user
+      )
+      SELECT
+        a.id_user,
+        a.has_unviewed,
+        a.last_posted_at,
+        a.active_count,
+        u.username,
+        u.nome   AS user_name,
+        u.avatar AS user_avatar
+      FROM active_stories a
+      JOIN public.tb_user u ON u.id_user = a.id_user
+      ORDER BY a.has_unviewed DESC, a.last_posted_at DESC
+      `,
+      [viewer_user_id]
+    );
+    return rows;
+  }
+
+  /**
+   * Bees vivos de TODOS os subperfis de um user (player agrupado por user).
+   * Inclui os dados do subperfil que postou cada bee (header do player).
+   */
+  static async listActiveByUserPublic(conn, { id_user }) {
+    const { rows } = await conn.query(
+      `
+      SELECT ${STORY_COLUMNS},
+             ${AUDIO_COLUMNS},
+             p.display_name AS profile_display_name,
+             p.avatar_url   AS profile_avatar_url,
+             p.is_clan      AS profile_is_clan,
+             m.name         AS machine_name,
+             m.slug         AS machine_slug
+        FROM public.tb_story s
+        JOIN public.tb_profile p ON p.id_profile = s.id_profile
+        LEFT JOIN public.tb_category c ON c.id_category = p.id_category
+        LEFT JOIN public.tb_machine  m ON m.id_machine  = COALESCE(c.id_machine, p.id_machine)
+        ${AUDIO_JOIN}
+       WHERE s.id_user = $1
+         AND ${BEE_ALIVE_SQL}
+         AND s.kind IN ('bee', 'rest')
+         AND p.deleted_at IS NULL
+         AND p.is_active = TRUE
+       ORDER BY s.created_at ASC
+      `,
+      [id_user]
+    );
+    return rows;
+  }
+
   static async listActiveByProfile(conn, { id_profile }) {
     const { rows } = await conn.query(
       `

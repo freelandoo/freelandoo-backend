@@ -13,6 +13,13 @@ router.get(
   asyncHandler(StoryController.getByProfile)
 );
 
+// StoryBar v2 (agrupada por user): bees vivos de todos os subperfis do user.
+router.get(
+  "/by-user/:id_user",
+  authMiddleware,
+  asyncHandler(StoryController.getByUser)
+);
+
 router.post(
   "/:id_story/view",
   authMiddleware,

@@ -613,12 +613,67 @@ class StoryService {
       () => ({ id_user: user?.id_user }),
       async () => {
         if (!user?.id_user) return { error: "Usuário não autenticado" };
-        // Bees v2: a StoryBar do /feed lista bees (e rests legados por até 24h
-        // pós-deploy) de quem o viewer acompanha — sem parâmetro kind.
-        const rows = await StoryStorage.listFeedForUser(pool, {
+        // Bees v2 (2026-07-10): a StoryBar agrupa por USUÁRIO — 1 tile por user
+        // acompanhado com bee vivo, foto do user (tb_user.avatar). O próprio
+        // viewer fica fora (o tile dele é o "Postar" do front).
+        const rows = await StoryStorage.listFeedByUser(pool, {
           viewer_user_id: user.id_user,
         });
-        return { items: rows.map(mapFeedEntry) };
+        return {
+          items: rows.map((row) => ({
+            id_user: row.id_user,
+            has_unviewed: !!row.has_unviewed,
+            active_count: Number(row.active_count) || 0,
+            last_posted_at: row.last_posted_at,
+            user: {
+              id_user: row.id_user,
+              username: row.username,
+              name: row.user_name,
+              avatar_url: row.user_avatar,
+            },
+          })),
+        };
+      }
+    );
+  }
+
+  // Player agrupado por user: todos os bees vivos dos subperfis do user.
+  static async getByUser(user, params) {
+    return runWithLogs(
+      log,
+      "getByUser",
+      () => ({ id_user: user?.id_user, target_id_user: params?.id_user }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const target = params?.id_user;
+        if (!target || !UUID_RE.test(target)) {
+          return { error: "id_user inválido" };
+        }
+
+        const rows = await StoryStorage.listActiveByUserPublic(pool, {
+          id_user: target,
+        });
+        if (rows.length === 0) {
+          return { items: [], viewed_ids: [], liked_ids: [] };
+        }
+
+        const storyIds = rows.map((r) => r.id_story);
+        const [viewedIds, likedIds] = await Promise.all([
+          StoryStorage.listViewedIds(pool, {
+            id_viewer_user: user.id_user,
+            story_ids: storyIds,
+          }),
+          StoryStorage.listLikedIds(pool, {
+            id_user: user.id_user,
+            story_ids: storyIds,
+          }),
+        ]);
+
+        return {
+          items: rows.map(mapStory).filter(Boolean),
+          viewed_ids: viewedIds,
+          liked_ids: likedIds,
+        };
       }
     );
   }

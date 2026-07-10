@@ -51,6 +51,12 @@ class StoryController {
     return sendServiceResult(res, result);
   }
 
+  // Player agrupado por user (StoryBar v2): bees vivos de todos os subperfis.
+  static async getByUser(req, res) {
+    const result = await StoryService.getByUser(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async markViewed(req, res) {
     const result = await StoryService.markViewed(req.user, req.params);
     return sendServiceResult(res, result);
