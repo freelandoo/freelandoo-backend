@@ -21,7 +21,8 @@ const DEFAULT_EXPIRES = 300; // 5 min — janela curta de upload
 const STORY_PREFIX = "stories";
 
 function buildKey(id_profile, kind, ext, suffix = "") {
-  const safeKind = kind === "trampo" ? "trampo" : "rest";
+  // Bees v2: kind novo é sempre 'bee'; trampo/rest ficam por compat de keys antigas.
+  const safeKind = ["trampo", "rest", "bee"].includes(kind) ? kind : "bee";
   const tag = suffix ? `-${suffix}` : "";
   return `${STORY_PREFIX}/${id_profile}/${safeKind}-${crypto.randomUUID()}${tag}.${ext}`;
 }

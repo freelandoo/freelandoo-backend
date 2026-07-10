@@ -1,3 +1,8 @@
+// Predicado de vida do bee (mig 183): 24h + 1h por ponto de engagement_score,
+// teto 7 dias. Substitui o antigo "deleted_at IS NULL AND expires_at > NOW()"
+// (linhas legadas trampo/rest têm score 0 → mesma janela de 24h).
+const { BEE_ALIVE_SQL } = require("./BeeEngagementStorage");
+
 const STORY_COLUMNS = `
   s.id_story,
   s.id_profile,
@@ -11,6 +16,10 @@ const STORY_COLUMNS = `
   s.width,
   s.height,
   s.caption,
+  s.location,
+  s.links,
+  s.likes_count,
+  s.comments_count,
   s.metadata,
   s.audio_track_id,
   s.audio_start_ms,
@@ -75,13 +84,15 @@ class StoryStorage {
         video_url, thumbnail_url, storage_key, thumbnail_key,
         duration_seconds, width, height, caption, metadata,
         audio_track_id, audio_start_ms, render_meta,
+        location, links,
         expires_at
       ) VALUES (
         $1, $2, $3,
         $4, $5, $6, $7,
         $8, $9, $10, $11, COALESCE($12, '{}'::jsonb),
         $13, COALESCE($14, 0), $15,
-        NOW() + INTERVAL '24 hours'
+        $16, COALESCE($17, '[]'::jsonb),
+        NOW() + INTERVAL '7 days'
       )
       RETURNING ${STORY_COLUMNS.replace(/s\./g, "")}
       `,
@@ -101,19 +112,14 @@ class StoryStorage {
         data.audio_track_id || null,
         data.audio_start_ms != null ? data.audio_start_ms : null,
         data.render_meta ? JSON.stringify(data.render_meta) : null,
+        data.location || null,
+        data.links && data.links.length ? JSON.stringify(data.links) : null,
       ]
     );
     return rows[0] || null;
   }
 
-  static async listActiveByUser(conn, { id_user, kind = null }) {
-    const params = [id_user];
-    let kindClause = "";
-    if (kind === "trampo" || kind === "rest") {
-      params.push(kind);
-      kindClause = `AND s.kind = $${params.length}`;
-    }
-
+  static async listActiveByUser(conn, { id_user }) {
     const { rows } = await conn.query(
       `
       SELECT ${STORY_COLUMNS},
@@ -129,12 +135,10 @@ class StoryStorage {
         LEFT JOIN public.tb_machine  m ON m.id_machine  = c.id_machine
         ${AUDIO_JOIN}
        WHERE s.id_user = $1
-         AND s.deleted_at IS NULL
-         AND s.expires_at > NOW()
-         ${kindClause}
+         AND ${BEE_ALIVE_SQL}
        ORDER BY s.created_at ASC
       `,
-      params
+      [id_user]
     );
     return rows;
   }
@@ -158,7 +162,7 @@ class StoryStorage {
    * que tem >=1 story ativa do canal informado. Inclui flag has_unviewed
    * (TRUE se existe alguma story do perfil que o viewer ainda não assistiu).
    */
-  static async listFeedForUser(conn, { viewer_user_id, kind }) {
+  static async listFeedForUser(conn, { viewer_user_id }) {
     const { rows } = await conn.query(
       `
       WITH visible_profiles AS (
@@ -187,9 +191,9 @@ class StoryStorage {
           COUNT(*)::int    AS active_count
         FROM public.tb_story s
         JOIN visible_profiles vp ON vp.id_profile = s.id_profile
-        WHERE s.deleted_at IS NULL
-          AND s.expires_at > NOW()
-          AND s.kind = $2
+        WHERE ${BEE_ALIVE_SQL}
+          -- 'rest' legado segue aparecendo por até 24h pós-deploy do Bees v2.
+          AND s.kind IN ('bee', 'rest')
         GROUP BY s.id_profile
       )
       SELECT
@@ -221,7 +225,7 @@ class StoryStorage {
         AND p.is_active  = TRUE
       ORDER BY a.is_self DESC, a.has_unviewed DESC, a.last_posted_at DESC
       `,
-      [viewer_user_id, kind]
+      [viewer_user_id]
     );
     return rows;
   }
@@ -242,8 +246,7 @@ class StoryStorage {
         LEFT JOIN public.tb_machine  m ON m.id_machine  = COALESCE(c.id_machine, p.id_machine)
         ${AUDIO_JOIN}
        WHERE s.id_profile = $1
-         AND s.deleted_at IS NULL
-         AND s.expires_at > NOW()
+         AND ${BEE_ALIVE_SQL}
        ORDER BY s.created_at ASC
       `,
       [id_profile]
@@ -259,8 +262,7 @@ class StoryStorage {
         FROM public.tb_story s
         ${AUDIO_JOIN}
        WHERE s.id_story = $1
-         AND s.deleted_at IS NULL
-         AND s.expires_at > NOW()
+         AND ${BEE_ALIVE_SQL}
        LIMIT 1
       `,
       [id_story]
@@ -292,7 +294,19 @@ class StoryStorage {
       `,
       [id_story, id_viewer_user]
     );
-    return rows[0] || null;
+    const inserted = rows[0] || null;
+    // 1ª view do par (story, viewer) vira impressão. Impressão NÃO pontua no
+    // engagement_score (paridade com posts) — alimenta o penalty/underexposed
+    // do mix e o contador de alcance.
+    if (inserted) {
+      await conn.query(
+        `UPDATE public.tb_story
+            SET impressions_count = impressions_count + 1
+          WHERE id_story = $1`,
+        [id_story]
+      );
+    }
+    return inserted;
   }
 
   static async softDelete(conn, { id_story, id_user }) {

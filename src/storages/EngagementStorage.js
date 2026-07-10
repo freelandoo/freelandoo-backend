@@ -131,7 +131,11 @@ module.exports = {
     const by_channel = { story_trampo: 0, story_rest: 0, bees: 0, feed: 0 };
     for (const row of story.rows) {
       if (row.kind === "trampo") by_channel.story_trampo = Number(row.cnt);
-      else if (row.kind === "rest") by_channel.story_rest = Number(row.cnt);
+      // Bees v2: 'bee' soma no canal story_rest (o rest legado morre em 24h;
+      // o label visível vira "Bees" no front — chave mantida por compat).
+      else if (row.kind === "rest" || row.kind === "bee") {
+        by_channel.story_rest += Number(row.cnt);
+      }
     }
     for (const row of impr.rows) {
       if (row.feed_kind === "bees") by_channel.bees = Number(row.cnt);

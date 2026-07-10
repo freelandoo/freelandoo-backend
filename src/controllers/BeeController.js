@@ -1,7 +1,17 @@
 const BeeEngagementService = require("../services/BeeEngagementService");
+const BeeFeedService = require("../services/BeeFeedService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class BeeController {
+  static async timeline(req, res) {
+    return sendServiceResult(res, await BeeFeedService.getTimeline(req.user, req.query));
+  }
+  static async getOne(req, res) {
+    return sendServiceResult(res, await BeeFeedService.getOne(req.user, req.params));
+  }
+  static async listBookmarked(req, res) {
+    return sendServiceResult(res, await BeeFeedService.listBookmarked(req.user));
+  }
   static async toggleLike(req, res) {
     return sendServiceResult(res, await BeeEngagementService.toggleLike(req.user, req.params));
   }

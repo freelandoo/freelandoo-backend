@@ -15,6 +15,10 @@ const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
 
+// Timeline ranqueada (mix 60/25/15 compartilhado com o feed) + Salvos
+router.get("/timeline", authMiddleware, asyncHandler(BeeController.timeline));
+router.get("/bookmarks", authMiddleware, asyncHandler(BeeController.listBookmarked));
+
 // Eventos (share — dedupe por sessão)
 router.post("/events", optionalAuthMiddleware, asyncHandler(BeeController.recordEvent));
 
@@ -33,5 +37,9 @@ router.post("/admin/:id_story/resolve", [authMiddleware, roleMiddleware("Adminis
 router.post("/:id_story/like", authMiddleware, asyncHandler(BeeController.toggleLike));
 router.post("/:id_story/report", authMiddleware, asyncHandler(BeeController.report));
 router.post("/:id_story/bookmark", authMiddleware, asyncHandler(BeeController.toggleBookmark));
+
+// Bee único (deep-link ?bee= do /bees, Salvos, notificações) — SEMPRE por
+// último: é a única GET paramétrica e capturaria /timeline, /bookmarks etc.
+router.get("/:id_story", authMiddleware, asyncHandler(BeeController.getOne));
 
 module.exports = router;

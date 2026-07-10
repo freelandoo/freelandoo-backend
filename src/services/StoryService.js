@@ -15,7 +15,8 @@ const log = createLogger("StoryService");
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const KINDS = new Set(["trampo", "rest"]);
+// Bees v2 (mig 183): todo story novo é 'bee'. Os kinds 'trampo'/'rest' viraram
+// legado — linhas antigas expiram sozinhas; criação nova sempre força 'bee'.
 
 // Câmera (presigned/GPU-local): limites do arquivo final gerado no browser.
 const MAX_VIDEO_BYTES = 80 * 1024 * 1024; // 80MB (espelha uploadStoryVideo legado)
@@ -50,10 +51,47 @@ function normalizeFilterMeta(value) {
   return obj;
 }
 
-function normalizeKind(value) {
+// body.kind é IGNORADO (compat com front antigo que ainda manda 'rest'/'trampo'
+// até o slice F3 do Bees v2 ir ao ar).
+function normalizeKind() {
+  return "bee";
+}
+
+const MAX_LINKS = 3;
+const LINK_STYLES = new Set(["gold", "paper", "ink"]);
+
+function normalizeLocation(value) {
   if (typeof value !== "string") return null;
-  const k = value.trim().toLowerCase();
-  return KINDS.has(k) ? k : null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 80) : null;
+}
+
+// Links estilizados: [{label, url, style}] — máx 3; url http(s) absoluta.
+// Link inválido → erro explícito (400), não silencioso.
+function normalizeLinks(value) {
+  if (value === undefined || value === null || value === "") return { links: [] };
+  let arr = value;
+  if (typeof value === "string") {
+    try { arr = JSON.parse(value); } catch { return { error: "links inválido (JSON malformado)" }; }
+  }
+  if (!Array.isArray(arr)) return { error: "links deve ser uma lista" };
+  if (arr.length > MAX_LINKS) return { error: `Máximo ${MAX_LINKS} links por bee` };
+  const links = [];
+  for (const raw of arr) {
+    if (!raw || typeof raw !== "object") return { error: "link inválido" };
+    const label = typeof raw.label === "string" ? raw.label.trim().slice(0, 30) : "";
+    const url = typeof raw.url === "string" ? raw.url.trim() : "";
+    if (!label) return { error: "Todo link precisa de um rótulo" };
+    if (url.length > 500) return { error: "URL do link longa demais (máx 500)" };
+    let parsed;
+    try { parsed = new URL(url); } catch { return { error: `URL inválida: ${url.slice(0, 60)}` }; }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { error: "Só links http(s) são permitidos" };
+    }
+    const style = LINK_STYLES.has(raw.style) ? raw.style : "gold";
+    links.push({ label, url: parsed.toString(), style });
+  }
+  return { links };
 }
 
 function normalizeDuration(value) {
@@ -112,6 +150,10 @@ function mapStory(row) {
     width: row.width,
     height: row.height,
     caption: row.caption,
+    location: row.location || null,
+    links: Array.isArray(row.links) ? row.links : [],
+    likes_count: Number(row.likes_count) || 0,
+    comments_count: Number(row.comments_count) || 0,
     created_at: row.created_at,
     expires_at: row.expires_at,
     // Música anexada (metadado) — só presente quando houve JOIN com tb_audio_track.
@@ -189,8 +231,7 @@ class StoryService {
         }
         if (!file) return { error: "Arquivo não enviado" };
 
-        const kind = normalizeKind(body?.kind);
-        if (!kind) return { error: "kind inválido (use 'trampo' ou 'rest')" };
+        const kind = normalizeKind();
 
         const autoSplit = body?.auto_split === true || body?.auto_split === "true" || body?.auto_split === "1";
         const duration_seconds = normalizeDuration(body?.duration_seconds);
@@ -204,13 +245,21 @@ class StoryService {
         const width = normalizeOptionalInt(body?.width);
         const height = normalizeOptionalInt(body?.height);
         const caption = normalizeCaption(body?.caption);
+        const location = normalizeLocation(body?.location);
+        const linksResult = normalizeLinks(body?.links);
+        if (linksResult.error) return { error: linksResult.error };
+        const links = linksResult.links;
         const audioTrackId = await resolveAudioTrackId(body?.audio_track_id);
         const audioStartMs = audioTrackId ? normalizeAudioStartMs(body?.audio_start_ms) : 0;
-        if (caption) {
+        // Modera caption + localização + rótulos dos links numa chamada só.
+        const moderatedText = [caption, location, ...links.map((l) => l.label)]
+          .filter(Boolean)
+          .join("\n");
+        if (moderatedText) {
           const moderation = await ChatModerationService.moderateMessage({
             id_user: user.id_user,
             room_type: "global",
-            original_text: caption,
+            original_text: moderatedText,
           });
           if (["block", "mute_temp", "review"].includes(moderation?.action)) {
             return {
@@ -230,11 +279,6 @@ class StoryService {
         });
         if (!profile) return { error: "Sem permissão para postar por este perfil" };
         if (!profile.is_active) return { error: "Perfil inativo não pode postar story" };
-        if (kind === "trampo") {
-          if (profile.is_clan) return { error: "Clans não podem postar trampo" };
-          const subscribed = await StoryStorage.profileHasActiveSubscription(pool, id_profile);
-          if (!subscribed) return { error: "Trampo é exclusivo de subperfis com assinatura ativa" };
-        }
 
         // ─── Split (no-op se duração ≤ 60s) ─────────────────────────────────
         let chunks;
@@ -285,6 +329,8 @@ class StoryService {
               width: finalWidth,
               height: finalHeight,
               caption: chunkCaption,
+              location,
+              links,
               metadata: {
                 ...(processedFile.mediaMetadata || {}),
                 storage_key: uploaded.key,
@@ -309,27 +355,22 @@ class StoryService {
     );
   }
 
-  // Pré-checagem compartilhada de permissão de postar story por um perfil.
-  // Retorna { error } ou { profile } (perfil já validado p/ ownership/subscription).
-  static async _assertCanPost(user, id_profile, kind) {
+  // Pré-checagem compartilhada de permissão de postar bee por um perfil.
+  // Retorna { error } ou { profile } (perfil já validado p/ ownership).
+  // Regra do antigo 'rest': qualquer subperfil ativo do dono pode postar.
+  static async _assertCanPost(user, id_profile) {
     if (!user?.id_user) return { error: "Usuário não autenticado" };
     const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
     if (minorBlock) return minorBlock;
     if (!id_profile || !UUID_RE.test(id_profile)) {
       return { error: "id_profile inválido" };
     }
-    if (!kind) return { error: "kind inválido (use 'trampo' ou 'rest')" };
     const profile = await StoryStorage.getProfileForOwnership(pool, {
       id_profile,
       id_user: user.id_user,
     });
     if (!profile) return { error: "Sem permissão para postar por este perfil" };
     if (!profile.is_active) return { error: "Perfil inativo não pode postar story" };
-    if (kind === "trampo") {
-      if (profile.is_clan) return { error: "Clans não podem postar trampo" };
-      const subscribed = await StoryStorage.profileHasActiveSubscription(pool, id_profile);
-      if (!subscribed) return { error: "Trampo é exclusivo de subperfis com assinatura ativa" };
-    }
     return { profile };
   }
 
@@ -343,8 +384,8 @@ class StoryService {
       () => ({ id_user: user?.id_user, id_profile: body?.id_profile, kind: body?.kind }),
       async () => {
         const id_profile = body?.id_profile;
-        const kind = normalizeKind(body?.kind);
-        const check = await StoryService._assertCanPost(user, id_profile, kind);
+        const kind = normalizeKind();
+        const check = await StoryService._assertCanPost(user, id_profile);
         if (check.error) return check;
 
         const isImage = body?.media_type === "image";
@@ -381,8 +422,8 @@ class StoryService {
       () => ({ id_user: user?.id_user, id_profile: body?.id_profile, kind: body?.kind }),
       async () => {
         const id_profile = body?.id_profile;
-        const kind = normalizeKind(body?.kind);
-        const check = await StoryService._assertCanPost(user, id_profile, kind);
+        const kind = normalizeKind();
+        const check = await StoryService._assertCanPost(user, id_profile);
         if (check.error) return check;
 
         const isImage = body?.media_type === "image";
@@ -396,6 +437,10 @@ class StoryService {
         const width = normalizeOptionalInt(body?.width);
         const height = normalizeOptionalInt(body?.height);
         const caption = normalizeCaption(body?.caption);
+        const location = normalizeLocation(body?.location);
+        const linksResult = normalizeLinks(body?.links);
+        if (linksResult.error) return { error: linksResult.error };
+        const links = linksResult.links;
         const filterMeta = normalizeFilterMeta(body?.filter_meta);
         const renderMeta = normalizeFilterMeta(body?.render_meta);
         const audioTrackId = await resolveAudioTrackId(body?.audio_track_id);
@@ -412,14 +457,18 @@ class StoryService {
           return { error: "thumbnail_key inválido" };
         }
 
-        if (caption) {
+        // Modera caption + localização + rótulos dos links numa chamada só.
+        const moderatedText = [caption, location, ...links.map((l) => l.label)]
+          .filter(Boolean)
+          .join("\n");
+        if (moderatedText) {
           const moderation = await ChatModerationService.moderateMessage({
             id_user: user.id_user,
             room_type: "global",
-            original_text: caption,
+            original_text: moderatedText,
           });
           if (["block", "mute_temp", "review"].includes(moderation?.action)) {
-            // Conteúdo do caption barrado → remove o objeto recém-enviado p/ não virar órfão.
+            // Conteúdo barrado → remove o objeto recém-enviado p/ não virar órfão.
             await presignStory.deleteObject(storageKey);
             if (thumbnailKey) await presignStory.deleteObject(thumbnailKey);
             return {
@@ -485,6 +534,8 @@ class StoryService {
             width,
             height,
             caption,
+            location,
+            links,
             metadata,
             audio_track_id: audioTrackId,
             audio_start_ms: audioStartMs,
@@ -506,13 +557,11 @@ class StoryService {
     return runWithLogs(
       log,
       "listMine",
-      () => ({ id_user: user?.id_user, kind: query?.kind }),
+      () => ({ id_user: user?.id_user }),
       async () => {
         if (!user?.id_user) return { error: "Usuário não autenticado" };
-        const kind = normalizeKind(query?.kind);
         const items = await StoryStorage.listActiveByUser(pool, {
           id_user: user.id_user,
-          kind,
         });
         return { items: items.map(mapStory).filter(Boolean) };
       }
@@ -523,15 +572,13 @@ class StoryService {
     return runWithLogs(
       log,
       "getFeed",
-      () => ({ id_user: user?.id_user, kind: query?.kind }),
+      () => ({ id_user: user?.id_user }),
       async () => {
         if (!user?.id_user) return { error: "Usuário não autenticado" };
-        const kind = normalizeKind(query?.kind);
-        if (!kind) return { error: "kind inválido (use 'trampo' ou 'rest')" };
-
+        // Bees v2: a StoryBar do /feed lista bees (e rests legados por até 24h
+        // pós-deploy) de quem o viewer acompanha — sem parâmetro kind.
         const rows = await StoryStorage.listFeedForUser(pool, {
           viewer_user_id: user.id_user,
-          kind,
         });
         return { items: rows.map(mapFeedEntry) };
       }
@@ -612,7 +659,7 @@ class StoryService {
         const story = await StoryStorage.getActiveById(pool, id_story);
         if (!story) return { error: "Story nÃ£o encontrada" };
 
-        const messageText = `${emoji} reagiu ao seu story ${story.kind}`;
+        const messageText = `${emoji} reagiu ao seu bee`;
         const result = await ConversationService.sendMessage(user, {
           target_id: story.id_profile,
           target_type: "profile",
