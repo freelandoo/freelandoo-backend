@@ -15,8 +15,10 @@ const log = createLogger("BeeEngagementService");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Mesmos valores do ReportPostDialog do front (e da tb_post_report de posts).
 const REPORT_CATEGORIES = new Set([
-  "spam", "nudez", "violencia", "odio", "golpe", "direitos_autorais", "outro",
+  "spam", "fraud", "harassment", "inappropriate", "hate",
+  "forbidden_item", "personal_data", "other",
 ]);
 const EVENT_TYPES = new Set(["share"]);
 
