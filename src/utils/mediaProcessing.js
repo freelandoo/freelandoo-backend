@@ -9,6 +9,7 @@ const ffmpegPath = require("ffmpeg-static");
 const MB = 1024 * 1024;
 
 const POST_IMAGE_RATIO = 4 / 5;
+const CURTO_IMAGE_RATIO = 9 / 16;
 const RATIO_TOLERANCE = 0.01;
 const POST_IMAGE_MAX_BYTES = 3 * MB;
 const AVATAR_IMAGE_MAX_BYTES = 2 * MB;
@@ -180,6 +181,47 @@ async function processPostImage(file) {
   if (!isAspectRatio(optimized.width, optimized.height, POST_IMAGE_RATIO)) {
     throw httpError("Essa imagem precisa ser cortada no formato 4:5 para aparecer no feed.");
   }
+
+  return buildProcessedFile(
+    file,
+    optimized.buffer,
+    "image/webp",
+    outputName(file.originalname, "image/webp"),
+    {
+      media_type: "image",
+      width: optimized.width,
+      height: optimized.height,
+    }
+  );
+}
+
+// Imagem de Curto (feed_kind='bees'): aceita 9:16 (nativo da grade vertical)
+// OU 4:5 (mesmo formato do feed). O feed segue 4:5 estrito (processPostImage).
+async function processCurtoImage(file) {
+  await assertRealImage(file);
+
+  let metadata;
+  try {
+    metadata = await sharp(file.buffer, { failOn: "error" }).rotate().metadata();
+  } catch {
+    throw httpError("Nao foi possivel ler essa imagem. Tente outro arquivo.");
+  }
+
+  assertUsableDimensions(metadata, "imagem do Curto");
+
+  const isVertical = isAspectRatio(metadata.width, metadata.height, CURTO_IMAGE_RATIO);
+  const isFourFive = isAspectRatio(metadata.width, metadata.height, POST_IMAGE_RATIO);
+  if (!isVertical && !isFourFive) {
+    throw httpError("Essa imagem precisa estar em 9:16 ou 4:5 para virar um Curto.");
+  }
+
+  const optimized = await compressSharpToMax(file.buffer, {
+    outputWidth: 1080,
+    outputHeight: isVertical ? 1920 : 1350,
+    resizeFit: "cover",
+    maxSizeBytes: POST_IMAGE_MAX_BYTES,
+    errorMessage: "A imagem do Curto precisa ter no maximo 3MB.",
+  });
 
   return buildProcessedFile(
     file,
@@ -429,7 +471,10 @@ async function processVideo(file, options = {}) {
 }
 
 async function processPortfolioMedia(file, mediaType, options = {}) {
-  if (mediaType === "image") return processPostImage(file);
+  // Curtos (feed_kind='bees') aceitam imagem 9:16 além de 4:5; feed é 4:5 estrito.
+  if (mediaType === "image") {
+    return options.feedKind === "bees" ? processCurtoImage(file) : processPostImage(file);
+  }
   if (mediaType === "video") {
     // feedKind='feed' → vídeo é cropado pra 4:5; 'bees' → mantém vertical.
     const aspect = options.feedKind === "feed" ? "4:5" : null;
