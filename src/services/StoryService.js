@@ -412,6 +412,44 @@ class StoryService {
     );
   }
 
+  // ─── Câmera: passo 1b — fallback do PUT direto (bucket sem CORS) ────────────
+  // O browser tenta o presigned PUT; se a rede/preflight bloquear, manda o blob
+  // pra cá e o SERVIDOR grava no R2 na MESMA key assinada. O passo 2
+  // (from-upload) segue idêntico — o HeadObject encontra o objeto do mesmo jeito.
+  static async uploadProxy(user, body = {}, file) {
+    return runWithLogs(
+      log,
+      "uploadProxy",
+      () => ({
+        id_user: user?.id_user,
+        id_profile: body?.id_profile,
+        key: body?.key,
+        size: file?.size,
+      }),
+      async () => {
+        const id_profile = body?.id_profile;
+        const check = await StoryService._assertCanPost(user, id_profile);
+        if (check.error) return check;
+
+        if (!file?.buffer?.length) return { error: "Arquivo não enviado" };
+        const key = body?.key;
+        if (!presignStory.keyBelongsToProfile(key, id_profile)) {
+          return { error: "key inválida para este perfil" };
+        }
+
+        const mt = (file.mimetype || "").toLowerCase();
+        const isVideo = mt.startsWith("video/");
+        const maxBytes = isVideo ? MAX_VIDEO_BYTES : Math.max(MAX_IMAGE_BYTES, MAX_POSTER_BYTES);
+        if (file.buffer.length > maxBytes) {
+          return { error: "Arquivo excede o tamanho máximo permitido" };
+        }
+
+        await presignStory.putObject(key, file.buffer, mt);
+        return { key };
+      }
+    );
+  }
+
   // ─── Câmera: passo 2 — cria a story a partir do que já foi enviado pro R2 ───
   // Valida ownership/subscription/moderação, confirma o objeto via HeadObject
   // (existe? tamanho ok? key no namespace certo?) e grava metadados (+ filterMeta).

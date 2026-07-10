@@ -28,6 +28,13 @@ class StoryController {
     return sendServiceResult(res, result);
   }
 
+  // Câmera: passo 1b — fallback do PUT direto (bucket sem CORS): o backend
+  // recebe o blob e grava no R2 na mesma key assinada.
+  static async uploadProxy(req, res) {
+    const result = await StoryService.uploadProxy(req.user, req.body || {}, req.file);
+    return sendServiceResult(res, result);
+  }
+
   // Câmera: passo 2 — registrar a story a partir do objeto já enviado pro R2.
   static async createFromUpload(req, res) {
     const result = await StoryService.createStoryFromUpload(req.user, req.body || {});

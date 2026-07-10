@@ -44,6 +44,19 @@ async function presignPut(key, contentType, expiresIn = DEFAULT_EXPIRES) {
   return getSignedUrl(r2, cmd, { expiresIn });
 }
 
+// Upload server-side (fallback do presigned): usado quando o browser não
+// consegue fazer o PUT direto no R2 (ex.: bucket sem regra de CORS).
+async function putObject(key, buffer, contentType) {
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  );
+}
+
 async function headObject(key) {
   try {
     const out = await r2.send(
@@ -83,6 +96,7 @@ module.exports = {
   buildKey,
   keyBelongsToProfile,
   presignPut,
+  putObject,
   headObject,
   deleteObject,
   publicUrl,
