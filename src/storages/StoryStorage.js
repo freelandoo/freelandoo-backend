@@ -284,6 +284,22 @@ class StoryStorage {
     return rows.map((r) => r.id_story);
   }
 
+  // Bees v2: quais desses bees o viewer já curtiu (espelho do listViewedIds,
+  // alimenta o estado inicial do like no StoryPlayer).
+  static async listLikedIds(conn, { id_user, story_ids }) {
+    if (!story_ids || story_ids.length === 0) return [];
+    const { rows } = await conn.query(
+      `
+      SELECT id_story
+        FROM public.tb_story_like
+       WHERE id_user = $1
+         AND id_story = ANY($2::uuid[])
+      `,
+      [id_user, story_ids]
+    );
+    return rows.map((r) => r.id_story);
+  }
+
   static async markViewed(conn, { id_story, id_viewer_user }) {
     const { rows } = await conn.query(
       `

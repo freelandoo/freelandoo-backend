@@ -604,14 +604,22 @@ class StoryService {
           return { items: [], viewed_ids: [] };
         }
 
-        const viewedIds = await StoryStorage.listViewedIds(pool, {
-          id_viewer_user: user.id_user,
-          story_ids: rows.map((r) => r.id_story),
-        });
+        const storyIds = rows.map((r) => r.id_story);
+        const [viewedIds, likedIds] = await Promise.all([
+          StoryStorage.listViewedIds(pool, {
+            id_viewer_user: user.id_user,
+            story_ids: storyIds,
+          }),
+          StoryStorage.listLikedIds(pool, {
+            id_user: user.id_user,
+            story_ids: storyIds,
+          }),
+        ]);
 
         return {
           items: rows.map(mapStory).filter(Boolean),
           viewed_ids: viewedIds,
+          liked_ids: likedIds,
         };
       }
     );
