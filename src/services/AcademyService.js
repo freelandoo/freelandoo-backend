@@ -82,6 +82,14 @@ class AcademyService {
         const urlCheck = await validateWebhookUrl(patch.api_base_url);
         if (urlCheck.error) return { error: `URL da API inválida: ${urlCheck.error}` };
         upd.api_base_url = String(patch.api_base_url).replace(/\/+$/, "");
+        // Cursores são opacos e só fazem sentido para o provider que os emitiu:
+        // ao trocar de URL, zera para o próximo sweep varrer o histórico do novo.
+        if (upd.api_base_url !== academy.api_base_url) {
+          upd.events_cursor = null;
+          upd.payments_cursor = null;
+          upd.sync_status = "never";
+          upd.sync_error = null;
+        }
       }
       if (patch.api_token) upd.api_token_enc = secretBox.seal(patch.api_token);
 

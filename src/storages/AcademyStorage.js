@@ -15,7 +15,20 @@ module.exports = {
   },
 
   async updateAcademy(db, id_academy, patch) {
-    const allowed = ["nome", "descricao", "cidade", "api_base_url", "api_token_enc", "avatar_url", "cover_url", "is_active"];
+    const allowed = [
+      "nome",
+      "descricao",
+      "cidade",
+      "api_base_url",
+      "api_token_enc",
+      "avatar_url",
+      "cover_url",
+      "is_active",
+      "sync_status",
+      "sync_error",
+      "events_cursor",
+      "payments_cursor",
+    ];
     const sets = [];
     const vals = [id_academy];
     for (const key of allowed) {
