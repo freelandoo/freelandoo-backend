@@ -14,6 +14,12 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("academy-service");
 
+// UFs válidas — cidade agora é estruturada (seletor IBGE no front, mig 184).
+const UFS = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+]);
+
 function publicAcademy(a, extra = {}) {
   return {
     id_academy: a.id_academy,
@@ -21,6 +27,7 @@ function publicAcademy(a, extra = {}) {
     slug: a.slug,
     descricao: a.descricao,
     cidade: a.cidade,
+    uf: a.uf,
     avatar_url: a.avatar_url,
     cover_url: a.cover_url,
     created_at: a.created_at,
@@ -41,9 +48,12 @@ function ownerAcademy(a) {
 }
 
 class AcademyService {
-  static async create(id_user, { nome, descricao, cidade, api_base_url, api_token }) {
+  static async create(id_user, { nome, descricao, cidade, uf, api_base_url, api_token }) {
     return runWithLogs(log, "academy.create", () => ({ id_user }), async () => {
       if (!nome || String(nome).trim().length < 2) return { error: "Nome da academia é obrigatório" };
+      const cidadeTrim = String(cidade || "").trim();
+      const ufNorm = String(uf || "").trim().toUpperCase();
+      if (!cidadeTrim || !UFS.has(ufNorm)) return { error: "Selecione o estado e a cidade da academia" };
       if (!api_base_url || !api_token) return { error: "URL e token da API da academia são obrigatórios" };
       const urlCheck = await validateWebhookUrl(api_base_url);
       if (urlCheck.error) return { error: `URL da API inválida: ${urlCheck.error}` };
@@ -59,7 +69,9 @@ class AcademyService {
         nome: String(nome).trim(),
         slug,
         descricao,
-        cidade,
+        cidade: cidadeTrim,
+        uf: ufNorm,
+        id_region: await AcademyStorage.resolveRegion(pool, ufNorm, cidadeTrim),
         api_base_url: String(api_base_url).replace(/\/+$/, ""),
         api_token_enc: secretBox.seal(api_token),
       });
@@ -76,7 +88,14 @@ class AcademyService {
       const upd = {};
       if (patch.nome !== undefined) upd.nome = String(patch.nome).trim();
       if (patch.descricao !== undefined) upd.descricao = patch.descricao;
-      if (patch.cidade !== undefined) upd.cidade = patch.cidade;
+      if (patch.cidade !== undefined || patch.uf !== undefined) {
+        const cidade = String(patch.cidade !== undefined ? patch.cidade : academy.cidade || "").trim();
+        const uf = String(patch.uf !== undefined ? patch.uf : academy.uf || "").trim().toUpperCase();
+        if (!cidade || !UFS.has(uf)) return { error: "Selecione o estado e a cidade da academia" };
+        upd.cidade = cidade;
+        upd.uf = uf;
+        upd.id_region = await AcademyStorage.resolveRegion(pool, uf, cidade);
+      }
       if (patch.is_active !== undefined) upd.is_active = !!patch.is_active;
       if (patch.api_base_url) {
         const urlCheck = await validateWebhookUrl(patch.api_base_url);

@@ -6,12 +6,33 @@ module.exports = {
   async createAcademy(db, a) {
     const r = await db.query(
       `INSERT INTO public.tb_academy
-         (id_owner_user, nome, slug, descricao, cidade, api_base_url, api_token_enc)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+         (id_owner_user, nome, slug, descricao, cidade, uf, id_region, api_base_url, api_token_enc)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
-      [a.id_owner_user, a.nome, a.slug, a.descricao || null, a.cidade || null, a.api_base_url, a.api_token_enc]
+      [
+        a.id_owner_user,
+        a.nome,
+        a.slug,
+        a.descricao || null,
+        a.cidade || null,
+        a.uf || null,
+        a.id_region || null,
+        a.api_base_url,
+        a.api_token_enc,
+      ]
     );
     return r.rows[0];
+  },
+
+  // Região da cidade (indicadores): mesma resolução usada nos perfis (mig 121).
+  async resolveRegion(db, uf, cidade) {
+    if (!uf || !cidade) return null;
+    const r = await db.query(
+      `SELECT id_region FROM public.tb_region_city
+        WHERE uf = $1 AND municipio_norm = fl_norm_city($2)`,
+      [uf, cidade]
+    );
+    return r.rows[0] ? r.rows[0].id_region : null;
   },
 
   async updateAcademy(db, id_academy, patch) {
@@ -19,6 +40,8 @@ module.exports = {
       "nome",
       "descricao",
       "cidade",
+      "uf",
+      "id_region",
       "api_base_url",
       "api_token_enc",
       "avatar_url",
@@ -87,7 +110,7 @@ module.exports = {
     }
     vals.push(limit);
     const r = await db.query(
-      `SELECT a.id_academy, a.nome, a.slug, a.descricao, a.cidade, a.avatar_url, a.cover_url, a.created_at,
+      `SELECT a.id_academy, a.nome, a.slug, a.descricao, a.cidade, a.uf, a.avatar_url, a.cover_url, a.created_at,
               (SELECT COUNT(*)::int FROM public.tb_academy_member m WHERE m.id_academy = a.id_academy) AS member_count
          FROM public.tb_academy a
         WHERE ${where.join(" AND ")}
