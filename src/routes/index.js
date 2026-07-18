@@ -56,6 +56,8 @@ const manifestationRoutes = require("./manifestation.routes");
 const manifestationAdminRoutes = require("./manifestationAdmin.routes");
 const liveAdminRoutes = require("./liveAdmin.routes");
 const liveRoutes = require("./live.routes");
+const liveClusterRoutes = require("./liveCluster.routes");
+const liveClusterAdminRoutes = require("./liveClusterAdmin.routes");
 const polenProductsRoutes = require("./polenProducts.routes");
 const polenProductsAdminRoutes = require("./polenProductsAdmin.routes");
 const xpBoostRoutes = require("./xpBoost.routes");
@@ -185,6 +187,8 @@ module.exports = (app) => {
   app.use("/admin/manifestations", manifestationAdminRoutes);
   app.use("/admin/lives", liveAdminRoutes);
   app.use("/lives", liveRoutes);
+  app.use("/admin/live-clusters", liveClusterAdminRoutes);
+  app.use("/live-clusters", liveClusterRoutes);
   app.use("/polens", polenProductsRoutes);
   app.use("/admin/polens", polenProductsAdminRoutes);
   app.use("/xp-boost", xpBoostRoutes);

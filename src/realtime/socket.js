@@ -9,6 +9,7 @@ let io = null;
 const userRoom = (id_user) => `user:${id_user}`;
 const conversationRoom = (id_conversation) => `conv:${id_conversation}`;
 const chatRoom = (id_chat_room) => `chat:${id_chat_room}`;
+const clusterRoom = (id_live_cluster) => `cluster:${id_live_cluster}`;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -74,6 +75,23 @@ async function sweepChatPresence() {
   }
 }
 
+// Presença do Cluster de Live: lista de users com socket inscrito na sala.
+// Empurrada a cada subscribe/unsubscribe/disconnect — a sala de comando do
+// admin mostra quem está conectado sem nenhum poll HTTP.
+async function emitClusterPresence(id_live_cluster) {
+  if (!io) return;
+  try {
+    const sockets = await io.in(clusterRoom(id_live_cluster)).fetchSockets();
+    const users = [...new Set(sockets.map((s) => s.data?.id_user).filter(Boolean))];
+    io.to(clusterRoom(id_live_cluster)).emit("cluster:presence", {
+      id_live_cluster,
+      user_ids: users,
+    });
+  } catch (err) {
+    log.warn("cluster_presence.fail", { id_live_cluster, message: err?.message });
+  }
+}
+
 function init(httpServer) {
   if (io) return io;
 
@@ -111,6 +129,7 @@ function init(httpServer) {
     socket.join(userRoom(id_user));
     socket.data.id_user = id_user;
     socket.data.chatRooms = new Set();
+    socket.data.clusterRooms = new Set();
 
     log.info("socket.connected", { id_user, sid: socket.id });
 
@@ -154,6 +173,34 @@ function init(httpServer) {
       }
     });
 
+    // Clusters de Live: só membro do cluster (ou Administrator) entra na sala.
+    socket.on("cluster:subscribe", async (payload) => {
+      const id = payload?.id_live_cluster;
+      if (typeof id !== "string" || !UUID_RE.test(id)) return;
+      try {
+        const pool = require("../databases");
+        const LiveClusterStorage = require("../storages/LiveClusterStorage");
+        const allowed = await LiveClusterStorage.canAccessCluster(pool, {
+          id_live_cluster: id,
+          id_user,
+        });
+        if (!allowed) return;
+        socket.join(clusterRoom(id));
+        socket.data.clusterRooms.add(id);
+        await emitClusterPresence(id);
+      } catch (err) {
+        log.warn("cluster.subscribe_fail", { id_live_cluster: id, message: err?.message });
+      }
+    });
+
+    socket.on("cluster:unsubscribe", async (payload) => {
+      const id = payload?.id_live_cluster;
+      if (typeof id !== "string" || !UUID_RE.test(id)) return;
+      socket.leave(clusterRoom(id));
+      socket.data.clusterRooms.delete(id);
+      await emitClusterPresence(id);
+    });
+
     socket.on("disconnect", (reason) => {
       log.info("socket.disconnected", { id_user, sid: socket.id, reason });
       // Fechou aba/navegou: some da presença das salas de chat (as rooms do
@@ -164,6 +211,9 @@ function init(httpServer) {
             io.to(chatRoom(id)).emit("chat:presence", { id_chat_room: id, current_users: online });
           })
           .catch(() => {});
+      }
+      for (const id of socket.data.clusterRooms || []) {
+        emitClusterPresence(id).catch(() => {});
       }
     });
   });
@@ -192,6 +242,15 @@ function emitToConversation(id_conversation, event, payload) {
     io.to(conversationRoom(id_conversation)).emit(event, payload);
   } catch (err) {
     log.error("emit.conversation_error", { message: err?.message, event });
+  }
+}
+
+function emitToClusterRoom(id_live_cluster, event, payload) {
+  if (!io || !id_live_cluster) return;
+  try {
+    io.to(clusterRoom(id_live_cluster)).emit(event, payload);
+  } catch (err) {
+    log.error("emit.cluster_room_error", { message: err?.message, event });
   }
 }
 
@@ -224,6 +283,7 @@ module.exports = {
   emitToUser,
   emitToConversation,
   emitToChatRoom,
+  emitToClusterRoom,
   emitToAll,
   getIo,
 };
