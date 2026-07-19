@@ -31,7 +31,13 @@ module.exports = {
         COALESCE(s.statuses, '[]'::jsonb) AS statuses,
 
         -- Perfis com redes sociais filhas + status do perfil
-        COALESCE(p.profiles, '[]'::jsonb) AS profiles
+        COALESCE(p.profiles, '[]'::jsonb) AS profiles,
+
+        -- Perfil-conta (paridade user≡subperfil): id + XP/nível no topo
+        acc.account_profile AS account_profile,
+
+        -- Redes sociais do PERFIL-CONTA no nível do user (headcard do username)
+        COALESCE(usm.redes_sociais, '[]'::jsonb) AS redes_sociais
 
       FROM tb_user tu
  
@@ -83,6 +89,9 @@ module.exports = {
             'municipio', pro.municipio,
             'is_active', pro.is_active,
             'is_visible', pro.is_visible,
+            'is_user_account', COALESCE(pro.is_user_account, FALSE),
+            'xp_total', pro.xp_total,
+            'xp_level', pro.xp_level,
             'deleted_at', pro.deleted_at,
             'redes_sociais', COALESCE(sm.redes_sociais, '[]'::jsonb),
             'statuses',      COALESCE(ps.statuses,      '[]'::jsonb),
@@ -159,6 +168,44 @@ module.exports = {
         WHERE pro.id_user = tu.id_user
           AND pro.deleted_at IS NULL
       ) p ON TRUE
+
+      -- perfil-conta (is_user_account): base do XP/nível e redes do user
+      LEFT JOIN LATERAL (
+        SELECT
+          jsonb_build_object(
+            'id_profile', ap.id_profile,
+            'xp_total', ap.xp_total,
+            'xp_level', ap.xp_level
+          ) AS account_profile,
+          ap.id_profile AS account_profile_id
+        FROM tb_profile ap
+        WHERE ap.id_user = tu.id_user
+          AND ap.is_user_account = TRUE
+          AND ap.deleted_at IS NULL
+        LIMIT 1
+      ) acc ON TRUE
+
+      -- redes sociais do perfil-conta (id = id_social_media_type, usado no
+      -- CRUD legado /users/me/social-media)
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'id', psm.id_social_media_type,
+            'platform', soty.desc_social_media_type,
+            'icon', soty.icon,
+            'account', psm.url,
+            'followers_range', COALESCE(fr.follower_range, '')
+          )
+          ORDER BY soty.desc_social_media_type
+        ) AS redes_sociais
+        FROM tb_profile_social_media psm
+        JOIN tb_social_media_type soty
+          ON soty.id_social_media_type = psm.id_social_media_type
+        LEFT JOIN tb_follower_range fr
+          ON fr.id_follower_range = psm.id_follower_range
+        WHERE psm.id_profile = acc.account_profile_id
+          AND psm.is_active = TRUE
+      ) usm ON TRUE
 
       WHERE tu.id_user = $1
       `,

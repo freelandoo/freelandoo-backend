@@ -68,6 +68,7 @@ const coursesRoutes = require("./courses.routes");
 const coursesPublicRoutes = require("./coursesPublic.routes");
 const onboardingRoutes = require("./onboarding.routes");
 const userAccountPortfolioRoutes = require("./userAccountPortfolio.routes");
+const userAccountSocialMediaRoutes = require("./userAccountSocialMedia.routes");
 const userPublicRoutes = require("./userPublic.routes");
 const portfolioCommentRoutes = require("./portfolioComment.routes");
 const storyRoutes = require("./storyRoutes");
@@ -129,6 +130,8 @@ module.exports = (app) => {
 
   app.use("/auth", authRoutes);
   app.use("/address", addressRoutes);
+  // Antes de /users: rota mais específica (redes do perfil-conta do user)
+  app.use("/users/me/social-media", userAccountSocialMediaRoutes);
   app.use("/users", usersRoutes);
   app.use("/stripe", stripeRoutes);
   app.use("/admin/annual-fee", annualFeeAdminRoutes);

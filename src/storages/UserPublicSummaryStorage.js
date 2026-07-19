@@ -7,6 +7,44 @@ class UserPublicSummaryStorage {
     return r.rowCount ? r.rows[0].id_user : null;
   }
 
+  // Perfil-conta (is_user_account) do usuário — base da paridade user≡subperfil:
+  // é ele quem carrega XP/nível, seguidores e redes sociais do "user".
+  static async getAccountProfile(conn, id_user) {
+    const r = await conn.query(
+      `SELECT p.id_profile, p.display_name, p.avatar_url,
+              p.xp_total, p.xp_level
+         FROM public.tb_profile p
+        WHERE p.id_user = $1
+          AND p.is_user_account = TRUE
+          AND p.deleted_at IS NULL
+          AND p.is_active = TRUE
+        LIMIT 1`,
+      [id_user]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async listSocialMedia(conn, id_profile) {
+    const r = await conn.query(
+      `SELECT psm.id_profile_social_media,
+              psm.id_social_media_type,
+              smt.desc_social_media_type,
+              smt.icon,
+              psm.url,
+              fr.follower_range
+         FROM public.tb_profile_social_media psm
+         JOIN public.tb_social_media_type smt
+           ON smt.id_social_media_type = psm.id_social_media_type
+         LEFT JOIN public.tb_follower_range fr
+           ON fr.id_follower_range = psm.id_follower_range
+        WHERE psm.id_profile = $1
+          AND psm.is_active = TRUE
+        ORDER BY smt.desc_social_media_type`,
+      [id_profile]
+    );
+    return r.rows;
+  }
+
   static async countPublicProfiles(conn, id_user) {
     const r = await conn.query(
       `

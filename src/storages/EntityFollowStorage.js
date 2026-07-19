@@ -94,24 +94,31 @@ function publicEntityWhere(alias = "p") {
   return `
     ${alias}.deleted_at IS NULL
     AND ${alias}.is_active = TRUE
-    AND ${alias}.is_visible = TRUE
     AND (
-      (${alias}.is_clan = FALSE AND EXISTS (
-        SELECT 1
-          FROM public.tb_profile_subscription ps_public
-         WHERE ps_public.id_profile = ${alias}.id_profile
-           AND ps_public.status = 'active'
-      ))
-      OR
-      (${alias}.is_clan = TRUE AND EXISTS (
-        SELECT 1
-          FROM public.tb_clan_member cm_public
-          JOIN public.tb_profile_subscription ps_public_owner
-            ON ps_public_owner.id_profile = cm_public.id_member_profile
-           AND ps_public_owner.status = 'active'
-         WHERE cm_public.id_clan_profile = ${alias}.id_profile
-           AND cm_public.role = 'owner'
-      ))
+      -- Perfil-conta (is_user_account): entidade social pública por natureza —
+      -- paridade user≡subperfil. Não exige is_visible nem assinatura ativa.
+      COALESCE(${alias}.is_user_account, FALSE) = TRUE
+      OR (
+        ${alias}.is_visible = TRUE
+        AND (
+          (${alias}.is_clan = FALSE AND EXISTS (
+            SELECT 1
+              FROM public.tb_profile_subscription ps_public
+             WHERE ps_public.id_profile = ${alias}.id_profile
+               AND ps_public.status = 'active'
+          ))
+          OR
+          (${alias}.is_clan = TRUE AND EXISTS (
+            SELECT 1
+              FROM public.tb_clan_member cm_public
+              JOIN public.tb_profile_subscription ps_public_owner
+                ON ps_public_owner.id_profile = cm_public.id_member_profile
+               AND ps_public_owner.status = 'active'
+             WHERE cm_public.id_clan_profile = ${alias}.id_profile
+               AND cm_public.role = 'owner'
+          ))
+        )
+      )
     )
   `;
 }
@@ -272,13 +279,11 @@ class EntityFollowStorage {
   }
 
   static isPublicEntity(entity) {
-    return !!(
-      entity &&
-      entity.is_active &&
-      entity.is_visible &&
-      !entity.deleted_at &&
-      entity.is_paid
-    );
+    if (!entity || !entity.is_active || entity.deleted_at) return false;
+    // Perfil-conta do usuário: sempre entidade social pública (paridade
+    // user≡subperfil) — pode ser seguido sem is_visible/assinatura.
+    if (entity.is_user_account) return true;
+    return !!(entity.is_visible && entity.is_paid);
   }
 
   // Check mais frouxo usado pelo sistema de mensagens. Qualquer entidade ativa
