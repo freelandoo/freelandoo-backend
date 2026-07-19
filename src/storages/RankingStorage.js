@@ -407,7 +407,6 @@ module.exports = {
          COALESCE(ret.seconds_watched, 0) AS content_retention_seconds,
          NOW()
        FROM tb_profile pro
-       JOIN tb_profile_subscription psub ON psub.id_profile = pro.id_profile AND psub.status = 'active'
        JOIN tb_user tu ON tu.id_user = pro.id_user
 
        LEFT JOIN LATERAL (
@@ -452,10 +451,20 @@ module.exports = {
             AND pcr.updated_at >= $2::timestamptz
        ) ret ON TRUE
 
-       WHERE pro.is_visible = TRUE AND pro.deleted_at IS NULL AND tu.ativo = TRUE
+       WHERE (pro.is_visible = TRUE OR pro.is_user_account = TRUE)
+         AND pro.deleted_at IS NULL AND tu.ativo = TRUE
          AND pro.is_clan = FALSE
-         AND pro.is_user_account = FALSE
          AND pro.ranking_visible = TRUE
+         -- Perfil-conta entra no ranking (paridade user≡subperfil, 2026-07-19);
+         -- subperfil segue exigindo assinatura ativa (o JOIN antigo virou EXISTS).
+         AND (
+           pro.is_user_account = TRUE
+           OR EXISTS (
+             SELECT 1 FROM tb_profile_subscription psub
+             WHERE psub.id_profile = pro.id_profile
+               AND psub.status = 'active'
+           )
+         )
 
        ON CONFLICT (id_profile) DO UPDATE SET
          total_points    = EXCLUDED.total_points,
