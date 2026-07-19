@@ -233,9 +233,10 @@ module.exports = {
         tu.ativo = true
         AND tu.is_minor = FALSE
         AND pro.is_active = true
-        AND pro.is_visible = true
+        -- Perfil-conta entra na vitrine (paridade user≡subperfil, 2026-07-19);
+        -- ele pode ter is_visible FALSE por padrão (mesma regra do feed).
+        AND (pro.is_visible = true OR pro.is_user_account = TRUE)
         AND pro.deleted_at IS NULL
-        AND pro.is_user_account = FALSE
         AND pro.showcase_visible = TRUE
 
         -- Máquina desativada nunca aparece publicamente.
@@ -243,12 +244,18 @@ module.exports = {
         -- filtro de máquina/profissão é aplicado.
         AND (m.is_active IS NULL OR m.is_active = TRUE)
 
-        -- Só mostra perfis com assinatura ativa.
-        AND EXISTS (
+        -- Vitrine SEM gate de pagamento (decisão Alex 2026-07-19): perfis
+        -- aparecem mesmo sem assinatura ativa. O gate antigo (EXISTS em
+        -- tb_profile_subscription) foi removido de propósito.
+
+        -- Preferência pessoal "vitrine" (seção Funções): dono desligou →
+        -- os perfis do user inteiro somem da vitrine pra todo mundo.
+        AND NOT EXISTS (
           SELECT 1
-          FROM tb_profile_subscription psub_pub
-          WHERE psub_pub.id_profile = pro.id_profile
-            AND psub_pub.status = 'active'
+          FROM tb_user_feature_pref ufp
+          WHERE ufp.id_user = tu.id_user
+            AND ufp.feature_key = 'vitrine'
+            AND ufp.is_enabled = FALSE
         )
 
         -- Filtros geográficos
