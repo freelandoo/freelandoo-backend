@@ -153,14 +153,16 @@ module.exports = {
         pro.municipio,
         pro.sub_profile_slug,
         pro.xp_level,
-        ca.id_category,
-        ca.desc_category AS category,
-        ca.profession_slug,
+        -- Perfil-conta carrega uma categoria "fantasma" (primeira da tabela,
+        -- ver AuthStorage.ensureUserAccountProfile) — nunca expor no card.
+        CASE WHEN pro.is_user_account THEN NULL ELSE ca.id_category END      AS id_category,
+        CASE WHEN pro.is_user_account THEN NULL ELSE ca.desc_category END    AS category,
+        CASE WHEN pro.is_user_account THEN NULL ELSE ca.profession_slug END  AS profession_slug,
 
         -- MACHINE
-        m.id_machine,
-        m.slug  AS machine_slug,
-        m.name  AS machine_name,
+        CASE WHEN pro.is_user_account THEN NULL ELSE m.id_machine END AS id_machine,
+        CASE WHEN pro.is_user_account THEN NULL ELSE m.slug END       AS machine_slug,
+        CASE WHEN pro.is_user_account THEN NULL ELSE m.name END       AS machine_name,
 
         -- USER DONO DO PROFILE
         tu.id_user,
@@ -256,6 +258,16 @@ module.exports = {
           WHERE ufp.id_user = tu.id_user
             AND ufp.feature_key = 'vitrine'
             AND ufp.is_enabled = FALSE
+        )
+
+        -- Perfil-conta não tem taxonomia real (categoria fantasma): qualquer
+        -- filtro de máquina/profissão/categoria o exclui da vitrine.
+        AND (
+          COALESCE(pro.is_user_account, FALSE) = FALSE
+          OR (
+            $3::text IS NULL AND $8::text[] IS NULL AND $9::int IS NULL
+            AND $10::int IS NULL AND $11::text IS NULL
+          )
         )
 
         -- Filtros geográficos

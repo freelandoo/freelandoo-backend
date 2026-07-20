@@ -56,8 +56,8 @@ class AuthStorage {
         FALSE,
         TRUE,
         TRUE,
-        FALSE,
-        FALSE
+        TRUE,
+        TRUE
       WHERE NOT EXISTS (
         SELECT 1 FROM public.tb_profile
          WHERE id_user = $1::uuid AND is_user_account = TRUE
