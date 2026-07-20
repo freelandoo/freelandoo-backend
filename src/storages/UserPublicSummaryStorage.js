@@ -59,10 +59,7 @@ class UserPublicSummaryStorage {
          AND p.showcase_visible = TRUE
          AND p.is_clan = FALSE
          AND p.is_user_account = FALSE
-         AND EXISTS (
-           SELECT 1 FROM public.tb_profile_subscription ps
-            WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
-         )
+         -- Sem gate de assinatura: mesma regra da vitrine (V1, 2026-07-19)
       `,
       [id_user]
     );

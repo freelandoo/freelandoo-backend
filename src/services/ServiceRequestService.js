@@ -268,11 +268,19 @@ class ServiceRequestService {
       if (own.error) return { error: own.error };
       const p = own.profile;
       if (p.is_clan) return { error: "Mural de clan será disponibilizado na próxima slice" };
-      if (!p.is_paid || !p.is_visible) return { error: "Perfil precisa estar ativo e visível" };
+      // Perfil-conta abre o mural sem assinatura/visibilidade (paridade
+      // user≡subperfil). Como ele não tem taxonomia real (categoria fantasma
+      // do AuthStorage), o broadcast por máquina/profissão não se aplica —
+      // lista só as conversas de O.S. já abertas.
+      if (!p.is_user_account && (!p.is_paid || !p.is_visible)) {
+        return { error: "Perfil precisa estar ativo e visível" };
+      }
       // Expira PENDING > 6h antes de listar — abre a O.S. de novo pra todos
       await ServiceRequestStorage.expireOldPending(pool);
       const [items, conversations] = await Promise.all([
-        ServiceRequestStorage.listMuralForProfile(pool, p),
+        p.is_user_account
+          ? Promise.resolve([])
+          : ServiceRequestStorage.listMuralForProfile(pool, p),
         ServiceRequestStorage.listConversationsForProfile(pool, id_profile),
       ]);
       return { requests: items, items, conversations };

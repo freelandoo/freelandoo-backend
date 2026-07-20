@@ -150,7 +150,8 @@ class BookingAvailabilityService {
     const profile = await ProfileStorage.getProfileById(pool, id_profile);
     if (!profile) return { error: "Perfil não encontrado" };
     if (profile.deleted_at) return { error: "Perfil não encontrado" };
-    if (!profile.is_visible) return { error: "Perfil indisponível" };
+    // Perfil-conta é agendável mesmo com is_visible=FALSE (paridade user≡subperfil)
+    if (!profile.is_visible && !profile.is_user_account) return { error: "Perfil indisponível" };
 
     const targetDate = new Date(dateStr + "T12:00:00Z");
     const weekday = targetDate.getUTCDay(); // 0=dom, 6=sab
@@ -259,7 +260,7 @@ class BookingAvailabilityService {
     if (!profile) return { error: "Perfil não encontrado" };
 
     // Em modo público: se perfil não está apto, devolve estrutura vazia (sem erro).
-    if (!ownerView && (profile.deleted_at || !profile.is_visible)) {
+    if (!ownerView && (profile.deleted_at || (!profile.is_visible && !profile.is_user_account))) {
       return { weekStart, weekEnd, availableSlots: [], events: [] };
     }
 

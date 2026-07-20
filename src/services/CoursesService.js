@@ -559,7 +559,8 @@ class CoursesService {
             return { error: "Perfil informado é inválido" };
           }
           const isClan = !!profile.is_clan;
-          if (!isClan && !profile.is_paid) {
+          // Perfil-conta cria curso sem assinatura (paridade user≡subperfil)
+          if (!isClan && !profile.is_paid && !profile.is_user_account) {
             return { error: "Só subperfis ativos podem criar cursos.", status: 403 };
           }
           const attachIds = isClan && Array.isArray(memberIds) ? memberIds : [];

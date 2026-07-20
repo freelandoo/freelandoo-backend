@@ -35,10 +35,21 @@ async function assertOwnerWithProfile(conn, id_profile, id_user) {
   return { profile };
 }
 
+// "Pago" no sentido de loja liberada: assinatura ativa OU perfil-conta
+// (paridade user≡subperfil 2026-07-19 — a conta vende sem assinatura, como
+// a vitrine deixou de exigir pagamento). Nome mantido por compat com o
+// import do ProductRequestResponseService.
 async function isProfilePaid(conn, id_profile) {
   const r = await conn.query(
-    `SELECT 1 FROM public.tb_profile_subscription
-      WHERE id_profile = $1 AND status = 'active'
+    `SELECT 1 FROM public.tb_profile p
+      WHERE p.id_profile = $1
+        AND (
+          p.is_user_account = TRUE
+          OR EXISTS (
+            SELECT 1 FROM public.tb_profile_subscription s
+             WHERE s.id_profile = p.id_profile AND s.status = 'active'
+          )
+        )
       LIMIT 1`,
     [id_profile]
   );
