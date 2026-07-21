@@ -15,20 +15,31 @@ class AuthStorage {
     return r.rowCount ? r.rows[0].id_user : null;
   }
 
+  // CPF já normalizado (11 dígitos) — ver utils/documents.normalizeCPF.
+  static async findUserIdByCpf(client, cpf) {
+    const r = await client.query(
+      "SELECT id_user FROM tb_user WHERE cpf = $1 LIMIT 1",
+      [cpf]
+    );
+    return r.rowCount ? r.rows[0].id_user : null;
+  }
+
   static async createUser(
     client,
-    { nome, username, email, senhaHash, data_nascimento, sexo, estado, municipio, ativo }
+    { nome, username, email, senhaHash, data_nascimento, cpf, sexo, estado, municipio, ativo }
   ) {
     const r = await client.query(
       `
       INSERT INTO tb_user
-        (nome, username, email, senha, data_nascimento, sexo, estado, municipio, ativo)
+        (nome, username, email, senha, data_nascimento, cpf, cpf_added_at,
+         sexo, estado, municipio, ativo)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ($1, $2, $3, $4, $5, $6, CASE WHEN $6::char(11) IS NULL THEN NULL ELSE NOW() END,
+         $7, $8, $9, $10)
       RETURNING
         id_user, nome, username, email, estado, municipio, created_at
       `,
-      [nome, username, email, senhaHash, data_nascimento, sexo, estado, municipio, ativo]
+      [nome, username, email, senhaHash, data_nascimento, cpf || null, sexo, estado, municipio, ativo]
     );
     const user = r.rows[0];
     await this.ensureUserAccountProfile(client, user.id_user, nome);

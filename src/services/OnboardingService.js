@@ -6,9 +6,9 @@
 
 const pool = require("../databases");
 const SupervisionService = require("./SupervisionService");
-const SupervisionStorage = require("../storages/SupervisionStorage");
 const SocialMediaStorage = require("../storages/SocialMediaStorage");
 const { calculateAge } = require("../utils/validateSignup");
+const { normalizeCPF } = require("../utils/documents");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("OnboardingService");
@@ -20,9 +20,10 @@ const ONBOARDING_SOCIAL_ICONS = new Set([
 
 class OnboardingService {
   /**
-   * Submete os dados de onboarding (data de nascimento + opcional código
-   * parental). Só funciona se o user ainda não tem data_nascimento setada
-   * — chamada subsequente retorna erro.
+   * Submete os dados de onboarding (data de nascimento + CPF + opcional código
+   * parental). Cada campo só é exigido se ainda estiver vazio na conta — a
+   * base antiga já tem nascimento e vai passar aqui só pelo CPF (mig 188).
+   * Chamada com tudo já preenchido retorna erro.
    */
   static async submitBirthdate(user, body) {
     return runWithLogs(
@@ -43,23 +44,57 @@ class OnboardingService {
             ? body.responsible_code.trim().toUpperCase()
             : null;
 
-        if (!dataNascimento) {
-          return { error: "Data de nascimento é obrigatória" };
-        }
-        const age = calculateAge(dataNascimento);
-        if (age == null || age < 0 || age > 120) {
-          return { error: "Data de nascimento inválida" };
-        }
-
-        const flags = await SupervisionStorage.getUserMinorFlags(
-          pool,
-          user.id_user,
+        const current = await pool.query(
+          `SELECT data_nascimento, cpf FROM public.tb_user WHERE id_user = $1 LIMIT 1`,
+          [user.id_user],
         );
-        if (flags?.data_nascimento) {
+        if (!current.rowCount) return { error: "Usuário não encontrado" };
+        const hasBirthdate = !!current.rows[0].data_nascimento;
+        const hasCpf = !!current.rows[0].cpf;
+
+        if (hasBirthdate && hasCpf) {
           return { error: "Onboarding já foi concluído" };
         }
 
-        const isMinor = age < 18;
+        // Nascimento: só valida/grava se ainda falta. Quem já tem não pode
+        // trocar por aqui (mudaria a idade e furaria o gate de menoridade).
+        let age = null;
+        if (!hasBirthdate) {
+          if (!dataNascimento) {
+            return { error: "Data de nascimento é obrigatória" };
+          }
+          age = calculateAge(dataNascimento);
+          if (age == null || age < 0 || age > 120) {
+            return { error: "Data de nascimento inválida" };
+          }
+        }
+
+        // CPF: idem. Obrigatório, validado por dígito verificador e único.
+        let cpf = null;
+        if (!hasCpf) {
+          if (!body?.cpf) {
+            return { error: "CPF é obrigatório.", reason: "cpf_required" };
+          }
+          cpf = normalizeCPF(body.cpf);
+          if (!cpf) {
+            return { error: "CPF inválido.", reason: "cpf_invalid" };
+          }
+          const taken = await pool.query(
+            `SELECT 1 FROM public.tb_user WHERE cpf = $1 AND id_user <> $2 LIMIT 1`,
+            [cpf, user.id_user],
+          );
+          if (taken.rowCount) {
+            return {
+              error:
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+              reason: "cpf_taken",
+            };
+          }
+        }
+
+        // Vínculo parental só entra em jogo quando a idade está sendo definida
+        // AGORA. Menor já supervisionado (base antiga) não é cobrado de novo.
+        const isMinor = age != null && age < 18;
         if (isMinor && !responsibleCode) {
           return {
             error:
@@ -72,9 +107,14 @@ class OnboardingService {
         try {
           await client.query("BEGIN");
           await client.query(
-            `UPDATE tb_user SET data_nascimento = $1, updated_at = NOW()
-              WHERE id_user = $2`,
-            [dataNascimento, user.id_user],
+            `UPDATE tb_user
+                SET data_nascimento = COALESCE($1, data_nascimento),
+                    cpf             = COALESCE($2, cpf),
+                    cpf_added_at    = CASE WHEN $2::char(11) IS NULL
+                                           THEN cpf_added_at ELSE NOW() END,
+                    updated_at      = NOW()
+              WHERE id_user = $3`,
+            [hasBirthdate ? null : dataNascimento, cpf, user.id_user],
           );
 
           if (isMinor) {
@@ -105,10 +145,20 @@ class OnboardingService {
           return {
             ok: true,
             is_minor: isMinor,
-            data_nascimento: dataNascimento,
+            data_nascimento: hasBirthdate ? undefined : dataNascimento,
+            cpf_saved: !!cpf,
           };
         } catch (err) {
           await client.query("ROLLBACK");
+          // Duas abas do mesmo usuário (ou dois usuários) gravando o mesmo CPF
+          // ao mesmo tempo: o UNIQUE parcial da mig 188 barra o segundo.
+          if (err?.code === "23505" && String(err.constraint) === "ux_tb_user_cpf") {
+            return {
+              error:
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+              reason: "cpf_taken",
+            };
+          }
           throw err;
         } finally {
           client.release();

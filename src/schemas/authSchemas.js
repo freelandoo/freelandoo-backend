@@ -32,6 +32,9 @@ const signupBody = z
     email: emailSchema,
     senha: senhaSchema,
     data_nascimento: z.string().trim().min(4, "Data de nascimento obrigatória."),
+    // Aceita com ou sem máscara; o dígito verificador é conferido no
+    // AuthService (normalizeCPF), junto com a duplicidade.
+    cpf: z.string().trim().min(11, "CPF obrigatório.").max(14),
   })
   .passthrough();
 

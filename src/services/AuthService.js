@@ -30,6 +30,7 @@ const {
   validatePasswordStrength,
   calculateAge,
 } = require("../utils/validateSignup");
+const { normalizeCPF } = require("../utils/documents");
 const SupervisionService = require("./SupervisionService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -65,6 +66,9 @@ class AuthService {
             avatar_url,
             responsible_code,
           } = payload;
+          // CPF (mig 188): obrigatório e único — 1 CPF = 1 conta (os subperfis
+          // ficam dentro dela). Fase 1 valida só o dígito verificador, offline.
+          const cpf = normalizeCPF(payload.cpf);
           const email = normalizeEmail(payload.email);
           const estado = payload.estado ? String(payload.estado).trim().toUpperCase() : null;
           const municipio = payload.municipio ? String(payload.municipio).trim() : null;
@@ -79,6 +83,13 @@ class AuthService {
             return {
               error: "Campos obrigatórios: nome, email, senha, data_nascimento",
             };
+          }
+
+          if (!payload.cpf) {
+            return { error: "CPF é obrigatório.", reason: "cpf_required" };
+          }
+          if (!cpf) {
+            return { error: "CPF inválido.", reason: "cpf_invalid" };
           }
 
           const emailCheck = validateEmailFormat(email);
@@ -116,6 +127,17 @@ class AuthService {
           const usernameTaken = await AuthStorage.findUserIdByUsername(client, username);
           if (usernameTaken) {
             return { error: "Este nome de usuário já está em uso", reason: "username_taken" };
+          }
+
+          // 1 CPF = 1 conta. Quem quer se dividir em várias frentes usa
+          // subperfis dentro da mesma conta, não contas paralelas.
+          const cpfTaken = await AuthStorage.findUserIdByCpf(client, cpf);
+          if (cpfTaken) {
+            return {
+              error:
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+              reason: "cpf_taken",
+            };
           }
 
           if (id_category) {
@@ -160,6 +182,7 @@ class AuthService {
             email,
             senhaHash,
             data_nascimento,
+            cpf,
             sexo: sexo || null,
             estado,
             municipio,
@@ -254,6 +277,16 @@ class AuthService {
           };
         } catch (err) {
           await client.query("ROLLBACK");
+          // Race entre dois signups com o mesmo CPF: a checagem prévia passou
+          // nos dois, o UNIQUE parcial (mig 188) barra o segundo. Sem isso o
+          // usuário levaria um 500 opaco.
+          if (err?.code === "23505" && String(err.constraint) === "ux_tb_user_cpf") {
+            return {
+              error:
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+              reason: "cpf_taken",
+            };
+          }
           throw err;
         } finally {
           client.release();

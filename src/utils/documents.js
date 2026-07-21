@@ -52,4 +52,27 @@ function normalizeDocument(value) {
   return null;
 }
 
-module.exports = { onlyDigits, isValidCPF, isValidCNPJ, normalizeDocument };
+// Só CPF: retorna os 11 dígitos se o documento for válido, senão null.
+// Usado no cadastro/onboarding (tb_user.cpf, mig 188) — CNPJ não serve ali,
+// porque a conta é sempre de uma pessoa física titular.
+function normalizeCPF(value) {
+  const digits = onlyDigits(value);
+  return digits.length === 11 && isValidCPF(digits) ? digits : null;
+}
+
+// Máscara para exibição ao próprio dono: 123.***.**9-01.
+// Nunca devolver o CPF inteiro em API — minimização (LGPD).
+function maskCPF(value) {
+  const digits = onlyDigits(value);
+  if (digits.length !== 11) return null;
+  return `${digits.slice(0, 3)}.***.**${digits.slice(8, 9)}-${digits.slice(9)}`;
+}
+
+module.exports = {
+  onlyDigits,
+  isValidCPF,
+  isValidCNPJ,
+  normalizeDocument,
+  normalizeCPF,
+  maskCPF,
+};

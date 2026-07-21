@@ -11,6 +11,13 @@ module.exports = {
         tu.username,
         tu.data_nascimento,
         EXTRACT(YEAR FROM AGE(CURRENT_DATE, tu.data_nascimento)) AS idade,
+        -- CPF (mig 188): nunca devolvido inteiro. O gate do onboarding só
+        -- precisa saber se existe; a máscara é pra o dono se reconhecer.
+        (tu.cpf IS NOT NULL) AS has_cpf,
+        CASE WHEN tu.cpf IS NULL THEN NULL ELSE
+          SUBSTRING(tu.cpf, 1, 3) || '.***.**' || SUBSTRING(tu.cpf, 9, 1)
+            || '-' || SUBSTRING(tu.cpf, 10, 2)
+        END AS cpf_masked,
         tu.sexo,
         tu.email,
         tu.telefone,
