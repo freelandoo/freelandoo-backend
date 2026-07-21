@@ -37,11 +37,14 @@ class BookingAvailabilityService {
     const { rules } = body; // array de { weekday, is_enabled, start_time, end_time, slot_duration_minutes, buffer_minutes }
     if (!Array.isArray(rules)) return { error: "Campo 'rules' é obrigatório e deve ser um array" };
 
+    // A agenda é da conta: editar por qualquer perfil grava no perfil-conta.
+    const { agendaProfileId } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+
     const results = [];
     for (const rule of rules) {
       if (rule.weekday == null || rule.weekday < 0 || rule.weekday > 6) continue;
       const saved = await BookingAvailabilityStorage.upsertWeeklyRule(pool, {
-        id_profile,
+        id_profile: agendaProfileId,
         weekday: rule.weekday,
         is_enabled: !!rule.is_enabled,
         start_time: rule.start_time || "08:00",
@@ -60,8 +63,9 @@ class BookingAvailabilityService {
     if (!profile) return { error: "Perfil não encontrado" };
     if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
 
-    const rules = await BookingAvailabilityStorage.getWeeklyRules(pool, id_profile);
-    return { rules };
+    const { agendaProfileId } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+    const rules = await BookingAvailabilityStorage.getWeeklyRules(pool, agendaProfileId);
+    return { rules, id_agenda_profile: agendaProfileId };
   }
 
   // ─── Owner: exceções por data ───────────────────────────────────────
@@ -73,8 +77,9 @@ class BookingAvailabilityService {
 
     if (!body.override_date) return { error: "Data é obrigatória" };
 
+    const { agendaProfileId } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
     const saved = await BookingAvailabilityStorage.upsertOverride(pool, {
-      id_profile,
+      id_profile: agendaProfileId,
       override_date: body.override_date,
       is_day_blocked: !!body.is_day_blocked,
       custom_start_time: body.custom_start_time,
@@ -92,8 +97,9 @@ class BookingAvailabilityService {
     if (!profile) return { error: "Perfil não encontrado" };
     if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
 
-    const overrides = await BookingAvailabilityStorage.getOverrides(pool, id_profile);
-    return { overrides };
+    const { agendaProfileId } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+    const overrides = await BookingAvailabilityStorage.getOverrides(pool, agendaProfileId);
+    return { overrides, id_agenda_profile: agendaProfileId };
   }
 
   static async deleteOverride(user, params) {
@@ -102,7 +108,8 @@ class BookingAvailabilityService {
     if (!profile) return { error: "Perfil não encontrado" };
     if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
 
-    const deleted = await BookingAvailabilityStorage.deleteOverride(pool, overrideId, id_profile);
+    const { agendaProfileId } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+    const deleted = await BookingAvailabilityStorage.deleteOverride(pool, overrideId, agendaProfileId);
     if (!deleted) return { error: "Exceção não encontrada" };
     return { deleted: true };
   }
@@ -159,8 +166,12 @@ class BookingAvailabilityService {
     today.setHours(0, 0, 0, 0);
     if (targetDate < today) return { slots: [], message: "Data no passado" };
 
+    // Agenda da conta (mig 190): as regras moram no perfil-conta e a ocupação
+    // considera TODOS os perfis do dono — o mesmo corpo não faz duas coisas.
+    const { agendaProfileId, profileIds } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+
     // Pegar regra para a data (override tem prioridade)
-    const rule = await BookingAvailabilityStorage.getRuleForDate(pool, id_profile, dateStr, weekday);
+    const rule = await BookingAvailabilityStorage.getRuleForDate(pool, agendaProfileId, dateStr, weekday);
 
     if (rule.type === "none") return { slots: [] };
 
@@ -169,7 +180,7 @@ class BookingAvailabilityService {
       if (ov.is_day_blocked) return { slots: [], message: "Dia bloqueado" };
 
       // Pegar regra semanal para duração/buffer defaults
-      const weeklyRules = await BookingAvailabilityStorage.getWeeklyRules(pool, id_profile);
+      const weeklyRules = await BookingAvailabilityStorage.getWeeklyRules(pool, agendaProfileId);
       const weeklyRule = weeklyRules.find(r => r.weekday === weekday);
       const duration = weeklyRule?.slot_duration_minutes || 60;
       const buffer = weeklyRule?.buffer_minutes || 0;
@@ -208,7 +219,7 @@ class BookingAvailabilityService {
       slots.sort((a, b) => a.start.localeCompare(b.start));
 
       // Remover slots já reservados
-      const bookings = await BookingStorage.getActiveBookingsForDate(pool, id_profile, dateStr);
+      const bookings = await BookingStorage.getActiveBookingsForDate(pool, profileIds, dateStr);
       const bookedTimes = new Set(bookings.map(b => b.start_time.substring(0, 5)));
       slots = slots.filter(s => !bookedTimes.has(s.start));
 
@@ -233,7 +244,7 @@ class BookingAvailabilityService {
     let slots = generateSlots(wr.start_time, wr.end_time, wr.slot_duration_minutes, wr.buffer_minutes);
 
     // Remover slots já reservados
-    const bookings = await BookingStorage.getActiveBookingsForDate(pool, id_profile, dateStr);
+    const bookings = await BookingStorage.getActiveBookingsForDate(pool, profileIds, dateStr);
     const bookedTimes = new Set(bookings.map(b => b.start_time.substring(0, 5)));
     slots = slots.filter(s => !bookedTimes.has(s.start));
 
@@ -273,6 +284,8 @@ class BookingAvailabilityService {
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 
+    const scope = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+
     const availableSlots = [];
     for (const dateStr of dates) {
       const r = await this.getAvailableSlots(id_profile, dateStr);
@@ -280,7 +293,7 @@ class BookingAvailabilityService {
     }
 
     // Eventos = bookings ativos da semana
-    const bookings = await BookingStorage.getActiveBookingsInRange(pool, id_profile, weekStart, weekEnd);
+    const bookings = await BookingStorage.getActiveBookingsInRange(pool, scope.profileIds, weekStart, weekEnd);
     const events = bookings.map(b => {
       let status = "confirmed";
       if (b.status === "pending_payment" || b.payment_status === "pending") status = "pending_payment";
@@ -296,6 +309,11 @@ class BookingAvailabilityService {
         start: `${dateStr}T${String(b.start_time).substring(0, 8)}`,
         end: `${dateStr}T${String(b.end_time).substring(0, 8)}`,
         status,
+        // Agenda é uma só, mas o agendamento lembra por qual perfil entrou —
+        // é o que a tela mostra como "agendado pelo perfil X".
+        originProfileId: b.id_profile ? String(b.id_profile) : null,
+        originProfileName: b.origin_profile_name || null,
+        originIsUserAccount: b.origin_is_user_account === true,
         meta: ownerView ? {
           serviceName: b.service_name_snapshot,
           clientName: b.client_name,

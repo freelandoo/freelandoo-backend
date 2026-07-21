@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const BookingStorage = require("../storages/BookingStorage");
+const BookingAvailabilityStorage = require("../storages/BookingAvailabilityStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
@@ -89,6 +90,12 @@ class BookingService {
     // Comprador paga: preço do serviço + comissão embutida.
     const charge_amount = service_price + affiliate_commission_cents;
 
+    // Agenda da conta (mig 190): as regras moram no perfil-conta e o conflito
+    // é checado contra TODOS os perfis do dono. O booking em si continua
+    // guardando o id_profile de ORIGEM (é assim que a tela sabe dizer por qual
+    // perfil o cliente agendou).
+    const agendaScope = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+
     // Calcular end_time com base na duração do serviço, ou da regra semanal, ou default 60
     const [sh, sm] = start_time.split(":").map(Number);
     let duration = service?.duration_minutes;
@@ -97,7 +104,7 @@ class BookingService {
       const { rows } = await pool.query(
         `SELECT slot_duration_minutes FROM public.tb_profile_availability_rules
          WHERE id_profile = $1 AND weekday = $2 LIMIT 1`,
-        [id_profile, weekday]
+        [agendaScope.agendaProfileId, weekday]
       );
       duration = rows[0]?.slot_duration_minutes || 60;
     }
@@ -109,7 +116,7 @@ class BookingService {
     try {
       await client.query("BEGIN");
 
-      const slotFree = await BookingStorage.lockAndCheckSlot(client, id_profile, booking_date, start_time, end_time);
+      const slotFree = await BookingStorage.lockAndCheckSlot(client, agendaScope.profileIds, booking_date, start_time, end_time);
       if (!slotFree) {
         await client.query("ROLLBACK");
         return { error: "Horário indisponível: a duração do serviço sobrepõe outro agendamento." };

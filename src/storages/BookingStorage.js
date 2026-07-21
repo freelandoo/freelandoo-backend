@@ -84,32 +84,41 @@ class BookingStorage {
    * Busca bookings ativos (não cancelados/expirados) para uma data em um perfil.
    * Usado para calcular slots indisponíveis.
    */
-  static async getActiveBookingsForDate(conn, id_profile, booking_date) {
+  // Desde a mig 190 recebem o ESCOPO DA AGENDA (todos os perfis do dono), não
+  // um perfil só — a agenda é da conta.
+  static async getActiveBookingsForDate(conn, profileIds, booking_date) {
+    const ids = Array.isArray(profileIds) ? profileIds : [profileIds];
     const r = await conn.query(
       `SELECT start_time, end_time, status, payment_status
        FROM public.tb_profile_bookings
-       WHERE id_profile = $1
+       WHERE id_profile = ANY($1::uuid[])
          AND booking_date = $2
          AND status NOT IN ('canceled','expired')
        ORDER BY start_time`,
-      [id_profile, booking_date]
+      [ids, booking_date]
     );
     return r.rows;
   }
 
   /**
-   * Busca bookings ativos para um intervalo de datas em um perfil (semana).
+   * Busca bookings ativos para um intervalo de datas (semana) no escopo da
+   * agenda. Traz o perfil de origem pra tela mostrar "agendado pelo perfil X".
    */
-  static async getActiveBookingsInRange(conn, id_profile, start_date, end_date) {
+  static async getActiveBookingsInRange(conn, profileIds, start_date, end_date) {
+    const ids = Array.isArray(profileIds) ? profileIds : [profileIds];
     const r = await conn.query(
-      `SELECT id, booking_date, start_time, end_time, status, payment_status,
-              service_name_snapshot, client_name
-       FROM public.tb_profile_bookings
-       WHERE id_profile = $1
-         AND booking_date BETWEEN $2 AND $3
-         AND status NOT IN ('canceled','expired')
-       ORDER BY booking_date, start_time`,
-      [id_profile, start_date, end_date]
+      `SELECT b.id, b.booking_date, b.start_time, b.end_time, b.status, b.payment_status,
+              b.service_name_snapshot, b.client_name,
+              b.id_profile,
+              p.display_name AS origin_profile_name,
+              COALESCE(p.is_user_account, FALSE) AS origin_is_user_account
+       FROM public.tb_profile_bookings b
+       LEFT JOIN public.tb_profile p ON p.id_profile = b.id_profile
+       WHERE b.id_profile = ANY($1::uuid[])
+         AND b.booking_date BETWEEN $2 AND $3
+         AND b.status NOT IN ('canceled','expired')
+       ORDER BY b.booking_date, b.start_time`,
+      [ids, start_date, end_date]
     );
     return r.rows;
   }
@@ -164,30 +173,33 @@ class BookingStorage {
    * Tenta reservar um slot usando SELECT FOR UPDATE para evitar race condition.
    * Retorna true se o slot está livre, false se já ocupado.
    */
-  static async lockAndCheckSlot(conn, id_profile, booking_date, start_time, end_time) {
+  // profileIds = escopo da agenda (mig 190). Checar só o perfil que recebeu o
+  // agendamento deixava dois perfis do MESMO dono venderem a mesma hora.
+  static async lockAndCheckSlot(conn, profileIds, booking_date, start_time, end_time) {
+    const ids = Array.isArray(profileIds) ? profileIds : [profileIds];
     // Sem end_time: comportamento antigo (compat) — checa apenas start exato.
     if (!end_time) {
       const r = await conn.query(
         `SELECT id FROM public.tb_profile_bookings
-         WHERE id_profile = $1
+         WHERE id_profile = ANY($1::uuid[])
            AND booking_date = $2
            AND start_time = $3
            AND status NOT IN ('canceled','expired')
          FOR UPDATE`,
-        [id_profile, booking_date, start_time]
+        [ids, booking_date, start_time]
       );
       return r.rowCount === 0;
     }
     // Com end_time: detecta overlap [start_time, end_time) com qualquer booking ativo do dia.
     const r = await conn.query(
       `SELECT id FROM public.tb_profile_bookings
-       WHERE id_profile = $1
+       WHERE id_profile = ANY($1::uuid[])
          AND booking_date = $2
          AND status NOT IN ('canceled','expired')
          AND start_time < $4
          AND end_time   > $3
        FOR UPDATE`,
-      [id_profile, booking_date, start_time, end_time]
+      [ids, booking_date, start_time, end_time]
     );
     return r.rowCount === 0;
   }

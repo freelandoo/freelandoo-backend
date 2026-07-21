@@ -88,6 +88,43 @@ class BookingAvailabilityStorage {
   }
 
   // ─── Regra para uma data específica (combinando geral + override) ──
+  /**
+   * Escopo da agenda de um perfil (mig 190). A agenda é da CONTA, não do
+   * perfil: uma pessoa tem um corpo e uma hora só, então dois perfis do mesmo
+   * dono não podem vender o mesmo horário.
+   *  - agendaProfileId: onde moram as regras/exceções (o perfil-conta).
+   *  - profileIds: todos os perfis do dono — é o escopo de ocupação/conflito.
+   * Clan tem agenda própria: é uma entidade coletiva, não o corpo do líder.
+   */
+  static async resolveAgendaScope(conn, id_profile) {
+    const own = { agendaProfileId: id_profile, profileIds: [id_profile] };
+    const target = await conn.query(
+      `SELECT id_profile, id_user, COALESCE(is_clan, FALSE) AS is_clan
+         FROM public.tb_profile WHERE id_profile = $1`,
+      [id_profile]
+    );
+    const row = target.rows[0];
+    if (!row || row.is_clan || !row.id_user) return own;
+
+    const siblings = await conn.query(
+      `SELECT id_profile, COALESCE(is_user_account, FALSE) AS is_user_account
+         FROM public.tb_profile
+        WHERE id_user = $1 AND COALESCE(is_clan, FALSE) = FALSE AND deleted_at IS NULL`,
+      [row.id_user]
+    );
+    if (siblings.rowCount === 0) return own;
+
+    const account = siblings.rows.find((r) => r.is_user_account);
+    const profileIds = siblings.rows.map((r) => r.id_profile);
+    // Defensivo: o perfil pedido pode estar soft-deleted e fora da lista.
+    if (!profileIds.includes(id_profile)) profileIds.push(id_profile);
+
+    return {
+      agendaProfileId: account ? account.id_profile : id_profile,
+      profileIds,
+    };
+  }
+
   static async getRuleForDate(conn, id_profile, date, weekday) {
     const override = await this.getOverrideByDate(conn, id_profile, date);
     if (override) return { type: "override", data: override };
