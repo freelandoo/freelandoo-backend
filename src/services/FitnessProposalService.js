@@ -57,8 +57,10 @@ async function buildPayload(kind, raw, member) {
     let id_plan = null;
     let currentName = null;
     if (kind === "plan_update") {
+      // Casa pelo DONO (mig 189): a ficha pode ter sido criada pelo próprio
+      // aluno, e aí não tem id_member nenhum.
       const plan = await WorkoutStorage.getPlanById(pool, raw?.id_plan);
-      if (!plan || plan.id_member !== member.id_member) return { error: "Ficha não encontrada" };
+      if (!plan || plan.id_user !== member.id_user) return { error: "Ficha não encontrada" };
       id_plan = plan.id_plan;
       currentName = plan.nome;
     }
@@ -86,7 +88,7 @@ async function buildPayload(kind, raw, member) {
 
   if (kind === "plan_delete") {
     const plan = await WorkoutStorage.getPlanById(pool, raw?.id_plan);
-    if (!plan || plan.id_member !== member.id_member) return { error: "Ficha não encontrada" };
+    if (!plan || plan.id_user !== member.id_user) return { error: "Ficha não encontrada" };
     return { payload: { id_plan: plan.id_plan, plan_nome: plan.nome } };
   }
 
@@ -107,6 +109,7 @@ async function applyProposal(proposal) {
 
   if (proposal.kind === "plan_create") {
     const plan = await WorkoutStorage.createPlan(pool, {
+      id_user: proposal.id_student_user,
       id_academy: proposal.id_academy,
       id_member: proposal.id_member,
       created_by: proposal.id_professor_user,
@@ -120,7 +123,7 @@ async function applyProposal(proposal) {
   if (proposal.kind === "plan_update") {
     const plan = await WorkoutStorage.getPlanById(pool, payload.id_plan);
     // Ficha sumiu entre a proposta e o aceite: no-op (nada a aplicar).
-    if (!plan || plan.id_member !== proposal.id_member) return { ok: true };
+    if (!plan || plan.id_user !== proposal.id_student_user) return { ok: true };
     await WorkoutStorage.updatePlan(pool, plan.id_plan, {
       nome: payload.nome,
       notes: payload.notes,
@@ -134,7 +137,7 @@ async function applyProposal(proposal) {
 
   if (proposal.kind === "plan_delete") {
     const plan = await WorkoutStorage.getPlanById(pool, payload.id_plan);
-    if (!plan || plan.id_member !== proposal.id_member) return { ok: true };
+    if (!plan || plan.id_user !== proposal.id_student_user) return { ok: true };
     await WorkoutStorage.deletePlan(pool, plan.id_plan);
     return { ok: true };
   }
@@ -190,8 +193,13 @@ class FitnessProposalService {
   // PATCH/DELETE /academies/:id/plans/:planId — o membro vem da própria ficha.
   static async proposeForPlan(actor_id_user, id_academy, id_plan, kind, body) {
     const plan = await WorkoutStorage.getPlanById(pool, id_plan);
-    if (!plan || plan.id_academy !== id_academy) return { error: "Ficha não encontrada" };
-    return this.propose(actor_id_user, id_academy, plan.id_member, { ...body, kind, id_plan });
+    if (!plan) return { error: "Ficha não encontrada" };
+    // A ficha pode ser pessoal (criada pelo aluno, sem id_academy/id_member):
+    // o vínculo vem do DONO dentro da academia de quem está propondo. Se o dono
+    // não é membro dela, o professor não tem nada com essa ficha.
+    const member = await AcademyStorage.getMember(pool, id_academy, plan.id_user);
+    if (!member) return { error: "Ficha não encontrada" };
+    return this.propose(actor_id_user, id_academy, member.id_member, { ...body, kind, id_plan });
   }
 
   static async listForMember(actor_id_user, id_academy, id_member) {

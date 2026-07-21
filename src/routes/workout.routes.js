@@ -15,7 +15,14 @@ router.use(requireFeature("fitness_academias"));
 router.use(authMiddleware);
 
 router.get("/today", asyncHandler(WorkoutController.today));
-router.get("/plans", asyncHandler(WorkoutController.myPlans));
+router.get("/exercises", asyncHandler(WorkoutController.myExercises));
 router.post("/checks/toggle", asyncHandler(WorkoutController.toggleCheck));
+
+// Ficha própria (mig 189): o dono cria/edita/exclui a dele e aplica DIRETO —
+// o fluxo de proposta+aprovação existe só pro que vem do professor.
+router.get("/plans", asyncHandler(WorkoutController.myPlans));
+router.post("/plans", asyncHandler(WorkoutController.createOwnPlan));
+router.patch("/plans/:planId", asyncHandler(WorkoutController.updateOwnPlan));
+router.delete("/plans/:planId", asyncHandler(WorkoutController.deleteOwnPlan));
 
 module.exports = router;

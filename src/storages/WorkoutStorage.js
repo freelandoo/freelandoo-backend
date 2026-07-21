@@ -1,6 +1,8 @@
 // src/storages/WorkoutStorage.js
 // Persistência de treinos (mig 178): biblioteca de exercícios, fichas,
 // sessões diárias e checks por exercício.
+// Desde a mig 189 a ficha é do USUÁRIO (id_user): id_academy/id_member só
+// guardam o contexto de criação, então toda leitura chaveia por id_user.
 module.exports = {
   // ─── Biblioteca ────────────────────────────────────────────────────────────
   async listExercises(db, { muscle, q } = {}) {
@@ -24,11 +26,11 @@ module.exports = {
   },
 
   // ─── Fichas ────────────────────────────────────────────────────────────────
-  async createPlan(db, { id_academy, id_member, created_by, nome, notes }) {
+  async createPlan(db, { id_user, id_academy, id_member, created_by, nome, notes }) {
     const r = await db.query(
-      `INSERT INTO public.tb_workout_plan (id_academy, id_member, created_by, nome, notes)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [id_academy, id_member, created_by, nome, notes || null]
+      `INSERT INTO public.tb_workout_plan (id_user, id_academy, id_member, created_by, nome, notes)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [id_user, id_academy || null, id_member || null, created_by, nome, notes || null]
     );
     return r.rows[0];
   },
@@ -69,14 +71,17 @@ module.exports = {
     }
   },
 
-  async listPlansForMember(db, id_member, { onlyActive = false } = {}) {
+  // Fichas do usuário — pessoais e de academia, na mesma lista (mig 189).
+  async listPlansForUser(db, id_user, { onlyActive = false } = {}) {
     const r = await db.query(
       `SELECT p.*,
-              (SELECT COUNT(*)::int FROM public.tb_workout_plan_exercise pe WHERE pe.id_plan = p.id_plan) AS exercise_count
+              (SELECT COUNT(*)::int FROM public.tb_workout_plan_exercise pe WHERE pe.id_plan = p.id_plan) AS exercise_count,
+              a.nome AS academy_nome
          FROM public.tb_workout_plan p
-        WHERE p.id_member = $1 ${onlyActive ? "AND p.is_active = TRUE" : ""}
+         LEFT JOIN public.tb_academy a ON a.id_academy = p.id_academy
+        WHERE p.id_user = $1 ${onlyActive ? "AND p.is_active = TRUE" : ""}
         ORDER BY p.created_at ASC`,
-      [id_member]
+      [id_user]
     );
     return r.rows;
   },
@@ -94,13 +99,14 @@ module.exports = {
   },
 
   // ─── Sessões + checks ──────────────────────────────────────────────────────
-  async getOrCreateSession(db, id_plan, id_member, session_date) {
+  async getOrCreateSession(db, id_plan, { id_user, id_member }, session_date) {
     const r = await db.query(
-      `INSERT INTO public.tb_workout_session (id_plan, id_member, session_date)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (id_plan, session_date) DO UPDATE SET id_member = EXCLUDED.id_member
+      `INSERT INTO public.tb_workout_session (id_plan, id_user, id_member, session_date)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (id_plan, session_date)
+         DO UPDATE SET id_user = EXCLUDED.id_user, id_member = EXCLUDED.id_member
        RETURNING *`,
-      [id_plan, id_member, session_date]
+      [id_plan, id_user, id_member || null, session_date]
     );
     return r.rows[0];
   },
@@ -143,11 +149,11 @@ module.exports = {
     );
   },
 
-  async countSessionsCompleted(db, id_member, sinceDate) {
+  async countSessionsCompleted(db, id_user, sinceDate) {
     const r = await db.query(
       `SELECT COUNT(*)::int AS n FROM public.tb_workout_session
-        WHERE id_member = $1 AND completed_at IS NOT NULL AND session_date >= $2`,
-      [id_member, sinceDate]
+        WHERE id_user = $1 AND completed_at IS NOT NULL AND session_date >= $2`,
+      [id_user, sinceDate]
     );
     return r.rows[0].n;
   },
@@ -163,6 +169,7 @@ module.exports = {
               COALESCE(water.total_ml, 0)::int AS water_ml_day,
               plan.nome AS active_plan_nome,
               plan.created_at AS active_plan_since,
+              plan.by_student AS active_plan_by_student,
               COALESCE(freq.days, 0)::int AS frequency_days_30d,
               COALESCE(sess.done, 0)::int AS sessions_done_7d
          FROM public.tb_academy_member m
@@ -182,8 +189,9 @@ module.exports = {
             WHERE wl.id_user = m.id_user AND wl.log_date = $2::date
          ) water ON TRUE
          LEFT JOIN LATERAL (
-           SELECT nome, created_at FROM public.tb_workout_plan p
-            WHERE p.id_member = m.id_member AND p.is_active = TRUE
+           SELECT nome, created_at, (created_by = m.id_user) AS by_student
+             FROM public.tb_workout_plan p
+            WHERE p.id_user = m.id_user AND p.is_active = TRUE
             ORDER BY created_at ASC LIMIT 1
          ) plan ON TRUE
          LEFT JOIN LATERAL (
@@ -194,7 +202,7 @@ module.exports = {
          ) freq ON TRUE
          LEFT JOIN LATERAL (
            SELECT COUNT(*) AS done FROM public.tb_workout_session s
-            WHERE s.id_member = m.id_member AND s.completed_at IS NOT NULL
+            WHERE s.id_user = m.id_user AND s.completed_at IS NOT NULL
               AND s.session_date >= ($2::date - INTERVAL '7 days')
          ) sess ON TRUE
         WHERE m.id_academy = $1

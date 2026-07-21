@@ -167,13 +167,14 @@ class FitnessService {
         cursor.setUTCDate(cursor.getUTCDate() - 1);
       }
 
-      // Treinos concluídos + frequência de academia (soma dos vínculos)
-      let sessions7 = 0;
-      let sessions30 = 0;
+      // Treinos concluídos: por USUÁRIO (mig 189 — a ficha é dele, não do
+      // vínculo; somar por matrícula contaria o mesmo treino N vezes).
+      const sessions7 = await WorkoutStorage.countSessionsCompleted(pool, id_user, from7);
+      const sessions30 = await WorkoutStorage.countSessionsCompleted(pool, id_user, from30);
+
+      // Frequência de catraca continua por vínculo (é evento da academia).
       let frequency30 = null;
       for (const m of memberships) {
-        sessions7 += await WorkoutStorage.countSessionsCompleted(pool, m.id_member, from7);
-        sessions30 += await WorkoutStorage.countSessionsCompleted(pool, m.id_member, from30);
         const days = await AcademyStorage.countDistinctDays(pool, m.id_member, d30);
         frequency30 = (frequency30 || 0) + days;
       }

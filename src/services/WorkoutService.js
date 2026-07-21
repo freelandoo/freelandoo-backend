@@ -1,15 +1,20 @@
 // src/services/WorkoutService.js
-// Treinos (fase 3): professor/dono monta fichas (biblioteca de exercícios)
-// para membros da PRÓPRIA academia; o aluno vê as fichas ativas no dia e dá
-// check por exercício (todos checados ⇒ sessão concluída; destick reabre).
+// Treinos (fase 3): o aluno monta as PRÓPRIAS fichas (aplica direto, é dele) e
+// o professor/dono monta fichas para membros da academia dele; o aluno vê as
+// fichas ativas no dia e dá check por exercício (todos checados ⇒ sessão
+// concluída; destick reabre).
 // Privacidade: aluno só o dele; staff só membros da academia dele.
 // Desde a mig 180 as MUTAÇÕES de staff (criar/editar/excluir ficha) não vivem
 // mais aqui: viram proposta no FitnessProposalService, que o aluno confirma.
+// Desde a mig 189 a ficha é do USUÁRIO (id_user), não do vínculo: existe sem
+// academia, e o staff enxerga todas as fichas de quem é membro dele — inclusive
+// as que o próprio aluno criou (alterá-las continua exigindo proposta).
 const pool = require("../databases");
 const WorkoutStorage = require("../storages/WorkoutStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
 const FitnessProposalStorage = require("../storages/FitnessProposalStorage");
 const AcademyService = require("./AcademyService");
+const { sanitizeExercises } = require("../utils/workoutSanitize");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("workout-service");
@@ -36,6 +41,11 @@ async function hydratePlan(plan, date) {
     notes: plan.notes,
     is_active: plan.is_active,
     created_at: plan.created_at,
+    // Autoria: ficha que o próprio dono criou × ficha vinda do professor. É o
+    // que decide se a UI oferece edição direta ou só leitura.
+    created_by: plan.created_by,
+    by_student: plan.created_by === plan.id_user,
+    academy_nome: plan.academy_nome || null,
     days_on_plan: daysBetween(plan.created_at),
     completed_at: session ? session.completed_at : null,
     exercises: exercises.map((ex) => ({
@@ -58,12 +68,9 @@ class WorkoutService {
   static async today(id_user, dateRaw) {
     return runWithLogs(log, "today", () => ({ id_user }), async () => {
       const date = isValidDate(dateRaw) ? dateRaw : today();
-      const memberships = await AcademyStorage.listMembershipsByUser(pool, id_user);
+      const active = await WorkoutStorage.listPlansForUser(pool, id_user, { onlyActive: true });
       const plans = [];
-      for (const m of memberships) {
-        const active = await WorkoutStorage.listPlansForMember(pool, m.id_member, { onlyActive: true });
-        for (const plan of active) plans.push(await hydratePlan(plan, date));
-      }
+      for (const plan of active) plans.push(await hydratePlan(plan, date));
       return { date, plans };
     });
   }
@@ -74,14 +81,18 @@ class WorkoutService {
       const date = isValidDate(payload?.log_date) ? payload.log_date : today();
       const plan = await WorkoutStorage.getPlanById(pool, id_plan);
       if (!plan) return { error: "Ficha não encontrada" };
-      const member = await AcademyStorage.getMemberById(pool, plan.id_member);
-      if (!member || member.id_user !== id_user) return { error: "Sem permissão", statusCode: 403 };
+      if (plan.id_user !== id_user) return { error: "Sem permissão", statusCode: 403 };
 
       const exercises = await WorkoutStorage.listPlanExercises(pool, id_plan);
       const target = exercises.find((e) => e.id_plan_exercise === id_plan_exercise);
       if (!target) return { error: "Exercício não encontrado na ficha" };
 
-      const session = await WorkoutStorage.getOrCreateSession(pool, id_plan, plan.id_member, date);
+      const session = await WorkoutStorage.getOrCreateSession(
+        pool,
+        id_plan,
+        { id_user, id_member: plan.id_member },
+        date
+      );
       const checked = new Set(await WorkoutStorage.listChecks(pool, session.id_session));
       let nowChecked;
       if (checked.has(id_plan_exercise)) {
@@ -100,14 +111,77 @@ class WorkoutService {
   }
 
   static async myPlans(id_user) {
-    const memberships = await AcademyStorage.listMembershipsByUser(pool, id_user);
     const date = today();
+    const all = await WorkoutStorage.listPlansForUser(pool, id_user);
     const plans = [];
-    for (const m of memberships) {
-      const all = await WorkoutStorage.listPlansForMember(pool, m.id_member);
-      for (const plan of all) plans.push(await hydratePlan(plan, date));
-    }
+    for (const plan of all) plans.push(await hydratePlan(plan, date));
     return { plans };
+  }
+
+  // Biblioteca de exercícios pro editor do aluno (a versão do staff exige
+  // academia; esta é aberta a qualquer usuário logado — é catálogo global).
+  static async myExercises(filters) {
+    const exercises = await WorkoutStorage.listExercises(pool, filters);
+    return { exercises };
+  }
+
+  // ─── Ficha própria do aluno (aplica direto — não passa por proposta) ───────
+  // Só a ficha do professor exige aprovação; a que o dono cria é dele.
+  static async createOwnPlan(id_user, body) {
+    return runWithLogs(log, "plan.create.own", () => ({ id_user }), async () => {
+      const nome = String(body?.nome || "").trim().slice(0, 60);
+      if (!nome) return { error: "Nome da ficha é obrigatório (ex.: Treino A)" };
+      const check = sanitizeExercises(body?.exercises);
+      if (check.error) return check;
+
+      const plan = await WorkoutStorage.createPlan(pool, {
+        id_user,
+        id_academy: null,
+        id_member: null,
+        created_by: id_user,
+        nome,
+        notes: body?.notes ? String(body.notes).slice(0, 2000) : null,
+      });
+      await WorkoutStorage.replacePlanExercises(pool, plan.id_plan, check.exercises);
+      return { plan: await hydratePlan({ ...plan, academy_nome: null }, today()) };
+    });
+  }
+
+  static async updateOwnPlan(id_user, id_plan, body) {
+    return runWithLogs(log, "plan.update.own", () => ({ id_user, id_plan }), async () => {
+      const plan = await WorkoutStorage.getPlanById(pool, id_plan);
+      if (!plan) return { error: "Ficha não encontrada", statusCode: 404 };
+      if (plan.id_user !== id_user) return { error: "Sem permissão", statusCode: 403 };
+
+      const nome = body?.nome === undefined ? undefined : String(body.nome || "").trim().slice(0, 60);
+      if (nome === "") return { error: "Nome da ficha é obrigatório (ex.: Treino A)" };
+      let exercises;
+      if (body?.exercises !== undefined) {
+        const check = sanitizeExercises(body.exercises);
+        if (check.error) return check;
+        exercises = check.exercises;
+      }
+
+      await WorkoutStorage.updatePlan(pool, id_plan, {
+        nome,
+        notes: body?.notes === undefined ? plan.notes : body.notes ? String(body.notes).slice(0, 2000) : null,
+        is_active: body?.is_active === undefined ? undefined : Boolean(body.is_active),
+      });
+      if (exercises) await WorkoutStorage.replacePlanExercises(pool, id_plan, exercises);
+
+      const updated = await WorkoutStorage.getPlanById(pool, id_plan);
+      return { plan: await hydratePlan({ ...updated, academy_nome: plan.academy_nome || null }, today()) };
+    });
+  }
+
+  static async deleteOwnPlan(id_user, id_plan) {
+    return runWithLogs(log, "plan.delete.own", () => ({ id_user, id_plan }), async () => {
+      const plan = await WorkoutStorage.getPlanById(pool, id_plan);
+      if (!plan) return { error: "Ficha não encontrada", statusCode: 404 };
+      if (plan.id_user !== id_user) return { error: "Sem permissão", statusCode: 403 };
+      await WorkoutStorage.deletePlan(pool, id_plan);
+      return { ok: true };
+    });
   }
 
   // ─── Staff (professor/dono) ────────────────────────────────────────────────
@@ -125,7 +199,8 @@ class WorkoutService {
       const member = await AcademyStorage.getMemberById(pool, id_member);
       if (!member || member.id_academy !== id_academy) return { error: "Membro não encontrado" };
       const date = today();
-      const all = await WorkoutStorage.listPlansForMember(pool, member.id_member);
+      // Todas as fichas do aluno — inclusive as que ele mesmo criou (mig 189).
+      const all = await WorkoutStorage.listPlansForUser(pool, member.id_user);
       const plans = [];
       for (const plan of all) plans.push(await hydratePlan(plan, date));
       const measurements = await pool.query(
@@ -170,6 +245,7 @@ class WorkoutService {
           kcal_day: Math.round(r.kcal_day),
           water_ml_day: r.water_ml_day,
           active_plan_nome: r.active_plan_nome,
+          active_plan_by_student: r.active_plan_by_student === true,
           days_on_plan: r.active_plan_since ? daysBetween(r.active_plan_since) : null,
           frequency_days_30d: r.frequency_days_30d,
           sessions_done_7d: r.sessions_done_7d,

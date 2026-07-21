@@ -22,6 +22,27 @@ module.exports = {
     return res.json(result);
   },
 
+  async myExercises(req, res) {
+    const result = await WorkoutService.myExercises({ muscle: req.query.muscle, q: req.query.q });
+    return sendServiceResult(res, result);
+  },
+
+  // Ficha própria: aplica direto, sem proposta (o dono é o próprio aluno).
+  async createOwnPlan(req, res) {
+    const result = await WorkoutService.createOwnPlan(req.user.id_user, req.body || {});
+    return sendServiceResult(res, result, 201);
+  },
+
+  async updateOwnPlan(req, res) {
+    const result = await WorkoutService.updateOwnPlan(req.user.id_user, req.params.planId, req.body || {});
+    return sendServiceResult(res, result);
+  },
+
+  async deleteOwnPlan(req, res) {
+    const result = await WorkoutService.deleteOwnPlan(req.user.id_user, req.params.planId);
+    return sendServiceResult(res, result);
+  },
+
   // Staff (professor/dono)
   async listExercises(req, res) {
     const result = await WorkoutService.listExercises(req.user.id_user, req.params.id, {
