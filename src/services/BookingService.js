@@ -240,7 +240,9 @@ class BookingService {
     if (!profile) return { error: "Perfil não encontrado" };
     if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão" };
 
-    const bookings = await BookingStorage.listByProfile(pool, id_profile);
+    // Agenda da conta: a lista é a mesma vista de qualquer perfil (mig 190).
+    const { profileIds } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
+    const bookings = await BookingStorage.listByProfile(pool, profileIds);
     return { bookings };
   }
 

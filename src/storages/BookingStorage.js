@@ -140,16 +140,22 @@ class BookingStorage {
   }
 
   /**
-   * Lista bookings de um perfil específico.
+   * Lista bookings do ESCOPO DA AGENDA (mig 190) — todos os perfis do dono.
+   * Cada linha traz o perfil de ORIGEM, que é como a tela diz por qual perfil
+   * o cliente agendou.
    */
-  static async listByProfile(conn, id_profile, { limit = 50, offset = 0 } = {}) {
+  static async listByProfile(conn, profileIds, { limit = 50, offset = 0 } = {}) {
+    const ids = Array.isArray(profileIds) ? profileIds : [profileIds];
     const r = await conn.query(
       `SELECT
          b.*,
          u.id_user                       AS client_user_id,
          cp.id_profile                   AS client_profile_id,
-         cp.display_name                 AS client_profile_display_name
+         cp.display_name                 AS client_profile_display_name,
+         op.display_name                 AS origin_profile_name,
+         COALESCE(op.is_user_account, FALSE) AS origin_is_user_account
        FROM public.tb_profile_bookings b
+       LEFT JOIN public.tb_profile op ON op.id_profile = b.id_profile
        LEFT JOIN public.tb_user u
          ON LOWER(u.email) = LOWER(b.client_email)
        LEFT JOIN LATERAL (
@@ -161,10 +167,10 @@ class BookingStorage {
          ORDER BY created_at ASC
          LIMIT 1
        ) cp ON TRUE
-       WHERE b.id_profile = $1
+       WHERE b.id_profile = ANY($1::uuid[])
        ORDER BY b.created_at DESC
        LIMIT $2 OFFSET $3`,
-      [id_profile, limit, offset]
+      [ids, limit, offset]
     );
     return r.rows;
   }
