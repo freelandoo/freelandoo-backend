@@ -22,6 +22,7 @@ const USER_FEATURE_KEYS = [
   "wallet",
   "fitness_academias",
   "profiles",
+  "agenda",
   // "vitrine" é a única com efeito SERVER-SIDE: desligada, os perfis do user
   // somem da vitrine pública (SearchStorage) pra todo mundo — não é só UI.
   "vitrine",
