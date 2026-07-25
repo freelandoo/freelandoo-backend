@@ -18,6 +18,14 @@ const SIGNALS = ["views", "likes", "comments", "saves"];
 // Faixa do brilho: o líder do dia e todo mundo até 10% abaixo dele acendem.
 const BAND = 0.9;
 
+// Tolerância ABSOLUTA, somada à faixa percentual. Sem ela a regra quebra em
+// número pequeno: com líder em 3, os 10% dão 2,7 e — como engajamento é
+// inteiro — só quem EMPATA com o líder acende. Na prática um post ficava de
+// fora por uma única impressão de diferença, que é ruído, não mérito.
+// Vale o critério mais generoso dos dois: perto de zero manda o SLACK, em
+// número grande manda a porcentagem (com líder em 11.110, 1 não muda nada).
+const SLACK = 1;
+
 // Piso anti-ruído: menos que isso não é "dia", é uma visualização perdida.
 // Baixo de propósito — um post com 1 visualização + 1 like já é líder legítimo
 // num dia parado, e o Alex quer que o líder SEMPRE acenda.
@@ -31,13 +39,15 @@ module.exports = {
   HEAT_WINDOW,
   SIGNALS,
   BAND,
+  SLACK,
   MIN_HEAT,
 
   /**
    * Posts em alta hoje. Devolve `[{ post_id, heat, leader_heat, tier }]`,
    * `tier` sendo:
    *   - 'leader'  → maior engajamento do dia (empate conta como líder);
-   *   - 'rising'  → dentro dos 10% abaixo do líder.
+   *   - 'rising'  → dentro da faixa abaixo do líder (10% OU 1 ponto, o que
+   *                 for mais generoso — ver SLACK).
    *
    * Sem média: a régua é o líder. Foi decisão do Alex depois de ver que
    * "acima da média" apagava o próprio líder quando ele era o único com
@@ -91,11 +101,14 @@ module.exports = {
       WHERE h.heat >= $1
         -- ::numeric obrigatório: sem ele o Postgres infere $2 como integer
         -- (leader_heat é int) e estoura com "invalid input syntax" no 0.9.
-        AND h.heat >= l.leader_heat * $2::numeric
+        AND (
+          h.heat >= l.leader_heat * $2::numeric
+          OR h.heat >= l.leader_heat - $3
+        )
       ORDER BY h.heat DESC, h.post_id
       LIMIT ${MAX_HOT}
       `,
-      [MIN_HEAT, BAND]
+      [MIN_HEAT, BAND, SLACK]
     );
     return r.rows;
   },
