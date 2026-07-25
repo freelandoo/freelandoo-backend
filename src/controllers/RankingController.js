@@ -3,6 +3,9 @@ const pool = require("../databases");
 const RankingStorage = require("../storages/RankingStorage");
 const XpStorage = require("../storages/XpStorage");
 const NotificationService = require("../services/NotificationService");
+// O like mexe no ranking de "em alta" do dia (anel no avatar do card do feed):
+// derruba o cache pra próxima carga do feed já refletir.
+const { markHeatStale } = require("../services/portfolioFeed/feedHeat");
 
 module.exports = {
   // POST /ranking/visit  (público, sem auth obrigatória)
@@ -27,6 +30,9 @@ module.exports = {
       id_profile,
       id_user: req.user.id_user,
     });
+
+    // Vale pro like E pro descurtir — os dois mudam o ranking do dia.
+    markHeatStale();
 
     if (result?.liked) {
       NotificationService.notifyLike({

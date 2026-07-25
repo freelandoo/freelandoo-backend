@@ -14,10 +14,15 @@ const HEAT_WINDOW = "24 hours";
 // visualização e likes praticamente não mexeriam no resultado.
 const LIKE_WEIGHT = 10;
 
-// Piso anti-ruído: num dia parado, a média cai tanto que 1 visualização solta
-// ficaria "acima da média" e o feed inteiro brilharia. Precisa de um mínimo de
-// tração absoluta pra contar como "em alta".
+// Piso anti-ruído: uma visualização solta não é "em alta". Um like já passa
+// (vale 10), então o primeiro post curtido do dia acende — que é a regra do
+// Alex: os que mais receberam likes/views no dia sempre acendem.
 const MIN_HEAT = 5;
+
+// Os N mais quentes do dia acendem SEMPRE (desde que passem do piso), mesmo
+// sendo os únicos com movimento. Sem isso, "acima da média" apagava justamente
+// o líder quando ele era o único ativo — ele É a média nesse caso.
+const TOP_RANK = 3;
 
 // Teto de linhas devolvidas — o conjunto quente é naturalmente pequeno; o LIMIT
 // é só blindagem contra um dia anômalo.
@@ -27,9 +32,16 @@ module.exports = {
   HEAT_WINDOW,
   LIKE_WEIGHT,
   MIN_HEAT,
+  TOP_RANK,
 
   /**
-   * Posts acima da média do dia. Devolve `[{ post_id, heat, day_avg }]`.
+   * Posts "em alta" do dia. Devolve `[{ post_id, heat, day_avg, rank }]`.
+   *
+   * Acende quem for líder do dia (top 3) OU estiver acima da média — sempre
+   * respeitando o piso. O braço do top garante a regra do Alex: quem tem mais
+   * likes/views no dia acende, inclusive quando é o único com movimento. O
+   * braço da média é o que escala: em dia cheio, todo mundo acima dela acende,
+   * não só três.
    *
    * "Os outros" = os posts que tiveram ALGUMA atividade na janela. Post
    * publicado e parado não entra no denominador — senão a média tenderia a
@@ -59,12 +71,20 @@ module.exports = {
         FULL OUTER JOIN likes l ON l.post_id = v.post_id
       ),
       scored AS (
-        SELECT post_id, heat, AVG(heat) OVER () AS day_avg FROM heat
+        SELECT
+          post_id,
+          heat,
+          AVG(heat) OVER ()                              AS day_avg,
+          ROW_NUMBER() OVER (ORDER BY heat DESC, post_id) AS rank
+        FROM heat
       )
-      SELECT post_id, heat::int AS heat, ROUND(day_avg, 2)::float8 AS day_avg
+      SELECT post_id,
+             heat::int                  AS heat,
+             ROUND(day_avg, 2)::float8  AS day_avg,
+             rank::int                  AS rank
         FROM scored
-       WHERE heat > day_avg
-         AND heat >= $1
+       WHERE heat >= $1
+         AND (rank <= ${TOP_RANK} OR heat > day_avg)
        ORDER BY heat DESC
        LIMIT ${MAX_HOT}
       `,
