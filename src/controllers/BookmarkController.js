@@ -1,5 +1,7 @@
 const pool = require("../databases");
 const BookmarkStorage = require("../storages/BookmarkStorage");
+// Salvar entra no engajamento do dia (anel "em alta" do card do feed).
+const { markHeatStale } = require("../services/portfolioFeed/feedHeat");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,6 +43,7 @@ module.exports = {
       id_portfolio_item,
       id_folder,
     });
+    markHeatStale();
     return res.json(result);
   },
 

@@ -1,5 +1,7 @@
 const PortfolioCommentService = require("../services/PortfolioCommentService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
+// Comentário entra no engajamento do dia (anel "em alta" do card do feed).
+const { markHeatStale } = require("../services/portfolioFeed/feedHeat");
 
 class PortfolioCommentController {
   static async list(req, res) {
@@ -26,6 +28,7 @@ class PortfolioCommentController {
       id_portfolio_item: req.params.id_portfolio_item,
       content: req.body?.content,
     });
+    markHeatStale();
     return sendServiceResult(res, result, 201);
   }
 
@@ -34,6 +37,7 @@ class PortfolioCommentController {
       user: req.user,
       id_portfolio_comment: req.params.id_portfolio_comment,
     });
+    markHeatStale();
     return sendServiceResult(res, result);
   }
 }

@@ -16,9 +16,9 @@ const {
   dedupeRows,
   computeRankInfo,
 } = require("../../utils/feedMix");
-// Posts acima da média do dia em visualizações+likes — acendem o anel no avatar
-// daquele card (ver FeedHeatStorage). Cache em processo, custo zero por request.
-const { getHotPostIds } = require("./feedHeat");
+// Posts em alta hoje (líder do dia + quem está a até 10% dele) — acendem o anel
+// no avatar daquele card (ver FeedHeatStorage). Cache em processo, sem polling.
+const { getHotPostTiers } = require("./feedHeat");
 
 const log = createLogger("PortfolioFeedService");
 
@@ -112,9 +112,11 @@ function shapeRow(row) {
     social_clicks_count: row.social_clicks_count,
     comments_count: row.comments_count ?? 0,
     engagement_score: Number(row.engagement_score) || 0,
-    // Está recebendo mais que a média do dia — o card acende o anel no avatar.
-    // Só o feed marca; comunidade/academia reusam o shape e saem sempre false.
-    is_hot: !!row.is_hot,
+    // Engajamento do dia: 'leader' (maior do dia) ou 'rising' (até 10% abaixo
+    // dele) acendem o anel no avatar deste card. Só o feed marca; comunidade e
+    // academia reusam o shape e saem sempre nulas.
+    hot_tier: row.hot_tier === "leader" || row.hot_tier === "rising" ? row.hot_tier : null,
+    is_hot: row.hot_tier === "leader" || row.hot_tier === "rising",
     published_at: row.published_at,
     feed_kind: row.feed_kind === "bees" ? "bees" : "feed",
     viewer_has_liked: !!row.viewer_has_liked,
@@ -189,7 +191,7 @@ class PortfolioFeedService {
           viewer_id_user: viewer?.id_user || null,
         };
 
-        const [topRows, newRows, hotIds] = await Promise.all([
+        const [topRows, newRows, hotTiers] = await Promise.all([
           PortfolioFeedStorage.listTopCandidates(db, {
             ...params,
             limit: TOP_POOL_FETCH,
@@ -198,7 +200,7 @@ class PortfolioFeedService {
             ...params,
             limit: NEW_POOL_FETCH,
           }),
-          getHotPostIds(db),
+          getHotPostTiers(db),
         ]);
 
         const candidates = dedupeRows([...topRows, ...newRows]);
@@ -210,7 +212,7 @@ class PortfolioFeedService {
         // Cópia rasa: as linhas do pool são compartilhadas entre requisições
         // dentro do mix, então marcar direto vazaria estado entre chamadas.
         const items = slice.map((row) =>
-          shapeRow({ ...row, is_hot: hotIds.has(row.post_id) })
+          shapeRow({ ...row, hot_tier: hotTiers.get(row.post_id) || null })
         );
         const nextIndex = startIndex + slice.length;
         const has_more = nextIndex < ordered.length;
