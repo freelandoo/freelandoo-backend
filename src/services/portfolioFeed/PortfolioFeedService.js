@@ -16,6 +16,9 @@ const {
   dedupeRows,
   computeRankInfo,
 } = require("../../utils/feedMix");
+// Posts acima da média do dia em visualizações+likes — acendem o anel no avatar
+// daquele card (ver FeedHeatStorage). Cache em processo, custo zero por request.
+const { getHotPostIds } = require("./feedHeat");
 
 const log = createLogger("PortfolioFeedService");
 
@@ -109,6 +112,9 @@ function shapeRow(row) {
     social_clicks_count: row.social_clicks_count,
     comments_count: row.comments_count ?? 0,
     engagement_score: Number(row.engagement_score) || 0,
+    // Está recebendo mais que a média do dia — o card acende o anel no avatar.
+    // Só o feed marca; comunidade/academia reusam o shape e saem sempre false.
+    is_hot: !!row.is_hot,
     published_at: row.published_at,
     feed_kind: row.feed_kind === "bees" ? "bees" : "feed",
     viewer_has_liked: !!row.viewer_has_liked,
@@ -183,7 +189,7 @@ class PortfolioFeedService {
           viewer_id_user: viewer?.id_user || null,
         };
 
-        const [topRows, newRows] = await Promise.all([
+        const [topRows, newRows, hotIds] = await Promise.all([
           PortfolioFeedStorage.listTopCandidates(db, {
             ...params,
             limit: TOP_POOL_FETCH,
@@ -192,6 +198,7 @@ class PortfolioFeedService {
             ...params,
             limit: NEW_POOL_FETCH,
           }),
+          getHotPostIds(db),
         ]);
 
         const candidates = dedupeRows([...topRows, ...newRows]);
@@ -200,7 +207,11 @@ class PortfolioFeedService {
         const ordered = interleave(pools);
 
         const slice = ordered.slice(startIndex, startIndex + limit);
-        const items = slice.map(shapeRow);
+        // Cópia rasa: as linhas do pool são compartilhadas entre requisições
+        // dentro do mix, então marcar direto vazaria estado entre chamadas.
+        const items = slice.map((row) =>
+          shapeRow({ ...row, is_hot: hotIds.has(row.post_id) })
+        );
         const nextIndex = startIndex + slice.length;
         const has_more = nextIndex < ordered.length;
         const next_cursor = has_more ? `${seed}:${nextIndex}` : null;
