@@ -18,6 +18,7 @@ class SearchController {
       level_min,
       limit,
       offset,
+      seed,
     } = req.query;
 
     const parsedIdRegion = id_region != null && id_region !== "" ? Number(id_region) : null;
@@ -54,6 +55,9 @@ class SearchController {
         machine_slug: machine_slug || null,
         q: q || null,
         level_min: Number.isFinite(parsedLevelMin) ? parsedLevelMin : null,
+        // Semente do embaralhamento: o cliente gera uma por sessão de busca e
+        // repete em todas as páginas — é o que torna o scroll infinito coerente.
+        seed: seed ? String(seed).slice(0, 64) : null,
       },
       pagination: {
         limit: limit ? Number(limit) : 20,

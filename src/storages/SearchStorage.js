@@ -133,6 +133,7 @@ module.exports = {
       level_min,
       limit,
       offset,
+      seed,
     }
   ) {
     const catPatterns =
@@ -422,7 +423,11 @@ module.exports = {
         UNION ALL
         SELECT * FROM clans
       ) combined
-      ORDER BY is_premium DESC, RANDOM()
+      -- Ordem aleatória PORÉM ESTÁVEL: RANDOM() re-sorteava a cada página, então
+      -- LIMIT/OFFSET repetia e pulava perfis — era impossível chegar ao fim da
+      -- vitrine (2026-07-25). O hash com a semente do cliente ($14) mantém a
+      -- mesma ordem entre as páginas da mesma sessão e embaralha a cada visita.
+      ORDER BY is_premium DESC, md5($14::text || id_profile::text), id_profile
       LIMIT $6 OFFSET $7;
       `,
       [
@@ -439,6 +444,7 @@ module.exports = {
         machine_slug || null,                      // $11
         Number.isFinite(level_min) ? level_min : null,     // $12
         country || null,                           // $13
+        seed || "freelandoo",                      // $14 (semente do embaralhamento)
       ]
     );
 
