@@ -123,6 +123,8 @@ const atendimentoIaAdminRoutes = require("./atendimentoIaAdmin.routes");
 const academyRoutes = require("./academy.routes");
 const fitnessRoutes = require("./fitness.routes");
 const workoutRoutes = require("./workout.routes");
+const functionStoreRoutes = require("./functionStore.routes");
+const functionStoreAdminRoutes = require("./functionStoreAdmin.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -197,6 +199,8 @@ module.exports = (app) => {
   app.use("/polens", polenProductsRoutes);
   app.use("/admin/polens", polenProductsAdminRoutes);
   app.use("/xp-boost", xpBoostRoutes);
+  app.use("/function-store", functionStoreRoutes);
+  app.use("/admin/function-store", functionStoreAdminRoutes);
   app.use("/admin/tour", tourSettingsAdminRoutes);
   app.use("/premium", premiumRoutes);
   app.use("/admin/premium", premiumAdminRoutes);

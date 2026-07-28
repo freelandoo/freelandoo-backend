@@ -580,6 +580,9 @@ async function fulfillCheckoutSession(session) {
     result = await PolenProductService.confirmStripeSession(session);
   } else if (meta.type === "xp_boost") {
     result = await XpBoostService.confirmStripeSession(session);
+  } else if (meta.type === "function_purchase") {
+    const FunctionStoreService = require("./FunctionStoreService");
+    result = await FunctionStoreService.confirmStripeSession(session);
   } else if (meta.type === "premium") {
     result = await PremiumService.confirmStripeSession(session);
   } else if (meta.type === "course_purchase") {
@@ -645,6 +648,12 @@ async function expireCheckoutSession(session, reason) {
       case "xp_boost": {
         const expired = await XpBoostStorage.markExpiredBySession(pool, session.id);
         if (expired) log.info("expire.xp_boost", { session_id: session.id, reason });
+        break;
+      }
+      case "function_purchase": {
+        const FunctionStoreService = require("./FunctionStoreService");
+        const expired = await FunctionStoreService.expireBySession(session.id);
+        if (expired) log.info("expire.function_purchase", { session_id: session.id, reason });
         break;
       }
       case "premium": {
@@ -784,6 +793,9 @@ async function dispatchEvent(event) {
       if (polenResult && !polenResult.ignored) break;
       const xpBoostResult = await XpBoostService.handleChargeRefunded(charge);
       if (xpBoostResult && !xpBoostResult.ignored) break;
+      const FunctionStoreService = require("./FunctionStoreService");
+      const functionStoreResult = await FunctionStoreService.handleChargeRefunded(charge);
+      if (functionStoreResult && !functionStoreResult.ignored) break;
       const premiumResult = await PremiumService.handleChargeRefunded(charge);
       if (premiumResult && !premiumResult.ignored) break;
       const CoursesService = require("./CoursesService");

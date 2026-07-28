@@ -9,33 +9,25 @@ const asyncHandler = require("../utils/asyncHandler");
  * do próprio usuário. NÃO é o Painel de Controle do admin (tb_feature_flag):
  * a flag global desligada vence a preferência pessoal.
  *
- * Whitelist fechada — chave fora dela é 400. Onde a função também tem flag de
- * admin, usamos a MESMA chave (store, vaquinha, fitness_academias) pro front
- * combinar os dois mapas sem tradução.
+ * Whitelist fechada (utils/userFeatureKeys) — chave fora dela é 400.
+ *
+ * Loja de Funções (mig 191): o GET também devolve o mapa `owned` — função à
+ * venda que o usuário NÃO comprou vem owned=false e o front esconde a linha
+ * do menu e os pontos de entrada. Produto is_for_sale=FALSE = função grátis.
  */
-const USER_FEATURE_KEYS = [
-  "courses",
-  "store",
-  "services",
-  "vaquinha",
-  "communities",
-  "wallet",
-  "fitness_academias",
-  "profiles",
-  "agenda",
-  // "vitrine" é a única com efeito SERVER-SIDE: desligada, os perfis do user
-  // somem da vitrine pública (SearchStorage) pra todo mundo — não é só UI.
-  "vitrine",
-];
+const { USER_FEATURE_KEYS } = require("../utils/userFeatureKeys");
 
 const router = Router();
 
 router.use(authMiddleware);
 
-// GET /users/me/features → { features: { key: bool } } (sem linha = true)
+// GET /users/me/features → { features: { key: bool }, owned: { key: bool } }
+// (sem linha de pref = true; owned=false quando a função está à venda e o
+// usuário ainda não comprou — o front esconde a linha e os pontos de entrada)
 router.get(
   "/",
   asyncHandler(async (req, res) => {
+    const FunctionStoreService = require("../services/FunctionStoreService");
     const r = await pool.query(
       `SELECT feature_key, is_enabled
          FROM public.tb_user_feature_pref
@@ -49,7 +41,8 @@ router.get(
         features[row.feature_key] = row.is_enabled !== false;
       }
     }
-    return res.json({ features });
+    const owned = await FunctionStoreService.ownershipMap(req.user.id_user);
+    return res.json({ features, owned });
   })
 );
 
