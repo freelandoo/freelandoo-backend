@@ -1,5 +1,6 @@
 // src/services/AuthService.js
 const bcrypt = require("bcrypt");
+const ContentReferralService = require("./ContentReferralService");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
@@ -324,6 +325,14 @@ class AuthService {
           process.env.JWT_SECRET,
           { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
         );
+
+        // Atribuições de conteúdo feitas deslogado (mig 194) passam a ser desta
+        // conta. Sem isto, quem clica no link de alguém, cria conta e só depois
+        // compra some da atribuição. Fire-and-forget: nunca derruba o login.
+        if (payload?.visitor_token) {
+          ContentReferralService.claimVisitorToken(user.id_user, payload.visitor_token)
+            .catch(() => {});
+        }
 
         const needs_terms = await computeNeedsTerms(pool, user.id_user);
         const isAdmin = await AuthStorage.isAdmin(pool, user.id_user);

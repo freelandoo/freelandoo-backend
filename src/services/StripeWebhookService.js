@@ -7,6 +7,7 @@ const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateProgramStorage = require("../storages/AffiliateProgramStorage");
 const AffiliateConversionService = require("./AffiliateConversionService");
 const ReferralService = require("./ReferralService");
+const ContentReferralService = require("./ContentReferralService");
 const BookingService = require("./BookingService");
 const ClanService = require("./ClanService");
 const ManifestationService = require("./ManifestationService");
@@ -571,7 +572,7 @@ async function resolveSellerUserId(conn, meta) {
  *   USUÁRIO vende    → o cupom de quem compartilhou o conteúdo vence; sem ele,
  *                      cai no vínculo. Nunca cria vínculo.
  */
-async function resolveAttribution(conn, { source_context, coupon_code, id_user_buyer }) {
+async function resolveAttribution(conn, { source_context, coupon_code, id_user_buyer, meta = null }) {
   const rule = await AffiliateProgramStorage.getRule(conn, source_context).catch(() => null);
   if (!rule || rule.is_enabled !== true) return null;
   const isPlatform = rule.regime === "platform";
@@ -587,10 +588,30 @@ async function resolveAttribution(conn, { source_context, coupon_code, id_user_b
     };
   }
 
+  // Regime usuário: a atribuição PERSISTENTE do conteúdo (mig 194) vence — ela
+  // sobrevive a fechar a aba e trocar de dispositivo, ao contrário do cupom que
+  // vem na sessão. O cupom da sessão fica como fallback do mesmo toque.
+  if (!isPlatform) {
+    const item = ContentReferralService.itemFromMeta(meta);
+    if (item) {
+      const content = await ContentReferralService.resolveForItem(conn, {
+        id_user: id_user_buyer,
+        ...item,
+      });
+      if (content) {
+        return {
+          id_affiliate: content.id_affiliate,
+          id_referral: null,
+          attribution_mode: "content",
+          coupon_code: null,
+        };
+      }
+    }
+  }
+
   if (coupon_code) {
     // Cupom da sessão: no regime usuário é o cupom de quem compartilhou o
-    // conteúdo (o C1 troca a fonte por tb_content_referral, a precedência
-    // continua a mesma); no regime plataforma é a semente do vínculo.
+    // conteúdo; no regime plataforma é a semente do vínculo.
     return {
       id_affiliate: null,
       id_referral: null,
@@ -630,6 +651,7 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
       source_context: ctx.source_context,
       coupon_code: meta.coupon_code || null,
       id_user_buyer,
+      meta,
     });
     if (!attribution) return;
 

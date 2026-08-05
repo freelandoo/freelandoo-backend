@@ -4,7 +4,15 @@ const AffiliateController = require("../controllers/AffiliateController");
 const StoreGovernanceController = require("../controllers/StoreGovernanceController");
 const asyncHandler = require("../utils/asyncHandler");
 
+const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
+const ContentReferralController = require("../controllers/ContentReferralController");
+
 const router = Router();
+
+// Toque de conteúdo compartilhado (?cupom= na URL de produto/curso/serviço).
+// Auth OPCIONAL: visitante deslogado grava por visitor_token e é casado com a
+// conta no login — é o que fecha o furo do sessionStorage.
+router.post("/touch", optionalAuthMiddleware, asyncHandler(ContentReferralController.touch));
 
 // Trilhos da % que o dono do item pode destinar a afiliados (mig 192). Fica aqui
 // (e não junto do price-preview) porque serve produto, serviço E curso — o
