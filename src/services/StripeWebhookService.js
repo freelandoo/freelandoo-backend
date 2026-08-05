@@ -256,6 +256,66 @@ async function handleInvoicePaid(conn, invoice) {
       source_type: "stripe_invoice",
       source_id: invoice.id,
     }).catch(() => {});
+
+    // Comissão recorrente do vínculo (X2). Vínculo vitalício sem isto seria
+    // meia promessa: só a primeira cobrança pagava o afiliado.
+    // A primeira fatura (subscription_create) não entra — ela já foi
+    // comissionada pelo checkout.session.completed.
+    await attributeRecurringCommission(conn, { invoice, row });
+  }
+}
+
+/**
+ * Renovação de assinatura de perfil: o vínculo do titular recebe comissão em
+ * cada ciclo, respeitando recurring_allowed/max_recurring_cycles da regra.
+ * Idempotente por invoice id (o próprio payment_provider_ref).
+ *
+ * Hoje a ativação é one-time vitalícia, então isto só alcança as assinaturas
+ * recorrentes legadas — mas fica pronto para qualquer produto de plataforma
+ * recorrente futuro.
+ */
+async function attributeRecurringCommission(conn, { invoice, row }) {
+  try {
+    const rule = await AffiliateProgramStorage.getRule(conn, "profile_subscription");
+    if (!rule || rule.is_enabled !== true || rule.recurring_allowed !== true) return;
+
+    const referral = await ReferralService.resolve(conn, row.id_user);
+    if (!referral) return;
+
+    if (rule.max_recurring_cycles != null) {
+      const { rows } = await conn.query(
+        `SELECT COUNT(*)::int AS n
+           FROM tb_affiliate_conversion
+          WHERE id_referral = $1
+            AND rule_snapshot->>'source_context' = 'profile_subscription_renewal'`,
+        [referral.id_referral]
+      );
+      if ((rows[0]?.n || 0) >= Number(rule.max_recurring_cycles)) return;
+    }
+
+    const total_cents = Number(invoice.amount_paid || invoice.total || 0);
+    if (!total_cents) return;
+
+    await AffiliateConversionService.createFromGenericPaidOrder(conn, {
+      coupon_code: null,
+      id_user_buyer: row.id_user,
+      id_profile: row.id_profile || null,
+      total_cents,
+      source_context: "profile_subscription",
+      payment_provider: "stripe",
+      payment_provider_ref: invoice.id,
+      raw_webhook: invoice,
+      id_affiliate_resolved: referral.id_affiliate,
+      id_referral: referral.id_referral,
+      attribution_mode: "referral",
+    });
+
+    log.info("affiliate.recurring_commission", {
+      invoice_id: invoice.id,
+      id_referral: referral.id_referral,
+    });
+  } catch (err) {
+    log.error("affiliate.recurring_commission.fail", { message: err.message });
   }
 }
 

@@ -57,6 +57,11 @@ class XpBoostService {
             user_id: user.id_user,
             id_profile,
             target_level: String(TARGET_LEVEL),
+            // Cupom capturado via ?cupom= — era o único contexto de plataforma
+            // que não repassava, então nunca gerava comissão nem semeava vínculo.
+            ...(body?.coupon_code
+              ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) }
+              : {}),
           },
         });
 

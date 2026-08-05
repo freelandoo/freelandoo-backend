@@ -16,6 +16,14 @@ router.patch("/:id/status", ...admin, asyncHandler(AffiliateAdminController.upda
 router.get("/settings", ...admin, asyncHandler(AffiliateAdminController.listSettings));
 router.post("/settings", ...admin, asyncHandler(AffiliateAdminController.createSettings));
 
+// Programa: regras por tipo de compra + trilhos globais (mig 192).
+router.get("/rules", ...admin, asyncHandler(AffiliateAdminController.listRules));
+router.patch("/rules/:source_context", ...admin, asyncHandler(AffiliateAdminController.updateRule));
+router.post("/program", ...admin, asyncHandler(AffiliateAdminController.createProgramSettings));
+
+// Vínculos (mig 193)
+router.delete("/referrals/:id", ...admin, asyncHandler(AffiliateAdminController.releaseReferral));
+
 // Coupon override
 router.put("/coupons/:id_coupon/override", ...admin, asyncHandler(AffiliateAdminController.upsertOverride));
 router.delete("/coupons/:id_coupon/override", ...admin, asyncHandler(AffiliateAdminController.deleteOverride));
