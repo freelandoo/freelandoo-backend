@@ -46,6 +46,8 @@ module.exports = {
       "placeholder_color",
       "image_url",
       "price_cents",
+      // NULL/0 = função não vendida por Poléns (mig 195).
+      "price_polens",
       "is_for_sale",
       "sort_order",
     ];
@@ -70,14 +72,14 @@ module.exports = {
 
   /* ------------------------------ compras ------------------------------- */
 
-  async createPurchase(db, { id_user, feature_key, id_product, amount_cents, stripe_session_id, payment_provider = "stripe", status = "pending" }) {
+  async createPurchase(db, { id_user, feature_key, id_product, amount_cents, amount_polens = 0, stripe_session_id, payment_provider = "stripe", status = "pending" }) {
     const r = await db.query(
       `INSERT INTO public.tb_user_function_purchase
-         (id_user, feature_key, id_product, status, amount_cents, payment_provider, stripe_session_id, paid_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $4 = 'paid' THEN NOW() ELSE NULL END)
+         (id_user, feature_key, id_product, status, amount_cents, amount_polens, payment_provider, stripe_session_id, paid_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $4 = 'paid' THEN NOW() ELSE NULL END)
        ON CONFLICT (stripe_session_id) WHERE stripe_session_id IS NOT NULL DO NOTHING
        RETURNING *`,
-      [id_user, feature_key, id_product || null, status, amount_cents, payment_provider, stripe_session_id || null]
+      [id_user, feature_key, id_product || null, status, amount_cents, amount_polens || 0, payment_provider, stripe_session_id || null]
     );
     if (r.rowCount) return r.rows[0];
     return this.getByStripeSession(db, stripe_session_id);
@@ -198,7 +200,8 @@ module.exports = {
     const r = await db.query(
       `SELECT feature_key,
               COUNT(*) FILTER (WHERE status = 'paid' AND refunded_at IS NULL)::int AS owners,
-              COALESCE(SUM(amount_cents) FILTER (WHERE status = 'paid' AND refunded_at IS NULL), 0)::bigint AS revenue_cents
+              COALESCE(SUM(amount_cents) FILTER (WHERE status = 'paid' AND refunded_at IS NULL), 0)::bigint AS revenue_cents,
+              COALESCE(SUM(amount_polens) FILTER (WHERE status = 'paid' AND refunded_at IS NULL), 0)::bigint AS revenue_polens
          FROM public.tb_user_function_purchase
         GROUP BY feature_key`
     );

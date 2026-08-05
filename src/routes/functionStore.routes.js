@@ -17,4 +17,12 @@ router.post(
   asyncHandler(FunctionStoreController.createCheckout)
 );
 
+// Compra pela carteira de Poléns (mig 195) — mesma posse vitalícia, sem Stripe.
+// Só vale onde o admin configurou price_polens > 0.
+router.post(
+  "/products/:key/polens",
+  authMiddleware,
+  asyncHandler(FunctionStoreController.purchaseWithPolens)
+);
+
 module.exports = router;

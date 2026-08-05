@@ -7,6 +7,7 @@
 const pool = require("../databases");
 const StripeService = require("./StripeService");
 const FunctionStoreStorage = require("../storages/FunctionStoreStorage");
+const PolenStorage = require("../storages/PolenStorage");
 const { USER_FEATURE_KEYS } = require("../utils/userFeatureKeys");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -108,6 +109,108 @@ class FunctionStoreService {
     );
   }
 
+  /* --------------------------- compra por Poléns ------------------------- */
+
+  // Caminho alternativo ao Stripe (mig 195): a função sai da carteira de
+  // Poléns. Vale para produto com price_polens > 0; o resultado é a MESMA
+  // compra vitalícia (status 'paid', provider 'polens'), então a posse e o
+  // gate do front não mudam. Sem reembolso automático — revogação é manual
+  // pelo admin, como no admin_grant.
+  static async purchaseWithPolens(user, feature_key) {
+    return runWithLogs(
+      log,
+      "purchaseWithPolens",
+      () => ({ id_user: user?.id_user, feature_key }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado" };
+        if (!USER_FEATURE_KEYS.includes(feature_key)) {
+          return { error: "Função desconhecida" };
+        }
+        const product = await FunctionStoreStorage.getProductByKey(pool, feature_key);
+        if (!product || !product.is_for_sale) {
+          return { error: "Esta função não está à venda." };
+        }
+        const amount = Number(product.price_polens) || 0;
+        if (amount <= 0) {
+          return { error: "Esta função não pode ser comprada com Poléns." };
+        }
+
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+
+          const settings = await PolenStorage.getSettings(client);
+          if (!settings?.is_active) {
+            await client.query("ROLLBACK");
+            return { error: "Sistema de Poléns inativo" };
+          }
+
+          // getOrCreateWallet trava a linha da carteira até o COMMIT: duas
+          // compras simultâneas do mesmo usuário serializam aqui, então a
+          // checagem de posse abaixo já enxerga a primeira (não existe UNIQUE
+          // parcial de posse — decisão do desenho da mig 191).
+          const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
+
+          const alreadyOwns = await FunctionStoreStorage.userOwnsFunction(
+            client,
+            user.id_user,
+            feature_key
+          );
+          if (alreadyOwns) {
+            await client.query("ROLLBACK");
+            return { error: "Você já possui esta função." };
+          }
+
+          const purchase = await FunctionStoreStorage.createPurchase(client, {
+            id_user: user.id_user,
+            feature_key,
+            id_product: product.id,
+            amount_cents: 0,
+            amount_polens: amount,
+            stripe_session_id: null,
+            payment_provider: "polens",
+            status: "paid",
+          });
+
+          const debit = await PolenStorage.debit(client, {
+            user_id: user.id_user,
+            wallet_id: wallet.id,
+            amount,
+            type: "spend_function_purchase",
+            source: "function_store",
+            source_id: `function:${feature_key}:${purchase.id}`,
+            metadata: { feature_key, id_product: product.id, purchase_id: purchase.id },
+          });
+          if (!debit) {
+            await client.query("ROLLBACK");
+            return {
+              error: `Você precisa de ${amount} Poléns para comprar esta função.`,
+              code: "insufficient_balance",
+            };
+          }
+
+          await client.query("COMMIT");
+          log.info("purchase.polens", {
+            id_user: user.id_user,
+            feature_key,
+            amount_polens: amount,
+          });
+          return {
+            message: "Função liberada na sua conta.",
+            purchase,
+            wallet: debit.wallet,
+            transaction: debit.transaction,
+          };
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
+      }
+    );
+  }
+
   // Webhook (completed/async_payment_succeeded): idempotente por session id.
   static async confirmStripeSession(session) {
     const meta = session.metadata || {};
@@ -202,6 +305,7 @@ class FunctionStoreService {
           ...p,
           owners: byKey[p.feature_key]?.owners || 0,
           revenue_cents: Number(byKey[p.feature_key]?.revenue_cents || 0),
+          revenue_polens: Number(byKey[p.feature_key]?.revenue_polens || 0),
         })),
       };
     });
@@ -226,6 +330,18 @@ class FunctionStoreService {
           return { error: "Preço inválido" };
         }
         fields.price_cents = cents;
+      }
+      // Preço em Poléns: 0 (ou campo vazio) = função não vendida por Poléns.
+      // Grava 0, nunca NULL: o seed da mig 195 semeia só onde está NULL, então
+      // desligar pelo admin tem que deixar um valor concreto — senão o próximo
+      // boot do backend ressuscitaria os 1000 Poléns por cima da decisão dele.
+      if (body.price_polens !== undefined) {
+        const raw = String(body.price_polens).trim();
+        const polens = raw === "" ? 0 : Math.round(Number(raw));
+        if (!Number.isFinite(polens) || polens < 0) {
+          return { error: "Preço em Poléns inválido" };
+        }
+        fields.price_polens = polens;
       }
       if (body.is_for_sale !== undefined) {
         fields.is_for_sale = body.is_for_sale === true || body.is_for_sale === "true";

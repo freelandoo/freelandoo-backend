@@ -20,4 +20,12 @@ module.exports = {
     );
     return sendServiceResult(res, result);
   },
+
+  async purchaseWithPolens(req, res) {
+    const result = await FunctionStoreService.purchaseWithPolens(
+      req.user,
+      String(req.params.key || "")
+    );
+    return sendServiceResult(res, result);
+  },
 };
