@@ -264,6 +264,15 @@ class AuthService {
 
           await client.query("COMMIT");
 
+          // Mesmo motivo do signin: as atribuições feitas deslogado (mig 194)
+          // passam a ser desta conta. Aqui é só cinto e suspensório — o cadastro
+          // por e-mail ainda passa pelo /login depois de ativar —, mas evita
+          // depender da ordem das telas.
+          if (payload?.visitor_token) {
+            ContentReferralService.claimVisitorToken(user.id_user, payload.visitor_token)
+              .catch(() => {});
+          }
+
           const activationLink = `${process.env.FRONTEND_URL}/activate?token=${token}`;
 
           await sendActivationEmail({
@@ -446,6 +455,14 @@ class AuthService {
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
           );
+
+          // Google é signup e login na MESMA tela: sem o claim aqui, quem chega
+          // pelo link compartilhado e entra com Google nunca casa as atribuições
+          // anônimas com a conta (o resolveForItem só enxerga id_user_visitor).
+          if (payload?.visitor_token) {
+            ContentReferralService.claimVisitorToken(user.id_user, payload.visitor_token)
+              .catch(() => {});
+          }
 
           // O login com Google NÃO grava aceite: o usuário ainda não viu os Termos
           // nesse fluxo. needs_terms vem true para conta nova (e para qualquer conta
