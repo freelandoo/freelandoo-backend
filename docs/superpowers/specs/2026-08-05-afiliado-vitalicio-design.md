@@ -1,7 +1,8 @@
 # Afiliado vitalício — dois regimes: vínculo (plataforma) × cupom de conteúdo (usuário)
 
 **Data:** 2026-08-05
-**Status:** desenho aprovado pelo Alex — pronto para fatiar
+**Status:** IMPLEMENTADO 2026-08-05 (P1, P2, V1, V2, V3, C1, X1, X2, X3).
+Pendente: comissão na Carteira (ver §13) e os números do admin (§11).
 **Substitui:** o modelo de atribuição por transação descrito em `project_freelandoo_affiliate_additive`
 
 ---
