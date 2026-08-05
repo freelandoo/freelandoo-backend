@@ -72,6 +72,10 @@ class AffiliateStorage {
       commission_percent,
       commission_cents,
       rule_snapshot,
+      // Mig 193: de onde veio a atribuição e quanto do pool virou desconto.
+      id_referral = null,
+      attribution_mode = null,
+      referral_discount_cents = 0,
     } = data;
 
     const { rows } = await conn.query(
@@ -87,9 +91,12 @@ class AffiliateStorage {
         commission_base_cents,
         commission_percent,
         commission_cents,
-        rule_snapshot
+        rule_snapshot,
+        id_referral,
+        attribution_mode,
+        referral_discount_cents
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (id_order_coupon) DO NOTHING
       RETURNING *
       `,
@@ -105,6 +112,9 @@ class AffiliateStorage {
         commission_percent,
         commission_cents,
         rule_snapshot,
+        id_referral,
+        attribution_mode,
+        referral_discount_cents,
       ]
     );
     return rows[0] || null;

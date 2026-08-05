@@ -4,7 +4,9 @@ const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStora
 const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const AffiliateStorage = require("../storages/AffiliateStorage");
+const AffiliateProgramStorage = require("../storages/AffiliateProgramStorage");
 const AffiliateConversionService = require("./AffiliateConversionService");
+const ReferralService = require("./ReferralService");
 const BookingService = require("./BookingService");
 const ClanService = require("./ClanService");
 const ManifestationService = require("./ManifestationService");
@@ -475,10 +477,19 @@ async function handleSubscriptionDeleted(conn, subscription) {
  */
 function resolveCommissionContext(meta) {
   switch (meta?.type) {
+    // Regime USUÁRIO — o dono do item define a % (mig 192); só comissão.
     case "profile_product_order":  return { source_context: "loja_produto" };
     case "course_purchase":        return { source_context: "course_purchase" };
     case "booking_deposit":        return { source_context: "booking_deposit" };
+    // Regime PLATAFORMA — cria vínculo e (no V3) concede desconto. Todos são
+    // gated por tb_affiliate_commission_rule.is_enabled: os que nascem
+    // desligados na mig 192 não geram nada até o X1 ligar com o número do Alex.
     case "casa_participant_order": return { source_context: "casa_conveniencia" };
+    case "polen_purchase":         return { source_context: "polen_purchase" };
+    case "premium":                return { source_context: "premium" };
+    case "manifestation":          return { source_context: "manifestation" };
+    case "xp_boost":               return { source_context: "xp_boost" };
+    case "function_purchase":      return { source_context: "function_purchase" };
     default: return null;
   }
 }
@@ -515,9 +526,94 @@ async function saleIsFromClan(conn, meta) {
   }
 }
 
+/**
+ * Dono do item vendido. Sem isso, o vendedor compartilharia o próprio link e
+ * embolsaria `seller + pool` — o preço inflou para o comprador e voltou para
+ * ele, e o modelo de taxas vira ficção.
+ */
+async function resolveSellerUserId(conn, meta) {
+  try {
+    if (meta?.type === "profile_product_order" && meta.id_profile_product) {
+      const r = await conn.query(
+        `SELECT p.id_user
+           FROM public.tb_profile_product pp
+           JOIN public.tb_profile p ON p.id_profile = pp.id_profile
+          WHERE pp.id_profile_product = $1 LIMIT 1`,
+        [Number(meta.id_profile_product)]
+      );
+      return r.rows[0]?.id_user || null;
+    }
+    if (meta?.type === "course_purchase" && meta.course_id) {
+      const r = await conn.query(
+        `SELECT owner_user_id FROM public.courses WHERE id = $1 LIMIT 1`,
+        [meta.course_id]
+      );
+      return r.rows[0]?.owner_user_id || null;
+    }
+    if (meta?.type === "booking_deposit" && meta.profile_id) {
+      const r = await conn.query(
+        `SELECT id_user FROM public.tb_profile WHERE id_profile = $1 LIMIT 1`,
+        [meta.profile_id]
+      );
+      return r.rows[0]?.id_user || null;
+    }
+  } catch (err) {
+    log.warn("affiliate.seller_lookup_fail", { type: meta?.type, message: err.message });
+  }
+  return null;
+}
+
+/**
+ * Precedência da atribuição (desenho de 2026-08-05, slice V2).
+ *
+ *   PLATAFORMA vende → o VÍNCULO vence qualquer cupom. Sem vínculo, o cupom da
+ *                      sessão atribui E semeia o vínculo (1ª compra).
+ *   USUÁRIO vende    → o cupom de quem compartilhou o conteúdo vence; sem ele,
+ *                      cai no vínculo. Nunca cria vínculo.
+ */
+async function resolveAttribution(conn, { source_context, coupon_code, id_user_buyer }) {
+  const rule = await AffiliateProgramStorage.getRule(conn, source_context).catch(() => null);
+  if (!rule || rule.is_enabled !== true) return null;
+  const isPlatform = rule.regime === "platform";
+
+  const referral = await ReferralService.resolve(conn, id_user_buyer);
+
+  if (isPlatform && referral) {
+    return {
+      id_affiliate: referral.id_affiliate,
+      id_referral: referral.id_referral,
+      attribution_mode: "referral",
+      coupon_code: null,
+    };
+  }
+
+  if (coupon_code) {
+    // Cupom da sessão: no regime usuário é o cupom de quem compartilhou o
+    // conteúdo (o C1 troca a fonte por tb_content_referral, a precedência
+    // continua a mesma); no regime plataforma é a semente do vínculo.
+    return {
+      id_affiliate: null,
+      id_referral: null,
+      attribution_mode: isPlatform ? "coupon" : "content",
+      coupon_code,
+    };
+  }
+
+  if (referral) {
+    // Regime usuário sem cupom no link → o vínculo assume.
+    return {
+      id_affiliate: referral.id_affiliate,
+      id_referral: referral.id_referral,
+      attribution_mode: "referral",
+      coupon_code: null,
+    };
+  }
+
+  return null;
+}
+
 async function maybeAttributeCouponCommission(conn, session, meta) {
   try {
-    if (!meta?.coupon_code) return;
     const ctx = resolveCommissionContext(meta);
     if (!ctx) return;
     // Venda de clan não gera comissão de afiliado.
@@ -528,6 +624,26 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
     const id_user_buyer = resolveBuyerUserId(session, meta);
     const total_cents = Number(session?.amount_total || 0);
     if (!total_cents) return;
+
+    // Precedência vínculo × cupom (V2). Sem atribuição, nada a fazer.
+    const attribution = await resolveAttribution(conn, {
+      source_context: ctx.source_context,
+      coupon_code: meta.coupon_code || null,
+      id_user_buyer,
+    });
+    if (!attribution) return;
+
+    // Dono do item não ganha comissão do próprio item.
+    if (attribution.id_affiliate) {
+      const sellerUserId = await resolveSellerUserId(conn, meta);
+      if (sellerUserId) {
+        const aff = await AffiliateStorage.getAffiliateById(conn, attribution.id_affiliate);
+        if (aff && String(aff.id_user) === String(sellerUserId)) {
+          log.info("affiliate.commission.skip_own_item", { type: meta.type });
+          return;
+        }
+      }
+    }
     // Aditivo (loja/cursos/serviços/booking): comissão embutida e cravada no
     // checkout via meta.affiliate_commission_cents. Conveniência não manda esse
     // campo → cai no %-base sobre o total.
@@ -535,8 +651,8 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
     const explicit_commission_cents = Number.isFinite(explicitCents) && explicitCents > 0
       ? explicitCents
       : null;
-    await AffiliateConversionService.createFromGenericPaidOrder(conn, {
-      coupon_code: meta.coupon_code,
+    const conversion = await AffiliateConversionService.createFromGenericPaidOrder(conn, {
+      coupon_code: attribution.coupon_code,
       id_user_buyer,
       total_cents,
       source_context: ctx.source_context,
@@ -544,7 +660,23 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
       payment_provider_ref: session.id,
       raw_webhook: session,
       explicit_commission_cents,
+      id_affiliate_resolved: attribution.id_affiliate,
+      id_referral: attribution.id_referral,
+      attribution_mode: attribution.attribution_mode,
     });
+
+    // Semeia o vínculo quando a compra é de PLATAFORMA e veio por cupom. O
+    // ReferralService decide sozinho se o contexto vincula (creates_bond) —
+    // compra de item de usuário nunca vincula ninguém.
+    if (conversion && attribution.attribution_mode === "coupon") {
+      await ReferralService.bind(conn, {
+        id_user_buyer,
+        id_affiliate: conversion.id_affiliate,
+        id_coupon: conversion.id_coupon,
+        id_order: conversion.id_order,
+        source_context: ctx.source_context,
+      });
+    }
   } catch (err) {
     log.error("affiliate.commission.attribute.fail", { error: err.message });
   }
@@ -863,4 +995,13 @@ async function reprocessEvent(event_id) {
   }
 }
 
-module.exports = { processEvent, reprocessEvent, fulfillCheckoutSession, dispatchEvent };
+module.exports = {
+  processEvent,
+  reprocessEvent,
+  fulfillCheckoutSession,
+  dispatchEvent,
+  // Exportados para teste: a precedência vínculo × cupom é a regra de negócio
+  // do programa de afiliados e precisa ser verificável isoladamente.
+  resolveAttribution,
+  resolveSellerUserId,
+};

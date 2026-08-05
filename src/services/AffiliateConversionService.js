@@ -1,4 +1,6 @@
 const AffiliateStorage = require("../storages/AffiliateStorage");
+const ReferralService = require("./ReferralService");
+const AffiliateProgramStorage = require("../storages/AffiliateProgramStorage");
 const AffiliateRuleResolver = require("./AffiliateRuleResolver");
 const XpStorage = require("../storages/XpStorage");
 const NotificationService = require("./NotificationService");
@@ -6,6 +8,35 @@ const pool = require("../databases");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("AffiliateConversionService");
+
+/**
+ * Cupom do afiliado para a FK da conversão (mig 193).
+ *
+ * A conversão atribuída por VÍNCULO não tem cupom na sessão, mas
+ * tb_affiliate_conversion.id_coupon é NOT NULL. Usamos, nesta ordem, o cupom
+ * que semeou o vínculo e, se ele não existir (vínculo concedido pelo admin),
+ * o cupom ativo do próprio afiliado.
+ */
+async function resolveAffiliateCoupon(conn, { id_affiliate, id_coupon = null }) {
+  if (id_coupon) {
+    const { rows } = await conn.query(
+      `SELECT id_coupon, code, owner_user_id FROM tb_coupon WHERE id_coupon = $1 LIMIT 1`,
+      [id_coupon]
+    );
+    if (rows[0]) return rows[0];
+  }
+  const { rows } = await conn.query(
+    `SELECT c.id_coupon, c.code, c.owner_user_id
+       FROM tb_coupon c
+       JOIN tb_affiliate a ON a.id_user = c.owner_user_id
+      WHERE a.id_affiliate = $1
+        AND c.is_active = TRUE
+      ORDER BY c.created_at DESC
+      LIMIT 1`,
+    [id_affiliate]
+  );
+  return rows[0] || null;
+}
 
 function toCents(value, fallback = 0) {
   const number = Number(value);
@@ -262,19 +293,38 @@ async function createFromOrder(client, { order, order_coupon, coupon }) {
  */
 async function createFromProfileSubscription(client, { subscription, session }) {
   try {
-    if (!subscription?.id_coupon) return null;
+    // Ativação de perfil é regime PLATAFORMA: o VÍNCULO vence o cupom e, na
+    // ausência de cupom, ele sozinho já atribui a comissão (V2).
+    const referral = await ReferralService.resolve(client, subscription.id_user);
+    let attribution_mode = "coupon";
+    let coupon = null;
 
-    const couponRes = await client.query(
-      `
-      SELECT id_coupon, code, owner_user_id
-      FROM tb_coupon
-      WHERE id_coupon = $1
-      LIMIT 1
-      `,
-      [subscription.id_coupon]
-    );
-    const coupon = couponRes.rows[0] || null;
-    if (!coupon?.owner_user_id) return null;
+    if (referral) {
+      attribution_mode = "referral";
+      coupon = await resolveAffiliateCoupon(client, {
+        id_affiliate: referral.id_affiliate,
+        id_coupon: referral.id_coupon,
+      });
+      if (!coupon) {
+        log.warn("affiliate.conversion.skip.no_coupon_for_affiliate", {
+          id_subscription: subscription.id_subscription,
+        });
+        return null;
+      }
+    } else {
+      if (!subscription?.id_coupon) return null;
+      const couponRes = await client.query(
+        `
+        SELECT id_coupon, code, owner_user_id
+        FROM tb_coupon
+        WHERE id_coupon = $1
+        LIMIT 1
+        `,
+        [subscription.id_coupon]
+      );
+      coupon = couponRes.rows[0] || null;
+      if (!coupon?.owner_user_id) return null;
+    }
 
     if (String(coupon.owner_user_id) === String(subscription.id_user)) {
       log.info("affiliate.conversion.skip.self_purchase", {
@@ -360,8 +410,22 @@ async function createFromProfileSubscription(client, { subscription, session }) 
               null,
         amount_subtotal_cents: subtotal_cents,
         amount_total_cents: total_cents,
+        attribution_mode,
       },
+      id_referral: referral?.id_referral || null,
+      attribution_mode,
     });
+
+    // 1ª compra de plataforma com cupom → nasce o vínculo vitalício.
+    if (attribution_mode === "coupon") {
+      await ReferralService.bind(client, {
+        id_user_buyer: subscription.id_user,
+        id_affiliate: affiliate.id_affiliate,
+        id_coupon: coupon.id_coupon,
+        id_order: order.id_order,
+        source_context: "profile_subscription",
+      });
+    }
 
     if (!conversion) {
       return AffiliateStorage.getConversionByOrderId(client, order.id_order);
@@ -533,39 +597,77 @@ async function createFromGenericPaidOrder(client, {
   raw_webhook = null,
   paid_at = null,
   explicit_commission_cents = null,
+  // Atribuição já resolvida pelo webhook (mig 193). Quando vem por VÍNCULO não
+  // há cupom na sessão — o afiliado chega pronto daqui.
+  id_affiliate_resolved = null,
+  id_referral = null,
+  attribution_mode = null,
 }) {
   try {
-    if (!coupon_code || !payment_provider_ref) return null;
+    if (!payment_provider_ref) return null;
+    if (!coupon_code && !id_affiliate_resolved) return null;
     if (!id_user_buyer) {
       log.warn("affiliate.conversion.skip.no_buyer", { source_context, payment_provider_ref });
       return null;
     }
     if (!Number.isFinite(Number(total_cents)) || Number(total_cents) <= 0) return null;
 
-    const code = String(coupon_code).trim().toUpperCase();
-    if (!code) return null;
-
-    const couponRes = await client.query(
-      `SELECT id_coupon, code, owner_user_id, is_active, expires_at
-         FROM tb_coupon
-        WHERE code = $1
-        LIMIT 1`,
-      [code]
-    );
-    const coupon = couponRes.rows[0] || null;
-    if (!coupon) return null;
-    if (!coupon.owner_user_id) return null; // manual sem owner não gera comissão
-    if (!coupon.is_active) return null;
-    if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) return null;
-    if (String(coupon.owner_user_id) === String(id_user_buyer)) {
-      log.info("affiliate.conversion.skip.self_purchase", {
-        source_context, id_coupon: coupon.id_coupon,
-      });
+    // Kill-switch por tipo de compra (mig 192). Contexto sem linha ou desligado
+    // não gera comissão nenhuma — é assim que poléns/premium/etc. ficam parados
+    // até o Alex definir o número.
+    const programRule = source_context
+      ? await AffiliateProgramStorage.getRule(client, source_context).catch(() => null)
+      : null;
+    if (source_context && (!programRule || programRule.is_enabled !== true)) {
+      log.info("affiliate.conversion.skip.rule_disabled", { source_context });
       return null;
     }
 
-    const affiliate = await AffiliateStorage.getAffiliateByUserId(client, coupon.owner_user_id);
-    if (!affiliate || affiliate.status !== "ACTIVE") return null;
+    let coupon = null;
+    let affiliate = null;
+
+    if (id_affiliate_resolved) {
+      // Caminho do VÍNCULO: o afiliado já veio resolvido.
+      affiliate = await AffiliateStorage.getAffiliateById(client, id_affiliate_resolved);
+      if (!affiliate || affiliate.status !== "ACTIVE") return null;
+      if (String(affiliate.id_user) === String(id_user_buyer)) return null;
+      coupon = await resolveAffiliateCoupon(client, {
+        id_affiliate: id_affiliate_resolved,
+        id_coupon: null,
+      });
+      if (!coupon) {
+        // Sem cupom nenhum não há como preencher a FK da conversão.
+        log.warn("affiliate.conversion.skip.no_coupon_for_affiliate", {
+          source_context, id_affiliate: id_affiliate_resolved,
+        });
+        return null;
+      }
+    } else {
+      const code = String(coupon_code).trim().toUpperCase();
+      if (!code) return null;
+
+      const couponRes = await client.query(
+        `SELECT id_coupon, code, owner_user_id, is_active, expires_at
+           FROM tb_coupon
+          WHERE code = $1
+          LIMIT 1`,
+        [code]
+      );
+      coupon = couponRes.rows[0] || null;
+      if (!coupon) return null;
+      if (!coupon.owner_user_id) return null; // manual sem owner não gera comissão
+      if (!coupon.is_active) return null;
+      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) return null;
+      if (String(coupon.owner_user_id) === String(id_user_buyer)) {
+        log.info("affiliate.conversion.skip.self_purchase", {
+          source_context, id_coupon: coupon.id_coupon,
+        });
+        return null;
+      }
+
+      affiliate = await AffiliateStorage.getAffiliateByUserId(client, coupon.owner_user_id);
+      if (!affiliate || affiliate.status !== "ACTIVE") return null;
+    }
 
     const when = paid_at instanceof Date ? paid_at : new Date();
 
@@ -574,7 +676,7 @@ async function createFromGenericPaidOrder(client, {
       at: when.toISOString(),
     });
     if (!rule) {
-      log.warn("affiliate.conversion.skip.no_settings", { source_context, code });
+      log.warn("affiliate.conversion.skip.no_settings", { source_context, code: coupon?.code || null });
       return null;
     }
 
@@ -602,6 +704,13 @@ async function createFromGenericPaidOrder(client, {
       }
       commission_cents = calc.commission_cents;
       commission_base_cents = calc.base_cents;
+    }
+
+    // Teto do pool por transação, quando o admin configurou (mig 192). Vale
+    // inclusive no aditivo, que ignora o max_commission_cents da regra legada.
+    if (programRule?.max_pool_cents != null
+        && commission_cents > Number(programRule.max_pool_cents)) {
+      commission_cents = Number(programRule.max_pool_cents);
     }
 
     // Idempotência: se já existe order com (provider, ref), reusa.
@@ -672,7 +781,10 @@ async function createFromGenericPaidOrder(client, {
         payment_provider,
         payment_provider_ref,
         commission_mode: explicit > 0 ? "additive_explicit" : "percent_base",
+        attribution_mode: attribution_mode || "coupon",
       },
+      id_referral,
+      attribution_mode: attribution_mode || "coupon",
     });
 
     if (!conversion) {
