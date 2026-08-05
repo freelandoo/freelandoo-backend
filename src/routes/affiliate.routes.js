@@ -11,6 +11,9 @@ const router = Router();
 // price-preview é gated pela flag `store`, que não vale para cursos.
 router.get("/program", authMiddleware, asyncHandler(StoreGovernanceController.affiliateProgram));
 
+// Selo do vínculo no checkout + transparência ("você foi indicado por @x").
+router.get("/referral", authMiddleware, asyncHandler(AffiliateController.getMyReferral));
+
 router.get("/", authMiddleware, asyncHandler(AffiliateController.getMe));
 router.get("/share-coupon", authMiddleware, asyncHandler(AffiliateController.getMyShareCoupon));
 router.put("/payout-info", authMiddleware, asyncHandler(AffiliateController.updateMyPayoutInfo));

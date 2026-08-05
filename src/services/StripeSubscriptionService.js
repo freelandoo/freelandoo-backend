@@ -4,6 +4,8 @@ const CouponDiscountResolver = require("./CouponDiscountResolver");
 const AnnualFeeSettingsStorage = require("../storages/AnnualFeeSettingsStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const AffiliateStorage = require("../storages/AffiliateStorage");
+const ReferralPricingService = require("./ReferralPricingService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("StripeSubscriptionService");
@@ -146,12 +148,36 @@ async function createSessionForUser(user, body) {
         });
       }
       discountCents = Math.min(Math.max(discountCents, 0), fullAmount);
-      const chargeAmount = fullAmount - discountCents;
+      let chargeAmount = fullAmount - discountCents;
       if (coupon && chargeAmount <= 0) {
         throw new ServiceError(
           "Este cupom zera o valor da ativação. Contate o suporte.",
           409
         );
+      }
+
+      // Desconto do VÍNCULO (V3): ativação de perfil é regime plataforma, então
+      // parte do pool volta pro comprador. Incide sobre o valor já com cupom —
+      // são coisas diferentes (cupom = desconto pontual do admin; vínculo =
+      // benefício vitalício de quem foi indicado). Vale já na 1ª compra: sem
+      // vínculo ainda, o afiliado do cupom serve de dica.
+      let couponAffiliateId = null;
+      if (coupon?.owner_user_id) {
+        const affOfCoupon = await AffiliateStorage.getAffiliateByUserId(
+          pool,
+          coupon.owner_user_id
+        );
+        if (affOfCoupon?.status === "ACTIVE") couponAffiliateId = affOfCoupon.id_affiliate;
+      }
+      const referralPricing = await ReferralPricingService.resolve(pool, {
+        id_user: user.id_user,
+        source_context: "profile_subscription",
+        base_cents: chargeAmount,
+        id_affiliate_hint: couponAffiliateId,
+      });
+      const referralDiscount = referralPricing.discount_cents || 0;
+      if (referralDiscount > 0) {
+        chargeAmount = chargeAmount - referralDiscount;
       }
 
       const frontend = String(process.env.FRONTEND_URL || "").replace(/\/$/, "");
@@ -168,6 +194,12 @@ async function createSessionForUser(user, body) {
         // Comissão de afiliado: o webhook reconstrói o bruto a partir destes.
         metadata.original_amount_cents = String(fullAmount);
         metadata.coupon_discount_cents = String(discountCents);
+      }
+      if (referralDiscount > 0) {
+        metadata.referral_discount_cents = String(referralDiscount);
+        if (referralPricing.id_referral) {
+          metadata.id_referral = String(referralPricing.id_referral);
+        }
       }
 
       const session = await StripeService.createProfileActivationCheckoutSession({
@@ -202,6 +234,7 @@ async function createSessionForUser(user, body) {
         session_id: session.id,
         id_profile,
         profile_name: profile.display_name,
+        referral_discount_cents: referralDiscount,
       };
     }
   );

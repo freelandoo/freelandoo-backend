@@ -17,6 +17,25 @@ class AffiliateController {
     }
   }
 
+  /**
+   * GET /me/referral?source_context=&base_cents=
+   * Quem me indicou e quanto de desconto o vínculo vale hoje. Alimenta o selo
+   * que substitui o campo de cupom no checkout de itens da plataforma.
+   */
+  static async getMyReferral(req, res) {
+    try {
+      const pool = require("../databases");
+      const ReferralPricingService = require("../services/ReferralPricingService");
+      const result = await ReferralPricingService.summaryForUser(pool, req.user.id_user, {
+        source_context: req.query?.source_context || null,
+        base_cents: Number(req.query?.base_cents || 0),
+      });
+      return res.json(result);
+    } catch (err) {
+      return handleError(res, err);
+    }
+  }
+
   static async getMyShareCoupon(req, res) {
     try {
       const result = await AffiliateService.getMyShareCoupon(req.user);

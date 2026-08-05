@@ -663,6 +663,8 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
       id_affiliate_resolved: attribution.id_affiliate,
       id_referral: attribution.id_referral,
       attribution_mode: attribution.attribution_mode,
+      // Desconto do vínculo cravado no checkout (V3): sai do mesmo pool.
+      referral_discount_cents: Number(meta.referral_discount_cents || 0),
     });
 
     // Semeia o vínculo quando a compra é de PLATAFORMA e veio por cupom. O

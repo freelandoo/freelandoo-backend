@@ -370,6 +370,13 @@ async function createFromProfileSubscription(client, { subscription, session }) 
       return null;
     }
 
+    // Desconto do vínculo já concedido no checkout (V3) sai do MESMO pool da
+    // comissão — senão a plataforma pagaria o desconto E a comissão cheia.
+    // Subtrair (em vez de recalcular pelo split) mantém o teto do pool mesmo
+    // se a % da regra legada divergir da % do programa.
+    const referralDiscountCents = toCents(session?.metadata?.referral_discount_cents, 0);
+    const commissionAfterDiscount = Math.max(0, calc.commission_cents - referralDiscountCents);
+
     const { order, order_coupon } = await ensureStripeSubscriptionOrder(client, {
       subscription,
       session,
@@ -395,10 +402,13 @@ async function createFromProfileSubscription(client, { subscription, session }) 
       discount_cents,
       commission_base_cents: calc.base_cents,
       commission_percent: rule.commission_percent,
-      commission_cents: calc.commission_cents,
+      commission_cents: commissionAfterDiscount,
+      referral_discount_cents: referralDiscountCents,
       rule_snapshot: {
         ...rule.snapshot,
         source_context: "stripe_subscription",
+        pool_cents: calc.commission_cents,
+        referral_discount_cents: referralDiscountCents,
         id_subscription: subscription.id_subscription || null,
         stripe_checkout_session_id:
           session?.id || subscription.stripe_checkout_session_id || null,
@@ -602,6 +612,8 @@ async function createFromGenericPaidOrder(client, {
   id_affiliate_resolved = null,
   id_referral = null,
   attribution_mode = null,
+  // Desconto do vínculo concedido no checkout (V3). Sai do mesmo pool.
+  referral_discount_cents = 0,
 }) {
   try {
     if (!payment_provider_ref) return null;
@@ -713,6 +725,13 @@ async function createFromGenericPaidOrder(client, {
       commission_cents = Number(programRule.max_pool_cents);
     }
 
+    // O desconto já dado ao comprador sai do pool, não por cima dele.
+    const referralDiscount = toCents(referral_discount_cents, 0);
+    const pool_cents = commission_cents;
+    if (referralDiscount > 0) {
+      commission_cents = Math.max(0, commission_cents - referralDiscount);
+    }
+
     // Idempotência: se já existe order com (provider, ref), reusa.
     const existingOrderRes = await client.query(
       `SELECT * FROM tb_order
@@ -782,9 +801,12 @@ async function createFromGenericPaidOrder(client, {
         payment_provider_ref,
         commission_mode: explicit > 0 ? "additive_explicit" : "percent_base",
         attribution_mode: attribution_mode || "coupon",
+        pool_cents,
+        referral_discount_cents: referralDiscount,
       },
       id_referral,
       attribution_mode: attribution_mode || "coupon",
+      referral_discount_cents: referralDiscount,
     });
 
     if (!conversion) {
