@@ -37,6 +37,7 @@ const clanRoutes = require("./clan.routes");
 const clanPublicRoutes = require("./clanPublic.routes");
 const communityRoutes = require("./community.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
+const condoRoutes = require("./condo.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
@@ -175,6 +176,10 @@ module.exports = (app) => {
   // não pode ser engolido por GET /:id_profile da pública.
   app.use("/communities", communityRoutes);
   app.use("/communities", communityPublicRoutes);
+  // Condomínio (modalidade de comunidade, migs 196-199): área interna —
+  // estrutura, reivindicações, avisos, anúncios e enquetes. Base própria para
+  // não disputar rota com /communities/:id_profile.
+  app.use("/condos", condoRoutes);
   app.use("/admin/booking-fees", bookingFeeAdminRoutes);
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);

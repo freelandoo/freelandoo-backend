@@ -24,12 +24,16 @@ class CommunityStorage {
     return r.rows[0];
   }
 
+  // Condomínio NÃO consome teto: é modalidade utilitária (mig 196), não
+  // comunidade de enxame/ranking. Morar num prédio não pode custar o ingresso
+  // de participação nem impedir o síndico de ter a comunidade dele.
   static async countOwned(conn, id_user) {
     const r = await conn.query(
       `SELECT COUNT(*)::int AS n
          FROM public.tb_profile
         WHERE id_leader_user = $1
           AND is_community = TRUE
+          AND community_kind <> 'condo'
           AND deleted_at IS NULL`,
       [id_user]
     );
@@ -42,6 +46,7 @@ class CommunityStorage {
          FROM public.tb_community_member m
          JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
         WHERE m.id_user = $1
+          AND p.community_kind <> 'condo'
           AND p.deleted_at IS NULL`,
       [id_user]
     );
@@ -73,7 +78,7 @@ class CommunityStorage {
   // ─── Criação ────────────────────────────────────────────────────────────────
   static async createCommunity(
     conn,
-    { id_user, id_machine, display_name, bio, avatar_url, theme }
+    { id_user, id_machine, display_name, bio, avatar_url, theme, kind, address }
   ) {
     // tb_profile.sub_profile_slug é NOT NULL — gera um slug único por user
     // (mesma convenção dos subperfis: slugify(display_name) + sufixo anti-colisão).
@@ -84,27 +89,41 @@ class CommunityStorage {
 
     // Região da comunidade = a do subperfil de maior XP do criador (que tenha
     // região). Permite filtrar comunidades por região no ranking e na vitrine.
+    // Condomínio (mig 196) é a exceção: cidade/UF vêm do ENDEREÇO informado —
+    // o prédio tem lugar próprio, que não é o do síndico. Quando o endereço
+    // traz UF+cidade, eles vencem o subperfil (COALESCE abaixo).
+    const addr = address || {};
     const r = await conn.query(
       `INSERT INTO public.tb_profile
          (id_user, id_category, id_machine, is_community, id_leader_user,
           community_theme, display_name, bio, avatar_url, sub_profile_slug,
+          community_kind, condo_street, condo_number, condo_complement,
+          condo_neighborhood, condo_cep,
           id_region, estado, municipio)
        VALUES
          ($1, NULL, $2, TRUE, $1, $3, $4, $5, $6, $7,
-          (SELECT p.id_region FROM public.tb_profile p
-             WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
-               AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
-             ORDER BY p.xp_total DESC LIMIT 1),
-          (SELECT p.estado FROM public.tb_profile p
-             WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
-               AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
-             ORDER BY p.xp_total DESC LIMIT 1),
-          (SELECT p.municipio FROM public.tb_profile p
-             WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
-               AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
-             ORDER BY p.xp_total DESC LIMIT 1))
+          $8, $9, $10, $11, $12, $13,
+          COALESCE(
+            (SELECT rc.id_region FROM public.tb_region_city rc
+              WHERE $14::text IS NOT NULL AND $15::text IS NOT NULL
+                AND rc.uf = $14::text AND rc.municipio_norm = fl_norm_city($15::text)),
+            (SELECT p.id_region FROM public.tb_profile p
+               WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
+                 AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
+               ORDER BY p.xp_total DESC LIMIT 1)),
+          COALESCE($14::text,
+            (SELECT p.estado FROM public.tb_profile p
+               WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
+                 AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
+               ORDER BY p.xp_total DESC LIMIT 1)),
+          COALESCE($15::text,
+            (SELECT p.municipio FROM public.tb_profile p
+               WHERE p.id_user = $1 AND p.is_clan = FALSE AND p.is_community = FALSE
+                 AND p.deleted_at IS NULL AND p.id_region IS NOT NULL
+               ORDER BY p.xp_total DESC LIMIT 1)))
        RETURNING id_profile, id_user, id_machine, is_community, id_leader_user,
                  community_theme, display_name, bio, avatar_url, sub_profile_slug,
+                 community_kind, estado, municipio,
                  is_active, is_visible, xp_total, xp_level, created_at, updated_at`,
       [
         id_user,
@@ -114,9 +133,51 @@ class CommunityStorage {
         bio ?? null,
         avatar_url ?? null,
         sub_profile_slug,
+        kind || "common",
+        addr.street ?? null,
+        addr.number ?? null,
+        addr.complement ?? null,
+        addr.neighborhood ?? null,
+        addr.cep ?? null,
+        addr.estado ?? null,
+        addr.municipio ?? null,
       ]
     );
     return r.rows[0];
+  }
+
+  // ─── Condomínio: endereço (edição pelo administrador) ───────────────────────
+  static async updateCondoAddress(conn, id_condo, address = {}) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile
+          SET condo_street       = COALESCE($2, condo_street),
+              condo_number       = COALESCE($3, condo_number),
+              condo_complement   = COALESCE($4, condo_complement),
+              condo_neighborhood = COALESCE($5, condo_neighborhood),
+              condo_cep          = COALESCE($6, condo_cep),
+              estado             = COALESCE($7::text, estado),
+              municipio          = COALESCE($8::text, municipio),
+              id_region          = COALESCE(
+                (SELECT rc.id_region FROM public.tb_region_city rc
+                  WHERE $7::text IS NOT NULL AND $8::text IS NOT NULL
+                    AND rc.uf = $7::text AND rc.municipio_norm = fl_norm_city($8::text)),
+                id_region),
+              updated_at         = NOW()
+        WHERE id_profile = $1 AND community_kind = 'condo' AND deleted_at IS NULL
+        RETURNING id_profile, condo_street, condo_number, condo_complement,
+                  condo_neighborhood, condo_cep, estado, municipio, id_region`,
+      [
+        id_condo,
+        address.street ?? null,
+        address.number ?? null,
+        address.complement ?? null,
+        address.neighborhood ?? null,
+        address.cep ?? null,
+        address.estado ?? null,
+        address.municipio ?? null,
+      ]
+    );
+    return r.rowCount ? r.rows[0] : null;
   }
 
   // ─── Edição de perfil (só líder; guard no service) ──────────────────────────
@@ -169,6 +230,10 @@ class CommunityStorage {
               p.community_banner_url AS banner_url,
               p.community_privacy AS privacy,
               p.community_monthly_cents AS monthly_cents,
+              p.community_kind AS kind,
+              p.condo_street, p.condo_number, p.condo_complement,
+              p.condo_neighborhood, p.condo_cep,
+              p.estado, p.municipio, p.id_region,
               p.xp_total, p.xp_level, p.created_at, p.updated_at,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
@@ -184,12 +249,26 @@ class CommunityStorage {
     return r.rowCount ? r.rows[0] : null;
   }
 
-  static async listPublic(conn, { q, id_machine, id_region, limit = 30, offset = 0 } = {}) {
+  // kind: 'common' | 'academy' | 'condo' | null (todas). Condomínio é
+  // pesquisável por NOME **ou ENDEREÇO** (bairro/rua/cidade) — mas a lista
+  // pública não devolve rua/número/CEP: isso é dado sensível, só sai no
+  // getById para membro confirmado/administrador.
+  static async listPublic(conn, { q, id_machine, id_region, kind, limit = 30, offset = 0 } = {}) {
     const params = [];
     const where = ["p.is_community = TRUE", "p.deleted_at IS NULL"];
     if (q) {
       params.push(`%${q}%`);
-      where.push(`p.display_name ILIKE $${params.length}`);
+      where.push(
+        `(p.display_name ILIKE $${params.length}
+          OR (p.community_kind = 'condo' AND (
+                p.condo_neighborhood ILIKE $${params.length}
+             OR p.condo_street       ILIKE $${params.length}
+             OR p.municipio          ILIKE $${params.length})))`
+      );
+    }
+    if (kind) {
+      params.push(kind);
+      where.push(`p.community_kind = $${params.length}`);
     }
     if (id_machine) {
       params.push(id_machine);
@@ -208,6 +287,8 @@ class CommunityStorage {
               p.estado, p.municipio, p.id_region,
               p.community_privacy AS privacy,
               p.community_monthly_cents AS monthly_cents,
+              p.community_kind AS kind,
+              p.condo_neighborhood,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
                 WHERE cm.id_community_profile = p.id_profile) AS member_count
@@ -227,6 +308,7 @@ class CommunityStorage {
       `SELECT p.id_profile, p.id_machine, p.display_name, p.avatar_url,
               p.community_banner_url AS banner_url,
               p.community_theme, p.xp_total, p.xp_level,
+              p.community_kind AS kind,
               m.role,
               mac.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm

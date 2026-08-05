@@ -27,6 +27,7 @@ class CommunityRankingService {
                 ROW_NUMBER() OVER (ORDER BY xp_total DESC, created_at ASC)
            FROM public.tb_profile
           WHERE is_community = TRUE AND deleted_at IS NULL
+            AND community_kind <> 'condo'
          ON CONFLICT (season_number, id_community) DO UPDATE
            SET xp_total = EXCLUDED.xp_total,
                xp_level = EXCLUDED.xp_level,

@@ -62,7 +62,7 @@ class CommunityController {
   }
 
   static async getMembers(req, res) {
-    const result = await CommunityService.getMembers(req.params);
+    const result = await CommunityService.getMembers(req.params, req.user);
     return sendServiceResult(res, result);
   }
 

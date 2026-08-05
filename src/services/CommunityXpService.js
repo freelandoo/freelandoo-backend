@@ -80,6 +80,7 @@ class CommunityXpService {
               $1
          FROM public.tb_profile c
         WHERE c.is_community = TRUE AND c.deleted_at IS NULL
+          AND c.community_kind <> 'condo'
        ON CONFLICT (id_community_profile) DO UPDATE
          SET accumulated_xp = public.tb_community_xp_accumulator.accumulated_xp +
                (SELECT COUNT(*) FROM public.tb_community_member m
@@ -93,8 +94,11 @@ class CommunityXpService {
   // Recalcula o XP de todas as comunidades.
   static async recalcAll(db) {
     const r = await db.query(
+      // Condomínio fica FORA do XP/ranking de comunidades (mig 196): morar num
+      // prédio não é competição de enxame.
       `SELECT id_profile FROM public.tb_profile
-        WHERE is_community = TRUE AND deleted_at IS NULL`
+        WHERE is_community = TRUE AND deleted_at IS NULL
+          AND community_kind <> 'condo'`
     );
     for (const row of r.rows) {
       await this.recalc(db, row.id_profile);

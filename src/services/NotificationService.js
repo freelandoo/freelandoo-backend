@@ -539,6 +539,116 @@ class NotificationService {
     });
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Condomínio (migs 196/197). entity_id é UUID na tabela, então o alvo aqui é
+  // sempre o id do condomínio; o id numérico (aviso, reivindicação, enquete)
+  // viaja no payload para o deep-link.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // Reivindicação de unidade/vaga já ocupada → administradores decidem.
+  static async notifyCondoClaimPending({
+    admin_user_id,
+    claimant_user_id,
+    id_condo,
+    id_claim,
+    target_label,
+    condo_name,
+  }) {
+    if (!admin_user_id || !id_condo) return null;
+    return safeNotify({
+      id_recipient_user: admin_user_id,
+      id_recipient_profile: id_condo,
+      type: "condo_claim_pending",
+      id_actor_user: claimant_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo,
+      payload: {
+        id_claim: id_claim ?? null,
+        target_label: typeof target_label === "string" ? target_label.slice(0, 60) : null,
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 120) : null,
+      },
+    });
+  }
+
+  // Decisão do administrador chega para quem reivindicou.
+  static async notifyCondoClaimResolved({
+    claimant_user_id,
+    admin_user_id,
+    id_condo,
+    id_claim,
+    status,
+    target_label,
+    condo_name,
+  }) {
+    if (!claimant_user_id || !id_condo) return null;
+    return safeNotify({
+      id_recipient_user: claimant_user_id,
+      id_recipient_profile: id_condo,
+      type: "condo_claim_resolved",
+      id_actor_user: admin_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo,
+      payload: {
+        id_claim: id_claim ?? null,
+        status: status || null,
+        target_label: typeof target_label === "string" ? target_label.slice(0, 60) : null,
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 120) : null,
+      },
+    });
+  }
+
+  // Aviso direcionado a uma unidade/vaga: só o responsável recebe.
+  static async notifyCondoNotice({
+    recipient_user_id,
+    author_user_id,
+    id_condo,
+    id_notice,
+    target_label,
+    preview,
+    condo_name,
+  }) {
+    if (!recipient_user_id || !id_condo) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_condo,
+      type: "condo_notice_received",
+      id_actor_user: author_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo,
+      payload: {
+        id_notice: id_notice ?? null,
+        target_label: typeof target_label === "string" ? target_label.slice(0, 60) : null,
+        preview: typeof preview === "string" ? preview.slice(0, 140) : null,
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 120) : null,
+      },
+    });
+  }
+
+  // Enquete aberta: o modal já aparece no acesso, a notificação é o rastro.
+  static async notifyCondoPollOpened({
+    recipient_user_id,
+    author_user_id,
+    id_condo,
+    id_poll,
+    question,
+    condo_name,
+  }) {
+    if (!recipient_user_id || !id_condo) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_condo,
+      type: "condo_poll_opened",
+      id_actor_user: author_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo,
+      payload: {
+        id_poll: id_poll ?? null,
+        preview: typeof question === "string" ? question.slice(0, 140) : null,
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 120) : null,
+      },
+    });
+  }
+
   /**
    * Notificação de pedido de permissão: menor pede ao responsável para
    * liberar um toggle (ex.: can_sell_courses).

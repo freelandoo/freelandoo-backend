@@ -6,11 +6,15 @@ const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
 const PolenStorage = require("../storages/PolenStorage");
+const FeatureFlagService = require("./FeatureFlagService");
+const CondoRules = require("../utils/condoRules");
+const CondoStorage = require("../storages/CondoStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunityService");
 
 const REQUIRED_LEVEL_TO_CREATE = 5;
+const COMMUNITY_KINDS = CondoRules.COMMUNITY_KINDS;
 
 // Temporada (meta): prêmio bancado pela plataforma, mínimos anti-abuso.
 const GOAL_PRIZE_POLENS = 100;
@@ -29,7 +33,7 @@ class CommunityService {
         const id_user = user?.id_user;
         if (!id_user) return { error: "Usuário não autenticado" };
 
-        const { display_name, id_machine, bio, avatar_url, theme } =
+        const { display_name, id_machine, bio, avatar_url, theme, address } =
           payload || {};
         if (!display_name || !String(display_name).trim()) {
           return { error: "O nome da comunidade é obrigatório." };
@@ -40,48 +44,75 @@ class CommunityService {
           return { error: "A bio deve ter no máximo 200 caracteres." };
         }
 
+        // Modalidade (mig 196). 'academy' fica reservado: academia é a feature
+        // própria (/academias, mig 176) — o seletor do front manda pra lá em
+        // vez de criar uma comunidade vazia com esse rótulo.
+        const kind = COMMUNITY_KINDS.includes(payload?.kind)
+          ? payload.kind
+          : "common";
+        if (kind === "academy") {
+          return {
+            error:
+              "Academia tem cadastro próprio: crie pela página de Academias.",
+            statusCode: 400,
+          };
+        }
+        if (kind === "condo") {
+          const enabled = await FeatureFlagService.isEnabled("condominio");
+          if (!enabled) {
+            return { error: "Recurso indisponível no momento.", statusCode: 403 };
+          }
+          const addrErr = CondoRules.validateAddress(address);
+          if (addrErr) return { error: addrErr, statusCode: 400 };
+        }
+
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
 
-          // 1. Requisito: ≥1 subperfil nível 5
-          const sub = await CommunityStorage.getHighestSubprofile(
-            client,
-            id_user
-          );
-          if (sub.lvl < REQUIRED_LEVEL_TO_CREATE) {
-            await client.query("ROLLBACK");
-            return {
-              error: `Você precisa de pelo menos um subperfil nível ${REQUIRED_LEVEL_TO_CREATE} para criar uma comunidade.`,
-              required_level: REQUIRED_LEVEL_TO_CREATE,
-              current_level: sub.lvl,
-            };
-          }
+          // Condomínio não passa pelo gate de nível nem pelos tetos: não é
+          // comunidade de enxame (não pontua XP nem ranking) — é utilidade do
+          // prédio. Quem mora não pode ficar sem por já participar de outra.
+          if (kind !== "condo") {
+            // 1. Requisito: ≥1 subperfil nível 5
+            const sub = await CommunityStorage.getHighestSubprofile(
+              client,
+              id_user
+            );
+            if (sub.lvl < REQUIRED_LEVEL_TO_CREATE) {
+              await client.query("ROLLBACK");
+              return {
+                error: `Você precisa de pelo menos um subperfil nível ${REQUIRED_LEVEL_TO_CREATE} para criar uma comunidade.`,
+                required_level: REQUIRED_LEVEL_TO_CREATE,
+                current_level: sub.lvl,
+              };
+            }
 
-          // 2. Tetos de criação e participação
-          const ent = await CommunityStorage.getEntitlement(client, id_user);
-          const owned = await CommunityStorage.countOwned(client, id_user);
-          if (owned >= ent.create_cap) {
-            await client.query("ROLLBACK");
-            return {
-              error:
-                "Limite de comunidades criadas atingido. Compre um ingresso para criar mais.",
-              create_cap: ent.create_cap,
-              owned,
-            };
-          }
-          const memberships = await CommunityStorage.countMemberships(
-            client,
-            id_user
-          );
-          if (memberships >= ent.member_cap) {
-            await client.query("ROLLBACK");
-            return {
-              error:
-                "Limite de participação atingido. Compre um ingresso para entrar em mais comunidades.",
-              member_cap: ent.member_cap,
-              memberships,
-            };
+            // 2. Tetos de criação e participação
+            const ent = await CommunityStorage.getEntitlement(client, id_user);
+            const owned = await CommunityStorage.countOwned(client, id_user);
+            if (owned >= ent.create_cap) {
+              await client.query("ROLLBACK");
+              return {
+                error:
+                  "Limite de comunidades criadas atingido. Compre um ingresso para criar mais.",
+                create_cap: ent.create_cap,
+                owned,
+              };
+            }
+            const memberships = await CommunityStorage.countMemberships(
+              client,
+              id_user
+            );
+            if (memberships >= ent.member_cap) {
+              await client.query("ROLLBACK");
+              return {
+                error:
+                  "Limite de participação atingido. Compre um ingresso para entrar em mais comunidades.",
+                member_cap: ent.member_cap,
+                memberships,
+              };
+            }
           }
 
           // 3. Cria perfil-comunidade (líder) + adiciona o user como líder
@@ -92,6 +123,8 @@ class CommunityService {
             bio: bioStr,
             avatar_url: avatar_url ?? null,
             theme: theme ?? null,
+            kind,
+            address: kind === "condo" ? CondoRules.normalizeAddress(address) : null,
           });
           await CommunityStorage.addMember(
             client,
@@ -140,6 +173,36 @@ class CommunityService {
           const sub = await CommunityStorage.getLiveMemberSub(pool, params.id_profile, viewer.id_user);
           viewer_sub_status = sub ? sub.status : null;
         }
+
+        // Condomínio: endereço de rua e situação de moradia só para quem tem
+        // direito. Visitante enxerga bairro/cidade/UF (é assim que ele acha o
+        // prédio na busca) e nada mais.
+        if (community.kind === "condo") {
+          const isAdmin = viewer_membership === "leader" || viewer_membership === "vice";
+          const resident = viewer?.id_user
+            ? await CondoStorage.getResidentStatus(pool, params.id_profile, viewer.id_user)
+            : null;
+          const canSeeAddress = isAdmin || !!resident?.confirmed;
+          const base = CondoRules.stripAddressColumns(community);
+          return {
+            community: {
+              ...base,
+              address: canSeeAddress
+                ? CondoRules.fullAddress(community)
+                : CondoRules.publicAddress(community),
+              address_is_full: canSeeAddress,
+              viewer_is_member: !!viewer_membership,
+              viewer_role: viewer_membership,
+              viewer_sub_status,
+              viewer_is_admin: isAdmin,
+              viewer_is_resident: !!resident?.confirmed,
+              viewer_has_pending_claim: !!resident?.pending,
+              viewer_units: resident?.units || [],
+              viewer_parking: resident?.parking || [],
+            },
+          };
+        }
+
         return {
           community: {
             ...community,
@@ -198,10 +261,12 @@ class CommunityService {
   }
 
   // Comunidade privada: feed só para membros (líder incluso via membership).
+  // Condomínio se comporta como privado SEMPRE — o mural do prédio é interno,
+  // independente de existir mensalidade (mig 196).
   static async _assertCanViewPrivateContent(id_community, viewer) {
     const community = await CommunityStorage.getById(pool, id_community);
     if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
-    if (community.privacy !== "private") return { community };
+    if (community.privacy !== "private" && community.kind !== "condo") return { community };
     if (!viewer?.id_user) return { locked: true, community };
     const membership = await CommunityStorage.getMembership(pool, id_community, viewer.id_user);
     if (!membership) return { locked: true, community };
@@ -218,6 +283,7 @@ class CommunityService {
           q: query?.q,
           id_machine: query?.id_machine,
           id_region: query?.id_region,
+          kind: COMMUNITY_KINDS.includes(query?.kind) ? query.kind : null,
           limit: query?.limit,
           offset: query?.offset,
         });
@@ -226,12 +292,36 @@ class CommunityService {
     );
   }
 
-  static async getMembers(params) {
+  // viewer opcional: em condomínio a lista de moradores NÃO é pública — saber
+  // quem mora onde é o dado mais sensível da feature.
+  static async getMembers(params, viewer) {
     return runWithLogs(
       log,
       "getMembers",
-      () => ({ id_profile: params?.id_profile }),
+      () => ({ id_profile: params?.id_profile, viewer: viewer?.id_user }),
       async () => {
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+        if (community.kind === "condo") {
+          const membership = viewer?.id_user
+            ? await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user)
+            : null;
+          const isAdmin = membership?.role === "leader" || membership?.role === "vice";
+          const resident = viewer?.id_user
+            ? await CondoStorage.getResidentStatus(pool, params.id_profile, viewer.id_user)
+            : null;
+          if (!isAdmin && !resident?.confirmed) {
+            return { error: "Somente moradores do condomínio veem esta lista.", statusCode: 403 };
+          }
+          // Morador vê os vizinhos; a unidade de cada um só aparece para o
+          // administrador (o morador comum vê nome, não onde a pessoa mora).
+          const members = await CondoStorage.listResidents(pool, params.id_profile, {
+            with_units: isAdmin,
+          });
+          return { members };
+        }
+
         const members = await CommunityStorage.listMembers(
           pool,
           params.id_profile
@@ -598,7 +688,11 @@ class CommunityService {
         // Comunidade privada: o post vira EXCLUSIVO dela (some do /feed, bees e
         // perfil público — "fica só lá dentro"). Só se não estiver ligado a
         // nenhuma outra comunidade.
-        if (community.privacy === "private") {
+        // CONDOMÍNIO é sempre exclusivo, pago ou não: o que se posta no mural
+        // do prédio não pode vazar pro feed global nem pro perfil público do
+        // morador (mig 196).
+        const isExclusive = community.privacy === "private" || community.kind === "condo";
+        if (isExclusive) {
           const elsewhere = await CommunityStorage.itemLinkedElsewhere(pool, id_portfolio_item, params.id_profile);
           if (elsewhere) {
             return { error: "Este post já está publicado em outra comunidade e não pode virar exclusivo." };
@@ -611,7 +705,7 @@ class CommunityService {
           id_portfolio_item,
           id_user
         );
-        if (community.privacy === "private") {
+        if (isExclusive) {
           await CommunityStorage.setItemExclusiveCommunity(pool, id_portfolio_item, params.id_profile);
         }
         return { ok: true, linked };
@@ -937,30 +1031,35 @@ class CommunityService {
             };
           }
 
-          const sub = await CommunityStorage.getHighestSubprofile(
-            client,
-            id_user
-          );
-          if (!sub.has_subprofile) {
-            await client.query("ROLLBACK");
-            return {
-              error: "Você precisa de pelo menos um subperfil para entrar.",
-            };
-          }
+          // Condomínio: entrar é só o primeiro passo (vira "membro"); MORADOR
+          // confirmado é quem tem unidade aprovada (reivindicação). Por isso
+          // não exige subperfil nem consome o teto de participação.
+          if (community.kind !== "condo") {
+            const sub = await CommunityStorage.getHighestSubprofile(
+              client,
+              id_user
+            );
+            if (!sub.has_subprofile) {
+              await client.query("ROLLBACK");
+              return {
+                error: "Você precisa de pelo menos um subperfil para entrar.",
+              };
+            }
 
-          const ent = await CommunityStorage.getEntitlement(client, id_user);
-          const memberships = await CommunityStorage.countMemberships(
-            client,
-            id_user
-          );
-          if (memberships >= ent.member_cap) {
-            await client.query("ROLLBACK");
-            return {
-              error:
-                "Limite de participação atingido. Compre um ingresso para entrar em mais comunidades.",
-              member_cap: ent.member_cap,
-              memberships,
-            };
+            const ent = await CommunityStorage.getEntitlement(client, id_user);
+            const memberships = await CommunityStorage.countMemberships(
+              client,
+              id_user
+            );
+            if (memberships >= ent.member_cap) {
+              await client.query("ROLLBACK");
+              return {
+                error:
+                  "Limite de participação atingido. Compre um ingresso para entrar em mais comunidades.",
+                member_cap: ent.member_cap,
+                memberships,
+              };
+            }
           }
 
           await CommunityStorage.addMember(

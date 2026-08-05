@@ -799,6 +799,9 @@ async function fulfillCheckoutSession(session) {
   } else if (meta.type === "function_purchase") {
     const FunctionStoreService = require("./FunctionStoreService");
     result = await FunctionStoreService.confirmStripeSession(session);
+  } else if (meta.type === "condo_listing_slot") {
+    const CondoListingService = require("./CondoListingService");
+    result = await CondoListingService.confirmStripeSession(session);
   } else if (meta.type === "premium") {
     result = await PremiumService.confirmStripeSession(session);
   } else if (meta.type === "course_purchase") {
@@ -870,6 +873,12 @@ async function expireCheckoutSession(session, reason) {
         const FunctionStoreService = require("./FunctionStoreService");
         const expired = await FunctionStoreService.expireBySession(session.id);
         if (expired) log.info("expire.function_purchase", { session_id: session.id, reason });
+        break;
+      }
+      case "condo_listing_slot": {
+        const CondoListingService = require("./CondoListingService");
+        const expired = await CondoListingService.expireBySession(session.id);
+        if (expired) log.info("expire.condo_listing_slot", { session_id: session.id, reason });
         break;
       }
       case "premium": {
@@ -1012,6 +1021,9 @@ async function dispatchEvent(event) {
       const FunctionStoreService = require("./FunctionStoreService");
       const functionStoreResult = await FunctionStoreService.handleChargeRefunded(charge);
       if (functionStoreResult && !functionStoreResult.ignored) break;
+      const CondoListingService = require("./CondoListingService");
+      const condoSlotResult = await CondoListingService.handleChargeRefunded(charge);
+      if (condoSlotResult && !condoSlotResult.ignored) break;
       const premiumResult = await PremiumService.handleChargeRefunded(charge);
       if (premiumResult && !premiumResult.ignored) break;
       const CoursesService = require("./CoursesService");

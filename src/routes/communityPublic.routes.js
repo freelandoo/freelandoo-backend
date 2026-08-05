@@ -13,8 +13,11 @@ router.get(
   optionalAuthMiddleware,
   asyncHandler(CommunityController.getById)
 );
+// Auth opcional: em condomínio a lista de moradores é restrita (mig 196) —
+// o service precisa do viewer para decidir se responde ou devolve 403.
 router.get(
   "/:id_profile/members",
+  optionalAuthMiddleware,
   asyncHandler(CommunityController.getMembers)
 );
 // Auth opcional: comunidade privada só mostra o feed para membros.
