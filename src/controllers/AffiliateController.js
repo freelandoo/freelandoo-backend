@@ -36,6 +36,15 @@ class AffiliateController {
     }
   }
 
+  static async listMyReferrals(req, res) {
+    try {
+      const result = await AffiliateService.listMyReferrals(req.user, req.query || {});
+      return res.json(result);
+    } catch (err) {
+      return handleError(res, err);
+    }
+  }
+
   static async getMyShareCoupon(req, res) {
     try {
       const result = await AffiliateService.getMyShareCoupon(req.user);

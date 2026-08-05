@@ -116,6 +116,76 @@ async function listMyConversions(user, query) {
   );
 }
 
+/**
+ * Meus indicados (X3): quem está vinculado a mim e quanto isso rendeu.
+ *
+ * O vínculo é o ativo do afiliado no modelo vitalício — sem esta tela ele não
+ * tem como saber que continua ganhando de quem indicou meses atrás.
+ */
+async function listMyReferrals(user, query = {}) {
+  const page = Math.max(parseInt(query.page || "1", 10), 1);
+  const limit = Math.min(Math.max(parseInt(query.limit || "20", 10), 1), 100);
+
+  const affiliate = await AffiliateStorage.getAffiliateByUserId(pool, user.id_user);
+  if (!affiliate) {
+    return { items: [], total: 0, page, limit, totals: { recurring_cents_30d: 0, conversions_from_referrals: 0 } };
+  }
+
+  const ReferralStorage = require("../storages/ReferralStorage");
+  const [items, total] = await Promise.all([
+    ReferralStorage.listByAffiliate(pool, affiliate.id_affiliate, {
+      limit,
+      offset: (page - 1) * limit,
+    }),
+    ReferralStorage.countByAffiliate(pool, affiliate.id_affiliate),
+  ]);
+
+  // Quanto o VÍNCULO rendeu — separado do que veio por cupom avulso, que é o
+  // que a aba de conversões já mostrava.
+  const { rows } = await pool.query(
+    `SELECT
+       COALESCE(SUM(commission_cents) FILTER (
+         WHERE created_at >= NOW() - INTERVAL '30 days'
+       ), 0)::int AS recurring_cents_30d,
+       COUNT(*)::int AS conversions_from_referrals
+     FROM tb_affiliate_conversion
+     WHERE id_affiliate = $1
+       AND attribution_mode = 'referral'
+       AND status <> 'REVERSED'`,
+    [affiliate.id_affiliate]
+  );
+
+  // Rendimento por indicado, para a lista não ficar só um nome.
+  const ids = items.map((i) => i.id_referral);
+  let earnedByReferral = new Map();
+  if (ids.length) {
+    const earned = await pool.query(
+      `SELECT id_referral, COALESCE(SUM(commission_cents), 0)::int AS cents
+         FROM tb_affiliate_conversion
+        WHERE id_referral = ANY($1::uuid[])
+          AND status <> 'REVERSED'
+        GROUP BY id_referral`,
+      [ids]
+    );
+    earnedByReferral = new Map(earned.rows.map((r) => [String(r.id_referral), r.cents]));
+  }
+
+  return {
+    items: items.map((i) => ({
+      id_referral: i.id_referral,
+      username: i.username,
+      display_name: i.display_name,
+      bound_at: i.bound_at,
+      bound_source: i.bound_source,
+      earned_cents: earnedByReferral.get(String(i.id_referral)) || 0,
+    })),
+    total,
+    page,
+    limit,
+    totals: rows[0] || { recurring_cents_30d: 0, conversions_from_referrals: 0 },
+  };
+}
+
 // ───────────────────────── /admin/affiliate ─────────────────────────
 async function listAffiliates(query) {
   const page = Math.max(parseInt(query.page || "1", 10), 1);
@@ -339,6 +409,7 @@ module.exports = {
   // /me
   getMe,
   getMyShareCoupon,
+  listMyReferrals,
   updateMyPayoutInfo,
   listMyConversions,
   // admin

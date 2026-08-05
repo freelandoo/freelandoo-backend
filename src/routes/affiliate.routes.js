@@ -26,5 +26,7 @@ router.get("/", authMiddleware, asyncHandler(AffiliateController.getMe));
 router.get("/share-coupon", authMiddleware, asyncHandler(AffiliateController.getMyShareCoupon));
 router.put("/payout-info", authMiddleware, asyncHandler(AffiliateController.updateMyPayoutInfo));
 router.get("/conversions", authMiddleware, asyncHandler(AffiliateController.listMyConversions));
+// Meus indicados: o vínculo é o ativo do afiliado no modelo vitalício.
+router.get("/referrals", authMiddleware, asyncHandler(AffiliateController.listMyReferrals));
 
 module.exports = router;
