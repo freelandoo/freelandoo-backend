@@ -22,6 +22,7 @@ class CoursesStorage {
          c.status,
          c.feed_post_id,
          c.affiliates_allowed,
+         c.affiliate_percent,
          c.published_at,
          c.created_at,
          c.updated_at,
@@ -64,7 +65,7 @@ class CoursesStorage {
       `SELECT
          id, owner_user_id, profile_id, title, slug, short_description,
          description, cover_url, price_cents, status, feed_post_id,
-         affiliates_allowed,
+         affiliates_allowed, affiliate_percent,
          published_at, created_at, updated_at
        FROM public.courses
        WHERE slug = $1
@@ -102,6 +103,7 @@ class CoursesStorage {
          c.status,
          c.feed_post_id,
          c.affiliates_allowed,
+         c.affiliate_percent,
          c.published_at,
          c.created_at,
          c.updated_at,
@@ -155,6 +157,7 @@ class CoursesStorage {
          c.price_cents,
          c.status,
          c.affiliates_allowed,
+         c.affiliate_percent,
          c.published_at,
          c.created_at,
          c.updated_at,
@@ -279,6 +282,7 @@ class CoursesStorage {
       coverUrl = null,
       priceCents = null,
       affiliatesAllowed = false,
+      affiliatePercent = null,
     },
   ) {
     const { rows } = await conn.query(
@@ -292,8 +296,9 @@ class CoursesStorage {
          cover_url,
          price_cents,
          affiliates_allowed,
+         affiliate_percent,
          status
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft')
        RETURNING *`,
       [
         ownerUserId,
@@ -305,6 +310,7 @@ class CoursesStorage {
         coverUrl,
         priceCents,
         affiliatesAllowed,
+        affiliatePercent,
       ],
     );
     return rows[0];
@@ -327,6 +333,7 @@ class CoursesStorage {
       "feed_post_id",
       "published_at",
       "affiliates_allowed",
+      "affiliate_percent",
     ]);
 
     const sets = [];

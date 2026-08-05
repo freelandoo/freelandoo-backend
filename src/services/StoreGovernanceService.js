@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const StoreGovernanceStorage = require("../storages/StoreGovernanceStorage");
 const AffiliateStorage = require("../storages/AffiliateStorage");
+const AffiliateProgramStorage = require("../storages/AffiliateProgramStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("StoreGovernanceService");
@@ -8,6 +9,7 @@ const log = createLogger("StoreGovernanceService");
 // Cache 5min do singleton (raramente muda)
 let SETTINGS_CACHE = { fetched_at: 0, settings: null };
 let AFFILIATE_PCT_CACHE = { fetched_at: 0, percent: 0 };
+let PROGRAM_CACHE = { fetched_at: 0, settings: null };
 const TTL_MS = 5 * 60 * 1000;
 
 async function getCachedSettings() {
@@ -21,10 +23,32 @@ async function getCachedSettings() {
 }
 
 /**
- * % global de comissão de afiliado (tb_affiliate_settings.default_commission_percent).
- * É a mesma porcentagem para todo o aditivo (loja/cursos/serviços/booking).
- * Override por cupom NÃO se aplica aqui — o preço é fixado antes de saber o cupom.
- * Cacheado 5min. Falha graceful → 0 (sem comissão embutida).
+ * Trilhos globais do programa de afiliados (mig 192): split, teto/piso do que o
+ * dono pode destinar e o default de quem não definiu nada. Cacheado 5min.
+ * Falha graceful → null (o chamador cai no default legado).
+ */
+async function getProgramSettings() {
+  const now = Date.now();
+  if (now - PROGRAM_CACHE.fetched_at < TTL_MS && PROGRAM_CACHE.settings) {
+    return PROGRAM_CACHE.settings;
+  }
+  let settings = null;
+  try {
+    settings = await AffiliateProgramStorage.getSettings(pool);
+  } catch (err) {
+    log.warn("affiliate_program.fetch_fail", { message: err.message });
+  }
+  PROGRAM_CACHE = { fetched_at: now, settings };
+  return settings;
+}
+
+/**
+ * % PADRÃO de afiliado — vale para o item que não definiu a própria
+ * (affiliate_percent NULL) e para os contextos em que a % é do admin.
+ *
+ * Fonte: tb_affiliate_program_settings.default_percent (mig 192), com fallback
+ * na regra legada tb_affiliate_settings.default_commission_percent enquanto a
+ * migration não tiver rodado. Cacheado 5min; falha graceful → 0.
  */
 async function getAffiliateCommissionPercent() {
   const now = Date.now();
@@ -33,9 +57,15 @@ async function getAffiliateCommissionPercent() {
   }
   let percent = 0;
   try {
-    const settings = await AffiliateStorage.getEffectiveSettings(pool);
-    const n = Number(settings?.default_commission_percent);
-    if (Number.isFinite(n) && n > 0) percent = n;
+    const program = await getProgramSettings();
+    const p = Number(program?.default_percent);
+    if (Number.isFinite(p) && p > 0) {
+      percent = p;
+    } else {
+      const settings = await AffiliateStorage.getEffectiveSettings(pool);
+      const n = Number(settings?.default_commission_percent);
+      if (Number.isFinite(n) && n > 0) percent = n;
+    }
   } catch (err) {
     log.warn("affiliate_percent.fetch_fail", { message: err.message });
   }
@@ -43,9 +73,44 @@ async function getAffiliateCommissionPercent() {
   return percent;
 }
 
+/**
+ * Resolve a % de afiliado de UM item (regime 'user': loja/curso/serviço/booking).
+ *
+ * O dono é quem decide (`itemPercent`); NULL/indefinido cai no default global.
+ * O valor é sempre grampeado nos trilhos do admin — sem isso um dono poderia
+ * destinar 90% e distorcer o preço final do site.
+ *
+ * Sem opt-in (`affiliates_allowed`) não existe pool: retorna 0 e o preço do item
+ * fica idêntico ao de antes do programa.
+ *
+ * @param {Object} opts
+ * @param {boolean} [opts.affiliatesAllowed=false]
+ * @param {number|string|null} [opts.affiliatePercent] - % do próprio item
+ * @returns {Promise<number>} percentual (0..100)
+ */
+async function resolveAffiliatePercent({ affiliatesAllowed = false, affiliatePercent = null } = {}) {
+  if (!affiliatesAllowed) return 0;
+
+  const own = Number(affiliatePercent);
+  const hasOwn = affiliatePercent !== null && affiliatePercent !== undefined
+    && affiliatePercent !== "" && Number.isFinite(own) && own >= 0;
+
+  const percent = hasOwn ? own : await getAffiliateCommissionPercent();
+  if (!(percent > 0)) return 0;
+
+  const program = await getProgramSettings();
+  const min = Number(program?.seller_percent_min);
+  const max = Number(program?.seller_percent_max);
+  let clamped = percent;
+  if (Number.isFinite(min) && clamped < min) clamped = min;
+  if (Number.isFinite(max) && clamped > max) clamped = max;
+  return clamped;
+}
+
 function invalidateCache() {
   SETTINGS_CACHE = { fetched_at: 0, settings: null };
   AFFILIATE_PCT_CACHE = { fetched_at: 0, percent: 0 };
+  PROGRAM_CACHE = { fetched_at: 0, settings: null };
 }
 
 /**
@@ -193,6 +258,25 @@ class StoreGovernanceService {
   }
 
   /**
+   * Trilhos do programa de afiliados para o front (piso, teto e default da % que
+   * o dono do item pode destinar). Falha graceful → valores conservadores.
+   */
+  static async getAffiliateProgram() {
+    return runWithLogs(log, "getAffiliateProgram", () => ({}), async () => {
+      const s = await getProgramSettings();
+      const fallbackDefault = await getAffiliateCommissionPercent();
+      return {
+        program: {
+          seller_percent_min: Number(s?.seller_percent_min ?? 0),
+          seller_percent_max: Number(s?.seller_percent_max ?? 50),
+          default_percent: Number(s?.default_percent ?? fallbackDefault ?? 0),
+          commission_split_percent: Number(s?.commission_split_percent ?? 100),
+        },
+      };
+    });
+  }
+
+  /**
    * Preview de preço — usado pelo modal de cadastro de produto e pela vitrine.
    * Recebe valor que o vendedor quer receber e devolve breakdown.
    */
@@ -202,11 +286,12 @@ class StoreGovernanceService {
       if (!Number.isFinite(n) || n < 0) return { error: "seller_cents inválido" };
       const settings = await getCachedSettings();
       if (!settings) return { error: "Governança não configurada" };
-      const affiliateCommissionPercent = opts.affiliatesAllowed
-        ? await getAffiliateCommissionPercent()
-        : 0;
+      const affiliateCommissionPercent = await resolveAffiliatePercent({
+        affiliatesAllowed: opts.affiliatesAllowed,
+        affiliatePercent: opts.affiliatePercent,
+      });
       const pricing = computeFees(Math.round(n), settings, { affiliateCommissionPercent });
-      return { pricing };
+      return { pricing: { ...pricing, affiliate_percent: affiliateCommissionPercent } };
     });
   }
 
@@ -218,12 +303,15 @@ class StoreGovernanceService {
    * @param {Object} [opts]
    * @param {boolean} [opts.affiliatesAllowed=false] - item com opt-in de afiliado;
    *   quando true, embute a comissão aditiva no display.
+   * @param {number|null} [opts.affiliatePercent] - % definida pelo DONO do item
+   *   (mig 192). NULL/ausente cai no default global. Sempre grampeada nos trilhos.
    */
   static async computeFeesFor(sellerCents, opts = {}) {
     const seller = Math.round(Number(sellerCents) || 0);
-    const affiliateCommissionPercent = opts.affiliatesAllowed
-      ? await getAffiliateCommissionPercent()
-      : 0;
+    const affiliateCommissionPercent = await resolveAffiliatePercent({
+      affiliatesAllowed: opts.affiliatesAllowed,
+      affiliatePercent: opts.affiliatePercent,
+    });
     const settings = await getCachedSettings();
     if (!settings) {
       // Falha graceful: sem governança, vendedor recebe = comprador paga, mas a
@@ -238,9 +326,13 @@ class StoreGovernanceService {
         processor_fee_cents: 0,
         display_price_cents: seller + affiliate_fee,
         processor_fee_source: "fallback",
+        affiliate_percent: affiliateCommissionPercent,
       };
     }
-    return computeFees(seller, settings, { affiliateCommissionPercent });
+    return {
+      ...computeFees(seller, settings, { affiliateCommissionPercent }),
+      affiliate_percent: affiliateCommissionPercent,
+    };
   }
 }
 
@@ -248,3 +340,5 @@ module.exports = StoreGovernanceService;
 module.exports.computeFees = computeFees;
 module.exports.invalidateCache = invalidateCache;
 module.exports.getAffiliateCommissionPercent = getAffiliateCommissionPercent;
+module.exports.getProgramSettings = getProgramSettings;
+module.exports.resolveAffiliatePercent = resolveAffiliatePercent;

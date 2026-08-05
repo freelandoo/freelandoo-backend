@@ -94,7 +94,10 @@ class ProfileProductOrderService {
       // Opt-in de afiliado por item (mig 090). Só quando ligado a comissão aditiva
       // é embutida no preço e o cupom passa a gerar conversão.
       const affiliatesAllowed = product.affiliates_allowed === true;
-      const pricing = await StoreGovernanceService.computeFeesFor(unit_seller, { affiliatesAllowed });
+      const pricing = await StoreGovernanceService.computeFeesFor(unit_seller, {
+        affiliatesAllowed,
+        affiliatePercent: product.affiliate_percent,
+      });
       const unit_display = pricing.display_price_cents;
       const shipping_cents = option.price_cents;
       // Comprador paga: display_price (já inclui taxas) * qty + frete

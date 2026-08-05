@@ -137,6 +137,7 @@ function publicCourseShape(row) {
     status: row.status,
     feed_post_id: row.feed_post_id || null,
     affiliates_allowed: row.affiliates_allowed ?? false,
+    affiliate_percent: row.affiliate_percent ?? null,
     published_at: row.published_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -204,7 +205,10 @@ class CoursesService {
           return { error: "Curso sem preço configurado", status: 400 };
         }
         const affiliatesAllowed = course.affiliates_allowed === true;
-        const pricing = await StoreGovernanceService.computeFeesFor(seller_cents, { affiliatesAllowed });
+        const pricing = await StoreGovernanceService.computeFeesFor(seller_cents, {
+          affiliatesAllowed,
+          affiliatePercent: course.affiliate_percent,
+        });
         const display = pricing.display_price_cents;
         const affiliate_commission_cents = pricing.affiliate_commission_cents || 0;
 
@@ -440,7 +444,10 @@ class CoursesService {
             shaped.member_profile_ids = memberMap.get(String(row.id)) || [];
             shaped.pricing = await StoreGovernanceService.computeFeesFor(
               row.price_cents,
-              { affiliatesAllowed: row.affiliates_allowed === true },
+              {
+                affiliatesAllowed: row.affiliates_allowed === true,
+                affiliatePercent: row.affiliate_percent,
+              },
             );
             return shaped;
           }),
@@ -470,7 +477,10 @@ class CoursesService {
         const course = publicCourseShape(row);
         course.pricing = await StoreGovernanceService.computeFeesFor(
           row.price_cents,
-          { affiliatesAllowed: row.affiliates_allowed === true },
+          {
+            affiliatesAllowed: row.affiliates_allowed === true,
+            affiliatePercent: row.affiliate_percent,
+          },
         );
         return { course };
       },
@@ -579,6 +589,7 @@ class CoursesService {
             coverUrl,
             priceCents,
             affiliatesAllowed: optIn.affiliates_allowed,
+            affiliatePercent: optIn.affiliate_percent ?? null,
           });
           if (isClan) {
             await CourseMemberStorage.setMembers(client, created.id, attachIds);

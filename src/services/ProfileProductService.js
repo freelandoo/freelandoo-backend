@@ -430,7 +430,10 @@ class ProfileProductService {
       const enriched = await Promise.all(products.map(async (p) => ({
         ...p,
         media: mediaMap.get(String(p.id_profile_product)) || [],
-        pricing: await StoreGovernanceService.computeFeesFor(p.price_amount, { affiliatesAllowed: p.affiliates_allowed === true }),
+        pricing: await StoreGovernanceService.computeFeesFor(p.price_amount, {
+          affiliatesAllowed: p.affiliates_allowed === true,
+          affiliatePercent: p.affiliate_percent,
+        }),
       })));
       return { products: enriched };
     });
@@ -458,7 +461,10 @@ class ProfileProductService {
         return { error: "Produto não encontrado" };
       }
       const media = await ProfileProductMediaStorage.listByProduct(pool, Number(id_profile_product));
-      const pricing = await StoreGovernanceService.computeFeesFor(product.price_amount, { affiliatesAllowed: product.affiliates_allowed === true });
+      const pricing = await StoreGovernanceService.computeFeesFor(product.price_amount, {
+        affiliatesAllowed: product.affiliates_allowed === true,
+        affiliatePercent: product.affiliate_percent,
+      });
       return { product: { ...product, media, pricing } };
     });
   }

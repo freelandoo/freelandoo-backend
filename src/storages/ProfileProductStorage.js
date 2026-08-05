@@ -54,6 +54,7 @@ class ProfileProductStorage {
     weight_grams, height_cm, width_cm, length_cm,
     origin_zipcode_override, is_active, id_product_category,
     affiliates_allowed = false,
+    affiliate_percent = null,
     delivery_mode = "shipping",
     attributes = {},
   }) {
@@ -62,8 +63,8 @@ class ProfileProductStorage {
         (id_profile, name, description, price_amount, stock_quantity,
          weight_grams, height_cm, width_cm, length_cm,
          origin_zipcode_override, is_active, id_product_category,
-         affiliates_allowed, delivery_mode, attributes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         affiliates_allowed, affiliate_percent, delivery_mode, attributes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [
         id_profile, name, description || null,
@@ -73,6 +74,7 @@ class ProfileProductStorage {
         is_active !== false,
         id_product_category || null,
         affiliates_allowed === true,
+        affiliate_percent ?? null,
         delivery_mode === "local_pickup" ? "local_pickup" : "shipping",
         JSON.stringify(attributes && typeof attributes === "object" ? attributes : {}),
       ]
@@ -85,7 +87,7 @@ class ProfileProductStorage {
       "name", "description", "price_amount", "stock_quantity",
       "weight_grams", "height_cm", "width_cm", "length_cm",
       "origin_zipcode_override", "is_active", "id_product_category",
-      "affiliates_allowed", "delivery_mode", "attributes",
+      "affiliates_allowed", "affiliate_percent", "delivery_mode", "attributes",
     ];
     const sets = [];
     const values = [];

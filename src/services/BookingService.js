@@ -81,9 +81,11 @@ class BookingService {
     // gross-up de maquininha (booking não grossa-up). Vai pro afiliado se a venda
     // veio por ?cupom=, senão a plataforma fica.
     const affiliatesAllowed = service.affiliates_allowed === true;
-    const affiliate_pct = affiliatesAllowed
-      ? await StoreGovernanceService.getAffiliateCommissionPercent()
-      : 0;
+    // % definida pelo DONO do serviço (mig 192); NULL cai no default global.
+    const affiliate_pct = await StoreGovernanceService.resolveAffiliatePercent({
+      affiliatesAllowed,
+      affiliatePercent: service.affiliate_percent,
+    });
     const affiliate_commission_cents = affiliate_pct > 0
       ? Math.round((service_price * affiliate_pct) / 100)
       : 0;
