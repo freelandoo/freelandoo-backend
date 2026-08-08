@@ -11,6 +11,7 @@
 
 const pool = require("../databases");
 const SupervisionService = require("./SupervisionService");
+const FraudService = require("./FraudService");
 const SocialMediaStorage = require("../storages/SocialMediaStorage");
 const { calculateAge } = require("../utils/validateSignup");
 const { normalizeCPF } = require("../utils/documents");
@@ -224,6 +225,11 @@ class OnboardingService {
           }
 
           await client.query("COMMIT");
+
+          // Reavaliação antifraude (mig 201): é AQUI que CPF e cidade chegam no
+          // fluxo do Google, e sem eles o sinal de região fiscal do CPF não
+          // tinha o que comparar. Fire-and-forget — só enfileira revisão humana.
+          FraudService.evaluateUser(user.id_user).catch(() => {});
 
           // Redes sociais do onboarding (opcionais) — best-effort, NÃO bloqueia
           // o cadastro se falhar. Salvas no perfil-conta do usuário.

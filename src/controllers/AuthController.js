@@ -1,15 +1,22 @@
 const AuthService = require("../services/AuthService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
-class AuthController {
-  static async signup(req, res) {
-    const ip =
+// IP real do cliente atrás do proxy (app.set("trust proxy", 1)). Usado pelo
+// aceite de termos e pelas heurísticas de velocity do painel de fraude (mig 201).
+function requestMeta(req) {
+  return {
+    ip:
       (req.headers["x-forwarded-for"] || "").toString().split(",")[0].trim() ||
       req.ip ||
-      null;
-    const user_agent =
-      (req.headers["user-agent"] || "").toString().slice(0, 1000) || null;
-    const result = await AuthService.signup(req.body, { ip, user_agent });
+      null,
+    user_agent:
+      (req.headers["user-agent"] || "").toString().slice(0, 1000) || null,
+  };
+}
+
+class AuthController {
+  static async signup(req, res) {
+    const result = await AuthService.signup(req.body, requestMeta(req));
     return sendServiceResult(res, result, 201);
   }
 
@@ -24,7 +31,7 @@ class AuthController {
   }
 
   static async googleSignin(req, res) {
-    const result = await AuthService.googleSignin(req.body);
+    const result = await AuthService.googleSignin(req.body, requestMeta(req));
     return sendServiceResult(res, result, 200);
   }
 

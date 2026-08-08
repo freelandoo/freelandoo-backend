@@ -10,7 +10,15 @@ const AuthStorage = require("../storages/AuthStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const TourSettingsStorage = require("../storages/TourSettingsStorage");
 const ConsentStorage = require("../storages/ConsentStorage");
+const FraudService = require("./FraudService");
 const { SIGNUP_TERMS_VERSION, SIGNUP_ACTION_KEY } = require("../utils/terms");
+
+// Conta bloqueada no painel de fraude (mig 201) não entra. Checado no login —
+// e só nele: o authMiddleware é puro JWT (zero I/O) e colocar uma consulta lá
+// custaria um SELECT por request. Consequência aceita: quem já está logado
+// segue até o token expirar (TTL padrão 1 dia).
+const BLOCKED_MESSAGE =
+  "Esta conta está bloqueada. Fale com o suporte da Freelandoo.";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -262,7 +270,22 @@ class AuthService {
             user_agent: meta.user_agent || null,
           });
 
+          // Evidência do cadastro pro painel de fraude (mig 201). Vai na MESMA
+          // transação: sem o IP guardado aqui, as heurísticas de velocity
+          // ("N contas do mesmo IP") nunca teriam o que agrupar depois.
+          await FraudService.recordSignupContext(client, {
+            id_user: user.id_user,
+            signup_ip: meta.ip || null,
+            user_agent: meta.user_agent || null,
+            email_domain: String(email).split("@")[1] || null,
+            signup_source: "email",
+          });
+
           await client.query("COMMIT");
+
+          // Pontuação antifraude — fire-and-forget, JAMAIS derruba o cadastro.
+          // Só enfileira pra revisão humana; não bloqueia ninguém sozinho.
+          FraudService.evaluateUser(user.id_user).catch(() => {});
 
           // Mesmo motivo do signin: as atribuições feitas deslogado (mig 194)
           // passam a ser desta conta. Aqui é só cinto e suspensório — o cadastro
@@ -329,6 +352,14 @@ class AuthService {
           return { error: "Email ou senha inválidos" };
         }
 
+        // Checado DEPOIS da senha de propósito: responder "bloqueada" antes de
+        // validar a credencial entregaria a existência da conta a quem só está
+        // testando e-mails.
+        if (user.blocked_at) {
+          log.warn("signin.blocked_account", { id_user: user.id_user });
+          return { error: BLOCKED_MESSAGE, reason: "account_blocked", statusCode: 403 };
+        }
+
         const token = jwt.sign(
           { id_user: user.id_user, email },
           process.env.JWT_SECRET,
@@ -372,7 +403,7 @@ class AuthService {
     );
   }
 
-  static async googleSignin(payload) {
+  static async googleSignin(payload, meta = {}) {
     return runWithLogs(
       log,
       "googleSignin",
@@ -443,6 +474,16 @@ class AuthService {
                 googleSub,
               });
               isNew = true;
+              // Evidência do cadastro pro painel de fraude (mig 201) — o
+              // cadastro pelo Google é justamente o mais fácil de automatizar
+              // em massa, então é onde o IP mais importa.
+              await FraudService.recordSignupContext(client, {
+                id_user: user.id_user,
+                signup_ip: meta.ip || null,
+                user_agent: meta.user_agent || null,
+                email_domain: String(email).split("@")[1] || null,
+                signup_source: "google",
+              });
               await client.query("COMMIT");
             } catch (err) {
               await client.query("ROLLBACK");
@@ -450,11 +491,22 @@ class AuthService {
             }
           }
 
+          // Mesmo gate do signin por senha (mig 201) — o Google não pode ser a
+          // porta dos fundos de uma conta bloqueada.
+          if (user.blocked_at) {
+            log.warn("googleSignin.blocked_account", { id_user: user.id_user });
+            return { error: BLOCKED_MESSAGE, reason: "account_blocked", statusCode: 403 };
+          }
+
           const token = jwt.sign(
             { id_user: user.id_user, email },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
           );
+
+          if (isNew) {
+            FraudService.evaluateUser(user.id_user).catch(() => {});
+          }
 
           // Google é signup e login na MESMA tela: sem o claim aqui, quem chega
           // pelo link compartilhado e entra com Google nunca casa as atribuições

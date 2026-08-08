@@ -80,7 +80,7 @@ class AuthStorage {
 
   static async findUserByGoogleSub(db, googleSub) {
     const r = await db.query(
-      `SELECT id_user, nome, email, ativo, google_sub, is_minor, responsible_user_id
+      `SELECT id_user, nome, email, ativo, google_sub, is_minor, responsible_user_id, blocked_at
          FROM tb_user
         WHERE google_sub = $1
         LIMIT 1`,
@@ -91,7 +91,7 @@ class AuthStorage {
 
   static async findUserForGoogleByEmail(db, email) {
     const r = await db.query(
-      `SELECT id_user, nome, email, ativo, google_sub, is_minor, responsible_user_id
+      `SELECT id_user, nome, email, ativo, google_sub, is_minor, responsible_user_id, blocked_at
          FROM tb_user
         WHERE LOWER(TRIM(email)) = $1
         LIMIT 1`,
@@ -158,7 +158,8 @@ class AuthStorage {
         ativo,
         is_minor,
         responsible_user_id,
-        onboarding_tour_done
+        onboarding_tour_done,
+        blocked_at
       FROM tb_user
       WHERE LOWER(TRIM(email)) = $1
       LIMIT 1

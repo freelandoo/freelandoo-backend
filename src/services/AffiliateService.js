@@ -2,6 +2,7 @@ const pool = require("../databases");
 const AffiliateStorage = require("../storages/AffiliateStorage");
 const AffiliateRuleResolver = require("./AffiliateRuleResolver");
 const CouponStorage = require("../storages/CouponStorage");
+const FraudService = require("./FraudService");
 
 const ZERO_AGGREGATES = {
   pending_cents: 0,
@@ -68,6 +69,18 @@ async function getMe(user) {
 async function updateMyPayoutInfo(user, body) {
   const affiliate = await AffiliateStorage.getAffiliateByUserId(pool, user.id_user);
   if (!affiliate) throw new ServiceError("Afiliado não encontrado", 404);
+
+  // Regra do Alex (2026-08-08): o CPF que RECEBE tem que ser o CPF cadastrado.
+  // É o controle antifraude mais forte que temos de graça — reaproveita o KYC
+  // que o banco já fez, no exato momento em que a fraude teria valor.
+  // CNPJ passa (MEI/empresa é legítimo) e vira sinal no painel de fraude.
+  const ownership = await FraudService.assertPayoutOwnership(pool, {
+    id_user: user.id_user,
+    tax_id: body.tax_id,
+    pix_key: body.pix_key,
+    pix_key_type: body.pix_key_type,
+  });
+  if (ownership?.error) throw new ServiceError(ownership.error, 400);
 
   return await AffiliateStorage.updateAffiliatePayoutInfo(pool, {
     id_affiliate: affiliate.id_affiliate,
