@@ -748,7 +748,9 @@ module.exports = {
          LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
          WHERE pro.deleted_at IS NULL
            AND pro.is_clan = FALSE
-           AND pro.is_user_account = FALSE
+           -- Escopo taxonômico: perfil-conta só entra depois de DECLARAR
+           -- enxame/profissão no onboarding (mig 200).
+           AND (pro.is_user_account = FALSE OR pro.taxonomy_declared_at IS NOT NULL)
            AND pro.ranking_visible = TRUE
            AND u.is_minor = FALSE
            AND lower(pro.municipio) = lower($1)
@@ -837,7 +839,9 @@ module.exports = {
          LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
          WHERE pro.deleted_at IS NULL
            AND pro.is_clan = FALSE
-           AND pro.is_user_account = FALSE
+           -- Escopo taxonômico: perfil-conta só entra depois de DECLARAR
+           -- enxame/profissão no onboarding (mig 200).
+           AND (pro.is_user_account = FALSE OR pro.taxonomy_declared_at IS NOT NULL)
            AND pro.ranking_visible = TRUE
            AND u.is_minor = FALSE
            AND pro.id_region = $1
@@ -924,7 +928,9 @@ module.exports = {
          LEFT JOIN tb_machine m ON m.id_machine = ca.id_machine
          WHERE pro.deleted_at IS NULL
            AND pro.is_clan = FALSE
-           AND pro.is_user_account = FALSE
+           -- Escopo taxonômico: perfil-conta só entra depois de DECLARAR
+           -- enxame/profissão no onboarding (mig 200).
+           AND (pro.is_user_account = FALSE OR pro.taxonomy_declared_at IS NOT NULL)
            AND pro.ranking_visible = TRUE
            AND u.is_minor = FALSE
            AND lower(ca.profession_slug) = lower($1)
@@ -1007,7 +1013,9 @@ module.exports = {
          JOIN tb_machine m ON m.id_machine = ca.id_machine
          WHERE pro.deleted_at IS NULL
            AND pro.is_clan = FALSE
-           AND pro.is_user_account = FALSE
+           -- Escopo taxonômico: perfil-conta só entra depois de DECLARAR
+           -- enxame/profissão no onboarding (mig 200).
+           AND (pro.is_user_account = FALSE OR pro.taxonomy_declared_at IS NOT NULL)
            AND pro.ranking_visible = TRUE
            AND u.is_minor = FALSE
            AND ($1::int IS NULL OR ca.id_machine = $1)
@@ -1081,11 +1089,12 @@ module.exports = {
          u.username,
          pro.sub_profile_slug,
          pro.is_user_account,
-         -- Perfil-conta tem categoria "fantasma" (AuthStorage) — não expor.
-         CASE WHEN pro.is_user_account THEN NULL ELSE ca.desc_category END  AS specialty,
-         CASE WHEN pro.is_user_account THEN NULL ELSE ca.profession_slug END AS profession_slug,
-         CASE WHEN pro.is_user_account THEN NULL ELSE m.name END AS machine_name,
-         CASE WHEN pro.is_user_account THEN NULL ELSE m.slug END AS machine_slug,
+         -- Perfil-conta tem categoria "fantasma" (AuthStorage) até declarar a
+         -- própria no onboarding (mig 200) — não expor a fantasma.
+         CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE ca.desc_category END  AS specialty,
+         CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE ca.profession_slug END AS profession_slug,
+         CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE m.name END AS machine_name,
+         CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE m.slug END AS machine_slug,
          pr.total_points,
          pr.avg_rating,
          pr.ratings_count,

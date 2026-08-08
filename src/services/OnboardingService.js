@@ -1,8 +1,13 @@
 // src/services/OnboardingService.js
-// Fluxo pós-login para usuários que ainda não preencheram data de nascimento
-// (caso típico: signup pelo Google, que não captura idade). Se a data
-// indica menor de 18, exige código do responsável para vincular como
-// conta supervisionada — tudo na mesma transação.
+// Fluxo pós-login para usuários que ainda não completaram o cadastro. Cobre
+// dois passos, resolvidos numa única submissão (o modal do front é wizard, a
+// API é atômica):
+//   passo 1 — identidade: data de nascimento (signup pelo Google não captura)
+//             e CPF (mig 188). Menor de 18 exige código do responsável.
+//   passo 2 — taxonomia: enxame + profissão + cidade, gravados no PERFIL-CONTA
+//             (mig 200). É o que tira a conta da "categoria fantasma".
+// Cada campo só é exigido se ainda estiver vazio — a base antiga passa aqui só
+// pelo que falta.
 
 const pool = require("../databases");
 const SupervisionService = require("./SupervisionService");
@@ -21,8 +26,9 @@ const ONBOARDING_SOCIAL_ICONS = new Set([
 class OnboardingService {
   /**
    * Submete os dados de onboarding (data de nascimento + CPF + opcional código
-   * parental). Cada campo só é exigido se ainda estiver vazio na conta — a
-   * base antiga já tem nascimento e vai passar aqui só pelo CPF (mig 188).
+   * parental + enxame/profissão/cidade do perfil-conta). Cada campo só é
+   * exigido se ainda estiver vazio na conta — a base antiga já tem nascimento e
+   * vai passar aqui pelo CPF (mig 188) e pela taxonomia (mig 200).
    * Chamada com tudo já preenchido retorna erro.
    */
   static async submitBirthdate(user, body) {
@@ -52,7 +58,21 @@ class OnboardingService {
         const hasBirthdate = !!current.rows[0].data_nascimento;
         const hasCpf = !!current.rows[0].cpf;
 
-        if (hasBirthdate && hasCpf) {
+        // Perfil-conta: alvo do passo 2. Pode não existir em conta muito antiga
+        // (ensureUserAccountProfile só roda no signup/login) — nesse caso a
+        // taxonomia é pulada em vez de travar o usuário fora do site.
+        const accountProfile = await pool.query(
+          `SELECT id_profile, taxonomy_declared_at
+             FROM public.tb_profile
+            WHERE id_user = $1 AND is_user_account = TRUE AND deleted_at IS NULL
+            LIMIT 1`,
+          [user.id_user],
+        );
+        const accountProfileId = accountProfile.rows[0]?.id_profile || null;
+        const hasTaxonomy =
+          !accountProfileId || !!accountProfile.rows[0].taxonomy_declared_at;
+
+        if (hasBirthdate && hasCpf && hasTaxonomy) {
           return { error: "Onboarding já foi concluído" };
         }
 
@@ -92,6 +112,55 @@ class OnboardingService {
           }
         }
 
+        // Taxonomia do perfil-conta (mig 200): enxame + profissão + cidade.
+        // Só exigida de quem ainda não declarou; a validação espelha
+        // ProfileService.create (categoria ativa e pertencente ao enxame).
+        let taxonomy = null;
+        if (!hasTaxonomy) {
+          const id_machine = Number(body?.id_machine);
+          const id_category = Number(body?.id_category);
+          const estado =
+            typeof body?.estado === "string" ? body.estado.trim().toUpperCase() : "";
+          const municipio =
+            typeof body?.municipio === "string" ? body.municipio.trim() : "";
+
+          if (!Number.isInteger(id_machine) || id_machine <= 0) {
+            return { error: "Selecione um enxame.", reason: "machine_required" };
+          }
+          if (!Number.isInteger(id_category) || id_category <= 0) {
+            return {
+              error: "Selecione uma profissão.",
+              reason: "category_required",
+            };
+          }
+          if (!/^[A-Z]{2}$/.test(estado) || !municipio) {
+            return {
+              error: "Selecione seu estado e sua cidade.",
+              reason: "city_required",
+            };
+          }
+
+          const catRow = await pool.query(
+            `SELECT id_machine, is_active
+               FROM public.tb_category WHERE id_category = $1 LIMIT 1`,
+            [id_category],
+          );
+          if (!catRow.rowCount || !catRow.rows[0].is_active) {
+            return { error: "Profissão não encontrada ou inativa" };
+          }
+          if (Number(catRow.rows[0].id_machine) !== id_machine) {
+            return {
+              error: "A profissão selecionada não pertence ao enxame escolhido",
+            };
+          }
+
+          taxonomy = {
+            id_category,
+            estado,
+            municipio: municipio.slice(0, 120),
+          };
+        }
+
         // Vínculo parental só entra em jogo quando a idade está sendo definida
         // AGORA. Menor já supervisionado (base antiga) não é cobrado de novo.
         const isMinor = age != null && age < 18;
@@ -116,6 +185,32 @@ class OnboardingService {
               WHERE id_user = $3`,
             [hasBirthdate ? null : dataNascimento, cpf, user.id_user],
           );
+
+          // Passo 2: taxonomia + cidade no perfil-conta. id_region é resolvido
+          // pela tb_region_city (mesma expressão do ProfileStorage) — fica NULL
+          // se a cidade ainda não estiver mapeada, sem quebrar o cadastro.
+          if (taxonomy && accountProfileId) {
+            await client.query(
+              `UPDATE public.tb_profile
+                  SET id_category          = $1,
+                      estado               = $2::text,
+                      municipio            = $3::text,
+                      id_region            = (
+                        SELECT rc.id_region FROM public.tb_region_city rc
+                         WHERE rc.uf = $2::text
+                           AND rc.municipio_norm = fl_norm_city($3::text)
+                      ),
+                      taxonomy_declared_at = NOW(),
+                      updated_at           = NOW()
+                WHERE id_profile = $4`,
+              [
+                taxonomy.id_category,
+                taxonomy.estado,
+                taxonomy.municipio,
+                accountProfileId,
+              ],
+            );
+          }
 
           if (isMinor) {
             const consumed = await SupervisionService.consumeInviteForSignup(
@@ -147,6 +242,7 @@ class OnboardingService {
             is_minor: isMinor,
             data_nascimento: hasBirthdate ? undefined : dataNascimento,
             cpf_saved: !!cpf,
+            taxonomy_saved: !!taxonomy,
           };
         } catch (err) {
           await client.query("ROLLBACK");

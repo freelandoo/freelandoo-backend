@@ -146,6 +146,9 @@ class ProfileStorage {
       p.estado,
       p.municipio,
       p.is_user_account,
+      -- mig 200: perfil-conta que declarou enxame/profissao no onboarding tem
+      -- taxonomia REAL (pode ir pro title/JSON-LD). FALSE = categoria fantasma.
+      (p.taxonomy_declared_at IS NOT NULL) AS has_declared_taxonomy,
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
@@ -221,6 +224,9 @@ class ProfileStorage {
       p.estado,
       p.municipio,
       p.is_user_account,
+      -- mig 200: perfil-conta que declarou enxame/profissao no onboarding tem
+      -- taxonomia REAL (pode ir pro title/JSON-LD). FALSE = categoria fantasma.
+      (p.taxonomy_declared_at IS NOT NULL) AS has_declared_taxonomy,
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'

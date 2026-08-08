@@ -155,15 +155,16 @@ module.exports = {
         pro.sub_profile_slug,
         pro.xp_level,
         -- Perfil-conta carrega uma categoria "fantasma" (primeira da tabela,
-        -- ver AuthStorage.ensureUserAccountProfile) — nunca expor no card.
-        CASE WHEN pro.is_user_account THEN NULL ELSE ca.id_category END      AS id_category,
-        CASE WHEN pro.is_user_account THEN NULL ELSE ca.desc_category END    AS category,
-        CASE WHEN pro.is_user_account THEN NULL ELSE ca.profession_slug END  AS profession_slug,
+        -- ver AuthStorage.ensureUserAccountProfile) enquanto o dono não declara
+        -- enxame/profissão no onboarding (mig 200) — nunca expor a fantasma.
+        CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE ca.id_category END      AS id_category,
+        CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE ca.desc_category END    AS category,
+        CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE ca.profession_slug END  AS profession_slug,
 
         -- MACHINE
-        CASE WHEN pro.is_user_account THEN NULL ELSE m.id_machine END AS id_machine,
-        CASE WHEN pro.is_user_account THEN NULL ELSE m.slug END       AS machine_slug,
-        CASE WHEN pro.is_user_account THEN NULL ELSE m.name END       AS machine_name,
+        CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE m.id_machine END AS id_machine,
+        CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE m.slug END       AS machine_slug,
+        CASE WHEN pro.is_user_account AND pro.taxonomy_declared_at IS NULL THEN NULL ELSE m.name END       AS machine_name,
 
         -- USER DONO DO PROFILE
         tu.id_user,
@@ -261,10 +262,13 @@ module.exports = {
             AND ufp.is_enabled = FALSE
         )
 
-        -- Perfil-conta não tem taxonomia real (categoria fantasma): qualquer
-        -- filtro de máquina/profissão/categoria o exclui da vitrine.
+        -- Perfil-conta SEM taxonomia declarada (mig 200) não tem profissão real
+        -- (categoria fantasma): qualquer filtro de máquina/profissão/categoria
+        -- o exclui da vitrine. Quem declarou no onboarding filtra como
+        -- qualquer subperfil.
         AND (
           COALESCE(pro.is_user_account, FALSE) = FALSE
+          OR pro.taxonomy_declared_at IS NOT NULL
           OR (
             $3::text IS NULL AND $8::text[] IS NULL AND $9::int IS NULL
             AND $10::int IS NULL AND $11::text IS NULL

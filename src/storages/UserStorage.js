@@ -83,13 +83,28 @@ module.exports = {
             'id_profile', pro.id_profile,
             'display_name', pro.display_name,
             'is_clan', pro.is_clan,
-            'id_category', pro.id_category,
-            'category', ca.desc_category,
-            'profession_slug', ca.profession_slug,
+            -- Perfil-conta sem taxonomia declarada (mig 200) carrega a
+            -- categoria "fantasma" do AuthStorage — nunca devolver.
+            'id_category', CASE WHEN pro.is_user_account
+                                 AND pro.taxonomy_declared_at IS NULL
+                                THEN NULL ELSE pro.id_category END,
+            'category', CASE WHEN pro.is_user_account
+                              AND pro.taxonomy_declared_at IS NULL
+                             THEN NULL ELSE ca.desc_category END,
+            'profession_slug', CASE WHEN pro.is_user_account
+                                     AND pro.taxonomy_declared_at IS NULL
+                                    THEN NULL ELSE ca.profession_slug END,
             'sub_profile_slug', pro.sub_profile_slug,
-            'id_machine', COALESCE(ca.id_machine, pro.id_machine),
-            'machine_slug', m.slug,
-            'machine_name', m.name,
+            'id_machine', CASE WHEN pro.is_user_account
+                                AND pro.taxonomy_declared_at IS NULL
+                               THEN NULL
+                               ELSE COALESCE(ca.id_machine, pro.id_machine) END,
+            'machine_slug', CASE WHEN pro.is_user_account
+                                  AND pro.taxonomy_declared_at IS NULL
+                                 THEN NULL ELSE m.slug END,
+            'machine_name', CASE WHEN pro.is_user_account
+                                  AND pro.taxonomy_declared_at IS NULL
+                                 THEN NULL ELSE m.name END,
             'bio', pro.bio,
             'avatar_url', pro.avatar_url,
             'estado', pro.estado,
@@ -176,16 +191,28 @@ module.exports = {
           AND pro.deleted_at IS NULL
       ) p ON TRUE
 
-      -- perfil-conta (is_user_account): base do XP/nível e redes do user
+      -- perfil-conta (is_user_account): base do XP/nível e redes do user.
+      -- has_taxonomy (mig 200) diz se o dono já DECLAROU enxame/profissão — o
+      -- gate de onboarding usa isso; NULL/false = categoria fantasma.
       LEFT JOIN LATERAL (
         SELECT
           jsonb_build_object(
             'id_profile', ap.id_profile,
             'xp_total', ap.xp_total,
-            'xp_level', ap.xp_level
+            'xp_level', ap.xp_level,
+            'has_taxonomy', (ap.taxonomy_declared_at IS NOT NULL),
+            'id_category', CASE WHEN ap.taxonomy_declared_at IS NULL
+                                THEN NULL ELSE ap.id_category END,
+            'id_machine', CASE WHEN ap.taxonomy_declared_at IS NULL
+                               THEN NULL ELSE apc.id_machine END,
+            'category', CASE WHEN ap.taxonomy_declared_at IS NULL
+                             THEN NULL ELSE apc.desc_category END,
+            'estado', ap.estado,
+            'municipio', ap.municipio
           ) AS account_profile,
           ap.id_profile AS account_profile_id
         FROM tb_profile ap
+        LEFT JOIN tb_category apc ON apc.id_category = ap.id_category
         WHERE ap.id_user = tu.id_user
           AND ap.is_user_account = TRUE
           AND ap.deleted_at IS NULL
