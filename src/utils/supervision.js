@@ -2,8 +2,13 @@
  * supervision.js — guards e helpers de Conta Supervisionada.
  *
  * Convenção: helpers que retornam booleano não lançam. Helpers `assertNot*`
- * retornam `null` (ok) ou `{ error, status }` (bloqueio) para encaixar no
+ * retornam `null` (ok) ou `{ error, statusCode }` (bloqueio) para encaixar no
  * padrão `sendServiceResult` dos services.
+ *
+ * O campo é `statusCode`, NÃO `status`: sendServiceResult lê `result.statusCode`
+ * e ignora `status` — com `status` o bloqueio caía no fallback por texto e
+ * respondia 400 em vez de 403 (nenhuma destas mensagens casa com as heurísticas
+ * do statusFromServiceError).
  */
 
 const pool = require("../databases");
@@ -78,13 +83,13 @@ async function assertLinkActiveIfMinor(userId, conn = pool) {
   if (state.link_status === "suspended") {
     return {
       error: "Conta supervisionada está suspensa pelo responsável",
-      status: 403,
+      statusCode: 403,
     };
   }
   if (state.link_status === "revoked") {
     return {
       error: "Vínculo de supervisão foi revogado",
-      status: 403,
+      statusCode: 403,
     };
   }
   return null;
@@ -95,7 +100,7 @@ async function assertNotMinorForServiceRequest(userId, conn = pool) {
   if (await isMinorUser(userId, conn)) {
     return {
       error: "Contas supervisionadas não podem solicitar serviços",
-      status: 403,
+      statusCode: 403,
     };
   }
   return null;
@@ -105,7 +110,7 @@ async function assertNotMinorForShowcase(userId, conn = pool) {
   if (await isMinorUser(userId, conn)) {
     return {
       error: "Contas supervisionadas não aparecem na vitrine",
-      status: 403,
+      statusCode: 403,
     };
   }
   return null;
@@ -115,7 +120,7 @@ async function assertNotMinorForRanking(userId, conn = pool) {
   if (await isMinorUser(userId, conn)) {
     return {
       error: "Contas supervisionadas não aparecem em rankings",
-      status: 403,
+      statusCode: 403,
     };
   }
   return null;
@@ -125,7 +130,7 @@ async function assertNotMinorForMural(userId, conn = pool) {
   if (await isMinorUser(userId, conn)) {
     return {
       error: "Contas supervisionadas não possuem mural público",
-      status: 403,
+      statusCode: 403,
     };
   }
   return null;
@@ -142,14 +147,14 @@ async function assertMinorPermission(userId, permission, conn = pool) {
         state.link_status === "suspended"
           ? "Conta supervisionada está suspensa pelo responsável"
           : "Vínculo de supervisão foi revogado",
-      status: 403,
+      statusCode: 403,
     };
   }
   const ok = await hasMinorPermission(userId, permission, conn);
   if (!ok) {
     return {
       error: `Ação bloqueada pelo responsável (${permission})`,
-      status: 403,
+      statusCode: 403,
     };
   }
   return null;
@@ -164,14 +169,14 @@ async function assertMachineAllowed(userId, idMachine, conn = pool) {
         state.link_status === "suspended"
           ? "Conta supervisionada está suspensa pelo responsável"
           : "Vínculo de supervisão foi revogado",
-      status: 403,
+      statusCode: 403,
     };
   }
   const ok = await canAccessMachine(userId, idMachine, conn);
   if (!ok) {
     return {
       error: "Este enxame não está liberado pelo responsável",
-      status: 403,
+      statusCode: 403,
     };
   }
   return null;
