@@ -39,6 +39,7 @@ const communityRoutes = require("./community.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
 const condoRoutes = require("./condo.routes");
 const residenceRoutes = require("./residence.routes");
+const neighborhoodRoutes = require("./neighborhood.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
@@ -186,6 +187,10 @@ module.exports = (app) => {
   // modalidades territoriais. Base própria porque a residência é da PESSOA,
   // não de uma comunidade — o bairro e o condomínio a consultam, não a contêm.
   app.use("/residences", residenceRoutes);
+  // Bairro (mig 204): criação, entrada por residência reconhecida e descoberta
+  // por (cidade, bairro). Base própria pela mesma razão do condomínio — não
+  // disputar rota com /communities/:id_profile, que serve as três modalidades.
+  app.use("/neighborhoods", neighborhoodRoutes);
   app.use("/admin/booking-fees", bookingFeeAdminRoutes);
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);

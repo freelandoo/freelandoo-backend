@@ -33,7 +33,11 @@ class CommunityStorage {
          FROM public.tb_profile
         WHERE id_leader_user = $1
           AND is_community = TRUE
-          AND community_kind <> 'condo'
+          -- Territoriais ficam FORA do teto vendável (§5.2): condomínio e
+          -- bairro são utilidade do lugar onde a pessoa mora, não um produto.
+          -- Ninguém pode ficar sem a comunidade do próprio prédio porque já
+          -- participa de comunidades temáticas demais.
+          AND community_kind NOT IN ('condo', 'neighborhood')
           AND deleted_at IS NULL`,
       [id_user]
     );
@@ -46,7 +50,7 @@ class CommunityStorage {
          FROM public.tb_community_member m
          JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
         WHERE m.id_user = $1
-          AND p.community_kind <> 'condo'
+          AND p.community_kind NOT IN ('condo', 'neighborhood')
           AND p.deleted_at IS NULL`,
       [id_user]
     );
@@ -231,6 +235,7 @@ class CommunityStorage {
               p.community_privacy AS privacy,
               p.community_monthly_cents AS monthly_cents,
               p.community_kind AS kind,
+              p.id_territory,
               p.condo_street, p.condo_number, p.condo_complement,
               p.condo_neighborhood, p.condo_cep,
               p.estado, p.municipio, p.id_region,

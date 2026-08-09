@@ -9,6 +9,7 @@ const PolenStorage = require("../storages/PolenStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const CondoRules = require("../utils/condoRules");
 const CondoStorage = require("../storages/CondoStorage");
+const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
 const CommunityPolicy = require("../utils/communityPolicy");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -184,9 +185,7 @@ class CommunityService {
         // direito. Visitante enxerga bairro/cidade/UF (é assim que ele acha o
         // prédio na busca) e nada mais.
         if (community.kind === "condo") {
-          const resident = viewer?.id_user
-            ? await CondoStorage.getResidentStatus(pool, params.id_profile, viewer.id_user)
-            : null;
+          const resident = await this._resolveResident(community, viewer);
           const tier = CommunityPolicy.resolveTier({
             viewer,
             membership,
@@ -213,13 +212,28 @@ class CommunityService {
           };
         }
 
-        const tier = CommunityPolicy.resolveTier({ viewer, membership });
+        // Bairro: o visitante vê bairro/cidade/UF (é como ele acha o lugar onde
+        // acabou de se mudar) e a POSIÇÃO DELE — se já declarou residência e se
+        // os vizinhos já reconheceram. Sem isso a tela não sabe se mostra
+        // "entrar", "aguardando reconhecimento" ou "declarar residência".
+        const resident = await this._resolveResident(community, viewer);
+        const tier = CommunityPolicy.resolveTier({
+          viewer,
+          membership,
+          isResident: !!resident.confirmed,
+        });
         return {
           community: {
             ...CommunityPolicy.projectCommunity(community, tier),
             viewer_is_member: !!viewer_membership,
             viewer_role: viewer_membership,
             viewer_sub_status,
+            ...(community.kind === "neighborhood"
+              ? {
+                  viewer_is_resident: !!resident.confirmed,
+                  viewer_residence_status: resident.status || null,
+                }
+              : {}),
           },
         };
       }
@@ -345,10 +359,7 @@ class CommunityService {
           : null;
         const isAdmin = membership?.role === "leader" || membership?.role === "vice";
 
-        const resident =
-          community.kind === "condo" && viewer?.id_user
-            ? await CondoStorage.getResidentStatus(pool, params.id_profile, viewer.id_user)
-            : null;
+        const resident = await this._resolveResident(community, viewer);
 
         const policy = CommunityPolicy.policyFor(community);
         const tier = CommunityPolicy.resolveTier({
@@ -633,6 +644,38 @@ class CommunityService {
   }
 
   // Cria um recado (nota só-texto) no feed da comunidade. Só membros publicam.
+  /**
+   * Resolve "esta pessoa é MORADORA desta comunidade?" para qualquer
+   * modalidade. Um lugar só: o predicado do §4.2 é o mesmo nas duas, muda o
+   * ESCOPO — condomínio resolve pelo endereço, bairro pelo território.
+   *
+   * Existe para que `kind === 'condo'` não continue espalhado pelos guards.
+   * Era assim que os vazamentos nasciam: alguém escrevia um guard novo e
+   * esquecia metade das modalidades. Modalidade não-territorial devolve
+   * `confirmed: false` sem tocar o banco — lá "morador" não quer dizer nada.
+   */
+  static async _resolveResident(community, viewer) {
+    if (!viewer?.id_user || !community) return { confirmed: false };
+    if (community.kind === "condo") {
+      return (
+        (await CondoStorage.getResidentStatus(
+          pool,
+          community.id_profile,
+          viewer.id_user
+        )) || { confirmed: false }
+      );
+    }
+    if (community.kind === "neighborhood") {
+      if (!community.id_territory) return { confirmed: false };
+      const status = await NeighborhoodStorage.getResidentStatus(pool, {
+        id_territory: community.id_territory,
+        id_user: viewer.id_user,
+      });
+      return { confirmed: status.recognized, status: status.status };
+    }
+    return { confirmed: false };
+  }
+
   static async createRecado(user, params, body) {
     return runWithLogs(
       log,
@@ -802,10 +845,7 @@ class CommunityService {
     const membership = viewer?.id_user
       ? await CommunityStorage.getMembership(pool, id_community, viewer.id_user)
       : null;
-    const resident =
-      community.kind === "condo" && viewer?.id_user
-        ? await CondoStorage.getResidentStatus(pool, id_community, viewer.id_user)
-        : null;
+    const resident = await this._resolveResident(community, viewer);
 
     const policy = CommunityPolicy.policyFor(community);
     const tier = CommunityPolicy.resolveTier({

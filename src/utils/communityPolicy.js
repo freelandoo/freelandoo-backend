@@ -72,7 +72,11 @@ const TERRITORIAL = Object.freeze({
   }),
 });
 
-const TERRITORIAL_KINDS = new Set(["condo"]);
+// O bairro entra aqui e herda TUDO: contagem escondida, feed só para membro,
+// lista de vizinhos e metas só para morador. Nenhum guard precisou ganhar um
+// `|| kind === 'neighborhood'` — que é exatamente o esquecimento que produziu
+// os vazamentos C2 e C3.
+const TERRITORIAL_KINDS = new Set(["condo", "neighborhood"]);
 
 /**
  * Política da comunidade. Modalidade desconhecida cai na MAIS RESTRITIVA de
