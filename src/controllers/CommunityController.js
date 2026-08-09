@@ -52,7 +52,7 @@ class CommunityController {
   }
 
   static async listPublic(req, res) {
-    const result = await CommunityService.listPublic(req.query);
+    const result = await CommunityService.listPublic(req.query, req.user);
     return sendServiceResult(res, result);
   }
 
@@ -149,12 +149,12 @@ class CommunityController {
   }
 
   static async getBenchmark(req, res) {
-    const result = await CommunityService.getBenchmark(req.params);
+    const result = await CommunityService.getBenchmark(req.params, req.user);
     return sendServiceResult(res, result);
   }
 
   static async getGoal(req, res) {
-    const result = await CommunityService.getGoal(req.params);
+    const result = await CommunityService.getGoal(req.params, req.user);
     return sendServiceResult(res, result);
   }
 

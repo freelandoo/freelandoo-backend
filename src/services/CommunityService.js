@@ -9,6 +9,7 @@ const PolenStorage = require("../storages/PolenStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const CondoRules = require("../utils/condoRules");
 const CondoStorage = require("../storages/CondoStorage");
+const CommunityPolicy = require("../utils/communityPolicy");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunityService");
@@ -165,28 +166,37 @@ class CommunityService {
         );
         if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
 
-        let viewer_membership = null;
+        let membership = null;
         let viewer_sub_status = null;
         if (viewer?.id_user) {
-          const m = await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user);
-          viewer_membership = m ? m.role : null;
+          membership = await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user);
           const sub = await CommunityStorage.getLiveMemberSub(pool, params.id_profile, viewer.id_user);
           viewer_sub_status = sub ? sub.status : null;
         }
+        const viewer_membership = membership ? membership.role : null;
+        const isAdmin = viewer_membership === "leader" || viewer_membership === "vice";
+
+        // Os campos viewer_* são acrescentados DEPOIS da projeção de propósito:
+        // eles descrevem o próprio viewer, não a comunidade — não são dado
+        // alheio e não podem ser recortados.
 
         // Condomínio: endereço de rua e situação de moradia só para quem tem
         // direito. Visitante enxerga bairro/cidade/UF (é assim que ele acha o
         // prédio na busca) e nada mais.
         if (community.kind === "condo") {
-          const isAdmin = viewer_membership === "leader" || viewer_membership === "vice";
           const resident = viewer?.id_user
             ? await CondoStorage.getResidentStatus(pool, params.id_profile, viewer.id_user)
             : null;
+          const tier = CommunityPolicy.resolveTier({
+            viewer,
+            membership,
+            isResident: !!resident?.confirmed,
+          });
           const canSeeAddress = isAdmin || !!resident?.confirmed;
           const base = CondoRules.stripAddressColumns(community);
           return {
             community: {
-              ...base,
+              ...CommunityPolicy.projectCommunity(base, tier),
               address: canSeeAddress
                 ? CondoRules.fullAddress(community)
                 : CondoRules.publicAddress(community),
@@ -203,9 +213,10 @@ class CommunityService {
           };
         }
 
+        const tier = CommunityPolicy.resolveTier({ viewer, membership });
         return {
           community: {
-            ...community,
+            ...CommunityPolicy.projectCommunity(community, tier),
             viewer_is_member: !!viewer_membership,
             viewer_role: viewer_membership,
             viewer_sub_status,
@@ -273,11 +284,15 @@ class CommunityService {
     return { community };
   }
 
-  static async listPublic(query) {
+  // A listagem é pública, mas o RECORTE depende do viewer: contadores de
+  // comunidade privada e de condomínio só saem para quem já é de dentro.
+  // Uma consulta só resolve o vínculo do viewer com TODAS as comunidades dele
+  // (listForUser) — não há N+1 aqui.
+  static async listPublic(query, viewer) {
     return runWithLogs(
       log,
       "listPublic",
-      () => ({ q: query?.q }),
+      () => ({ q: query?.q, viewer: viewer?.id_user ? "auth" : "anon" }),
       async () => {
         const communities = await CommunityStorage.listPublic(pool, {
           q: query?.q,
@@ -287,33 +302,72 @@ class CommunityService {
           limit: query?.limit,
           offset: query?.offset,
         });
-        return { communities };
+
+        const roleByCommunity = new Map();
+        if (viewer?.id_user) {
+          const mine = await CommunityStorage.listForUser(pool, viewer.id_user);
+          for (const row of mine) {
+            roleByCommunity.set(String(row.id_profile), row.role);
+          }
+        }
+
+        // Morador não é resolvido aqui: na listagem o único recurso em jogo é
+        // `counters`, cujo mínimo é `member` — resolver residência por linha
+        // custaria duas queries por card sem mudar nenhuma decisão.
+        const projected = communities.map((row) => {
+          const role = roleByCommunity.get(String(row.id_profile)) || null;
+          const tier = CommunityPolicy.resolveTier({
+            viewer,
+            membership: role ? { role } : null,
+          });
+          return CommunityPolicy.projectCommunity(row, tier);
+        });
+
+        return { communities: projected };
       }
     );
   }
 
-  // viewer opcional: em condomínio a lista de moradores NÃO é pública — saber
-  // quem mora onde é o dado mais sensível da feature.
+  // Saber QUEM está dentro é o dado mais sensível da comunidade. O tier mínimo
+  // vem da política: temática pública libera; temática privada exige membro;
+  // territorial exige morador confirmado (ou a administração).
   static async getMembers(params, viewer) {
     return runWithLogs(
       log,
       "getMembers",
-      () => ({ id_profile: params?.id_profile, viewer: viewer?.id_user }),
+      () => ({ id_profile: params?.id_profile, viewer: viewer?.id_user ? "auth" : "anon" }),
       async () => {
         const community = await CommunityStorage.getById(pool, params.id_profile);
         if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
 
-        if (community.kind === "condo") {
-          const membership = viewer?.id_user
-            ? await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user)
-            : null;
-          const isAdmin = membership?.role === "leader" || membership?.role === "vice";
-          const resident = viewer?.id_user
+        const membership = viewer?.id_user
+          ? await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user)
+          : null;
+        const isAdmin = membership?.role === "leader" || membership?.role === "vice";
+
+        const resident =
+          community.kind === "condo" && viewer?.id_user
             ? await CondoStorage.getResidentStatus(pool, params.id_profile, viewer.id_user)
             : null;
-          if (!isAdmin && !resident?.confirmed) {
-            return { error: "Somente moradores do condomínio veem esta lista.", statusCode: 403 };
-          }
+
+        const policy = CommunityPolicy.policyFor(community);
+        const tier = CommunityPolicy.resolveTier({
+          viewer,
+          membership,
+          isResident: !!resident?.confirmed,
+        });
+
+        if (!CommunityPolicy.can(policy, "memberList", tier)) {
+          return {
+            error:
+              community.kind === "condo"
+                ? "Somente moradores do condomínio veem esta lista."
+                : "Somente membros da comunidade veem esta lista.",
+            statusCode: 403,
+          };
+        }
+
+        if (community.kind === "condo") {
           // Morador vê os vizinhos; a unidade de cada um só aparece para o
           // administrador (o morador comum vê nome, não onde a pessoa mora).
           const members = await CondoStorage.listResidents(pool, params.id_profile, {
@@ -738,13 +792,43 @@ class CommunityService {
     );
   }
 
-  // ─── Benchmark (público) ──────────────────────────────────────────────────────
-  static async getBenchmark(params) {
+  // Guard de leitura por política. Devolve { community } quando liberado, ou
+  // { error, statusCode } quando não. Usado por /goal e /benchmark, que até o
+  // desenho macro respondiam sem nenhuma autenticação (C2).
+  static async _assertCanRead(id_community, viewer, resource) {
+    const community = await CommunityStorage.getById(pool, id_community);
+    if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+    const membership = viewer?.id_user
+      ? await CommunityStorage.getMembership(pool, id_community, viewer.id_user)
+      : null;
+    const resident =
+      community.kind === "condo" && viewer?.id_user
+        ? await CondoStorage.getResidentStatus(pool, id_community, viewer.id_user)
+        : null;
+
+    const policy = CommunityPolicy.policyFor(community);
+    const tier = CommunityPolicy.resolveTier({
+      viewer,
+      membership,
+      isResident: !!resident?.confirmed,
+    });
+    if (!CommunityPolicy.can(policy, resource, tier)) {
+      return { error: "Conteúdo restrito aos membros desta comunidade.", statusCode: 403 };
+    }
+    return { community };
+  }
+
+  // ─── Benchmark ────────────────────────────────────────────────────────────────
+  static async getBenchmark(params, viewer) {
     return runWithLogs(
       log,
       "getBenchmark",
       () => ({ id_profile: params?.id_profile }),
       async () => {
+        const gate = await this._assertCanRead(params.id_profile, viewer, "benchmark");
+        if (gate.error) return gate;
+
         const benchmark = await CommunityStorage.getBenchmark(pool, params.id_profile);
         if (!benchmark) return { error: "Comunidade não encontrada", statusCode: 404 };
         const percentile =
@@ -823,12 +907,15 @@ class CommunityService {
     }
   }
 
-  static async getGoal(params) {
+  static async getGoal(params, viewer) {
     return runWithLogs(
       log,
       "getGoal",
       () => ({ id_profile: params?.id_profile }),
       async () => {
+        const gate = await this._assertCanRead(params.id_profile, viewer, "goal");
+        if (gate.error) return gate;
+
         const goal = await CommunityStorage.getActiveGoalRow(pool, params.id_profile);
         if (!goal) return { goal: null };
 
