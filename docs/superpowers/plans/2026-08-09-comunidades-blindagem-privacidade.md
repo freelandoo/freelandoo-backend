@@ -1299,7 +1299,80 @@ git commit -m "fix(comunidades): contadores opcionais e token em goal/benchmark"
 
 ---
 
-## Task 9: Validação final
+## Task 9: Bloqueio parental devolve 403 (bug pré-existente)
+
+**Files:**
+- Modify: `src/utils/supervision.js` (10 pontos de retorno)
+
+> **Task independente.** Não faz parte de C1–C4, mas é da mesma família (correção de autorização) e
+> o §7.4 do spec depende dela: o desenho das comunidades territoriais precisa distinguir "não
+> autorizado" de "requisição malformada". Pode ser pulada sem afetar as outras tasks.
+
+**O bug:** todos os guards de `src/utils/supervision.js` retornam `{ error, status: 403 }`, mas
+`sendServiceResult` lê **`statusCode`** e ignora `status` (ver `src/utils/sendServiceResult.js:33`).
+O fallback `statusFromServiceError` então classifica pelo texto — e nenhuma dessas mensagens contém
+"permissão", "não encontrado" ou "não autenticado". Resultado: **todo bloqueio parental responde 400
+em vez de 403**. A mensagem chega certa e o bloqueio funciona, então nada está quebrado para o
+usuário final; o que quebra é qualquer cliente que ramifique por status.
+
+**Por que é seguro:** os 20+ chamadores fazem exclusivamente `if (block) return block;` e repassam o
+objeto ao `sendServiceResult`. Nenhum lê `.status`.
+
+- [ ] **Step 1: Confirmar que nenhum chamador lê `.status`**
+
+Run: `grep -rn "Block\.status\|Block\?\.status\|block\.status" src/`
+Expected: nenhuma ocorrência
+
+- [ ] **Step 2: Trocar `status` por `statusCode` nos 10 retornos**
+
+Em `src/utils/supervision.js`, substituir **todas** as ocorrências de `status: 403,` por
+`statusCode: 403,`. São 10, em 7 funções: `assertLinkActiveIfMinor` (2),
+`assertNotMinorForServiceRequest` (1), `assertNotMinorForShowcase` (1), `assertNotMinorForRanking`
+(1), `assertNotMinorForMural` (1), `assertMinorPermission` (2), `assertMachineAllowed` (2).
+
+Atualizar também o comentário do cabeçalho do arquivo, trocando:
+
+```js
+ * Convenção: helpers que retornam booleano não lançam. Helpers `assertNot*`
+ * retornam `null` (ok) ou `{ error, status }` (bloqueio) para encaixar no
+ * padrão `sendServiceResult` dos services.
+```
+
+por:
+
+```js
+ * Convenção: helpers que retornam booleano não lançam. Helpers `assertNot*`
+ * retornam `null` (ok) ou `{ error, statusCode }` (bloqueio) para encaixar no
+ * padrão `sendServiceResult` dos services.
+ *
+ * O campo é `statusCode`, NÃO `status`: sendServiceResult lê `result.statusCode`
+ * e ignora `status` — com `status` o bloqueio caía no fallback por texto e
+ * respondia 400 em vez de 403.
+```
+
+- [ ] **Step 3: Verificar que não sobrou nenhum `status:` no arquivo**
+
+Run: `grep -n "status: 4" src/utils/supervision.js`
+Expected: nenhuma ocorrência
+
+Run: `grep -c "statusCode: 403" src/utils/supervision.js`
+Expected: `10`
+
+- [ ] **Step 4: Lint**
+
+Run: `npm run lint`
+Expected: sem erros
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/utils/supervision.js
+git commit -m "fix(parental): bloqueio de conta supervisionada devolve 403, não 400"
+```
+
+---
+
+## Task 10: Validação final
 
 - [ ] **Step 1: Backend — unit + smoke + lint**
 
@@ -1335,8 +1408,8 @@ git push origin main
 
 | Risco | Mitigação |
 |---|---|
-| Deploy fora de ordem quebra a vitrine | Backend e frontend sobem juntos (Task 9, Step 4). O frontend novo tolera o backend antigo (campo presente), mas o backend novo **não** tolera o frontend antigo |
-| Alguma superfície não mapeada lê `member_count` | Task 9 Step 2 + o typecheck da Task 8 pegam os consumidores tipados. Consumidor não tipado (fetch solto) não é pego — **QA visual da vitrine e da página de comunidade fica com o Alex** |
+| Deploy fora de ordem quebra a vitrine | Backend e frontend sobem juntos (Task 10, Step 4). O frontend novo tolera o backend antigo (campo presente), mas o backend novo **não** tolera o frontend antigo |
+| Alguma superfície não mapeada lê `member_count` | Task 10 Step 2 + o typecheck da Task 8 pegam os consumidores tipados. Consumidor não tipado (fetch solto) não é pego — **QA visual da vitrine e da página de comunidade fica com o Alex** |
 | `listPublic` ganhou uma query a mais para viewer logado | É uma só (`listForUser`), não N+1. Sem índice novo: `idx_community_member_user` já existe (mig 154) |
 
 **Não entra nesta entrega** (vem nos subsistemas seguintes): tier `morador não reconhecido` (Subsistema 3), modalidade `neighborhood` na política (Subsistema 4), `no-store` nas páginas territoriais e exclusão da rota SEO (Subsistema 4), e a proibição de CEP/número em log (Subsistema 2, quando esses campos passarem a existir).

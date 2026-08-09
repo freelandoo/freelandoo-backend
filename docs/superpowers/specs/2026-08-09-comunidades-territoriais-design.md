@@ -83,6 +83,7 @@ fraude territoriais.
 | D12 | Unidade de bairro nasce sob demanda; de condomínio, do gerador | Endereço registrado depois como condomínio **adota** as unidades existentes |
 | D13 | Comprovante é lido pelo **admin da plataforma**, não pelo gestor | Gestor de bairro é vizinho; vê só o veredito |
 | D14 | Mudança de endereço é válvula da carência **mediante comprovante** | Sem isso a carência morreria (toda troca de bairro é troca de endereço) |
+| D15 | Menor **não reivindica residência — herda a do responsável** | A plataforma não coleta endereço de menor; nenhuma criança entra na fila de reivindicação (§7.4) |
 
 **Abordagem escolhida:** camada de pertencimento **extraída** — um núcleo que as modalidades
 consomem, em vez de bairro herdar o código do condomínio (que carregaria o titular único junto) ou
@@ -283,6 +284,48 @@ persiste.
 Contestar **não remove** ninguém — apenas marca divergência. Contestação em série vira sinal
 antifraude (§10), e o histórico de contestações é visível para quem decide.
 
+### 7.4 Contas supervisionadas (menores)
+
+**Princípio: o menor mora ali, então pertence — mas não pode ser localizável nem abordável por causa
+disso.** Excluir um adolescente da comunidade do próprio prédio é errado (o aviso de que a água vai
+faltar amanhã também é dele); colocá-lo num grupo de adultos que sabe onde ele mora, sem cuidado, é
+outra coisa.
+
+O desenho segue o formato que o sistema de supervisão (mig 061) já usa: **bloqueio duro** para o que
+não se negocia, **toggle do responsável** para o resto.
+
+**O menor não reivindica residência — ele herda a do responsável.** É a peça central, e resolve
+várias coisas de uma vez: nenhuma reivindicação de criança entra na fila, nenhum vizinho contesta um
+menor, nenhum comprovante de residência de menor é pedido, e **a plataforma não coleta endereço de
+menor** — coleta o do responsável, que já é adulto e já é titular. Responsável que não é morador
+confirmado ⇒ o menor não entra.
+
+| Peça | Regra |
+|---|---|
+| Permissão | Chave nova `can_join_territorial`, default **FALSE** (conservador, como `can_sell_courses`) e **requestable** — o menor pede, o responsável libera, pelo fluxo de notificação que já existe |
+| Bloqueio duro 1 | **Não aparece na lista de moradores** para outros moradores — só para o gestor e para o próprio responsável. Impede que os adultos do bairro descubram que há um menor na unidade X |
+| Bloqueio duro 2 | **Não vota nem assina petição** — governança é ato civil |
+| Bloqueio duro 3 | **Não anuncia** na área comercial interna |
+| Bloqueio duro 4 | **Não reconhece nem contesta** reivindicação de ninguém — decidir quem mora onde não é papel dele |
+| O que pode | Ler o mural e os avisos; publicar se `can_post_feed` já estiver ligado. É o valor real da feature para ele |
+| Carência/exclusividade | **Não se aplicam.** O vínculo é derivado: quando o responsável muda de bairro, o menor vai junto, sem espera — ele não escolheu nada |
+| Revogação | Em cascata. Vínculo `suspended`/`revoked` tira o menor na hora (`assertLinkActiveIfMinor` já se comporta assim); responsável deixa de ser morador ⇒ o menor sai junto |
+| Antifraude | Conta de menor **não gera sinal territorial próprio** — evita que família com muitos filhos dispare `overcrowded_unit` (§10) |
+
+**Ressalva 1:** isto governa apenas contas **corretamente marcadas** como menores. O furo já
+registrado no `CLAUDE.md` — `data_nascimento` na lista `allowed` do `UserStorage.updateUserById`,
+que deixa qualquer um reescrever a própria idade via `PUT /users/me` — continua aberto. Quem mentir a
+idade não é `is_minor` e passa por fora de tudo acima. Este desenho **não corrige** aquilo.
+
+**Ressalva 2 (bug pré-existente, achado nesta análise):** todos os guards de `src/utils/supervision.js`
+retornam `{ error, status: 403 }`, mas `sendServiceResult` lê **`statusCode`** e ignora `status` — e
+nenhuma daquelas mensagens casa com as heurísticas de texto (elas dizem "responsável" e "bloqueada",
+não "permissão"). Na prática **todo bloqueio parental responde 400 em vez de 403**. O bloqueio
+funciona e a mensagem chega certa, então nada está quebrado para o usuário final; mas qualquer cliente
+que ramifique por 403 se perde, e este desenho precisa da distinção. Verificado que os 20+ chamadores
+apenas repassam o objeto (`if (block) return block;`), então a correção é segura — está na Task 9 do
+plano do Subsistema 1.
+
 ---
 
 ## 8. Exclusividade, carência e histórico
@@ -423,11 +466,12 @@ valor de segurança imediato, independente de todo o resto.
 
 | # | Questão | Quando decidir |
 |---|---|---|
-| Q1 | **Conta supervisionada** (mig 061) pode reivindicar residência? Menor de idade num bairro privado | Antes do spec do subsistema 3 |
-| Q2 | Quantas unidades um usuário pode ter na mesma comunidade (segunda casa, imóvel alugado) | Spec do subsistema 3 |
-| Q3 | Fórmula do ranking interno (o que pontua num bairro) | Spec do subsistema 6 |
-| Q4 | Regras comerciais de anunciante externo (preço, período, quem anuncia de fora) | Depois do subsistema 6 |
-| Q5 | Academia: como implementa o contrato de pertencimento | Desenho próprio |
-| Q6 | Quórum exato da petição (20%/mín. 3) e janela de inatividade (30 d) — calibrar com dados reais | Spec do subsistema 6 |
-| Q8 | Pesos e janelas dos 5 sinais territoriais (§10) — só a regra "nenhum ≥ 30 sozinho" está fixada | Spec do subsistema 3, revisar com dados do painel |
-| Q7 | O que fazer com unidades duplicadas por variação de digitação nos condomínios existentes | Spec do subsistema 5 |
+| Q1 | Quantas unidades um usuário pode ter na mesma comunidade (segunda casa, imóvel alugado) | Spec do subsistema 3 |
+| Q2 | Pesos e janelas dos 5 sinais territoriais (§10) — só a regra "nenhum ≥ 30 sozinho" está fixada | Spec do subsistema 3, revisar com dados do painel |
+| Q3 | O que fazer com unidades duplicadas por variação de digitação nos condomínios existentes | Spec do subsistema 5 |
+| Q4 | Fórmula do ranking interno (o que pontua num bairro) | Spec do subsistema 6 |
+| Q5 | Quórum exato da petição (20%/mín. 3) e janela de inatividade (30 d) — calibrar com dados reais | Spec do subsistema 6 |
+| Q6 | Regras comerciais de anunciante externo (preço, período, quem anuncia de fora) | Depois do subsistema 6 |
+| Q7 | Academia: como implementa o contrato de pertencimento | Desenho próprio |
+
+> **Resolvida em 2026-08-09:** conta supervisionada reivindicando residência (era Q1) → ver **D15 e §7.4**.
