@@ -16,6 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "echo No automated tests yet && exit 0",
+    "test:unit": "node --test \"test/unit/**/*.test.js\"",
     "test:checkout": "node test/checkout.e2e.js"
   },
   "repository": {
