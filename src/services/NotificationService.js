@@ -675,6 +675,86 @@ class NotificationService {
       },
     });
   }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Residência (mig 203). REGRA DE PRIVACIDADE (§11 do desenho territorial):
+  // o corpo NUNCA cita endereço, unidade ou complemento. Quem recebe já sabe
+  // onde mora; e uma notificação é justamente o lugar de onde o dado escapa
+  // para push, e-mail e tela de bloqueio. Só viaja o id do vínculo, que a tela
+  // resolve com a permissão de quem está olhando.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // Alguém diz morar na sua unidade → os co-moradores decidem.
+  static async notifyResidenceClaimPending({
+    recipient_user_id,
+    actor_user_id,
+    id_residence,
+  }) {
+    if (!recipient_user_id || !id_residence) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: null,
+      type: "residence_claim_pending",
+      id_actor_user: actor_user_id || null,
+      entity_type: "residence",
+      entity_id: null,
+      payload: { id_residence: Number(id_residence) },
+    });
+  }
+
+  static async notifyResidenceRecognized({
+    recipient_user_id,
+    actor_user_id,
+    id_residence,
+  }) {
+    if (!recipient_user_id || !id_residence) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: null,
+      type: "residence_recognized",
+      id_actor_user: actor_user_id || null,
+      entity_type: "residence",
+      entity_id: null,
+      payload: { id_residence: Number(id_residence) },
+    });
+  }
+
+  // Contestação NÃO remove ninguém (§7.3) — por isso a notificação avisa que
+  // há divergência, e não que a pessoa foi recusada.
+  static async notifyResidenceContested({
+    recipient_user_id,
+    actor_user_id,
+    id_residence,
+  }) {
+    if (!recipient_user_id || !id_residence) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: null,
+      type: "residence_contested",
+      id_actor_user: actor_user_id || null,
+      entity_type: "residence",
+      entity_id: null,
+      payload: { id_residence: Number(id_residence) },
+    });
+  }
+
+  static async notifyResidenceProofDecided({
+    recipient_user_id,
+    actor_user_id,
+    id_residence,
+    approved,
+  }) {
+    if (!recipient_user_id || !id_residence) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: null,
+      type: approved ? "residence_recognized" : "residence_ended",
+      id_actor_user: actor_user_id || null,
+      entity_type: "residence",
+      entity_id: null,
+      payload: { id_residence: Number(id_residence), by_proof: true },
+    });
+  }
 }
 
 module.exports = NotificationService;

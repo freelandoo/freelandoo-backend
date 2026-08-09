@@ -19,7 +19,8 @@
     "test:unit": "node --test \"test/unit/**/*.test.js\"",
     "test:checkout": "node test/checkout.e2e.js",
     "test:privacy": "node test/community-privacy.e2e.js",
-    "test:territory": "node test/territory.e2e.js"
+    "test:territory": "node test/territory.e2e.js",
+    "test:residence": "node test/residence.e2e.js"
   },
   "repository": {
     "type": "git",

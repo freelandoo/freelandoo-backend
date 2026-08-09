@@ -20,6 +20,12 @@ const DEFAULT_PERMISSIONS = {
   can_show_in_showcase: false,
   can_show_in_ranking: false,
   can_have_mural: false,
+  // Comunidades territoriais (mig 203 / D15). Default FALSE, conservador como
+  // can_sell_courses: o menor PERTENCE ao bairro onde mora — o aviso de que a
+  // água vai faltar amanhã também é dele — mas quem decide se ele entra num
+  // grupo de adultos que sabe onde ele mora é o responsável. Sem esta chave
+  // aqui a coluna existiria no banco e seria invisível ao fluxo parental.
+  can_join_territorial: false,
 };
 
 const PERMISSION_KEYS = Object.keys(DEFAULT_PERMISSIONS);

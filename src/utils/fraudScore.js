@@ -24,12 +24,32 @@ const WEIGHTS = {
   burst_signup: 30, // 3+ contas no mesmo IP em 1 hora
   payout_cpf_mismatch: 40, // CPF do destino de repasse ≠ CPF da conta
   payout_cnpj: 15, // destino em CNPJ: titularidade não verificável offline
+
+  // Territoriais (mig 203 / §10 do desenho de comunidades territoriais).
+  // CALIBRAÇÃO OBRIGATÓRIA: nenhum deles cruza o limiar de 30 sozinho. Família
+  // dividindo casa é normal, mudar de cidade é normal, república de estudantes
+  // é normal — é a COMBINAÇÃO que merece um olho humano, nunca o sinal isolado.
+  residence_churn: 20, // troca de endereço acima do normal na janela
+  contested_claim: 25, // reivindicação contestada por co-morador
+  serial_contester: 25, // contesta muita gente (contestação usada como arma)
+  territory_hopping: 15, // entra em várias comunidades territoriais na janela
+  overcrowded_unit: 20, // número implausível de moradores na mesma unidade
 };
 
 // Janelas das heurísticas de velocity.
 const SHARED_IP_MIN_ACCOUNTS = 3;
 const BURST_WINDOW_MINUTES = 60;
 const BURST_MIN_ACCOUNTS = 3;
+
+// Janelas das heurísticas territoriais. Os mínimos são altos de propósito: o
+// caso legítimo de cada uma é comum demais para punir o primeiro evento.
+const RESIDENCE_WINDOW_DAYS = 90;
+const RESIDENCE_CHURN_MIN = 3; // 3 endereços em 90 dias
+const SERIAL_CONTESTER_MIN = 3; // contestou 3 pessoas na janela
+const TERRITORY_HOPPING_MIN = 3; // 3 territórios distintos na janela
+// República de estudantes cabe folgado; 10 adultos declarando a MESMA unidade
+// já não é moradia, é fábrica de conta.
+const OVERCROWDED_UNIT_MIN = 10;
 
 // Domínios descartáveis mais comuns. Lista curta e conservadora de propósito:
 // um domínio legítimo marcado aqui gera falso-positivo em cadeia. Ampliar só
@@ -140,6 +160,46 @@ function evaluate(facts) {
     add("payout_cnpj", "Destino de repasse em CNPJ (titularidade não verificável)");
   }
 
+  // ─── territoriais ───────────────────────────────────────────────────────
+  // Ausentes do objeto de fatos = não avaliados. É o que permite o painel
+  // continuar pontuando cadastro sem saber nada de residência.
+  const churn = Number(facts.residence_changes || 0);
+  if (churn >= RESIDENCE_CHURN_MIN) {
+    add(
+      "residence_churn",
+      `${churn} endereços declarados em ${RESIDENCE_WINDOW_DAYS} dias`,
+    );
+  }
+
+  const contested = Number(facts.contested_claims || 0);
+  if (contested > 0) {
+    add(
+      "contested_claim",
+      `${contested} reivindicação(ões) de residência contestada(s) por co-morador`,
+    );
+  }
+
+  const contestsMade = Number(facts.contests_made || 0);
+  if (contestsMade >= SERIAL_CONTESTER_MIN) {
+    add(
+      "serial_contester",
+      `Contestou ${contestsMade} pessoas em ${RESIDENCE_WINDOW_DAYS} dias`,
+    );
+  }
+
+  const hops = Number(facts.territorial_joins || 0);
+  if (hops >= TERRITORY_HOPPING_MIN) {
+    add(
+      "territory_hopping",
+      `${hops} territórios distintos em ${RESIDENCE_WINDOW_DAYS} dias`,
+    );
+  }
+
+  const occupants = Number(facts.max_unit_occupants || 0);
+  if (occupants >= OVERCROWDED_UNIT_MIN) {
+    add("overcrowded_unit", `${occupants} moradores declarados na mesma unidade`);
+  }
+
   const score = reasons.reduce((sum, r) => sum + r.weight, 0);
   return { score, reasons };
 }
@@ -155,6 +215,11 @@ module.exports = {
   SHARED_IP_MIN_ACCOUNTS,
   BURST_WINDOW_MINUTES,
   BURST_MIN_ACCOUNTS,
+  RESIDENCE_WINDOW_DAYS,
+  RESIDENCE_CHURN_MIN,
+  SERIAL_CONTESTER_MIN,
+  TERRITORY_HOPPING_MIN,
+  OVERCROWDED_UNIT_MIN,
   DISPOSABLE_EMAIL_DOMAINS,
   isDisposableEmailDomain,
   nameAnomalies,

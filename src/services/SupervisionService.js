@@ -24,6 +24,9 @@ const REQUESTABLE_PERMISSIONS = new Set([
   "can_receive_messages",
   "can_use_global_chat",
   "can_use_machine_chat",
+  // O menor pede para entrar na comunidade do próprio prédio/bairro e o
+  // responsável libera — o mesmo fluxo de notificação que já existe (D15).
+  "can_join_territorial",
 ]);
 
 const log = createLogger("SupervisionService");

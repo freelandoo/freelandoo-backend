@@ -44,6 +44,14 @@ const server = app.listen(PORT, () => {
   const AcademySyncService = require("./src/services/AcademySyncService");
   AcademySyncService.startSweeper();
 
+  // Residência (mig 203), degrau 2 do reconhecimento: reivindicação pendente há
+  // mais de 7 dias vira "morador não reconhecido" — que NÃO é recusa (a pessoa
+  // lê o feed e qualquer co-morador ainda pode reconhecê-la depois). Sem este
+  // sweeper, o silêncio dos vizinhos deixaria a pessoa presa em "pendente"
+  // para sempre.
+  const ResidenceService = require("./src/services/ResidenceService");
+  ResidenceService.startSweeper();
+
   // Catálogo de alimentos (TACO curada): seed idempotente fill-if-absent.
   // Falha não derruba o boot (fitness fica sem catálogo até o próximo deploy).
   const { seedTacoFoods } = require("./scripts/seed-taco");

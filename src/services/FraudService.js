@@ -7,6 +7,7 @@
 
 const pool = require("../databases");
 const FraudStorage = require("../storages/FraudStorage");
+const ResidenceStorage = require("../storages/ResidenceStorage");
 const {
   evaluate,
   needsReview,
@@ -61,6 +62,54 @@ class FraudService {
       return { score, reasons, queued: true, id_review: review?.id_review };
     } catch (err) {
       log.error("evaluateUser.fail", { id_user, error: err?.message });
+      return null;
+    }
+  }
+
+  /**
+   * Reavalia incluindo os sinais TERRITORIAIS (§10 do desenho de comunidades
+   * territoriais). Mesma fila e mesmo caso do cadastro de propósito: a fila é
+   * por USUÁRIO, então residência não abre um caso paralelo — soma no que já
+   * existe, e o admin vê a pessoa inteira numa tela só.
+   *
+   * A regra de ouro continua: pontua e enfileira, nunca bloqueia.
+   */
+  static async evaluateResidence(id_user) {
+    try {
+      if (!id_user) return null;
+
+      const facts = await FraudStorage.getFactsForUser(pool, id_user);
+      if (!facts) return null;
+      if (await FraudStorage.hasDecision(pool, id_user)) return null;
+
+      const residence = await ResidenceStorage.getFraudFacts(pool, id_user);
+
+      const { score, reasons } = evaluate({
+        nome: facts.nome,
+        cpf: facts.cpf,
+        uf: facts.uf,
+        email_domain: facts.email_domain,
+        accounts_same_ip: facts.accounts_same_ip,
+        accounts_same_ip_1h: facts.accounts_same_ip_1h,
+        ...this._payoutFacts(facts),
+        ...residence,
+      });
+
+      if (!needsReview(score)) return { score, reasons, queued: false };
+
+      const review = await FraudStorage.upsertPendingReview(pool, {
+        id_user,
+        score,
+        reasons,
+      });
+      log.info("fraud.queued_residence", {
+        id_user,
+        score,
+        codes: reasons.map((r) => r.code),
+      });
+      return { score, reasons, queued: true, id_review: review?.id_review };
+    } catch (err) {
+      log.error("evaluateResidence.fail", { id_user, error: err?.message });
       return null;
     }
   }

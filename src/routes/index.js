@@ -38,6 +38,7 @@ const clanPublicRoutes = require("./clanPublic.routes");
 const communityRoutes = require("./community.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
 const condoRoutes = require("./condo.routes");
+const residenceRoutes = require("./residence.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
@@ -181,6 +182,10 @@ module.exports = (app) => {
   // estrutura, reivindicações, avisos, anúncios e enquetes. Base própria para
   // não disputar rota com /communities/:id_profile.
   app.use("/condos", condoRoutes);
+  // Residência (mig 203): o vínculo morador↔unidade que sustenta as duas
+  // modalidades territoriais. Base própria porque a residência é da PESSOA,
+  // não de uma comunidade — o bairro e o condomínio a consultam, não a contêm.
+  app.use("/residences", residenceRoutes);
   app.use("/admin/booking-fees", bookingFeeAdminRoutes);
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);
