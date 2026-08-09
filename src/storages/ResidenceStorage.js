@@ -424,6 +424,29 @@ class ResidenceStorage {
     return r.rows[0];
   }
 
+  /**
+   * Quantos moradores VIVOS existem nas unidades de um bloco.
+   *
+   * Existe para uma coisa só: impedir que apagar uma torre apague gente. A FK
+   * é CASCADE em cadeia (bloco → unidade → vínculo), então o banco removeria os
+   * vínculos em silêncio — sem `ended_at`, sem motivo, sem notificação. Apagar
+   * é diferente de encerrar: o histórico é a única prova do que aconteceu, e é
+   * justamente o que o `leave` da comunidade destrói hoje (conflito C7).
+   *
+   * Conta só o vínculo vivo: linha já encerrada é história, e história não
+   * pode travar o síndico para sempre.
+   */
+  static async countLiveInBlock(conn, id_block) {
+    const r = await conn.query(
+      `SELECT COUNT(*)::int AS n
+         FROM public.tb_residence_member rm
+         JOIN public.tb_residence_unit u ON u.id_unit = rm.id_unit
+        WHERE u.id_block = $1 AND rm.${LIVE}`,
+      [id_block]
+    );
+    return r.rows[0].n;
+  }
+
   /** Teto anti-oráculo (§11): quantas reivindicações o usuário fez hoje. */
   static async countClaimsToday(conn, id_user) {
     const r = await conn.query(

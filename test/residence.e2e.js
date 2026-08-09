@@ -501,8 +501,98 @@ async function main() {
     assert.ok(semCep.statusCode >= 400);
   });
 
-  // ═══ 8. antifraude territorial ════════════════════════════════════════
-  console.log("\n━━━ 8. sinais antifraude ━━━");
+  // ═══ 8. apagar torre não apaga morador ════════════════════════════════
+  console.log("\n━━━ 8. exclusão de torre ━━━");
+
+  // A FK é CASCADE em cadeia: bloco → unidade → vínculo. Sem guard, apagar uma
+  // torre removeria os moradores no banco, sem ended_at, sem motivo e sem
+  // avisar — o oposto do invariante do §7.1, por baixo da aplicação.
+  const CondoService = require("../src/services/CondoService");
+  const CommunityStorage = require("../src/storages/CommunityStorage");
+  const TerritoryStorage = require("../src/storages/TerritoryStorage");
+
+  const sindico = await mkUser("sindico");
+  const { rows: machines } = await db.query(
+    `SELECT id_machine FROM public.tb_machine ORDER BY id_machine LIMIT 1`
+  );
+  const condo = await CommunityStorage.createCommunity(pool, {
+    id_user: sindico,
+    id_machine: machines[0].id_machine,
+    display_name: mk("Condo Residencia"),
+    bio: null,
+    avatar_url: null,
+    theme: null,
+    kind: "condo",
+    address: {
+      street: "Avenida Paulista",
+      number: "1578",
+      complement: null,
+      neighborhood: "Bela Vista",
+      cep: CEP,
+      estado: "SP",
+      municipio: "São Paulo",
+    },
+  });
+  await CommunityStorage.addMember(pool, condo.id_profile, sindico, "leader");
+  const { rows: blk } = await db.query(
+    `INSERT INTO public.tb_condo_block (id_condo, name) VALUES ($1, 'Torre A')
+     RETURNING id_block`,
+    [condo.id_profile]
+  );
+  const id_block = Number(blk[0].id_block);
+
+  const addr = await TerritoryStorage.getOrCreateAddress(pool, {
+    id_territory: (
+      await db.query(
+        `SELECT a.id_territory FROM public.tb_address a WHERE a.cep = $1 LIMIT 1`,
+        [CEP]
+      )
+    ).rows[0].id_territory,
+    cep: CEP,
+    numero: "1578",
+  });
+  const unitInBlock = await TerritoryStorage.getOrCreateUnit(pool, {
+    id_address: addr.id_address,
+    id_block,
+    label: "101",
+    source: "generated",
+  });
+  const { rows: moradorRows } = await db.query(
+    `INSERT INTO public.tb_residence_member (id_unit, id_user, status, recognized_at)
+          VALUES ($1, $2, 'recognized', NOW()) RETURNING id_residence`,
+    [unitInBlock.id_unit, bruno]
+  );
+
+  const comMorador = await CondoService.deleteBlock(
+    { id_user: sindico },
+    { id_condo: condo.id_profile, id_block }
+  );
+  check("apagar torre com morador é recusado em vez de apagar gente", () => {
+    assert.strictEqual(comMorador.statusCode, 409);
+    assert.strictEqual(comMorador.residents, 1);
+  });
+  const aindaLa = await ResidenceStorage.getById(pool, moradorRows[0].id_residence);
+  check("o morador continua lá depois da recusa", () => {
+    assert.strictEqual(aindaLa.status, "recognized");
+    assert.strictEqual(aindaLa.ended_at, null);
+  });
+
+  // Encerrado o vínculo, a torre pode ir: histórico não trava o síndico para
+  // sempre — o que não pode é sumir com quem ainda mora.
+  await ResidenceStorage.endLink(pool, moradorRows[0].id_residence, {
+    reason: "moved",
+    by_user: bruno,
+  });
+  const semMorador = await CondoService.deleteBlock(
+    { id_user: sindico },
+    { id_condo: condo.id_profile, id_block }
+  );
+  check("sem morador vivo, a torre é excluída normalmente", () => {
+    assert.strictEqual(semMorador.ok, true);
+  });
+
+  // ═══ 9. antifraude territorial ════════════════════════════════════════
+  console.log("\n━━━ 9. sinais antifraude ━━━");
 
   const facts = await ResidenceStorage.getFraudFacts(pool, hugo);
   check("churn e hopping são contados por endereço/território distintos", () => {
@@ -560,6 +650,7 @@ async function main() {
   });
 
   // ─── limpeza ─────────────────────────────────────────────────────────────
+  await db.query(`DELETE FROM public.tb_profile WHERE id_profile = $1`, [condo.id_profile]);
   await db.query(`DELETE FROM public.tb_user WHERE id_user = ANY($1::uuid[])`, [created]);
   await db.query(
     `DELETE FROM public.tb_address WHERE cep = ANY($1::bpchar[])`,

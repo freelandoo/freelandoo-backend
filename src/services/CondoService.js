@@ -13,6 +13,7 @@
 const pool = require("../databases");
 const CondoStorage = require("../storages/CondoStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
+const ResidenceStorage = require("../storages/ResidenceStorage");
 const NotificationService = require("./NotificationService");
 const CondoRules = require("../utils/condoRules");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -139,6 +140,25 @@ class CondoService {
           require: "admin",
         });
         if (ctx.error) return ctx;
+        // A FK bloco → unidade → vínculo é CASCADE em cadeia (migs 202/203):
+        // sem este guard, apagar uma torre apagaria os MORADORES dela no banco,
+        // sem `ended_at`, sem motivo e sem avisar ninguém. Perder residência
+        // exige decisão humana explícita (§7.1) — inclusive esta.
+        const residents = await ResidenceStorage.countLiveInBlock(
+          pool,
+          params.id_block
+        );
+        if (residents > 0) {
+          return {
+            error:
+              residents === 1
+                ? "Há 1 morador vinculado a esta torre. Remova o vínculo antes de excluí-la."
+                : `Há ${residents} moradores vinculados a esta torre. Remova os vínculos antes de excluí-la.`,
+            statusCode: 409,
+            residents,
+          };
+        }
+
         const ok = await CondoStorage.deleteBlock(pool, params.id_condo, params.id_block);
         return { ok };
       }
