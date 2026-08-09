@@ -29,6 +29,11 @@ const COUNTER_FIELDS = Object.freeze(["member_count", "xp_total", "xp_level"]);
 const THEMATIC_PUBLIC = Object.freeze({
   id: "thematic_public",
   searchableByAddress: false,
+  // Post ligado ao feed daqui continua público (aparece no /feed, nos bees e
+  // no perfil do autor).
+  contentIsExclusive: false,
+  // Feed e mural abertos a qualquer visitante.
+  feedRequiresMembership: false,
   minTier: Object.freeze({
     counters: TIER.anonymous,
     memberList: TIER.anonymous,
@@ -40,6 +45,8 @@ const THEMATIC_PUBLIC = Object.freeze({
 const THEMATIC_PRIVATE = Object.freeze({
   id: "thematic_private",
   searchableByAddress: false,
+  contentIsExclusive: true,
+  feedRequiresMembership: true,
   minTier: Object.freeze({
     counters: TIER.member,
     memberList: TIER.member,
@@ -48,10 +55,15 @@ const THEMATIC_PRIVATE = Object.freeze({
   }),
 });
 
-// Bairro entrará aqui junto do condomínio quando o Subsistema 4 chegar.
+// Bairro entrará aqui junto do condomínio quando o Subsistema 4 chegar — e é
+// por isso que exclusividade e gate de feed são DECLARADOS e não escritos à mão
+// nos services: bairro herda os dois de graça, em vez de alguém ter que lembrar
+// de acrescentar mais um `|| kind === 'neighborhood'` em cada ponto.
 const TERRITORIAL = Object.freeze({
   id: "territorial",
   searchableByAddress: false,
+  contentIsExclusive: true,
+  feedRequiresMembership: true,
   minTier: Object.freeze({
     counters: TIER.member,
     memberList: TIER.resident,

@@ -115,6 +115,24 @@ test("projectCommunity: temática pública mantém contadores para anônimo", ()
   assert.strictEqual(out.xp_level, 1);
 });
 
+test("exclusividade de conteúdo: só temática pública deixa o post público", () => {
+  assert.strictEqual(policyFor({ kind: "common", privacy: "public" }).contentIsExclusive, false);
+  assert.strictEqual(policyFor({ kind: "common", privacy: "private" }).contentIsExclusive, true);
+  assert.strictEqual(policyFor({ kind: "condo", privacy: "public" }).contentIsExclusive, true);
+});
+
+test("gate de feed: só temática pública é aberta", () => {
+  assert.strictEqual(policyFor({ kind: "common", privacy: "public" }).feedRequiresMembership, false);
+  assert.strictEqual(policyFor({ kind: "common", privacy: "private" }).feedRequiresMembership, true);
+  assert.strictEqual(policyFor({ kind: "condo", privacy: "public" }).feedRequiresMembership, true);
+});
+
+test("modalidade desconhecida é exclusiva e fechada (falha para o lado seguro)", () => {
+  const p = policyFor({ kind: "kind_do_futuro", privacy: "public" });
+  assert.strictEqual(p.contentIsExclusive, true);
+  assert.strictEqual(p.feedRequiresMembership, true);
+});
+
 test("projectCommunity: não muta a linha original", () => {
   const row = { id_profile: "p1", kind: "condo", privacy: "public", member_count: 42 };
   projectCommunity(row, TIER.outsider);

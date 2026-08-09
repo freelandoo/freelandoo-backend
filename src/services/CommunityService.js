@@ -271,13 +271,13 @@ class CommunityService {
     );
   }
 
-  // Comunidade privada: feed só para membros (líder incluso via membership).
-  // Condomínio se comporta como privado SEMPRE — o mural do prédio é interno,
-  // independente de existir mensalidade (mig 196).
+  // Feed/mural interno: quem lê é decidido pela política da modalidade.
+  // Temática pública é aberta; privada exige membro; territorial (condomínio,
+  // e bairro quando chegar) é interna SEMPRE, com ou sem mensalidade.
   static async _assertCanViewPrivateContent(id_community, viewer) {
     const community = await CommunityStorage.getById(pool, id_community);
     if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
-    if (community.privacy !== "private" && community.kind !== "condo") return { community };
+    if (!CommunityPolicy.policyFor(community).feedRequiresMembership) return { community };
     if (!viewer?.id_user) return { locked: true, community };
     const membership = await CommunityStorage.getMembership(pool, id_community, viewer.id_user);
     if (!membership) return { locked: true, community };
@@ -745,7 +745,7 @@ class CommunityService {
         // CONDOMÍNIO é sempre exclusivo, pago ou não: o que se posta no mural
         // do prédio não pode vazar pro feed global nem pro perfil público do
         // morador (mig 196).
-        const isExclusive = community.privacy === "private" || community.kind === "condo";
+        const isExclusive = CommunityPolicy.policyFor(community).contentIsExclusive;
         if (isExclusive) {
           const elsewhere = await CommunityStorage.itemLinkedElsewhere(pool, id_portfolio_item, params.id_profile);
           if (elsewhere) {
