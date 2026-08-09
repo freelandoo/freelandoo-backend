@@ -250,19 +250,21 @@ class CommunityStorage {
   }
 
   // kind: 'common' | 'academy' | 'condo' | null (todas). Condomínio é
-  // pesquisável por NOME **ou ENDEREÇO** (bairro/rua/cidade) — mas a lista
-  // pública não devolve rua/número/CEP: isso é dado sensível, só sai no
-  // getById para membro confirmado/administrador.
+  // pesquisável por NOME, BAIRRO ou CIDADE — nunca por rua (C4). A lista
+  // pública também não devolve rua/número/CEP: isso só sai no getById para
+  // membro confirmado/administrador.
   static async listPublic(conn, { q, id_machine, id_region, kind, limit = 30, offset = 0 } = {}) {
     const params = [];
     const where = ["p.is_community = TRUE", "p.deleted_at IS NULL"];
     if (q) {
       params.push(`%${q}%`);
+      // Condomínio é achável por NOME, BAIRRO e CIDADE — nunca por RUA.
+      // Buscar por logradouro permitia enumerar endereços (C4 do desenho macro):
+      // bastava digitar uma rua para descobrir o que existe nela.
       where.push(
         `(p.display_name ILIKE $${params.length}
           OR (p.community_kind = 'condo' AND (
                 p.condo_neighborhood ILIKE $${params.length}
-             OR p.condo_street       ILIKE $${params.length}
              OR p.municipio          ILIKE $${params.length})))`
       );
     }
