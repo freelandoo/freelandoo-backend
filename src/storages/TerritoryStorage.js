@@ -4,6 +4,13 @@
 // Convenção do projeto: métodos estáticos que recebem `conn` (pool ou client de
 // transação). Nenhum método aqui decide permissão — quem decide é o service.
 //
+// ⚠️ Os casts ::text explícitos NÃO são decoração. Quando o MESMO parâmetro é
+// consumido por uma coluna (varchar) e por uma função (text) na mesma query, o
+// Postgres tenta deduzir um tipo só e falha com "inconsistent types deduced for
+// parameter" (42P08). É a mesma armadilha paga na mig 196; aqui ela aparece em
+// todo get-or-create, porque o valor cru e a forma normalizada dele viajam
+// juntos. Não remover os casts.
+//
 // Duas coisas atravessam o arquivo:
 //   * a NORMALIZAÇÃO é feita no SQL (fl_norm_city / fl_norm_token), não no JS —
 //     assim o índice único e a busca usam exatamente a mesma regra, e não há
@@ -34,9 +41,10 @@ class TerritoryStorage {
          (uf, municipio_norm, municipio_label, bairro_norm, bairro_label,
           id_region, is_city_wide)
        VALUES
-         ($1, fl_norm_city($2), $2, fl_norm_city($3), $3,
+         ($1::text, fl_norm_city($2::text), $2::text,
+          fl_norm_city($3::text), $3::text,
           (SELECT rc.id_region FROM public.tb_region_city rc
-            WHERE rc.uf = $1 AND rc.municipio_norm = fl_norm_city($2)),
+            WHERE rc.uf = $1::text AND rc.municipio_norm = fl_norm_city($2::text)),
           $4)
        ON CONFLICT (uf, municipio_norm, bairro_norm) DO NOTHING`,
       [UF, city, hood, !!is_city_wide]
@@ -120,7 +128,7 @@ class TerritoryStorage {
 
     await conn.query(
       `INSERT INTO public.tb_address (id_territory, cep, numero, numero_norm)
-            VALUES ($1, $2, $3, fl_norm_token($3))
+            VALUES ($1, $2, $3::text, fl_norm_token($3::text))
        ON CONFLICT (cep, numero_norm) DO NOTHING`,
       [id_territory, digits, num]
     );
@@ -183,7 +191,7 @@ class TerritoryStorage {
     await conn.query(
       `INSERT INTO public.tb_residence_unit
          (id_address, id_block, label, label_norm, source)
-       VALUES ($1, $2, $3, fl_norm_token(COALESCE($3, '')), $4)
+       VALUES ($1, $2, $3::text, fl_norm_token(COALESCE($3::text, '')), $4)
        ON CONFLICT (id_address, (COALESCE(id_block, 0)), label_norm) DO NOTHING`,
       [id_address, id_block, lbl, src]
     );
@@ -235,7 +243,9 @@ class TerritoryStorage {
       params.push(e.id_block ?? null, e.label ?? null);
       const b = `$${params.length - 1}`;
       const l = `$${params.length}`;
-      values.push(`($1, ${b}::bigint, ${l}, fl_norm_token(COALESCE(${l}, '')), 'generated')`);
+      values.push(
+        `($1, ${b}::bigint, ${l}::text, fl_norm_token(COALESCE(${l}::text, '')), 'generated')`
+      );
     }
     const r = await conn.query(
       `INSERT INTO public.tb_residence_unit

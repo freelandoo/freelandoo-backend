@@ -114,7 +114,14 @@ CREATE TABLE IF NOT EXISTS public.tb_residence_unit (
   id_address  BIGINT       NOT NULL REFERENCES public.tb_address(id_address) ON DELETE CASCADE,
   -- Bloco/torre. Reusa a tabela do condomínio: o conceito é o mesmo, e a
   -- absorção da tb_condo_unit (subsistema 5) precisa dele preservado.
-  id_block    BIGINT       NULL REFERENCES public.tb_condo_block(id_block) ON DELETE SET NULL,
+  --
+  -- CASCADE, e não SET NULL: a unidade não pode sobreviver ao bloco dela. Com
+  -- SET NULL, apagar a Torre A transformaria o "101 da Torre A" no "101 sem
+  -- bloco" — que costuma JÁ EXISTIR, e o DELETE inteiro estourava violação da
+  -- ux_residence_unit_identity. O gestor via erro ao apagar uma torre criada
+  -- por engano. Quem precisa resistir a essa exclusão é o vínculo de morador
+  -- (subsistema 3), que é onde mora a informação de que alguém perderia a casa.
+  id_block    BIGINT       NULL REFERENCES public.tb_condo_block(id_block) ON DELETE CASCADE,
   label       VARCHAR(40)  NULL,
   label_norm  VARCHAR(40)  NOT NULL DEFAULT '',
   source      VARCHAR(12)  NOT NULL DEFAULT 'claimed'
@@ -122,6 +129,35 @@ CREATE TABLE IF NOT EXISTS public.tb_residence_unit (
   created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+-- A FK de bloco é re-declarada aqui porque o CREATE TABLE acima é
+-- IF NOT EXISTS: num banco onde a tabela já nasceu com a versão SET NULL, só
+-- a criação não corrigiria nada. Varre o pg_constraint pela COLUNA (o nome é
+-- gerado pelo Postgres e não é confiável), igual à mig 189.
+DO $$
+DECLARE
+  c RECORD;
+BEGIN
+  FOR c IN
+    SELECT con.conname
+      FROM pg_constraint con
+      JOIN pg_attribute att
+        ON att.attrelid = con.conrelid
+       AND att.attnum = ANY (con.conkey)
+     WHERE con.conrelid = 'public.tb_residence_unit'::regclass
+       AND con.contype = 'f'
+       AND att.attname = 'id_block'
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE public.tb_residence_unit DROP CONSTRAINT %I', c.conname
+    );
+  END LOOP;
+
+  ALTER TABLE public.tb_residence_unit
+    ADD CONSTRAINT fk_residence_unit_block
+    FOREIGN KEY (id_block) REFERENCES public.tb_condo_block(id_block)
+    ON DELETE CASCADE;
+END $$;
 
 -- Uma unidade por (endereço, bloco, complemento normalizado). COALESCE precisa
 -- de parênteses próprios em definição de índice (armadilha paga na mig 196).

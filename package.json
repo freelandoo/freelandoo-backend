@@ -18,7 +18,8 @@
     "test": "echo No automated tests yet && exit 0",
     "test:unit": "node --test \"test/unit/**/*.test.js\"",
     "test:checkout": "node test/checkout.e2e.js",
-    "test:privacy": "node test/community-privacy.e2e.js"
+    "test:privacy": "node test/community-privacy.e2e.js",
+    "test:territory": "node test/territory.e2e.js"
   },
   "repository": {
     "type": "git",
