@@ -13,6 +13,7 @@ const StoryStorage = require("../storages/StoryStorage");
 const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
 const CommunityPolicy = require("../utils/communityPolicy");
 const { createLogger, runWithLogs } = require("../utils/logger");
+const { normalizeFeedKind } = require("../utils/feedKind");
 
 const log = createLogger("CommunityService");
 
@@ -421,7 +422,7 @@ class CommunityService {
         if (gate.error) return gate;
         if (gate.locked) return { items: [], locked: true };
         const kindRaw = query?.kind;
-        const kind = kindRaw === "bees" || kindRaw === "feed" ? kindRaw : null;
+        const kind = normalizeFeedKind(kindRaw);
         const items = await CommunityStorage.listItems(
           pool,
           params.id_profile,

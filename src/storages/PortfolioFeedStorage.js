@@ -1,3 +1,5 @@
+const { normalizeFeedKind, feedKindMatchSql } = require("../utils/feedKind");
+
 // Constrói a query base de candidatos elegíveis para o feed.
 // `mode === "new"` adiciona o filtro de novidade/sub-exposição e ordena por
 // publicação descendente; `mode === "top"` ordena por engagement_score.
@@ -191,9 +193,15 @@ function buildCandidateQuery(mode) {
       AND (m.is_active IS NULL OR m.is_active = TRUE)
 
       -- Feed é visual: só entram posts com pelo menos 1 mídia ativa.
-      -- Publicações de curso (course_feed_publications) ficam isentas.
+      -- Isentos: publicações de curso (course_feed_publications) e RECADOS
+      -- (mig 209), que são só-texto por definição.
+      -- Este gate é também o que segura item órfão de upload que falhou no
+      -- meio — por isso a isenção é pelo kind explícito, nunca por "não tem
+      -- mídia": relaxar para qualquer item sem mídia encheria o feed de post
+      -- vazio de upload interrompido.
       AND (
-        EXISTS (
+        ppi.feed_kind = 'recado'
+        OR EXISTS (
           SELECT 1 FROM tb_profile_portfolio_media ppm2
           WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item
             AND ppm2.is_active = TRUE
@@ -227,7 +235,7 @@ function buildCandidateQuery(mode) {
       AND ($4::int IS NULL OR pro.id_region = $4)
       AND ($5::uuid[] IS NULL OR NOT (ppi.id_portfolio_item = ANY($5::uuid[])))
       AND ($8::int IS NULL OR pro.xp_level >= $8)
-      AND ($9::text IS NULL OR ppi.feed_kind = $9)
+      AND ${feedKindMatchSql("ppi.feed_kind", "$9")}
       AND ($10::text IS NULL OR pro.country = $10)
 
       ${newClause}
@@ -260,7 +268,7 @@ function buildParams({
     limit,                                                            // $6
     viewer_id_user || null,                                           // $7
     Number.isFinite(level_min) ? level_min : null,                    // $8
-    feed_kind === "bees" || feed_kind === "feed" ? feed_kind : null,  // $9 (null = todos)
+    normalizeFeedKind(feed_kind),                                     // $9 (null = todos)
     country || null,                                                  // $10
   ];
 }

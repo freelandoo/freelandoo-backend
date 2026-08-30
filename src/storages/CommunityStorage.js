@@ -4,6 +4,8 @@
 
 const ProfileStorage = require("./ProfileStorage");
 
+const { normalizeFeedKind, feedKindMatchSql } = require("../utils/feedKind");
+
 class CommunityStorage {
   // ─── Entitlement (tetos por user) ───────────────────────────────────────────
   // Garante a linha default (1/1) e devolve os tetos atuais.
@@ -709,9 +711,13 @@ class CommunityStorage {
          AND ppi.is_active = TRUE
          AND ppi.is_banned = FALSE
          AND pro.deleted_at IS NULL
-         AND EXISTS (
-           SELECT 1 FROM public.tb_profile_portfolio_media ppm2
-           WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item AND ppm2.is_active = TRUE
+         -- Mural é visual, mas RECADO (mig 209) é só-texto por definição.
+         AND (
+           ppi.feed_kind = 'recado'
+           OR EXISTS (
+             SELECT 1 FROM public.tb_profile_portfolio_media ppm2
+             WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item AND ppm2.is_active = TRUE
+           )
          )
          AND ($4::timestamptz IS NULL OR (ppi.published_at, ppi.id_portfolio_item::text) < ($4::timestamptz, $5::text))
        ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC
@@ -867,10 +873,10 @@ class CommunityStorage {
         WHERE i.id_profile = $1
           AND i.is_active = true
           AND i.is_banned = false
-          AND ($2::text IS NULL OR i.feed_kind = $2)
+          AND ${feedKindMatchSql("i.feed_kind", "$2")}
         ORDER BY i.created_at DESC
         LIMIT $3 OFFSET $4`,
-      [id_community, feed_kind || null, Math.min(Number(limit) || 24, 60), Number(offset) || 0]
+      [id_community, normalizeFeedKind(feed_kind), Math.min(Number(limit) || 24, 60), Number(offset) || 0]
     );
     return r.rows;
   }

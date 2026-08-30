@@ -1,4 +1,5 @@
 const PortfolioFeedStorage = require("../../storages/PortfolioFeedStorage");
+const { normalizeFeedKind } = require("../../utils/feedKind");
 const { assertMinorPermission } = require("../../utils/supervision");
 const { createLogger, runWithLogs } = require("../../utils/logger");
 const { slugify, buildProfileUrl } = require("../../utils/slug");
@@ -118,7 +119,7 @@ function shapeRow(row) {
     hot_tier: row.hot_tier === "leader" || row.hot_tier === "rising" ? row.hot_tier : null,
     is_hot: row.hot_tier === "leader" || row.hot_tier === "rising",
     published_at: row.published_at,
-    feed_kind: row.feed_kind === "bees" ? "bees" : "feed",
+    feed_kind: normalizeFeedKind(row.feed_kind, "feed"),
     viewer_has_liked: !!row.viewer_has_liked,
     viewer_has_bookmarked: !!row.viewer_has_bookmarked,
     public_profile_url,
@@ -182,11 +183,9 @@ class PortfolioFeedService {
           id_region: filters?.id_region,
           level_min: filters?.level_min,
           exclude_ids: filters?.exclude_ids,
-          // null = misto (feed + bees); 'feed' ou 'bees' filtra um tipo só.
-          feed_kind:
-            filters?.feed_kind === "feed" || filters?.feed_kind === "bees"
-              ? filters.feed_kind
-              : null,
+          // null = misto (feed + bees + recado). 'feed' traz post E recado
+          // (texto é post, ver utils/feedKind); 'bees' e 'recado' filtram um só.
+          feed_kind: normalizeFeedKind(filters?.feed_kind),
           country: filters?.country || null,
           viewer_id_user: viewer?.id_user || null,
         };

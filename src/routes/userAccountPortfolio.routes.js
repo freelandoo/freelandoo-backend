@@ -7,6 +7,7 @@ const pool = require("../databases");
 const uploadPortfolioMedia = require("../middlewares/uploadPortfolioMedia");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendServiceResult } = require("../utils/sendServiceResult");
+const { normalizeFeedKind } = require("../utils/feedKind");
 
 /**
  * Rotas de portfólio do USER ACCOUNT (perfil-fantasma is_user_account=TRUE).
@@ -24,9 +25,7 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const id_profile = req.userAccountProfileId;
-    const rawKind =
-      typeof req.query?.kind === "string" ? req.query.kind.toLowerCase() : null;
-    const feed_kind = rawKind === "bees" || rawKind === "feed" ? rawKind : null;
+    const feed_kind = normalizeFeedKind(req.query?.kind);
     const result = await PortfolioService.listPublic({
       id_profile,
       id_user_viewer: req.user?.id_user ?? null,

@@ -1,3 +1,5 @@
+const { normalizeFeedKind, feedKindMatchSql } = require("../utils/feedKind");
+
 class PortfolioStorage {
   // --------- Helpers ----------
   static async itemBelongsToProfile(conn, id_portfolio_item, id_profile) {
@@ -39,7 +41,7 @@ class PortfolioStorage {
       render_meta = null,
     }
   ) {
-    const kind = feed_kind === "bees" ? "bees" : "feed";
+    const kind = normalizeFeedKind(feed_kind, "feed");
     // status default = 'published' (mig 025) → o item já nasce publicado, então
     // published_at tem que ser preenchido aqui. Sem isto ele fica NULL até o
     // próximo boot (a mig 025 faz backfill), bagunçando a ordenação do feed.
@@ -362,7 +364,7 @@ class PortfolioStorage {
     feed_kind = null
   ) {
     const ids = [id_clan_profile, ...(member_profile_ids ?? [])];
-    const kindFilter = feed_kind === "bees" || feed_kind === "feed" ? feed_kind : null;
+    const kindFilter = normalizeFeedKind(feed_kind);
     const r = await conn.query(
       `
       SELECT
@@ -425,7 +427,7 @@ class PortfolioStorage {
         AND i.is_active = true
         AND i.is_banned = false
         AND i.id_exclusive_community IS NULL
-        AND ($4::text IS NULL OR i.feed_kind = $4::text)
+        AND ${feedKindMatchSql("i.feed_kind", "$4")}
         AND NOT EXISTS (
           SELECT 1
             FROM public.tb_clan_hidden_post h
@@ -504,7 +506,7 @@ class PortfolioStorage {
   }
 
   static async listItemsWithMediaPublic(conn, id_profile, id_user_viewer = null, feed_kind = null) {
-    const kindFilter = feed_kind === "bees" || feed_kind === "feed" ? feed_kind : null;
+    const kindFilter = normalizeFeedKind(feed_kind);
     const r = await conn.query(
       `
       SELECT
@@ -561,7 +563,7 @@ class PortfolioStorage {
         AND i.is_banned = false
         -- Post exclusivo de comunidade privada fica só no feed da comunidade.
         AND i.id_exclusive_community IS NULL
-        AND ($3::text IS NULL OR i.feed_kind = $3::text)
+        AND ${feedKindMatchSql("i.feed_kind", "$3")}
       ORDER BY
         i.is_featured DESC,
         i.sort_order DESC,

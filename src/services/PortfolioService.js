@@ -6,6 +6,7 @@ const ClanStorage = require("../storages/ClanStorage");
 const XpStorage = require("../storages/XpStorage");
 const ChatModerationService = require("./ChatModerationService");
 const { assertMinorPermission } = require("../utils/supervision");
+const { normalizeFeedKind } = require("../utils/feedKind");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PortfolioService");
@@ -151,10 +152,7 @@ class PortfolioService {
         if (!id_profile || !UUID_RE.test(id_profile))
           return { error: "id_profile inválido" };
 
-        const feed_kind =
-          params?.feed_kind === "bees" || params?.feed_kind === "feed"
-            ? params.feed_kind
-            : null;
+        const feed_kind = normalizeFeedKind(params?.feed_kind);
 
         const profile = await ProfileStorage.getProfileById(pool, id_profile);
         if (profile?.is_clan) {
@@ -195,8 +193,9 @@ class PortfolioService {
     if (!id_profile || !UUID_RE.test(id_profile))
       return { error: "id_profile inválido" };
 
-    // Supervisão: post no feed/bees respeita toggle do responsável.
-    const feedKind = payload?.feed_kind === "bees" ? "bees" : "feed";
+    // Supervisão: post no feed/bees/recado respeita toggle do responsável.
+    // Recado é texto no feed → cai no mesmo can_post_feed do post.
+    const feedKind = normalizeFeedKind(payload?.feed_kind, "feed");
     const permKey = feedKind === "bees" ? "can_use_bees" : "can_post_feed";
     const minorBlock = await assertMinorPermission(user.id_user, permKey);
     if (minorBlock) return minorBlock;
@@ -229,6 +228,18 @@ class PortfolioService {
       return { error: "media deve ser um array" };
     }
 
+    // Recado (mig 209) = post SÓ-TEXTO. As duas metades da regra:
+    // exige texto (o card é só o texto) e recusa mídia (senão vira post comum
+    // disfarçado, e o card de texto esconderia a imagem que o autor enviou).
+    if (feedKind === "recado") {
+      if (!description || typeof description !== "string") {
+        return { error: "Escreva o texto do recado" };
+      }
+      if (Array.isArray(media) && media.length > 0) {
+        return { error: "Recado não aceita mídia" };
+      }
+    }
+
     const render_meta = normalizeRenderMeta(payload?.render_meta);
     if (render_meta?.error) return render_meta;
     const audio_start_ms = normalizeAudioStartMs(payload?.audio_start_ms);
@@ -254,7 +265,7 @@ class PortfolioService {
         return audio_track_id;
       }
 
-      const feed_kind = payload?.feed_kind === "bees" ? "bees" : "feed";
+      const feed_kind = feedKind;
 
       const item = await PortfolioStorage.createItem(client, {
         id_profile,
@@ -592,6 +603,16 @@ class PortfolioService {
       if (!belongs) {
         await client.query("ROLLBACK");
         return { error: "Item não encontrado para este perfil" };
+      }
+
+      // Recado é só-texto (mig 209): mídia aqui viraria post sem card de mídia.
+      const itemKind = await PortfolioStorage.getItemFeedKind(
+        client,
+        id_portfolio_item
+      );
+      if (itemKind === "recado") {
+        await client.query("ROLLBACK");
+        return { error: "Recado não aceita mídia" };
       }
 
       const m = await PortfolioStorage.addMedia(client, {

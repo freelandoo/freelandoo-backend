@@ -2,6 +2,7 @@ const pool = require("../databases");
 const BookmarkStorage = require("../storages/BookmarkStorage");
 // Salvar entra no engajamento do dia (anel "em alta" do card do feed).
 const { markHeatStale } = require("../services/portfolioFeed/feedHeat");
+const { normalizeFeedKind } = require("../utils/feedKind");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -58,7 +59,7 @@ module.exports = {
 
   async listMine(req, res) {
     const rawKind = String(req.query?.kind || "").trim().toLowerCase();
-    const kind = rawKind === "feed" || rawKind === "bees" ? rawKind : null;
+    const kind = normalizeFeedKind(rawKind);
     const limit = Math.min(60, Math.max(1, parseInt(req.query?.per_page, 10) || 24));
     const page = Math.max(1, parseInt(req.query?.page, 10) || 1);
     const offset = (page - 1) * limit;

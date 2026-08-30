@@ -1,3 +1,5 @@
+const { normalizeFeedKind, feedKindMatchSql } = require("../utils/feedKind");
+
 const DEFAULT_FOLDER = "Assistir depois";
 
 async function ensureDefaultFolder(db, id_user) {
@@ -88,11 +90,13 @@ module.exports = {
   },
 
   async listMine(db, { id_user, kind = null, limit = 24, offset = 0 }) {
-    const kindFilter = kind && (kind === "feed" || kind === "bees")
-      ? "AND ppi.feed_kind = $4"
+    // 'feed' abraça 'recado' (post só-texto, mig 209) — ver utils/feedKind.
+    const normalizedKind = normalizeFeedKind(kind);
+    const kindFilter = normalizedKind
+      ? `AND ${feedKindMatchSql("ppi.feed_kind", "$4")}`
       : "";
     const params = [id_user, limit, offset];
-    if (kindFilter) params.push(kind);
+    if (kindFilter) params.push(normalizedKind);
 
     const sql = `
       SELECT
@@ -144,9 +148,9 @@ module.exports = {
        WHERE b.id_user = $1
          AND ppi.is_active = TRUE
          AND ppi.is_banned = FALSE
-         ${kindFilter ? "AND ppi.feed_kind = $2" : ""}
+         ${kindFilter ? `AND ${feedKindMatchSql("ppi.feed_kind", "$2")}` : ""}
     `;
-    if (kindFilter) countParams.push(kind);
+    if (kindFilter) countParams.push(normalizedKind);
 
     const [rows, count] = await Promise.all([
       db.query(sql, params),

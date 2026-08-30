@@ -156,9 +156,13 @@ module.exports = {
          AND ppi.is_active = TRUE
          AND ppi.is_banned = FALSE
          AND pro.deleted_at IS NULL
-         AND EXISTS (
-           SELECT 1 FROM public.tb_profile_portfolio_media ppm2
-           WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item AND ppm2.is_active = TRUE
+         -- Mural é visual, mas RECADO (mig 209) é só-texto por definição.
+         AND (
+           ppi.feed_kind = 'recado'
+           OR EXISTS (
+             SELECT 1 FROM public.tb_profile_portfolio_media ppm2
+             WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item AND ppm2.is_active = TRUE
+           )
          )
          AND ($4::timestamptz IS NULL OR (ppi.published_at, ppi.id_portfolio_item::text) < ($4::timestamptz, $5::text))
        ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC

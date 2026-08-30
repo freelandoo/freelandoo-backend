@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const PortfolioFeedService = require("../services/portfolioFeed/PortfolioFeedService");
+const { normalizeFeedKind } = require("../utils/feedKind");
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,9 +36,9 @@ function parseLevelMin(raw) {
 
 function resolveFeedKind(raw, fallback) {
   const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (value === "feed" || value === "bees") return value;
   if (value === "all" || value === "todos") return null;
-  return fallback;
+  // 'feed' já abraça 'recado' lá no SQL (utils/feedKind) — texto é post.
+  return normalizeFeedKind(value, fallback);
 }
 
 function makeFeedHandler(defaultKind) {

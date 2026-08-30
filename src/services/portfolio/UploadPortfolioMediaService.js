@@ -172,6 +172,13 @@ module.exports = class UploadPortfolioMediaService {
       }
 
       const feedKind = await PortfolioStorage.getItemFeedKind(client, id_portfolio_item);
+      // Recado é só-texto (mig 209): o card não desenha mídia, então aceitar o
+      // upload aqui gastaria R2 com arquivo que ninguém veria.
+      if (feedKind === "recado") {
+        const err = new Error("Recado não aceita mídia");
+        err.statusCode = 400;
+        throw err;
+      }
       const processedFile = await processPortfolioMedia(file, media_type, { feedKind });
       const finalMediaType = processedFile.mediaMetadata?.media_type || media_type;
 

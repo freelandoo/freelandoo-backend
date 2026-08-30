@@ -128,7 +128,7 @@ module.exports = {
       [ids, since]
     );
 
-    const by_channel = { story_trampo: 0, story_rest: 0, bees: 0, feed: 0 };
+    const by_channel = { story_trampo: 0, story_rest: 0, bees: 0, feed: 0, recado: 0 };
     for (const row of story.rows) {
       if (row.kind === "trampo") by_channel.story_trampo = Number(row.cnt);
       // Bees v2: 'bee' soma no canal story_rest (o rest legado morre em 24h;
@@ -140,13 +140,17 @@ module.exports = {
     for (const row of impr.rows) {
       if (row.feed_kind === "bees") by_channel.bees = Number(row.cnt);
       else if (row.feed_kind === "feed") by_channel.feed = Number(row.cnt);
+      // Recado (mig 209) é canal próprio: somar no 'feed' esconderia quanto do
+      // alcance veio de texto — que é justamente o que se quer medir.
+      else if (row.feed_kind === "recado") by_channel.recado = Number(row.cnt);
     }
 
     const total =
       by_channel.story_trampo +
       by_channel.story_rest +
       by_channel.bees +
-      by_channel.feed;
+      by_channel.feed +
+      by_channel.recado;
 
     return {
       total,
