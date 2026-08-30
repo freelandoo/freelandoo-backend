@@ -68,6 +68,35 @@ class SubjectCommunityStorage {
     return r.rows[0];
   }
 
+  /**
+   * Assunto do pet escolhido DEPOIS, no headcard (mig 211). É upsert porque a
+   * linha nasce junto da comunidade, mas um pet criado antes desta migration
+   * pode não ter linha — e a página não pode quebrar por causa disso.
+   */
+  static async upsertPet(conn, id_profile, pet) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_pet
+         (id_profile, species, id_breed, breed_label, is_mixed, birth_year)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id_profile) DO UPDATE
+          SET species     = EXCLUDED.species,
+              id_breed    = EXCLUDED.id_breed,
+              breed_label = EXCLUDED.breed_label,
+              is_mixed    = EXCLUDED.is_mixed,
+              birth_year  = EXCLUDED.birth_year
+       RETURNING id_profile, species, id_breed, breed_label, is_mixed, birth_year`,
+      [
+        id_profile,
+        pet.species ?? null,
+        pet.id_breed ?? null,
+        pet.breed_label ?? null,
+        !!pet.is_mixed,
+        pet.birth_year ?? null,
+      ]
+    );
+    return r.rows[0];
+  }
+
   // ─── Games ──────────────────────────────────────────────────────────────────
   static async createGame(conn, id_profile, game) {
     const r = await conn.query(
@@ -76,6 +105,21 @@ class SubjectCommunityStorage {
        VALUES ($1, $2, $3, $4)
        RETURNING id_profile, platform, game_title, gamertag`,
       [id_profile, game.platform, game.game_title, game.gamertag ?? null]
+    );
+    return r.rows[0];
+  }
+
+  static async upsertGame(conn, id_profile, game) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_game
+         (id_profile, platform, game_title, gamertag)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id_profile) DO UPDATE
+          SET platform   = EXCLUDED.platform,
+              game_title = EXCLUDED.game_title,
+              gamertag   = EXCLUDED.gamertag
+       RETURNING id_profile, platform, game_title, gamertag`,
+      [id_profile, game.platform ?? null, game.game_title ?? null, game.gamertag ?? null]
     );
     return r.rows[0];
   }
@@ -131,6 +175,22 @@ class SubjectCommunityStorage {
         WHERE id_profile = $1`,
       [id_profile, id_car_model]
     );
+  }
+
+  /**
+   * Troca o nome SÓ enquanto ele ainda é o rascunho que o sistema deu. Quem já
+   * batizou a comunidade não pode ver o nome mudar sozinho por ter escolhido o
+   * modelo do carro.
+   */
+  static async renameIfPlaceholder(conn, id_profile, placeholder, newName) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile
+          SET display_name = $3, updated_at = NOW()
+        WHERE id_profile = $1 AND display_name = $2
+        RETURNING id_profile, display_name`,
+      [id_profile, placeholder, newName]
+    );
+    return r.rowCount ? r.rows[0] : null;
   }
 
   // ─── Leitura ────────────────────────────────────────────────────────────────

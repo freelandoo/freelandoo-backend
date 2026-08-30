@@ -30,6 +30,16 @@ const FEATURE_FLAG = Object.freeze({
   games: "games",
 });
 
+// A comunidade nasce ANTES do assunto (o menu da foto de perfil cria e já abre a
+// página no modo de edição). Estes nomes são o rascunho que o dono substitui —
+// e o backend os usa para saber se pode renomear sozinho quando o assunto
+// finalmente chega: nome que o dono trocou nunca é sobrescrito.
+const PLACEHOLDER_NAME = Object.freeze({
+  pet: "Meu pet",
+  car: "Meu carro",
+  games: "Meus games",
+});
+
 const PET_SPECIES = Object.freeze(["dog", "cat", "other"]);
 
 const GAME_PLATFORMS = Object.freeze([
@@ -82,10 +92,11 @@ function normalizeCommon(payload) {
  * a porta para um Golden marcado como vira-lata.
  */
 function validatePet(payload, breedRow) {
-  const { display_name } = normalizeCommon(payload);
-  if (!display_name) return { error: "Dê um nome ao seu pet." };
-  const species = String(payload?.species || "").trim();
-  if (!PET_SPECIES.includes(species)) {
+  // Espécie em branco é "ainda não escolhi", e não erro: a comunidade do pet
+  // existe antes de alguém dizer o que ele é (mig 211).
+  const speciesRaw = String(payload?.species || "").trim();
+  const species = speciesRaw || null;
+  if (species && !PET_SPECIES.includes(species)) {
     return { error: "Escolha se é cachorro, gato ou outro animal." };
   }
   // Raça é opcional de propósito: quem não sabe a raça do bicho que resgatou
@@ -114,9 +125,9 @@ function validatePet(payload, breedRow) {
 /** Games. Sem catálogo global: não existe "dono do Minecraft". */
 function validateGame(payload) {
   const game_title = trimOrNull(payload?.game_title, MAX.game_title);
-  if (!game_title) return { error: "Informe o jogo." };
-  const platform = String(payload?.platform || "").trim();
-  if (!GAME_PLATFORMS.includes(platform)) {
+  const platformRaw = String(payload?.platform || "").trim();
+  const platform = platformRaw || null;
+  if (platform && !GAME_PLATFORMS.includes(platform)) {
     return { error: "Escolha a plataforma." };
   }
   return {
@@ -148,6 +159,7 @@ function carDisplayName({ brand_label, model_label }) {
 
 module.exports = {
   SUBJECT_KINDS,
+  PLACEHOLDER_NAME,
   PERSONAL_KINDS,
   COLLECTIVE_KINDS,
   FEATURE_FLAG,

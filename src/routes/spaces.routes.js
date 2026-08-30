@@ -62,6 +62,36 @@ router.post(
   asyncHandler(SubjectCommunityController.createGame)
 );
 
+// ─── Edição do assunto (o headcard da própria comunidade) ────────────────────
+// A modalidade vem da ROTA, não do corpo: assim ninguém tenta transformar a
+// comunidade do cachorro na comunidade de um carro mandando outro `kind`.
+const withKind = (kind) => (req, _res, next) => {
+  req.subjectKind = kind;
+  next();
+};
+
+router.patch(
+  "/pets/:id_profile",
+  authMiddleware,
+  requireFeature("pet"),
+  withKind("pet"),
+  asyncHandler(SubjectCommunityController.updateSubject)
+);
+router.patch(
+  "/cars/:id_profile",
+  authMiddleware,
+  requireFeature("carro"),
+  withKind("car"),
+  asyncHandler(SubjectCommunityController.updateSubject)
+);
+router.patch(
+  "/games/:id_profile",
+  authMiddleware,
+  requireFeature("games"),
+  withKind("games"),
+  asyncHandler(SubjectCommunityController.updateSubject)
+);
+
 // ─── Meus espaços ─────────────────────────────────────────────────────────────
 // SEM requireFeature: o menu mostra o que a pessoa já tem. Se o carro for
 // desligado no Painel de Controle, a comunidade que ela fundou não desaparece

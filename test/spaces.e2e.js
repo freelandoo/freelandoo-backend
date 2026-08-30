@@ -164,8 +164,13 @@ async function main() {
   // ═══ 2. Pet ═══════════════════════════════════════════════════════════
   console.log("\n━━━ 2. Pet ━━━");
 
+  // Sem modal (mig 211), nome deixou de ser obrigatorio na criacao: a comunidade
+  // nasce com o rascunho e o dono batiza dentro da pagina.
   const semNome = await SubjectCommunityService.createPet(dono, { species: "dog" });
-  check("pet sem nome é recusado", () => assert.ok(semNome.error));
+  check("pet sem nome nasce com o rascunho", () => {
+    assert.ok(!semNome.error, semNome.error);
+    assert.strictEqual(semNome.community.display_name, "Meu pet");
+  });
 
   const especieInvalida = await SubjectCommunityService.createPet(dono, {
     display_name: "Bicho",
@@ -348,6 +353,121 @@ async function main() {
   );
   fipeOffline = false;
 
+  // ═══ 4b. Criar vazio e escolher o assunto DENTRO da página (mig 211) ══
+  console.log("\n━━━ 4b. Sem modal: cria vazio, edita no headcard ━━━");
+
+  const petVazio = await SubjectCommunityService.createPet(dono, {});
+  check("pet nasce sem nome e sem espécie escolhida", () => {
+    assert.ok(!petVazio.error, petVazio.error);
+    assert.strictEqual(petVazio.community.display_name, "Meu pet");
+    assert.strictEqual(petVazio.pet.species, null);
+  });
+
+  const petEditado = await SubjectCommunityService.updateSubject(
+    dono,
+    { id_profile: petVazio.community.id_profile, kind: "pet" },
+    { species: "cat", breed_slug: "siames", birth_year: 2022 }
+  );
+  check("o dono escolhe espécie e raça depois", () => {
+    assert.ok(!petEditado.error, petEditado.error);
+    assert.strictEqual(petEditado.subject.species, "cat");
+    assert.strictEqual(petEditado.subject.breed_label, "Siamês");
+    assert.strictEqual(petEditado.subject.birth_year, 2022);
+  });
+
+  const petAlheio = await SubjectCommunityService.updateSubject(
+    outro,
+    { id_profile: petVazio.community.id_profile, kind: "pet" },
+    { species: "dog" }
+  );
+  check("quem não é líder não edita o assunto", () => {
+    assert.strictEqual(petAlheio.statusCode, 403);
+  });
+
+  const kindErrado = await SubjectCommunityService.updateSubject(
+    dono,
+    { id_profile: petVazio.community.id_profile, kind: "car" },
+    { brand_code: "21", brand_label: "Honda", model_code: "4322", model_label: "Fit LX 1.4" }
+  );
+  check("não dá para transformar o pet em carro pela rota errada", () => {
+    assert.strictEqual(kindErrado.statusCode, 400);
+  });
+
+  const carroVazio = await SubjectCommunityService.createOrJoinCar(dono, {});
+  check("carro nasce sem modelo", () => {
+    assert.ok(!carroVazio.error, carroVazio.error);
+    assert.strictEqual(carroVazio.community.display_name, "Meu carro");
+  });
+
+  const carroEditado = await SubjectCommunityService.updateSubject(
+    dono,
+    { id_profile: carroVazio.community.id_profile, kind: "car" },
+    { brand_code: "21", brand_label: "Honda", model_code: "4322", model_label: "qualquer" }
+  );
+  check("escolher o modelo depois grava e usa o rótulo do catálogo", () => {
+    assert.ok(!carroEditado.error, carroEditado.error);
+    assert.strictEqual(carroEditado.subject.model_label, "Fit LX 1.4");
+  });
+
+  const nomeCarro = await db.query(
+    `SELECT display_name FROM public.tb_profile WHERE id_profile = $1`,
+    [carroVazio.community.id_profile]
+  );
+  check("o rascunho de nome vira o carro escolhido", () =>
+    assert.strictEqual(nomeCarro.rows[0].display_name, "Honda Fit LX 1.4")
+  );
+
+  const carroRival = await SubjectCommunityService.createOrJoinCar(outro, {});
+  const rivalConflito = await SubjectCommunityService.updateSubject(
+    outro,
+    { id_profile: carroRival.community.id_profile, kind: "car" },
+    { brand_code: "21", brand_label: "Honda", model_code: "4322", model_label: "Fit LX 1.4" }
+  );
+  check("modelo já tomado devolve 409 apontando a comunidade existente", () => {
+    assert.strictEqual(rivalConflito.statusCode, 409);
+    assert.strictEqual(
+      String(rivalConflito.existing_community.id_profile),
+      String(carroVazio.community.id_profile)
+    );
+  });
+
+  const gameVazio = await SubjectCommunityService.createGame(dono, {});
+  check("games nasce sem jogo escolhido", () => {
+    assert.ok(!gameVazio.error, gameVazio.error);
+    assert.strictEqual(gameVazio.community.display_name, "Meus games");
+    assert.strictEqual(gameVazio.game.game_title, null);
+  });
+
+  await SubjectCommunityService.updateSubject(
+    dono,
+    { id_profile: gameVazio.community.id_profile, kind: "games" },
+    { platform: "xbox", game_title: "Halo" }
+  );
+  const nomeGame = await db.query(
+    `SELECT display_name FROM public.tb_profile WHERE id_profile = $1`,
+    [gameVazio.community.id_profile]
+  );
+  check("escolher o jogo renomeia o rascunho", () =>
+    assert.strictEqual(nomeGame.rows[0].display_name, "Halo")
+  );
+
+  // Nome escolhido pelo dono NUNCA é sobrescrito.
+  const batizado = await SubjectCommunityService.createGame(dono, {
+    display_name: "Turma do Halo",
+  });
+  await SubjectCommunityService.updateSubject(
+    dono,
+    { id_profile: batizado.community.id_profile, kind: "games" },
+    { platform: "pc", game_title: "Doom" }
+  );
+  const nomeBatizado = await db.query(
+    `SELECT display_name FROM public.tb_profile WHERE id_profile = $1`,
+    [batizado.community.id_profile]
+  );
+  check("nome que o dono deu não é renomeado sozinho", () =>
+    assert.strictEqual(nomeBatizado.rows[0].display_name, "Turma do Halo")
+  );
+
   // ═══ 5. Tetos, XP e ranking ═══════════════════════════════════════════
   console.log("\n━━━ 5. Tetos e ranking ━━━");
 
@@ -423,9 +543,9 @@ async function main() {
   const spaces = await SubjectCommunityService.mySpaces(dono);
   check("agrupa os espaços por modalidade", () => {
     assert.ok(!spaces.error, spaces.error);
-    assert.strictEqual(spaces.spaces.pet.length, 3);
-    assert.strictEqual(spaces.spaces.games.length, 1);
-    assert.strictEqual(spaces.spaces.car.length, 2);
+    assert.strictEqual(spaces.spaces.pet.length, 5);
+    assert.strictEqual(spaces.spaces.games.length, 3);
+    assert.strictEqual(spaces.spaces.car.length, 3);
     assert.strictEqual(spaces.spaces.common.length, 0);
   });
   check("o rótulo do assunto vem junto (o menu mostra a raça)", () => {

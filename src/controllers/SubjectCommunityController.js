@@ -44,6 +44,16 @@ class SubjectCommunityController {
     return sendServiceResult(res, result);
   }
 
+  // ─── Edição do assunto dentro da página (sem modal) ─────────────────────────
+  static async updateSubject(req, res) {
+    const result = await SubjectCommunityService.updateSubject(
+      req.user,
+      { id_profile: req.params.id_profile, kind: req.subjectKind },
+      req.body || {}
+    );
+    return sendServiceResult(res, result);
+  }
+
   // ─── Menu da foto de perfil ─────────────────────────────────────────────────
   static async mySpaces(req, res) {
     const result = await SubjectCommunityService.mySpaces(req.user);

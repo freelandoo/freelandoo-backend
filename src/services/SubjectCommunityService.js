@@ -79,7 +79,11 @@ class SubjectCommunityService {
         const gate = await this._assertEnabled("pet");
         if (gate) return gate;
 
+        // Nome é opcional: o menu da foto de perfil cria a comunidade ANTES de
+        // perguntar qualquer coisa e abre a página já em modo de edição, onde o
+        // dono batiza e escolhe a raça (decisão do Alex: "sem modal").
         const { display_name, bio } = Subject.normalizeCommon(payload);
+        const name = display_name || Subject.PLACEHOLDER_NAME.pet;
         // A raça é resolvida ANTES da validação: é ela que decide se o bicho é
         // vira-lata, e essa decisão não pode vir do cliente.
         const breed = await SubjectCommunityStorage.getBreed(pool, {
@@ -87,7 +91,7 @@ class SubjectCommunityService {
           species: payload?.species,
           slug: payload?.breed_slug,
         });
-        const pet = Subject.validatePet({ ...payload, display_name }, breed);
+        const pet = Subject.validatePet(payload, breed);
         if (pet.error) return { error: pet.error, statusCode: 400 };
 
         const client = await pool.connect();
@@ -96,7 +100,7 @@ class SubjectCommunityService {
           const community = await this._createShell(client, {
             id_user,
             kind: "pet",
-            display_name,
+            display_name: name,
             bio,
             avatar_url: payload?.avatar_url,
           });
@@ -137,9 +141,10 @@ class SubjectCommunityService {
         const game = Subject.validateGame(payload);
         if (game.error) return { error: game.error, statusCode: 400 };
         // Sem nome próprio a comunidade se chama como o jogo — é o que a pessoa
-        // esperaria ver, e evita um campo obrigatório a mais no cadastro.
+        // esperaria ver. Sem jogo escolhido ainda, fica o rascunho, que o dono
+        // troca no headcard.
         const { display_name, bio } = Subject.normalizeCommon(payload);
-        const name = display_name || game.game_title;
+        const name = display_name || game.game_title || Subject.PLACEHOLDER_NAME.games;
 
         const client = await pool.connect();
         try {
@@ -209,6 +214,13 @@ class SubjectCommunityService {
         if (!id_user) return { error: "Usuário não autenticado" };
         const gate = await this._assertEnabled("car");
         if (gate) return gate;
+
+        // Sem marca/modelo no corpo, a comunidade nasce VAZIA e o modelo é
+        // escolhido no headcard (mig 211). É o caminho do menu da foto de
+        // perfil: criar primeiro, perguntar depois, dentro da página.
+        if (!payload?.brand_code && !payload?.model_code) {
+          return this._createEmptyCar(id_user, payload);
+        }
 
         const car = Subject.validateCar(payload);
         if (car.error) return { error: car.error, statusCode: 400 };
@@ -287,6 +299,154 @@ class SubjectCommunityService {
         } finally {
           client.release();
         }
+      }
+    );
+  }
+
+  /** Comunidade de carro sem modelo ainda — o dono escolhe dentro da página. */
+  static async _createEmptyCar(id_user, payload) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const community = await this._createShell(client, {
+        id_user,
+        kind: "car",
+        display_name:
+          Subject.normalizeCommon(payload).display_name || Subject.PLACEHOLDER_NAME.car,
+        bio: Subject.normalizeCommon(payload).bio,
+        avatar_url: payload?.avatar_url,
+      });
+      await client.query("COMMIT");
+      return { community, created: true, joined: false };
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        /* noop */
+      }
+      log.error("createEmptyCar.fail", { id_user, error: err.message });
+      return { error: "Não foi possível abrir a comunidade do carro." };
+    } finally {
+      client.release();
+    }
+  }
+
+  // ─── Edição do assunto (dentro da página, sem modal) ────────────────────────
+  /**
+   * Troca o assunto de uma comunidade de pet/carro/games. Só o líder.
+   *
+   * O carro é o caso interessante: escolher o modelo é o momento em que a
+   * unicidade passa a valer (até então `id_car_model` é NULL, e NULLs não
+   * colidem). Se o modelo já tem dono, devolvemos 409 APONTANDO a comunidade
+   * existente — o front oferece entrar nela, que é o que a pessoa queria.
+   */
+  static async updateSubject(user, params, payload) {
+    return runWithLogs(
+      log,
+      "updateSubject",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile, kind: params?.kind }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado" };
+
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+        if (community.kind !== params.kind) {
+          return { error: "Esta comunidade não é dessa modalidade.", statusCode: 400 };
+        }
+        if (String(community.id_leader_user) !== String(id_user)) {
+          return { error: "Só o líder pode editar.", statusCode: 403 };
+        }
+
+        if (params.kind === "pet") {
+          const breed = await SubjectCommunityStorage.getBreed(pool, {
+            id_breed: payload?.id_breed ? Number(payload.id_breed) : null,
+            species: payload?.species,
+            slug: payload?.breed_slug,
+          });
+          const pet = Subject.validatePet(payload, breed);
+          if (pet.error) return { error: pet.error, statusCode: 400 };
+          const row = await SubjectCommunityStorage.upsertPet(pool, params.id_profile, pet);
+          return { subject: { kind: "pet", ...row } };
+        }
+
+        if (params.kind === "games") {
+          const game = Subject.validateGame(payload);
+          if (game.error) return { error: game.error, statusCode: 400 };
+          const row = await SubjectCommunityStorage.upsertGame(pool, params.id_profile, game);
+          if (game.game_title) {
+            await SubjectCommunityStorage.renameIfPlaceholder(
+              pool,
+              params.id_profile,
+              Subject.PLACEHOLDER_NAME.games,
+              game.game_title
+            );
+          }
+          return { subject: { kind: "games", ...row } };
+        }
+
+        // Carro
+        const car = Subject.validateCar(payload);
+        if (car.error) return { error: car.error, statusCode: 400 };
+        const check = await fipe.verifyModel(car);
+        if (check.verified === false) {
+          return { error: "Modelo não encontrado na tabela FIPE.", statusCode: 400 };
+        }
+        const model = {
+          ...car,
+          brand_label: check.brand_label || car.brand_label,
+          model_label: check.model_label || car.model_label,
+          source: check.verified ? "fipe" : "manual",
+        };
+        const catalog = await SubjectCommunityStorage.getOrCreateCarModel(pool, model);
+
+        const existing = await SubjectCommunityStorage.findCarCommunity(
+          pool,
+          catalog.id_car_model
+        );
+        if (existing && String(existing.id_profile) !== String(params.id_profile)) {
+          return {
+            error: "Esse modelo já tem comunidade.",
+            statusCode: 409,
+            existing_community: {
+              id_profile: existing.id_profile,
+              display_name: existing.display_name,
+            },
+          };
+        }
+
+        try {
+          await SubjectCommunityStorage.attachCarModel(
+            pool,
+            params.id_profile,
+            catalog.id_car_model
+          );
+        } catch (err) {
+          if (err.code === UNIQUE_VIOLATION) {
+            // Corrida perdida entre a consulta e o UPDATE: outra pessoa fincou
+            // o mesmo modelo. Quem manda é o índice.
+            const winner = await SubjectCommunityStorage.findCarCommunity(
+              pool,
+              catalog.id_car_model
+            );
+            return {
+              error: "Esse modelo já tem comunidade.",
+              statusCode: 409,
+              existing_community: winner
+                ? { id_profile: winner.id_profile, display_name: winner.display_name }
+                : null,
+            };
+          }
+          throw err;
+        }
+
+        await SubjectCommunityStorage.renameIfPlaceholder(
+          pool,
+          params.id_profile,
+          Subject.PLACEHOLDER_NAME.car,
+          Subject.carDisplayName(model)
+        );
+        return { subject: { kind: "car", ...catalog } };
       }
     );
   }
