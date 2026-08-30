@@ -39,7 +39,13 @@ class CommunityStorage {
           -- bairro são utilidade do lugar onde a pessoa mora, não um produto.
           -- Ninguém pode ficar sem a comunidade do próprio prédio porque já
           -- participa de comunidades temáticas demais.
-          AND community_kind NOT IN ('condo', 'neighborhood')
+          --
+          -- Pet, carro e games (mig 210) entram pela MESMA razão: a comunidade
+          -- do próprio cachorro é utilidade pessoal. Cobrar ingresso por ela
+          -- transformaria o teto vendável da comunidade temática em pedágio de
+          -- tudo o que a pessoa é.
+          AND community_kind NOT IN
+              ('condo', 'neighborhood', 'pet', 'car', 'games')
           AND deleted_at IS NULL`,
       [id_user]
     );
@@ -52,7 +58,8 @@ class CommunityStorage {
          FROM public.tb_community_member m
          JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
         WHERE m.id_user = $1
-          AND p.community_kind NOT IN ('condo', 'neighborhood')
+          AND p.community_kind NOT IN
+              ('condo', 'neighborhood', 'pet', 'car', 'games')
           AND p.deleted_at IS NULL`,
       [id_user]
     );
@@ -256,7 +263,8 @@ class CommunityStorage {
     return r.rowCount ? r.rows[0] : null;
   }
 
-  // kind: 'common' | 'academy' | 'condo' | null (todas). Condomínio é
+  // kind: 'common' | 'condo' | 'neighborhood' | 'pet' | 'car' | 'games' | null
+  // (todas). Condomínio é
   // pesquisável por NOME, BAIRRO ou CIDADE — nunca por rua (C4). A lista
   // pública também não devolve rua/número/CEP: isso só sai no getById para
   // membro confirmado/administrador.
@@ -299,10 +307,18 @@ class CommunityStorage {
               p.community_kind AS kind,
               p.condo_neighborhood,
               m.name AS enxame_name,
+              -- Rótulo do assunto das modalidades da mig 210. É o que o card da
+              -- vitrine mostra no lugar do enxame: pet e carro não têm enxame,
+              -- e um card sem nada embaixo do nome pareceria quebrado.
+              COALESCE(pet.breed_label, car.model_label, gm.game_title)
+                AS subject_label,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
                 WHERE cm.id_community_profile = p.id_profile) AS member_count
          FROM public.tb_profile p
          LEFT JOIN public.tb_machine m ON m.id_machine = p.id_machine
+         LEFT JOIN public.tb_community_pet  pet ON pet.id_profile = p.id_profile
+         LEFT JOIN public.tb_community_game gm  ON gm.id_profile  = p.id_profile
+         LEFT JOIN public.tb_car_model      car ON car.id_car_model = p.id_car_model
         WHERE ${where.join(" AND ")}
         ORDER BY p.xp_total DESC, p.created_at DESC
         LIMIT $${params.length - 1} OFFSET $${params.length}`,

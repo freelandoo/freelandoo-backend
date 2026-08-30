@@ -40,6 +40,7 @@ const communityPublicRoutes = require("./communityPublic.routes");
 const condoRoutes = require("./condo.routes");
 const residenceRoutes = require("./residence.routes");
 const neighborhoodRoutes = require("./neighborhood.routes");
+const spacesRoutes = require("./spaces.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
@@ -191,6 +192,11 @@ module.exports = (app) => {
   // por (cidade, bairro). Base própria pela mesma razão do condomínio — não
   // disputar rota com /communities/:id_profile, que serve as três modalidades.
   app.use("/neighborhoods", neighborhoodRoutes);
+  // Pet, carro e games (mig 210): modalidades de comunidade cujo assunto é uma
+  // coisa. Montadas na raiz porque `/me/spaces` — o que alimenta o menu da foto
+  // de perfil — atravessa TODAS as modalidades, inclusive a academia, e não
+  // caberia sob nenhuma base de modalidade.
+  app.use("/", spacesRoutes);
   app.use("/admin/booking-fees", bookingFeeAdminRoutes);
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);

@@ -27,7 +27,12 @@ class CommunityRankingService {
                 ROW_NUMBER() OVER (ORDER BY xp_total DESC, created_at ASC)
            FROM public.tb_profile
           WHERE is_community = TRUE AND deleted_at IS NULL
-            AND community_kind <> 'condo'
+            -- Pet e games ficam de fora junto do condomínio (mig 210): são
+            -- modalidades PESSOAIS, uma por bicho/jogo de cada dono. Uma
+            -- comunidade de 1 membro competindo com uma de 300 não mede nada.
+            -- Carro NÃO entra nesta lista: é uma por modelo no site inteiro,
+            -- coletiva de verdade.
+            AND community_kind NOT IN ('condo', 'pet', 'games')
          ON CONFLICT (season_number, id_community) DO UPDATE
            SET xp_total = EXCLUDED.xp_total,
                xp_level = EXCLUDED.xp_level,

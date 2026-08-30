@@ -80,7 +80,12 @@ class CommunityXpService {
               $1
          FROM public.tb_profile c
         WHERE c.is_community = TRUE AND c.deleted_at IS NULL
-          AND c.community_kind <> 'condo'
+          -- Pet e games ficam de fora junto do condomínio (mig 210): são
+          -- modalidades PESSOAIS, uma por bicho/jogo de cada dono. Uma
+          -- comunidade de 1 membro competindo com uma de 300 não mede nada.
+          -- Carro NÃO entra nesta lista: é uma por modelo no site inteiro,
+          -- coletiva de verdade.
+          AND c.community_kind NOT IN ('condo', 'pet', 'games')
        ON CONFLICT (id_community_profile) DO UPDATE
          SET accumulated_xp = public.tb_community_xp_accumulator.accumulated_xp +
                (SELECT COUNT(*) FROM public.tb_community_member m
@@ -98,7 +103,12 @@ class CommunityXpService {
       // prédio não é competição de enxame.
       `SELECT id_profile FROM public.tb_profile
         WHERE is_community = TRUE AND deleted_at IS NULL
-          AND community_kind <> 'condo'`
+          -- Pet e games ficam de fora junto do condomínio (mig 210): são
+          -- modalidades PESSOAIS, uma por bicho/jogo de cada dono. Uma
+          -- comunidade de 1 membro competindo com uma de 300 não mede nada.
+          -- Carro NÃO entra nesta lista: é uma por modelo no site inteiro,
+          -- coletiva de verdade.
+          AND community_kind NOT IN ('condo', 'pet', 'games')`
     );
     for (const row of r.rows) {
       await this.recalc(db, row.id_profile);

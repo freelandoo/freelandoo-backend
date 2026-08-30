@@ -78,6 +78,13 @@ const TERRITORIAL = Object.freeze({
 // os vazamentos C2 e C3.
 const TERRITORIAL_KINDS = new Set(["condo", "neighborhood"]);
 
+// Pet, carro e games (mig 210) são comunidades PÚBLICAS de assunto: existem
+// para serem achadas. Elas precisam estar declaradas aqui porque `policyFor`
+// manda modalidade desconhecida para a política mais restritiva — sem esta
+// linha as três nasceriam com contagem escondida e feed só para membro, e
+// ninguém entenderia por que a comunidade do Civic parece um condomínio.
+const SUBJECT_KINDS = new Set(["pet", "car", "games"]);
+
 /**
  * Política da comunidade. Modalidade desconhecida cai na MAIS RESTRITIVA de
  * propósito: se alguém adicionar um kind novo e esquecer de mapeá-lo aqui, o
@@ -86,7 +93,7 @@ const TERRITORIAL_KINDS = new Set(["condo", "neighborhood"]);
 function policyFor(community) {
   const kind = community?.kind ?? null;
   const privacy = community?.privacy ?? null;
-  if (kind === "common") {
+  if (kind === "common" || SUBJECT_KINDS.has(kind)) {
     return privacy === "private" ? THEMATIC_PRIVATE : THEMATIC_PUBLIC;
   }
   if (TERRITORIAL_KINDS.has(kind)) return TERRITORIAL;
@@ -134,6 +141,7 @@ function projectCommunity(row, tier) {
 
 module.exports = {
   TIER,
+  SUBJECT_KINDS,
   COUNTER_FIELDS,
   policyFor,
   resolveTier,

@@ -12,6 +12,8 @@ const CondoStorage = require("../storages/CondoStorage");
 const StoryStorage = require("../storages/StoryStorage");
 const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
 const CommunityPolicy = require("../utils/communityPolicy");
+const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
+const Subject = require("../utils/subjectCommunities");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { normalizeFeedKind } = require("../utils/feedKind");
 
@@ -224,9 +226,19 @@ class CommunityService {
           membership,
           isResident: !!resident.confirmed,
         });
+
+        // Pet, carro e games (mig 210): o assunto é o que dá identidade à
+        // página — sem ele o cabeçalho de "Rex" não diz que Rex é um vira-lata,
+        // e o do "Honda Civic" não diz de que marca ele é. É leitura pública:
+        // a comunidade existe para ser encontrada por esse rótulo.
+        const subject = Subject.isSubjectKind(community.kind)
+          ? await SubjectCommunityStorage.getSubject(pool, community.id_profile, community.kind)
+          : null;
+
         return {
           community: {
             ...CommunityPolicy.projectCommunity(community, tier),
+            ...(subject ? { subject } : {}),
             viewer_is_member: !!viewer_membership,
             viewer_role: viewer_membership,
             viewer_sub_status,

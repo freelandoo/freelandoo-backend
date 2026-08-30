@@ -23,7 +23,8 @@
     "test:residence": "node test/residence.e2e.js",
     "test:neighborhood": "node test/neighborhood.e2e.js",
     "test:condo-residence": "node test/condo-residence.e2e.js",
-    "test:recado": "node test/recado.e2e.js"
+    "test:recado": "node test/recado.e2e.js",
+    "test:spaces": "node test/spaces.e2e.js"
   },
   "repository": {
     "type": "git",
