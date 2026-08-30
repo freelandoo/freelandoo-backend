@@ -118,7 +118,9 @@ module.exports = {
           SELECT jsonb_build_object(
             'url', ppm.media_url,
             'type', ppm.media_type,
-            'thumbnail_url', ppm.thumbnail_url
+            'thumbnail_url', ppm.thumbnail_url,
+            'width', ppm.width,
+            'height', ppm.height
           )
           FROM public.tb_profile_portfolio_media ppm
           WHERE ppm.id_portfolio_item = ppi.id_portfolio_item

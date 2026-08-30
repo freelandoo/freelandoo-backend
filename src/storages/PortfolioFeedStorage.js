@@ -114,7 +114,11 @@ function buildCandidateQuery(mode) {
         jsonb_build_object(
           'url',           ppm.media_url,
           'type',          ppm.media_type,
-          'thumbnail_url', ppm.thumbnail_url
+          'thumbnail_url', ppm.thumbnail_url,
+          -- width/height: o card desenha a moldura na orientacao real da midia
+          -- (4:5, 1:1 ou 16:9). Sem eles o feed volta a assumir 4:5 pra tudo.
+          'width',         ppm.width,
+          'height',        ppm.height
         )
         ORDER BY ppm.sort_order, ppm.created_at
       ) AS media_json

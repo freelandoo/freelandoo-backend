@@ -11,6 +11,49 @@ const MB = 1024 * 1024;
 const POST_IMAGE_RATIO = 4 / 5;
 const CURTO_IMAGE_RATIO = 9 / 16;
 const RATIO_TOLERANCE = 0.01;
+
+// ─── Orientacoes aceitas em POST (feed_kind='feed') ────────────────────────
+// Retrato 4:5, quadrado 1:1 e paisagem 16:9 — as mesmas tres que o composer
+// oferece no passo de corte. Regra: o lado CURTO da saida e sempre 1080, entao
+// as tres tem a mesma "densidade" e o feed nunca recebe uma imagem menor que a
+// outra so por ser deitada.
+//
+// Postar NUNCA recusa por proporcao: o que nao bate com nenhuma das tres e
+// ENQUADRADO na mais proxima (crop centrado), igual ja acontecia com video.
+// Recusar era o que quebrava as superficies sem editor de corte (vaquinha,
+// mural da academia, upload direto do portfolio), onde o usuario escolhe o
+// arquivo cru e nao tem como cortar antes de enviar.
+const POST_ORIENTATIONS = [
+  { id: "4:5", ratio: 4 / 5, width: 1080, height: 1350 },
+  { id: "1:1", ratio: 1, width: 1080, height: 1080 },
+  { id: "16:9", ratio: 16 / 9, width: 1920, height: 1080 },
+];
+
+// Distancia em escala log: 3:4 fica igualmente longe de 4:5 e de 1:1 medindo
+// assim, o que casa com a percepcao. Em escala linear, ratios deitados (>1)
+// dominariam a conta e quase tudo cairia em 16:9.
+function pickPostOrientation(width, height) {
+  if (!width || !height) return POST_ORIENTATIONS[0];
+  const ratio = width / height;
+  const exact = POST_ORIENTATIONS.find((o) => isAspectRatio(width, height, o.ratio));
+  if (exact) return exact;
+  // Empate acontece de verdade: 4:3 fica a MESMA distancia de 1:1 e de 16:9.
+  // Nesses casos vence a orientacao que preserva o carater da foto — deitada
+  // continua deitada — em vez da ordem em que a lista foi escrita.
+  const ordered = ratio > 1 ? [...POST_ORIENTATIONS].reverse() : POST_ORIENTATIONS;
+  let best = ordered[0];
+  let bestDist = Infinity;
+  for (const o of ordered) {
+    const dist = Math.abs(Math.log(ratio / o.ratio));
+    // Margem: um empate matematico (4:3) chega aqui com ruido de ponto
+    // flutuante na 16a casa; sem ela o desempate pela ordem nao valeria nada.
+    if (dist < bestDist - 1e-9) {
+      bestDist = dist;
+      best = o;
+    }
+  }
+  return best;
+}
 const POST_IMAGE_MAX_BYTES = 3 * MB;
 const AVATAR_IMAGE_MAX_BYTES = 2 * MB;
 const MAX_IMAGE_INPUT_BYTES = 30 * MB;
@@ -52,6 +95,17 @@ async function detectFileType(buffer) {
 function isAspectRatio(width, height, targetRatio, tolerance = RATIO_TOLERANCE) {
   if (!width || !height) return false;
   return Math.abs(width / height - targetRatio) <= tolerance;
+}
+
+// sharp.metadata() le o arquivo ORIGINAL: num JPG de celular com EXIF de
+// rotacao (orientation 5..8) largura e altura vem trocadas em relacao ao que o
+// .rotate() vai produzir. Sem isso, uma foto em pe seria classificada como
+// paisagem e cortada em 16:9.
+function orientedDimensions(metadata) {
+  const width = metadata?.width || 0;
+  const height = metadata?.height || 0;
+  const swap = Number(metadata?.orientation) >= 5 && Number(metadata?.orientation) <= 8;
+  return swap ? { width: height, height: width } : { width, height };
 }
 
 function assertUsableDimensions(metadata, label = "imagem") {
@@ -166,21 +220,19 @@ async function processPostImage(file) {
 
   assertUsableDimensions(metadata, "imagem do post");
 
-  if (!isAspectRatio(metadata.width, metadata.height, POST_IMAGE_RATIO)) {
-    throw httpError("Essa imagem precisa ser cortada no formato 4:5 para aparecer no feed.");
-  }
+  // Enquadra na orientacao aceita mais proxima (4:5, 1:1 ou 16:9). Quando a
+  // imagem ja chega em uma delas — o caso do composer, que exporta exatamente
+  // nessas proporcoes — o "cover" so redimensiona e nada e cortado.
+  const dims = orientedDimensions(metadata);
+  const orientation = pickPostOrientation(dims.width, dims.height);
 
   const optimized = await compressSharpToMax(file.buffer, {
-    outputWidth: 1080,
-    outputHeight: 1350,
+    outputWidth: orientation.width,
+    outputHeight: orientation.height,
     resizeFit: "cover",
     maxSizeBytes: POST_IMAGE_MAX_BYTES,
     errorMessage: "A imagem do post precisa ter no maximo 3MB.",
   });
-
-  if (!isAspectRatio(optimized.width, optimized.height, POST_IMAGE_RATIO)) {
-    throw httpError("Essa imagem precisa ser cortada no formato 4:5 para aparecer no feed.");
-  }
 
   return buildProcessedFile(
     file,
@@ -191,6 +243,7 @@ async function processPostImage(file) {
       media_type: "image",
       width: optimized.width,
       height: optimized.height,
+      orientation: orientation.id,
     }
   );
 }
@@ -318,6 +371,41 @@ function runFfmpeg(args, timeoutMs = 180000) {
   });
 }
 
+// Le largura/altura do video a partir do stderr do ffmpeg — ffmpeg-static nao
+// traz ffprobe, entao e o mesmo truque do getVideoDuration. Sem saber o
+// enquadramento de origem so daria pra cortar todo video de post em 4:5 no
+// escuro, que era exatamente o problema.
+async function probeVideoDimensions(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegPath) { resolve(null); return; }
+    const child = spawn(ffmpegPath, ["-i", filePath, "-f", "null", "-"], { windowsHide: true });
+    let stderr = "";
+    child.stderr.on("data", (c) => {
+      stderr += c.toString();
+      if (stderr.length > 20000) stderr = stderr.slice(-20000);
+    });
+    child.on("error", () => resolve(null));
+    child.on("close", () => {
+      const line = stderr
+        .split(/\r?\n/)
+        .find((l) => /Stream #\d+:\d+.*Video:/.test(l));
+      if (!line) { resolve(null); return; }
+      // Exige 2+ digitos dos dois lados pra nao casar com codec tag tipo "0x1f".
+      const m = line.match(/(?:^|[\s,])(\d{2,5})x(\d{2,5})(?:[\s,\]]|$)/);
+      if (!m) { resolve(null); return; }
+      let width = Number(m[1]);
+      let height = Number(m[2]);
+      // Video de celular guarda a rotacao em side data e o ffmpeg ja a aplica
+      // no decode, entao em 90/270 o WxH do stream vem invertido.
+      const rot = stderr.match(/rotation of (-?\d+(?:\.\d+)?) degrees/);
+      if (rot && Math.abs(Number(rot[1])) % 180 === 90) {
+        const swap = width; width = height; height = swap;
+      }
+      resolve(width > 0 && height > 0 ? { width, height } : null);
+    });
+  });
+}
+
 async function extractVideoThumbnail(videoPath, tempDir) {
   const framePath = path.join(tempDir, `thumb-${crypto.randomUUID()}.png`);
 
@@ -394,12 +482,25 @@ async function processVideo(file, options = {}) {
 
   try {
     await fs.writeFile(inputPath, file.buffer);
-    // Quando o vídeo é destinado ao feed clássico (4:5), forçamos crop centrado
-    // para 1080x1350 — independente do aspect ratio original. Bees mantém o
-    // pipeline antigo (escala preservando aspect; aspect vertical é validado em outro lugar).
-    const force45 = options.aspect === "4:5";
-    const filter = force45
-      ? "crop=if(gt(a\\,0.8)\\,trunc(ih*4/5/2)*2\\,iw):if(gt(a\\,0.8)\\,ih\\,trunc(iw*5/4/2)*2),scale=1080:1350"
+    // Vídeo de POST (options.aspect === "post"): mede o enquadramento de
+    // origem, escolhe a orientação aceita mais próxima (4:5, 1:1 ou 16:9) e
+    // corta centrado só o excedente. Antes isso era um crop 4:5 fixo, que
+    // espremia qualquer vídeo deitado numa moldura em pé. Bees mantém o
+    // pipeline antigo (escala preservando aspect; aspect vertical é validado
+    // em outro lugar).
+    let orientation = null;
+    if (options.aspect === "post" || options.aspect === "4:5") {
+      const probed = await probeVideoDimensions(inputPath);
+      orientation = probed
+        ? pickPostOrientation(probed.width, probed.height)
+        : POST_ORIENTATIONS[0];
+    }
+    const filter = orientation
+      ? [
+          `crop=if(gt(a\\,${orientation.ratio})\\,trunc(ih*${orientation.ratio}/2)*2\\,iw)`,
+          `:if(gt(a\\,${orientation.ratio})\\,ih\\,trunc(iw/${orientation.ratio}/2)*2)`,
+          `,scale=${orientation.width}:${orientation.height}`,
+        ].join("")
       : "scale=if(gt(a\\,0.8)\\,trunc(min(iw\\,1080)/2)*2\\,-2):if(gt(a\\,0.8)\\,-2\\,trunc(min(ih\\,1350)/2)*2)";
 
     await runFfmpeg([
@@ -430,6 +531,12 @@ async function processVideo(file, options = {}) {
       throw httpError("O video otimizado ficou grande demais. Tente um arquivo menor.");
     }
 
+    // Sem isso a linha de midia do video nasce com width/height NULL e o feed
+    // nao tem como saber em que orientacao desenhar o player.
+    const outDimensions = orientation
+      ? { width: orientation.width, height: orientation.height }
+      : await probeVideoDimensions(outputPath);
+
     let thumbnail = null;
     try {
       thumbnail = await extractVideoThumbnail(outputPath, tempDir);
@@ -444,6 +551,10 @@ async function processVideo(file, options = {}) {
       outputName(file.originalname, "video/mp4"),
       {
         media_type: "video",
+        ...(outDimensions
+          ? { width: outDimensions.width, height: outDimensions.height }
+          : {}),
+        ...(orientation ? { orientation: orientation.id } : {}),
         ...(thumbnail
           ? {
               thumbnail_width: thumbnail.width,
@@ -476,8 +587,9 @@ async function processPortfolioMedia(file, mediaType, options = {}) {
     return options.feedKind === "bees" ? processCurtoImage(file) : processPostImage(file);
   }
   if (mediaType === "video") {
-    // feedKind='feed' → vídeo é cropado pra 4:5; 'bees' → mantém vertical.
-    const aspect = options.feedKind === "feed" ? "4:5" : null;
+    // feedKind='feed' → vídeo é enquadrado numa das 3 orientações de post
+    // (4:5, 1:1, 16:9); 'bees' → mantém vertical.
+    const aspect = options.feedKind === "feed" ? "post" : null;
     return processVideo(file, aspect ? { aspect } : {});
   }
   throw httpError("Tipo de arquivo nao permitido");
@@ -760,6 +872,8 @@ async function compressVideoFile(inputPath, outDir, options = {}) {
 }
 
 module.exports = {
+  POST_ORIENTATIONS,
+  pickPostOrientation,
   POST_IMAGE_MAX_BYTES,
   AVATAR_IMAGE_MAX_BYTES,
   MAX_VIDEO_INPUT_BYTES,

@@ -683,7 +683,9 @@ class CommunityStorage {
        LEFT JOIN public.tb_audio_track aud ON aud.id_audio_track = ppi.audio_track_id AND aud.is_active = TRUE
        LEFT JOIN LATERAL (
          SELECT jsonb_agg(jsonb_build_object(
-           'url', ppm.media_url, 'type', ppm.media_type, 'thumbnail_url', ppm.thumbnail_url
+           'url', ppm.media_url, 'type', ppm.media_type, 'thumbnail_url', ppm.thumbnail_url,
+           -- orientacao real da midia (4:5, 1:1 ou 16:9) — ver PortfolioFeedStorage
+           'width', ppm.width, 'height', ppm.height
          ) ORDER BY ppm.sort_order, ppm.created_at) AS media_json
          FROM public.tb_profile_portfolio_media ppm
          WHERE ppm.id_portfolio_item = ppi.id_portfolio_item AND ppm.is_active = TRUE
