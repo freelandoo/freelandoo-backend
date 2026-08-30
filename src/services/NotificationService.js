@@ -755,6 +755,107 @@ class NotificationService {
       payload: { id_residence: Number(id_residence), by_proof: true },
     });
   }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Condomínio no núcleo territorial (mig 206). MESMA regra de privacidade da
+  // seção acima, e ela aperta mais aqui: no condomínio o vizinho conhece o
+  // prédio, então citar "apto 302" na notificação diria a quem espia a tela de
+  // bloqueio exatamente onde a disputa está acontecendo. Viajam só os ids.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // Alguém diz morar no SEU apartamento: você aceita como família ou contesta.
+  static async notifyCondoFamilyRequest({
+    recipient_user_id,
+    actor_user_id,
+    id_residence,
+    id_condo,
+    condo_name,
+  }) {
+    if (!recipient_user_id || !id_residence) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_condo || null,
+      type: "condo_family_request",
+      id_actor_user: actor_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo || null,
+      payload: {
+        id_residence: Number(id_residence),
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 80) : null,
+      },
+    });
+  }
+
+  // Contestação virou disputa: o síndico precisa saber, e os dois lados também.
+  static async notifyCondoDisputeOpened({
+    recipient_user_id,
+    actor_user_id,
+    id_condo,
+    id_dispute,
+    condo_name,
+  }) {
+    if (!recipient_user_id || !id_dispute) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_condo || null,
+      type: "condo_dispute_opened",
+      id_actor_user: actor_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo || null,
+      payload: {
+        id_dispute: Number(id_dispute),
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 80) : null,
+      },
+    });
+  }
+
+  // O comprovante chegou. Vai para o síndico — o arquivo NÃO viaja aqui, só o
+  // aviso de que existe algo a assistir no painel.
+  static async notifyCondoProofSubmitted({
+    recipient_user_id,
+    actor_user_id,
+    id_condo,
+    id_dispute,
+    condo_name,
+  }) {
+    if (!recipient_user_id || !id_dispute) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_condo || null,
+      type: "condo_proof_submitted",
+      id_actor_user: actor_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo || null,
+      payload: {
+        id_dispute: Number(id_dispute),
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 80) : null,
+      },
+    });
+  }
+
+  static async notifyCondoDisputeDecided({
+    recipient_user_id,
+    actor_user_id,
+    id_condo,
+    id_dispute,
+    approved,
+    condo_name,
+  }) {
+    if (!recipient_user_id || !id_dispute) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_condo || null,
+      type: "condo_dispute_decided",
+      id_actor_user: actor_user_id || null,
+      entity_type: "condo",
+      entity_id: id_condo || null,
+      payload: {
+        id_dispute: Number(id_dispute),
+        approved: !!approved,
+        condo_name: typeof condo_name === "string" ? condo_name.slice(0, 80) : null,
+      },
+    });
+  }
 }
 
 module.exports = NotificationService;

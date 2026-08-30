@@ -109,6 +109,53 @@ class ResidenceService {
   }
 
   /**
+   * A mesma reivindicação, mas para uma unidade que o usuário ESCOLHEU de uma
+   * planta que já existe (condomínio, mig 205) em vez de digitar CEP+número.
+   *
+   * Existe para que o condomínio não reimplemente os guards: bloqueio de conta,
+   * recusa de menor (D15) e teto anti-oráculo continuam sendo os desta classe.
+   * O que ela pula é só a resolução de endereço — que no condomínio já foi
+   * feita uma vez, pelo gestor, e não precisa ser refeita por morador.
+   */
+  static async claimKnownUnit({ id_user, id_unit }, conn = pool) {
+    return runWithLogs(
+      log,
+      "claimKnownUnit",
+      // §11: a unidade não entra no log, pelo mesmo motivo que o CEP não entra.
+      () => ({ id_user }),
+      async () => {
+        if (!id_user) return { error: "Não autenticado.", statusCode: 401 };
+        if (!id_unit) return { error: "Escolha um apartamento.", statusCode: 400 };
+
+        const blocked = await this._assertNotBlocked(id_user, conn);
+        if (blocked) return blocked;
+
+        if (await isMinorUser(id_user, conn)) {
+          return {
+            error:
+              "Conta supervisionada não declara endereço: a residência vem do responsável.",
+            statusCode: 403,
+          };
+        }
+
+        const claimsToday = await ResidenceStorage.countClaimsToday(conn, id_user);
+        if (claimsToday >= MAX_CLAIMS_PER_DAY) {
+          return {
+            error: "Muitas reivindicações de residência hoje. Tente amanhã.",
+            statusCode: 429,
+          };
+        }
+
+        const link = await this._linkUser(conn, { id_unit, id_user });
+
+        this._afterClaim(id_user, id_unit, link).catch(() => {});
+
+        return { residence: link };
+      }
+    );
+  }
+
+  /**
    * Cria o vínculo no degrau certo. Roda com a unidade TRAVADA porque a decisão
    * depende da AUSÊNCIA de co-moradores: sem o lock, duas pessoas reivindicando
    * uma unidade vazia no mesmo instante virariam duas "primeiras", ambas

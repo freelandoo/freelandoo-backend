@@ -266,7 +266,23 @@ class ResidenceStorage {
 
   /* ------------------------------ comprovante ----------------------------- */
 
-  static async createProof(conn, { id_residence, storage_key, requested_by = null }) {
+  /**
+   * `reviewer_scope` (mig 206) diz QUEM lê o arquivo: 'platform' é o default do
+   * bairro (D13 — o gestor local é um vizinho), 'condo_leader' é o síndico. A
+   * coluna existe para que o service não precise deduzir isso do tipo da
+   * comunidade na hora de listar — deduzir é como se constroem vazamentos.
+   */
+  static async createProof(
+    conn,
+    {
+      id_residence,
+      storage_key,
+      requested_by = null,
+      reviewer_scope = "platform",
+      id_condo = null,
+      media_kind = "document",
+    }
+  ) {
     // Reenviar substitui o que estava em análise em vez de empilhar (o índice
     // parcial ux_residence_proof_pending garante um só pendente por vínculo).
     await conn.query(
@@ -277,10 +293,11 @@ class ResidenceStorage {
       [id_residence]
     );
     const r = await conn.query(
-      `INSERT INTO public.tb_residence_proof (id_residence, storage_key, requested_by)
-            VALUES ($1, $2, $3)
+      `INSERT INTO public.tb_residence_proof
+         (id_residence, storage_key, requested_by, reviewer_scope, id_condo, media_kind)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [id_residence, storage_key, requested_by]
+      [id_residence, storage_key, requested_by, reviewer_scope, id_condo, media_kind]
     );
     return r.rows[0];
   }

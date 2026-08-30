@@ -2,6 +2,8 @@ const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const requireFeature = require("../middlewares/requireFeature");
 const CondoController = require("../controllers/CondoController");
+const CondoResidenceController = require("../controllers/CondoResidenceController");
+const uploadResidenceProof = require("../middlewares/uploadResidenceProof");
 const asyncHandler = require("../utils/asyncHandler");
 
 // Tudo aqui é área interna do condomínio: exige login E a flag `condominio`
@@ -13,6 +15,44 @@ router.use(authMiddleware, requireFeature("condominio"));
 
 // Fila do modal de enquete — ANTES de /:id_condo, senão é capturada por ele.
 router.get("/polls/pending", asyncHandler(CondoController.listPendingPolls));
+
+/* ------------------- planta e moradores (núcleo territorial) --------------- */
+// Migs 205/206. Convive com as rotas legadas de `/claims/*` logo abaixo: elas
+// continuam montadas porque clients antigos ainda as chamam, mas a verdade da
+// ocupação passou a ser `tb_residence_member` — não escrever mais em
+// `tb_condo_unit.id_holder_user` a partir daqui.
+router.get("/:id_condo/plant", asyncHandler(CondoResidenceController.getPlant));
+router.post("/:id_condo/plant/blocks", asyncHandler(CondoResidenceController.createBlock));
+router.post("/:id_condo/plant/units", asyncHandler(CondoResidenceController.createUnit));
+router.delete(
+  "/:id_condo/plant/units/:id_unit",
+  asyncHandler(CondoResidenceController.deleteUnit)
+);
+
+router.get("/:id_condo/residents", asyncHandler(CondoResidenceController.listResidents));
+router.post("/:id_condo/residence/claim", asyncHandler(CondoResidenceController.claimUnit));
+router.post(
+  "/:id_condo/residence/:id_residence/respond",
+  asyncHandler(CondoResidenceController.respondToClaim)
+);
+
+// Disputas. `/disputes` (lista) antes de `/disputes/:id_dispute/...` não é
+// necessário aqui porque os verbos diferem, mas a ordem fica explícita mesmo
+// assim — a próxima rota estática que alguém acrescentar já nasce no lugar.
+router.get("/:id_condo/disputes", asyncHandler(CondoResidenceController.listDisputes));
+router.post(
+  "/:id_condo/disputes/:id_dispute/proof",
+  uploadResidenceProof.single("file"),
+  asyncHandler(CondoResidenceController.submitProof)
+);
+router.get(
+  "/:id_condo/disputes/:id_dispute/proof/:id_proof/url",
+  asyncHandler(CondoResidenceController.getProofUrl)
+);
+router.post(
+  "/:id_condo/disputes/:id_dispute/decide",
+  asyncHandler(CondoResidenceController.decideDispute)
+);
 
 /* -------------------------------- estrutura ------------------------------- */
 router.get("/:id_condo/structure", asyncHandler(CondoController.getStructure));

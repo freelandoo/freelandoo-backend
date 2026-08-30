@@ -1158,35 +1158,49 @@ class CommunityService {
             };
           }
 
-          // Condomínio: entrar é só o primeiro passo (vira "membro"); MORADOR
-          // confirmado é quem tem unidade aprovada (reivindicação). Por isso
-          // não exige subperfil nem consome o teto de participação.
-          if (community.kind !== "condo") {
-            const sub = await CommunityStorage.getHighestSubprofile(
-              client,
-              id_user
-            );
-            if (!sub.has_subprofile) {
-              await client.query("ROLLBACK");
-              return {
-                error: "Você precisa de pelo menos um subperfil para entrar.",
-              };
-            }
+          // Condomínio NÃO tem visitante (decisão do Alex, 2026-08-29). Entrar
+          // no prédio é dizer onde você mora: a entrada acontece em
+          // `CondoResidenceService.claimUnit`, que escolhe o apartamento na
+          // planta e cria a associação junto com o vínculo de morador.
+          //
+          // Recusar aqui é o que dá sentido ao resto: enquanto este caminho
+          // existisse, qualquer pessoa entraria pelo botão genérico de
+          // "Entrar" e apareceria na lista de membros do condomínio sem nunca
+          // ter dito em que apartamento mora.
+          if (community.kind === "condo") {
+            await client.query("ROLLBACK");
+            return {
+              error:
+                "Para entrar no condomínio, escolha seu apartamento na planta.",
+              statusCode: 409,
+              needs_claim: true,
+            };
+          }
 
-            const ent = await CommunityStorage.getEntitlement(client, id_user);
-            const memberships = await CommunityStorage.countMemberships(
-              client,
-              id_user
-            );
-            if (memberships >= ent.member_cap) {
-              await client.query("ROLLBACK");
-              return {
-                error:
-                  "Limite de participação atingido. Compre um ingresso para entrar em mais comunidades.",
-                member_cap: ent.member_cap,
-                memberships,
-              };
-            }
+          const sub = await CommunityStorage.getHighestSubprofile(
+            client,
+            id_user
+          );
+          if (!sub.has_subprofile) {
+            await client.query("ROLLBACK");
+            return {
+              error: "Você precisa de pelo menos um subperfil para entrar.",
+            };
+          }
+
+          const ent = await CommunityStorage.getEntitlement(client, id_user);
+          const memberships = await CommunityStorage.countMemberships(
+            client,
+            id_user
+          );
+          if (memberships >= ent.member_cap) {
+            await client.query("ROLLBACK");
+            return {
+              error:
+                "Limite de participação atingido. Compre um ingresso para entrar em mais comunidades.",
+              member_cap: ent.member_cap,
+              memberships,
+            };
           }
 
           await CommunityStorage.addMember(
