@@ -56,7 +56,6 @@ async function main() {
 
   const CommunityService = require("../src/services/CommunityService");
   const CommunityStorage = require("../src/storages/CommunityStorage");
-  const CondoStorage = require("../src/storages/CondoStorage");
   const pool = require("../src/databases");
 
   const db = new Client({ connectionString: DB_URL });
@@ -191,8 +190,28 @@ async function main() {
   });
 
   // Promove memberU a morador confirmado do condomínio.
-  const unit = await CondoStorage.createUnit(pool, condo, { id_block: null, number: "101" });
-  await CondoStorage.setUnitHolder(pool, unit.id_unit, memberU);
+  //
+  // Pelo caminho REAL (migs 205/207), não por `setUnitHolder`: a titularidade
+  // única de `tb_condo_unit` deixou de ser a verdade sobre quem mora onde, e um
+  // fixture que continuasse escrevendo lá testaria um caminho que produção não
+  // usa mais — passaria verde enquanto o site quebrava.
+  const CondoResidenceService = require("../src/services/CondoResidenceService");
+  const plantBlock = await CondoResidenceService.createBlock(
+    { id_user: leader },
+    { id_condo: condo },
+    { name: "Torre A", floors: 1, units_per_floor: 1, first_floor: 1 }
+  );
+  assert.ok(!plantBlock.error, `planta: ${plantBlock.error}`);
+  const condoPlant = await CondoResidenceService.getPlant(
+    { id_user: leader },
+    { id_condo: condo }
+  );
+  const claimed = await CondoResidenceService.claimUnit(
+    { id_user: memberU },
+    { id_condo: condo },
+    { id_unit: condoPlant.units[0].id_unit }
+  );
+  assert.ok(!claimed.error, `claim: ${claimed.error}`);
   const mCondoResident = await CommunityService.getMembers({ id_profile: condo }, V(memberU));
   check("condomínio libera morador confirmado", () => {
     assert.ok(Array.isArray(mCondoResident.members));
