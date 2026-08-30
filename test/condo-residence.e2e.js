@@ -18,6 +18,11 @@
 //   6. O comprovante é do REIVINDICANTE e a decisão é do SÍNDICO.
 //   7. A projeção da planta: quem não é morador não vê contagem por porta.
 //   8. Deletar apartamento com morador é RECUSADO (a FK é CASCADE em cadeia).
+//   9. O RESTO do condomínio (avisos, enquetes, situação do morador) lê a fonte
+//      NOVA. Esta seção nasceu de uma regressão real: essas três superfícies
+//      ainda perguntavam quem era o TITULAR à tabela legada, e como o fluxo
+//      novo só escreve em `tb_residence_member`, o morador novo publicava mas
+//      não recebia nada — falha silenciosa, a pior espécie.
 
 require("dotenv").config();
 
@@ -468,6 +473,78 @@ async function main() {
   check("apartamento vazio pode ser removido da planta", () => {
     assert.strictEqual(delEmpty.ok, true);
   });
+
+  // ═══ 9. O resto do condomínio segue a fonte nova ══════════════════════════
+  // Esta seção existe por causa de uma regressão real: avisos, enquetes e a
+  // lista de moradores ainda perguntavam "quem é o TITULAR desta unidade?" à
+  // tabela legada. Como o fluxo novo só escreve em `tb_residence_member`, o
+  // morador novo publicava, mas não RECEBIA nada — e falha silenciosa é a pior
+  // espécie.
+  console.log("\n━━━ 9. avisos, enquetes e moradores na fonte nova ━━━")
+
+  const CondoStorage = require("../src/storages/CondoStorage")
+  const CondoNoticeService = require("../src/services/CondoNoticeService")
+  const CondoPollStorage = require("../src/storages/CondoPollStorage")
+
+  const statusAna = await CondoStorage.getResidentStatus(pool, condo.id_profile, ana)
+  check("getResidentStatus enxerga o morador do fluxo NOVO", () => {
+    assert.strictEqual(statusAna.confirmed, true)
+    assert.ok(statusAna.units.length >= 1)
+  })
+
+  const statusZe = await CondoStorage.getResidentStatus(pool, condo.id_profile, ze)
+  check("e não promove quem nunca confirmou apartamento", () => {
+    assert.strictEqual(statusZe.confirmed, false)
+  })
+
+  const notice = await CondoNoticeService.create(
+    U(sindico),
+    P,
+    {
+      scope: "unit",
+      id_unit: unit101.id_unit,
+      title: "Vazamento",
+      body: "Cano do 101 está pingando na garagem.",
+    }
+  )
+  check("aviso direcionado encontra o apartamento na planta nova", () => {
+    assert.ok(!notice.error, notice.error)
+    assert.strictEqual(notice.notice.scope, "unit")
+  })
+  check("e é entregue aos DOIS moradores, não só ao primeiro", () => {
+    assert.strictEqual(notice.delivered_count, 2)
+  })
+
+  const anaNotices = await CondoNoticeService.list(U(ana), P, { scope: "mine" })
+  check("o morador do fluxo novo RECEBE o aviso da unidade dele", () => {
+    assert.ok(!anaNotices.error, anaNotices.error)
+    const ids = (anaNotices.notices || []).map((n) => String(n.id_notice))
+    assert.ok(ids.includes(String(notice.notice.id_notice)))
+  })
+
+  const carlaNotices = await CondoNoticeService.list(U(carla), P, { scope: "mine" })
+  check("e o vizinho de outro apartamento NÃO recebe", () => {
+    const ids = (carlaNotices.notices || []).map((n) => String(n.id_notice))
+    assert.ok(!ids.includes(String(notice.notice.id_notice)))
+  })
+
+  const voters = await CondoPollStorage.listResidentUserIds(pool, condo.id_profile)
+  check("o universo da enquete são os moradores da árvore nova", () => {
+    const set = new Set(voters.map(String))
+    assert.ok(set.has(String(ana)), "ana deveria votar")
+    assert.ok(set.has(String(bruno)), "bruno deveria votar")
+    assert.ok(!set.has(String(ze)), "ze não é morador")
+  })
+  check("quem tem duas unidades conta uma vez só", () => {
+    assert.strictEqual(voters.length, new Set(voters.map(String)).size)
+  })
+
+  const CondoService = require("../src/services/CondoService")
+  const legacyClaim = await CondoService.claimUnit(U(ze), P, { number: "103" })
+  check("a reivindicação LEGADA foi aposentada (não cria segunda verdade)", () => {
+    assert.ok(legacyClaim.error)
+    assert.strictEqual(legacyClaim.moved_to, "residence_claim")
+  })
 
   // ─── limpeza ─────────────────────────────────────────────────────────────
   await db.query(`DELETE FROM public.tb_profile WHERE id_profile = $1`, [

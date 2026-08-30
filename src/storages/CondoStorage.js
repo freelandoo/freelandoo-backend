@@ -205,13 +205,16 @@ class CondoStorage {
       ? `LEFT JOIN public.tb_user hu ON hu.id_user = p.id_holder_user`
       : "";
     const r = await conn.query(
+      // A vaga aponta para `tb_residence_unit` desde a mig 207 — a FK foi
+      // reapontada junto com os dados. JOIN na tb_condo_unit aqui devolveria
+      // o apartamento errado (os dois espaços de id se sobrepõem).
       `SELECT p.id_spot, p.code, p.id_unit,
-              u.number AS unit_number, b.name AS block_name,
+              u.label AS unit_number, b.name AS block_name,
               ${holderCols}
               (p.id_holder_user IS NOT NULL) AS is_taken
          FROM public.tb_condo_parking p
-         LEFT JOIN public.tb_condo_unit  u ON u.id_unit  = p.id_unit
-         LEFT JOIN public.tb_condo_block b ON b.id_block = u.id_block
+         LEFT JOIN public.tb_residence_unit u ON u.id_unit  = p.id_unit
+         LEFT JOIN public.tb_condo_block    b ON b.id_block = u.id_block
          ${holderJoin}
         WHERE p.id_condo = $1 ${filter}
         ORDER BY p.code ASC`,
@@ -372,16 +375,34 @@ class CondoStorage {
   /* --------------------------- situação do morador ------------------------ */
 
   // A pergunta central da feature: este usuário É morador confirmado?
-  // confirmed = titular de pelo menos UMA unidade. É o que libera avisos,
-  // anúncios, enquetes e a lista de vizinhos.
+  // É o que libera avisos, anúncios, enquetes e a lista de vizinhos.
+  //
+  // ⚠️ A FONTE MUDOU (mig 205). Antes: `tb_condo_unit.id_holder_user`, um
+  // titular por unidade. Agora: `tb_residence_member`, N moradores por unidade,
+  // alcançados pelo ENDEREÇO do condomínio (tb_address.id_condo_profile).
+  //
+  // Esta função continua existindo com a MESMA forma de retorno de propósito:
+  // ela é chamada pelo `CommunityService` (projeção da página), pelo
+  // `CondoService._context` (gate de avisos/anúncios/enquetes) e pelo claim de
+  // vaga. Trocar a fonte aqui conserta os três de uma vez — deixar qualquer um
+  // lendo a coluna legada faria morador NOVO não conseguir publicar, porque o
+  // fluxo novo só escreve em `tb_residence_member`.
+  //
+  // "morador" é `status='recognized' AND ended_at IS NULL` — sempre as duas
+  // metades, senão quem saiu continuaria com direito a voto.
   static async getResidentStatus(conn, id_condo, id_user) {
     if (!id_user) return { confirmed: false, pending: false, units: [], parking: [] };
     const units = await conn.query(
-      `SELECT u.id_unit, u.number, b.name AS block_name
-         FROM public.tb_condo_unit u
-         LEFT JOIN public.tb_condo_block b ON b.id_block = u.id_block
-        WHERE u.id_condo = $1 AND u.id_holder_user = $2
-        ORDER BY b.name NULLS FIRST, u.number ASC`,
+      `SELECT ru.id_unit, ru.label AS number, ru.floor, b.name AS block_name
+         FROM public.tb_residence_member rm
+         JOIN public.tb_residence_unit ru ON ru.id_unit = rm.id_unit
+         JOIN public.tb_address a ON a.id_address = ru.id_address
+         LEFT JOIN public.tb_condo_block b ON b.id_block = ru.id_block
+        WHERE a.id_condo_profile = $1
+          AND rm.id_user = $2
+          AND rm.status = 'recognized'
+          AND rm.ended_at IS NULL
+        ORDER BY b.name NULLS FIRST, ru.floor NULLS FIRST, ru.label_norm`,
       [id_condo, id_user]
     );
     const parking = await conn.query(
@@ -391,10 +412,19 @@ class CondoStorage {
         ORDER BY p.code ASC`,
       [id_condo, id_user]
     );
+    // "Pendente" também mudou de lugar: é o vínculo esperando os co-moradores
+    // se pronunciarem (degrau 1), não mais uma linha em tb_condo_claim.
+    // `contested` entra aqui porque, para a tela, os dois significam a mesma
+    // coisa — você pediu e ainda não terminou.
     const pending = await conn.query(
       `SELECT COUNT(*)::int AS n
-         FROM public.tb_condo_claim
-        WHERE id_condo = $1 AND id_user = $2 AND status = 'pending'`,
+         FROM public.tb_residence_member rm
+         JOIN public.tb_residence_unit ru ON ru.id_unit = rm.id_unit
+         JOIN public.tb_address a ON a.id_address = ru.id_address
+        WHERE a.id_condo_profile = $1
+          AND rm.id_user = $2
+          AND rm.status IN ('pending', 'contested')
+          AND rm.ended_at IS NULL`,
       [id_condo, id_user]
     );
     return {
@@ -407,16 +437,23 @@ class CondoStorage {
 
   // Lista de moradores. with_units = só administrador (ver quem mora onde).
   static async listResidents(conn, id_condo, { with_units = false } = {}) {
+    // Quem mora em qual apartamento sai da árvore nova (mig 205): N moradores
+    // por unidade, alcançados pelo ENDEREÇO do condomínio. `with_units` segue
+    // sendo só do administrador — a unidade do vizinho não é dado de vizinho.
     const unitCols = with_units
       ? `(SELECT COALESCE(
-             json_agg(json_build_object('id_unit', u.id_unit, 'number', u.number,
-                                        'block_name', b.name)
-                      ORDER BY u.number),
+             json_agg(json_build_object('id_unit', ru.id_unit, 'number', ru.label,
+                                        'floor', ru.floor, 'block_name', b.name)
+                      ORDER BY ru.label_norm),
              '[]'::json)
-            FROM public.tb_condo_unit u
-            LEFT JOIN public.tb_condo_block b ON b.id_block = u.id_block
-           WHERE u.id_condo = m.id_community_profile
-             AND u.id_holder_user = m.id_user) AS units,`
+            FROM public.tb_residence_member rm
+            JOIN public.tb_residence_unit ru ON ru.id_unit = rm.id_unit
+            JOIN public.tb_address a ON a.id_address = ru.id_address
+            LEFT JOIN public.tb_condo_block b ON b.id_block = ru.id_block
+           WHERE a.id_condo_profile = m.id_community_profile
+             AND rm.id_user = m.id_user
+             AND rm.status = 'recognized'
+             AND rm.ended_at IS NULL) AS units,`
       : "";
     const r = await conn.query(
       `SELECT m.id_user, m.role, m.joined_at,

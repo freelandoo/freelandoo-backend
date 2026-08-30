@@ -5,6 +5,11 @@
 // futuro). Assim uma enquete com prazo fecha sozinha, sem job/sweeper — mesma
 // escolha feita na vida do bee (BEE_ALIVE_SQL).
 
+const {
+  residentExistsSql,
+  residentUserIdsSql,
+} = require("../utils/condoResidentSql");
+
 const OPEN_SQL = `p.status = 'open' AND (p.closes_at IS NULL OR p.closes_at > NOW())`;
 
 class CondoPollStorage {
@@ -104,9 +109,7 @@ class CondoPollStorage {
          JOIN public.tb_profile c ON c.id_profile = p.id_condo
         WHERE ${OPEN_SQL}
           AND c.deleted_at IS NULL
-          AND EXISTS (SELECT 1 FROM public.tb_condo_unit u
-                       WHERE u.id_condo = p.id_condo
-                         AND u.id_holder_user = $1)
+          AND EXISTS (${residentExistsSql("p.id_condo", "$1")})
           AND NOT EXISTS (SELECT 1 FROM public.tb_condo_poll_vote v
                            WHERE v.id_poll = p.id_poll AND v.id_user = $1)
         ORDER BY p.created_at ASC
@@ -155,9 +158,9 @@ class CondoPollStorage {
   // notificação de abertura).
   static async listResidentUserIds(conn, id_condo) {
     const r = await conn.query(
-      `SELECT DISTINCT id_holder_user AS id_user
-         FROM public.tb_condo_unit
-        WHERE id_condo = $1 AND id_holder_user IS NOT NULL`,
+      // Universo de votantes = MORADORES (migs 205/207), não mais titulares
+      // únicos. Uma pessoa com duas unidades continua contando uma vez.
+      `${residentUserIdsSql("$1")}`,
       [id_condo]
     );
     return r.rows.map((row) => row.id_user);

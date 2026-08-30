@@ -80,6 +80,25 @@ class CondoResidenceStorage {
     return r.rows;
   }
 
+  /**
+   * Uma unidade, confirmando que ela é DESTE condomínio. O `id_condo` não é
+   * decoração: sem ele, um id de unidade de outro endereço passaria por
+   * qualquer rota que aceite unidade (aviso direcionado, exclusão, vaga).
+   */
+  static async getUnitInCondo(conn, id_condo, id_unit) {
+    const r = await conn.query(
+      `SELECT u.id_unit, u.id_block, u.label, u.floor, u.source,
+              b.name AS block_name
+         FROM public.tb_residence_unit u
+         JOIN public.tb_address a ON a.id_address = u.id_address
+         LEFT JOIN public.tb_condo_block b ON b.id_block = u.id_block
+        WHERE u.id_unit = $1 AND a.id_condo_profile = $2
+        LIMIT 1`,
+      [id_unit, id_condo]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
   static async listBlocks(conn, id_condo) {
     const r = await conn.query(
       `SELECT b.id_block, b.name, b.floors, b.units_per_floor, b.first_floor,

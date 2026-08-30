@@ -223,10 +223,35 @@ class CondoResidenceService {
           };
         }
 
-        const [blocks, rows] = await Promise.all([
+        const [blocks, rows, pendingReviews] = await Promise.all([
           CondoResidenceStorage.listBlocks(pool, params.id_condo),
           CondoResidenceStorage.listPlant(pool, ctx.address.id_address),
+          // As pendências que ESTE morador pode julgar neste prédio. Vêm com a
+          // planta porque é a mesma tela: quem abre o condomínio e tem alguém
+          // dizendo morar com ele precisa ver isso na hora, não caçar num
+          // painel. Vazia para quem não é morador de nenhuma unidade.
+          ctx.resident.recognized
+            ? ResidenceStorage.listPendingForJudge(pool, user.id_user)
+            : Promise.resolve([]),
         ]);
+
+        // O listPendingForJudge é global (bairro + condomínio); aqui só
+        // interessam as unidades DESTE endereço.
+        const unitIds = new Set(rows.map((u) => String(u.id_unit)));
+        const reviews = pendingReviews
+          .filter((p) => unitIds.has(String(p.id_unit)))
+          .map((p) => ({
+            id_residence: p.id_residence,
+            id_unit: p.id_unit,
+            unit_label: p.unit_label,
+            claimed_at: p.claimed_at,
+            pending_until: p.pending_until,
+            status: p.status,
+            my_vote: p.my_vote,
+            username: p.username,
+            nome: p.nome,
+            avatar: p.avatar,
+          }));
 
         const detailed = ctx.isAdmin || ctx.resident.recognized;
         const units = rows.map((u) => ({
@@ -249,6 +274,7 @@ class CondoResidenceService {
             is_resident: ctx.resident.recognized,
             is_pending: ctx.resident.pending,
             is_unrecognized: ctx.resident.unrecognized,
+            pending_reviews: reviews,
             units: ctx.resident.units.map((u) => ({
               id_residence: u.id_residence,
               id_unit: u.id_unit,

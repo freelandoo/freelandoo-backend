@@ -14,6 +14,9 @@ const pool = require("../databases");
 const CondoStorage = require("../storages/CondoStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
 const ResidenceStorage = require("../storages/ResidenceStorage");
+const CondoResidenceStorage = require("../storages/CondoResidenceStorage");
+const TerritoryStorage = require("../storages/TerritoryStorage");
+const ResidenceService = require("./ResidenceService");
 const NotificationService = require("./NotificationService");
 const CondoRules = require("../utils/condoRules");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -88,11 +91,33 @@ class CondoService {
         });
         if (ctx.error) return ctx;
 
-        const [blocks, units, parking] = await Promise.all([
-          CondoStorage.listBlocks(pool, params.id_condo),
-          CondoStorage.listUnits(pool, params.id_condo, { with_holder: ctx.isAdmin }),
+        // A planta vem da árvore nova (mig 205). O formato de saída é o MESMO
+        // (`number`, `block_name`, `is_taken`) porque o seletor de destino do
+        // aviso e o de vaga consomem isso — o que mudou foi a fonte, e é ela
+        // que precisa bater com os ids que as outras rotas aceitam.
+        const address = await TerritoryStorage.getAddressByCondo(
+          pool,
+          params.id_condo
+        );
+        const [blocks, plantUnits, parking] = await Promise.all([
+          CondoResidenceStorage.listBlocks(pool, params.id_condo),
+          address
+            ? CondoResidenceStorage.listPlant(pool, address.id_address)
+            : Promise.resolve([]),
           CondoStorage.listSpots(pool, params.id_condo, { with_holder: ctx.isAdmin }),
         ]);
+        const units = plantUnits.map((u) => ({
+          id_unit: u.id_unit,
+          id_block: u.id_block,
+          number: u.label,
+          floor: u.floor,
+          block_name: u.block_name,
+          is_taken: u.residents_count > 0,
+          // Contagem só para quem já é de dentro — a projeção é a mesma do
+          // getPlant, e por isso não pode divergir dela.
+          residents_count:
+            ctx.isAdmin || ctx.resident.confirmed ? u.residents_count : undefined,
+        }));
 
         return {
           blocks,
@@ -241,115 +266,25 @@ class CondoService {
   // O morador informa bloco + apartamento. Livre → aprovado na hora. Ocupado
   // por OUTRA pessoa → pendente, decisão da administração. A unidade é criada
   // se ainda não existir (o síndico não precisa cadastrar a planta inteira).
-  static async claimUnit(user, params, body) {
+  // ⚠️ APOSENTADA pela mig 205. A reivindicação de unidade virou vínculo de
+  // morador (`CondoResidenceService.claimUnit`), onde o apartamento tem N
+  // moradores e ninguém é removido em silêncio.
+  //
+  // O método continua existindo, e recusando, em vez de sumir: clients antigos
+  // ainda chamam esta rota, e deixá-la escrevendo em `tb_condo_unit` criaria
+  // uma SEGUNDA verdade sobre quem mora onde — que é como o dado diverge sem
+  // ninguém perceber.
+  static async claimUnit(user, params) {
     return runWithLogs(
       log,
-      "claimUnit",
+      "claimUnit.retired",
       () => ({ id_user: user?.id_user, id_condo: params?.id_condo }),
-      async () => {
-        const id_user = user?.id_user;
-        if (!id_user) return { error: "Usuário não autenticado" };
-
-        const number = clean(body?.number, MAX_UNIT_NUMBER);
-        if (!number) return { error: "Informe o número do apartamento.", statusCode: 400 };
-        const blockName = clean(body?.block_name, MAX_BLOCK_NAME);
-        const note = clean(body?.note, 280);
-
-        const client = await pool.connect();
-        try {
-          await client.query("BEGIN");
-
-          const condo = await CondoStorage.getCondo(client, params.id_condo);
-          if (!condo) {
-            await client.query("ROLLBACK");
-            return { error: "Condomínio não encontrado", statusCode: 404 };
-          }
-
-          // Reivindicar é o ato de entrar: quem ainda não é membro vira membro
-          // aqui (sem teto — condomínio não consome ingresso, mig 196).
-          await CommunityStorage.addMember(client, params.id_condo, id_user, "member");
-
-          let id_block = body?.id_block ? Number(body.id_block) : null;
-          if (!id_block && blockName) {
-            const block = await CondoStorage.createBlock(client, params.id_condo, blockName);
-            id_block = block?.id_block ?? null;
-          }
-
-          const unit = await CondoStorage.createUnit(client, params.id_condo, {
-            id_block,
-            number,
-          });
-          if (!unit) {
-            await client.query("ROLLBACK");
-            return { error: "Não foi possível registrar a unidade." };
-          }
-
-          if (String(unit.id_holder_user || "") === String(id_user)) {
-            await client.query("COMMIT");
-            return { ok: true, status: "approved", already: true, id_unit: unit.id_unit };
-          }
-
-          const free = !unit.id_holder_user;
-          const dup = await CondoStorage.getPendingClaim(client, {
-            id_user,
-            id_unit: unit.id_unit,
-          });
-          if (dup && !free) {
-            await client.query("COMMIT");
-            return { ok: true, status: "pending", id_claim: dup.id_claim, duplicated: true };
-          }
-
-          const claim = await CondoStorage.createClaim(client, {
-            id_condo: params.id_condo,
-            id_user,
-            target_type: "unit",
-            id_unit: unit.id_unit,
-            status: free ? "approved" : "pending",
-            note,
-          });
-
-          if (free) {
-            await CondoStorage.setUnitHolder(client, unit.id_unit, id_user);
-          }
-
-          await client.query("COMMIT");
-
-          if (!free) {
-            const label = CondoRules.unitLabel({
-              block_name: blockName,
-              number,
-            });
-            const admins = await this._adminUserIds(pool, params.id_condo);
-            for (const admin of admins) {
-              NotificationService.notifyCondoClaimPending({
-                admin_user_id: admin,
-                claimant_user_id: id_user,
-                id_condo: params.id_condo,
-                id_claim: claim.id_claim,
-                target_label: label,
-                condo_name: condo.display_name,
-              }).catch(() => {});
-            }
-          }
-
-          return {
-            ok: true,
-            status: free ? "approved" : "pending",
-            id_unit: unit.id_unit,
-            id_claim: claim.id_claim,
-          };
-        } catch (err) {
-          try {
-            await client.query("ROLLBACK");
-          } catch {
-            /* conexão pode estar inutilizável */
-          }
-          log.error("claimUnit.fail", { id_user, error: err.message });
-          return { error: "Não foi possível reivindicar a unidade." };
-        } finally {
-          client.release();
-        }
-      }
+      async () => ({
+        error:
+          "Escolha seu apartamento na planta do condomínio para entrar.",
+        statusCode: 409,
+        moved_to: "residence_claim",
+      })
     );
   }
 
@@ -509,102 +444,21 @@ class CondoService {
 
   // Aprovar TRANSFERE a titularidade (o morador antigo perde a unidade) e
   // arquiva as outras pendências do mesmo alvo.
-  static async decideClaim(user, params, body) {
+  // ⚠️ APOSENTADA pela mig 205, mesma razão do claimUnit: aprovar aqui chamava
+  // `setUnitHolder`, que TRANSFERIA a titularidade e derrubava o morador
+  // anterior sem registro (o conflito E1). Quem decide disputa agora é
+  // `CondoResidenceService.decideDispute`, e aprovar um NÃO expulsa o outro.
+  static async decideClaim(user, params) {
     return runWithLogs(
       log,
-      "decideClaim",
-      () => ({ id_user: user?.id_user, id_claim: params?.id_claim, action: body?.action }),
-      async () => {
-        const action = body?.action === "approve" ? "approved" : body?.action === "reject" ? "rejected" : null;
-        if (!action) return { error: "Ação inválida (approve|reject).", statusCode: 400 };
-
-        const client = await pool.connect();
-        try {
-          await client.query("BEGIN");
-
-          const ctx = await this._context(client, user?.id_user, params?.id_condo, {
-            require: "admin",
-          });
-          if (ctx.error) {
-            await client.query("ROLLBACK");
-            return ctx;
-          }
-
-          const claim = await CondoStorage.getClaim(client, params.id_condo, params.id_claim);
-          if (!claim) {
-            await client.query("ROLLBACK");
-            return { error: "Reivindicação não encontrada", statusCode: 404 };
-          }
-          if (claim.status !== "pending") {
-            await client.query("ROLLBACK");
-            return { error: "Esta reivindicação já foi decidida.", statusCode: 409 };
-          }
-
-          const resolved = await CondoStorage.resolveClaim(client, params.id_claim, {
-            status: action,
-            decided_by: user.id_user,
-          });
-          if (!resolved) {
-            await client.query("ROLLBACK");
-            return { error: "Esta reivindicação já foi decidida.", statusCode: 409 };
-          }
-
-          let losers = [];
-          if (action === "approved") {
-            if (claim.target_type === "unit") {
-              await CondoStorage.setUnitHolder(client, claim.id_unit, claim.id_user);
-            } else {
-              await CondoStorage.setSpotHolder(client, claim.id_spot, claim.id_user, null);
-            }
-            losers = await CondoStorage.rejectOtherPendingForTarget(client, {
-              id_claim: Number(params.id_claim),
-              id_unit: claim.id_unit,
-              id_spot: claim.id_spot,
-            });
-          }
-
-          await client.query("COMMIT");
-
-          const label =
-            claim.target_type === "unit"
-              ? CondoRules.unitLabel({ block_name: claim.block_name, number: claim.unit_number })
-              : `Vaga ${claim.spot_code}`;
-
-          NotificationService.notifyCondoClaimResolved({
-            claimant_user_id: claim.id_user,
-            admin_user_id: user.id_user,
-            id_condo: params.id_condo,
-            id_claim: claim.id_claim,
-            status: action,
-            target_label: label,
-            condo_name: ctx.condo.display_name,
-          }).catch(() => {});
-
-          for (const loser of losers) {
-            NotificationService.notifyCondoClaimResolved({
-              claimant_user_id: loser.id_user,
-              admin_user_id: user.id_user,
-              id_condo: params.id_condo,
-              id_claim: loser.id_claim,
-              status: "rejected",
-              target_label: label,
-              condo_name: ctx.condo.display_name,
-            }).catch(() => {});
-          }
-
-          return { ok: true, status: action };
-        } catch (err) {
-          try {
-            await client.query("ROLLBACK");
-          } catch {
-            /* noop */
-          }
-          log.error("decideClaim.fail", { id_user: user?.id_user, error: err.message });
-          return { error: "Não foi possível decidir a reivindicação." };
-        } finally {
-          client.release();
-        }
-      }
+      "decideClaim.retired",
+      () => ({ id_user: user?.id_user, id_claim: params?.id_claim }),
+      async () => ({
+        error:
+          "As reivindicações agora são decididas na área de disputas do condomínio.",
+        statusCode: 409,
+        moved_to: "condo_disputes",
+      })
     );
   }
 
@@ -627,13 +481,30 @@ class CondoService {
           return { error: "Informe a unidade ou a vaga.", statusCode: 400 };
         }
 
+        // Sair da UNIDADE é encerrar o vínculo de morador (mig 205), com
+        // `ended_at` e motivo — não apagar um titular. É a diferença entre
+        // histórico e amnésia: a carência do subsistema 6 vai ler esse rastro.
         if (id_unit) {
-          const unit = await CondoStorage.getUnit(pool, params.id_condo, id_unit);
+          const unit = await CondoResidenceStorage.getUnitInCondo(
+            pool,
+            params.id_condo,
+            id_unit
+          );
           if (!unit) return { error: "Unidade não encontrada", statusCode: 404 };
-          if (!ctx.isAdmin && String(unit.id_holder_user || "") !== String(user.id_user)) {
-            return { error: "Esta unidade não é sua.", statusCode: 403 };
-          }
-          await CondoStorage.setUnitHolder(pool, id_unit, null);
+
+          const mine = await ResidenceStorage.getActiveForUserInUnit(pool, {
+            id_unit,
+            id_user: user.id_user,
+          });
+          if (!mine) return { error: "Esta unidade não é sua.", statusCode: 403 };
+
+          const reason = body?.reason === "moved" ? "moved" : "left";
+          const out = await ResidenceService.leave({
+            id_residence: mine.id_residence,
+            id_user: user.id_user,
+            reason,
+          });
+          if (out?.error) return out;
           return { ok: true };
         }
 

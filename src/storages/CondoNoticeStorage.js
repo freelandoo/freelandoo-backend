@@ -3,12 +3,14 @@
 // avisos; aviso direcionado a uma unidade/vaga só é visível para o autor, o
 // responsável pelo alvo e a administração — o recorte é feito aqui no SQL.
 
+const { residentUnitIdsSql } = require("../utils/condoResidentSql");
+
 const SELECT_COLS = `
   n.id_notice, n.id_condo, n.id_author, n.scope, n.id_unit, n.id_spot,
   n.title, n.body, n.is_pinned, n.created_at,
   au.username AS author_username,
   au.nome     AS author_name,
-  u.number    AS unit_number,
+  u.label     AS unit_number,
   b.name      AS block_name,
   pk.code     AS spot_code,
   (r.id_user IS NOT NULL) AS is_read
@@ -16,7 +18,7 @@ const SELECT_COLS = `
 
 const JOINS = `
   JOIN public.tb_user au ON au.id_user = n.id_author
-  LEFT JOIN public.tb_condo_unit    u  ON u.id_unit  = n.id_unit
+  LEFT JOIN public.tb_residence_unit u  ON u.id_unit  = n.id_unit
   LEFT JOIN public.tb_condo_block   b  ON b.id_block = u.id_block
   LEFT JOIN public.tb_condo_parking pk ON pk.id_spot = n.id_spot
   LEFT JOIN public.tb_condo_notice_read r
@@ -59,8 +61,7 @@ class CondoNoticeStorage {
           n.scope = 'general'
           OR n.id_author = $2
           OR (n.id_unit IS NOT NULL AND n.id_unit IN (
-                SELECT id_unit FROM public.tb_condo_unit
-                 WHERE id_condo = $1 AND id_holder_user = $2))
+                ${residentUnitIdsSql("$1", "$2")}))
           OR (n.id_spot IS NOT NULL AND n.id_spot IN (
                 SELECT id_spot FROM public.tb_condo_parking
                  WHERE id_condo = $1 AND id_holder_user = $2))
@@ -73,8 +74,7 @@ class CondoNoticeStorage {
         AND n.scope <> 'general'
         AND (
           (n.id_unit IS NOT NULL AND n.id_unit IN (
-              SELECT id_unit FROM public.tb_condo_unit
-               WHERE id_condo = $1 AND id_holder_user = $2))
+              ${residentUnitIdsSql("$1", "$2")}))
           OR (n.id_spot IS NOT NULL AND n.id_spot IN (
               SELECT id_spot FROM public.tb_condo_parking
                WHERE id_condo = $1 AND id_holder_user = $2))
@@ -113,8 +113,7 @@ class CondoNoticeStorage {
           AND r.id_user IS NULL
           AND (
             (n.id_unit IS NOT NULL AND n.id_unit IN (
-                SELECT id_unit FROM public.tb_condo_unit
-                 WHERE id_condo = $1 AND id_holder_user = $2))
+                ${residentUnitIdsSql("$1", "$2")}))
             OR (n.id_spot IS NOT NULL AND n.id_spot IN (
                 SELECT id_spot FROM public.tb_condo_parking
                  WHERE id_condo = $1 AND id_holder_user = $2))

@@ -7,6 +7,7 @@
 const pool = require("../databases");
 const CondoService = require("./CondoService");
 const CondoStorage = require("../storages/CondoStorage");
+const CondoResidenceStorage = require("../storages/CondoResidenceStorage");
 const CondoNoticeStorage = require("../storages/CondoNoticeStorage");
 const NotificationService = require("./NotificationService");
 const CondoRules = require("../utils/condoRules");
@@ -77,20 +78,37 @@ class CondoNoticeService {
         let target = null;
 
         if (scope === "unit") {
+          // A unidade vem da árvore nova (migs 205/207). E o destinatário
+          // deixou de ser UM titular: o apartamento tem N moradores, e todos
+          // precisam receber o aviso — avisar só o primeiro seria escolher
+          // arbitrariamente quem fica sabendo que o cano estourou.
           id_unit = body?.id_unit ? Number(body.id_unit) : null;
           if (!id_unit) return { error: "Escolha o apartamento de destino.", statusCode: 400 };
-          const unit = await CondoStorage.getUnit(pool, params.id_condo, id_unit);
+          const unit = await CondoResidenceStorage.getUnitInCondo(
+            pool,
+            params.id_condo,
+            id_unit
+          );
           if (!unit) return { error: "Apartamento não encontrado", statusCode: 404 };
+          const residents = await CondoResidenceStorage.listUnitResidents(pool, id_unit);
           target = {
-            id_user: unit.id_holder_user,
-            label: CondoRules.unitLabel({ block_name: unit.block_name, number: unit.number }),
+            user_ids: residents
+              .filter((r) => r.status === "recognized")
+              .map((r) => r.id_user),
+            label: CondoRules.unitLabel({
+              block_name: unit.block_name,
+              number: unit.label,
+            }),
           };
         } else if (scope === "parking") {
           id_spot = body?.id_spot ? Number(body.id_spot) : null;
           if (!id_spot) return { error: "Escolha a vaga de destino.", statusCode: 400 };
           const spot = await CondoStorage.getSpot(pool, params.id_condo, id_spot);
           if (!spot) return { error: "Vaga não encontrada", statusCode: 404 };
-          target = { id_user: spot.id_holder_user, label: `Vaga ${spot.code}` };
+          target = {
+            user_ids: spot.id_holder_user ? [spot.id_holder_user] : [],
+            label: `Vaga ${spot.code}`,
+          };
         }
 
         const notice = await CondoNoticeStorage.create(pool, {
@@ -103,11 +121,11 @@ class CondoNoticeService {
           body: text,
         });
 
-        // Direcionado: só o responsável recebe. Unidade/vaga sem titular não
-        // notifica ninguém (o aviso fica registrado para a administração).
-        if (target?.id_user) {
+        // Direcionado: TODOS os moradores do alvo recebem. Unidade/vaga vazia
+        // não notifica ninguém (o aviso fica registrado para a administração).
+        for (const recipient of target?.user_ids || []) {
           NotificationService.notifyCondoNotice({
-            recipient_user_id: target.id_user,
+            recipient_user_id: recipient,
             author_user_id: user.id_user,
             id_condo: params.id_condo,
             id_notice: notice.id_notice,
@@ -119,7 +137,8 @@ class CondoNoticeService {
 
         return {
           notice,
-          delivered_to_holder: !!target?.id_user,
+          delivered_to_holder: (target?.user_ids || []).length > 0,
+          delivered_count: (target?.user_ids || []).length,
           target_label: target?.label ?? null,
         };
       }
