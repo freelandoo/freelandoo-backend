@@ -303,9 +303,21 @@ module.exports = {
 
   async listProfessors(db, id_academy) {
     const r = await db.query(
-      `SELECT p.id_user, p.created_at, u.username, u.nome AS user_nome
+      // id_profile = destino do "ver perfil" do professor: o perfil-conta
+      // (is_user_account) quando existe, senão o subperfil mais antigo. Clan
+      // fica fora — não é o corpo de ninguém.
+      `SELECT p.id_user, p.created_at, u.username, u.nome AS user_nome, pf.id_profile
          FROM public.tb_academy_professor p
          JOIN public.tb_user u ON u.id_user = p.id_user
+         LEFT JOIN LATERAL (
+           SELECT pr.id_profile
+             FROM public.tb_profile pr
+            WHERE pr.id_user = p.id_user
+              AND pr.deleted_at IS NULL
+              AND pr.is_clan = FALSE
+            ORDER BY pr.is_user_account DESC, pr.created_at ASC
+            LIMIT 1
+         ) pf ON TRUE
         WHERE p.id_academy = $1
         ORDER BY p.created_at ASC`,
       [id_academy]

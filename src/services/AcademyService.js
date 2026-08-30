@@ -146,7 +146,7 @@ class AcademyService {
           is_owner,
           is_professor,
           owner_profile_id,
-          professors: professors.map((p) => ({ id_user: p.id_user, username: p.username, nome: p.user_nome })),
+          professors: professors.map((p) => ({ id_user: p.id_user, username: p.username, nome: p.user_nome, id_profile: p.id_profile || null })),
           my_membership: my_membership
             ? {
                 membership_status: my_membership.membership_status,
@@ -187,7 +187,7 @@ class AcademyService {
       const member = await AcademyStorage.getMember(pool, id_academy, target_id_user);
       if (!member) return { error: "O professor precisa estar vinculado à academia (CPF) antes de ser promovido" };
       await AcademyStorage.addProfessor(pool, id_academy, target_id_user, id_user);
-      return { professors: (await AcademyStorage.listProfessors(pool, id_academy)).map((p) => ({ id_user: p.id_user, username: p.username, nome: p.user_nome })) };
+      return { professors: (await AcademyStorage.listProfessors(pool, id_academy)).map((p) => ({ id_user: p.id_user, username: p.username, nome: p.user_nome, id_profile: p.id_profile || null })) };
     });
   }
 
@@ -197,7 +197,7 @@ class AcademyService {
       if (!academy) return { error: "Academia não encontrada" };
       if (academy.id_owner_user !== id_user) return { error: "Sem permissão", statusCode: 403 };
       await AcademyStorage.removeProfessor(pool, id_academy, target_id_user);
-      return { professors: (await AcademyStorage.listProfessors(pool, id_academy)).map((p) => ({ id_user: p.id_user, username: p.username, nome: p.user_nome })) };
+      return { professors: (await AcademyStorage.listProfessors(pool, id_academy)).map((p) => ({ id_user: p.id_user, username: p.username, nome: p.user_nome, id_profile: p.id_profile || null })) };
     });
   }
 
