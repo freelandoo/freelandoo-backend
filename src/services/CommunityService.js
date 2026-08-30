@@ -9,6 +9,7 @@ const PolenStorage = require("../storages/PolenStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const CondoRules = require("../utils/condoRules");
 const CondoStorage = require("../storages/CondoStorage");
+const StoryStorage = require("../storages/StoryStorage");
 const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
 const CommunityPolicy = require("../utils/communityPolicy");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -1115,6 +1116,52 @@ class CommunityService {
   }
 
   // ─── Membros (Slice 2) ─────────────────────────────────────────────────────────
+  /**
+   * A faixa de bees do mural (mig 208). Bee é conteúdo INTERNO da comunidade:
+   * a mesma trava do feed vale aqui — comunidade privada e condomínio não
+   * mostram nada para quem está de fora. E no condomínio "de dentro" quer dizer
+   * MORADOR, não membro.
+   */
+  static async listBees(user, params) {
+    return runWithLogs(
+      log,
+      "listBees",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado", statusCode: 401 };
+
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+        const membership = await CommunityStorage.getMembership(
+          pool,
+          params.id_profile,
+          id_user
+        );
+        const isAdmin = membership?.role === "leader" || membership?.role === "vice";
+
+        if (community.kind === "condo") {
+          const resident = await CondoStorage.getResidentStatus(
+            pool,
+            params.id_profile,
+            id_user
+          );
+          if (!resident.confirmed && !isAdmin) {
+            return { bees: [], locked: true };
+          }
+        } else if (community.privacy === "private" && !membership) {
+          return { bees: [], locked: true };
+        }
+
+        const bees = await StoryStorage.listActiveByCommunity(pool, {
+          id_community: params.id_profile,
+        });
+        return { bees };
+      }
+    );
+  }
+
   static async join(user, params) {
     return runWithLogs(
       log,

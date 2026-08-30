@@ -85,6 +85,7 @@ class StoryStorage {
         duration_seconds, width, height, caption, metadata,
         audio_track_id, audio_start_ms, render_meta,
         location, links,
+        id_community,
         expires_at
       ) VALUES (
         $1, $2, $3,
@@ -92,6 +93,7 @@ class StoryStorage {
         $8, $9, $10, $11, COALESCE($12, '{}'::jsonb),
         $13, COALESCE($14, 0), $15,
         $16, COALESCE($17, '[]'::jsonb),
+        $18,
         NOW() + INTERVAL '7 days'
       )
       RETURNING ${STORY_COLUMNS.replace(/s\./g, "")}
@@ -114,9 +116,36 @@ class StoryStorage {
         data.render_meta ? JSON.stringify(data.render_meta) : null,
         data.location || null,
         data.links && data.links.length ? JSON.stringify(data.links) : null,
+        // Mig 208: NULL é o normal (bee do /bees e da StoryBar). Preenchido
+        // significa "este bee nasceu no mural daquela comunidade".
+        data.id_community || null,
       ]
     );
     return rows[0] || null;
+  }
+
+  /**
+   * A faixa de bees de uma comunidade. Usa a MESMA regra de vida do resto do
+   * sistema (BEE_ALIVE_SQL: 24h + 1h por ponto de engajamento, teto 7 dias) —
+   * duplicar a fórmula aqui faria o bee sumir do mural em uma hora diferente da
+   * que ele some do /bees, e ninguém entenderia por quê.
+   */
+  static async listActiveByCommunity(conn, { id_community, limit = 30 }) {
+    const { rows } = await conn.query(
+      `SELECT ${STORY_COLUMNS},
+              p.display_name AS profile_name,
+              p.avatar_url   AS profile_avatar,
+              us.username    AS author_username
+         FROM public.tb_story s
+         JOIN public.tb_profile p ON p.id_profile = s.id_profile
+         JOIN public.tb_user us ON us.id_user = s.id_user
+        WHERE s.id_community = $1
+          AND ${BEE_ALIVE_SQL}
+        ORDER BY s.created_at DESC
+        LIMIT $2`,
+      [id_community, Math.min(Number(limit) || 30, 100)]
+    );
+    return rows;
   }
 
   static async listActiveByUser(conn, { id_user }) {

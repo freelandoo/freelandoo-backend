@@ -111,6 +111,14 @@ router.delete(
   asyncHandler(CommunityController.deleteAnnouncement)
 );
 
+// Faixa de bees da comunidade (mig 208): os bees publicados no mural daqui,
+// vivos pela MESMA regra do resto do site (24h + 1h por ponto, teto 7 dias).
+router.get(
+  "/:id_profile/bees",
+  authMiddleware,
+  asyncHandler(CommunityController.listBees)
+);
+
 // Feed estilo grupo: liga (membro) / desliga (autor ou líder) um post.
 router.post(
   "/:id_profile/feed",

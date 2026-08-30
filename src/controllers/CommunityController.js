@@ -123,6 +123,11 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async listBees(req, res) {
+    const result = await CommunityService.listBees(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async linkFeedItem(req, res) {
     const result = await CommunityService.linkFeedItem(req.user, req.params, req.body || {});
     return sendServiceResult(res, result, 201);

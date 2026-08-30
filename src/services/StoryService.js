@@ -1,5 +1,7 @@
 const pool = require("../databases");
 const StoryStorage = require("../storages/StoryStorage");
+const CommunityStorage = require("../storages/CommunityStorage");
+const CondoStorage = require("../storages/CondoStorage");
 const AudioTrackStorage = require("../storages/AudioTrackStorage");
 const uploadStoryVideoToR2 = require("../integrations/r2/uploadStoryVideo");
 const presignStory = require("../integrations/r2/presignStoryUpload");
@@ -211,6 +213,45 @@ function mapFeedEntry(row) {
 }
 
 class StoryService {
+  /**
+   * O bee publicado no mural de uma comunidade pertence a ela (mig 208). Aqui
+   * se confere que o autor PODE publicar lá — a mesma régua do post e do curto:
+   * no condomínio, MORADOR; nas demais, membro.
+   *
+   * Devolve `{ error }` quando não pode, `null` quando pode e não há comunidade.
+   * Silenciar isso e gravar o bee global seria pior do que recusar: o autor
+   * acharia que publicou no prédio.
+   */
+  static async _assertCanPostInCommunity(id_community, id_user) {
+    if (!id_community) return null;
+    const r = await pool.query(
+      `SELECT id_profile, community_kind
+         FROM public.tb_profile
+        WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
+        LIMIT 1`,
+      [id_community]
+    );
+    if (!r.rowCount) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+    const membership = await CommunityStorage.getMembership(pool, id_community, id_user);
+    if (r.rows[0].community_kind === "condo") {
+      const resident = await CondoStorage.getResidentStatus(pool, id_community, id_user);
+      const isAdmin = membership?.role === "leader" || membership?.role === "vice";
+      if (!resident.confirmed && !isAdmin) {
+        return {
+          error: "Confirme seu apartamento para publicar.",
+          statusCode: 403,
+          needs_claim: true,
+        };
+      }
+      return null;
+    }
+    if (!membership) {
+      return { error: "Entre na comunidade para publicar.", statusCode: 403 };
+    }
+    return null;
+  }
+
   static async createStory(user, { id_profile }, body, file) {
     return runWithLogs(
       log,
@@ -249,6 +290,14 @@ class StoryService {
         const linksResult = normalizeLinks(body?.links);
         if (linksResult.error) return { error: linksResult.error };
         const links = linksResult.links;
+        // Bee do mural de uma comunidade (mig 208). Recusa ANTES de gravar: um
+        // bee global salvo em silêncio faria o autor achar que publicou lá.
+        const id_community = body?.id_community || null;
+        const communityGuard = await this._assertCanPostInCommunity(
+          id_community,
+          user.id_user
+        );
+        if (communityGuard) return communityGuard;
         const audioTrackId = await resolveAudioTrackId(body?.audio_track_id);
         const audioStartMs = audioTrackId ? normalizeAudioStartMs(body?.audio_start_ms) : 0;
         // Modera caption + localização + rótulos dos links numa chamada só.
@@ -339,6 +388,7 @@ class StoryService {
               },
               audio_track_id: audioTrackId,
               audio_start_ms: audioStartMs,
+              id_community,
             });
             await client.query("COMMIT");
             stories.push(mapStory(story));
@@ -479,6 +529,14 @@ class StoryService {
         const linksResult = normalizeLinks(body?.links);
         if (linksResult.error) return { error: linksResult.error };
         const links = linksResult.links;
+        // Bee do mural de uma comunidade (mig 208). Recusa ANTES de gravar: um
+        // bee global salvo em silêncio faria o autor achar que publicou lá.
+        const id_community = body?.id_community || null;
+        const communityGuard = await this._assertCanPostInCommunity(
+          id_community,
+          user.id_user
+        );
+        if (communityGuard) return communityGuard;
         const filterMeta = normalizeFilterMeta(body?.filter_meta);
         const renderMeta = normalizeFilterMeta(body?.render_meta);
         const audioTrackId = await resolveAudioTrackId(body?.audio_track_id);
@@ -578,6 +636,7 @@ class StoryService {
             audio_track_id: audioTrackId,
             audio_start_ms: audioStartMs,
             render_meta: renderMeta,
+            id_community,
           });
           await client.query("COMMIT");
           return { story: mapStory(story) };
