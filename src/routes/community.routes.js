@@ -4,6 +4,7 @@ const uploadAvatar = require("../middlewares/uploadAvatar");
 const requireFeature = require("../middlewares/requireFeature");
 const CommunityController = require("../controllers/CommunityController");
 const CommunitySiteController = require("../controllers/CommunitySiteController");
+const CommunityDomainController = require("../controllers/CommunityDomainController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -157,11 +158,55 @@ router.put(
   asyncHandler(CommunitySiteController.save)
 );
 
+// Endereço próprio (mig 213). Trocar o slug quebra os links antigos de
+// propósito — não guardamos redirecionamento; o painel avisa antes.
+router.patch(
+  "/:id_profile/site/slug",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunitySiteController.renameSlug)
+);
+
 router.post(
   "/:id_profile/site/publish",
   authMiddleware,
   requireFeature("comunidade_site"),
   asyncHandler(CommunitySiteController.setPublished)
+);
+
+// ─── Domínio próprio (mig 214) ──────────────────────────────────────────────
+// Só o líder (guard no service). `verify` confere o TXT no DNS e pede o
+// certificado; `refresh` só reconsulta o provedor — são botões diferentes
+// porque falham por motivos diferentes e o dono precisa saber qual é qual.
+router.get(
+  "/:id_profile/site/domains",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunityDomainController.list)
+);
+router.post(
+  "/:id_profile/site/domains",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunityDomainController.create)
+);
+router.post(
+  "/:id_profile/site/domains/:id_domain/verify",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunityDomainController.verify)
+);
+router.post(
+  "/:id_profile/site/domains/:id_domain/refresh",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunityDomainController.refresh)
+);
+router.delete(
+  "/:id_profile/site/domains/:id_domain",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunityDomainController.remove)
 );
 
 // Imagem do construtor (banner de hero, foto de serviço, galeria). Mesmo

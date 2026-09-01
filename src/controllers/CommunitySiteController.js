@@ -26,6 +26,21 @@ class CommunitySiteController {
     return sendServiceResult(res, result);
   }
 
+  static async renameSlug(req, res) {
+    const result = await CommunitySiteService.renameSlug(
+      req.user,
+      req.params,
+      req.body || {}
+    );
+    return sendServiceResult(res, result);
+  }
+
+  /** Porta pública do site: `/c/<slug>`. Sem sessão, por definição. */
+  static async getPublicBySlug(req, res) {
+    const result = await CommunitySiteService.getPublicBySlug(req.params);
+    return sendServiceResult(res, result);
+  }
+
   /**
    * Upload de imagem do construtor.
    *

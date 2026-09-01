@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const CommunityController = require("../controllers/CommunityController");
 const CommunitySiteController = require("../controllers/CommunitySiteController");
+const CommunityDomainController = require("../controllers/CommunityDomainController");
 const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -10,6 +11,25 @@ const router = Router();
 // Auth opcional: a lista é pública, mas o recorte depende do viewer — membro
 // vê os contadores da própria comunidade privada/condomínio; forasteiro não.
 router.get("/", optionalAuthMiddleware, asyncHandler(CommunityController.listPublic));
+// Resolução de domínio próprio → slug (mig 214). Chamada pelo middleware do
+// front a cada visita vinda de domínio de comunidade. Sem auth: quem chega por
+// domínio próprio não tem sessão nossa. Devolve só domain/slug/id — nada do
+// conteúdo, que é buscado depois pela porta de slug com as travas de sempre.
+router.get(
+  "/site/resolve-host",
+  asyncHandler(CommunityDomainController.resolveHost)
+);
+
+// Porta PÚBLICA do site pelo endereço próprio (mig 213): `/c/<slug>`.
+// Vem ANTES de `/:id_profile` pela convenção do arquivo — uma rota de segmento
+// fixo tem que ser declarada antes da paramétrica que poderia engoli-la.
+// SEM auth de propósito: é a porta que buscador, link de WhatsApp e domínio
+// próprio usam. A trava de privacidade está no service, não aqui.
+router.get(
+  "/site/by-slug/:slug",
+  asyncHandler(CommunitySiteController.getPublicBySlug)
+);
+
 // Auth opcional: resolve membership/assinatura do viewer (comunidade privada).
 router.get(
   "/:id_profile",

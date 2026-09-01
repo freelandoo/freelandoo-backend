@@ -48,9 +48,24 @@ if (/railway|rlwy\.net|proxy\.rlwy/i.test(DB_URL)) {
 process.env.DATABASE_URL = DB_URL;
 
 const results = [];
+
+/**
+ * `fn` tem que ser SÍNCRONA.
+ *
+ * Um `check` com função async passaria por aqui sem esperar: a promessa
+ * rejeitada só apareceria depois, como erro solto, e o teste teria acabado de
+ * imprimir um sucesso mentiroso. Aconteceu de verdade durante a escrita desta
+ * suíte — por isso o harness agora RECUSA função async em vez de aceitá-la e
+ * mentir. Quem precisa de I/O calcula o valor ANTES e afirma sobre ele aqui.
+ */
 function check(name, fn) {
   try {
-    fn();
+    const out = fn();
+    if (out && typeof out.then === "function") {
+      throw new Error(
+        "check() nao aceita funcao async — calcule o valor antes e afirme sobre ele."
+      );
+    }
     results.push({ name, ok: true });
     console.log(`  ✓ ${name}`);
   } catch (err) {
@@ -68,8 +83,12 @@ async function main() {
   });
 
   const CommunitySite = require("../src/utils/communitySite");
+  const SiteSlug = require("../src/utils/communitySiteSlug");
+  const Domain = require("../src/utils/communityDomain");
+  const CommunityDomainService = require("../src/services/CommunityDomainService");
   const CommunitySiteService = require("../src/services/CommunitySiteService");
   const CommunityStorage = require("../src/storages/CommunityStorage");
+  const CommunitySiteStorage = require("../src/storages/CommunitySiteStorage");
   const CondoStorage = require("../src/storages/CondoStorage");
   const pool = require("../src/databases");
 
@@ -242,7 +261,7 @@ async function main() {
 
   const firstGet = await CommunitySiteService.get(U(leader), { id_profile: pub });
 
-  check("9. líder vê template com exists=false e nada é gravado ainda", async () => {
+  check("9. líder vê template com exists=false e nada é gravado ainda", () => {
     assert.strictEqual(firstGet.exists, false);
     assert.strictEqual(firstGet.is_leader, true);
     assert.ok(firstGet.config, "template deveria vir preenchido");
@@ -323,7 +342,7 @@ async function main() {
     { id_profile: pub },
     { published: true }
   );
-  check("13. publicado é visível para anônimo em comunidade pública", async () => {
+  check("13. publicado é visível para anônimo em comunidade pública", () => {
     assert.ok(!published.error, published.error);
     assert.strictEqual(published.is_published, true);
   });
@@ -409,18 +428,213 @@ async function main() {
 
   // ─── has_site na projeção da comunidade ───────────────────────────────────
   const rowPub = await CommunityStorage.getById(pool, pub);
-  const { rows: noSiteRows } = await db.query(
-    `SELECT id_profile FROM public.tb_profile
-      WHERE is_community = TRUE AND deleted_at IS NULL
-        AND id_profile <> ALL($1::uuid[]) LIMIT 1`,
-    [[pub, priv, condo]]
-  );
-  check("19b. has_site sai no getById da comunidade", async () => {
+  // Comunidade PRÓPRIA sem site, criada aqui. Pescar "uma qualquer do banco"
+  // fazia o teste depender de sobra de execução anterior — e ele quebrou de
+  // verdade quando uma sobra tinha site publicado.
+  const noSite = await mkCommunity(leader, {
+    kind: "common",
+    privacy: "public",
+    name: mk("SemSite"),
+  });
+  const rowNoSite = await CommunityStorage.getById(pool, noSite);
+  check("19b. has_site sai no getById da comunidade", () => {
     assert.strictEqual(rowPub.has_site, true);
-    if (noSiteRows.length) {
-      const other = await CommunityStorage.getById(pool, noSiteRows[0].id_profile);
-      assert.strictEqual(other.has_site, false);
+    assert.strictEqual(rowNoSite.has_site, false);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n━━━ endereço próprio (slug, mig 213) ━━━");
+
+  check("21. reservados: www/api/admin não podem virar endereço", () => {
+    for (const bad of ["www", "api", "admin", "mail", "login", "seguranca", "pix"]) {
+      assert.strictEqual(SiteSlug.validateSlug(bad).ok, false, bad + " deveria ser recusado");
     }
+  });
+
+  check("22. formato de slug: DNS manda (63 chars, sem punycode, sem só-número)", () => {
+    assert.strictEqual(SiteSlug.validateSlug("ab").ok, false, "curto demais");
+    assert.strictEqual(SiteSlug.validateSlug("12345").ok, false, "só números");
+    // "--" é colapsado pelo slugify ANTES da validação, então "xn--abc" chega
+    // como "xn-abc" — que não é punycode e é inofensivo. O comportamento certo
+    // aqui é aceitar já normalizado, não recusar.
+    assert.strictEqual(SiteSlug.validateSlug("xn--abc").slug, "xn-abc");
+    assert.strictEqual(SiteSlug.validateSlug("a".repeat(64)).ok, false, "passa de 63");
+    assert.strictEqual(SiteSlug.validateSlug("Padaria do Ze").slug, "padaria-do-ze");
+  });
+
+  const slugAfterPublish = await CommunitySiteStorage.getSlug(pool, pub);
+  check("23. publicar reserva o endereço automaticamente", () => {
+    assert.ok(slugAfterPublish, "deveria ter slug depois de publicar");
+    assert.ok(SiteSlug.validateSlug(slugAfterPublish).ok, "slug gerado deve ser válido");
+  });
+
+  const bySlug = await CommunitySiteService.getPublicBySlug({ slug: slugAfterPublish });
+  check("24. porta pública /c/<slug> devolve o site sem sessão", () => {
+    assert.ok(!bySlug.error, bySlug.error);
+    assert.strictEqual(bySlug.locked, false);
+    assert.strictEqual(bySlug.config.siteName, "Site da Publica");
+  });
+
+  const privSlug = await CommunitySiteStorage.getSlug(pool, priv);
+  const bySlugPriv = await CommunitySiteService.getPublicBySlug({ slug: privSlug });
+  check("25. porta pública NÃO vaza comunidade privada", () => {
+    assert.strictEqual(bySlugPriv.locked, true);
+    assert.strictEqual(bySlugPriv.config, null);
+  });
+
+  const ghost = await CommunitySiteService.getPublicBySlug({ slug: "nao-existe-mesmo" });
+  check("26. endereço inexistente é 404", () => {
+    assert.strictEqual(ghost.statusCode, 404);
+  });
+
+  const renameBad = await CommunitySiteService.renameSlug(U(leader), { id_profile: pub }, { slug: "api" });
+  const renameOther = await CommunitySiteService.renameSlug(U(outsider), { id_profile: pub }, { slug: "qualquer-coisa" });
+  const renameOk = await CommunitySiteService.renameSlug(U(leader), { id_profile: pub }, { slug: "Padaria do Ze" });
+  const renameTaken = await CommunitySiteService.renameSlug(U(leader), { id_profile: priv }, { slug: "padaria-do-ze" });
+  check("27. renomear endereço: reservado, alheio, válido e já tomado", () => {
+    assert.ok(renameBad.error, "reservado deveria ser recusado");
+    assert.ok(renameOther.error, "não-líder deveria ser recusado");
+    assert.strictEqual(renameOk.slug, "padaria-do-ze");
+    assert.strictEqual(renameTaken.statusCode, 409, "endereço tomado devolve 409");
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n━━━ domínio próprio (mig 214) ━━━");
+
+  check("28. normalização: protocolo, porta, caminho e ponto final somem", () => {
+    assert.strictEqual(Domain.normalizeDomain("HTTPS://Padaria.COM.BR/loja?x=1"), "padaria.com.br");
+    assert.strictEqual(Domain.normalizeDomain("padaria.com.br:443"), "padaria.com.br");
+    assert.strictEqual(Domain.normalizeDomain("padaria.com.br."), "padaria.com.br");
+    assert.strictEqual(Domain.normalizeDomain("  padaria.com.br  "), "padaria.com.br");
+    // www É outro domínio — não pode ser "normalizado" para fora.
+    assert.strictEqual(Domain.normalizeDomain("www.padaria.com.br"), "www.padaria.com.br");
+  });
+
+  check("29. domínio da PLATAFORMA não pode ser reivindicado", () => {
+    for (const bad of [
+      "freelandoo.com.br",
+      "admin.freelandoo.com.br",
+      "qualquer.coisa.freelandoo.com.br",
+      "meu-projeto.vercel.app",
+    ]) {
+      const v = Domain.validateDomain(bad);
+      assert.strictEqual(v.ok, false, bad + " deveria ser recusado");
+      assert.strictEqual(v.reason, "platform");
+    }
+  });
+
+  check("30. domínio inválido: sem ponto, IP, rótulo torto", () => {
+    assert.strictEqual(Domain.validateDomain("localhost").ok, false);
+    assert.strictEqual(Domain.validateDomain("192.168.0.1").ok, false);
+    assert.strictEqual(Domain.validateDomain("-inicio.com").ok, false);
+    assert.strictEqual(Domain.validateDomain("a.com").ok, true);
+  });
+
+  const domOther = await CommunityDomainService.create(
+    U(outsider), { id_profile: pub }, { domain: "padariadoze.com.br" }
+  );
+  check("31. só o líder liga um domínio", () => {
+    assert.ok(domOther.error);
+  });
+
+  const domCreated = await CommunityDomainService.create(
+    U(leader), { id_profile: pub }, { domain: "  HTTPS://PadariaDoZe.com.br/  " }
+  );
+  check("32. criar domínio normaliza e devolve as instruções de DNS", () => {
+    assert.ok(!domCreated.error, domCreated.error);
+    assert.strictEqual(domCreated.domain.domain, "padariadoze.com.br");
+    assert.strictEqual(domCreated.domain.status, "pending");
+    assert.strictEqual(domCreated.domain.verification.type, "TXT");
+    assert.strictEqual(domCreated.domain.verification.host, "_freelandoo.padariadoze.com.br");
+    assert.ok(
+      domCreated.domain.verification.value.startsWith("freelandoo-site-verification="),
+      "valor do TXT deve vir prefixado"
+    );
+  });
+
+  check("32b. o token NÃO é devolvido cru na listagem", () => {
+    assert.strictEqual(domCreated.domain.verification_token, undefined);
+  });
+
+  const domDup = await CommunityDomainService.create(
+    U(leader), { id_profile: priv }, { domain: "padariadoze.com.br" }
+  );
+  check("33. o mesmo domínio não vai para duas comunidades", () => {
+    assert.strictEqual(domDup.statusCode, 409);
+  });
+
+  const verifyNoTxt = await CommunityDomainService.verify(U(leader), {
+    id_profile: pub,
+    id_domain: domCreated.domain.id_domain,
+  });
+  check("34. sem o TXT no DNS, volta para 'pending' (nunca para 'error')", () => {
+    assert.strictEqual(verifyNoTxt.verified, false);
+    assert.strictEqual(verifyNoTxt.domain.status, "pending");
+    assert.ok(verifyNoTxt.domain.last_error, "deveria explicar o que falta");
+  });
+
+  const refreshEarly = await CommunityDomainService.refresh(U(leader), {
+    id_profile: pub,
+    id_domain: domCreated.domain.id_domain,
+  });
+  check("35. refresh antes da prova de posse é recusado", () => {
+    assert.strictEqual(refreshEarly.statusCode, 409);
+  });
+
+  // Simula a posse provada, para exercitar o resto do ciclo sem depender do DNS
+  // do mundo real (que o teste não controla).
+  await db.query(
+    `UPDATE public.tb_community_domain
+        SET status = 'active', verified_at = NOW() WHERE id_domain = $1`,
+    [domCreated.domain.id_domain]
+  );
+  const resolved = await CommunityDomainService.resolveHost({ host: "PadariaDoZe.com.br" });
+  check("36. resolveHost devolve o slug do site (e aceita Host com maiúscula)", () => {
+    assert.ok(!resolved.error, resolved.error);
+    assert.strictEqual(resolved.domain, "padariadoze.com.br");
+    assert.strictEqual(resolved.slug, "padaria-do-ze");
+  });
+
+  const resolvedGhost = await CommunityDomainService.resolveHost({ host: "nao-e-nosso.com" });
+  check("37. Host desconhecido é 404 (não cai no site de ninguém)", () => {
+    assert.strictEqual(resolvedGhost.statusCode, 404);
+  });
+
+  await CommunitySiteService.setPublished(U(leader), { id_profile: pub }, { published: false });
+  const resolvedUnpublished = await CommunityDomainService.resolveHost({
+    host: "padariadoze.com.br",
+  });
+  check("38. despublicar o site derruba o domínio junto", () => {
+    assert.strictEqual(resolvedUnpublished.statusCode, 404);
+  });
+
+  const slugAfterUnpublish = await CommunitySiteStorage.getSlug(pool, pub);
+  check("38b. despublicar NÃO devolve o endereço para o mundo", () => {
+    assert.strictEqual(slugAfterUnpublish, "padaria-do-ze");
+  });
+
+  const domList = await CommunityDomainService.list(U(leader), { id_profile: pub });
+  check("39. listagem traz domínios, slug, provedor e teto", () => {
+    assert.strictEqual(domList.domains.length, 1);
+    assert.strictEqual(domList.slug, "padaria-do-ze");
+    assert.ok(["manual", "vercel"].includes(domList.provider));
+    assert.strictEqual(domList.max_domains, CommunityDomainService.MAX_DOMAINS);
+  });
+
+  const domRemoved = await CommunityDomainService.remove(U(leader), {
+    id_profile: pub,
+    id_domain: domCreated.domain.id_domain,
+  });
+  check("40. remover domínio", () => {
+    assert.strictEqual(domRemoved.removed, true);
+  });
+
+  const { rows: gone } = await db.query(
+    `SELECT 1 FROM public.tb_community_domain WHERE id_domain = $1`,
+    [domCreated.domain.id_domain]
+  );
+  check("40b. a linha some do banco", () => {
+    assert.strictEqual(gone.length, 0);
   });
 
   // ─── CASCADE ──────────────────────────────────────────────────────────────
@@ -435,7 +649,7 @@ async function main() {
 
   // ─── limpeza + relatório ─────────────────────────────────────────────────
   await db.query(`DELETE FROM public.tb_profile WHERE id_profile = ANY($1::uuid[])`, [
-    [pub, priv],
+    [pub, priv, noSite],
   ]);
   await db.query(`DELETE FROM public.tb_user WHERE id_user = ANY($1::uuid[])`, [
     [leader, memberU, outsider],
