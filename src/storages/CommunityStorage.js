@@ -251,7 +251,14 @@ class CommunityStorage {
               p.xp_total, p.xp_level, p.created_at, p.updated_at,
               m.name AS enxame_name,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
-                WHERE cm.id_community_profile = p.id_profile) AS member_count
+                WHERE cm.id_community_profile = p.id_profile) AS member_count,
+              -- "Meu Site" (mig 212): só a EXISTÊNCIA de um site publicado, para
+              -- a página decidir se mostra a aba Site sem uma segunda requisição.
+              -- Rascunho fica de fora — quem o enxerga é o líder, e para ele a
+              -- aba aparece de qualquer jeito.
+              EXISTS (SELECT 1 FROM public.tb_community_site cs
+                       WHERE cs.id_profile = p.id_profile
+                         AND cs.is_published = TRUE) AS has_site
          FROM public.tb_profile p
          LEFT JOIN public.tb_machine m ON m.id_machine = p.id_machine
         WHERE p.id_profile = $1

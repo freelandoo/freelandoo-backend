@@ -24,7 +24,8 @@
     "test:neighborhood": "node test/neighborhood.e2e.js",
     "test:condo-residence": "node test/condo-residence.e2e.js",
     "test:recado": "node test/recado.e2e.js",
-    "test:spaces": "node test/spaces.e2e.js"
+    "test:spaces": "node test/spaces.e2e.js",
+    "test:community-site": "node test/community-site.e2e.js"
   },
   "repository": {
     "type": "git",

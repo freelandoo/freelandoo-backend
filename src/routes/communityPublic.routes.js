@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const CommunityController = require("../controllers/CommunityController");
+const CommunitySiteController = require("../controllers/CommunitySiteController");
 const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -56,6 +57,16 @@ router.get(
 router.post(
   "/:id_profile/share-return",
   asyncHandler(CommunityController.logShareReturn)
+);
+
+// "Meu Site" (mig 212). Auth OPCIONAL: site publicado é página pública e
+// indexável, mas o service ainda recorta — rascunho só o líder vê, e site de
+// comunidade privada/condomínio obedece à MESMA trava do resto do conteúdo
+// interno. Sem o viewer aqui, o líder não conseguiria abrir o próprio rascunho.
+router.get(
+  "/:id_profile/site",
+  optionalAuthMiddleware,
+  asyncHandler(CommunitySiteController.get)
 );
 
 module.exports = router;

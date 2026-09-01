@@ -3,6 +3,7 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const uploadAvatar = require("../middlewares/uploadAvatar");
 const requireFeature = require("../middlewares/requireFeature");
 const CommunityController = require("../controllers/CommunityController");
+const CommunitySiteController = require("../controllers/CommunitySiteController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -141,6 +142,36 @@ router.delete(
   "/:id_profile/recado/:id_feed_item",
   authMiddleware,
   asyncHandler(CommunityController.deleteRecado)
+);
+
+// ─── "Meu Site" da comunidade (mig 212) ──────────────────────────────────────
+// Escrita do construtor visual. Só o líder (guard no service) e só com a flag
+// `comunidade_site` ligada — a flag barra EDITAR e PUBLICAR; a leitura do site
+// já publicado fica fora dela (em communityPublic.routes), pela mesma razão que
+// GET /me/spaces não tem requireFeature: desligar o kill-switch segura o que
+// ainda não nasceu, não derruba o que já está no ar.
+router.put(
+  "/:id_profile/site",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunitySiteController.save)
+);
+
+router.post(
+  "/:id_profile/site/publish",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunitySiteController.setPublished)
+);
+
+// Imagem do construtor (banner de hero, foto de serviço, galeria). Mesmo
+// middleware de imagem do avatar/banner: 12 MB, JPG/PNG/WebP.
+router.post(
+  "/:id_profile/site/media",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  uploadAvatar.single("file"),
+  asyncHandler(CommunitySiteController.uploadMedia)
 );
 
 router.post(
