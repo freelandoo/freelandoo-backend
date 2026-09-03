@@ -83,6 +83,11 @@ module.exports = {
             'id_profile', pro.id_profile,
             'display_name', pro.display_name,
             'is_clan', pro.is_clan,
+            -- Comunidade mora na MESMA tabela dos perfis (pet/carro/games/
+            -- bairro/condomínio são modalidades dela), então sem esta flag toda
+            -- lista de perfis do front acaba oferecendo "Meu pet" como se fosse
+            -- um perfil — era o que o seletor da Carteira fazia.
+            'is_community', COALESCE(pro.is_community, FALSE),
             -- Perfil-conta sem taxonomia declarada (mig 200) carrega a
             -- categoria "fantasma" do AuthStorage — nunca devolver.
             'id_category', CASE WHEN pro.is_user_account
