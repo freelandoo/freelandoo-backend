@@ -1,5 +1,5 @@
 // src/services/user/UpdateAvatarService.js
-const UserStorage = require("../../storages/UserStorage");
+const ProfileStorage = require("../../storages/ProfileStorage");
 const uploadAvatarToR2 = require("../../integrations/r2/uploadAvatar");
 const { createLogger, runWithLogs } = require("../../utils/logger");
 const { processAvatarImage } = require("../../utils/mediaProcessing");
@@ -21,13 +21,15 @@ module.exports = class UpdateAvatarService {
 
         const processedFile = await processAvatarImage(file);
         const avatarUrl = await uploadAvatarToR2({ id_user, file: processedFile });
-        const updated = await UserStorage.updateAvatarById(
-          db,
-          id_user,
-          avatarUrl
-        );
 
-        return updated;
+        // O badge de câmera do /account edita a foto de UM perfil — o que hoje
+        // carrega o rosto da pessoa — e não uma foto de "usuário" à parte. Por
+        // isso passa pelo MESMO `setAvatar` do headcard: enquanto eram dois
+        // caminhos, cada um gravava numa tabela e as telas discordavam.
+        const id_profile = await ProfileStorage.getUserAccountProfileId(db, id_user);
+        const updated = await ProfileStorage.setAvatar(db, id_profile, avatarUrl);
+
+        return { id_user, avatar: updated?.avatar_url ?? avatarUrl };
       }
     );
   }

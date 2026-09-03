@@ -1,5 +1,4 @@
 const ProfileStorage = require("../../storages/ProfileStorage");
-const UserStorage = require("../../storages/UserStorage");
 const uploadProfileAvatarToR2 = require("../../integrations/r2/uploadProfileAvatar");
 const { createLogger } = require("../../utils/logger");
 const { processAvatarImage } = require("../../utils/mediaProcessing");
@@ -50,18 +49,10 @@ module.exports = class UploadProfileAvatarService {
       const processedFile = await processAvatarImage(file);
       const avatar_url = await uploadProfileAvatarToR2({ id_profile, file: processedFile });
 
-      // O perfil-conta é o usuário: a foto dele mora em `tb_user.avatar` (fonte
-      // única, mig 215), e é `updateAvatarById` quem replica no espelho da linha
-      // do perfil. Gravar direto em `tb_profile.avatar_url` aqui deixaria o
-      // /account exibindo a foto antiga — foi assim que a divergência nasceu.
-      // Subperfil/clan/comunidade continuam com foto PRÓPRIA e independente.
-      if (profile.is_user_account) {
-        await UserStorage.updateAvatarById(client, id_user, avatar_url);
-        log.info("execute.ok", { id_profile, avatar_url, target: "user_account" });
-        return { avatar_url };
-      }
-
-      const updated = await ProfileStorage.updateProfile(client, id_profile, { avatar_url });
+      // Sem ramo por tipo de perfil: não existe hierarquia, todo perfil grava a
+      // foto DELE pelo mesmo caminho. `setAvatar` cuida do espelho do rosto da
+      // pessoa quando for o caso.
+      const updated = await ProfileStorage.setAvatar(client, id_profile, avatar_url);
 
       log.info("execute.ok", { id_profile, avatar_url });
       return { avatar_url: updated.avatar_url };

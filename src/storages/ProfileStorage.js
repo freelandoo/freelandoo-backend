@@ -6,6 +6,55 @@ class ProfileStorage {
    * Cria automaticamente se ainda não existir (defensivo — backfill da
    * migration 052 deveria já ter criado para users existentes).
    */
+  /**
+   * Troca a foto de UM perfil. É o ÚNICO caminho de escrita de foto de perfil
+   * no código — os dois pontos de entrada (o badge de câmera do /account e o
+   * POST /profile/:id/avatar do headcard) passam por aqui.
+   *
+   * NÃO EXISTE HIERARQUIA DE PERFIL: todo perfil guarda a foto DELE na própria
+   * linha, sem exceção, e um perfil novo é uma réplica no mesmo grau — nunca
+   * herda nem empresta foto. Um único caminho para todos é o que garante isso;
+   * enquanto o primeiro perfil teve caminho próprio, ele divergiu em silêncio
+   * (a foto aparecia na vitrine e sumia na página do perfil — mig 215).
+   *
+   * O espelho em `tb_user.avatar` NÃO é hierarquia: é a resposta a uma OUTRA
+   * pergunta — "qual é o rosto da PESSOA" —, que as superfícies que agrupam por
+   * pessoa fazem (a faixa de bees do /feed agrupa por usuário desde 2026-07-10,
+   * o menu de espaços, o cabeçalho do /account). Hoje quem carrega esse rosto é
+   * o perfil marcado `is_user_account`; no dia em que a pessoa puder eleger
+   * outro, muda-se o predicado do espelho AQUI e mais nada.
+   *
+   * Statement ÚNICO de propósito: `conn` pode ser o pool, e dois queries
+   * seguidos sairiam em conexões diferentes e sem transação — falhar no meio
+   * deixaria uma foto na página do perfil e outra no /account, que é justamente
+   * a divergência que a mig 215 teve que limpar.
+   */
+  static async setAvatar(conn, id_profile, avatar_url) {
+    const r = await conn.query(
+      `
+      WITH updated_profile AS (
+        UPDATE public.tb_profile
+           SET avatar_url = $2,
+               updated_at = NOW()
+         WHERE id_profile = $1
+           AND deleted_at IS NULL
+        RETURNING id_profile, id_user, avatar_url, is_user_account
+      ),
+      mirrored_user AS (
+        UPDATE public.tb_user u
+           SET avatar = $2
+          FROM updated_profile up
+         WHERE u.id_user = up.id_user
+           AND COALESCE(up.is_user_account, FALSE) = TRUE
+        RETURNING u.id_user
+      )
+      SELECT id_profile, avatar_url FROM updated_profile
+      `,
+      [id_profile, avatar_url]
+    );
+    return r.rows[0] || null;
+  }
+
   static async getUserAccountProfileId(conn, id_user) {
     const r = await conn.query(
       `SELECT id_profile

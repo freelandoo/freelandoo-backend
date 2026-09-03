@@ -316,49 +316,4 @@ module.exports = {
     return r.rows[0] || null;
   },
 
-  /**
-   * Troca a foto do usuário. ÚNICO ponto de escrita de `tb_user.avatar` — que é
-   * a FONTE ÚNICA da foto da pessoa (é ela que /account, feed, bees e o menu de
-   * espaços leem).
-   *
-   * O perfil-conta é o usuário, então a mesma escrita atualiza o ESPELHO em
-   * `tb_profile.avatar_url` dele (mig 215). Sem esse espelho, a foto aparecia na
-   * vitrine (que devolve `tu.avatar`) e sumia na página do perfil (que só lê
-   * `p.avatar_url`), e cada uma das ~43 storages que projetam `pro.avatar_url`
-   * teria que aprender a regra do perfil-conta por conta própria.
-   *
-   * SUBPERFIL, CLAN E COMUNIDADE FICAM DE FORA: perfil comprado é independente
-   * — foto, posts e redes são dele. O `is_user_account` no WHERE é o que impede
-   * a foto do titular de vazar para os outros perfis dele.
-   */
-  async updateAvatarById(db, id_user, avatarUrl) {
-    // As duas escritas vão num ÚNICO statement (CTE) de propósito: `db` aqui é
-    // o pool, então dois `db.query` seguidos sairiam em conexões diferentes e
-    // sem transação — falhar no meio deixaria a pessoa com uma foto no /account
-    // e outra na página pública, que é exatamente a divergência que a mig 215
-    // teve que limpar. Um statement é atômico por definição.
-    const result = await db.query(
-      `
-      WITH updated_user AS (
-        UPDATE public.tb_user
-           SET avatar = $1
-         WHERE id_user = $2
-        RETURNING id_user, avatar
-      ),
-      mirrored_profile AS (
-        UPDATE public.tb_profile
-           SET avatar_url = $1,
-               updated_at = NOW()
-         WHERE id_user IN (SELECT id_user FROM updated_user)
-           AND COALESCE(is_user_account, FALSE) = TRUE
-           AND deleted_at IS NULL
-        RETURNING id_profile
-      )
-      SELECT id_user, avatar FROM updated_user
-      `,
-      [avatarUrl, id_user]
-    );
-
-    return result.rows[0] || null;
-  },
 };
