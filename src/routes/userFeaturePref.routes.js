@@ -1,19 +1,22 @@
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
-const pool = require("../databases");
 const asyncHandler = require("../utils/asyncHandler");
 
 /**
- * Preferências de funções POR USUÁRIO (mig 186) — seção "Funções" do menu
- * lateral. Preferência de UI: esconde os pontos de entrada da função no front
- * do próprio usuário. NÃO é o Painel de Controle do admin (tb_feature_flag):
- * a flag global desligada vence a preferência pessoal.
+ * Funções POR USUÁRIO — hoje só LEITURA da posse.
  *
- * Whitelist fechada (utils/userFeatureKeys) — chave fora dela é 400.
+ * A preferência pessoal da mig 186 (o liga/desliga da seção "Funções" do menu
+ * lateral) FOI DESCONTINUADA na mig 218: função de usuário é sempre ligada.
+ * Ela era o segundo gate de `useUserFeature` (= posse && preferência) e
+ * escondia pontos de entrada sem erro nenhum — foi ela que, junto do gate da
+ * Loja de Funções, sumiu com o pill de Fitness do headcard.
  *
- * Loja de Funções (mig 191): o GET também devolve o mapa `owned` — função à
- * venda que o usuário NÃO comprou vem owned=false e o front esconde a linha
- * do menu e os pontos de entrada. Produto is_for_sale=FALSE = função grátis.
+ * O que decide o acesso continua sendo:
+ *   - POSSE (Loja de Funções, mig 191) → mapa `owned` deste GET;
+ *   - flag global do admin (tb_feature_flag) → outro endpoint, vence tudo.
+ *
+ * `features` continua no corpo da resposta, com TODAS as chaves em `true`, só
+ * para não quebrar client antigo em cache que ainda lê esse mapa.
  */
 const { USER_FEATURE_KEYS } = require("../utils/userFeatureKeys");
 
@@ -28,42 +31,33 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const FunctionStoreService = require("../services/FunctionStoreService");
-    const r = await pool.query(
-      `SELECT feature_key, is_enabled
-         FROM public.tb_user_feature_pref
-        WHERE id_user = $1`,
-      [req.user.id_user]
-    );
+    // A tabela de preferências NÃO é mais lida: toda função é ligada (mig 218).
+    // Ler linhas antigas aqui faria um `FALSE` esquecido continuar escondendo
+    // a função de alguém, que é exatamente o que esta mudança acaba.
     const features = {};
     for (const key of USER_FEATURE_KEYS) features[key] = true;
-    for (const row of r.rows) {
-      if (USER_FEATURE_KEYS.includes(row.feature_key)) {
-        features[row.feature_key] = row.is_enabled !== false;
-      }
-    }
     const owned = await FunctionStoreService.ownershipMap(req.user.id_user);
     return res.json({ features, owned });
   })
 );
 
-// PUT /users/me/features/:key { enabled: bool } → upsert
+// PUT /users/me/features/:key — DESCONTINUADO (mig 218).
+//
+// Responde 410 em vez de sumir: o front novo não tem mais o switch, mas JS em
+// cache de sessão aberta ainda chama este PUT ao clicar no botão antigo. Um 404
+// mudo viraria ruído sem explicação no log; o 410 diz o que aconteceu. O client
+// antigo aplica o estado local otimista e o próximo GET (tudo `true`) o corrige
+// sozinho — ninguém fica com função escondida.
+//
+// É AQUI que "não dá mais para deixar false" se torna verdade: sem esta escrita,
+// nenhum caminho da aplicação grava FALSE na tb_user_feature_pref.
 router.put(
   "/:key",
-  asyncHandler(async (req, res) => {
-    const key = String(req.params.key || "").trim();
-    if (!USER_FEATURE_KEYS.includes(key)) {
-      return res.status(400).json({ error: "Função desconhecida" });
-    }
-    const enabled = req.body?.enabled !== false;
-    await pool.query(
-      `INSERT INTO public.tb_user_feature_pref (id_user, feature_key, is_enabled, updated_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (id_user, feature_key)
-       DO UPDATE SET is_enabled = EXCLUDED.is_enabled, updated_at = NOW()`,
-      [req.user.id_user, key, enabled]
-    );
-    return res.json({ feature_key: key, enabled });
-  })
+  asyncHandler(async (req, res) =>
+    res.status(410).json({
+      error: "As funções da conta são sempre ativas — não é mais possível desligá-las.",
+    })
+  )
 );
 
 module.exports = router;

@@ -252,15 +252,11 @@ module.exports = {
         -- aparecem mesmo sem assinatura ativa. O gate antigo (EXISTS em
         -- tb_profile_subscription) foi removido de propósito.
 
-        -- Preferência pessoal "vitrine" (seção Funções): dono desligou →
-        -- os perfis do user inteiro somem da vitrine pra todo mundo.
-        AND NOT EXISTS (
-          SELECT 1
-          FROM tb_user_feature_pref ufp
-          WHERE ufp.id_user = tu.id_user
-            AND ufp.feature_key = 'vitrine'
-            AND ufp.is_enabled = FALSE
-        )
+        -- A preferência pessoal "vitrine" era lida aqui e tirava os perfis do
+        -- dono da vitrine pública. Ela FOI DESCONTINUADA (mig 218): função de
+        -- usuário é sempre ligada. A cláusula saiu junto de propósito — mantê-la
+        -- deixaria de pé uma porta que nenhuma tela consegue mais abrir e que
+        -- só um UPDATE cru poderia fechar, escondendo perfis sem explicação.
 
         -- Perfil-conta SEM taxonomia declarada (mig 200) não tem profissão real
         -- (categoria fantasma): qualquer filtro de máquina/profissão/categoria
