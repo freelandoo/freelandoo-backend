@@ -4,6 +4,7 @@
 
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
+const AuthStorage = require("../storages/AuthStorage");
 const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
 const PolenStorage = require("../storages/PolenStorage");
 const FeatureFlagService = require("./FeatureFlagService");
@@ -85,7 +86,14 @@ class CommunityService {
               client,
               id_user
             );
-            if (sub.lvl < REQUIRED_LEVEL_TO_CREATE) {
+            // Administrador da PLATAFORMA passa por cima do gate de nível.
+            // O nível 5 existe para o usuário comum não abrir comunidade no
+            // primeiro dia; quem administra o site precisa criar para testar e
+            // para socorrer conta alheia, e não tem como ganhar XP fingindo ser
+            // outra pessoa. ⚠️ O isAdmin deste arquivo já significa OUTRA coisa
+            // (líder/vice da comunidade) — daí o nome longo.
+            const isPlatformAdmin = await AuthStorage.isAdmin(client, id_user);
+            if (!isPlatformAdmin && sub.lvl < REQUIRED_LEVEL_TO_CREATE) {
               await client.query("ROLLBACK");
               return {
                 error: `Você precisa de pelo menos um subperfil nível ${REQUIRED_LEVEL_TO_CREATE} para criar uma comunidade.`,
@@ -461,6 +469,9 @@ class CommunityService {
             client,
             id_user
           );
+          // Espelha o bypass do create: sem isto o front esconderia o botão
+          // de criar para o admin e a permissão existiria só na API.
+          const isPlatformAdmin = await AuthStorage.isAdmin(client, id_user);
           const ent = await CommunityStorage.getEntitlement(client, id_user);
           const owned = await CommunityStorage.countOwned(client, id_user);
           const memberships = await CommunityStorage.countMemberships(
@@ -469,11 +480,12 @@ class CommunityService {
           );
           return {
             eligible:
-              sub.lvl >= REQUIRED_LEVEL_TO_CREATE &&
+              (isPlatformAdmin || sub.lvl >= REQUIRED_LEVEL_TO_CREATE) &&
               owned < ent.create_cap &&
               memberships < ent.member_cap,
-            required_level: REQUIRED_LEVEL_TO_CREATE,
+            required_level: isPlatformAdmin ? 0 : REQUIRED_LEVEL_TO_CREATE,
             current_level: sub.lvl,
+            is_platform_admin: isPlatformAdmin,
             create_cap: ent.create_cap,
             member_cap: ent.member_cap,
             owned,
