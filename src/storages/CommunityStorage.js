@@ -194,7 +194,20 @@ class CommunityStorage {
   }
 
   // ─── Edição de perfil (só líder; guard no service) ──────────────────────────
-  static async updateProfile(conn, id_community, { display_name, bio }) {
+  // Enxame existe e está ativo? Escolher o enxame virou edição de página
+  // (mig 219), então a validação que antes vivia só no formulário de criação
+  // precisa existir aqui — senão um id inventado entraria por PATCH.
+  static async machineExists(conn, id_machine) {
+    const r = await conn.query(
+      `SELECT 1 FROM public.tb_machine
+        WHERE id_machine = $1 AND is_active = TRUE
+        LIMIT 1`,
+      [id_machine]
+    );
+    return r.rowCount > 0;
+  }
+
+  static async updateProfile(conn, id_community, { display_name, bio, id_machine }) {
     const sets = ["updated_at = NOW()"];
     const vals = [id_community];
     let idx = 2;
@@ -206,10 +219,14 @@ class CommunityStorage {
       sets.push(`bio = $${idx++}`);
       vals.push(bio);
     }
+    if (id_machine !== undefined) {
+      sets.push(`id_machine = $${idx++}`);
+      vals.push(id_machine);
+    }
     const r = await conn.query(
       `UPDATE public.tb_profile SET ${sets.join(", ")}
         WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
-        RETURNING id_profile, display_name, bio`,
+        RETURNING id_profile, display_name, bio, id_machine`,
       vals
     );
     return r.rowCount ? r.rows[0] : null;

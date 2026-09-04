@@ -21,6 +21,12 @@ const { normalizeFeedKind } = require("../utils/feedKind");
 const log = createLogger("CommunityService");
 
 const REQUIRED_LEVEL_TO_CREATE = 5;
+
+// Nome do rascunho (mig 219). Serve de rótulo enquanto o líder não escolhe o
+// dele — igual a "Meu carro"/"Meus games" da mig 211. É o mesmo texto do item
+// do menu de espaços, para a comunidade recém-criada aparecer lá com o nome que
+// a pessoa acabou de clicar.
+const DRAFT_NAME = "Minha comunidade";
 const COMMUNITY_KINDS = CondoRules.COMMUNITY_KINDS;
 
 // Temporada (meta): prêmio bancado pela plataforma, mínimos anti-abuso.
@@ -42,10 +48,32 @@ class CommunityService {
 
         const { display_name, id_machine, bio, avatar_url, theme, address } =
           payload || {};
-        if (!display_name || !String(display_name).trim()) {
-          return { error: "O nome da comunidade é obrigatório." };
+
+        // Modalidade primeiro: ela decide o que é obrigatório. Antes a
+        // validação vinha antes do `kind` e cobrava enxame de todo mundo.
+        const kind = COMMUNITY_KINDS.includes(payload?.kind)
+          ? payload.kind
+          : "common";
+
+        // RASCUNHO (mig 219): pedido sem nome E sem enxame é "cria vazia e abre",
+        // a mesma porta de pet/carro/games desde a mig 211 — quem escolhe nome e
+        // enxame é a própria página, no modo de edição em que o líder já cai.
+        //
+        // Exigir as DUAS ausências é de propósito: assim um formulário que
+        // esqueceu o enxame continua levando o erro de sempre em vez de criar
+        // silenciosamente uma comunidade sem enxame com o nome que a pessoa
+        // digitou. Rascunho é só o pedido deliberadamente vazio.
+        const isDraft =
+          kind === "common" &&
+          !String(display_name || "").trim() &&
+          !id_machine;
+
+        if (!isDraft) {
+          if (!display_name || !String(display_name).trim()) {
+            return { error: "O nome da comunidade é obrigatório." };
+          }
+          if (!id_machine) return { error: "O enxame é obrigatório." };
         }
-        if (!id_machine) return { error: "O enxame é obrigatório." };
         const bioStr = bio ? String(bio).trim() : null;
         if (bioStr && bioStr.length > 200) {
           return { error: "A bio deve ter no máximo 200 caracteres." };
@@ -54,9 +82,6 @@ class CommunityService {
         // Modalidade (mig 196). 'academy' fica reservado: academia é a feature
         // própria (/academias, mig 176) — o seletor do front manda pra lá em
         // vez de criar uma comunidade vazia com esse rótulo.
-        const kind = COMMUNITY_KINDS.includes(payload?.kind)
-          ? payload.kind
-          : "common";
         if (kind === "academy") {
           return {
             error:
@@ -132,8 +157,8 @@ class CommunityService {
           // 3. Cria perfil-comunidade (líder) + adiciona o user como líder
           const community = await CommunityStorage.createCommunity(client, {
             id_user,
-            id_machine,
-            display_name: String(display_name).trim(),
+            id_machine: isDraft ? null : id_machine,
+            display_name: isDraft ? DRAFT_NAME : String(display_name).trim(),
             bio: bioStr,
             avatar_url: avatar_url ?? null,
             theme: theme ?? null,
@@ -534,6 +559,29 @@ class CommunityService {
             return { error: "A bio deve ter no máximo 200 caracteres." };
           }
           patch.bio = bio;
+        }
+        // Enxame (mig 219): a comunidade comum nasce sem ele e o líder escolhe
+        // aqui, na mesma tela e no mesmo Salvar de nome e bio.
+        //
+        // SÓ a modalidade 'common' tem enxame. Condomínio, bairro, pet, carro e
+        // games são isentos por decisão de taxonomia (migs 204/210): "Golden
+        // Retriever" não é categoria profissional. Sem esta trava, um PATCH
+        // grudaria um enxame na comunidade do prédio e ela apareceria na vitrine
+        // de um enxame que ninguém escolheu — a categoria fantasma de novo.
+        if (body?.id_machine !== undefined) {
+          if ((guard.community.kind || "common") !== "common") {
+            return { error: "Esta modalidade de comunidade não tem enxame." };
+          }
+          const raw = body.id_machine;
+          const idm =
+            raw === null || raw === "" ? null : Number.parseInt(raw, 10);
+          if (idm !== null && !Number.isInteger(idm)) {
+            return { error: "Enxame inválido." };
+          }
+          if (idm !== null && !(await CommunityStorage.machineExists(pool, idm))) {
+            return { error: "Enxame inválido." };
+          }
+          patch.id_machine = idm;
         }
         if (Object.keys(patch).length === 0) {
           return { error: "Nada para atualizar." };
