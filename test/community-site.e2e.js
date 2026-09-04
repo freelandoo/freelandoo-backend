@@ -15,7 +15,8 @@
 //     5. cor inválida cai no default, #abc vira #aabbcc, chave estranha some;
 //     6. tetos de tamanho e de quantidade cortam;
 //     7. ids duplicados são desempatados;
-//     8. nota de depoimento é fixada entre 1 e 5.
+//     8. nota de depoimento é fixada entre 1 e 5;
+//     8b-8e. tamanhos manuais (alças): faixa, AUTO, chave torta, órfã e teto.
 //   Permissão e visibilidade
 //     9. líder vê template com exists=false e NÃO grava linha;
 //    10. não-líder não salva; anônimo não salva;
@@ -254,6 +255,67 @@ async function main() {
       hostile.sections[2].data.items.map((i) => i.rating),
       [5, 5, 1]
     );
+  });
+
+  // ─── tamanhos manuais (alças do construtor) ───────────────────────────────
+  const sized = CommunitySite.normalizeConfig({
+    sections: [
+      { id: "s1", kind: "about", layout: { minHeight: 99999, maxWidth: 10 } },
+      { id: "s2", kind: "gallery" },
+    ],
+    textStyles: {
+      "site.name": { fontSize: 4000 },
+      "sec:s1.title": { width: 1 },
+      "sec:s2.body": { fontSize: 24, width: 60 },
+      // órfã: nenhuma seção com esse id no payload
+      "sec:fantasma.title": { fontSize: 30 },
+      // chave torta (espaço e parêntese não entram no alfabeto fechado)
+      "url(evil)": { fontSize: 30 },
+      // sem nenhum tamanho de verdade
+      "site.tagline": { fontSize: "abc" },
+    },
+  });
+
+  check("8b. tamanho da seção: fora da faixa fixa na borda, ausente é AUTO", () => {
+    assert.strictEqual(sized.sections[0].layout.minHeight, CommunitySite.SIZES.HEIGHT_MAX);
+    assert.strictEqual(sized.sections[0].layout.maxWidth, CommunitySite.SIZES.MAXW_MIN);
+    // Seção nunca redimensionada continua responsiva — null, não um número.
+    assert.strictEqual(sized.sections[1].layout.minHeight, null);
+    assert.strictEqual(sized.sections[1].layout.maxWidth, null);
+  });
+
+  check("8c. tamanho de caixa de texto: faixa, chave torta, órfã e vazia somem", () => {
+    assert.strictEqual(sized.textStyles["site.name"].fontSize, CommunitySite.SIZES.FONT_MAX);
+    assert.strictEqual(sized.textStyles["sec:s1.title"].width, CommunitySite.SIZES.WIDTH_MIN);
+    assert.deepStrictEqual(sized.textStyles["sec:s2.body"], { fontSize: 24, width: 60 });
+    assert.strictEqual(sized.textStyles["sec:fantasma.title"], undefined);
+    assert.strictEqual(sized.textStyles["url(evil)"], undefined);
+    assert.strictEqual(sized.textStyles["site.tagline"], undefined);
+  });
+
+  check("8d. teto de entradas de tamanho corta", () => {
+    const many = {};
+    for (let i = 0; i < 1000; i += 1) many[`site.k${i}`] = { fontSize: 20 };
+    const out = CommunitySite.normalizeConfig({ textStyles: many });
+    assert.strictEqual(
+      Object.keys(out.textStyles).length,
+      CommunitySite.LIMITS.TEXT_STYLES
+    );
+  });
+
+  check("8e. tamanho de seção que perdeu o id (duplicado) não gruda na irmã", () => {
+    const out = CommunitySite.normalizeConfig({
+      sections: [
+        { id: "dup", kind: "about" },
+        { id: "dup", kind: "gallery" },
+      ],
+      textStyles: { "sec:dup.title": { fontSize: 40 } },
+    });
+    // A primeira mantém "dup"; a segunda ganhou id novo. O estilo continua
+    // valendo para quem ficou com a chave — e não vazou para a outra.
+    assert.strictEqual(out.sections[0].id, "dup");
+    assert.notStrictEqual(out.sections[1].id, "dup");
+    assert.strictEqual(out.textStyles["sec:dup.title"].fontSize, 40);
   });
 
   // ══════════════════════════════════════════════════════════════════════════

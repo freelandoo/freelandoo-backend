@@ -32,6 +32,28 @@ const LIMITS = {
   SHORT: 160,
   BODY: 2000,
   URL: 600,
+  // Tamanhos escolhidos na mão pelo líder (alças do construtor). O teto de
+  // entradas existe pelo mesmo motivo dos outros: um bug de laço no front não
+  // pode virar uma linha de 10 MB.
+  TEXT_STYLES: 240,
+  STYLE_KEY: 96,
+};
+
+/**
+ * Faixas dos tamanhos manuais. São TETOS DE SANIDADE, não gosto: fonte de
+ * 4000px estoura o layout de quem visita, e altura de seção negativa some com
+ * o conteúdo sem dizer por quê. Fora da faixa, fixa na borda — nunca recusa o
+ * save inteiro.
+ */
+const SIZES = {
+  FONT_MIN: 8,
+  FONT_MAX: 200,
+  WIDTH_MIN: 10, // % da largura do bloco
+  WIDTH_MAX: 100,
+  HEIGHT_MIN: 40,
+  HEIGHT_MAX: 2400,
+  MAXW_MIN: 320,
+  MAXW_MAX: 1920,
 };
 
 const SECTION_KINDS = [
@@ -134,6 +156,19 @@ const OBJECT_POSITIONS = [
 function objectPosition(value) {
   const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
   return OBJECT_POSITIONS.includes(raw) ? raw : "center";
+}
+
+/**
+ * Inteiro dentro de uma faixa. `null` significa AUTO — "o líder não escolheu
+ * tamanho aqui" — e é diferente de zero: zero seria uma escolha (some da tela).
+ * Por isso valor ausente, NaN ou texto voltam null em vez de cair num default
+ * numérico, que congelaria o layout responsivo de toda seção nunca tocada.
+ */
+function num(value, min, max) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(max, Math.max(min, Math.round(n)));
 }
 
 function id(value) {
@@ -266,6 +301,58 @@ const SECTION_NORMALIZERS = {
   }),
 };
 
+/**
+ * Tamanho da SEÇÃO escolhido nas alças do construtor: altura mínima e largura
+ * da coluna de conteúdo. Só isso — nada de posição livre. Uma seção arrastável
+ * em (x, y) deixaria de ser responsiva, e o mesmo site precisa caber no celular
+ * de quem visita.
+ */
+function normalizeLayout(raw) {
+  const d = raw && typeof raw === "object" ? raw : {};
+  return {
+    minHeight: num(d.minHeight, SIZES.HEIGHT_MIN, SIZES.HEIGHT_MAX),
+    maxWidth: num(d.maxWidth, SIZES.MAXW_MIN, SIZES.MAXW_MAX),
+  };
+}
+
+/**
+ * Tamanhos por CAIXA DE TEXTO, num mapa `caminho -> { fontSize, width }`.
+ *
+ * Mapa à parte, e não um campo dentro de cada texto: os textos do site são
+ * strings simples espalhadas por seis formatos de seção, e pendurar estilo em
+ * cada uma delas mudaria a forma de TODOS os normalizadores (e do front junto)
+ * para guardar dois números. O caminho já identifica a caixa.
+ *
+ * A chave é sanitizada e as órfãs somem: chave `sec:<id>` de seção que não
+ * existe mais é descartada, senão o mapa cresceria para sempre a cada seção
+ * removida — e um dia estouraria o teto, derrubando estilo de caixa VIVA.
+ */
+function normalizeTextStyles(raw, liveSectionIds) {
+  const input = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const out = {};
+  let kept = 0;
+
+  for (const [rawKey, rawValue] of Object.entries(input)) {
+    if (kept >= LIMITS.TEXT_STYLES) break;
+    const key = typeof rawKey === "string" ? rawKey.slice(0, LIMITS.STYLE_KEY) : "";
+    // O caminho vira chave de React e seletor de DOM: alfabeto fechado.
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(key)) continue;
+    if (key.startsWith("sec:")) {
+      const sectionId = key.slice(4).split(".")[0];
+      if (!liveSectionIds.has(sectionId)) continue;
+    }
+    const d = rawValue && typeof rawValue === "object" ? rawValue : {};
+    const fontSize = num(d.fontSize, SIZES.FONT_MIN, SIZES.FONT_MAX);
+    const width = num(d.width, SIZES.WIDTH_MIN, SIZES.WIDTH_MAX);
+    // Entrada sem nenhum tamanho é lixo: gravá-la só ocuparia o teto.
+    if (fontSize === null && width === null) continue;
+    out[key] = { fontSize, width };
+    kept += 1;
+  }
+
+  return out;
+}
+
 function normalizeSection(raw) {
   if (!raw || typeof raw !== "object") return null;
   const kind = typeof raw.kind === "string" ? raw.kind : "";
@@ -279,6 +366,7 @@ function normalizeSection(raw) {
     enabled: bool(raw.enabled, true),
     title: str(raw.title, LIMITS.TITLE),
     subtitle: str(raw.subtitle, LIMITS.SUBTITLE),
+    layout: normalizeLayout(raw.layout),
     data: normalizeData(raw.data && typeof raw.data === "object" ? raw.data : {}),
   };
 }
@@ -312,10 +400,15 @@ function normalizeConfig(raw) {
     seen.add(section.id);
   }
 
+  // Depois do desempate, não antes: a seção que trocou de id perdeu a
+  // identidade, e os tamanhos que apontavam para o id velho não são dela.
+  const liveSectionIds = new Set(sections.map((s) => s.id));
+
   return {
     siteName: str(input.siteName, LIMITS.SITE_NAME),
     tagline: str(input.tagline, LIMITS.TAGLINE),
     theme: normalizeTheme(input.theme),
+    textStyles: normalizeTextStyles(input.textStyles, liveSectionIds),
     sections,
   };
 }
@@ -455,12 +548,14 @@ function buildEmptySection(kind) {
 
 module.exports = {
   LIMITS,
+  SIZES,
   SECTION_KINDS,
   DEFAULT_THEME,
   OBJECT_POSITIONS,
   normalizeConfig,
   normalizeSection,
   normalizeTheme,
+  normalizeTextStyles,
   buildDefaultConfig,
   buildEmptySection,
 };
