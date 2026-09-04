@@ -57,6 +57,66 @@ module.exports = {
     return rows;
   },
 
+  /**
+   * Soma VITALÍCIA das entradas manuais que JÁ ACONTECERAM — a metade "sua" do
+   * KPI "Total recebido" da Carteira.
+   *
+   * Por que vitalícia: os KPIs vizinhos (Recebido/Disponível/Aguardando) também
+   * são — `EarningsStorage.aggregates` não tem filtro de data; o seletor de
+   * período move só o gráfico. Somar um recorte de 30 dias com um total de
+   * sempre daria um número que não é nem um nem outro.
+   *
+   * As duas naturezas de lançamento contam de forma diferente:
+   *   oneoff    — tem data própria; entra se já passou (lançamento futuro não é
+   *               dinheiro recebido).
+   *   recurring — não tem data: é um valor POR MÊS a partir de `start_ym`.
+   *               Vale uma vez para cada mês decorrido, e o mês corrente só
+   *               conta depois que o dia do vencimento passou. `due_day` nulo
+   *               cai no dia 1.
+   *
+   * `GREATEST(...,0)` protege contra `start_ym` no futuro, que devolveria uma
+   * contagem negativa e SUBTRAIRIA do total.
+   *
+   * NÃO é escopada por perfil: a Vida Financeira é da conta (não existe
+   * lançamento manual por perfil). Quem consome precisa dizer isso na tela.
+   */
+  async receivedInTotal(db, userId) {
+    const { rows } = await db.query(
+      `
+      WITH oneoff AS (
+        SELECT COALESCE(SUM(amount_cents), 0)::bigint AS cents
+          FROM public.tb_wallet_finance_entry
+         WHERE user_id = $1
+           AND direction = 'in'
+           AND recurrence = 'oneoff'
+           AND entry_date IS NOT NULL
+           AND entry_date <= CURRENT_DATE
+      ),
+      recurring AS (
+        SELECT COALESCE(SUM(e.amount_cents * GREATEST(m.months, 0)), 0)::bigint AS cents
+          FROM public.tb_wallet_finance_entry e
+          CROSS JOIN LATERAL (
+            SELECT (
+              (EXTRACT(YEAR FROM CURRENT_DATE)::int * 12 + EXTRACT(MONTH FROM CURRENT_DATE)::int)
+              - ((e.start_ym / 100) * 12 + (e.start_ym % 100))
+              + 1
+              - CASE WHEN EXTRACT(DAY FROM CURRENT_DATE)::int < COALESCE(e.due_day, 1)
+                     THEN 1 ELSE 0 END
+            ) AS months
+          ) m
+         WHERE e.user_id = $1
+           AND e.direction = 'in'
+           AND e.recurrence = 'recurring'
+           AND e.active = TRUE
+           AND e.start_ym IS NOT NULL
+      )
+      SELECT ((SELECT cents FROM oneoff) + (SELECT cents FROM recurring))::bigint AS cents
+      `,
+      [userId]
+    );
+    return Number(rows[0]?.cents || 0);
+  },
+
   async createEntry(db, userId, e) {
     const { rows } = await db.query(
       `

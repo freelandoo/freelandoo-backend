@@ -44,6 +44,24 @@ function toCents(v) {
 }
 
 class WalletFinanceService {
+  /**
+   * Metade "sua" do KPI "Total recebido": tudo que a pessoa já lançou como
+   * entrada na Vida Financeira. A outra metade (o que a plataforma pagou) sai
+   * de `/me/earnings` e é somada no front, que é quem tem as duas.
+   */
+  static async receivedInTotal(user) {
+    return runWithLogs(
+      log,
+      "receivedInTotal",
+      () => ({ user_id: user?.id_user }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado", status: 401 };
+        const cents = await WalletFinanceStorage.receivedInTotal(pool, user.id_user);
+        return { received_in_cents: cents };
+      }
+    );
+  }
+
   static async getMonth(user, query = {}) {
     return runWithLogs(
       log,

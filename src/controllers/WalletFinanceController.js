@@ -2,6 +2,9 @@ const WalletFinanceService = require("../services/WalletFinanceService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class WalletFinanceController {
+  static async receivedInTotal(req, res) {
+    return sendServiceResult(res, await WalletFinanceService.receivedInTotal(req.user));
+  }
   static async getMonth(req, res) {
     return sendServiceResult(res, await WalletFinanceService.getMonth(req.user, req.query || {}));
   }

@@ -10,6 +10,13 @@ router.get("/me/wallet/finance/categories", authMiddleware, asyncHandler(WalletF
 router.post("/me/wallet/finance/categories", authMiddleware, asyncHandler(WalletFinanceController.createCategory));
 
 // Visão do mês + CRUD de lançamentos.
+// ANTES da rota do mês e das de :id — caminho fixo tem que ser declarado antes
+// do parâmetro, senão "received-in" seria lido como um id.
+router.get(
+  "/me/wallet/finance/received-in",
+  authMiddleware,
+  asyncHandler(WalletFinanceController.receivedInTotal)
+);
 router.get("/me/wallet/finance", authMiddleware, asyncHandler(WalletFinanceController.getMonth));
 router.post("/me/wallet/finance", authMiddleware, asyncHandler(WalletFinanceController.createEntry));
 router.patch("/me/wallet/finance/:id", authMiddleware, asyncHandler(WalletFinanceController.updateEntry));
