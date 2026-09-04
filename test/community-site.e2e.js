@@ -505,6 +505,107 @@ async function main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n━━━ vitrine de serviços (lê o cadastro, 2026-09-04) ━━━");
+
+  // A vitrine deixou de guardar texto e passou a mostrar os serviços REAIS do
+  // líder. O que estes testes protegem é o contrário do óbvio: não é que a
+  // lista apareça — é que ela NÃO apareça onde não deve, e que a projeção não
+  // leve junto o que é do negócio de quem vende.
+
+  const AuthStorage = require("../src/storages/AuthStorage");
+  const ProfileStorage = require("../src/storages/ProfileStorage");
+  const ProfileServiceStorage = require("../src/storages/ProfileServiceStorage");
+
+  await AuthStorage.ensureUserAccountProfile(pool, leader, "User leader");
+  const leaderProfile = await ProfileStorage.getUserAccountProfileId(pool, leader);
+
+  await ProfileServiceStorage.create(pool, {
+    id_profile: leaderProfile,
+    name: "Corte de cabelo",
+    description: "Inclui lavagem",
+    duration_minutes: 90,
+    price_amount: 12000,
+    is_active: true,
+    affiliates_allowed: true,
+    affiliate_percent: 30,
+  });
+  await ProfileServiceStorage.create(pool, {
+    id_profile: leaderProfile,
+    name: "SERVICO DESLIGADO",
+    description: "nao deve aparecer",
+    duration_minutes: 30,
+    price_amount: 5000,
+    is_active: false,
+  });
+
+  const vitrineSlug = await CommunitySiteStorage.getSlug(pool, pub);
+  const siteWithServices = await CommunitySiteService.getPublicBySlug({ slug: vitrineSlug });
+
+  check("V1. a vitrine devolve os serviços cadastrados do líder", () => {
+    assert.ok(Array.isArray(siteWithServices.services), "services deveria vir na resposta");
+    assert.strictEqual(siteWithServices.services.length, 1, "só o ativo entra");
+    const s0 = siteWithServices.services[0];
+    assert.strictEqual(s0.name, "Corte de cabelo");
+    // Centavos, e não texto pronto: quem formata é o front, que sabe o idioma.
+    assert.strictEqual(Number(s0.price_amount), 12000);
+    assert.strictEqual(Number(s0.duration_minutes), 90);
+    assert.strictEqual(
+      String(siteWithServices.provider_profile_id),
+      String(leaderProfile),
+      "o botão do card precisa saber para qual perfil apontar"
+    );
+  });
+
+  check("V2. serviço desativado não aparece na vitrine", () => {
+    const nomes = siteWithServices.services.map((s) => s.name);
+    assert.ok(
+      !nomes.includes("SERVICO DESLIGADO"),
+      "desativar é como o líder tira um serviço da vitrine"
+    );
+  });
+
+  check("V3. a projeção não vaza a régua de comissão do líder", () => {
+    // Esta porta é ANÔNIMA e cacheada por 10 min na borda. Devolver a linha
+    // inteira publicaria affiliate_percent/created_by_user em HTML público.
+    const s0 = siteWithServices.services[0];
+    for (const proibido of ["affiliate_percent", "affiliates_allowed", "created_by_user", "id_profile"]) {
+      assert.ok(!(proibido in s0), proibido + " não pode sair na vitrine pública");
+    }
+  });
+
+  const privVitrineSlug = await CommunitySiteStorage.getSlug(pool, priv);
+  const privWithServices = privVitrineSlug
+    ? await CommunitySiteService.getPublicBySlug({ slug: privVitrineSlug })
+    : null;
+
+  check("V4. comunidade fechada não vaza a vitrine do líder", () => {
+    if (!privWithServices || !privWithServices.locked) return;
+    assert.strictEqual(
+      privWithServices.services,
+      undefined,
+      "o ramo trancado devolve zero conteúdo — e vitrine é conteúdo"
+    );
+  });
+
+  check("V5. texto livre antigo é descartado pelo normalizador", () => {
+    // Não há migration: a regra de "chave desconhecida some" limpa sozinha os
+    // sites que já existem, no próximo save.
+    const cfg = CommunitySite.normalizeConfig({
+      sections: [
+        {
+          id: "s1",
+          kind: "services_catalog",
+          enabled: true,
+          title: "t",
+          subtitle: "st",
+          data: { columns: 3, items: [{ id: "x", title: "FANTASMA", price: "R$ 99,00" }] },
+        },
+      ],
+    });
+    assert.strictEqual(cfg.sections[0].data.items, undefined, "items não pode sobreviver");
+    assert.strictEqual(cfg.sections[0].data.columns, 3, "a apresentação continua");
+  });
+
   console.log("\n━━━ endereço próprio (slug, mig 213) ━━━");
 
   check("21. reservados: www/api/admin não podem virar endereço", () => {

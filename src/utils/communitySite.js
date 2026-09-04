@@ -20,7 +20,6 @@ const crypto = require("crypto");
 const LIMITS = {
   SECTIONS: 24,
   SLIDES: 8,
-  SERVICES: 48,
   TESTIMONIALS: 24,
   GALLERY: 30,
   HIGHLIGHTS: 8,
@@ -205,25 +204,6 @@ function normalizeSlide(raw) {
   };
 }
 
-function normalizeService(raw) {
-  const d = raw && typeof raw === "object" ? raw : {};
-  return {
-    id: id(d.id),
-    imageUrl: imageUrl(d.imageUrl),
-    objectPosition: objectPosition(d.objectPosition),
-    title: str(d.title, LIMITS.TITLE),
-    description: str(d.description, LIMITS.SHORT * 2),
-    // Preço é TEXTO de propósito: aqui ele é vitrine, não cobrança. Guardar
-    // centavos sugeriria que este catálogo cobra — quem cobra é a Loja, com
-    // Stripe, holdback e reembolso. Confundir os dois criaria uma segunda
-    // verdade sobre preço no site.
-    price: str(d.price, 40),
-    duration: str(d.duration, 40),
-    ctaText: str(d.ctaText, 40),
-    ctaLink: link(d.ctaLink),
-  };
-}
-
 function normalizeHighlight(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
   return {
@@ -271,8 +251,21 @@ const SECTION_NORMALIZERS = {
     height: ["short", "medium", "tall"].includes(d.height) ? d.height : "tall",
   }),
 
+  // A vitrine de serviços NÃO guarda conteúdo (2026-09-04, decisão do Alex).
+  //
+  // Ela mostra os serviços REAIS cadastrados na Freelandoo, servidos pelo
+  // backend a cada leitura — o que sobra aqui é só a apresentação. Antes eram
+  // itens de texto livre (título, descrição e PREÇO digitados à mão no
+  // construtor), e isso dava ao site uma segunda verdade sobre preço: bastava o
+  // líder reajustar o serviço de verdade e esquecer do site para a página
+  // pública seguir anunciando o valor antigo.
+  //
+  // `items` deixou de ser normalizado de propósito. Pela regra desta fonte,
+  // chave desconhecida é DESCARTADA — então o texto livre dos sites que já
+  // existem some sozinho no próximo save, sem migration e sem varredura. As
+  // chaves de `textStyles` que apontavam para esses itens ficam órfãs e a poda
+  // que já existe as recolhe.
   services_catalog: (d) => ({
-    items: list(d.items, LIMITS.SERVICES, normalizeService),
     columns: [2, 3, 4].includes(Number(d.columns)) ? Number(d.columns) : 3,
   }),
 
@@ -464,35 +457,11 @@ function buildDefaultConfig(community) {
         enabled: true,
         title: "O que oferecemos",
         subtitle: "Serviços e produtos da comunidade.",
-        data: {
-          columns: 3,
-          items: [
-            {
-              id: crypto.randomUUID(),
-              title: "Primeiro serviço",
-              description: "Descreva aqui o que está incluso e para quem serve.",
-              price: "R$ 0,00",
-              duration: "1h",
-              ctaText: "Quero este",
-            },
-            {
-              id: crypto.randomUUID(),
-              title: "Segundo serviço",
-              description: "Troque este texto clicando direto nele.",
-              price: "R$ 0,00",
-              duration: "30min",
-              ctaText: "Quero este",
-            },
-            {
-              id: crypto.randomUUID(),
-              title: "Terceiro serviço",
-              description: "Adicione quantos quiser no botão de adicionar.",
-              price: "R$ 0,00",
-              duration: "2h",
-              ctaText: "Quero este",
-            },
-          ],
-        },
+        // Sem itens de exemplo: o conteúdo desta seção são os serviços
+        // cadastrados na Freelandoo, buscados a cada leitura. Semear texto
+        // falso aqui daria ao líder três "serviços" que ele não vende e que
+        // sumiriam sozinhos no primeiro carregamento.
+        data: { columns: 3 },
       },
       {
         id: crypto.randomUUID(),

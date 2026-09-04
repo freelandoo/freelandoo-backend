@@ -98,6 +98,7 @@ class CommunitySiteStorage {
   static async getPublicBySlug(conn, slug) {
     const r = await conn.query(
       `SELECT p.id_profile, p.display_name, p.avatar_url, p.bio,
+              p.id_leader_user,
               p.community_site_slug AS slug,
               p.community_privacy   AS privacy,
               p.community_kind      AS kind,

@@ -20,6 +20,9 @@ const CommunitySiteStorage = require("../storages/CommunitySiteStorage");
 const CondoStorage = require("../storages/CondoStorage");
 const CommunitySite = require("../utils/communitySite");
 const SiteSlug = require("../utils/communitySiteSlug");
+const ProfileStorage = require("../storages/ProfileStorage");
+const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
+const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunitySiteService");
@@ -31,6 +34,62 @@ function toConfig(row) {
     tagline: row.tagline || "",
     theme: CommunitySite.normalizeTheme(row.theme),
     sections: Array.isArray(row.sections) ? row.sections : [],
+  };
+}
+
+/**
+ * Os serviços que a vitrine do site mostra (2026-09-04).
+ *
+ * ═══ DE QUEM SÃO ESTES SERVIÇOS ═══
+ *
+ * Do LÍDER — do perfil-conta dele, que é onde a aba "Serviços" do /account
+ * grava. Decisão do Alex. A alternativa era a comunidade ter serviços próprios,
+ * mas não existe tela para cadastrar serviço EM comunidade: a vitrine nasceria
+ * vazia para todo mundo.
+ *
+ * ⚠️ A consequência a conhecer: o catálogo segue a PESSOA, não a comunidade.
+ * Se a liderança mudar, o site passa a anunciar os serviços do líder novo. É o
+ * comportamento escolhido, não um efeito colateral esquecido.
+ *
+ * ═══ POR QUE A PROJEÇÃO É ENXUTA ═══
+ *
+ * A linha de `tb_profile_service` carrega coisas que são do negócio de quem
+ * vende, não do visitante: `affiliates_allowed`, `affiliate_percent`,
+ * `created_by_user`. Esta porta é ANÔNIMA e cacheada por 10 minutos na borda —
+ * devolver a linha inteira publicaria a régua de comissão do líder em HTML
+ * público. Por isso os campos são escolhidos um a um, e campo novo na tabela
+ * NÃO passa a vazar sozinho.
+ *
+ * Só serviço ATIVO entra (`only_active`): desativar um serviço é a forma que o
+ * líder já tem de tirá-lo da vitrine, e ela precisa valer aqui também.
+ */
+async function loadShowcaseServices(id_leader_user) {
+  if (!id_leader_user) return { services: [], provider_profile_id: null };
+
+  const id_profile = await ProfileStorage.getUserAccountProfileId(pool, id_leader_user);
+  if (!id_profile) return { services: [], provider_profile_id: null };
+
+  const rows = await ProfileServiceStorage.list(pool, id_profile, { only_active: true });
+  if (rows.length === 0) return { services: [], provider_profile_id: id_profile };
+
+  const ids = rows.map((r) => Number(r.id_profile_service));
+  const mediaMap = await ProfileServiceMediaStorage.listByServices(pool, ids);
+
+  return {
+    provider_profile_id: id_profile,
+    services: rows.map((r) => {
+      const media = mediaMap.get(String(r.id_profile_service)) || [];
+      return {
+        id_profile_service: Number(r.id_profile_service),
+        name: r.name,
+        description: r.description || "",
+        // Centavos, e não texto pronto: quem formata é o front, que conhece o
+        // idioma de quem está lendo. O site é traduzido em 3 idiomas.
+        price_amount: r.price_amount,
+        duration_minutes: r.duration_minutes,
+        image_url: media[0]?.media_url || null,
+      };
+    }),
   };
 }
 
@@ -122,6 +181,12 @@ class CommunitySiteService {
 
         const slug = await CommunitySiteStorage.getSlug(pool, params.id_profile);
 
+        // Os serviços da vitrine acompanham TODA leitura que devolve config.
+        // O construtor mostra exatamente o que o site publicado mostra — é a
+        // mesma regra que faz o canvas ser um só: se o líder editasse contra
+        // uma amostra diferente, publicaria algo que não viu.
+        const showcase = await loadShowcaseServices(community.id_leader_user);
+
         if (isLeader) {
           return {
             exists: !!row,
@@ -131,6 +196,7 @@ class CommunitySiteService {
             updated_at: row?.updated_at || null,
             slug,
             config: row ? toConfig(row) : CommunitySite.buildDefaultConfig(community),
+            ...showcase,
           };
         }
 
@@ -156,6 +222,7 @@ class CommunitySiteService {
           updated_at: row.updated_at,
           slug,
           config: toConfig(row),
+          ...showcase,
         };
       }
     );
@@ -353,6 +420,11 @@ class CommunitySiteService {
           };
         }
 
+        // Só depois da trava: o ramo `locked` acima devolve zero conteúdo, e a
+        // vitrine de serviços é conteúdo. Buscá-la antes vazaria o catálogo do
+        // líder de uma comunidade fechada para qualquer anônimo com o link.
+        const showcase = await loadShowcaseServices(row.id_leader_user);
+
         return {
           locked: false,
           slug: row.slug,
@@ -365,6 +437,7 @@ class CommunitySiteService {
             bio: row.bio,
           },
           config: toConfig(row),
+          ...showcase,
         };
       }
     );
