@@ -315,6 +315,10 @@ module.exports = {
             WHERE pr.id_user = p.id_user
               AND pr.deleted_at IS NULL
               AND pr.is_clan = FALSE
+              -- Perfil que REPRESENTA a pessoa: comunidade não representa
+              -- ninguém. Hoje o perfil-conta ganha pela ordenação, mas a regra
+              -- não pode depender dela.
+              AND COALESCE(pr.is_community, FALSE) = FALSE
             ORDER BY pr.is_user_account DESC, pr.created_at ASC
             LIMIT 1
          ) pf ON TRUE

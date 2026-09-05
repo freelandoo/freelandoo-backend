@@ -390,6 +390,9 @@ class ClanStorage {
       LEFT JOIN public.tb_category c ON c.id_category = p.id_category
       WHERE LOWER(u.username) = LOWER($1)
         AND p.is_clan = FALSE
+        -- Comunidade mora na MESMA tabela dos perfis: sem esta linha a busca
+        -- por @username oferece "Meu pet" como perfil convidável para o clan.
+        AND COALESCE(p.is_community, FALSE) = FALSE
         AND p.deleted_at IS NULL
       ORDER BY p.created_at DESC
       `,

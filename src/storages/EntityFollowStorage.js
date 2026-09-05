@@ -162,6 +162,11 @@ class EntityFollowStorage {
       WHERE p.id_profile = $1
         AND p.id_user = $2
         AND p.is_clan = FALSE
+        -- Comunidade (pet, carro, games, bairro, condomínio) mora na MESMA
+        -- tabela dos perfis. Sem esta linha dá para ATUAR como comunidade
+        -- numa DM mandando o id na mão — tirá-la só da lista fecharia a porta
+        -- e deixaria a janela aberta.
+        AND COALESCE(p.is_community, FALSE) = FALSE
       LIMIT 1
       `,
       [id_profile, id_user]
@@ -202,6 +207,9 @@ class EntityFollowStorage {
           ${entityJoins("p")}
          WHERE p.id_user = $1
            AND p.is_clan = FALSE
+           -- Comunidade mora na MESMA tabela: sem isto o seletor "Atuar como"
+           -- oferece "Meu pet" e "Minha comunidade" como se fossem perfis.
+           AND COALESCE(p.is_community, FALSE) = FALSE
            AND p.deleted_at IS NULL
            AND p.is_active = TRUE
       ),
@@ -250,6 +258,7 @@ class EntityFollowStorage {
           ${entityJoins("p")}
          WHERE p.id_user = $1
            AND p.is_clan = FALSE
+           AND COALESCE(p.is_community, FALSE) = FALSE
            AND COALESCE(p.is_user_account, FALSE) = FALSE
            AND ${publicEntityWhere("p")}
       ),
