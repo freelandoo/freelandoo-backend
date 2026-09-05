@@ -40,7 +40,7 @@ module.exports = {
         -- Perfis com redes sociais filhas + status do perfil
         COALESCE(p.profiles, '[]'::jsonb) AS profiles,
 
-        -- Perfil-conta (paridade user≡subperfil): id + XP/nível no topo
+        -- Perfil-conta (paridade user≡perfil): id + XP/nível no topo
         acc.account_profile AS account_profile,
 
         -- Redes sociais do PERFIL-CONTA no nível do user (headcard do username)

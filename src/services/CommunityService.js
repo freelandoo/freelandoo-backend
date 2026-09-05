@@ -106,7 +106,7 @@ class CommunityService {
           // comunidade de enxame (não pontua XP nem ranking) — é utilidade do
           // prédio. Quem mora não pode ficar sem por já participar de outra.
           if (kind !== "condo") {
-            // 1. Requisito: ≥1 subperfil nível 5
+            // 1. Requisito: ≥1 perfil nível 5
             const sub = await CommunityStorage.getHighestSubprofile(
               client,
               id_user
@@ -121,7 +121,7 @@ class CommunityService {
             if (!isPlatformAdmin && sub.lvl < REQUIRED_LEVEL_TO_CREATE) {
               await client.query("ROLLBACK");
               return {
-                error: `Você precisa de pelo menos um subperfil nível ${REQUIRED_LEVEL_TO_CREATE} para criar uma comunidade.`,
+                error: `Você precisa de pelo menos um perfil nível ${REQUIRED_LEVEL_TO_CREATE} para criar uma comunidade.`,
                 required_level: REQUIRED_LEVEL_TO_CREATE,
                 current_level: sub.lvl,
               };
@@ -1304,7 +1304,7 @@ class CommunityService {
           if (!sub.has_subprofile) {
             await client.query("ROLLBACK");
             return {
-              error: "Você precisa de pelo menos um subperfil para entrar.",
+              error: "Você precisa de pelo menos um perfil para entrar.",
             };
           }
 

@@ -125,7 +125,7 @@ async function main() {
       [`Spaces ${tag}`, `spaces_${tag}_${stamp}@ex.com`, `spaces_${tag}_${stamp}`]
     );
     const id_user = u.rows[0].id_user;
-    // Subperfil de verdade: entrar em comunidade exige ao menos um (é o gate do
+    // Perfil de verdade: entrar em comunidade exige ao menos um (é o gate do
     // CommunityService.join, e é ele que o carro reaproveita).
     await db.query(
       `INSERT INTO public.tb_profile

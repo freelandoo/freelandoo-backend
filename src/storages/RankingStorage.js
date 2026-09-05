@@ -455,8 +455,8 @@ module.exports = {
          AND pro.deleted_at IS NULL AND tu.ativo = TRUE
          AND pro.is_clan = FALSE
          AND pro.ranking_visible = TRUE
-         -- Perfil-conta entra no ranking (paridade user≡subperfil, 2026-07-19);
-         -- subperfil segue exigindo assinatura ativa (o JOIN antigo virou EXISTS).
+         -- Perfil-conta entra no ranking (paridade user≡perfil, 2026-07-19);
+         -- perfil segue exigindo assinatura ativa (o JOIN antigo virou EXISTS).
          AND (
            pro.is_user_account = TRUE
            OR EXISTS (
@@ -674,7 +674,7 @@ module.exports = {
   // ──────────────────────────────────────────────────────────────────────────
   // Posição pública de um perfil (pra botão "Ranking" no card).
   // Para clans, máquina vem direto de pro.id_machine, e profession/specialty
-  // vêm da categoria do subperfil OWNER (clan não tem categoria própria, mas
+  // vêm da categoria do perfil OWNER (clan não tem categoria própria, mas
   // o dono determina a "profissão de referência" pra navegação no modal).
   async getPublicProfilePosition(db, { id_profile }) {
     const r = await db.query(
@@ -702,7 +702,7 @@ module.exports = {
        LEFT JOIN tb_category ca ON ca.id_category = pro.id_category
        LEFT JOIN tb_machine mc ON mc.id_machine = ca.id_machine
        LEFT JOIN tb_machine mp ON mp.id_machine = pro.id_machine
-       -- Owner do clan (se for clan): pega categoria/profissão do subperfil dono.
+       -- Owner do clan (se for clan): pega categoria/profissão do perfil dono.
        LEFT JOIN tb_clan_member ocm
          ON pro.is_clan = TRUE AND ocm.id_clan_profile = pro.id_profile AND ocm.role = 'owner'
        LEFT JOIN tb_profile op ON op.id_profile = ocm.id_member_profile

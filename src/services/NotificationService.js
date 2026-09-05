@@ -369,7 +369,7 @@ class NotificationService {
   // ──────────────────────────────────────────────────────────────────────────
   // Chamados / O.S. (Slice D): um profissional respondeu ao seu chamado.
   // Recipient = quem abriu o chamado (requester). Chamado só na 1ª resposta
-  // daquele subperfil (quem chama checa que não havia resposta antes).
+  // daquele perfil (quem chama checa que não havia resposta antes).
   // ──────────────────────────────────────────────────────────────────────────
   static async notifyServiceResponse({
     requester_user_id,

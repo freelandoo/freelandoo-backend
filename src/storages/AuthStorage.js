@@ -49,7 +49,7 @@ class AuthStorage {
   /**
    * Garante que existe um perfil-fantasma (is_user_account=TRUE) para o usuário.
    * Idempotente — usa UNIQUE PARTIAL INDEX uq_tb_profile_user_account.
-   * Reaproveita endpoints de portfólio sem precisar de subperfil profissional.
+   * Reaproveita endpoints de portfólio sem precisar de perfil profissional.
    * Trigger fn_user_account_profile_defaults força as flags corretas.
    */
   static async ensureUserAccountProfile(client, id_user, display_name) {

@@ -127,7 +127,7 @@ module.exports = {
 
     // XP por tempo online — concede unit_count = minutos efetivamente somados
     // (respeita o teto diário). source_id único por chamada evita duplicar.
-    // Award para todos os subperfis ativos do usuário.
+    // Award para todos os perfis ativos do usuário.
     if (applied > 0) {
       const today = new Date().toISOString().slice(0, 10);
       XpStorage.getUserActiveProfileIds(pool, req.user.id_user).then((profileIds) => {

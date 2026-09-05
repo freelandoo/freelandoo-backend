@@ -3,7 +3,7 @@
  * confirmação do cliente por token. SQL puro.
  *
  * "Devido" = booking confirmado, futuro, dentro da janela de antecedência do
- * subperfil (reminder_hours_before, default 24h), ainda sem lembrete enviado.
+ * perfil (reminder_hours_before, default 24h), ainda sem lembrete enviado.
  * Datas/horas são locais (DATE+TIME) interpretadas no fuso de São Paulo.
  */
 

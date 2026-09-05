@@ -760,7 +760,7 @@ class ProfileStorage {
   }
 
   /**
-   * Mapa { id_profile: id_user } para uma lista de subperfis. Usado pelo split
+   * Mapa { id_profile: id_user } para uma lista de perfis. Usado pelo split
    * de clan pra creditar o saldo do dono de cada perfil anexado.
    */
   static async getOwnerUserMap(conn, profileIds) {

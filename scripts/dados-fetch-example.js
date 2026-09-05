@@ -32,7 +32,7 @@ async function get(path) {
   const { profiles } = await get("/profiles");
   console.log(`\n== ${profiles.length} perfis ==`);
   for (const p of profiles) {
-    const tipo = p.is_community ? "comunidade" : p.is_clan ? "clan" : p.is_user_account ? "conta" : "subperfil";
+    const tipo = p.is_community ? "comunidade" : p.is_clan ? "clan" : p.is_user_account ? "conta" : "perfil";
     console.log(`- [${tipo}] ${p.display_name} — nível ${p.level}, ${p.followers} seguidores`);
   }
 

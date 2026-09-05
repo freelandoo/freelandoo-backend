@@ -4,21 +4,21 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 const log = createLogger("ProductRequestMatchingService");
 
 /**
- * Matching de Pedidos de Produto → Subperfis vendedores compatíveis.
+ * Matching de Pedidos de Produto → Perfis vendedores compatíveis.
  *
  * Critérios (MVP):
- *  - Subperfil não-clan, não deletado, ativo, visível.
+ *  - Perfil não-clan, não deletado, ativo, visível.
  *  - Assinatura ativa em tb_profile_subscription.
  *  - Tem pelo menos 1 tb_profile_product ativo (is_active, sem deleted_at)
  *    na MESMA categoria do pedido.
  *  - Cidade + UF coincidem quando o pedido informa local (case-insensitive
  *    UPPER e TRIM). Se o pedido NÃO informa city/state, é considerado
- *    nacional: todos os subperfis elegíveis do país recebem.
+ *    nacional: todos os perfis elegíveis do país recebem.
  *
  * Notas:
  *  - Notificação fire-and-forget: chamamos findEligibleSubprofiles após
  *    criar o pedido para enfileirar notifs.
- *  - Mural do subperfil: listMuralForProfile filtra os pedidos relevantes
+ *  - Mural do perfil: listMuralForProfile filtra os pedidos relevantes
  *    ao perfil (pedidos abertos onde ele é elegível e ainda não respondeu).
  */
 class ProductRequestMatchingService {
@@ -121,7 +121,7 @@ class ProductRequestMatchingService {
   }
 
   /**
-   * Produtos próprios do subperfil compatíveis com a categoria do pedido,
+   * Produtos próprios do perfil compatíveis com a categoria do pedido,
    * usado pela UI quando o vendedor escolhe "Sugerir produto da minha loja".
    */
   static async listEligibleProductsForRequest(id_profile, id_product_request) {

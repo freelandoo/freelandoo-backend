@@ -122,7 +122,7 @@ async function resolveActor(conn, user, payload = {}) {
 
   if (!actor) return { error: "Sem permissão para acompanhar por esta entidade" };
   // A conta do usuário (perfil-fantasma) pode acompanhar mesmo sem assinatura —
-  // o follow é a nível de usuário (mig 056). Subperfis/clans continuam exigindo
+  // o follow é a nível de usuário (mig 056). Perfis/clans continuam exigindo
   // entidade ativa e publicada para servir de ator legado.
   if (!actor.is_user_account && !EntityFollowStorage.isPublicEntity(actor)) {
     return { error: "Entidade ativa e publicada é obrigatória" };
@@ -153,7 +153,7 @@ class EntityFollowService {
   }
 
   // Atores válidos pro sistema de mensagens. Não exige assinatura ativa
-  // nem visibilidade — qualquer subperfil/clan/user-account ativo serve.
+  // nem visibilidade — qualquer perfil/clan/user-account ativo serve.
   // Garante a existência do perfil-fantasma antes de retornar, para que
   // o usuário SEMPRE tenha pelo menos um ator pra abrir conversa.
   static async listMessageableActors(user) {
@@ -283,7 +283,7 @@ class EntityFollowService {
 
           await client.query("COMMIT");
 
-          // XP por acompanhamento recebido — somente para subperfis (não clans)
+          // XP por acompanhamento recebido — somente para perfis (não clans)
           // source_id garante que follow/unfollow/follow não duplica XP
           if (target_type === "profile") {
             XpStorage.award(pool, {
@@ -294,7 +294,7 @@ class EntityFollowService {
             }).catch(() => {});
           }
 
-          // Notificação fire-and-forget (cobre subperfil + clan via owner).
+          // Notificação fire-and-forget (cobre perfil + clan via owner).
           NotificationService.notifyFollow({
             actor_user_id: user.id_user,
             actor_profile_id: actorRes.actor_id,

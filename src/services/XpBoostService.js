@@ -1,5 +1,5 @@
 // src/services/XpBoostService.js
-// Booster de XP: R$10 que leva um subperfil escolhido direto ao nível 5.
+// Booster de XP: R$10 que leva um perfil escolhido direto ao nível 5.
 // Stripe price_data ad-hoc + webhook idempotente por session id. Sem comissão
 // de afiliado. Entrega = evento de XP idempotente (top-up até o nível-alvo) +
 // recálculo do nível. Espelha PolenProductService.
@@ -24,7 +24,7 @@ class XpBoostService {
       async () => {
         if (!user?.id_user) return { error: "Não autenticado" };
         const id_profile = body?.id_profile;
-        if (!id_profile) return { error: "Selecione um subperfil." };
+        if (!id_profile) return { error: "Selecione um perfil." };
 
         const r = await pool.query(
           `SELECT id_user, is_clan, xp_level, display_name

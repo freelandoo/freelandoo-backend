@@ -127,7 +127,7 @@ async function resolveActor(conn, user, payload = {}) {
         });
 
   if (!actor) return { error: "Sem permissão para enviar como esta entidade" };
-  // Mensagens privadas usam check frouxo: qualquer subperfil/clan/user-account
+  // Mensagens privadas usam check frouxo: qualquer perfil/clan/user-account
   // ativo pode enviar. Não exige is_paid nem is_visible.
   if (!EntityFollowStorage.isMessageableEntity(actor)) {
     return { error: "Entidade indisponível para enviar mensagens" };
@@ -889,7 +889,7 @@ class ConversationService {
         const handleLike = `${handle}%`;
         // DISTINCT ON (id_user) retorna 1 melhor perfil por usuário —
         // preferência: user-account > paid > não-clan. Evita listar o mesmo
-        // user várias vezes (ex.: 3 subperfis do persio998). Inclui também
+        // user várias vezes (ex.: 3 perfis do persio998). Inclui também
         // clans que casarem.
         const { rows } = await pool.query(
           `
@@ -923,7 +923,7 @@ class ConversationService {
                 p.is_clan,
                 p.is_user_account,
                 u.username,
-                -- Clans são únicos por id_profile; subperfis colapsam por user.
+                -- Clans são únicos por id_profile; perfis colapsam por user.
                 CASE WHEN p.is_clan THEN 'c:' || p.id_profile::text
                                     ELSE 'u:' || p.id_user::text END AS group_key,
                 CASE

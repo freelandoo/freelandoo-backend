@@ -20,8 +20,8 @@ class UserPublicController {
       UserPublicSummaryStorage.getAccountProfile(pool, id_user),
     ]);
 
-    // Paridade user≡subperfil: o perfil-conta expõe XP/nível, seguidores e
-    // redes sociais — igual a um subperfil.
+    // Paridade user≡perfil: o perfil-conta expõe XP/nível, seguidores e
+    // redes sociais — igual a um perfil.
     let account = null;
     if (accountProfile) {
       const [xp, followCounts, social_media] = await Promise.all([

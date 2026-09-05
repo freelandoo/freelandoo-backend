@@ -157,7 +157,7 @@ class BookingAvailabilityService {
     const profile = await ProfileStorage.getProfileById(pool, id_profile);
     if (!profile) return { error: "Perfil não encontrado" };
     if (profile.deleted_at) return { error: "Perfil não encontrado" };
-    // Perfil-conta é agendável mesmo com is_visible=FALSE (paridade user≡subperfil)
+    // Perfil-conta é agendável mesmo com is_visible=FALSE (paridade user≡perfil)
     if (!profile.is_visible && !profile.is_user_account) return { error: "Perfil indisponível" };
 
     const targetDate = new Date(dateStr + "T12:00:00Z");

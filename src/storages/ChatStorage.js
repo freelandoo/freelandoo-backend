@@ -243,7 +243,7 @@ class ChatStorage {
   // ----------------------------------------------------------------
 
   /**
-   * Lista máquinas distintas em que o user tem subperfis ativos não-clan
+   * Lista máquinas distintas em que o user tem perfis ativos não-clan
    * não-deletados. Ordena pela mais recente.
    */
   static async listUserMachines(conn, id_user) {

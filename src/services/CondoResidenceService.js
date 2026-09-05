@@ -646,7 +646,7 @@ class CondoResidenceService {
 
   /**
    * Abre a disputa e monta a conversa dos três. A conversa é criada pelo
-   * SISTEMA, não por um usuário: quem contesta não é dono do subperfil do
+   * SISTEMA, não por um usuário: quem contesta não é dono do perfil do
    * síndico, então o caminho normal de criação de grupo (que exige posse do
    * perfil dono) recusaria — e recusar aqui deixaria a disputa sem o lugar
    * onde o contraditório acontece.
@@ -1073,10 +1073,10 @@ class CondoResidenceService {
    * user → o perfil que fala por ele numa conversa.
    *
    * Preferência é o perfil-conta (`is_user_account`), que todo mundo tem,
-   * inclusive quem nunca criou subperfil — usar "o primeiro subperfil" deixaria
+   * inclusive quem nunca criou perfil — usar "o primeiro perfil" deixaria
    * de fora exatamente quem só usa a conta, que é o morador típico.
    *
-   * O FALLBACK para um subperfil comum não é preciosismo: sem ele, um único
+   * O FALLBACK para um perfil comum não é preciosismo: sem ele, um único
    * participante sem perfil-conta fazia a conversa da disputa não nascer, em
    * silêncio — e a conversa é onde o contraditório acontece. Perder o
    * contraditório porque uma linha de perfil faltava é o pior jeito de falhar.

@@ -5,7 +5,7 @@
 const pool = require("../databases");
 
 const ExpiringStorage = {
-  // Assinatura de subperfil (anual). Dono = tb_profile.id_user.
+  // Assinatura de perfil (anual). Dono = tb_profile.id_user.
   async subscriptionsExpiringSoon(days = 3) {
     const r = await pool.query(
       `SELECT s.id_subscription AS entity_id, p.id_user, s.current_period_end AS expires_at

@@ -1,10 +1,10 @@
 // src/storages/CompressJobStorage.js
 // Contagem de uso da ferramenta /comprimir (limite por hora) + checagem de
-// conta paga (tem subperfil com assinatura ativa).
+// conta paga (tem perfil com assinatura ativa).
 const pool = require("../databases");
 
 const CompressJobStorage = {
-  // Conta = paga se o usuário dono tem QUALQUER subperfil com assinatura ativa.
+  // Conta = paga se o usuário dono tem QUALQUER perfil com assinatura ativa.
   async isPaidUser(id_user) {
     const r = await pool.query(
       `SELECT EXISTS (

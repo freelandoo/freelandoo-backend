@@ -146,7 +146,7 @@ class CourseRequestService {
     });
   }
 
-  // ---------- PRO (subperfil) ----------
+  // ---------- PRO (perfil) ----------
   static async listMural(user, id_profile) {
     return runWithLogs(log, "listMural", () => ({ id_user: user?.id_user, id_profile }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };

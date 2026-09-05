@@ -77,7 +77,7 @@ class ClanStorage {
   }
 
   /**
-   * Retorna o clan em que o USUÁRIO já está (qualquer subperfil dele), se houver.
+   * Retorna o clan em que o USUÁRIO já está (qualquer perfil dele), se houver.
    * Usa o UNIQUE(id_user) da mig 124 para resposta O(1). Regra: 1 clan por user.
    */
   static async findMembershipByUser(conn, id_user) {
@@ -134,7 +134,7 @@ class ClanStorage {
   }
 
   /**
-   * Retorna o id_clan_profile em que o sub-perfil já está, se existir.
+   * Retorna o id_clan_profile em que o perfil já está, se existir.
    * Usa o UNIQUE(id_member_profile) para resposta O(1).
    */
   static async findMembershipByProfile(conn, id_member_profile) {
@@ -190,7 +190,7 @@ class ClanStorage {
 
   /**
    * Lista clans em que o usuário é dono (owner) ou participante (qualquer
-   * sub-perfil dele). Usado pelo dashboard.
+   * perfil dele). Usado pelo dashboard.
    */
   static async listClansOfUser(conn, id_user) {
     const r = await conn.query(
@@ -242,7 +242,7 @@ class ClanStorage {
   }
 
   /**
-   * Verifica se um sub-perfil existe, é do usuário, NÃO é clan, está ativo
+   * Verifica se um perfil existe, é do usuário, NÃO é clan, está ativo
    * (assinatura active), visível e não deletado. Retorna o perfil ou null.
    */
   static async getEligibleSubProfile(conn, { id_profile, id_user }) {
@@ -363,7 +363,7 @@ class ClanStorage {
   }
 
   /**
-   * Resolve sub-perfis convidáveis para um username dado (para autocompletar
+   * Resolve perfis convidáveis para um username dado (para autocompletar
    * no frontend). Não retorna clans nem perfis sem assinatura ativa.
    */
   static async findInvitableProfilesByUsername(conn, username) {
@@ -471,7 +471,7 @@ class ClanStorage {
   }
 
   /**
-   * Verifica se o usuário é membro de um clan (qualquer sub-perfil dele).
+   * Verifica se o usuário é membro de um clan (qualquer perfil dele).
    * Retorna { id_member_profile, role } se sim, null caso contrário.
    */
   static async getUserMembership(conn, id_clan_profile, id_user) {

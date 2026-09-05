@@ -54,7 +54,7 @@ class ProductRequestResponseStorage {
     return rows;
   }
 
-  // Respostas enviadas por qualquer subperfil do vendedor (lado vendedor).
+  // Respostas enviadas por qualquer perfil do vendedor (lado vendedor).
   static async listBySellerUser(conn, id_user) {
     const { rows } = await conn.query(
       `SELECT prr.*,
@@ -168,7 +168,7 @@ class ProductRequestResponseStorage {
     return rows;
   }
 
-  // Lado VENDEDOR: 1 chat por resposta enviada por qualquer subperfil do user.
+  // Lado VENDEDOR: 1 chat por resposta enviada por qualquer perfil do user.
   static async listChatsForSeller(conn, id_seller_user) {
     const { rows } = await conn.query(
       `SELECT prr.id_response,

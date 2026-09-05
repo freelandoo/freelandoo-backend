@@ -66,8 +66,8 @@ class CommunityStorage {
     return r.rows[0].n;
   }
 
-  // Nível/XP do user = subperfil (não-clã, não-comunidade) de maior XP.
-  // has_subprofile = se o user tem ao menos 1 subperfil ativo.
+  // Nível/XP do user = perfil (não-clã, não-comunidade) de maior XP.
+  // has_subprofile = se o user tem ao menos 1 perfil ativo.
   static async getHighestSubprofile(conn, id_user) {
     const r = await conn.query(
       `SELECT COALESCE(MAX(xp_level), 0)::int       AS lvl,
@@ -94,17 +94,17 @@ class CommunityStorage {
     { id_user, id_machine, display_name, bio, avatar_url, theme, kind, address }
   ) {
     // tb_profile.sub_profile_slug é NOT NULL — gera um slug único por user
-    // (mesma convenção dos subperfis: slugify(display_name) + sufixo anti-colisão).
+    // (mesma convenção dos perfis: slugify(display_name) + sufixo anti-colisão).
     const sub_profile_slug = await ProfileStorage.resolveUniqueSubProfileSlug(
       conn,
       { id_user, display_name }
     );
 
-    // Região da comunidade = a do subperfil de maior XP do criador (que tenha
+    // Região da comunidade = a do perfil de maior XP do criador (que tenha
     // região). Permite filtrar comunidades por região no ranking e na vitrine.
     // Condomínio (mig 196) é a exceção: cidade/UF vêm do ENDEREÇO informado —
     // o prédio tem lugar próprio, que não é o do síndico. Quando o endereço
-    // traz UF+cidade, eles vencem o subperfil (COALESCE abaixo).
+    // traz UF+cidade, eles vencem o perfil (COALESCE abaixo).
     const addr = address || {};
     const r = await conn.query(
       `INSERT INTO public.tb_profile
@@ -485,7 +485,7 @@ class CommunityStorage {
   }
 
   // Ranking dos membros por métrica, dentro de [starts_at, asOf]. Identidade via
-  // subperfil de maior XP. Retorna ordenado desc (já com score normalizado).
+  // perfil de maior XP. Retorna ordenado desc (já com score normalizado).
   static async getGoalRanking(conn, goal, asOf) {
     const ident = `
       LEFT JOIN LATERAL (
@@ -805,7 +805,7 @@ class CommunityStorage {
   }
 
   // Lista recados (texto) já no shape FeedPost (via shapeRow). Identidade do autor
-  // = subperfil de maior XP (mesmo critério do ranking de temporada). Paginação
+  // = perfil de maior XP (mesmo critério do ranking de temporada). Paginação
   // unificada com os posts via chave textual ('r' || id) na MESMA stream.
   static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 25);

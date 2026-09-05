@@ -201,7 +201,7 @@ class StoryStorage {
          WHERE follower_user_id = $1
            AND deleted_at IS NULL
         UNION
-        -- Os próprios subperfis do viewer (igual Instagram: sua story aparece primeiro)
+        -- Os próprios perfis do viewer (igual Instagram: sua story aparece primeiro)
         SELECT id_profile, TRUE AS is_self
           FROM public.tb_profile
          WHERE id_user = $1
@@ -261,7 +261,7 @@ class StoryStorage {
 
   /**
    * Faixa de bees AGRUPADA POR USUÁRIO (Bees v2, pedido do Alex 2026-07-10):
-   * 1 linha por USER que o viewer acompanha (via qualquer subperfil dele) com
+   * 1 linha por USER que o viewer acompanha (via qualquer perfil dele) com
    * >=1 bee vivo. O tile mostra a foto do USER (tb_user.avatar). O próprio
    * viewer fica FORA da lista — o tile dele é o "Postar" do front.
    */
@@ -315,8 +315,8 @@ class StoryStorage {
   }
 
   /**
-   * Bees vivos de TODOS os subperfis de um user (player agrupado por user).
-   * Inclui os dados do subperfil que postou cada bee (header do player).
+   * Bees vivos de TODOS os perfis de um user (player agrupado por user).
+   * Inclui os dados do perfil que postou cada bee (header do player).
    */
   static async listActiveByUserPublic(conn, { id_user }) {
     const { rows } = await conn.query(

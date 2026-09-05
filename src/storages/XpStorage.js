@@ -153,7 +153,7 @@ module.exports = {
 
     const row = r.rows[0] ?? null;
 
-    // Crédito de Poléns por subida de nível (só subperfil não-clã, forward-only).
+    // Crédito de Poléns por subida de nível (só perfil não-clã, forward-only).
     // Como xp_total só cresce e o nível é monotônico, o delta > 0 ocorre uma vez
     // por nível cruzado — sem risco de crédito duplicado.
     if (row && row.is_clan === false && row.id_user) {

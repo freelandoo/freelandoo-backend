@@ -229,7 +229,7 @@ module.exports = {
   // ─── Ranking mensal ────────────────────────────────────────────────────────
   // Por membro vinculado, na janela [windowStart, windowEnd): dias distintos de
   // catraca (freq), posts publicados no feed da academia (mig 181) e shares
-  // recebidos por esses posts. Avatar = 1º subperfil do membro (igual ranking
+  // recebidos por esses posts. Avatar = 1º perfil do membro (igual ranking
   // oficial). Posts/shares vêm de tb_academy_feed_item (o mural antigo,
   // tb_academy_post, deixou de ser usado na UI desde o Slice 3).
   async monthlyRanking(db, id_academy, windowStart, windowEnd) {

@@ -7,7 +7,7 @@ const asyncHandler = require("../utils/asyncHandler");
 
 /**
  * Redes sociais do USER ACCOUNT (perfil-fantasma is_user_account=TRUE) —
- * paridade user≡subperfil. Reaproveita o SocialMediaService por-perfil,
+ * paridade user≡perfil. Reaproveita o SocialMediaService por-perfil,
  * passando o id_profile do middleware (mesmo padrão do userAccountPortfolio).
  *
  * Aceita o body legado do /account: { platform, account, followers_range }

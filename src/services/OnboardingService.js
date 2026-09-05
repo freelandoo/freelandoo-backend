@@ -107,7 +107,7 @@ class OnboardingService {
           if (taken.rowCount) {
             return {
               error:
-                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos perfis quiser.",
               reason: "cpf_taken",
             };
           }
@@ -257,7 +257,7 @@ class OnboardingService {
           if (err?.code === "23505" && String(err.constraint) === "ux_tb_user_cpf") {
             return {
               error:
-                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos perfis quiser.",
               reason: "cpf_taken",
             };
           }

@@ -407,7 +407,7 @@ class StoryService {
 
   // Pré-checagem compartilhada de permissão de postar bee por um perfil.
   // Retorna { error } ou { profile } (perfil já validado p/ ownership).
-  // Regra do antigo 'rest': qualquer subperfil ativo do dono pode postar.
+  // Regra do antigo 'rest': qualquer perfil ativo do dono pode postar.
   static async _assertCanPost(user, id_profile) {
     if (!user?.id_user) return { error: "Usuário não autenticado" };
     const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
@@ -696,7 +696,7 @@ class StoryService {
     );
   }
 
-  // Player agrupado por user: todos os bees vivos dos subperfis do user.
+  // Player agrupado por user: todos os bees vivos dos perfis do user.
   static async getByUser(user, params) {
     return runWithLogs(
       log,

@@ -1,5 +1,5 @@
 // src/services/CommunityXpService.js
-// XP da comunidade = XP do subperfil de maior XP do LÍDER (espelhado) +
+// XP da comunidade = XP do perfil de maior XP do LÍDER (espelhado) +
 // acumulador próprio (+1 por membro a cada ciclo de ranking). Trocar de líder
 // re-baseia o espelho (o acumulador permanece).
 //
@@ -52,7 +52,7 @@ class CommunityXpService {
   }
 
   // Recalcula todas as comunidades lideradas por um user (chamado quando o XP de
-  // um subperfil do líder muda). Fire-and-forget safe.
+  // um perfil do líder muda). Fire-and-forget safe.
   static async recalcForLeaderUser(db, id_user) {
     try {
       const r = await db.query(

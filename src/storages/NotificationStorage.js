@@ -34,7 +34,7 @@ class NotificationStorage {
   }
 
   /**
-   * Resolve o user dono do perfil. Subperfil: tb_profile.id_user direto.
+   * Resolve o user dono do perfil. Perfil: tb_profile.id_user direto.
    * Clan: id_user do member com role='owner'.
    */
   static async resolveProfileOwnerUserId(conn, id_profile) {

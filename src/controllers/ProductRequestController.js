@@ -44,7 +44,7 @@ class ProductRequestController {
     return sendServiceResult(res, result);
   }
 
-  // ─── Mural do subperfil (vendedor) ─────────────────────────────────────
+  // ─── Mural do perfil (vendedor) ─────────────────────────────────────
   static async muralForProfile(req, res) {
     const user = req.user;
     if (!user?.id_user) return res.status(401).json({ error: "Não autenticado" });

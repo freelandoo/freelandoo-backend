@@ -96,7 +96,7 @@ function publicEntityWhere(alias = "p") {
     AND ${alias}.is_active = TRUE
     AND (
       -- Perfil-conta (is_user_account): entidade social pública por natureza —
-      -- paridade user≡subperfil. Não exige is_visible nem assinatura ativa.
+      -- paridade user≡perfil. Não exige is_visible nem assinatura ativa.
       COALESCE(${alias}.is_user_account, FALSE) = TRUE
       OR (
         ${alias}.is_visible = TRUE
@@ -192,7 +192,7 @@ class EntityFollowStorage {
 
   // Lista de "atores" pro sistema de mensagens (mais frouxo que listActorOptions).
   // Não exige assinatura ativa nem is_visible — inclui o perfil-fantasma do
-  // user account, subperfis ainda não ativados, e clans onde o user é owner.
+  // user account, perfis ainda não ativados, e clans onde o user é owner.
   static async listMessageableActorOptions(conn, id_user) {
     const { rows } = await conn.query(
       `
@@ -234,7 +234,7 @@ class EntityFollowStorage {
       `
       WITH account_actor AS (
         -- Conta do usuário (perfil-fantasma): ator sempre disponível, mesmo sem
-        -- subperfil pago. Permite que qualquer usuário (inclusive recém-cadastrado)
+        -- perfil pago. Permite que qualquer usuário (inclusive recém-cadastrado)
         -- acompanhe — o follow é a nível de usuário (mig 056).
         SELECT ${entitySelect("p")}, NULL::text AS my_role
           FROM public.tb_profile p
@@ -281,14 +281,14 @@ class EntityFollowStorage {
   static isPublicEntity(entity) {
     if (!entity || !entity.is_active || entity.deleted_at) return false;
     // Perfil-conta do usuário: sempre entidade social pública (paridade
-    // user≡subperfil) — pode ser seguido sem is_visible/assinatura.
+    // user≡perfil) — pode ser seguido sem is_visible/assinatura.
     if (entity.is_user_account) return true;
     return !!(entity.is_visible && entity.is_paid);
   }
 
   // Check mais frouxo usado pelo sistema de mensagens. Qualquer entidade ativa
   // e não apagada pode enviar/receber DM — inclusive perfil-fantasma do user
-  // account (is_paid=FALSE, is_visible=FALSE), subperfis ainda não ativados e
+  // account (is_paid=FALSE, is_visible=FALSE), perfis ainda não ativados e
   // clans. A ideia: mensagens privadas não dependem de assinatura.
   static isMessageableEntity(entity) {
     return !!(

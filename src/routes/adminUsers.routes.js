@@ -10,6 +10,7 @@ const admin = [authMiddleware, roleMiddleware("Administrator")];
 
 router.get("/users", ...admin, asyncHandler(AdminUsersController.listAll));
 router.patch("/users/:id/admin", ...admin, asyncHandler(AdminUsersController.setAdmin));
+router.delete("/users/:id", ...admin, asyncHandler(AdminUsersController.deleteUser));
 router.get("/transactions", ...admin, asyncHandler(AdminTransactionsController.listAll));
 
 module.exports = router;

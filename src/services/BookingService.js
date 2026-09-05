@@ -44,7 +44,7 @@ class BookingService {
     // Validar perfil
     const profile = await ProfileStorage.getProfileById(pool, id_profile);
     if (!profile || profile.deleted_at) return { error: "Perfil não encontrado" };
-    // Perfil-conta é agendável mesmo com is_visible=FALSE (paridade user≡subperfil)
+    // Perfil-conta é agendável mesmo com is_visible=FALSE (paridade user≡perfil)
     if (!profile.is_visible && !profile.is_user_account) return { error: "Perfil indisponível" };
     if (String(profile.id_user) === String(user.id_user)) {
       return { error: "Você não pode agendar com seu próprio perfil" };

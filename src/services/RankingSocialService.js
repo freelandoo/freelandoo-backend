@@ -1,7 +1,7 @@
 // src/services/RankingSocialService.js
 // Likes e comentarios do /ranking. Leitura e PUBLICA (a pagina do ranking nao
 // exige login); escrita exige a conta user logada — interacoes nunca sao
-// assinadas por subperfil. Espelha o CasaAudienceInteractionService.
+// assinadas por perfil. Espelha o CasaAudienceInteractionService.
 const pool = require("../databases");
 const RankingSocialStorage = require("../storages/RankingSocialStorage");
 const { assertMinorPermission } = require("../utils/supervision");

@@ -4,7 +4,7 @@ const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
 
-// GET /public/creator/:handle/:profession_slug/:sub_profile_slug → resolve sub-perfil específico
+// GET /public/creator/:handle/:profession_slug/:sub_profile_slug → resolve perfil específico
 router.get(
   "/:handle/:profession_slug/:sub_profile_slug",
   asyncHandler(ProfileController.getPublicByHandle)

@@ -169,7 +169,7 @@ class ServiceRequestService {
       if (resp.deleted_at) return { error: "Conversa já apagada" };
 
       // Permite apagar quem é dono do request (lado USER) ou dono do
-      // subperfil que respondeu (lado PRO). Decisão do produto: qualquer
+      // perfil que respondeu (lado PRO). Decisão do produto: qualquer
       // lado pode encerrar a conversa pra ambos.
       const req = await ServiceRequestStorage.getRequestById(pool, resp.id_request);
       if (!req) return { error: "Solicitação não encontrada" };
@@ -258,7 +258,7 @@ class ServiceRequestService {
     });
   }
 
-  // ---------- PRO (subperfil) ----------
+  // ---------- PRO (perfil) ----------
   static async listMural(user, id_profile) {
     return runWithLogs(log, "listMural", () => ({ id_user: user?.id_user, id_profile }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
@@ -269,7 +269,7 @@ class ServiceRequestService {
       const p = own.profile;
       if (p.is_clan) return { error: "Mural de clan será disponibilizado na próxima slice" };
       // Perfil-conta abre o mural sem assinatura/visibilidade (paridade
-      // user≡subperfil). Como ele não tem taxonomia real (categoria fantasma
+      // user≡perfil). Como ele não tem taxonomia real (categoria fantasma
       // do AuthStorage), o broadcast por máquina/profissão não se aplica —
       // lista só as conversas de O.S. já abertas.
       if (!p.is_user_account && (!p.is_paid || !p.is_visible)) {
@@ -326,7 +326,7 @@ class ServiceRequestService {
       if (existing && ["USER_REJECTED", "FINALIZED", "CLOSED_OTHER_WON"].includes(existing.status)) {
         return { error: "Resposta já encerrada" };
       }
-      // Lock por O.S. removido: multiplos sub-perfis podem responder em paralelo.
+      // Lock por O.S. removido: multiplos perfis podem responder em paralelo.
       // O usuario ve a concorrencia pelo responses_count no mural.
       let resp;
       if (action === "open") {

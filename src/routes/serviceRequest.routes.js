@@ -17,7 +17,7 @@ router.post("/:id/finalize-response/:id_response", ...auth, asyncHandler(Service
 router.post("/:id/reject-response/:id_response", ...auth, asyncHandler(ServiceRequestController.userReject));
 router.get("/badge/me", ...auth, asyncHandler(ServiceRequestController.badgeMe));
 
-// PRO — mural do subperfil
+// PRO — mural do perfil
 router.get("/mural", ...auth, asyncHandler(ServiceRequestController.mural));
 router.post("/mural/mark-seen", ...auth, asyncHandler(ServiceRequestController.markSeen));
 router.post("/:id/respond", ...auth, asyncHandler(ServiceRequestController.respond));

@@ -75,7 +75,7 @@ class AuthService {
             avatar_url,
             responsible_code,
           } = payload;
-          // CPF (mig 188): obrigatório e único — 1 CPF = 1 conta (os subperfis
+          // CPF (mig 188): obrigatório e único — 1 CPF = 1 conta (os perfis
           // ficam dentro dela). Fase 1 valida só o dígito verificador, offline.
           const cpf = normalizeCPF(payload.cpf);
           const email = normalizeEmail(payload.email);
@@ -139,12 +139,12 @@ class AuthService {
           }
 
           // 1 CPF = 1 conta. Quem quer se dividir em várias frentes usa
-          // subperfis dentro da mesma conta, não contas paralelas.
+          // perfis dentro da mesma conta, não contas paralelas.
           const cpfTaken = await AuthStorage.findUserIdByCpf(client, cpf);
           if (cpfTaken) {
             return {
               error:
-                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos perfis quiser.",
               reason: "cpf_taken",
             };
           }
@@ -316,7 +316,7 @@ class AuthService {
           if (err?.code === "23505" && String(err.constraint) === "ux_tb_user_cpf") {
             return {
               error:
-                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos subperfis quiser.",
+                "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos perfis quiser.",
               reason: "cpf_taken",
             };
           }

@@ -79,8 +79,8 @@ module.exports = {
     return r.rows[0] || null;
   },
 
-  // Subperfil (oldest, não-deletado) de um usuário para receber DM — a academia
-  // "recebe mensagens como um subperfil" abrindo conversa com o dono. DM é
+  // Perfil (oldest, não-deletado) de um usuário para receber DM — a academia
+  // "recebe mensagens como um perfil" abrindo conversa com o dono. DM é
   // entity_type=profile, então precisamos de um id_profile alvo.
   async getChatProfileForUser(db, id_user) {
     const r = await db.query(
@@ -304,7 +304,7 @@ module.exports = {
   async listProfessors(db, id_academy) {
     const r = await db.query(
       // id_profile = destino do "ver perfil" do professor: o perfil-conta
-      // (is_user_account) quando existe, senão o subperfil mais antigo. Clan
+      // (is_user_account) quando existe, senão o perfil mais antigo. Clan
       // fica fora — não é o corpo de ninguém.
       `SELECT p.id_user, p.created_at, u.username, u.nome AS user_nome, pf.id_profile
          FROM public.tb_academy_professor p

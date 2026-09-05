@@ -21,7 +21,7 @@ module.exports = {
     return r.rows[0] || null;
   },
 
-  // Feed do aluno: pendentes com dados do professor (nome + 1 subperfil
+  // Feed do aluno: pendentes com dados do professor (nome + 1 perfil
   // visível pro botão de chat — DM é entity_type=profile) e da academia.
   async listPendingForStudent(db, id_student_user) {
     const r = await db.query(

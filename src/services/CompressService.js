@@ -21,7 +21,7 @@ const MAX_INPUT_BYTES = 500 * MB; // teto de entrada (o ponto é comprimir o que
 const ALLOWED_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 
 // Limite por hora, por conta (ffmpeg no Railway = custo de CPU). Conta paga =
-// dono de subperfil com assinatura ativa.
+// dono de perfil com assinatura ativa.
 const HOURLY_LIMIT_FREE = 2;
 const HOURLY_LIMIT_PAID = 10;
 

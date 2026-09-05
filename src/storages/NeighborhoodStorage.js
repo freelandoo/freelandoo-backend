@@ -97,7 +97,7 @@ class NeighborhoodStorage {
 
     // id_machine e id_category ficam NULL: bairro não tem enxame (o CHECK da
     // mig 204 abriu essa porta justamente para não gravar taxonomia falsa).
-    // Cidade, UF e região saem do TERRITÓRIO, não do subperfil do fundador — o
+    // Cidade, UF e região saem do TERRITÓRIO, não do perfil do fundador — o
     // bairro tem lugar próprio, que não é o lugar de quem o criou.
     const r = await conn.query(
       `INSERT INTO public.tb_profile

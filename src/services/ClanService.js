@@ -32,9 +32,9 @@ class ClanService {
   /**
    * Cria um clan. Requisitos:
    *  - Usuário tem 10h+ de tempo online acumulado
-   *  - id_profile_owner: sub-perfil válido do usuário (não é clan, ativo, pago)
+   *  - id_profile_owner: perfil válido do usuário (não é clan, ativo, pago)
    *  - id_machine: máquina ativa
-   *  - sub-perfil ainda não está em outro clan
+   *  - perfil ainda não está em outro clan
    * Cria perfil-clan + settings + adiciona owner como membro do próprio clan.
    */
   static async create(user, payload) {
@@ -89,7 +89,7 @@ class ClanService {
             };
           }
 
-          // 2. Sub-perfil owner deve existir, ser do usuário, não ser clan,
+          // 2. Perfil owner deve existir, ser do usuário, não ser clan,
           //    ter assinatura ativa e ainda não estar em outro clan
           const subProfile = await ClanStorage.getEligibleSubProfile(client, {
             id_profile: id_profile_owner,
@@ -99,14 +99,14 @@ class ClanService {
             await client.query("ROLLBACK");
             return {
               error:
-                "Sub-perfil não encontrado, não pertence ao usuário ou é um clan",
+                "Perfil não encontrado, não pertence ao usuário ou é um clan",
             };
           }
           if (!subProfile.is_paid) {
             await client.query("ROLLBACK");
             return {
               error:
-                "O sub-perfil precisa ter assinatura ativa para criar um clan",
+                "O perfil precisa ter assinatura ativa para criar um clan",
             };
           }
 
@@ -119,11 +119,11 @@ class ClanService {
             await client.query("ROLLBACK");
             return {
               error:
-                "Este sub-perfil já participa de um clan (1 sub-perfil por clan)",
+                "Este perfil já participa de um clan (1 perfil por clan)",
             };
           }
 
-          // Regra (mig 124): 1 clan por USUÁRIO — nenhum subperfil do user
+          // Regra (mig 124): 1 clan por USUÁRIO — nenhum perfil do user
           // pode já estar em outro clan.
           const userMembership = await ClanStorage.findMembershipByUser(
             client,
@@ -319,7 +319,7 @@ class ClanService {
 
   // ─── Convites ──────────────────────────────────────────────────────────
   /**
-   * Owner do clan convida um sub-perfil. Valida vagas, assinatura do
+   * Owner do clan convida um perfil. Valida vagas, assinatura do
    * convidado e que ele ainda não está em outro clan.
    */
   static async invite(user, params, payload) {
@@ -405,17 +405,17 @@ class ClanService {
           );
           if (!invitedRes.rowCount) {
             await client.query("ROLLBACK");
-            return { error: "Sub-perfil convidado não encontrado" };
+            return { error: "Perfil convidado não encontrado" };
           }
           const invited = invitedRes.rows[0];
           if (invited.is_clan || invited.deleted_at) {
             await client.query("ROLLBACK");
-            return { error: "Sub-perfil convidado inválido" };
+            return { error: "Perfil convidado inválido" };
           }
           if (!invited.is_paid) {
             await client.query("ROLLBACK");
             return {
-              error: "O sub-perfil convidado precisa ter assinatura ativa",
+              error: "O perfil convidado precisa ter assinatura ativa",
             };
           }
           if (String(invited.id_user) === String(user.id_user)) {
@@ -431,12 +431,12 @@ class ClanService {
           if (existingMembership) {
             await client.query("ROLLBACK");
             return {
-              error: "Este sub-perfil já participa de um clan",
+              error: "Este perfil já participa de um clan",
             };
           }
 
           // Regra (mig 124): 1 clan por USUÁRIO — o user do convidado não pode
-          // já estar em outro clan com qualquer subperfil.
+          // já estar em outro clan com qualquer perfil.
           const invitedUserMembership = await ClanStorage.findMembershipByUser(
             client,
             invited.id_user
@@ -458,14 +458,14 @@ class ClanService {
           } catch (err) {
             if (err.code === "23505") {
               await client.query("ROLLBACK");
-              return { error: "Já existe um convite pendente para este sub-perfil" };
+              return { error: "Já existe um convite pendente para este perfil" };
             }
             throw err;
           }
 
           await client.query("COMMIT");
 
-          // Notifica o dono do subperfil convidado (fire-and-forget, realtime WS).
+          // Notifica o dono do perfil convidado (fire-and-forget, realtime WS).
           NotificationService.notifyClanInvite({
             invited_user_id: invited.id_user,
             actor_user_id: user.id_user,
@@ -567,7 +567,7 @@ class ClanService {
             return { error: "Convite já foi respondido" };
           }
 
-          // Convidado precisa ser dono do sub-perfil
+          // Convidado precisa ser dono do perfil
           const invitedProfileRes = await client.query(
             `SELECT id_user FROM public.tb_profile WHERE id_profile = $1 LIMIT 1`,
             [invite.id_invited_profile]
@@ -590,7 +590,7 @@ class ClanService {
             return { message: "Convite recusado" };
           }
 
-          // accept: revalida vagas e que sub-perfil ainda está livre
+          // accept: revalida vagas e que perfil ainda está livre
           const settings = await ClanStorage.getSettings(
             client,
             invite.id_clan_profile
@@ -613,7 +613,7 @@ class ClanService {
           if (existingMembership) {
             await client.query("ROLLBACK");
             return {
-              error: "Este sub-perfil já participa de outro clan",
+              error: "Este perfil já participa de outro clan",
             };
           }
 
@@ -1125,7 +1125,7 @@ class ClanService {
   }
 
   /**
-   * Resolve sub-perfis convidáveis por @username (autocompletar do frontend).
+   * Resolve perfis convidáveis por @username (autocompletar do frontend).
    */
   static async findInvitableProfiles(user, query) {
     return runWithLogs(
@@ -1268,7 +1268,7 @@ class ClanService {
 
   // ─── Chat de grupo do clan (mig 128) — fire-and-forget ─────────────────
   /**
-   * Cria (idempotente) a conversa de grupo do clan e coloca o subperfil dono.
+   * Cria (idempotente) a conversa de grupo do clan e coloca o perfil dono.
    */
   static async syncCreateClanGroup({ id_clan_profile, owner_profile_id, name }) {
     const group = await ConversationStorage.createClanGroup(pool, {

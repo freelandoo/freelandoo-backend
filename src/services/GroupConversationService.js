@@ -51,7 +51,7 @@ class GroupConversationService {
 
           if (!(await userOwnsProfile(client, user.id_user, ownerId))) {
             await client.query("ROLLBACK");
-            return { error: "Você não é dono deste subperfil", status: 403 };
+            return { error: "Você não é dono deste perfil", status: 403 };
           }
 
           // Verifica que membros existem e não são clans
@@ -70,7 +70,7 @@ class GroupConversationService {
             for (const id of memberIds) {
               if (!validIds.has(id)) {
                 await client.query("ROLLBACK");
-                return { error: `Subperfil inválido: ${id}`, status: 400 };
+                return { error: `Perfil inválido: ${id}`, status: 400 };
               }
             }
           }
@@ -140,7 +140,7 @@ class GroupConversationService {
         if (!id_conversation) return { error: "id_conversation obrigatório", status: 400 };
 
         const ids = asArray(profile_ids).map((v) => String(v).trim()).filter(Boolean);
-        if (ids.length === 0) return { error: "Nenhum subperfil informado", status: 400 };
+        if (ids.length === 0) return { error: "Nenhum perfil informado", status: 400 };
 
         const client = await pool.connect();
         try {
@@ -206,7 +206,7 @@ class GroupConversationService {
       async () => {
         if (!user?.id_user) return { error: "Não autenticado", status: 401 };
         if (!id_conversation) return { error: "id_conversation obrigatório", status: 400 };
-        // Remove TODOS os subperfis do user no grupo
+        // Remove TODOS os perfis do user no grupo
         const { rowCount } = await pool.query(
           `
           UPDATE public.tb_conversation_participant cp

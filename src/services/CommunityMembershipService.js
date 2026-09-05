@@ -38,10 +38,10 @@ class CommunityMembershipService {
         const existing = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
         if (existing) return { error: "Você já é membro desta comunidade.", statusCode: 409 };
 
-        // Mesmos requisitos do join gratuito: subperfil + teto de participação.
+        // Mesmos requisitos do join gratuito: perfil + teto de participação.
         const sub = await CommunityStorage.getHighestSubprofile(pool, id_user);
         if (!sub.has_subprofile) {
-          return { error: "Você precisa de pelo menos um subperfil para entrar." };
+          return { error: "Você precisa de pelo menos um perfil para entrar." };
         }
         const ent = await CommunityStorage.getEntitlement(pool, id_user);
         const memberships = await CommunityStorage.countMemberships(pool, id_user);

@@ -141,7 +141,7 @@ class CoursesStorage {
 
   /**
    * Lista cursos PUBLICADOS vinculados a um id_profile específico, com counts
-   * de módulos/aulas. Usado na aba pública "Cursos" do subperfil.
+   * de módulos/aulas. Usado na aba pública "Cursos" do perfil.
    */
   static async listPublicByProfileId(conn, profileId) {
     const { rows } = await conn.query(

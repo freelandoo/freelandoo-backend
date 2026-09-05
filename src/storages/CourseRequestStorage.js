@@ -1,6 +1,6 @@
 /**
  * Storage para tb_course_request — pedidos de curso (broadcast por enxame+profissão).
- * Espelha ServiceRequestStorage mas sem cidade. Matching exige que o subperfil
+ * Espelha ServiceRequestStorage mas sem cidade. Matching exige que o perfil
  * tenha ao menos um curso publicado.
  */
 class CourseRequestStorage {
@@ -208,7 +208,7 @@ class CourseRequestStorage {
   }
 
   // ---------- Mural (PRO-side) ----------
-  // Lista pedidos abertos compatíveis com o subperfil. Exige curso publicado.
+  // Lista pedidos abertos compatíveis com o perfil. Exige curso publicado.
   static async listMuralForProfile(conn, profile) {
     const r = await conn.query(
       `SELECT
@@ -243,7 +243,7 @@ class CourseRequestStorage {
     return r.rows;
   }
 
-  // Chats do lado PRO: responses de qualquer subperfil do usuário logado.
+  // Chats do lado PRO: responses de qualquer perfil do usuário logado.
   static async listChatsForPro(conn, id_user) {
     const r = await conn.query(
       `SELECT

@@ -296,7 +296,7 @@ class ConversationStorage {
 
   static async unreadTotalForUser(conn, id_user) {
     // Soma unread de TODAS as entidades que o usuário pode atuar:
-    // 1) Subperfis dele (tb_profile.id_user = id_user)
+    // 1) Perfis dele (tb_profile.id_user = id_user)
     // 2) Clans onde ele é owner (via tb_clan_member com role='owner')
     const { rows } = await conn.query(
       `
@@ -412,7 +412,7 @@ class ConversationStorage {
     return rows[0] || (await this.getClanGroup(conn, id_clan_profile));
   }
 
-  // Adiciona ou reativa (limpa deleted_at) um subperfil no grupo.
+  // Adiciona ou reativa (limpa deleted_at) um perfil no grupo.
   static async addOrReactivateMember(conn, { id_conversation, profile_id, role = "member" }) {
     const upd = await conn.query(
       `UPDATE public.tb_conversation_participant

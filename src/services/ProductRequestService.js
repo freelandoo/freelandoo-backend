@@ -126,7 +126,7 @@ class ProductRequestService {
         return { request, pending_review: true };
       }
 
-      // Notifica subperfis elegíveis (fire-and-forget; nunca quebra o create).
+      // Notifica perfis elegíveis (fire-and-forget; nunca quebra o create).
       try {
         const eligible = await ProductRequestMatchingService.findEligibleSubprofiles(
           request.id_product_request
@@ -179,7 +179,7 @@ class ProductRequestService {
       if (!UUID_RE.test(String(id_product_request || ""))) return { error: "id_product_request inválido" };
       const r = await ProductRequestStorage.getById(pool, id_product_request);
       if (!r) return { error: "Pedido não encontrado" };
-      // Comprador sempre vê. Vendedor: vê se já respondeu (ownership de subperfil).
+      // Comprador sempre vê. Vendedor: vê se já respondeu (ownership de perfil).
       if (String(r.id_buyer_user) === String(user.id_user)) return { request: r };
       const { rows } = await pool.query(
         `SELECT 1 FROM public.tb_product_request_response prr

@@ -22,7 +22,7 @@ Token revogado no site → 401 imediato. Máx. 3 conexões de dados ativas por c
 ## Escopo
 
 A conexão enxerga **somente os dados do dono do token** — todos os seus perfis
-(conta principal, subperfis, clans e comunidades) e o que pende deles: serviços,
+(conta principal, perfis, clans e comunidades) e o que pende deles: serviços,
 produtos, cursos, redes sociais, seguidores, nível e XP.
 
 ## Endpoints

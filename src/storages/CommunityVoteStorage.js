@@ -1,5 +1,5 @@
 // src/storages/CommunityVoteStorage.js
-// SQL da votação de liderança. "Nível do user" = subperfil de maior xp_level.
+// SQL da votação de liderança. "Nível do user" = perfil de maior xp_level.
 
 class CommunityVoteStorage {
   // Desafiante = membro (não-líder) de maior nível, desde que > nível do líder.

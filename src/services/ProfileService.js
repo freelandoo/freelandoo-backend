@@ -130,7 +130,7 @@ class ProfileService {
         );
 
         // Perfis user-account são "publicáveis" mesmo sem subscription/is_visible
-        // (paridade user≡subperfil: a página pública é a mesma do subperfil).
+        // (paridade user≡perfil: a página pública é a mesma do perfil).
         const is_published = profile.is_user_account
           ? !profile.deleted_at
           : !!profile.is_paid && !!profile.is_visible && !profile.deleted_at;
@@ -442,6 +442,20 @@ class ProfileService {
           if (profile.deleted_at) {
             await client.query("ROLLBACK");
             return { error: "Perfil já foi removido" };
+          }
+
+          // O perfil-conta é a PESSOA: agenda, mural, rosto nas listas e o
+          // vínculo de tudo que ela publicou passam por ele. Apagá-lo não é
+          // remover um perfil, é derrubar a conta — e nenhuma tela oferece
+          // isso, então até aqui a porta ficou só entreaberta na API. Agora
+          // que ele aparece nas listas de perfis (não existe hierarquia), a
+          // recusa precisa morar onde a exclusão acontece.
+          if (profile.is_user_account) {
+            await client.query("ROLLBACK");
+            return {
+              error:
+                "Este perfil é a sua conta e não pode ser excluído. Para encerrar a conta, use a exclusão de conta.",
+            };
           }
 
           const ok = await ProfileStorage.softDeleteProfile(client, id_profile);

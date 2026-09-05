@@ -93,12 +93,12 @@ class ProductRequestResponseService {
       }
 
       const profile = await ProfileStorage.getProfileById(pool, id_profile);
-      if (!profile) return { error: "Subperfil não encontrado" };
-      if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão para este subperfil" };
+      if (!profile) return { error: "Perfil não encontrado" };
+      if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão para este perfil" };
       if (profile.is_clan) return { error: "Clans não podem responder pedidos de produto" };
 
       const paid = await isProfilePaid(pool, id_profile);
-      if (!paid) return { error: "Apenas subperfis pagos podem responder a pedidos de produto" };
+      if (!paid) return { error: "Apenas perfis pagos podem responder a pedidos de produto" };
 
       const request = await ProductRequestStorage.getById(pool, id_product_request);
       if (!request) return { error: "Pedido não encontrado" };
@@ -109,7 +109,7 @@ class ProductRequestResponseService {
       if (id_profile_product) {
         const product = await ProfileProductStorage.getById(pool, id_profile_product);
         if (!product || String(product.id_profile) !== String(id_profile)) {
-          return { error: "Produto sugerido não pertence ao seu subperfil" };
+          return { error: "Produto sugerido não pertence ao seu perfil" };
         }
         if (!product.is_active) return { error: "Produto sugerido não está ativo" };
         if (product.stock_quantity <= 0) return { error: "Produto sugerido sem estoque" };
@@ -162,11 +162,11 @@ class ProductRequestResponseService {
       if (!UUID_RE.test(String(id_profile || ""))) return { error: "id_profile inválido" };
 
       const profile = await ProfileStorage.getProfileById(pool, id_profile);
-      if (!profile) return { error: "Subperfil não encontrado" };
-      if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão para este subperfil" };
+      if (!profile) return { error: "Perfil não encontrado" };
+      if (String(profile.id_user) !== String(user.id_user)) return { error: "Sem permissão para este perfil" };
       if (profile.is_clan) return { error: "Clans não podem responder pedidos de produto" };
       const paid = await isProfilePaid(pool, id_profile);
-      if (!paid) return { error: "Apenas subperfis pagos podem responder a pedidos de produto" };
+      if (!paid) return { error: "Apenas perfis pagos podem responder a pedidos de produto" };
 
       const request = await ProductRequestStorage.getById(pool, id_product_request);
       if (!request) return { error: "Pedido não encontrado" };

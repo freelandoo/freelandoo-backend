@@ -1,12 +1,12 @@
 // src/storages/DataExportStorage.js
 // SQL puro (somente-leitura) da API de Dados (/ext/v1/data). Escopo: o DONO do
 // token. NUNCA expõe dado financeiro (saldo/ganhos/repasses) — só dados
-// operacionais/públicos: subperfis, comunidades, serviços, produtos, redes
+// operacionais/públicos: perfis, comunidades, serviços, produtos, redes
 // sociais, seguidores. Preços LISTADOS de serviço/produto/curso são operacionais
 // e entram; receita/faturamento não.
 
 class DataExportStorage {
-  // Todos os perfis do usuário (conta, subperfis, clans, comunidades).
+  // Todos os perfis do usuário (conta, perfis, clans, comunidades).
   static async listProfiles(conn, id_user) {
     const { rows } = await conn.query(
       `SELECT

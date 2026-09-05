@@ -13,7 +13,7 @@ router.get(
   asyncHandler(StoryController.getByProfile)
 );
 
-// StoryBar v2 (agrupada por user): bees vivos de todos os subperfis do user.
+// StoryBar v2 (agrupada por user): bees vivos de todos os perfis do user.
 router.get(
   "/by-user/:id_user",
   authMiddleware,

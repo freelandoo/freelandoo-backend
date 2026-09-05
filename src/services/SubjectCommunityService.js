@@ -453,7 +453,7 @@ class SubjectCommunityService {
 
   /**
    * Entrada na comunidade do carro que já existe. Delega ao CommunityService
-   * de propósito: quem sabe as regras de entrada (privada, teto, subperfil) é
+   * de propósito: quem sabe as regras de entrada (privada, teto, perfil) é
    * ele — duplicá-las aqui criaria uma segunda porta com regras próprias, que é
    * exatamente como o condomínio ganhou membro sem apartamento.
    */

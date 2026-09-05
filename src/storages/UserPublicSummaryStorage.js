@@ -7,7 +7,7 @@ class UserPublicSummaryStorage {
     return r.rowCount ? r.rows[0].id_user : null;
   }
 
-  // Perfil-conta (is_user_account) do usuário — base da paridade user≡subperfil:
+  // Perfil-conta (is_user_account) do usuário — base da paridade user≡perfil:
   // é ele quem carrega XP/nível, seguidores e redes sociais do "user".
   static async getAccountProfile(conn, id_user) {
     const r = await conn.query(

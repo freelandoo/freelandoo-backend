@@ -36,7 +36,7 @@ async function assertOwnerWithProfile(conn, id_profile, id_user) {
 }
 
 // "Pago" no sentido de loja liberada: assinatura ativa OU perfil-conta
-// (paridade user≡subperfil 2026-07-19 — a conta vende sem assinatura, como
+// (paridade user≡perfil 2026-07-19 — a conta vende sem assinatura, como
 // a vitrine deixou de exigir pagamento). Nome mantido por compat com o
 // import do ProductRequestResponseService.
 async function isProfilePaid(conn, id_profile) {
@@ -232,7 +232,7 @@ class ProfileProductService {
           const paid = await isProfilePaid(client, id_profile);
           if (!paid) {
             await client.query("ROLLBACK");
-            return { error: "Apenas subperfis pagos podem publicar produtos. Ative a assinatura para vender." };
+            return { error: "Apenas perfis pagos podem publicar produtos. Ative a assinatura para vender." };
           }
         }
 
@@ -318,7 +318,7 @@ class ProfileProductService {
           const paid = await isProfilePaid(client, id_profile);
           if (!paid) {
             await client.query("ROLLBACK");
-            return { error: "Subperfil sem assinatura ativa. Reative a assinatura ou marque o produto como inativo." };
+            return { error: "Perfil sem assinatura ativa. Reative a assinatura ou marque o produto como inativo." };
           }
         }
 

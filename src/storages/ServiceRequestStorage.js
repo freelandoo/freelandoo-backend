@@ -98,8 +98,8 @@ class ServiceRequestStorage {
     return r.rows[0] || null;
   }
 
-  // Resposta ativa (não-terminal) atual da O.S. — qualquer sub-perfil.
-  // Mantido para consultas legadas; a regra atual permite múltiplos subperfis.
+  // Resposta ativa (não-terminal) atual da O.S. — qualquer perfil.
+  // Mantido para consultas legadas; a regra atual permite múltiplos perfis.
   static async getActiveResponseByRequest(conn, id_request) {
     const r = await conn.query(
       `SELECT * FROM public.tb_service_request_response
@@ -163,7 +163,7 @@ class ServiceRequestStorage {
   }
 
   // Expira PENDING > 6h DELETANDO. Mensagens caem em cascade — chat fica
-  // disponível pra outros sub-perfis novamente. Lazy: chamar antes de listar mural.
+  // disponível pra outros perfis novamente. Lazy: chamar antes de listar mural.
   static async expireOldPending(conn) {
     await conn.query(
       `DELETE FROM public.tb_service_request_response
@@ -235,9 +235,9 @@ class ServiceRequestStorage {
     return r.rows;
   }
 
-  // ---------- Conversations (chat ativo do sub-perfil) ----------
+  // ---------- Conversations (chat ativo do perfil) ----------
   static async listConversationsForProfile(conn, id_profile) {
-    // PENDING + PRO_ACCEPTED do próprio sub-perfil. Inclui última mensagem
+    // PENDING + PRO_ACCEPTED do próprio perfil. Inclui última mensagem
     // e contagem de não-lidas (mensagens do USER após pro_last_read_at).
     const r = await conn.query(
       `SELECT
@@ -391,7 +391,7 @@ class ServiceRequestStorage {
     return r.rows[0].n;
   }
 
-  // Chats do lado PRO: responses de QUALQUER subperfil do usuário logado.
+  // Chats do lado PRO: responses de QUALQUER perfil do usuário logado.
   static async listChatsForPro(conn, id_user) {
     const r = await conn.query(
       `SELECT
