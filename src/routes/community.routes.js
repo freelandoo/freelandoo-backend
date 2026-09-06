@@ -209,6 +209,32 @@ router.delete(
   asyncHandler(CommunityDomainController.remove)
 );
 
+// ─── Equipe do site (mig 221) ───────────────────────────────────────────────
+// Quem atende pelo site. Só o líder (guard no service), como todo o resto do
+// construtor. Promover NÃO dá papel na comunidade: é só publicar a pessoa no
+// site como quem atende.
+router.get(
+  "/:id_profile/site/professionals",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunitySiteController.listProfessionals)
+);
+router.post(
+  "/:id_profile/site/professionals",
+  authMiddleware,
+  requireFeature("comunidade_site"),
+  asyncHandler(CommunitySiteController.addProfessional)
+);
+// ⚠️ SEM requireFeature de propósito: o site já publicado continua no ar com a
+// flag desligada, e tirar alguém da equipe é a porta de SAÍDA. Trancá-la
+// deixaria o líder sem como remover do site público uma pessoa que saiu — e
+// porta de saída trancada é a única que não pode existir.
+router.delete(
+  "/:id_profile/site/professionals/:id_user",
+  authMiddleware,
+  asyncHandler(CommunitySiteController.removeProfessional)
+);
+
 // Imagem do construtor (banner de hero, foto de serviço, galeria). Mesmo
 // middleware de imagem do avatar/banner: 12 MB, JPG/PNG/WebP.
 router.post(

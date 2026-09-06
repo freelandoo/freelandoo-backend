@@ -26,6 +26,7 @@
     "test:recado": "node test/recado.e2e.js",
     "test:spaces": "node test/spaces.e2e.js",
     "test:community-site": "node test/community-site.e2e.js",
+    "test:community-professionals": "node test/community-professionals.e2e.js",
     "test:gamer": "node test/gamer-profile.e2e.js"
   },
   "repository": {

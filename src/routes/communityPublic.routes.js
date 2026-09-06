@@ -89,4 +89,14 @@ router.get(
   asyncHandler(CommunitySiteController.get)
 );
 
+// Próximo horário livre da equipe (mig 221) — a agenda viva do cartão de
+// chamada e da página de agendar. Fica FORA do payload do site de propósito: a
+// página pública é servida com ISR de 10 minutos, e um horário embutido nela
+// seria anunciado por até 10 minutos depois de a vaga ter sido tomada.
+router.get(
+  "/:id_profile/site/next-slot",
+  optionalAuthMiddleware,
+  asyncHandler(CommunitySiteController.getNextSlot)
+);
+
 module.exports = router;

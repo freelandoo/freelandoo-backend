@@ -66,6 +66,36 @@ class CommunitySiteController {
     // o autosave grava a árvore inteira logo em seguida.
     return res.status(201).json({ url });
   }
+  /**
+   * Próximo horário livre da equipe (agenda viva do cartão de chamada).
+   *
+   * Auth OPCIONAL, como a leitura do site: o visitante anônimo de comunidade
+   * aberta vê, o líder vê dentro do construtor, e o forasteiro de comunidade
+   * fechada recebe `slot: null` — quem recorta é o service.
+   */
+  static async getNextSlot(req, res) {
+    const result = await CommunitySiteService.getNextSlot(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async listProfessionals(req, res) {
+    const result = await CommunitySiteService.listProfessionals(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async addProfessional(req, res) {
+    const result = await CommunitySiteService.addProfessional(
+      req.user,
+      req.params,
+      req.body || {}
+    );
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async removeProfessional(req, res) {
+    const result = await CommunitySiteService.removeProfessional(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
 }
 
 module.exports = CommunitySiteController;
