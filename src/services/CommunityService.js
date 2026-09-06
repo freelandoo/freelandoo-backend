@@ -1,10 +1,9 @@
 // src/services/CommunityService.js
-// Regras da Comunidade: criação (gate nível 5 + tetos), leitura, tema e
+// Regras da Comunidade: criação (tetos vendáveis), leitura, tema e
 // entrada/saída de membros (Slice 2). Substitui o ClanService no novo conceito.
 
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
-const AuthStorage = require("../storages/AuthStorage");
 const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
 const PolenStorage = require("../storages/PolenStorage");
 const FeatureFlagService = require("./FeatureFlagService");
@@ -19,8 +18,6 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 const { normalizeFeedKind } = require("../utils/feedKind");
 
 const log = createLogger("CommunityService");
-
-const REQUIRED_LEVEL_TO_CREATE = 5;
 
 // Nome do rascunho (mig 219). Serve de rótulo enquanto o líder não escolhe o
 // dele — igual a "Meu carro"/"Meus games" da mig 211. É o mesmo texto do item
@@ -106,24 +103,19 @@ class CommunityService {
           // comunidade de enxame (não pontua XP nem ranking) — é utilidade do
           // prédio. Quem mora não pode ficar sem por já participar de outra.
           if (kind !== "condo") {
-            // 1. Requisito: ≥1 perfil nível 5
+            // 1. Requisito: ter ao menos um perfil (mesmo guard do `join`).
+            //
+            // NÃO existe mais gate de nível (decisão do Alex, 2026-09-06):
+            // criar comunidade deixou de ser prêmio de maturidade. O que ainda
+            // limita é INGRESSO VENDIDO (os tetos abaixo), não XP.
             const sub = await CommunityStorage.getHighestSubprofile(
               client,
               id_user
             );
-            // Administrador da PLATAFORMA passa por cima do gate de nível.
-            // O nível 5 existe para o usuário comum não abrir comunidade no
-            // primeiro dia; quem administra o site precisa criar para testar e
-            // para socorrer conta alheia, e não tem como ganhar XP fingindo ser
-            // outra pessoa. ⚠️ O isAdmin deste arquivo já significa OUTRA coisa
-            // (líder/vice da comunidade) — daí o nome longo.
-            const isPlatformAdmin = await AuthStorage.isAdmin(client, id_user);
-            if (!isPlatformAdmin && sub.lvl < REQUIRED_LEVEL_TO_CREATE) {
+            if (!sub.has_subprofile) {
               await client.query("ROLLBACK");
               return {
-                error: `Você precisa de pelo menos um perfil nível ${REQUIRED_LEVEL_TO_CREATE} para criar uma comunidade.`,
-                required_level: REQUIRED_LEVEL_TO_CREATE,
-                current_level: sub.lvl,
+                error: "Você precisa de pelo menos um perfil para criar uma comunidade.",
               };
             }
 
@@ -494,9 +486,6 @@ class CommunityService {
             client,
             id_user
           );
-          // Espelha o bypass do create: sem isto o front esconderia o botão
-          // de criar para o admin e a permissão existiria só na API.
-          const isPlatformAdmin = await AuthStorage.isAdmin(client, id_user);
           const ent = await CommunityStorage.getEntitlement(client, id_user);
           const owned = await CommunityStorage.countOwned(client, id_user);
           const memberships = await CommunityStorage.countMemberships(
@@ -505,12 +494,14 @@ class CommunityService {
           );
           return {
             eligible:
-              (isPlatformAdmin || sub.lvl >= REQUIRED_LEVEL_TO_CREATE) &&
+              sub.has_subprofile &&
               owned < ent.create_cap &&
               memberships < ent.member_cap,
-            required_level: isPlatformAdmin ? 0 : REQUIRED_LEVEL_TO_CREATE,
+            // Sem gate de nível: `required_level` fica em 0 (e não some) para
+            // o front antigo, que compara `current_level >= required_level`,
+            // continuar liberando o botão enquanto o deploy dele não sai.
+            required_level: 0,
             current_level: sub.lvl,
-            is_platform_admin: isPlatformAdmin,
             create_cap: ent.create_cap,
             member_cap: ent.member_cap,
             owned,
