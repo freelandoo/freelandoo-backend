@@ -853,7 +853,20 @@ class CommunityService {
         // CONDOMÍNIO é sempre exclusivo, pago ou não: o que se posta no mural
         // do prédio não pode vazar pro feed global nem pro perfil público do
         // morador (mig 196).
-        const isExclusive = CommunityPolicy.policyFor(community).contentIsExclusive;
+        //
+        // ONDE A POLÍTICA NÃO OBRIGA, QUEM ESCOLHE É O AUTOR: o composer manda
+        // `exclusive: true` quando ele troca o destino para "só nesta
+        // comunidade". O padrão é publicar nos DOIS (comunidade + feed geral),
+        // e é por isso que a escolha entra como um opt-in e não como um campo
+        // obrigatório — cliente que não conhece o campo continua publicando
+        // como sempre publicou.
+        //
+        // ⚠️ A ordem do `||` é a regra: a política vem PRIMEIRO e não é
+        // negociável. `exclusive: false` num condomínio ou numa comunidade
+        // privada não solta o post para o feed global — seria a porta dos
+        // fundos que a mig 173 e a 196 existem para fechar.
+        const policyExclusive = CommunityPolicy.policyFor(community).contentIsExclusive;
+        const isExclusive = policyExclusive || body?.exclusive === true;
         if (isExclusive) {
           const elsewhere = await CommunityStorage.itemLinkedElsewhere(pool, id_portfolio_item, params.id_profile);
           if (elsewhere) {
