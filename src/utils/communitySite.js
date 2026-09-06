@@ -24,6 +24,12 @@ const LIMITS = {
   GALLERY: 30,
   HIGHLIGHTS: 8,
   SOCIALS: 6,
+  // Blocos da seção de chamada (o "próximo horário" da composição de
+  // referência): rótulo curto + valor, lado a lado. Mais do que quatro deixa
+  // de ser destaque e vira tabela.
+  CTA_ITEMS: 4,
+  // Selos da seção de pessoa ("Cuidado", "Atenção", "Qualidade"...).
+  TAGS: 8,
   SITE_NAME: 120,
   TAGLINE: 240,
   TITLE: 120,
@@ -60,8 +66,45 @@ const SECTION_KINDS = [
   "services_catalog",
   "about",
   "testimonials",
+  "cta",
+  "person",
   "gallery",
   "contact",
+];
+
+/**
+ * Ícones que um destaque de "Sobre" pode usar.
+ *
+ * Lista FECHADA pela mesma razão de OBJECT_POSITIONS: o valor vira o NOME de
+ * um componente escolhido num mapa do front. String livre ali seria um jeito
+ * de pedir um componente que não existe — no melhor caso a seção não desenha,
+ * no pior o mapa é indexado com algo que não deveria.
+ *
+ * Ícone novo: acrescentar aqui E no mapa do front. Ausente dos dois, o
+ * normalizador devolve o default e nada quebra.
+ */
+const ICONS = [
+  "none",
+  "sparkles",
+  "star",
+  "heart",
+  "shield",
+  "clock",
+  "users",
+  "award",
+  "coffee",
+  "camera",
+  "music",
+  "map-pin",
+  "wifi",
+  "gift",
+  "leaf",
+  "zap",
+  "check",
+  "home",
+  "smile",
+  "thumbs-up",
+  "sun",
 ];
 
 // Paleta padrão = identidade tabloide escura da casa.
@@ -157,6 +200,32 @@ function objectPosition(value) {
   return OBJECT_POSITIONS.includes(raw) ? raw : "center";
 }
 
+/** Nome de ícone da lista fechada. Fora dela, o default do destaque. */
+function icon(value, fallback = "sparkles") {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return ICONS.includes(raw) ? raw : fallback;
+}
+
+/**
+ * Data de um depoimento, em ISO curto (`AAAA-MM-DD`).
+ *
+ * Guardada como data, e não como o texto "15 de fev. de 2026", porque o site é
+ * servido em três idiomas: texto gravado no servidor ficaria em português para
+ * todo mundo. Quem escreve por extenso é o front, que sabe o idioma de quem lê.
+ *
+ * Vazio é válido — depoimento sem data é o caso comum.
+ */
+function isoDate(value) {
+  const raw = str(value, 10);
+  if (!raw) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "";
+  // Regex sozinha aceita 2026-13-40. `Date` desempata, e a volta a ISO recusa
+  // o dia que "transbordou" para o mês seguinte (2026-02-31 vira 2026-03-03).
+  const d = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10) === raw ? raw : "";
+}
+
 /**
  * Inteiro dentro de uma faixa. `null` significa AUTO — "o líder não escolheu
  * tamanho aqui" — e é diferente de zero: zero seria uma escolha (some da tela).
@@ -201,6 +270,11 @@ function normalizeSlide(raw) {
     subheadline: str(d.subheadline, LIMITS.SUBTITLE),
     ctaText: str(d.ctaText, 40),
     ctaUrl: link(d.ctaUrl),
+    // Segundo botão do banner ("Conheça o espaço" na composição de
+    // referência). Fica ao lado do primeiro, com peso menor. Sem texto, não
+    // é desenhado — não existe botão fantasma.
+    ctaSecondaryText: str(d.ctaSecondaryText, 40),
+    ctaSecondaryUrl: link(d.ctaSecondaryUrl),
   };
 }
 
@@ -208,9 +282,24 @@ function normalizeHighlight(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
   return {
     id: id(d.id),
+    icon: icon(d.icon),
     title: str(d.title, 60),
     description: str(d.description, LIMITS.SHORT),
   };
+}
+
+function normalizeCtaItem(raw) {
+  const d = raw && typeof raw === "object" ? raw : {};
+  return {
+    id: id(d.id),
+    label: str(d.label, 40),
+    value: str(d.value, 60),
+  };
+}
+
+function normalizeTag(raw) {
+  const d = raw && typeof raw === "object" ? raw : {};
+  return { id: id(d.id), label: str(d.label, 40) };
 }
 
 function normalizeTestimonial(raw) {
@@ -222,6 +311,7 @@ function normalizeTestimonial(raw) {
     rating: rating(d.rating),
     text: str(d.text, LIMITS.SHORT * 3),
     role: str(d.role, 80),
+    date: isoDate(d.date),
   };
 }
 
@@ -277,6 +367,40 @@ const SECTION_NORMALIZERS = {
 
   testimonials: (d) => ({
     items: list(d.items, LIMITS.TESTIMONIALS, normalizeTestimonial),
+  }),
+
+  /**
+   * Bloco de chamada: um selo, duas a quatro informações lado a lado e um
+   * botão grande. É o "próximo horário disponível" da composição de
+   * referência, sem a parte que aqui seria mentira.
+   *
+   * Os valores são TEXTO escrito pelo líder, e não dado vivo de agenda: o site
+   * não consulta disponibilidade, e um bloco que dissesse "hoje às 19:30" a
+   * partir de nada anunciaria um horário que ninguém garantiu. Quem tem
+   * agenda, sinal e pagamento é o perfil — é para lá que o botão leva.
+   */
+  cta: (d) => ({
+    badge: str(d.badge, 60),
+    items: list(d.items, LIMITS.CTA_ITEMS, normalizeCtaItem),
+    ctaText: str(d.ctaText, 40),
+    ctaUrl: link(d.ctaUrl),
+    note: str(d.note, LIMITS.SHORT),
+  }),
+
+  /**
+   * Quem está por trás: retrato, texto e selos.
+   *
+   * O cabeçalho (título e subtítulo) NÃO vem daqui — mora na seção, como o de
+   * todas as outras. A diferença é só onde ele é desenhado: nesta composição
+   * ele fica dentro da coluna de texto, ao lado da foto, e não acima das duas.
+   */
+  person: (d) => ({
+    photoUrl: imageUrl(d.photoUrl),
+    objectPosition: objectPosition(d.objectPosition),
+    body: str(d.body, LIMITS.BODY),
+    tags: list(d.tags, LIMITS.TAGS, normalizeTag),
+    ctaText: str(d.ctaText, 40),
+    ctaUrl: link(d.ctaUrl),
   }),
 
   gallery: (d) => ({
@@ -447,8 +571,53 @@ function buildDefaultConfig(community) {
                 bio.slice(0, LIMITS.SUBTITLE) || "Bem-vindo ao nosso espaço.",
               ctaText: "Fale com a gente",
               ctaUrl: "",
+              // O segundo botão nasce sem link de propósito: o front o aponta
+              // para a seção seguinte enquanto o líder não escolher um destino.
+              ctaSecondaryText: "Conheça o espaço",
+              ctaSecondaryUrl: "",
             },
           ],
+        },
+      },
+      {
+        id: crypto.randomUUID(),
+        kind: "about",
+        enabled: true,
+        title: "Aqui você não é só mais um.",
+        subtitle: "",
+        data: {
+          body:
+            bio ||
+            "Conte a história da comunidade: como começou, quem faz parte e o que vocês fazem juntos.",
+          highlights: [
+            {
+              id: crypto.randomUUID(),
+              icon: "heart",
+              title: "Nosso jeito",
+              description: "O que torna esta comunidade diferente.",
+            },
+            {
+              id: crypto.randomUUID(),
+              icon: "users",
+              title: "Para quem é",
+              description: "Quem se sente em casa aqui.",
+            },
+            {
+              id: crypto.randomUUID(),
+              icon: "clock",
+              title: "Quando acontece",
+              description: "Os dias e horários em que vocês se encontram.",
+            },
+            {
+              id: crypto.randomUUID(),
+              icon: "map-pin",
+              title: "Onde é",
+              description: "O lugar onde tudo acontece.",
+            },
+          ],
+          photos: avatar
+            ? [{ id: crypto.randomUUID(), imageUrl: avatar, objectPosition: "center", caption: "" }]
+            : [],
         },
       },
       {
@@ -465,36 +634,60 @@ function buildDefaultConfig(community) {
       },
       {
         id: crypto.randomUUID(),
-        kind: "about",
+        kind: "testimonials",
         enabled: true,
-        title: "Sobre nós",
+        title: "O que dizem sobre a experiência",
+        subtitle: "Quem já passou por aqui conta como foi.",
+        // Sem depoimento de exemplo: elogio inventado publicado como se fosse
+        // de um cliente é o único conteúdo semeado que seria uma mentira sobre
+        // outra pessoa. A seção nasce vazia e some em leitura até ter o
+        // primeiro depoimento de verdade.
+        data: { items: [] },
+      },
+      {
+        id: crypto.randomUUID(),
+        kind: "cta",
+        enabled: true,
+        title: "Vamos combinar",
         subtitle: "",
         data: {
-          body:
-            bio ||
-            "Conte a história da comunidade: como começou, quem faz parte e o que vocês fazem juntos.",
-          highlights: [
-            {
-              id: crypto.randomUUID(),
-              title: "Nosso jeito",
-              description: "O que torna esta comunidade diferente.",
-            },
-            {
-              id: crypto.randomUUID(),
-              title: "Para quem é",
-              description: "Quem se sente em casa aqui.",
-            },
+          badge: "Atendimento com hora marcada",
+          items: [
+            { id: crypto.randomUUID(), label: "Dias", value: "Seg a sáb" },
+            { id: crypto.randomUUID(), label: "Horário", value: "09h às 20h" },
+            { id: crypto.randomUUID(), label: "Onde", value: "Combine pelo WhatsApp" },
           ],
-          photos: avatar
-            ? [{ id: crypto.randomUUID(), imageUrl: avatar, objectPosition: "center", caption: "" }]
-            : [],
+          ctaText: "Falar agora",
+          ctaUrl: "",
+          note: "",
+        },
+      },
+      {
+        id: crypto.randomUUID(),
+        kind: "person",
+        enabled: true,
+        title: "Quem está por trás",
+        subtitle: "",
+        data: {
+          photoUrl: avatar,
+          objectPosition: "center",
+          body:
+            "Apresente quem conduz a comunidade: o que faz, há quanto tempo e por que faz.",
+          tags: [
+            { id: crypto.randomUUID(), label: "Cuidado" },
+            { id: crypto.randomUUID(), label: "Atenção" },
+            { id: crypto.randomUUID(), label: "Qualidade" },
+            { id: crypto.randomUUID(), label: "Pontualidade" },
+          ],
+          ctaText: "",
+          ctaUrl: "",
         },
       },
       {
         id: crypto.randomUUID(),
         kind: "contact",
         enabled: true,
-        title: "Fale com a gente",
+        title: "Passa aqui. A casa é sua.",
         subtitle: "",
         data: {},
       },
@@ -521,6 +714,7 @@ module.exports = {
   SECTION_KINDS,
   DEFAULT_THEME,
   OBJECT_POSITIONS,
+  ICONS,
   normalizeConfig,
   normalizeSection,
   normalizeTheme,
