@@ -1,3 +1,5 @@
+const { defaultRuleForWeekday } = require("../utils/bookingDefaults");
+
 class BookingAvailabilityStorage {
   // ─── Regras semanais ───────────────────────────────────────────────
   static async getWeeklyRules(conn, id_profile) {
@@ -137,7 +139,27 @@ class BookingAvailabilityStorage {
     );
     if (r.rows[0]) return { type: "weekly", data: r.rows[0] };
 
-    return { type: "none", data: null };
+    // Sem linha para este dia. Duas situações MUITO diferentes se escondiam
+    // aqui, e devolver "none" nas duas era o bug: quem nunca configurou nada
+    // ficava sem horário nenhum para sempre, e a tela não tinha como dizer isso.
+    //
+    // Só é padrão quando o perfil não tem NENHUMA linha. Se existe qualquer
+    // uma, o dono já configurou — e a ausência deste dia é a escolha dele de
+    // não atender neste dia. Ver `utils/bookingDefaults`.
+    if (await this.hasAnyWeeklyRule(conn, id_profile)) {
+      return { type: "none", data: null };
+    }
+    return { type: "weekly", data: defaultRuleForWeekday(id_profile, weekday) };
+  }
+
+  /** O dono já configurou a disponibilidade alguma vez? */
+  static async hasAnyWeeklyRule(conn, id_profile) {
+    const r = await conn.query(
+      `SELECT 1 FROM public.tb_profile_availability_rules
+       WHERE id_profile = $1 LIMIT 1`,
+      [id_profile]
+    );
+    return r.rowCount > 0;
   }
 }
 

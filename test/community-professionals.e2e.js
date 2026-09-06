@@ -232,21 +232,51 @@ async function main() {
     );
 
     // ─── 7. Agenda viva ──────────────────────────────────────────────────
-    const empty = await CommunitySiteService.getNextSlot(asLeader, { id_profile: idCommunity });
-    check("sem regra de agenda, não inventa horário", empty.slot === null, JSON.stringify(empty));
+    // Quem NUNCA configurou agenda atende no padrão da casa: 09:00–18:00, todo
+    // dia (`utils/bookingDefaults`, 2026-09-06). Antes desta decisão o cartão
+    // não tinha o que mostrar até alguém abrir a configuração — e a tela não
+    // dizia isso.
+    const byDefault = await CommunitySiteService.getNextSlot(asLeader, { id_profile: idCommunity });
+    check(
+      "sem regra configurada, o padrão 09:00–18:00 responde",
+      !!byDefault.slot,
+      JSON.stringify(byDefault)
+    );
+    check(
+      "e o horário padrão cai dentro da faixa",
+      byDefault.slot?.start >= "09:00" && byDefault.slot?.start < "18:00",
+      JSON.stringify(byDefault.slot)
+    );
 
-    // Uma regra semanal para TODO dia da semana, das 08h às 20h: qualquer que
-    // seja o dia em que a suíte rodar, existe vaga.
-    for (let weekday = 0; weekday <= 6; weekday += 1) {
-      await client.query(
-        `INSERT INTO public.tb_profile_availability_rules
-           (id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes)
-         VALUES ($1, $2, TRUE, '08:00', '20:00', 60)
-         ON CONFLICT (id_profile, weekday) DO UPDATE
-            SET is_enabled = TRUE, start_time = '08:00', end_time = '20:00'`,
-        [otherProfile, weekday]
-      );
-    }
+    // O caminho do `null` continua vivo, e é este: agenda CONFIGURADA e fechada.
+    // O padrão só vale para quem nunca configurou — se valesse sempre, fechar a
+    // agenda não fecharia nada.
+    //
+    // ⚠️ Fechar OS DOIS: a varredura passa por todo profissional do roster, e o
+    // líder é profissional por construção. Fechar só um deixaria o outro
+    // respondendo pelo padrão, e o teste mediria a coisa errada.
+    const shut = async (idProfile, enabled, start, end) => {
+      for (let weekday = 0; weekday <= 6; weekday += 1) {
+        await client.query(
+          `INSERT INTO public.tb_profile_availability_rules
+             (id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes)
+           VALUES ($1, $2, $3, $4, $5, 60)
+           ON CONFLICT (id_profile, weekday) DO UPDATE
+              SET is_enabled = EXCLUDED.is_enabled,
+                  start_time = EXCLUDED.start_time,
+                  end_time   = EXCLUDED.end_time`,
+          [idProfile, weekday, enabled, start, end]
+        );
+      }
+    };
+    await shut(leaderProfile, false, "09:00", "18:00");
+    await shut(otherProfile, false, "09:00", "18:00");
+    const shutAgenda = await CommunitySiteService.getNextSlot(asLeader, { id_profile: idCommunity });
+    check("agenda configurada e fechada responde null", shutAgenda.slot === null, JSON.stringify(shutAgenda));
+
+    // Só o promovido reabre, das 08h às 20h: qualquer que seja o dia em que a
+    // suíte rodar, existe vaga — e ela é dele, com o líder de agenda fechada.
+    await shut(otherProfile, true, "08:00", "20:00");
 
     const withSlot = await CommunitySiteService.getNextSlot(asLeader, {
       id_profile: idCommunity,

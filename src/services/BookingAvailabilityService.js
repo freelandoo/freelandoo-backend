@@ -3,6 +3,7 @@ const BookingAvailabilityStorage = require("../storages/BookingAvailabilityStora
 const BookingSettingsStorage = require("../storages/BookingSettingsStorage");
 const BookingStorage = require("../storages/BookingStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
+const { defaultWeeklyRules } = require("../utils/bookingDefaults");
 
 /**
  * Gera slots de horário com base em start/end/duration/buffer.
@@ -65,7 +66,19 @@ class BookingAvailabilityService {
 
     const { agendaProfileId } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
     const rules = await BookingAvailabilityStorage.getWeeklyRules(pool, agendaProfileId);
-    return { rules, id_agenda_profile: agendaProfileId };
+
+    // Quem nunca configurou recebe o PADRÃO (09:00–18:00, todo dia) em vez de
+    // lista vazia — o mesmo que `getRuleForDate` já entrega ao público. Se a
+    // tela inventasse o próprio default, o dono veria uma disponibilidade e o
+    // cliente compraria outra, sem erro nenhum aparecer.
+    if (rules.length === 0) {
+      return {
+        rules: defaultWeeklyRules(agendaProfileId),
+        id_agenda_profile: agendaProfileId,
+        is_default: true,
+      };
+    }
+    return { rules, id_agenda_profile: agendaProfileId, is_default: false };
   }
 
   // ─── Owner: exceções por data ───────────────────────────────────────
