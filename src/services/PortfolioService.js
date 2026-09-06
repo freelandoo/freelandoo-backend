@@ -7,6 +7,7 @@ const XpStorage = require("../storages/XpStorage");
 const ChatModerationService = require("./ChatModerationService");
 const { assertMinorPermission } = require("../utils/supervision");
 const { normalizeFeedKind } = require("../utils/feedKind");
+const { assertProfileCanPublish } = require("../utils/profilePaywall");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PortfolioService");
@@ -257,6 +258,16 @@ class PortfolioService {
       if (accessErr) {
         await client.query("ROLLBACK");
         return accessErr;
+      }
+
+      // Paywall de publicação (fonte única em utils/profilePaywall): a conta
+      // publica de graça; perfil ADICIONAL precisa de assinatura ativa. Recusa
+      // aqui, antes de gravar o item — o gate do feed sozinho aceitava o post e
+      // o escondia depois, sem uma palavra para quem escreveu.
+      const paywallErr = await assertProfileCanPublish(client, id_profile);
+      if (paywallErr) {
+        await client.query("ROLLBACK");
+        return paywallErr;
       }
 
       const audio_track_id = await resolveAudioTrackId(client, payload?.audio_track_id);

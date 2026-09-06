@@ -11,6 +11,7 @@ const uploadProductMediaToR2 = require("../integrations/r2/uploadProductMedia");
 const { processPortfolioMedia } = require("../utils/mediaJobs");
 const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
+const { isProfilePaid } = require("../utils/profilePaywall");
 
 const log = createLogger("ProfileProductService");
 
@@ -35,26 +36,12 @@ async function assertOwnerWithProfile(conn, id_profile, id_user) {
   return { profile };
 }
 
-// "Pago" no sentido de loja liberada: assinatura ativa OU perfil-conta
-// (paridade user≡perfil 2026-07-19 — a conta vende sem assinatura, como
-// a vitrine deixou de exigir pagamento). Nome mantido por compat com o
-// import do ProductRequestResponseService.
-async function isProfilePaid(conn, id_profile) {
-  const r = await conn.query(
-    `SELECT 1 FROM public.tb_profile p
-      WHERE p.id_profile = $1
-        AND (
-          p.is_user_account = TRUE
-          OR EXISTS (
-            SELECT 1 FROM public.tb_profile_subscription s
-             WHERE s.id_profile = p.id_profile AND s.status = 'active'
-          )
-        )
-      LIMIT 1`,
-    [id_profile]
-  );
-  return r.rowCount > 0;
-}
+// "Pago" no sentido de loja liberada: assinatura ativa OU perfil-conta.
+// A função MUDOU DE CASA para `utils/profilePaywall` — é a mesma pergunta que a
+// porta de publicar faz, e enquanto ela morou aqui dentro do serviço de
+// produtos a publicação não tinha como reusá-la e nasceu sem gate nenhum. O
+// re-export (no fim do arquivo) fica por compat com o import do
+// ProductRequestResponseService.
 
 function validateInput(payload, { partial = false } = {}) {
   const out = {};

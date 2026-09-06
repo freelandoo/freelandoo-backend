@@ -9,6 +9,7 @@ const { publicUrl: audioPublicUrl } = require("../integrations/r2/uploadAudioTra
 const ChatModerationService = require("./ChatModerationService");
 const ConversationService = require("./ConversationService");
 const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaJobs");
+const { assertProfileCanPublish } = require("../utils/profilePaywall");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -328,6 +329,12 @@ class StoryService {
         });
         if (!profile) return { error: "Sem permissão para postar por este perfil" };
         if (!profile.is_active) return { error: "Perfil inativo não pode postar story" };
+        // Mesmo paywall do caminho da câmera (ver `_assertCanPost`): esta porta
+        // recebe o arquivo por multipart e faz a checagem por conta própria, e
+        // sem esta linha ela seria a brecha por onde o perfil sem assinatura
+        // continuaria publicando.
+        const paywallErr = await assertProfileCanPublish(pool, id_profile);
+        if (paywallErr) return paywallErr;
 
         // ─── Split (no-op se duração ≤ 60s) ─────────────────────────────────
         let chunks;
@@ -421,6 +428,12 @@ class StoryService {
     });
     if (!profile) return { error: "Sem permissão para postar por este perfil" };
     if (!profile.is_active) return { error: "Perfil inativo não pode postar story" };
+    // Paywall de publicação: a conta publica de graça, perfil ADICIONAL precisa
+    // de assinatura. Aqui é o degrau MAIS CEDO do caminho da câmera — este
+    // guard roda no presign, então a recusa chega antes de um único byte subir
+    // para o R2 (e antes de o usuário gravar o bee inteiro à toa).
+    const paywallErr = await assertProfileCanPublish(pool, id_profile);
+    if (paywallErr) return paywallErr;
     return { profile };
   }
 

@@ -3,7 +3,10 @@ const { normalizeFeedKind, feedKindMatchSql } = require("../utils/feedKind");
 // Constrói a query base de candidatos elegíveis para o feed.
 // `mode === "new"` adiciona o filtro de novidade/sub-exposição e ordena por
 // publicação descendente; `mode === "top"` ordena por engagement_score.
-// A elegibilidade espelha a vitrine (SearchStorage) — ver Slice 2B.
+// A elegibilidade NÃO espelha mais a vitrine (SearchStorage): ela largou o
+// gate de pagamento em 2026-07-19 (`7b9a497`) e o feed manteve o dele de
+// propósito — perfil aparece na vitrine sem pagar, mas publicar no feed
+// global com perfil ADICIONAL exige assinatura (ver utils/profilePaywall).
 function buildCandidateQuery(mode) {
   const newClause =
     mode === "new"
@@ -213,6 +216,15 @@ function buildCandidateQuery(mode) {
         OR cfp.portfolio_item_id IS NOT NULL
       )
 
+      -- Paywall de publicação: a conta publica de graça, perfil ADICIONAL
+      -- precisa de assinatura ativa. A régua é a de utils/profilePaywall, e
+      -- quem RECUSA é a porta de publicar (PortfolioService/StoryService) —
+      -- este SELECT é a SEGUNDA linha, não a primeira. Enquanto ele foi a
+      -- única, o post do perfil sem assinatura era aceito, aparecia na
+      -- comunidade e no perfil, e sumia do /feed sem uma palavra ao autor.
+      -- Fica de pé por dois motivos: os posts que já entraram sob a regra
+      -- antiga continuam fora do feed, e porta de publicação nova que esqueça
+      -- de chamar o util não vaza conteúdo pago para cá.
       AND (
         pro.is_user_account = TRUE
         OR
