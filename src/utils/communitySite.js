@@ -147,13 +147,26 @@ function hex(value, fallback) {
 }
 
 /**
- * URL de destino. Aceita http(s), mailto:, tel: e caminho interno começando
- * com "/". Recusa TODO o resto — `javascript:` e `data:` num href viram XSS no
- * clique, e a seção de contato é justamente onde um link entra.
+ * O destino interno da página de agendamento do próprio site (mig 221).
+ *
+ * É um TOKEN, e não "/agendar", porque o mesmo site é servido em três
+ * endereços: `freelandoo.com.br/c/padaria`, `padaria.freelandoo.com.br` e o
+ * domínio próprio. Um caminho absoluto gravado no documento estaria certo em um
+ * deles e errado nos outros dois — quem sabe montar o endereço é o front, que
+ * conhece por onde a página está sendo servida.
+ */
+const BOOKING_LINK = "agendar";
+
+/**
+ * URL de destino. Aceita http(s), mailto:, tel:, caminho interno começando com
+ * "/" e o token `agendar`. Recusa TODO o resto — `javascript:` e `data:` num
+ * href viram XSS no clique, e a seção de contato é justamente onde um link
+ * entra.
  */
 function link(value) {
   const raw = str(value, LIMITS.URL);
   if (!raw) return "";
+  if (raw === BOOKING_LINK) return raw;
   if (raw.startsWith("//")) return "";
   if (raw.startsWith("/")) return raw;
   if (/^(mailto:|tel:)[^\s]+$/i.test(raw)) return raw;
@@ -569,8 +582,11 @@ function buildDefaultConfig(community) {
               headline: name,
               subheadline:
                 bio.slice(0, LIMITS.SUBTITLE) || "Bem-vindo ao nosso espaço.",
-              ctaText: "Fale com a gente",
-              ctaUrl: "",
+              // A porta principal do site é agendar — e o botão da barra fixa
+              // é DERIVADO deste (o primeiro banner), então os dois nascem
+              // apontando para a mesma página, sem campo novo na casca.
+              ctaText: "Agendar online",
+              ctaUrl: BOOKING_LINK,
               // O segundo botão nasce sem link de propósito: o front o aponta
               // para a seção seguinte enquanto o líder não escolher um destino.
               ctaSecondaryText: "Conheça o espaço",
@@ -657,8 +673,8 @@ function buildDefaultConfig(community) {
             { id: crypto.randomUUID(), label: "Horário", value: "09h às 20h" },
             { id: crypto.randomUUID(), label: "Onde", value: "Combine pelo WhatsApp" },
           ],
-          ctaText: "Falar agora",
-          ctaUrl: "",
+          ctaText: "Agendar agora",
+          ctaUrl: BOOKING_LINK,
           note: "",
         },
       },
@@ -721,4 +737,5 @@ module.exports = {
   normalizeTextStyles,
   buildDefaultConfig,
   buildEmptySection,
+  BOOKING_LINK,
 };

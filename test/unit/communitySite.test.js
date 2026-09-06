@@ -146,3 +146,28 @@ test("o site semeado traz a composição inteira e sobrevive a uma segunda norma
   // primeiro save do líder alteraria o site sem ele ter tocado em nada.
   assert.deepStrictEqual(normalizeConfig(config), config);
 });
+
+test("o token `agendar` é o único destino relativo sem barra que passa", () => {
+  const d = data("hero", {
+    slides: [
+      { id: "s1", headline: "x", ctaText: "Agendar", ctaUrl: "agendar" },
+      { id: "s2", headline: "y", ctaText: "Não", ctaUrl: "agendartudo" },
+      { id: "s3", headline: "z", ctaText: "Nem", ctaUrl: "javascript:alert(1)" },
+    ],
+  });
+  // Token: o front resolve para /c/<slug>/agendar, sub.freelandoo/agendar ou
+  // dominio-proprio/agendar conforme por onde o site está sendo servido.
+  assert.strictEqual(d.slides[0].ctaUrl, "agendar");
+  // Qualquer outra palavra solta continua sendo recusada — senão "agendartudo"
+  // viraria href relativo e quebraria em dois dos três endereços.
+  assert.strictEqual(d.slides[1].ctaUrl, "");
+  assert.strictEqual(d.slides[2].ctaUrl, "");
+});
+
+test("o site semeado já abre com o botão de agendar na hero e na chamada", () => {
+  const config = buildDefaultConfig({ display_name: "Barbearia Doze" });
+  const hero = config.sections.find((s) => s.kind === "hero");
+  const cta = config.sections.find((s) => s.kind === "cta");
+  assert.strictEqual(hero.data.slides[0].ctaUrl, "agendar");
+  assert.strictEqual(cta.data.ctaUrl, "agendar");
+});
