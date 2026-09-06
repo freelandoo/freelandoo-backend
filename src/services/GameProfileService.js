@@ -79,7 +79,7 @@ class GameProfileService {
    * alguém ao usuário que o atacante escolhesse. Assinado e curto (10min), ele
    * é a única coisa que liga a volta a quem começou.
    */
-  static async startConnect(id_user, provider) {
+  static async startConnect(id_user, provider, returnPath) {
     return runWithLogs(log, "startConnect", () => ({ id_user, provider }), async () => {
       const blocked = await this._assertEnabled();
       if (blocked) return blocked;
@@ -97,11 +97,14 @@ class GameProfileService {
       }
 
       const state = jwt.sign(
-        { id_user, provider, purpose: "game_connect" },
+        { id_user, provider, purpose: "game_connect", back: this._safeReturn(returnPath) },
         process.env.JWT_SECRET,
         { expiresIn: STATE_TTL }
       );
-      const returnTo = `${base}/games/${provider}/callback?state=${encodeURIComponent(state)}`;
+      // ⚠️ `/gamer` e não `/games`: é onde a rota de callback está montada. O
+      // erro aqui não aparece no nosso lado — ele vira um 404 DEPOIS de a
+      // pessoa já ter autorizado na tela da plataforma.
+      const returnTo = `${base}/gamer/${provider}/callback?state=${encodeURIComponent(state)}`;
       return { url: adapter.authUrl({ returnTo, realm: base }) };
     });
   }
@@ -157,7 +160,9 @@ class GameProfileService {
         log.warn("finishConnect.sync_fail", { error: err.message })
       );
 
-      return { redirect: this._frontUrl(`/account?games=conectado&provider=${provider}`) };
+      const back = claim.back || "/account";
+      const sep = back.includes("?") ? "&" : "?";
+      return { redirect: this._frontUrl(`${back}${sep}games=conectado&provider=${provider}`) };
     });
   }
 
@@ -443,6 +448,23 @@ class GameProfileService {
   static _selfUrl() {
     const raw = process.env.PUBLIC_BACKEND_URL || process.env.BASE_URL || "";
     return raw ? String(raw).replace(/\/+$/, "") : null;
+  }
+
+  /**
+   * Para onde devolver a pessoa depois da plataforma. Ela sai do site no meio
+   * do caminho, e voltar para `/account` a deixaria longe da estante que ela
+   * estava abrindo.
+   *
+   * ⚠️ SÓ CAMINHO RELATIVO, e a checagem é dupla: tem que começar com "/" e NÃO
+   * pode começar com "//" nem "/\". Sem a segunda metade, `//evil.com` passa —
+   * o navegador lê isso como um host, e a nossa tela de conexão viraria um
+   * trampolim para o site de outra pessoa. O caminho ainda é assinado dentro do
+   * state, então nem isso o usuário consegue trocar depois.
+   */
+  static _safeReturn(raw) {
+    const p = String(raw || "").trim();
+    if (!p.startsWith("/") || p.startsWith("//") || p.startsWith("/\\")) return null;
+    return p.slice(0, 300);
   }
 
   static _frontUrl(path) {

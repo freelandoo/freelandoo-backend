@@ -12,7 +12,13 @@ class GameProfileController {
   }
 
   static async startConnect(req, res) {
-    const result = await GameProfileService.startConnect(req.user.id_user, req.params.provider);
+    const result = await GameProfileService.startConnect(
+      req.user.id_user,
+      req.params.provider,
+      // De onde a pessoa saiu, para devolvê-la ali. Validado no service: só
+      // caminho relativo entra, e ele viaja assinado dentro do state.
+      req.query.return
+    );
     return sendServiceResult(res, result);
   }
 
