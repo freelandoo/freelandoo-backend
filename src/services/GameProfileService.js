@@ -58,11 +58,15 @@ class GameProfileService {
       if (blocked) return blocked;
       const accounts = await GameProfileStorage.listAccounts(pool, id_user);
       const connected = new Map(accounts.map((a) => [a.provider, a]));
+      // TODAS as plataformas conhecidas, com o estado de cada uma — as que têm
+      // adaptador e as que não têm. Mandar só as conectáveis deixava a aba
+      // muda, e tela muda parece defeito.
       return {
-        providers: providers.available().map((p) => ({
+        providers: providers.all().map((p) => ({
           ...providers.describe(p),
           account: connected.get(p.provider) || null,
         })),
+        roadmap: providers.ROADMAP,
       };
     });
   }
