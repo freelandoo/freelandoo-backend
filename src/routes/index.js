@@ -41,6 +41,7 @@ const condoRoutes = require("./condo.routes");
 const residenceRoutes = require("./residence.routes");
 const neighborhoodRoutes = require("./neighborhood.routes");
 const spacesRoutes = require("./spaces.routes");
+const gameProfileRoutes = require("./gameProfile.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
@@ -197,6 +198,11 @@ module.exports = (app) => {
   // de perfil — atravessa TODAS as modalidades, inclusive a academia, e não
   // caberia sob nenhuma base de modalidade.
   app.use("/", spacesRoutes);
+  // Perfil gamer (mig 220): conta de plataforma conectada, estante e
+  // comparação. Base `/gamer` e NÃO `/games` — `/games` é da comunidade de
+  // games, e o que mora aqui é a biblioteca da PESSOA (ver o cabeçalho do
+  // arquivo de rotas).
+  app.use("/", gameProfileRoutes);
   app.use("/admin/booking-fees", bookingFeeAdminRoutes);
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);
