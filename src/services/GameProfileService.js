@@ -445,12 +445,27 @@ class GameProfileService {
 
   /**
    * O endereço PÚBLICO deste backend — é ele que a Steam vai chamar de volta, e
-   * o que ela mostra na tela de "você está entrando em…". Sai da ENV porque o
-   * host que chega no request pode ser o do proxy da Vercel, e a Steam exige
-   * que `return_to` esteja dentro do `realm`.
+   * o que ela mostra na tela de "você está entrando em…".
+   *
+   * Sai da ENV e NÃO do request: o host que chega aqui pode ser o do proxy da
+   * Vercel, e a Steam exige que o `return_to` esteja dentro do `realm` que ela
+   * anunciou — divergir os dois é uma recusa sem explicação.
+   *
+   * A ordem é deliberada:
+   *   1. PUBLIC_BACKEND_URL  — alguém disse explicitamente; ninguém discute.
+   *   2. RAILWAY_PUBLIC_DOMAIN — a própria Railway injeta em todo serviço com
+   *      domínio público. É o que faz a conexão funcionar em produção SEM
+   *      ninguém configurar nada, e é por isso que ela vem antes da BASE_URL:
+   *      em produção, quem sabe o endereço é a plataforma, não um valor que
+   *      alguém digitou um dia e esqueceu.
+   *   3. BASE_URL — o de sempre na bancada (localhost).
    */
   static _selfUrl() {
-    const raw = process.env.PUBLIC_BACKEND_URL || process.env.BASE_URL || "";
+    const explicit = process.env.PUBLIC_BACKEND_URL;
+    const railway = process.env.RAILWAY_PUBLIC_DOMAIN
+      ? `https://${String(process.env.RAILWAY_PUBLIC_DOMAIN).replace(/^https?:\/\//, "")}`
+      : "";
+    const raw = explicit || railway || process.env.BASE_URL || "";
     return raw ? String(raw).replace(/\/+$/, "") : null;
   }
 
