@@ -3,6 +3,24 @@
 // sessões diárias e checks por exercício.
 // Desde a mig 189 a ficha é do USUÁRIO (id_user): id_academy/id_member só
 // guardam o contexto de criação, então toda leitura chaveia por id_user.
+/**
+ * A ficha ATIVA de um membro, como a grade de treinos por data a define: a
+ * mais ANTIGA entre as ativas. É dela que sai o "Dias c/ ficha" da tabela e,
+ * desde o alerta de ficha vencida, também o "venceu".
+ *
+ * Mora numa const porque as DUAS consultas abaixo precisam da mesma resposta:
+ * se a grade olhasse a ficha mais antiga e o alerta a mais nova, o professor
+ * veria aluno marcado como vencido na tela e ausente do modal (ou o contrário),
+ * sem erro nenhum aparecer. Espera `m.id_user` no escopo.
+ */
+const ACTIVE_PLAN_LATERAL = `
+  LEFT JOIN LATERAL (
+    SELECT nome, created_at, (created_by = m.id_user) AS by_student
+      FROM public.tb_workout_plan p
+     WHERE p.id_user = m.id_user AND p.is_active = TRUE
+     ORDER BY created_at ASC LIMIT 1
+  ) plan ON TRUE`;
+
 module.exports = {
   // ─── Biblioteca ────────────────────────────────────────────────────────────
   async listExercises(db, { muscle, q } = {}) {
@@ -188,12 +206,7 @@ module.exports = {
            SELECT total_ml FROM public.tb_fitness_water_log wl
             WHERE wl.id_user = m.id_user AND wl.log_date = $2::date
          ) water ON TRUE
-         LEFT JOIN LATERAL (
-           SELECT nome, created_at, (created_by = m.id_user) AS by_student
-             FROM public.tb_workout_plan p
-            WHERE p.id_user = m.id_user AND p.is_active = TRUE
-            ORDER BY created_at ASC LIMIT 1
-         ) plan ON TRUE
+         ${ACTIVE_PLAN_LATERAL}
          LEFT JOIN LATERAL (
            SELECT COUNT(DISTINCT occurred_at::date) AS days
              FROM public.tb_academy_access_event ev
@@ -208,6 +221,37 @@ module.exports = {
         WHERE m.id_academy = $1
         ORDER BY u.nome ASC NULLS LAST`,
       [id_academy, date]
+    );
+    return r.rows;
+  },
+
+  // ─── Fichas vencidas ───────────────────────────────────────────────────────
+  // Quem está com a MESMA ficha ativa há `days` dias ou mais.
+  //
+  // O corte é feito no BANCO (`created_at <= NOW() - INTERVAL`) e não em JS
+  // sobre a grade inteira: a resposta é lida a cada visita de professor à
+  // página da academia, e trazer todo o roster para descartar quase tudo
+  // custaria caro numa academia grande.
+  //
+  // Matrícula CANCELADA fica de fora: a ficha dela nunca vai ser renovada, e um
+  // aviso que não some é um aviso que se aprende a ignorar. Atrasada/vencida
+  // continua entrando — ali o aluno ainda treina.
+  async expiredPlans(db, id_academy, days) {
+    const r = await db.query(
+      `SELECT m.id_member, m.id_user, m.member_name, m.membership_status,
+              u.username, u.nome AS user_nome,
+              plan.nome AS active_plan_nome,
+              plan.created_at AS active_plan_since,
+              plan.by_student AS active_plan_by_student
+         FROM public.tb_academy_member m
+         JOIN public.tb_user u ON u.id_user = m.id_user
+         ${ACTIVE_PLAN_LATERAL}
+        WHERE m.id_academy = $1
+          AND m.membership_status <> 'canceled'
+          AND plan.created_at IS NOT NULL
+          AND plan.created_at <= (NOW() - ($2::int * INTERVAL '1 day'))
+        ORDER BY plan.created_at ASC`,
+      [id_academy, days]
     );
     return r.rows;
   },

@@ -15,6 +15,7 @@ const AcademyStorage = require("../storages/AcademyStorage");
 const FitnessProposalStorage = require("../storages/FitnessProposalStorage");
 const AcademyService = require("./AcademyService");
 const { sanitizeExercises } = require("../utils/workoutSanitize");
+const { PLAN_EXPIRY_DAYS } = require("../utils/workoutExpiry");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("workout-service");
@@ -249,6 +250,39 @@ class WorkoutService {
           days_on_plan: r.active_plan_since ? daysBetween(r.active_plan_since) : null,
           frequency_days_30d: r.frequency_days_30d,
           sessions_done_7d: r.sessions_done_7d,
+        })),
+      };
+    });
+  }
+
+  /**
+   * Alunos com a ficha vencida — quem está com a MESMA ficha ativa há
+   * PLAN_EXPIRY_DAYS dias ou mais.
+   *
+   * É a mesma pergunta em três lugares: a bolinha vermelha do botão "Membros"
+   * da academia, o modal que recebe o professor e a marca na linha da grade de
+   * treinos por data. Uma resposta só, calculada aqui, é o que impede as três
+   * de discordarem.
+   *
+   * `days` VOLTA na resposta de propósito: é o que deixa o front escrever "há
+   * 90 dias" sem guardar o número dele próprio.
+   */
+  static async expiredPlans(id_user, id_academy) {
+    return runWithLogs(log, "expired-plans", () => ({ id_academy }), async () => {
+      const guard = await AcademyService.assertStaff(id_academy, id_user);
+      if (guard.error) return guard;
+      const rows = await WorkoutStorage.expiredPlans(pool, id_academy, PLAN_EXPIRY_DAYS);
+      return {
+        days: PLAN_EXPIRY_DAYS,
+        count: rows.length,
+        members: rows.map((r) => ({
+          id_member: r.id_member,
+          id_user: r.id_user,
+          nome: r.user_nome || r.username || r.member_name,
+          membership_status: r.membership_status,
+          active_plan_nome: r.active_plan_nome,
+          active_plan_by_student: r.active_plan_by_student === true,
+          days_on_plan: daysBetween(r.active_plan_since),
         })),
       };
     });

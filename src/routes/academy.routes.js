@@ -78,6 +78,9 @@ router.post(
 const WorkoutController = require("../controllers/WorkoutController");
 router.get("/academies/:id/exercises", authMiddleware, asyncHandler(WorkoutController.listExercises));
 router.get("/academies/:id/training-grid", authMiddleware, asyncHandler(WorkoutController.trainingGrid));
+// Fichas vencidas (90 dias na mesma ficha): acende a bolinha do botão
+// "Membros" e monta o modal que recebe o professor na página da academia.
+router.get("/academies/:id/expired-plans", authMiddleware, asyncHandler(WorkoutController.expiredPlans));
 router.get("/academies/:id/members/:memberId/plans", authMiddleware, asyncHandler(WorkoutController.memberPlans));
 router.post("/academies/:id/members/:memberId/plans", authMiddleware, asyncHandler(WorkoutController.createPlan));
 router.patch("/academies/:id/plans/:planId", authMiddleware, asyncHandler(WorkoutController.updatePlan));

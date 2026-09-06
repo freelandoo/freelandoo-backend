@@ -91,4 +91,9 @@ module.exports = {
     const result = await WorkoutService.trainingGrid(req.user.id_user, req.params.id, req.query.date);
     return sendServiceResult(res, result);
   },
+
+  async expiredPlans(req, res) {
+    const result = await WorkoutService.expiredPlans(req.user.id_user, req.params.id);
+    return sendServiceResult(res, result);
+  },
 };
