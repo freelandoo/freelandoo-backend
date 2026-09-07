@@ -42,6 +42,7 @@ const residenceRoutes = require("./residence.routes");
 const neighborhoodRoutes = require("./neighborhood.routes");
 const spacesRoutes = require("./spaces.routes");
 const gameProfileRoutes = require("./gameProfile.routes");
+const whatsappRoutes = require("./whatsapp.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
@@ -209,6 +210,10 @@ module.exports = (app) => {
   app.use("/feed", portfolioFeedRoutes);
   app.use("/entity-follows", entityFollowRoutes);
   app.use("/conversations", conversationRoutes);
+  // WhatsApp do usuário (mig 223): conectar o próprio número por QR e atender
+  // dentro da aba Solicitações. O WEBHOOK dele NÃO entra aqui — ele é público
+  // e mora em /webhooks/whatsapp, montado antes do express.json no app.js.
+  app.use("/whatsapp", whatsappRoutes);
   app.use("/me/api-connections", apiConnectionRoutes);
   app.use("/me/data-connections", dataApiConnectionRoutes);
   // /ext/v1/data ANTES de /ext/v1 para não ser engolido pelo gate de atendimento.

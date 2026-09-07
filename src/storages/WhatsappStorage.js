@@ -1,0 +1,263 @@
+// src/storages/WhatsappStorage.js
+// SQL puro do WhatsApp do usuário (mig 223): a instância, as conversas e as
+// mensagens.
+//
+// ─── A REGRA QUE ATRAVESSA O ARQUIVO INTEIRO ────────────────────────────────
+//
+// NENHUMA leitura de conversa ou mensagem aceita só o id dela: todas sobem até
+// `tb_whatsapp_instance.id_user` e recebem o usuário como parâmetro. A caixa é
+// de UMA pessoa e carrega conversa de terceiros que nunca ouviram falar da
+// Freelandoo — um SELECT por id solto aqui seria a caixa de entrada de qualquer
+// um servida a quem adivinhasse um UUID.
+//
+// ─── DEDUPE É DO BANCO, NÃO DO CÓDIGO ───────────────────────────────────────
+//
+// A Evolution reentrega o webhook quando a resposta demora, e o que sai daqui
+// volta como eco do próprio WhatsApp. `insertMessage` usa ON CONFLICT DO
+// NOTHING sobre `ux_whatsapp_message_wa_id` e devolve `null` quando a mensagem
+// já existia — quem chama distingue "gravei" de "já tinha" pelo retorno, e não
+// por um SELECT antes (que perderia a corrida entre duas entregas simultâneas).
+
+class WhatsappStorage {
+  /* ─────────────────────────────── instância ────────────────────────────── */
+
+  static async getInstanceByUser(conn, id_user) {
+    const r = await conn.query(
+      `SELECT id_instance, id_user, evolution_instance, status, connected_number,
+              last_state_at, created_at
+         FROM public.tb_whatsapp_instance
+        WHERE id_user = $1
+        LIMIT 1`,
+      [id_user]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * Pelo nome da instância — a CHAVE DE ROTEAMENTO do webhook. É esta consulta
+   * que responde "de quem é esta mensagem?", e por isso ela devolve o `id_user`
+   * junto: sem ele o evento não teria dono e a única saída seria adivinhar.
+   */
+  static async getInstanceByName(conn, evolution_instance) {
+    const r = await conn.query(
+      `SELECT id_instance, id_user, evolution_instance, status, connected_number
+         FROM public.tb_whatsapp_instance
+        WHERE evolution_instance = $1
+        LIMIT 1`,
+      [evolution_instance]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * Cria ou reaproveita a linha da pessoa. Idempotente pelo mesmo motivo que
+   * `createInstance` da Evolution é: a tela chama isto toda vez que alguém pede
+   * um QR, inclusive na reconexão.
+   *
+   * ⚠️ O UPDATE do conflito NÃO toca `status` nem `connected_number`: pedir um
+   * QR novo não é perder a sessão que ainda pode estar de pé.
+   */
+  static async ensureInstance(conn, id_user, evolution_instance) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_whatsapp_instance (id_user, evolution_instance)
+            VALUES ($1, $2)
+       ON CONFLICT (id_user)
+       DO UPDATE SET evolution_instance = EXCLUDED.evolution_instance
+         RETURNING id_instance, id_user, evolution_instance, status, connected_number,
+                   last_state_at, created_at`,
+      [id_user, evolution_instance]
+    );
+    return r.rows[0];
+  }
+
+  /**
+   * Status da sessão. `connected_number` tem TRÊS intenções e por isso não é um
+   * parâmetro simples:
+   *   undefined → não mexe (o estado veio de uma fonte que não conhece o número)
+   *   null      → limpa (desconectou)
+   *   string    → grava
+   */
+  static async setInstanceStatus(conn, evolution_instance, status, connected_number) {
+    const touchNumber = connected_number !== undefined;
+    const r = await conn.query(
+      `UPDATE public.tb_whatsapp_instance
+          SET status = $2,
+              connected_number = CASE WHEN $3::boolean THEN $4::varchar ELSE connected_number END,
+              last_state_at = NOW()
+        WHERE evolution_instance = $1
+        RETURNING id_instance, id_user, evolution_instance, status, connected_number`,
+      [evolution_instance, status, touchNumber, touchNumber ? connected_number : null]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /* ─────────────────────────────── conversas ────────────────────────────── */
+
+  /**
+   * Garante a conversa daquele endereço. O `push_name` é atualizado quando
+   * chega um valor melhor (COALESCE + NULLIF): o WhatsApp às vezes manda a
+   * mensagem sem o nome de perfil, e sobrescrever com vazio faria o título da
+   * conversa sumir no meio do papo.
+   *
+   * Em grupo quem chama passa `push_name` vazio de propósito — ali o nome do
+   * evento é de quem escreveu, não do grupo.
+   */
+  static async ensureConversation(conn, { id_instance, remote_jid, phone, push_name, is_group }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_whatsapp_conversation
+              (id_instance, remote_jid, phone, push_name, is_group)
+            VALUES ($1, $2, $3, NULLIF($4, ''), $5)
+       ON CONFLICT (id_instance, remote_jid)
+       DO UPDATE SET push_name = COALESCE(NULLIF(EXCLUDED.push_name, ''),
+                                          public.tb_whatsapp_conversation.push_name)
+         RETURNING id_conversation, id_instance, remote_jid, phone, push_name, is_group,
+                   unread_count, last_message_at, last_message_preview`,
+      [id_instance, remote_jid, phone || "", push_name || "", !!is_group]
+    );
+    return r.rows[0];
+  }
+
+  static async listConversations(conn, id_user, { limit = 40, offset = 0, search = "" } = {}) {
+    const params = [id_user, limit, offset];
+    let filter = "";
+    if (search) {
+      params.push(`%${search}%`);
+      filter = ` AND (c.push_name ILIKE $${params.length} OR c.phone ILIKE $${params.length})`;
+    }
+    const r = await conn.query(
+      `SELECT c.id_conversation, c.remote_jid, c.phone, c.push_name, c.is_group,
+              c.unread_count, c.last_message_at, c.last_message_preview
+         FROM public.tb_whatsapp_conversation c
+         JOIN public.tb_whatsapp_instance i ON i.id_instance = c.id_instance
+        WHERE i.id_user = $1${filter}
+        ORDER BY c.last_message_at DESC
+        LIMIT $2 OFFSET $3`,
+      params
+    );
+    return r.rows;
+  }
+
+  /** Conversa + dono. O `id_user` no WHERE é o guard, não um filtro de conforto. */
+  static async getConversation(conn, id_user, id_conversation) {
+    const r = await conn.query(
+      `SELECT c.id_conversation, c.id_instance, c.remote_jid, c.phone, c.push_name,
+              c.is_group, c.unread_count, c.last_message_at,
+              i.evolution_instance, i.status AS instance_status
+         FROM public.tb_whatsapp_conversation c
+         JOIN public.tb_whatsapp_instance i ON i.id_instance = c.id_instance
+        WHERE c.id_conversation = $1 AND i.id_user = $2
+        LIMIT 1`,
+      [id_conversation, id_user]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * Move a conversa para o topo e guarda a prévia. `inc_unread` só é verdade
+   * para o que CHEGA — o eco do que a própria pessoa mandou pelo celular dela
+   * não pode acender um "não lida" contra ela mesma.
+   */
+  static async touchConversation(conn, id_conversation, { preview, sent_at, inc_unread }) {
+    await conn.query(
+      `UPDATE public.tb_whatsapp_conversation
+          SET last_message_preview = LEFT($2, 300),
+              -- GREATEST: o webhook pode reentregar fora de ordem, e uma
+              -- mensagem antiga não pode puxar a conversa para trás na lista.
+              last_message_at = GREATEST(last_message_at, $3::timestamptz),
+              unread_count = unread_count + CASE WHEN $4::boolean THEN 1 ELSE 0 END
+        WHERE id_conversation = $1`,
+      [id_conversation, String(preview || ""), sent_at, !!inc_unread]
+    );
+  }
+
+  static async markRead(conn, id_user, id_conversation) {
+    const r = await conn.query(
+      `UPDATE public.tb_whatsapp_conversation c
+          SET unread_count = 0
+         FROM public.tb_whatsapp_instance i
+        WHERE c.id_instance = i.id_instance
+          AND c.id_conversation = $1
+          AND i.id_user = $2
+        RETURNING c.id_conversation`,
+      [id_conversation, id_user]
+    );
+    return r.rowCount > 0;
+  }
+
+  static async unreadTotal(conn, id_user) {
+    const r = await conn.query(
+      `SELECT COALESCE(SUM(c.unread_count), 0)::int AS total
+         FROM public.tb_whatsapp_conversation c
+         JOIN public.tb_whatsapp_instance i ON i.id_instance = c.id_instance
+        WHERE i.id_user = $1`,
+      [id_user]
+    );
+    return r.rows[0].total;
+  }
+
+  /* ─────────────────────────────── mensagens ────────────────────────────── */
+
+  /** `null` quando a mensagem já existia (eco ou reentrega) — não é erro. */
+  static async insertMessage(
+    conn,
+    { id_conversation, wa_message_id, direction, sender_label, body, media_type, sent_at }
+  ) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_whatsapp_message
+              (id_conversation, wa_message_id, direction, sender_label, body, media_type, sent_at)
+            VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5, $6, $7)
+       ON CONFLICT (id_conversation, wa_message_id) WHERE wa_message_id IS NOT NULL
+       DO NOTHING
+         RETURNING id_message, wa_message_id, direction, sender_label, body, media_type, sent_at`,
+      [
+        id_conversation,
+        wa_message_id || "",
+        direction,
+        sender_label || "",
+        String(body || ""),
+        media_type || "text",
+        sent_at,
+      ]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * Página da conversa, da mais nova para a mais velha (é assim que se pagina
+   * um chat), invertida no fim para a tela desenhar na ordem de leitura.
+   */
+  static async listMessages(conn, id_conversation, { limit = 50, before = null } = {}) {
+    const params = [id_conversation, limit];
+    let cursor = "";
+    if (before) {
+      params.push(before);
+      cursor = ` AND sent_at < $${params.length}`;
+    }
+    const r = await conn.query(
+      `SELECT id_message, wa_message_id, direction, sender_label, body, media_type, sent_at
+         FROM public.tb_whatsapp_message
+        WHERE id_conversation = $1${cursor}
+        ORDER BY sent_at DESC
+        LIMIT $2`,
+      params
+    );
+    return r.rows.reverse();
+  }
+
+  /** Uma mensagem específica, com o dono junto — usada para baixar a mídia. */
+  static async getMessage(conn, id_user, id_message) {
+    const r = await conn.query(
+      `SELECT m.id_message, m.wa_message_id, m.media_type, m.body,
+              c.id_conversation, i.evolution_instance
+         FROM public.tb_whatsapp_message m
+         JOIN public.tb_whatsapp_conversation c ON c.id_conversation = m.id_conversation
+         JOIN public.tb_whatsapp_instance i ON i.id_instance = c.id_instance
+        WHERE m.id_message = $1 AND i.id_user = $2
+        LIMIT 1`,
+      [id_message, id_user]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+}
+
+module.exports = WhatsappStorage;
