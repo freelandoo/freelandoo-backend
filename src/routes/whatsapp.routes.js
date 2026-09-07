@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const requireFeature = require("../middlewares/requireFeature");
+const requirePlanFeature = require("../middlewares/requirePlanFeature");
 const WhatsappController = require("../controllers/WhatsappController");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -28,6 +29,11 @@ router.get(
   "/instance/qrcode",
   authMiddleware,
   requireFeature("whatsapp_atendimento"),
+  // A posse entra AQUI, e não no status: é este clique que levanta a sessão na
+  // Evolution, e é a sessão que custa memória enquanto estiver de pé (mig 224).
+  // O status fica aberto para a aba conseguir escrever o motivo em vez de
+  // mostrar um botão que só falha depois do clique.
+  requirePlanFeature("whatsapp"),
   asyncHandler(WhatsappController.qrcode)
 );
 

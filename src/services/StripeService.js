@@ -352,6 +352,7 @@ module.exports = {
   createProfileActivationCheckoutSession,
   createOneTimeCheckoutSession,
   createMultiItemCheckoutSession,
+  createMonthlySubscriptionCheckoutSession,
   retrieveSession,
   retrieveSubscription,
   retrieveInvoice,

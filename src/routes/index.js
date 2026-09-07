@@ -43,6 +43,7 @@ const neighborhoodRoutes = require("./neighborhood.routes");
 const spacesRoutes = require("./spaces.routes");
 const gameProfileRoutes = require("./gameProfile.routes");
 const whatsappRoutes = require("./whatsapp.routes");
+const planRoutes = require("./plan.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
@@ -233,6 +234,7 @@ module.exports = (app) => {
   app.use("/polens", polenProductsRoutes);
   app.use("/admin/polens", polenProductsAdminRoutes);
   app.use("/xp-boost", xpBoostRoutes);
+  app.use("/plans", planRoutes);
   app.use("/function-store", functionStoreRoutes);
   app.use("/admin/function-store", functionStoreAdminRoutes);
   app.use("/admin/tour", tourSettingsAdminRoutes);

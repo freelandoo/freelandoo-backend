@@ -13,6 +13,10 @@ const USER_FEATURE_KEYS = [
   "fitness_academias",
   "profiles",
   "agenda",
+  // WhatsApp (migs 223/225): NUNCA foi vendida avulsa — nasce dentro do plano
+  // mensal, e por isso não tem linha em `tb_function_product`. O ownership
+  // trata isso: chave em plano exige assinatura, com ou sem produto de vitrine.
+  "whatsapp",
   // "vitrine" é a única com efeito SERVER-SIDE: desligada, os perfis do user
   // somem da vitrine pública (SearchStorage) pra todo mundo — não é só UI.
   "vitrine",

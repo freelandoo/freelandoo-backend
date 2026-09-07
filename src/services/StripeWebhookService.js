@@ -202,6 +202,9 @@ async function handleInvoicePaid(conn, invoice) {
   }
   const atendimentoIa = await AtendimentoIaService.handleInvoicePaid(invoice, subscriptionId);
   if (atendimentoIa && !atendimentoIa.ignored) return;
+  const PlanService = require("./PlanService");
+  const planSub = await PlanService.handleInvoicePaid(invoice, subscriptionId);
+  if (planSub && !planSub.ignored) return;
 
   const row = await ProfileSubscriptionStorage.findBySubscriptionId(
     conn,
@@ -224,6 +227,11 @@ async function handleInvoicePaid(conn, invoice) {
       }
       if (metaType === "atendimento_ia") {
         await AtendimentoIaService.handleInvoicePaidByMetadata(invoice, subscription);
+        return;
+      }
+      if (metaType === "plan_subscription") {
+        const PlanService = require("./PlanService");
+        await PlanService.handleInvoicePaidByMetadata(invoice, subscription);
         return;
       }
     } catch (err) {
@@ -335,6 +343,9 @@ async function handleInvoiceFailed(conn, invoice) {
   }
   const atendimentoIa = await AtendimentoIaService.handleInvoiceFailed(subscriptionId);
   if (atendimentoIa && !atendimentoIa.ignored) return;
+  const PlanServiceFailed = require("./PlanService");
+  const planFailed = await PlanServiceFailed.handleInvoiceFailed(subscriptionId);
+  if (planFailed && !planFailed.ignored) return;
 
   await ProfileSubscriptionStorage.updateBySubscriptionId(conn, subscriptionId, {
     status: "past_due",
@@ -493,6 +504,9 @@ async function handleSubscriptionDeleted(conn, subscription) {
   }
   const atendimentoIa = await AtendimentoIaService.handleSubscriptionDeleted(subscription);
   if (atendimentoIa && !atendimentoIa.ignored) return;
+  const PlanServiceDeleted = require("./PlanService");
+  const planDeleted = await PlanServiceDeleted.handleSubscriptionDeleted(subscription);
+  if (planDeleted && !planDeleted.ignored) return;
 
   const row = await ProfileSubscriptionStorage.findBySubscriptionId(
     conn,
@@ -788,6 +802,9 @@ async function fulfillCheckoutSession(session) {
     result = await CommunitySlotService.confirmStripeSession(session);
   } else if (meta.type === "community_membership") {
     result = await CommunityMembershipService.confirmStripeSession(session);
+  } else if (meta.type === "plan_subscription") {
+    const PlanService = require("./PlanService");
+    result = await PlanService.confirmStripeSession(session);
   } else if (meta.type === "atendimento_ia") {
     result = await AtendimentoIaService.confirmStripeSession(session);
   } else if (meta.type === "manifestation") {

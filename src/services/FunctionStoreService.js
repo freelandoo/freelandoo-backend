@@ -9,6 +9,7 @@ const StripeService = require("./StripeService");
 const FunctionStoreStorage = require("../storages/FunctionStoreStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const { USER_FEATURE_KEYS } = require("../utils/userFeatureKeys");
+const PlanService = require("./PlanService");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -39,18 +40,18 @@ class FunctionStoreService {
 
   // Mapa de posse do usuário: chave → owned. Função fora do catálogo ou com
   // is_for_sale = FALSE conta como possuída (grátis).
+  /**
+   * ⚠️ A CONTA DA POSSE MUDOU DE CASA (mig 225) e mora no `PlanService`.
+   *
+   * Antes eram dois estados na mesma coluna — `!is_for_sale` significava
+   * "grátis para todo mundo". Com os planos existe um terceiro: função que saiu
+   * da venda avulsa porque agora pertence a um pacote, e que NÃO é grátis.
+   * Deixar a regra escrita aqui e lá dentro daria duas respostas para
+   * "esta pessoa tem esta função?", e a divergência apareceria como uma tela
+   * que aparece e uma porta que recusa.
+   */
   static async ownershipMap(id_user) {
-    const products = await FunctionStoreStorage.listProducts(pool);
-    const ownedKeys = id_user
-      ? await FunctionStoreStorage.listOwnedKeys(pool, id_user)
-      : [];
-    const ownedSet = new Set(ownedKeys);
-    const owned = {};
-    for (const key of USER_FEATURE_KEYS) {
-      const product = products.find((p) => p.feature_key === key);
-      owned[key] = !product || !product.is_for_sale || ownedSet.has(key);
-    }
-    return owned;
+    return PlanService.ownershipMap(id_user, USER_FEATURE_KEYS);
   }
 
   /* ------------------------------ checkout ------------------------------ */
