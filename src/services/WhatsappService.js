@@ -30,6 +30,7 @@ const pool = require("../databases");
 const WhatsappStorage = require("../storages/WhatsappStorage");
 const evolution = require("../integrations/evolution");
 const FeatureFlagService = require("./FeatureFlagService");
+const realtime = require("../realtime/socket");
 const { instanceNameFor } = require("../utils/whatsappInstance");
 const { formatPhone } = require("../utils/whatsappJid");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -40,6 +41,15 @@ const FLAG = "whatsapp_atendimento";
 // Teto do corpo de uma mensagem de texto do WhatsApp com folga: o que passa
 // disso não é conversa, é payload.
 const MAX_TEXT = 4096;
+/**
+ * Dias sem o DONO abrir a caixa até a sessão ser desligada.
+ *
+ * Existe porque uma sessão do WhatsApp custa memória enquanto está de pé, e ela
+ * fica de pé sozinha: quem conecta e some custa o mesmo que quem atende todo
+ * dia. Configurável por ENV para o corte ser afrouxado sem deploy — 0 desliga o
+ * sweeper inteiro, que é a saída para o dia em que ele estiver atrapalhando.
+ */
+const IDLE_DAYS = Number(process.env.WHATSAPP_IDLE_DAYS ?? 30);
 
 class WhatsappService {
   static async _assertEnabled() {
@@ -84,6 +94,9 @@ class WhatsappService {
         return { configured: !!cfg, exists: false, status: "disconnected", number: "" };
       }
 
+      // Abrir a aba é usar: é isto que segura a sessão de pé (ver IDLE_DAYS).
+      await WhatsappStorage.touchSeen(pool, id_user);
+
       let status = instance.status;
       if (cfg) {
         const open = await evolution.connectionState(cfg, instance.evolution_instance);
@@ -105,6 +118,11 @@ class WhatsappService {
         exists: true,
         status,
         number: formatPhone(instance.connected_number),
+        // Por que caiu. Sem isto, quem volta depois de um mês encontra o botão
+        // "Conectar" e conclui que o produto quebrou — desconectado silencioso
+        // é indistinguível de defeito.
+        disconnect_reason: status === "connected" ? null : instance.disconnect_reason || null,
+        idle_days: IDLE_DAYS,
         unread: await WhatsappStorage.unreadTotal(pool, id_user),
       };
     });
@@ -171,7 +189,13 @@ class WhatsappService {
         // que o erro: deixar "conectado" aqui mentiria para a pessoa.
         log.warn("disconnect.evolution_failed", { id_user, message: e && e.message });
       }
-      await WhatsappStorage.setInstanceStatus(pool, instance.evolution_instance, "disconnected", null);
+      await WhatsappStorage.setInstanceStatus(
+        pool,
+        instance.evolution_instance,
+        "disconnected",
+        null,
+        "user"
+      );
       return { ok: true };
     });
   }
@@ -183,6 +207,7 @@ class WhatsappService {
       const blocked = await this._assertEnabled();
       if (blocked) return blocked;
 
+      await WhatsappStorage.touchSeen(pool, id_user);
       const rows = await WhatsappStorage.listConversations(pool, id_user, {
         limit: Math.min(Number(limit) || 40, 100),
         offset: Math.max(Number(offset) || 0, 0),
@@ -317,6 +342,71 @@ class WhatsappService {
         return this._evolutionError(e);
       }
     });
+  }
+
+  /* ─────────────────────────────── sweeper ─────────────────────────────── */
+
+  /**
+   * Desliga a sessão de quem não abre a caixa há `IDLE_DAYS` dias.
+   *
+   * ⚠️ DESLIGAR NÃO É PERDER MENSAGEM, e é isso que torna o corte aceitável: a
+   * nossa sessão é um APARELHO CONECTADO do WhatsApp da pessoa, como o
+   * WhatsApp Web. Derrubá-la não afeta o número — as mensagens seguem chegando
+   * no celular dela — e o histórico já recebido continua aqui. O que ela perde
+   * é a entrada de mensagens NOVAS nesta caixa até reconectar, e a tela diz
+   * isso com todas as letras quando ela volta (`disconnect_reason = 'idle'`).
+   *
+   * O estado local é gravado MESMO SE a Evolution recusar o logout: se a sessão
+   * já caiu do lado de lá, insistir em chamá-la a cada 6h para sempre seria uma
+   * fila que nunca esvazia.
+   */
+  static async sweepIdleInstances() {
+    if (!(IDLE_DAYS > 0)) return 0;
+    const cfg = evolution.config();
+    if (!cfg) return 0;
+
+    try {
+      const rows = await WhatsappStorage.listIdleInstances(pool, IDLE_DAYS);
+      let closed = 0;
+      for (const row of rows) {
+        try {
+          await evolution.logout(cfg, row.evolution_instance);
+        } catch (e) {
+          log.warn("sweep.logout_failed", {
+            instance: row.evolution_instance,
+            message: e && e.message,
+          });
+        }
+        await WhatsappStorage.setInstanceStatus(
+          pool,
+          row.evolution_instance,
+          "disconnected",
+          null,
+          "idle"
+        );
+        realtime.emitToUser(row.id_user, "whatsapp:status", {
+          status: "disconnected",
+          number: "",
+          disconnect_reason: "idle",
+        });
+        closed++;
+      }
+      if (closed) log.info("whatsapp.sweep", { closed, idle_days: IDLE_DAYS });
+      return closed;
+    } catch (err) {
+      log.error("sweepIdleInstances.fail", { error: err && err.message });
+      return 0;
+    }
+  }
+
+  static startSweeper() {
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    this.sweepIdleInstances().catch(() => {});
+    const timer = setInterval(() => {
+      this.sweepIdleInstances().catch(() => {});
+    }, SIX_HOURS);
+    if (typeof timer.unref === "function") timer.unref();
+    return timer;
   }
 
   /* ──────────────────────────────── apoio ──────────────────────────────── */

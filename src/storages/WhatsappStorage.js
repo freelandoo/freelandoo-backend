@@ -24,7 +24,7 @@ class WhatsappStorage {
   static async getInstanceByUser(conn, id_user) {
     const r = await conn.query(
       `SELECT id_instance, id_user, evolution_instance, status, connected_number,
-              last_state_at, created_at
+              last_state_at, last_seen_at, disconnect_reason, created_at
          FROM public.tb_whatsapp_instance
         WHERE id_user = $1
         LIMIT 1`,
@@ -77,18 +77,76 @@ class WhatsappStorage {
    *   null      → limpa (desconectou)
    *   string    → grava
    */
-  static async setInstanceStatus(conn, evolution_instance, status, connected_number) {
+  static async setInstanceStatus(conn, evolution_instance, status, connected_number, reason) {
     const touchNumber = connected_number !== undefined;
+    // ⚠️ `clearReason` é calculado AQUI e não com `$2 = 'connected'` dentro do
+    // CASE. O mesmo parâmetro usado numa coluna (varchar) e comparado com um
+    // literal (text) faz o Postgres deduzir dois tipos para ele e recusar a
+    // query inteira com 42P08 — a armadilha que as migs 202–204 já pagaram três
+    // vezes. Este caso foi pego pela suíte, não pela produção.
+    const clearReason = status === "connected";
     const r = await conn.query(
       `UPDATE public.tb_whatsapp_instance
           SET status = $2,
               connected_number = CASE WHEN $3::boolean THEN $4::varchar ELSE connected_number END,
+              -- O motivo só vale enquanto está desligado: reconectar limpa,
+              -- senão a tela continuaria explicando um corte já desfeito.
+              disconnect_reason = CASE
+                WHEN $6::boolean THEN NULL
+                WHEN $5::varchar IS NOT NULL THEN $5::varchar
+                ELSE disconnect_reason
+              END,
               last_state_at = NOW()
         WHERE evolution_instance = $1
-        RETURNING id_instance, id_user, evolution_instance, status, connected_number`,
-      [evolution_instance, status, touchNumber, touchNumber ? connected_number : null]
+        RETURNING id_instance, id_user, evolution_instance, status, connected_number,
+                  disconnect_reason`,
+      [
+        evolution_instance,
+        status,
+        touchNumber,
+        touchNumber ? connected_number : null,
+        reason || null,
+        clearReason,
+      ]
     );
     return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * Marca que o DONO usou a caixa. Chamada nas leituras da aba.
+   *
+   * ⚠️ O `AND last_seen_at < NOW() - INTERVAL '1 hour'` não é economia de
+   * escrita à toa: sem ele, cada abertura de conversa e cada volta do status
+   * escreveria uma linha, e a tabela viraria um log de cliques. Uma hora de
+   * resolução é folgada para uma janela medida em dias.
+   */
+  static async touchSeen(conn, id_user) {
+    await conn.query(
+      `UPDATE public.tb_whatsapp_instance
+          SET last_seen_at = NOW()
+        WHERE id_user = $1
+          AND last_seen_at < NOW() - INTERVAL '1 hour'`,
+      [id_user]
+    );
+  }
+
+  /**
+   * As sessões de pé que o dono não visita há mais de `days` dias.
+   *
+   * Só `status = 'connected'`: quem já está desligado não tem sessão custando
+   * memória, e varrê-lo seria pedir um logout à Evolution para nada.
+   */
+  static async listIdleInstances(conn, days, limit = 200) {
+    const r = await conn.query(
+      `SELECT id_instance, id_user, evolution_instance, last_seen_at
+         FROM public.tb_whatsapp_instance
+        WHERE status = 'connected'
+          AND last_seen_at < NOW() - ($1 || ' days')::interval
+        ORDER BY last_seen_at ASC
+        LIMIT $2`,
+      [String(days), limit]
+    );
+    return r.rows;
   }
 
   /* ─────────────────────────────── conversas ────────────────────────────── */

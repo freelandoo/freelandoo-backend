@@ -52,6 +52,15 @@ const server = app.listen(PORT, () => {
   const ResidenceService = require("./src/services/ResidenceService");
   ResidenceService.startSweeper();
 
+  // WhatsApp do usuário (mig 224): desliga a sessão de quem não abre a caixa há
+  // WHATSAPP_IDLE_DAYS dias (30 por padrão; 0 desliga o sweeper). Uma sessão do
+  // WhatsApp custa memória enquanto está de pé, e fica de pé sozinha — sem isto,
+  // quem conecta e some custa o mesmo que quem atende todo dia. Desligar não
+  // afeta o número da pessoa (as mensagens seguem chegando no celular dela) nem
+  // apaga o histórico já recebido.
+  const WhatsappService = require("./src/services/WhatsappService");
+  WhatsappService.startSweeper();
+
   // Catálogo de alimentos (TACO curada): seed idempotente fill-if-absent.
   // Falha não derruba o boot (fitness fica sem catálogo até o próximo deploy).
   const { seedTacoFoods } = require("./scripts/seed-taco");
