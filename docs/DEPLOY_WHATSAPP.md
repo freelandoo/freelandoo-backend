@@ -11,6 +11,35 @@ O código está entregue (migs 223/224). O que falta é infraestrutura: **enquan
 a integração aparece é a ENV, não a flag, porque flag ligada sem credencial
 produz um botão que só falha depois do clique.
 
+## ✅ Provisionado em 2026-09-07 (projeto `freelandoo`, env production)
+
+A infraestrutura descrita abaixo **já está no ar**. O que foi criado:
+
+| serviço | id | detalhe |
+|---|---|---|
+| `redis` | `30f02d8a-4370-4ccb-8e3b-0604f5bbdc13` | `redis:7-alpine`, start command com `--bind ::`, sem volume |
+| `evolution-api` | `325b6373-d091-4492-98a9-f27043797b49` | `evoapicloud/evolution-api:v2.3.7`, sem domínio público |
+| volume | `06178de4-0acd-4eda-b64a-0ac1e8fe47b4` | `evolution-api-volume` em `/evolution/instances` |
+
+**Banco:** `Postgres-7D-K` (`postgres-7d-k.railway.internal`), com
+`?schema=evolution` — ele estava ocioso no projeto, então a Evolution ganhou um
+banco só dela sem custo novo e sem encostar no Postgres que atende feed, vitrine
+e checkout.
+
+**As três ENVs já estão no `freelandoo-backend`.** Credenciais geradas novas
+(`openssl rand`), nenhuma reaproveitada do Coliseu; os valores vivem só no
+painel do Railway.
+
+**Verificado no ar:** boot da Evolution com `Migration succeeded`,
+`redis ready`, `Repository:Prisma - ON` e `HTTP - ON: 8080`; e
+`POST /webhooks/whatsapp` sem o header respondendo **401** em vez de 503 — que
+é a prova de que o `WHATSAPP_WEBHOOK_SECRET` chegou ao backend.
+
+O resto deste documento é a receita, para auditar o que está de pé ou recriar
+noutro ambiente.
+
+---
+
 Arquitetura copiada do Coliseu (`C:/Users/Alex/Documents/Antigravity/Coliseu`,
 `coliseu-backend/DEPLOY.md`), auditada no Railway em 2026-09-07 e adaptada.
 
