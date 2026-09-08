@@ -289,6 +289,85 @@ async function shelfRows(db, provider, games, minutesByExternal) {
 
     const cat = await db.query(`SELECT 1 FROM tb_game WHERE id_game=$1`, [map.get("1245620")]);
     check("o catálogo é compartilhado e não é apagado junto", () => assert.equal(cat.rowCount, 1));
+
+    // ─── ranking da plataforma (por horas) ─────────────────────────────────
+    //
+    // A fila existe porque o espaço de games não tem membros: sem gente para
+    // ordenar por XP, o que sobra é a hora que a plataforma VERIFICA. E o que
+    // ela não pode fazer é publicar as horas de quem fechou a estante — a
+    // visibilidade é escolha, e um ranking que a ignorasse a transformaria em
+    // nada.
+    console.log("\n── ranking ──");
+    const R1 = await makeUser(db, "r1");
+    const R2 = await makeUser(db, "r2");
+    const R3 = await makeUser(db, "r3");
+
+    const rmap = await Storage.upsertGames(db, "steam", lib([["999001", "ZZ Ranking Um", 0]]));
+    const rid = rmap.get("999001");
+
+    const conta = (id, external, visibility, revoked) =>
+      db.query(
+        "INSERT INTO tb_user_game_account (id_user, provider, external_id, visibility, revoked_at)" +
+          " VALUES ($1,'steam',$2,$3,$4)",
+        [id, external, visibility, revoked]
+      );
+    const horas = (id, minutes) =>
+      db.query(
+        "INSERT INTO tb_user_game (id_user, id_game, provider, playtime_minutes, ach_unlocked, ach_total)" +
+          " VALUES ($1,$2,'steam',$3,7,30)",
+        [id, rid, minutes]
+      );
+
+    await conta(R1, "76561198000009001", "public", null);
+    await conta(R2, "76561198000009002", "private", null);
+    await conta(R3, "76561198000009003", "public", new Date());
+    await horas(R1, 6000);
+    await horas(R2, 99000); // seria o 1º lugar, se a estante privada vazasse
+    await horas(R3, 88000); // idem, se conta revogada contasse
+
+    const fila = await Storage.rankByPlaytime(db, 50);
+    const naFila = new Set(fila.map((r) => String(r.id_user)));
+    check("estante pública entra na fila", () => assert.ok(naFila.has(String(R1))));
+    check("estante PRIVADA não entra na fila", () => assert.ok(!naFila.has(String(R2))));
+    check("conta DESCONECTADA não entra na fila", () => assert.ok(!naFila.has(String(R3))));
+
+    const meu = fila.find((r) => String(r.id_user) === String(R1));
+    check("horas, jogos e conquistas somados", () => {
+      assert.equal(Number(meu.minutes), 6000);
+      assert.equal(meu.games, 1);
+      assert.equal(Number(meu.achievements), 7);
+    });
+
+    const pos = await Storage.getPlaytimeRank(db, R1);
+    check("a posição de quem olha responde", () => {
+      assert.ok(pos);
+      assert.equal(typeof pos.position, "number");
+    });
+    const posPriv = await Storage.getPlaytimeRank(db, R2);
+    check("estante privada devolve null, e não zero", () => assert.equal(posPriv, null));
+
+    // Empate: se a lista contasse pelo índice e a linha "sua posição" pelo
+    // RANK, dois empatados apareceriam como 4º e 5º na lista e 4º e 4º embaixo
+    // — duas contas do mesmo lugar. As duas leituras usam RANK.
+    const R4 = await makeUser(db, "r4");
+    await conta(R4, "76561198000009004", "public", null);
+    await horas(R4, 6000);
+    const empatada = await Storage.rankByPlaytime(db, 50);
+    const doisSeis = empatada.filter((r) => Number(r.minutes) === 6000);
+    check("empate recebe a MESMA posição nas duas leituras", () => {
+      assert.equal(doisSeis.length, 2);
+      assert.equal(doisSeis[0].position, doisSeis[1].position);
+    });
+
+    // Zero hora não é "último lugar": é ausência. Quem conectou e não jogou
+    // nada ficaria com uma linha de 0h no pódio, que parece nota baixa em vez
+    // de "não há o que comparar".
+    const R5 = await makeUser(db, "r5");
+    await conta(R5, "76561198000009005", "public", null);
+    await horas(R5, 0);
+    const semHora = await Storage.rankByPlaytime(db, 50);
+    check("quem tem 0h fica fora da fila", () =>
+      assert.ok(!semHora.some((r) => String(r.id_user) === String(R5))));
   } finally {
     // Limpa o que a suíte criou (ela roda num banco de teste, mas deixar lixo
     // faria a próxima execução medir outra coisa).

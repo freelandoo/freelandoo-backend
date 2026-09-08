@@ -321,6 +321,89 @@ class GameProfileStorage {
     );
   }
 
+  /* ─────────────────────────────── ranking ──────────────────────────────── */
+
+  /**
+   * A FILA DA PLATAFORMA DE GAMES — por horas jogadas, somando os provedores
+   * conectados.
+   *
+   * ⚠️ SÓ ENTRA QUEM ABRIU A ESTANTE. O JOIN exige `visibility = 'public'` e
+   * `revoked_at IS NULL`: quem marcou a estante como privada escolheu não
+   * mostrar o que joga, e um ranking que ainda assim publicasse as horas dela
+   * transformaria a escolha em nada. Quem desconectou some junto — a mesma
+   * regra de "conta viva" que atravessa este arquivo.
+   *
+   * ⚠️ E POR QUE ISTO NÃO PODE SER O RANKING DE MEMBROS. O espaço de games não
+   * tem membros (é um por pessoa): ordenar "os membros" ali devolveria uma
+   * lista de um. O que existe para comparar é o que as plataformas verificam —
+   * horas —, e é por isso que a régua mudou junto com a modalidade.
+   *
+   * A posição sai de `RANK()` e não do índice da lista: com empate (dois com o
+   * mesmo total) o índice diria 4º e 5º, e a linha "sua posição" — que usa
+   * RANK — diria 4º para os dois. Duas contas do mesmo lugar.
+   */
+  static async rankByPlaytime(conn, limit) {
+    const r = await conn.query(
+      `SELECT u.id_user, u.username, u.nome, u.avatar,
+              SUM(ug.playtime_minutes)::bigint            AS minutes,
+              COUNT(*)::int                               AS games,
+              COALESCE(SUM(ug.ach_unlocked), 0)::bigint   AS achievements,
+              RANK() OVER (ORDER BY SUM(ug.playtime_minutes) DESC)::int AS position
+         FROM public.tb_user_game ug
+         JOIN public.tb_user_game_account a
+           ON a.id_user = ug.id_user
+          AND a.provider = ug.provider
+          AND a.revoked_at IS NULL
+          AND a.visibility = 'public'
+         JOIN public.tb_user u ON u.id_user = ug.id_user
+        GROUP BY u.id_user, u.username, u.nome, u.avatar
+       HAVING SUM(ug.playtime_minutes) > 0
+        ORDER BY position ASC, u.username ASC
+        LIMIT $1`,
+      [limit]
+    );
+    return r.rows;
+  }
+
+  /**
+   * A linha de quem está olhando, mesmo fora do topo. Sem ela, quem não entrou
+   * na lista veria um pódio de estranhos sem saber onde está — e "não apareço"
+   * é indistinguível de "não pontuei".
+   *
+   * Devolve `null` para quem não tem estante pública com horas: aí a tela diz
+   * o que fazer (conectar / abrir a estante) em vez de mostrar um zero.
+   */
+  static async getPlaytimeRank(conn, id_user) {
+    const r = await conn.query(
+      `WITH totals AS (
+         SELECT ug.id_user,
+                SUM(ug.playtime_minutes) AS minutes,
+                COUNT(*)                 AS games
+           FROM public.tb_user_game ug
+           JOIN public.tb_user_game_account a
+             ON a.id_user = ug.id_user
+            AND a.provider = ug.provider
+            AND a.revoked_at IS NULL
+            AND a.visibility = 'public'
+          GROUP BY ug.id_user
+         HAVING SUM(ug.playtime_minutes) > 0
+       ), ranked AS (
+         SELECT id_user, minutes, games,
+                RANK() OVER (ORDER BY minutes DESC) AS position,
+                COUNT(*) OVER ()                    AS total
+           FROM totals
+       )
+       SELECT r.position::int, r.total::int,
+              r.minutes::bigint, r.games::int,
+              u.username, u.nome, u.avatar
+         FROM ranked r
+         JOIN public.tb_user u ON u.id_user = r.id_user
+        WHERE r.id_user = $1`,
+      [id_user]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
   /** Dono da estante + o cartão dele (nome/foto), para a tela de comparação. */
   static async getPublicOwner(conn, id_user) {
     const r = await conn.query(

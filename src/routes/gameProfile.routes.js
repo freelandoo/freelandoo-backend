@@ -38,6 +38,15 @@ router.get(
   asyncHandler(GameProfileController.myShelf)
 );
 
+// Literal, e por isso ANTES de `/gamer/:provider` — a mesma disciplina do
+// resto do arquivo.
+router.get(
+  "/gamer/ranking",
+  authMiddleware,
+  requireFeature("games_conexao"),
+  asyncHandler(GameProfileController.ranking)
+);
+
 router.get(
   "/gamer/shelf/:id_user",
   authMiddleware,

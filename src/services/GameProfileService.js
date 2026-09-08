@@ -298,6 +298,58 @@ class GameProfileService {
     });
   }
 
+  /**
+   * O RANKING DA PLATAFORMA DE GAMES — por horas jogadas.
+   *
+   * É GLOBAL, e não "os membros daqui", porque o espaço de games não tem
+   * membros: é um por pessoa (mig 210). A fila compara quem conectou uma
+   * plataforma e deixou a estante pública — que é a única régua verificada que
+   * existe deste lado. Digitado à mão, "3.000 horas" não valeria nada.
+   *
+   * ⚠️ NÃO SINCRONIZA NADA AQUI. A estante dispara sync ao ser aberta (TTL de
+   * 6h) porque é uma pessoa por vez; o ranking varre a base inteira, e pedir
+   * sync de todo mundo a cada abertura estouraria a cota diária da chave da
+   * Steam — que é de 100.000 chamadas para a INSTALAÇÃO toda, não por usuário.
+   * O que a fila mostra é o último estado sincronizado, e é isso mesmo.
+   */
+  static async ranking(viewer_id, opts = {}) {
+    return runWithLogs(log, "ranking", () => ({ viewer_id }), async () => {
+      const blocked = await this._assertEnabled();
+      if (blocked) return blocked;
+
+      const limit = Math.min(Math.max(Number(opts.limit) || 50, 1), 100);
+      const [rows, me] = await Promise.all([
+        GameProfileStorage.rankByPlaytime(pool, limit),
+        viewer_id ? GameProfileStorage.getPlaytimeRank(pool, viewer_id) : Promise.resolve(null),
+      ]);
+
+      return {
+        metric: "playtime",
+        rows: rows.map((r) => ({
+          id_user: r.id_user,
+          username: r.username,
+          name: r.nome,
+          avatar_url: r.avatar,
+          position: r.position,
+          minutes: Number(r.minutes),
+          games: r.games,
+          achievements: Number(r.achievements),
+        })),
+        me: me
+          ? {
+              position: me.position,
+              total: me.total,
+              minutes: Number(me.minutes),
+              games: me.games,
+              username: me.username,
+              name: me.nome,
+              avatar_url: me.avatar,
+            }
+          : null,
+      };
+    });
+  }
+
   /** A estante de outra pessoa. A visibilidade é checada AQUI. */
   static async userShelf(viewer_id, id_user, opts = {}) {
     return runWithLogs(log, "userShelf", () => ({ viewer_id, id_user }), async () => {
