@@ -53,6 +53,28 @@ module.exports = {
   },
 
   /**
+   * Remove as ações que NÃO vieram na coleta atual — a lista é um retrato do
+   * dia, não um histórico (ver o comentário do MarketService.refresh).
+   *
+   * Só mexe em `kind='stock'`: o conjunto das cotações é fixo e um fallback
+   * pode trazer só parte dele, então podar lá apagaria linha viva.
+   *
+   * @param {import('pg').Pool} db
+   * @param {string[]} symbols símbolos da coleta atual (nunca vazio — quem
+   *   chama só poda quando a coleta trouxe ações).
+   */
+  async pruneStocks(db, symbols) {
+    if (!Array.isArray(symbols) || symbols.length === 0) return 0;
+    const { rowCount } = await db.query(
+      `DELETE FROM public.tb_market_snapshot
+        WHERE kind = 'stock'
+          AND NOT (symbol = ANY($1::text[]))`,
+      [symbols]
+    );
+    return rowCount || 0;
+  },
+
+  /**
    * Snapshot completo para o widget: cotações (índices/moedas) + ações,
    * já ordenado por rank. Inclui o updated_at mais recente.
    */

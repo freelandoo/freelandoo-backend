@@ -28,12 +28,24 @@ const STOCKS_LIMIT = 8;
 
 // Cotações via AwesomeAPI (sem token). symbol é a chave de UPSERT — BTC mantém
 // "BTC" pra sobrescrever a linha antiga (CoinGecko) sem duplicar.
-// Ordem de exibição: Bitcoin primeiro, depois Dólar, Euro e Rublo.
+//
+// SÃO OITO com o Ibovespa (rank 0), que vem de outra fonte: é o tamanho das
+// outras duas colunas do painel de mercado (8 manchetes, 8 ações), e a coluna
+// do meio parava na quinta linha enquanto as vizinhas seguiam.
+// Ordem de exibição: Ibovespa, Bitcoin, Ethereum, Dólar, Euro, Libra, Ouro,
+// Rublo.
 const AWESOME_PAIRS = [
   { pair: "BTC-BRL", key: "BTCBRL", symbol: "BTC", label: "Bitcoin", rank: 1 },
-  { pair: "USD-BRL", key: "USDBRL", symbol: "USDBRL", label: "Dólar", rank: 2 },
-  { pair: "EUR-BRL", key: "EURBRL", symbol: "EURBRL", label: "Euro", rank: 3 },
-  { pair: "RUB-BRL", key: "RUBBRL", symbol: "RUBBRL", label: "Rublo", rank: 4 },
+  { pair: "ETH-BRL", key: "ETHBRL", symbol: "ETH", label: "Ethereum", rank: 2 },
+  { pair: "USD-BRL", key: "USDBRL", symbol: "USDBRL", label: "Dólar", rank: 3 },
+  { pair: "EUR-BRL", key: "EURBRL", symbol: "EURBRL", label: "Euro", rank: 4 },
+  { pair: "GBP-BRL", key: "GBPBRL", symbol: "GBPBRL", label: "Libra", rank: 5 },
+  // Ouro é a onça troy em reais. Entra aqui porque a pergunta da coluna é
+  // "como está o mercado", e não "quanto vale cada moeda" — ao lado do
+  // Ibovespa e do Bitcoin ele é o terceiro termômetro. É o ÚNICO sem
+  // fallback: nem a CoinGecko nem a open.er-api cotam metal.
+  { pair: "XAU-BRL", key: "XAUBRL", symbol: "XAUBRL", label: "Ouro", rank: 6 },
+  { pair: "RUB-BRL", key: "RUBBRL", symbol: "RUBBRL", label: "Rublo", rank: 7 },
 ];
 
 // Fallback de ações quando não há BRAPI_TOKEN (Yahoo v8, sem chave).
@@ -138,38 +150,54 @@ async function fetchAwesomeQuotes() {
 
 // ---- Fallbacks (AwesomeAPI 429 no Railway / sem BRAPI_TOKEN) -----------------
 
-// BTC via CoinGecko — preço em BRL + variação 24h, sem chave.
-async function fetchCoinGeckoBtc() {
-  const url =
-    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl&include_24hr_change=true";
+// Cripto via CoinGecko — preço em BRL + variação 24h, sem chave. As duas moedas
+// vão na MESMA chamada (a API aceita ids separados por vírgula): uma por moeda
+// dobraria o request contra uma fonte gratuita para responder a mesma pergunta.
+const COINGECKO_COINS = [
+  { id: "bitcoin", symbol: "BTC", label: "Bitcoin", rank: 1 },
+  { id: "ethereum", symbol: "ETH", label: "Ethereum", rank: 2 },
+];
+
+async function fetchCoinGeckoCrypto(missingSymbols) {
+  const wanted = COINGECKO_COINS.filter((c) => missingSymbols.includes(c.symbol));
+  if (wanted.length === 0) return [];
+  const ids = wanted.map((c) => c.id).join(",");
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=brl&include_24hr_change=true`;
   const data = await fetchJson(url);
-  const o = data?.bitcoin;
-  if (!o) return [];
-  return [
-    {
-      symbol: "BTC",
+  const out = [];
+  for (const c of wanted) {
+    const o = data?.[c.id];
+    if (!o) continue;
+    out.push({
+      symbol: c.symbol,
       kind: "quote",
-      label: "Bitcoin",
+      label: c.label,
       price: num(o.brl),
       change_pct: num(o.brl_24h_change),
       currency: "BRL",
       logo_url: null,
-      rank: 1,
-    },
-  ];
+      rank: c.rank,
+    });
+  }
+  return out;
 }
 
-// USD/EUR/RUB via open.er-api.com — base BRL invertida. Sem variação diária
+// Moedas via open.er-api.com — base BRL invertida. Sem variação diária
 // (change_pct null → o front mostra "—"); atualiza 1x/dia, suficiente como
-// fallback quando a AwesomeAPI está rate-limitada.
+// fallback quando a AwesomeAPI está rate-limitada. Os ranks espelham os da
+// AWESOME_PAIRS: divergindo, a coluna trocaria de ordem conforme a fonte que
+// respondeu.
+const ER_API_FX = [
+  { symbol: "USDBRL", code: "USD", label: "Dólar", rank: 3 },
+  { symbol: "EURBRL", code: "EUR", label: "Euro", rank: 4 },
+  { symbol: "GBPBRL", code: "GBP", label: "Libra", rank: 5 },
+  { symbol: "RUBBRL", code: "RUB", label: "Rublo", rank: 7 },
+];
+
 async function fetchErApiCurrencies(missingSymbols) {
   const data = await fetchJson("https://open.er-api.com/v6/latest/BRL");
   const rates = data?.rates || {};
-  const defs = [
-    { symbol: "USDBRL", code: "USD", label: "Dólar", rank: 2 },
-    { symbol: "EURBRL", code: "EUR", label: "Euro", rank: 3 },
-    { symbol: "RUBBRL", code: "RUB", label: "Rublo", rank: 4 },
-  ];
+  const defs = ER_API_FX;
   const out = [];
   for (const d of defs) {
     if (!missingSymbols.includes(d.symbol)) continue;
@@ -285,9 +313,10 @@ class MarketService {
 
       // Fallbacks só pro que ficou faltando — não duplica nem gasta request à toa.
       const have = new Set(items.map((i) => i.symbol));
-      const missingFx = ["USDBRL", "EURBRL", "RUBBRL"].filter((s) => !have.has(s));
+      const missingCrypto = COINGECKO_COINS.map((c) => c.symbol).filter((s) => !have.has(s));
+      const missingFx = ER_API_FX.map((d) => d.symbol).filter((s) => !have.has(s));
       const fallbacks = [];
-      if (!have.has("BTC")) fallbacks.push(["coingecko_btc", () => fetchCoinGeckoBtc()]);
+      if (missingCrypto.length > 0) fallbacks.push(["coingecko_crypto", () => fetchCoinGeckoCrypto(missingCrypto)]);
       if (missingFx.length > 0) fallbacks.push(["er_api_fx", () => fetchErApiCurrencies(missingFx)]);
       if (!items.some((i) => i.kind === "stock")) fallbacks.push(["yahoo_stocks", () => fetchStocksYahoo()]);
       if (!have.has("^BVSP")) fallbacks.push(["yahoo_ibov", () => fetchIbovespaYahoo()]);
@@ -301,7 +330,33 @@ class MarketService {
       }
 
       const updated = await MarketStorage.upsertMany(pool, items);
-      return { updated };
+
+      /**
+       * ⚠️ A LISTA DE AÇÕES É UM RETRATO, NÃO UM HISTÓRICO. O UPSERT só escreve,
+       * e a lista "mais negociadas do dia" muda todo dia: em 2026-09-08 a tabela
+       * tinha 113 tickers acumulados, cada um com o preço do dia em que apareceu
+       * pela última vez, todos servidos ao front como se fossem de agora. Os
+       * ranks antigos também sobreviviam, então várias linhas dividiam o rank 0 e
+       * a ordenação virava alfabética — quem abria o painel via 5 papéis que não
+       * eram os mais negociados de hoje.
+       *
+       * Podar aqui, e não numa varredura por idade, é o que mantém a tabela
+       * fechada: o que não veio nesta coleta não é mais o retrato.
+       *
+       * ⚠️ SÓ PODA SE ESTA COLETA TROUXE AÇÕES. Com brapi e Yahoo fora do ar ao
+       * mesmo tempo, podar esvaziaria a coluna — melhor o preço de ontem que
+       * um vazio dizendo "não há ações".
+       *
+       * As COTAÇÕES não são podadas: o conjunto delas é fixo (as oito de cima) e
+       * um fallback pode trazer só parte dele.
+       */
+      const stockSymbols = items.filter((i) => i.kind === "stock").map((i) => i.symbol);
+      let pruned = 0;
+      if (stockSymbols.length > 0) {
+        pruned = await MarketStorage.pruneStocks(pool, stockSymbols);
+      }
+
+      return { updated, pruned };
     });
   }
 }
