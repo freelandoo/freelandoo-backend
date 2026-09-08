@@ -25,6 +25,8 @@
 const jwt = require("jsonwebtoken");
 const pool = require("../databases");
 const GameProfileStorage = require("../storages/GameProfileStorage");
+const GamesActivityStorage = require("../storages/GamesActivityStorage");
+const GamesScore = require("../utils/gamesScore");
 const FeatureFlagService = require("./FeatureFlagService");
 const providers = require("../integrations/gameProvider");
 const { slugify } = require("../utils/slug");
@@ -33,6 +35,14 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 const log = createLogger("GameProfileService");
 
 const FLAG = "games_conexao";
+// ⚠️ A FLAG DA ATIVIDADE É OUTRA, e de propósito.
+//
+// `games_conexao` é o kill-switch de CONECTAR PLATAFORMA (Steam & cia). O
+// ranking de atividade e a batida de presença não conectam nada: são da
+// plataforma de games como espaço social, cuja flag é `games` (mig 210).
+// Gateá-los pela flag da conexão faria desligar a Steam apagar também o
+// ranking de quem nunca conectou plataforma nenhuma.
+const ACTIVITY_FLAG = "games";
 // Quanto tempo a estante pode ficar velha antes de a visita disparar um sync.
 const SYNC_TTL_MS = 6 * 60 * 60 * 1000;
 // Piso entre dois syncs manuais: o botão "atualizar agora" não pode virar uma
@@ -45,6 +55,13 @@ const STATE_TTL = "10m";
 class GameProfileService {
   static async _assertEnabled() {
     const enabled = await FeatureFlagService.isEnabled(FLAG);
+    if (!enabled) return { error: "Recurso indisponível no momento.", statusCode: 403 };
+    return null;
+  }
+
+  /** O kill-switch do ESPACO de games (ver ACTIVITY_FLAG). */
+  static async _assertActivityEnabled() {
+    const enabled = await FeatureFlagService.isEnabled(ACTIVITY_FLAG);
     if (!enabled) return { error: "Recurso indisponível no momento.", statusCode: 403 };
     return null;
   }
@@ -347,6 +364,102 @@ class GameProfileService {
             }
           : null,
       };
+    });
+  }
+
+  /**
+   * O RANKING DE ATIVIDADE DA PLATAFORMA DE GAMES - por cidade e por estado.
+   *
+   * Pedido do Alex (2026-09-07): usar as metricas que ja existem no resto da
+   * plataforma (curtida, comentario, compartilhamento) contando SO o que
+   * acontece dentro da plataforma de games, mais o tempo online la dentro - e
+   * comparar por cidade e por estado, nunca globalmente.
+   *
+   * POR QUE ELE CONVIVE COM O DE HORAS, EM VEZ DE SUBSTITUI-LO. Sao duas
+   * perguntas diferentes: "quem joga mais" (o que a Steam verifica) e "quem
+   * esta mais presente aqui" (o que acontece dentro do site). Uma so fila
+   * responderia mal as duas - a de horas premia quem conectou a conta, esta
+   * premia quem aparece.
+   *
+   * A REGUA MORA EM utils/gamesScore.js, e os pesos viajam na resposta: a tela
+   * explica como se pontua sem guardar os numeros dela. Dois lugares guardando
+   * o peso fariam a legenda prometer uma conta que a fila nao faz.
+   */
+  static async activityRanking(viewer_id, opts = {}) {
+    return runWithLogs(log, "activityRanking", () => ({ viewer_id, scope: opts.scope }), async () => {
+      const blocked = await this._assertActivityEnabled();
+      if (blocked) return blocked;
+
+      const scope = GamesScore.normalizeScope(opts.scope);
+      const limit = Math.min(Math.max(Number(opts.limit) || 50, 1), 100);
+
+      // A cidade vem PRIMEIRO e sozinha: sem ela a fila sai vazia, e "vazia"
+      // aqui teria dois significados incompativeis - "ninguem pontuou na sua
+      // cidade" e "voce nunca disse qual e a sua cidade". So o segundo tem
+      // conserto, e a tela precisa poder dizer qual e o caso.
+      const place = await GamesActivityStorage.getPlace(pool, viewer_id);
+      const weights = {
+        like: GamesScore.WEIGHTS.like,
+        comment: GamesScore.WEIGHTS.comment,
+        share: GamesScore.WEIGHTS.share,
+        minutes_per_point: GamesScore.SECONDS_PER_POINT / 60,
+      };
+
+      if (!place) {
+        return { metric: "activity", scope, place: null, weights, rows: [], me: null };
+      }
+
+      const [rows, me] = await Promise.all([
+        GamesActivityStorage.rankByActivity(pool, { id_user: viewer_id, scope, limit }),
+        GamesActivityStorage.getActivityRank(pool, { id_user: viewer_id, scope }),
+      ]);
+
+      const shape = (r) => ({
+        id_user: r.id_user,
+        username: r.username,
+        name: r.nome,
+        avatar_url: r.avatar,
+        position: r.position,
+        total: r.total,
+        score: Number(r.score),
+        likes: Number(r.likes),
+        comments: Number(r.comments),
+        shares: Number(r.shares),
+        // Minutos, e nao segundos: quem le a tela conta em minutos e horas, e
+        // mandar segundos so empurraria a divisao para o front - que teria de
+        // repeti-la em cada lugar que mostrasse o numero.
+        minutes: Math.floor(Number(r.seconds) / 60),
+      });
+
+      return {
+        metric: "activity",
+        scope,
+        place,
+        weights,
+        rows: rows.map(shape),
+        me: me ? shape(me) : null,
+      };
+    });
+  }
+
+  /**
+   * A BATIDA DE PRESENCA no ambiente de games.
+   *
+   * Chamada pelo navegador a cada 2 minutos enquanto a aba do ambiente esta
+   * VISIVEL. Nao recebe corpo nenhum de proposito: quem mede o tempo e o banco,
+   * a partir da batida anterior. Um cliente que dissesse quanto tempo passou
+   * poderia dizer qualquer coisa.
+   *
+   * A resposta e curta (os segundos do dia) porque isto e chamado o tempo todo:
+   * devolver a estante ou o ranking aqui multiplicaria por 30 o custo de cada
+   * hora de alguem online.
+   */
+  static async beat(id_user, opts = {}) {
+    return runWithLogs(log, "beat", () => ({ id_user, resume: !!opts.resume }), async () => {
+      const blocked = await this._assertActivityEnabled();
+      if (blocked) return blocked;
+      const row = await GamesActivityStorage.beat(pool, id_user, { resume: !!opts.resume });
+      return { seconds_today: Number(row?.seconds || 0) };
     });
   }
 

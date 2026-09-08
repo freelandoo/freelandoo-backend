@@ -10,6 +10,11 @@
 //    `listBees`): condomínio pede morador, privada pede membro. Um site
 //    público não pode virar a porta dos fundos que mostra o que a comunidade
 //    fechada esconde — e por isso a checagem é feita aqui, não no front.
+// 3. QUEM PODE TER site é só a comunidade de NEGÓCIO (`common`) — decisão do
+//    Alex (2026-09-07). O predicado é `CommunitySite.kindHasSite` e vale para
+//    TODAS as portas deste arquivo, inclusive a leitura pública por slug: uma
+//    porta que esquecesse dele voltaria a abrir o construtor numa modalidade
+//    que não vende nada. A recusa é DITA (403 com motivo), nunca um 404 mudo.
 //
 // Rascunho × publicado: enquanto `is_published = FALSE`, só o líder enxerga.
 // É isso que deixa o autosave gravar a cada tecla sem expor obra inacabada.
@@ -27,6 +32,22 @@ const BookingAvailabilityService = require("./BookingAvailabilityService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunitySiteService");
+
+/**
+ * A modalidade desta comunidade pode ter site?
+ *
+ * Devolve o resultado de erro pronto (ou `null` quando pode), para que toda
+ * porta recuse com a MESMA frase. 403 e não 404: a comunidade existe, o site é
+ * que não é dela — e "não encontrado" mandaria o líder procurar o que nunca
+ * vai achar.
+ */
+function siteBlockedByKind(community) {
+  if (CommunitySite.kindHasSite(community?.kind)) return null;
+  return {
+    error: "Site é uma função da comunidade de negócio.",
+    statusCode: 403,
+  };
+}
 
 /** Teto da varredura do próximo horário: duas semanas e cinco profissionais. */
 const NEXT_SLOT_DAYS = 14;
@@ -263,6 +284,8 @@ class CommunitySiteService {
         if (!community) {
           return { error: "Comunidade não encontrada", statusCode: 404 };
         }
+        const blockedKind = siteBlockedByKind(community);
+        if (blockedKind) return blockedKind;
 
         const isLeader =
           !!id_user && String(community.id_leader_user) === String(id_user);
@@ -337,6 +360,8 @@ class CommunitySiteService {
         if (!community) {
           return { error: "Comunidade não encontrada", statusCode: 404 };
         }
+        const blockedKind = siteBlockedByKind(community);
+        if (blockedKind) return blockedKind;
         if (String(community.id_leader_user) !== String(id_user)) {
           return { error: "Apenas o líder pode editar o site." };
         }
@@ -378,6 +403,8 @@ class CommunitySiteService {
         if (!community) {
           return { error: "Comunidade não encontrada", statusCode: 404 };
         }
+        const blockedKind = siteBlockedByKind(community);
+        if (blockedKind) return blockedKind;
         if (String(community.id_leader_user) !== String(id_user)) {
           return { error: "Apenas o líder pode publicar o site." };
         }
@@ -435,6 +462,8 @@ class CommunitySiteService {
         if (!community) {
           return { error: "Comunidade não encontrada", statusCode: 404 };
         }
+        const blockedKind = siteBlockedByKind(community);
+        if (blockedKind) return blockedKind;
         if (String(community.id_leader_user) !== String(id_user)) {
           return { error: "Apenas o líder pode mudar o endereço do site." };
         }
@@ -493,6 +522,14 @@ class CommunitySiteService {
 
         const row = await CommunitySiteStorage.getPublicBySlug(pool, slug);
         if (!row || !row.is_published) {
+          return { error: "Site não encontrado", statusCode: 404 };
+        }
+        // O MESMO predicado das portas de edição, também aqui. Sem esta linha,
+        // um site publicado antes da regra continuaria no ar por um endereço
+        // que nenhuma tela sabe mais editar — e um site que ninguém consegue
+        // corrigir é pior do que um site que não existe. Aqui a resposta é 404
+        // mesmo (esta porta é anônima e não tem a quem explicar).
+        if (!CommunitySite.kindHasSite(row.kind)) {
           return { error: "Site não encontrado", statusCode: 404 };
         }
 
@@ -554,6 +591,8 @@ class CommunitySiteService {
         if (!community) {
           return { error: "Comunidade não encontrada", statusCode: 404 };
         }
+        const blockedKind = siteBlockedByKind(community);
+        if (blockedKind) return blockedKind;
         if (String(community.id_leader_user) !== String(id_user)) {
           return { error: "Apenas o líder pode enviar imagens do site." };
         }

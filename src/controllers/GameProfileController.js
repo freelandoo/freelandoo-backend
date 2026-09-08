@@ -78,6 +78,33 @@ class GameProfileController {
     return sendServiceResult(res, result);
   }
 
+  /**
+   * A fila de atividade (cidade/estado). O escopo vem da querystring e e
+   * normalizado no util - valor desconhecido cai em "city" em vez de virar
+   * erro: a tela nunca deve quebrar por causa de um parametro de aba.
+   */
+  static async activityRanking(req, res) {
+    const result = await GameProfileService.activityRanking(req.user.id_user, {
+      scope: req.query.scope,
+      limit: req.query.limit,
+    });
+    return sendServiceResult(res, result);
+  }
+
+  /**
+   * A batida de presenca. Sem corpo: quem mede o tempo e o banco.
+   *
+   * `?resume=1` significa "so acerte o relogio, nao credite" — e o que o
+   * navegador manda ao voltar de uma aba que ficou escondida. Vir do cliente e
+   * seguro porque a flag so DIMINUI a propria pontuacao de quem a manda.
+   */
+  static async presenceBeat(req, res) {
+    const result = await GameProfileService.beat(req.user.id_user, {
+      resume: req.query.resume === "1" || req.query.resume === "true",
+    });
+    return sendServiceResult(res, result);
+  }
+
   static async userShelf(req, res) {
     const result = await GameProfileService.userShelf(req.user.id_user, req.params.id_user, {
       limit: Math.min(Number(req.query.limit) || 60, 200),

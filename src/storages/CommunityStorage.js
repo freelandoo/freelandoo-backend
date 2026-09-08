@@ -273,9 +273,15 @@ class CommunityStorage {
               -- a página decidir se mostra a aba Site sem uma segunda requisição.
               -- Rascunho fica de fora — quem o enxerga é o líder, e para ele a
               -- aba aparece de qualquer jeito.
-              EXISTS (SELECT 1 FROM public.tb_community_site cs
-                       WHERE cs.id_profile = p.id_profile
-                         AND cs.is_published = TRUE) AS has_site
+              -- ⚠️ E só na comunidade de NEGÓCIO (decisão do Alex, 2026-09-07):
+              -- site e funcao da 'common'. Sem este AND, uma linha antiga de
+              -- outra modalidade acenderia a aba para uma porta que o service
+              -- agora recusa — e porta pintada é pior que porta nenhuma. O
+              -- predicado e o kindHasSite de utils/communitySite.js.
+              (p.community_kind = 'common' AND EXISTS (
+                 SELECT 1 FROM public.tb_community_site cs
+                  WHERE cs.id_profile = p.id_profile
+                    AND cs.is_published = TRUE)) AS has_site
          FROM public.tb_profile p
          LEFT JOIN public.tb_machine m ON m.id_machine = p.id_machine
         WHERE p.id_profile = $1

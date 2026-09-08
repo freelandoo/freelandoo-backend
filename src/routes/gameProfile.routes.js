@@ -47,6 +47,29 @@ router.get(
   asyncHandler(GameProfileController.ranking)
 );
 
+// A fila de ATIVIDADE (mig 226) e a batida de presenca. Literais, e por isso
+// antes de "/gamer/:provider".
+//
+// A flag e outra: quem gateia estas duas e "games" (o espaco), nao
+// "games_conexao" (a conexao de plataforma) - o service explica o porque em
+// ACTIVITY_FLAG. Aqui elas passam sem requireFeature de propriedade porque o
+// service ja recusa com a flag certa; por um requireFeature("games_conexao")
+// no meio, desligar a Steam apagaria o ranking de quem nunca conectou nada.
+router.get(
+  "/gamer/ranking/activity",
+  authMiddleware,
+  asyncHandler(GameProfileController.activityRanking)
+);
+
+// POST porque ESCREVE (credita segundos). Chamada DIRETO no Railway pelo
+// navegador, nunca pelo proxy da Vercel: e recorrente, e cada passagem pelo
+// proxy cobraria uma invocacao por batida de cada pessoa online.
+router.post(
+  "/gamer/presence",
+  authMiddleware,
+  asyncHandler(GameProfileController.presenceBeat)
+);
+
 router.get(
   "/gamer/shelf/:id_user",
   authMiddleware,

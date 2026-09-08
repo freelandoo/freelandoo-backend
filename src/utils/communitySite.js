@@ -14,6 +14,34 @@
 
 const crypto = require("crypto");
 
+// ─── QUEM PODE TER SITE ─────────────────────────────────────────────────────
+//
+// Decisão do Alex (2026-09-07): "só meus negócios tem site, o restante não tem,
+// nenhuma comunidade mais". O site é uma vitrine comercial — catálogo de
+// serviços, agendamento, depoimentos, contato. Isso responde a uma pergunta que
+// só a comunidade de NEGÓCIO faz (a `common`, a que o pill "Business" do
+// headcard abre). A comunidade do cachorro, a do modelo de carro, a da rua, a
+// do prédio e a plataforma de games não vendem nada, e uma aba "Site" nelas era
+// uma porta pintada: abria um construtor para montar uma página que ninguém ia
+// procurar.
+//
+// ⚠️ O PREDICADO É UM SÓ, e é este. Espalhado como `kind === "common"` por cada
+// porta do site, a porta que esquecesse voltaria a oferecer o construtor — e
+// oferecer para depois recusar é pior do que não oferecer. Ele vale para TODAS
+// as portas: ler, salvar, publicar, renomear o endereço, subir imagem e servir
+// o site publicado por slug/domínio.
+//
+// O espelho do front é `kindHasSite` em `comunidades/[id]/_components/community-ui.ts`.
+const SITE_KINDS = ["common"];
+
+/** Esta modalidade de comunidade pode ter site? */
+function kindHasSite(kind) {
+  // `null`/ausente é comunidade comum: `community_kind` é NOT NULL com default
+  // 'common' desde a mig 219, mas leitura antiga que não projete a coluna não
+  // pode perder o site que já existe.
+  return SITE_KINDS.includes(kind || "common");
+}
+
 // ─── Tetos ──────────────────────────────────────────────────────────────────
 // Existem para que um payload hostil (ou um bug de laço no front) não vire uma
 // linha de 10 MB. Cortam em silêncio, sem derrubar o salvamento.
@@ -726,6 +754,8 @@ function buildEmptySection(kind) {
 
 module.exports = {
   LIMITS,
+  SITE_KINDS,
+  kindHasSite,
   SIZES,
   SECTION_KINDS,
   DEFAULT_THEME,
