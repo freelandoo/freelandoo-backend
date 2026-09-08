@@ -6,6 +6,10 @@ class BookingStorage {
     deposit_amount, platform_fee_amount, professional_amount,
     stripe_checkout_session_id,
     id_profile_service = null, service_name_snapshot = null, service_price_amount = null,
+    // De qual site de comunidade veio (mig 227). NULL = agendou pelo perfil.
+    // Quem valida que a origem é verdadeira é o service — a coluna é afirmada
+    // pelo cliente, e é ela que decide para quem o aviso do agendamento vai.
+    id_origin_community = null,
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_bookings
@@ -14,15 +18,17 @@ class BookingStorage {
          booking_date, start_time, end_time,
          deposit_amount, platform_fee_amount, professional_amount,
          stripe_checkout_session_id, status, payment_status,
-         id_profile_service, service_name_snapshot, service_price_amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending_payment','pending',$14,$15,$16)
+         id_profile_service, service_name_snapshot, service_price_amount,
+         id_origin_community)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending_payment','pending',$14,$15,$16,$17)
        RETURNING *`,
       [id_profile, profile_owner_user_id, id_client_user,
        client_name, client_email, client_whatsapp,
        booking_date, start_time, end_time,
        deposit_amount, platform_fee_amount, professional_amount,
        stripe_checkout_session_id,
-       id_profile_service, service_name_snapshot, service_price_amount]
+       id_profile_service, service_name_snapshot, service_price_amount,
+       id_origin_community]
     );
     return r.rows[0];
   }

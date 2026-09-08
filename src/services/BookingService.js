@@ -8,6 +8,7 @@ const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
 const StripeService = require("./StripeService");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const NotificationService = require("./NotificationService");
+const BookingAlertService = require("./BookingAlertService");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("BookingService");
@@ -22,7 +23,18 @@ class BookingService {
   static async createPublicBooking(user, id_profile, body) {
     if (!user?.id_user) return { error: "Login obrigatório para agendar" };
 
-    const { client_whatsapp, booking_date, start_time, id_profile_service, coupon_code } = body || {};
+    const {
+      client_whatsapp,
+      booking_date,
+      start_time,
+      id_profile_service,
+      coupon_code,
+      // De onde a pessoa chegou (mig 227). Só a página de agendamento do SITE
+      // da comunidade manda isto; o modal do perfil não tem comunidade por trás
+      // e continua mandando nada. É este campo que decide se o líder do site
+      // recebe o aviso da reserva.
+      id_community,
+    } = body || {};
 
     // Nome e email vêm sempre da conta autenticada (req.user só tem id+email no token,
     // então buscamos o nome no banco).
@@ -91,6 +103,15 @@ class BookingService {
       : 0;
     // Comprador paga: preço do serviço + comissão embutida.
     const charge_amount = service_price + affiliate_commission_cents;
+
+    // ─── DE ONDE VEIO ────────────────────────────────────────────────────────
+    // O carimbo é do CLIENTE, então ele é conferido: só vale quando o perfil
+    // agendado realmente atende naquela comunidade (líder ou equipe da mig 221).
+    // Não batendo, `origin` é null e o agendamento segue igual — origem
+    // duvidosa vira silêncio, nunca recusa de um horário que é verdadeiro.
+    const origin = id_community
+      ? await BookingAlertService.resolveOrigin(pool, id_community, profile.id_user)
+      : null;
 
     // Agenda da conta (mig 190): as regras moram no perfil-conta e o conflito
     // é checado contra TODOS os perfis do dono. O booking em si continua
@@ -200,6 +221,7 @@ class BookingService {
         id_profile_service: service ? service.id_profile_service : null,
         service_name_snapshot: service ? service.name : null,
         service_price_amount: service ? service.price_amount : null,
+        id_origin_community: origin ? origin.id_community : null,
       });
 
       await client.query("COMMIT");
@@ -289,6 +311,12 @@ class BookingService {
       client_user_id: booking.id_client_user,
       amount_cents: Number(booking.professional_amount) || null,
     }).catch(() => {});
+    // Veio pelo site de uma comunidade? O dono do site (e quem vai atender, se
+    // for outra pessoa) recebe o recado na caixa de mensagens e no WhatsApp —
+    // o sino sozinho não alcança quem não está com a Freelandoo aberta.
+    // Fire-and-forget pela mesma razão da linha acima: este é o webhook do
+    // Stripe, e uma falha de aviso não pode fazer o pagamento ser reentregue.
+    BookingAlertService.notifyBookingConfirmed(booking).catch(() => {});
     try {
       await BookingService.recordClanSplitForBooking(booking);
     } catch (err) {

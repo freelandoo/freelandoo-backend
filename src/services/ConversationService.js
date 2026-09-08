@@ -161,6 +161,20 @@ async function resolveTarget(conn, payload = {}) {
 }
 
 class ConversationService {
+  /**
+   * A projeção de UMA mensagem para a tela e para o socket.
+   *
+   * Exposta porque existe um segundo lugar que insere mensagem sem passar por
+   * `sendMessage`: o aviso de agendamento do site (`BookingAlertService`), que
+   * escreve pelo storage porque quem "digita" ali é o sistema. Ele emite o
+   * mesmo evento de socket que a tela já escuta — e uma segunda cópia deste
+   * formato faria a mensagem do aviso chegar sem um campo que o card espera,
+   * no dia em que alguém acrescentasse um campo aqui.
+   */
+  static mapMessage(row) {
+    return mapMessage(row);
+  }
+
   static async listMine(user, payload) {
     return runWithLogs(
       log,

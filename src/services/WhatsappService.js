@@ -241,6 +241,73 @@ class WhatsappService {
   }
 
   /**
+   * AVISO DA PLATAFORMA NO WHATSAPP DO PRÓPRIO DONO (2026-09-08).
+   *
+   * ─── O QUE ISTO NÃO É ─────────────────────────────────────────────────────
+   *
+   * ⚠️ NÃO é resposta automática, e a regra 4 do topo continua inteira: a
+   * ingestão (`WhatsappIngestService`) segue sem conhecer este módulo, e não
+   * existe caminho de código de uma mensagem que CHEGA até uma que sai. O que
+   * dispara isto é um AGENDAMENTO CONFIRMADO dentro da Freelandoo — um fato do
+   * nosso lado, não uma mensagem de terceiro.
+   *
+   * ─── O DESTINO É SEMPRE O NÚMERO DE QUEM CONECTOU ─────────────────────────
+   *
+   * `dest` não existe nesta função de propósito: a única saída possível é o
+   * `connected_number` da própria instância. É isso que impede o aviso de virar
+   * um canal para a plataforma escrever no WhatsApp de terceiros — a pessoa
+   * recebe no "recado para mim mesmo", que é onde o WhatsApp já coloca o que
+   * alguém manda para o próprio número.
+   *
+   * ─── NÃO GRAVA A MENSAGEM ─────────────────────────────────────────────────
+   *
+   * `sendText` grava porque a tela do dono está aberta esperando ver a resposta
+   * aparecer. Aqui não há tela: o eco do próprio envio volta pelo webhook e a
+   * ingestão o registra como qualquer outra mensagem. Gravar aqui também
+   * duplicaria a linha (o dedupe é por `wa_message_id`, que só o eco traz nos
+   * dois lados).
+   *
+   * ─── SILENCIOSO POR CONSTRUÇÃO ────────────────────────────────────────────
+   *
+   * Devolve `{ sent: false, reason }` em vez de erro: quem chama é um aviso
+   * fire-and-forget de um agendamento que JÁ está pago e confirmado. WhatsApp
+   * desligado, flag fora do ar ou Evolution mal-humorada não podem virar falha
+   * do agendamento — o aviso é acréscimo, nunca a entrega.
+   */
+  static async notifyOwner(id_user, text) {
+    return runWithLogs(log, "notifyOwner", () => ({ id_user }), async () => {
+      if (!id_user) return { sent: false, reason: "no_user" };
+
+      const body = String(text || "").trim().slice(0, MAX_TEXT);
+      if (!body) return { sent: false, reason: "empty" };
+
+      // Flag primeiro: ela é o kill-switch do WhatsApp inteiro, e um aviso que
+      // ignorasse o desligamento seria justamente o que o kill-switch existe
+      // para impedir.
+      if (!(await FeatureFlagService.isEnabled(FLAG))) {
+        return { sent: false, reason: "flag_off" };
+      }
+      const cfg = evolution.config();
+      if (!cfg) return { sent: false, reason: "not_configured" };
+
+      const instance = await WhatsappStorage.getInstanceByUser(pool, id_user);
+      if (!instance) return { sent: false, reason: "no_instance" };
+      // Sessão caída não enfileira: a Evolution recusaria, e insistir mais tarde
+      // entregaria o "novo agendamento" de ontem como se fosse de agora.
+      if (instance.status !== "connected") return { sent: false, reason: "not_connected" };
+      if (!instance.connected_number) return { sent: false, reason: "no_number" };
+
+      try {
+        await evolution.sendText(cfg, instance.evolution_instance, instance.connected_number, body);
+        return { sent: true };
+      } catch (e) {
+        log.warn("notifyOwner.fail", { id_user, error: e.message });
+        return { sent: false, reason: "evolution_error" };
+      }
+    });
+  }
+
+  /**
    * Responde a conversa. Aqui — e só aqui — a Freelandoo escreve no WhatsApp de
    * alguém, e sempre porque a pessoa clicou em enviar.
    *
