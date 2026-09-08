@@ -1,0 +1,65 @@
+-- =============================================================================
+-- Migration 228: última vez que a pessoa esteve online
+-- =============================================================================
+-- Pedido do Alex (2026-09-08), olhando /admin/usuarios: "coloque a última vez
+-- que a pessoa esteve online, com horário aproximado".
+--
+-- ─── A PLATAFORMA NÃO GUARDAVA ISSO EM LUGAR NENHUM ─────────────────────────
+--
+-- Existiam três rastros de presença, e nenhum responde a esta pergunta:
+--
+--   · `tb_chat_presence.last_seen_at` — quem está NUMA SALA do chat ao vivo
+--     agora. Além de ser de uma feature só, ele é APAGADO todo dia à
+--     meia-noite pelo job que zera o chat: perguntar "quando foi a última vez"
+--     a uma tabela que se esvazia diariamente devolveria "nunca" para quem
+--     esteve aqui ontem.
+--   · `tb_games_presence` (mig 226) — minutos por dia DENTRO da plataforma de
+--     games. Quem nunca entrou lá não tem linha.
+--   · `user_online_time` — minutos por dia, alimentado pelo heartbeat. Sabe o
+--     DIA, e é o mais perto que havia, mas não a hora: guarda soma, não
+--     instante.
+--
+-- Daí uma coluna em tb_user, que é onde mora a pessoa. Não é uma quarta verdade
+-- sobre presença: as três de cima respondem "está numa sala?", "quanto tempo
+-- jogou hoje?" e "quantos minutos somou no dia?"; esta responde "quando foi a
+-- última vez que apareceu?".
+--
+-- ─── QUEM ESCREVE (dois lugares, e os dois já existiam como pulso) ──────────
+--
+--   · `RankingStorage.heartbeat` — o `<OnlineHeartbeat />` do front bate a cada
+--     5 min em QUALQUER página, para todo usuário logado com a aba visível. É
+--     ele que dá o "esteve online", e por isso a escrita entra na MESMA
+--     instrução que já grava o tempo online: a chamada mais frequente do site
+--     não pode ganhar uma segunda ida ao banco só para carimbar uma data.
+--   · `UserStorage.touchLastSeen`, chamado no login (senha e Google) — o
+--     primeiro heartbeat só sai 30s depois de a página montar, então quem entra
+--     e fecha em seguida não teria registro nenhum.
+--
+-- ⚠️ A PRECISÃO É DE ~5 MINUTOS, e é isso que o "horário aproximado" do pedido
+-- significa. Escrever a cada requisição daria precisão de segundos e um UPDATE
+-- em tb_user por clique de cada pessoa online — e o `authMiddleware` é JWT puro
+-- SEM I/O de propósito, exatamente para não pagar isso.
+--
+-- ─── SEM BACKFILL, E NULL NÃO É "NUNCA ACESSOU" ────────────────────────────
+--
+-- Ninguém tem passado aqui: a coluna nasce NULL para os 62 usuários e só começa
+-- a valer no primeiro heartbeat de cada um depois do deploy. `created_at` não
+-- serve de semente — carimbaria como "último acesso" o dia do cadastro de quem
+-- usa a plataforma toda semana, o que é pior que não saber.
+--
+-- Por isso a tela escreve "sem registro", e nunca "nunca acessou": a primeira
+-- frase é verdade sobre o que guardamos, a segunda seria mentira sobre a pessoa.
+--
+-- ─── SEM ÍNDICE ────────────────────────────────────────────────────────────
+--
+-- A coluna é lida pelo painel do admin, que varre a tabela inteira de qualquer
+-- forma (são dezenas de linhas, não milhões), e escrita a cada 5 min por
+-- usuário online. Índice aqui só encareceria a escrita para servir uma consulta
+-- que não filtra nem ordena por ela.
+-- =============================================================================
+
+ALTER TABLE public.tb_user
+  ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN public.tb_user.last_seen_at IS
+  'Última vez que o usuário deu sinal de vida (heartbeat de 5 min ou login). NULL = sem registro desde a mig 228 — NÃO significa que nunca acessou.';

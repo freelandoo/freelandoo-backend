@@ -62,6 +62,10 @@ module.exports = {
         COALESCE(profiles_agg.has_active_profile, FALSE) AS ativo,
         tu.is_admin,
         tu.created_at,
+        -- última vez online (mig 228): heartbeat de 5 min ou login. NULL =
+        -- sem registro desde o deploy da coluna, e NÃO "nunca acessou" — a
+        -- tela precisa escrever essas duas coisas de formas diferentes.
+        tu.last_seen_at,
 
         -- taxa_paga: tem pelo menos uma assinatura ativa
         COALESCE(sub_stats.has_active_sub, FALSE) AS taxa_paga,

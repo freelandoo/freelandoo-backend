@@ -221,11 +221,20 @@ module.exports = {
     const max = Number(max_online_minutes ?? 120);
     // Clamp anti-abuso: cliente nunca soma mais que 10 min por chamada.
     const delta = Math.min(Math.max(1, Math.round(Number(minutes) || 1)), 10);
+    // A batida também carimba `tb_user.last_seen_at` (mig 228) — é ela que o
+    // painel do admin lê como "última vez online". Vai na MESMA instrução, como
+    // CTE que modifica dados: esta é a chamada mais frequente do site (todo
+    // usuário logado, 12×/h) e uma segunda ida ao banco só para gravar uma data
+    // dobraria o custo dela. CTE de escrita roda mesmo sem ninguém a
+    // referenciar no SELECT final — é por isso que `seen` não aparece embaixo.
     const r = await db.query(
       `WITH prev AS (
          SELECT minutes_online AS old
            FROM user_online_time
           WHERE id_user = $1 AND date = CURRENT_DATE
+       ),
+       seen AS (
+         UPDATE tb_user SET last_seen_at = NOW() WHERE id_user = $1
        ),
        upd AS (
          INSERT INTO user_online_time (id_user, date, minutes_online)

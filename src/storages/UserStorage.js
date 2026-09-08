@@ -321,4 +321,21 @@ module.exports = {
     return r.rows[0] || null;
   },
 
+  /**
+   * "Esta pessoa apareceu agora" (mig 228) — o que o painel do admin lê como
+   * última vez online.
+   *
+   * Chamado no LOGIN. O pulso normal é o heartbeat de 5 min, que carimba a
+   * mesma coluna dentro da instrução dele (`RankingStorage.heartbeat`); mas a
+   * primeira batida só sai 30s depois de a página montar, então quem entra e
+   * fecha em seguida não deixaria rastro nenhum.
+   *
+   * ⚠️ NÃO mexe em `updated_at`: aquilo é "quando o cadastro mudou", e passar
+   * por aqui não muda cadastro nenhum — somar as duas coisas faria toda conta
+   * online parecer editada a cada cinco minutos.
+   */
+  async touchLastSeen(db, id_user) {
+    await db.query(`UPDATE tb_user SET last_seen_at = NOW() WHERE id_user = $1`, [id_user]);
+  },
+
 };

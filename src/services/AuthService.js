@@ -7,6 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 const pool = require("../databases");
 
 const AuthStorage = require("../storages/AuthStorage");
+const UserStorage = require("../storages/UserStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const TourSettingsStorage = require("../storages/TourSettingsStorage");
 const ConsentStorage = require("../storages/ConsentStorage");
@@ -366,6 +367,13 @@ class AuthService {
           { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
         );
 
+
+        // "Esteve online agora" (mig 228). O pulso normal é o heartbeat de
+        // 5 min; sem este carimbo, quem entra e fecha a aba em seguida não
+        // deixaria rastro nenhum, porque a primeira batida só sai 30s depois.
+        // Fire-and-forget: um UPDATE de data nunca pode derrubar um login.
+        UserStorage.touchLastSeen(pool, user.id_user).catch(() => {});
+
         // Atribuições de conteúdo feitas deslogado (mig 194) passam a ser desta
         // conta. Sem isto, quem clica no link de alguém, cria conta e só depois
         // compra some da atribuição. Fire-and-forget: nunca derruba o login.
@@ -507,6 +515,13 @@ class AuthService {
           if (isNew) {
             FraudService.evaluateUser(user.id_user).catch(() => {});
           }
+
+
+          // "Esteve online agora" (mig 228). O pulso normal é o heartbeat de
+          // 5 min; sem este carimbo, quem entra e fecha a aba em seguida não
+          // deixaria rastro nenhum, porque a primeira batida só sai 30s depois.
+          // Fire-and-forget: um UPDATE de data nunca pode derrubar um login.
+          UserStorage.touchLastSeen(pool, user.id_user).catch(() => {});
 
           // Google é signup e login na MESMA tela: sem o claim aqui, quem chega
           // pelo link compartilhado e entra com Google nunca casa as atribuições
