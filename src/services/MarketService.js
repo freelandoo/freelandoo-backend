@@ -6,10 +6,16 @@
 // serverless por request e rate-limit).
 //
 // Fontes (com fallback — o IP compartilhado do Railway toma 429 da AwesomeAPI):
-//  - AwesomeAPI (grátis, sem chave): Dólar, Euro, Rublo e Bitcoin em BRL com
-//    variação diária. PRIMÁRIA das cotações, mas rate-limitada no Railway.
-//  - Fallbacks de cotação: CoinGecko (BTC, com variação 24h) e open.er-api.com
-//    (USD/EUR/RUB, sem variação — o front mostra "—").
+//  - AwesomeAPI (grátis, sem chave): moedas (Dólar, Euro, Libra, Rublo) e cripto
+//    (Bitcoin, Ethereum) em BRL com variação diária. PRIMÁRIA dessas seis, mas
+//    rate-limitada no Railway — na prática quase sempre cai nos fallbacks.
+//  - Fallbacks de cotação, nesta ordem: CoinGecko (cripto, variação 24h),
+//    Yahoo (moedas, com variação) e open.er-api.com (moedas, SEM variação — a
+//    tela mostra "—"; rede de segurança para não sumir a linha).
+//  - Yahoo Finance v8 (grátis, sem chave): PRIMÁRIA dos índices (IFIX, S&P 500,
+//    Nasdaq) e das commodities (Ouro, Petróleo Brent) — nenhuma outra fonte
+//    gratuita cota as cinco. Também é o 1º fallback das moedas, porque traz o
+//    fechamento anterior e portanto a variação do dia.
 //  - brapi.dev: ações mais negociadas e Ibovespa. Exige BRAPI_TOKEN no env.
 //  - Fallback de ações sem token: Yahoo Finance v8 (blue chips B3 fixas + ^BVSP).
 //
@@ -24,31 +30,79 @@ const log = createLogger("MarketService");
 
 const BRAPI_BASE = "https://brapi.dev/api";
 const AWESOME_BASE = "https://economia.awesomeapi.com.br/json/last";
-const STOCKS_LIMIT = 8;
+
+/**
+ * Quantas ações o retrato guarda. É o tamanho da coluna "Ações em alta" do
+ * painel de mercado — as três colunas ficam lado a lado e terminam na mesma
+ * altura (as manchetes são MENOS porque cada uma leva miniatura e ocupa o
+ * dobro).
+ */
+const STOCKS_LIMIT = 12;
+/** Manchetes servidas ao painel. Ver a conta de altura acima. */
+const NEWS_LIMIT = 9;
+
+/**
+ * A COLUNA DE COTAÇÕES SÃO DOZE LINHAS, nesta ordem de `rank`:
+ *
+ *   0 Ibovespa · 1 IFIX · 2 S&P 500 · 3 Nasdaq   (índices)
+ *   4 Bitcoin  · 5 Ethereum                       (cripto)
+ *   6 Ouro     · 7 Petróleo Brent                 (commodities)
+ *   8 Dólar    · 9 Euro · 10 Libra · 11 Rublo     (moedas)
+ *
+ * ⚠️ O RANK É COMBINADO ENTRE AS FONTES, não sequencial dentro de cada uma:
+ * a mesma linha pode vir da fonte primária ou de um fallback, e se os dois
+ * escrevessem ranks diferentes a coluna trocaria de ordem conforme quem
+ * respondeu. Linha nova = escolher o rank aqui e repeti-lo em TODAS as fontes
+ * que sabem produzi-la.
+ */
 
 // Cotações via AwesomeAPI (sem token). symbol é a chave de UPSERT — BTC mantém
 // "BTC" pra sobrescrever a linha antiga (CoinGecko) sem duplicar.
-//
-// SÃO OITO com o Ibovespa (rank 0), que vem de outra fonte: é o tamanho das
-// outras duas colunas do painel de mercado (8 manchetes, 8 ações), e a coluna
-// do meio parava na quinta linha enquanto as vizinhas seguiam.
-// Ordem de exibição: Ibovespa, Bitcoin, Ethereum, Dólar, Euro, Libra, Ouro,
-// Rublo.
 const AWESOME_PAIRS = [
-  { pair: "BTC-BRL", key: "BTCBRL", symbol: "BTC", label: "Bitcoin", rank: 1 },
-  { pair: "ETH-BRL", key: "ETHBRL", symbol: "ETH", label: "Ethereum", rank: 2 },
-  { pair: "USD-BRL", key: "USDBRL", symbol: "USDBRL", label: "Dólar", rank: 3 },
-  { pair: "EUR-BRL", key: "EURBRL", symbol: "EURBRL", label: "Euro", rank: 4 },
-  { pair: "GBP-BRL", key: "GBPBRL", symbol: "GBPBRL", label: "Libra", rank: 5 },
-  // Ouro é a onça troy em reais. Entra aqui porque a pergunta da coluna é
-  // "como está o mercado", e não "quanto vale cada moeda" — ao lado do
-  // Ibovespa e do Bitcoin ele é o terceiro termômetro. É o ÚNICO sem
-  // fallback: nem a CoinGecko nem a open.er-api cotam metal.
-  { pair: "XAU-BRL", key: "XAUBRL", symbol: "XAUBRL", label: "Ouro", rank: 6 },
-  { pair: "RUB-BRL", key: "RUBBRL", symbol: "RUBBRL", label: "Rublo", rank: 7 },
+  { pair: "BTC-BRL", key: "BTCBRL", symbol: "BTC", label: "Bitcoin", rank: 4 },
+  { pair: "ETH-BRL", key: "ETHBRL", symbol: "ETH", label: "Ethereum", rank: 5 },
+  { pair: "USD-BRL", key: "USDBRL", symbol: "USDBRL", label: "Dólar", rank: 8 },
+  { pair: "EUR-BRL", key: "EURBRL", symbol: "EURBRL", label: "Euro", rank: 9 },
+  { pair: "GBP-BRL", key: "GBPBRL", symbol: "GBPBRL", label: "Libra", rank: 10 },
+  { pair: "RUB-BRL", key: "RUBBRL", symbol: "RUBBRL", label: "Rublo", rank: 11 },
 ];
 
-// Fallback de ações quando não há BRAPI_TOKEN (Yahoo v8, sem chave).
+/**
+ * Índices e commodities — Yahoo é a fonte PRIMÁRIA porque é a única gratuita e
+ * sem chave que cota as quatro. Não é um risco novo: o Ibovespa já chega por
+ * ela hoje (sem `BRAPI_TOKEN` a brapi não devolve índice), o que prova que o
+ * Yahoo responde do IP do Railway — ao contrário da AwesomeAPI, que vive em
+ * 429 por lá.
+ *
+ * ⚠️ OURO E PETRÓLEO FICAM EM DÓLAR, que é como o mundo os cota. A alternativa
+ * era converter para real multiplicando pela cotação do dia, e aí a variação
+ * exibida seria a do metal em dólar enquanto o preço seria em real — duas
+ * unidades na mesma linha, e a conta erraria justamente nos dias em que o
+ * câmbio mexe. (A AwesomeAPI tem XAU-BRL, mas ela é a fonte que menos responde:
+ * o ouro passaria a maior parte do tempo ausente.)
+ */
+const YAHOO_MARKET = [
+  { ticker: "IFIX.SA", symbol: "^IFIX", label: "IFIX", currency: "pts", rank: 1 },
+  { ticker: "^GSPC", symbol: "^GSPC", label: "S&P 500", currency: "pts", rank: 2 },
+  { ticker: "^IXIC", symbol: "^IXIC", label: "Nasdaq", currency: "pts", rank: 3 },
+  { ticker: "GC=F", symbol: "GC=F", label: "Ouro", currency: "USD", rank: 6 },
+  { ticker: "BZ=F", symbol: "BZ=F", label: "Petróleo Brent", currency: "USD", rank: 7 },
+];
+
+/**
+ * Moedas pelo Yahoo — PRIMEIRO fallback da AwesomeAPI, à frente da open.er-api,
+ * porque traz o fechamento anterior e portanto a VARIAÇÃO DO DIA. A er-api só
+ * tem o preço, e uma linha sem variação aparece na tela como "—".
+ */
+const YAHOO_FX = [
+  { ticker: "BRL=X", symbol: "USDBRL", label: "Dólar", rank: 8 },
+  { ticker: "EURBRL=X", symbol: "EURBRL", label: "Euro", rank: 9 },
+  { ticker: "GBPBRL=X", symbol: "GBPBRL", label: "Libra", rank: 10 },
+  { ticker: "RUBBRL=X", symbol: "RUBBRL", label: "Rublo", rank: 11 },
+];
+
+// Fallback de ações quando a brapi não responde (Yahoo v8, sem chave). São
+// STOCKS_LIMIT papéis pra coluna ter o mesmo tamanho nos dois caminhos.
 const YAHOO_STOCKS = [
   { ticker: "PETR4.SA", symbol: "PETR4", label: "Petrobras PN" },
   { ticker: "VALE3.SA", symbol: "VALE3", label: "Vale ON" },
@@ -58,6 +112,10 @@ const YAHOO_STOCKS = [
   { ticker: "B3SA3.SA", symbol: "B3SA3", label: "B3 ON" },
   { ticker: "WEGE3.SA", symbol: "WEGE3", label: "WEG ON" },
   { ticker: "MGLU3.SA", symbol: "MGLU3", label: "Magazine Luiza ON" },
+  { ticker: "ABEV3.SA", symbol: "ABEV3", label: "Ambev ON" },
+  { ticker: "ITSA4.SA", symbol: "ITSA4", label: "Itaúsa PN" },
+  { ticker: "RENT3.SA", symbol: "RENT3", label: "Localiza ON" },
+  { ticker: "SUZB3.SA", symbol: "SUZB3", label: "Suzano ON" },
 ];
 
 function num(v) {
@@ -154,8 +212,8 @@ async function fetchAwesomeQuotes() {
 // vão na MESMA chamada (a API aceita ids separados por vírgula): uma por moeda
 // dobraria o request contra uma fonte gratuita para responder a mesma pergunta.
 const COINGECKO_COINS = [
-  { id: "bitcoin", symbol: "BTC", label: "Bitcoin", rank: 1 },
-  { id: "ethereum", symbol: "ETH", label: "Ethereum", rank: 2 },
+  { id: "bitcoin", symbol: "BTC", label: "Bitcoin", rank: 4 },
+  { id: "ethereum", symbol: "ETH", label: "Ethereum", rank: 5 },
 ];
 
 async function fetchCoinGeckoCrypto(missingSymbols) {
@@ -188,10 +246,10 @@ async function fetchCoinGeckoCrypto(missingSymbols) {
 // AWESOME_PAIRS: divergindo, a coluna trocaria de ordem conforme a fonte que
 // respondeu.
 const ER_API_FX = [
-  { symbol: "USDBRL", code: "USD", label: "Dólar", rank: 3 },
-  { symbol: "EURBRL", code: "EUR", label: "Euro", rank: 4 },
-  { symbol: "GBPBRL", code: "GBP", label: "Libra", rank: 5 },
-  { symbol: "RUBBRL", code: "RUB", label: "Rublo", rank: 7 },
+  { symbol: "USDBRL", code: "USD", label: "Dólar", rank: 8 },
+  { symbol: "EURBRL", code: "EUR", label: "Euro", rank: 9 },
+  { symbol: "GBPBRL", code: "GBP", label: "Libra", rank: 10 },
+  { symbol: "RUBBRL", code: "RUB", label: "Rublo", rank: 11 },
 ];
 
 async function fetchErApiCurrencies(missingSymbols) {
@@ -227,6 +285,32 @@ async function fetchYahooMeta(ticker) {
   if (price == null) return null;
   const change = prev && prev > 0 ? ((price - prev) / prev) * 100 : null;
   return { price, change };
+}
+
+/**
+ * Índices/commodities (PRIMÁRIA) e moedas (fallback) pelo Yahoo. Uma chamada
+ * por ticker — o v8 não faz lote —, todas em paralelo e best-effort: ticker que
+ * falha some da coleta e a linha dele fica com o valor da rodada anterior, em
+ * vez de derrubar as outras.
+ */
+async function fetchYahooList(defs) {
+  const settled = await Promise.allSettled(defs.map((d) => fetchYahooMeta(d.ticker)));
+  const out = [];
+  settled.forEach((res, i) => {
+    if (res.status !== "fulfilled" || !res.value) return;
+    const d = defs[i];
+    out.push({
+      symbol: d.symbol,
+      kind: "quote",
+      label: d.label,
+      price: res.value.price,
+      change_pct: res.value.change,
+      currency: d.currency || "BRL",
+      logo_url: null,
+      rank: d.rank,
+    });
+  });
+  return out;
 }
 
 // Ações B3 fixas via Yahoo (fallback sem BRAPI_TOKEN). Best-effort por ticker.
@@ -276,7 +360,7 @@ class MarketService {
     return runWithLogs(log, "getSnapshot", () => ({}), async () => {
       const [snap, news] = await Promise.all([
         MarketStorage.getSnapshot(pool),
-        MarketStorage.listNews(pool, 8),
+        MarketStorage.listNews(pool, NEWS_LIMIT),
       ]);
       return { ...snap, news };
     });
@@ -292,6 +376,7 @@ class MarketService {
 
       const primary = [
         ["awesome", () => fetchAwesomeQuotes()], // sem token (429 frequente no Railway)
+        ["yahoo_market", () => fetchYahooList(YAHOO_MARKET)], // índices e commodities
         ["stocks", () => fetchStocks(token)],
         ["ibovespa", () => fetchIbovespa(token)],
       ];
@@ -312,17 +397,29 @@ class MarketService {
       await runSources(primary);
 
       // Fallbacks só pro que ficou faltando — não duplica nem gasta request à toa.
-      const have = new Set(items.map((i) => i.symbol));
-      const missingCrypto = COINGECKO_COINS.map((c) => c.symbol).filter((s) => !have.has(s));
-      const missingFx = ER_API_FX.map((d) => d.symbol).filter((s) => !have.has(s));
+      const missing = (symbols) => symbols.filter((s) => !items.some((i) => i.symbol === s));
+
+      const missingCrypto = missing(COINGECKO_COINS.map((c) => c.symbol));
+      const missingFx = missing(YAHOO_FX.map((d) => d.symbol));
       const fallbacks = [];
       if (missingCrypto.length > 0) fallbacks.push(["coingecko_crypto", () => fetchCoinGeckoCrypto(missingCrypto)]);
-      if (missingFx.length > 0) fallbacks.push(["er_api_fx", () => fetchErApiCurrencies(missingFx)]);
+      if (missingFx.length > 0) {
+        fallbacks.push(["yahoo_fx", () => fetchYahooList(YAHOO_FX.filter((d) => missingFx.includes(d.symbol)))]);
+      }
       if (!items.some((i) => i.kind === "stock")) fallbacks.push(["yahoo_stocks", () => fetchStocksYahoo()]);
-      if (!have.has("^BVSP")) fallbacks.push(["yahoo_ibov", () => fetchIbovespaYahoo()]);
+      if (missing(["^BVSP"]).length > 0) fallbacks.push(["yahoo_ibov", () => fetchIbovespaYahoo()]);
 
       if (fallbacks.length > 0) {
         await runSources(fallbacks);
+      }
+
+      // ÚLTIMO recurso das moedas, depois do Yahoo: a open.er-api não traz o
+      // fechamento anterior, então a linha entra sem variação (a tela escreve
+      // "—"). Vale como rede — preço velho de um dia ainda é melhor que a
+      // moeda sumir da coluna —, mas só quando as duas fontes acima falharam.
+      const stillMissingFx = missing(ER_API_FX.map((d) => d.symbol));
+      if (stillMissingFx.length > 0) {
+        await runSources([["er_api_fx", () => fetchErApiCurrencies(stillMissingFx)]]);
       }
 
       if (items.length === 0) {
