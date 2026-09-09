@@ -21,4 +21,8 @@ const router = express.Router();
 
 router.get("/", authMiddleware, asyncHandler(FinanceController.getPlatform));
 
+// A fila da plataforma, por cidade ou estado (`?scope=city|state`). Mesma conta
+// do ranking de games — o storage e os pesos são compartilhados.
+router.get("/ranking", authMiddleware, asyncHandler(FinanceController.ranking));
+
 module.exports = router;

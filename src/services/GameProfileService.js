@@ -25,7 +25,7 @@
 const jwt = require("jsonwebtoken");
 const pool = require("../databases");
 const GameProfileStorage = require("../storages/GameProfileStorage");
-const GamesActivityStorage = require("../storages/GamesActivityStorage");
+const PlatformActivityStorage = require("../storages/PlatformActivityStorage");
 const GamesScore = require("../utils/gamesScore");
 const FeatureFlagService = require("./FeatureFlagService");
 const providers = require("../integrations/gameProvider");
@@ -397,7 +397,7 @@ class GameProfileService {
       // aqui teria dois significados incompativeis - "ninguem pontuou na sua
       // cidade" e "voce nunca disse qual e a sua cidade". So o segundo tem
       // conserto, e a tela precisa poder dizer qual e o caso.
-      const place = await GamesActivityStorage.getPlace(pool, viewer_id);
+      const place = await PlatformActivityStorage.getPlace(pool, viewer_id);
       const weights = {
         like: GamesScore.WEIGHTS.like,
         comment: GamesScore.WEIGHTS.comment,
@@ -410,8 +410,8 @@ class GameProfileService {
       }
 
       const [rows, me] = await Promise.all([
-        GamesActivityStorage.rankByActivity(pool, { id_user: viewer_id, scope, limit }),
-        GamesActivityStorage.getActivityRank(pool, { id_user: viewer_id, scope }),
+        PlatformActivityStorage.rankByActivity(pool, { id_user: viewer_id, scope, limit }),
+        PlatformActivityStorage.getActivityRank(pool, { id_user: viewer_id, scope }),
       ]);
 
       const shape = (r) => ({
@@ -458,7 +458,7 @@ class GameProfileService {
     return runWithLogs(log, "beat", () => ({ id_user, resume: !!opts.resume }), async () => {
       const blocked = await this._assertActivityEnabled();
       if (blocked) return blocked;
-      const row = await GamesActivityStorage.beat(pool, id_user, { resume: !!opts.resume });
+      const row = await PlatformActivityStorage.beat(pool, id_user, { resume: !!opts.resume });
       return { seconds_today: Number(row?.seconds || 0) };
     });
   }

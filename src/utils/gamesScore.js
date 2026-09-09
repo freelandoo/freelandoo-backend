@@ -66,22 +66,42 @@ const MAX_BEAT_SECONDS = 180;
 const DAILY_CAP_SECONDS = 6 * 3600;
 
 /**
- * O item de portfólio está vinculado ao feed de uma comunidade de games?
+ * O item de portfólio está vinculado ao feed de uma comunidade DAQUELA
+ * modalidade?
  *
  * Recebe o alias da tabela de itens já em escopo (ex.: "it") e devolve um
  * EXISTS pronto. Correlato de propósito: o planejador resolve por índice
- * (ux_community_feed_item) em vez de materializar a lista inteira de posts de
- * games a cada consulta.
+ * (ux_community_feed_item) em vez de materializar a lista inteira de posts a
+ * cada consulta.
+ *
+ * ⚠️ O `kind` entra como LITERAL, e por isso passa por uma lista fechada: ele é
+ * interpolado no texto do SQL, e um valor vindo de fora sem essa trava seria
+ * injeção. Não vira parâmetro `$n` pela razão de sempre neste arquivo — o mesmo
+ * placeholder valendo como coluna e dentro de expressão já custou o 42P08 três
+ * vezes aqui.
+ *
+ * Serve games (mig 226) e o Financeiro (mig 229). Plataforma nova = acrescentar
+ * a modalidade em PLATFORM_KINDS; a conta, os pesos e o resto vêm de graça.
  */
-function gamesItemSql(itemAlias) {
+const PLATFORM_KINDS = Object.freeze(["games", "finance"]);
+
+function platformItemSql(itemAlias, kind) {
+  if (!PLATFORM_KINDS.includes(kind)) {
+    throw new Error(`platformItemSql: modalidade não suportada: ${kind}`);
+  }
   return `EXISTS (
             SELECT 1
               FROM public.tb_community_feed_item cfi
               JOIN public.tb_profile cprof
                 ON cprof.id_profile = cfi.id_community_profile
              WHERE cfi.id_portfolio_item = ${itemAlias}.id_portfolio_item
-               AND cprof.community_kind = 'games'
+               AND cprof.community_kind = '${kind}'
           )`;
+}
+
+/** Atalho histórico — games era a única plataforma quando isto nasceu. */
+function gamesItemSql(itemAlias) {
+  return platformItemSql(itemAlias, "games");
 }
 
 /**
@@ -131,6 +151,8 @@ function scoreSql({ likes = "likes", comments = "comments", shares = "shares", s
 
 module.exports = {
   WEIGHTS,
+  PLATFORM_KINDS,
+  platformItemSql,
   SECONDS_PER_POINT,
   MAX_BEAT_SECONDS,
   DAILY_CAP_SECONDS,

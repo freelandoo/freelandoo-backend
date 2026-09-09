@@ -1,7 +1,15 @@
-// src/storages/GamesActivityStorage.js
+// src/storages/PlatformActivityStorage.js
 //
-// O RANKING DE ATIVIDADE DA PLATAFORMA DE GAMES (mig 226) — por cidade e por
-// estado, contando só o que acontece dentro da plataforma de games.
+// O RANKING DE ATIVIDADE DE UMA PLATAFORMA — por cidade e por estado, contando
+// só o que acontece DENTRO dela.
+//
+// Nasceu como GamesActivityStorage (mig 226) e passou a servir também o
+// Financeiro (mig 229) quando o Alex pediu uma plataforma financeira "igual ao
+// games, com contagem própria de pontos e ranking". O que muda de uma para
+// outra é a MODALIDADE do post; a conta, os pesos, o recorte geográfico e o
+// RANK() são os mesmos — copiar este arquivo faria o mesmo gesto valer coisas
+// diferentes em duas telas, que é exatamente o que utils/gamesScore.js existe
+// para impedir.
 //
 // ─── POR QUE ESTE ARQUIVO NÃO É O GameProfileStorage ────────────────────────
 //
@@ -27,7 +35,7 @@
 const GamesScore = require("../utils/gamesScore");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
-const log = createLogger("GamesActivityStorage");
+const log = createLogger("PlatformActivityStorage");
 
 /** O fuso do "dia" da presença. O mesmo do painel de engajamento. */
 const TZ = "America/Sao_Paulo";
@@ -48,9 +56,26 @@ const TZ = "America/Sao_Paulo";
  *
  * $1 = id_user de quem está olhando (define cidade/estado do recorte).
  */
-function commonCte(scope) {
-  const games = GamesScore.gamesItemSql("it");
+function commonCte(scope, kind) {
+  const item = GamesScore.platformItemSql("it", kind);
   const where = GamesScore.scopeSql(scope, "p");
+  /**
+   * ⚠️ TEMPO ONLINE SÓ EXISTE EM GAMES. A batida de presença (mig 226) mede
+   * quem está no ambiente de games, e é lá que ela é disparada. Somá-la aqui
+   * para outra plataforma daria pontos de presença de games a quem nunca entrou
+   * lá — o mesmo erro que o comentário do `games-shell` já preveniu do outro
+   * lado. Sem presença, a CTE devolve um conjunto VAZIO com as mesmas colunas:
+   * a conta segue idêntica e o termo do tempo vira zero, em vez de a consulta
+   * precisar de duas formas.
+   */
+  const presence = kind === "games"
+    ? `SELECT g.id_user, SUM(g.seconds)::bigint AS seconds
+         FROM public.tb_games_presence g
+         JOIN peers ON peers.id_user = g.id_user
+        GROUP BY g.id_user`
+    : `SELECT peers.id_user, 0::bigint AS seconds
+         FROM peers
+        WHERE FALSE`;
   return `
   WITH me AS (
     SELECT p.municipio, p.estado
@@ -81,7 +106,7 @@ function commonCte(scope) {
       JOIN peers ON peers.id_user = op.id_user
      WHERE it.is_active = TRUE
        AND (l.id_user IS NULL OR l.id_user <> op.id_user)
-       AND ${games}
+       AND ${item}
      GROUP BY op.id_user
   ),
   ev_comments AS (
@@ -94,7 +119,7 @@ function commonCte(scope) {
      WHERE it.is_active = TRUE
        AND c.is_active = TRUE
        AND c.id_user <> op.id_user
-       AND ${games}
+       AND ${item}
      GROUP BY op.id_user
   ),
   ev_shares AS (
@@ -107,14 +132,11 @@ function commonCte(scope) {
      WHERE e.event_type = 'share'
        AND it.is_active = TRUE
        AND (e.id_user IS NULL OR e.id_user <> op.id_user)
-       AND ${games}
+       AND ${item}
      GROUP BY op.id_user
   ),
   ev_presence AS (
-    SELECT g.id_user, SUM(g.seconds)::bigint AS seconds
-      FROM public.tb_games_presence g
-      JOIN peers ON peers.id_user = g.id_user
-     GROUP BY g.id_user
+    ${presence}
   ),
   totals AS (
     SELECT peers.id_user,
@@ -214,10 +236,10 @@ module.exports = {
   },
 
   /** A fila: os primeiros da cidade (ou do estado) de quem está olhando. */
-  async rankByActivity(conn, { id_user, scope, limit }) {
-    return runWithLogs(log, "rankByActivity", () => ({ id_user, scope, limit }), async () => {
+  async rankByActivity(conn, { id_user, scope, limit, kind = "games" }) {
+    return runWithLogs(log, "rankByActivity", () => ({ id_user, scope, limit, kind }), async () => {
       const r = await conn.query(
-        `${commonCte(scope)}
+        `${commonCte(scope, kind)}
          SELECT r.id_user, r.position, r.total,
                 r.likes, r.comments, r.shares, r.seconds, r.score,
                 u.username, u.nome, u.avatar
@@ -238,9 +260,9 @@ module.exports = {
    * vez de mostrar um zero. Zero na fila parece nota baixa; o que existe é
    * ausência de atividade.
    */
-  async getActivityRank(conn, { id_user, scope }) {
+  async getActivityRank(conn, { id_user, scope, kind = "games" }) {
     const r = await conn.query(
-      `${commonCte(scope)}
+      `${commonCte(scope, kind)}
        SELECT r.position, r.total, r.likes, r.comments, r.shares, r.seconds, r.score,
               u.username, u.nome, u.avatar
          FROM ranked r
