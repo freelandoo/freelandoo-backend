@@ -65,6 +65,13 @@ const MAX_BEAT_SECONDS = 180;
  */
 const DAILY_CAP_SECONDS = 6 * 3600;
 
+/*
+ * ⚠️ DESDE A MIG 230 O TETO É POR PLATAFORMA, e não por dia da pessoa: a chave
+ * da presença passou a ser (pessoa, plataforma, dia). Quem passa a manhã em
+ * games e a tarde no Financeiro esteve presente nos dois, e um teto
+ * compartilhado faria a segunda plataforma punir quem usou a primeira.
+ */
+
 /**
  * O item de portfólio está vinculado ao feed de uma comunidade DAQUELA
  * modalidade?
@@ -85,10 +92,23 @@ const DAILY_CAP_SECONDS = 6 * 3600;
  */
 const PLATFORM_KINDS = Object.freeze(["games", "finance"]);
 
-function platformItemSql(itemAlias, kind) {
+/**
+ * A trava da lista fechada, sozinha.
+ *
+ * Existe porque o `kind` é interpolado como LITERAL em mais de um lugar (o
+ * EXISTS do post abaixo e, desde a mig 230, o filtro da presença) e nem todos
+ * eles passam por `platformItemSql`. Uma segunda checagem escrita à mão no
+ * storage seria a chance de alguém esquecê-la — e sem ela o literal é injeção.
+ */
+function assertPlatformKind(kind, where = "assertPlatformKind") {
   if (!PLATFORM_KINDS.includes(kind)) {
-    throw new Error(`platformItemSql: modalidade não suportada: ${kind}`);
+    throw new Error(`${where}: modalidade não suportada: ${kind}`);
   }
+  return kind;
+}
+
+function platformItemSql(itemAlias, kind) {
+  assertPlatformKind(kind, "platformItemSql");
   return `EXISTS (
             SELECT 1
               FROM public.tb_community_feed_item cfi
@@ -152,6 +172,7 @@ function scoreSql({ likes = "likes", comments = "comments", shares = "shares", s
 module.exports = {
   WEIGHTS,
   PLATFORM_KINDS,
+  assertPlatformKind,
   platformItemSql,
   SECONDS_PER_POINT,
   MAX_BEAT_SECONDS,

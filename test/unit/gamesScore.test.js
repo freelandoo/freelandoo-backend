@@ -115,3 +115,32 @@ test("a calibração do tempo, em uma asserção: um dia inteiro = 12 compartilh
   assert.strictEqual(presencaDoDia, 36);
   assert.strictEqual(presencaDoDia, 12 * GamesScore.WEIGHTS.share);
 });
+/* ─── a lista fechada das plataformas (mig 230) ───────────────────────────── */
+
+test("assertPlatformKind aceita só o que está na lista, e diz de onde veio", () => {
+  // O kind vira LITERAL dentro do SQL em dois lugares (o EXISTS do post e o
+  // filtro da presença). Sem esta trava, o literal é injeção — e por isso ela
+  // existe separada do platformItemSql: a batida de presença não passa por lá.
+  for (const k of GamesScore.PLATFORM_KINDS) {
+    assert.strictEqual(GamesScore.assertPlatformKind(k), k);
+  }
+  assert.throws(
+    () => GamesScore.assertPlatformKind("'; DROP TABLE tb_user; --", "beat"),
+    /beat: modalidade não suportada/
+  );
+  assert.throws(() => GamesScore.assertPlatformKind(undefined), /não suportada/);
+});
+
+test("o Financeiro é uma plataforma de primeira classe, não um caso especial", () => {
+  // Se "finance" saísse da lista, o ranking do Financeiro pararia de existir
+  // com uma exceção em vez de uma tela vazia — e é isso que este caso segura.
+  assert.ok(GamesScore.PLATFORM_KINDS.includes("games"));
+  assert.ok(GamesScore.PLATFORM_KINDS.includes("finance"));
+  const sql = GamesScore.platformItemSql("it", "finance");
+  assert.match(sql, /community_kind = 'finance'/);
+  // O recorte é o MESMO das duas: o que muda é a modalidade, nunca a forma.
+  assert.strictEqual(
+    GamesScore.platformItemSql("it", "games").replace("'games'", "'finance'"),
+    sql
+  );
+});

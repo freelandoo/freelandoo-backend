@@ -46,10 +46,12 @@ class FinanceService {
    * "quanto vale cada gesto" — uma segunda resposta faria a mesma curtida valer
    * coisas diferentes em duas telas.
    *
-   * ⚠️ AQUI NÃO ENTRA TEMPO ONLINE. A batida de presença mede quem está no
-   * ambiente de GAMES; contá-la aqui daria ponto de presença de games a quem
-   * nunca entrou lá. O termo existe na conta e vale zero — o dia em que o
-   * Financeiro tiver a batida dele, é ligar a fonte, não refazer a régua.
+   * ⚠️ O TEMPO ONLINE ENTRA — e é o TEMPO DAQUI (mig 230). Quando esta tela
+   * nasceu, a única batida de presença que existia era a do ambiente de games,
+   * e somá-la aqui daria ponto de presença de games a quem nunca entrou lá:
+   * o termo ficou na conta valendo zero, esperando uma fonte. A fonte chegou
+   * com a mig 230, que pôs a PLATAFORMA na chave da presença — foi só ligar,
+   * exatamente como este comentário previa, sem refazer a régua.
    *
    * A cidade vem PRIMEIRO e sozinha: sem ela a fila sai vazia, e "vazia" teria
    * dois significados incompatíveis — "ninguém pontuou na sua cidade" e "você
@@ -66,6 +68,10 @@ class FinanceService {
         like: GamesScore.WEIGHTS.like,
         comment: GamesScore.WEIGHTS.comment,
         share: GamesScore.WEIGHTS.share,
+        // A régua do tempo vai junto para a tela poder escrever a legenda sem
+        // guardar o número dela: dois lugares guardando o peso fariam a legenda
+        // prometer uma conta que a fila não faz.
+        minutes_per_point: GamesScore.SECONDS_PER_POINT / 60,
       };
 
       const place = await PlatformActivityStorage.getPlace(pool, viewer_id);
@@ -87,9 +93,45 @@ class FinanceService {
         likes: Number(r.likes),
         comments: Number(r.comments),
         shares: Number(r.shares),
+        // Minutos, e não segundos: quem lê a tela conta em minutos, e mandar
+        // segundos só empurraria a divisão para o front — que teria de repeti-la
+        // em cada lugar que mostrasse o número.
+        minutes: Math.floor(Number(r.seconds) / 60),
       });
 
       return { metric: "activity", scope, place, weights, rows: rows.map(shape), me: me ? shape(me) : null };
+    });
+  }
+
+  /**
+   * A BATIDA DE PRESENÇA DENTRO DO FINANCEIRO (mig 230).
+   *
+   * É a MESMA batida de games — mesmo storage, mesmos tetos, mesmo crédito
+   * calculado pelo banco a partir de `last_beat_at`. O que muda é a plataforma
+   * onde ela cai, e é isso que impede as duas de somarem no mesmo balde.
+   *
+   * Não recebe corpo: quem mede o tempo é o banco, a partir da batida anterior.
+   * Um cliente que dissesse quanto tempo passou poderia dizer qualquer coisa.
+   *
+   * `resume` = "só acerte o relógio, não credite". É o que o navegador manda
+   * ao voltar de uma aba escondida; vir do cliente é seguro porque a flag só
+   * DIMINUI a pontuação de quem a manda.
+   *
+   * ⚠️ SEM FLAG, como o resto deste service: o Financeiro não tem kill-switch
+   * próprio (mig 229) — ele é a Carteira de todo mundo, e não uma função
+   * comprável. Inventar uma aqui criaria uma porta que nenhuma tela sabe abrir.
+   */
+  static async beat(id_user, opts = {}) {
+    return runWithLogs(log, "beat", () => ({ id_user, resume: !!opts.resume }), async () => {
+      if (!id_user) return { error: "Usuário não autenticado" };
+      const row = await PlatformActivityStorage.beat(pool, id_user, {
+        resume: !!opts.resume,
+        kind: FinanceStorage.FINANCE_KIND,
+      });
+      // Resposta curta de propósito: isto é chamado a cada 2 minutos por cada
+      // pessoa online. Devolver o ranking aqui multiplicaria por 30 o custo de
+      // cada hora de alguém na tela.
+      return { seconds_today: Number(row?.seconds || 0) };
     });
   }
 }

@@ -458,7 +458,12 @@ class GameProfileService {
     return runWithLogs(log, "beat", () => ({ id_user, resume: !!opts.resume }), async () => {
       const blocked = await this._assertActivityEnabled();
       if (blocked) return blocked;
-      const row = await PlatformActivityStorage.beat(pool, id_user, { resume: !!opts.resume });
+      const row = await PlatformActivityStorage.beat(pool, id_user, {
+        resume: !!opts.resume,
+        // Explícito de propósito (mig 230): a presença agora tem plataforma, e
+        // o ambiente de games é este.
+        kind: "games",
+      });
       return { seconds_today: Number(row?.seconds || 0) };
     });
   }

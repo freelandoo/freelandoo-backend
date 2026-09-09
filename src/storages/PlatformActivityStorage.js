@@ -19,6 +19,15 @@
 // ambiente. São duas perguntas, com duas fontes e dois donos; juntá-las num
 // arquivo faria a mudança de peso de uma mexer na leitura da outra.
 //
+// ─── O TEMPO ONLINE É DE CADA PLATAFORMA (mig 230) ──────────────────────────
+//
+// A presença passou a guardar EM QUAL ambiente a pessoa estava (`kind` na
+// chave de tb_games_presence — nome legado, ver a migration). Antes disso o
+// Financeiro nascia sem a métrica do tempo, porque a única batida que existia
+// era a de games e contá-la aqui daria ponto de presença de games a quem nunca
+// entrou lá. Agora cada ambiente tem o relógio dele, e o teto diário também é
+// de cada um.
+//
 // ─── O RECORTE É SEMPRE GEOGRÁFICO ──────────────────────────────────────────
 //
 // Não existe fila global aqui (decisão do Alex): "cria o ranking ali por cidade
@@ -60,22 +69,23 @@ function commonCte(scope, kind) {
   const item = GamesScore.platformItemSql("it", kind);
   const where = GamesScore.scopeSql(scope, "p");
   /**
-   * ⚠️ TEMPO ONLINE SÓ EXISTE EM GAMES. A batida de presença (mig 226) mede
-   * quem está no ambiente de games, e é lá que ela é disparada. Somá-la aqui
-   * para outra plataforma daria pontos de presença de games a quem nunca entrou
-   * lá — o mesmo erro que o comentário do `games-shell` já preveniu do outro
-   * lado. Sem presença, a CTE devolve um conjunto VAZIO com as mesmas colunas:
-   * a conta segue idêntica e o termo do tempo vira zero, em vez de a consulta
-   * precisar de duas formas.
+   * ⚠️ O TEMPO ONLINE É DA PLATAFORMA, e o filtro é o que garante isso.
+   *
+   * Até a mig 230 a presença só existia em games e esta CTE devolvia conjunto
+   * vazio para qualquer outra plataforma — o termo do tempo valia zero e a
+   * conta seguia idêntica. Agora a batida carrega a plataforma onde aconteceu
+   * (`kind` na chave), e é ESTE `WHERE` que impede o Financeiro de somar as
+   * horas que a pessoa passou em games. Sem ele, quem nunca abriu a Carteira
+   * apareceria no ranking dela com a presença do outro ambiente.
+   *
+   * O `kind` entra como LITERAL, e pode: ele já passou por
+   * `platformItemSql` acima, que recusa o que não está na lista fechada.
    */
-  const presence = kind === "games"
-    ? `SELECT g.id_user, SUM(g.seconds)::bigint AS seconds
+  const presence = `SELECT g.id_user, SUM(g.seconds)::bigint AS seconds
          FROM public.tb_games_presence g
          JOIN peers ON peers.id_user = g.id_user
-        GROUP BY g.id_user`
-    : `SELECT peers.id_user, 0::bigint AS seconds
-         FROM peers
-        WHERE FALSE`;
+        WHERE g.kind = '${kind}'
+        GROUP BY g.id_user`;
   return `
   WITH me AS (
     SELECT p.municipio, p.estado
@@ -181,7 +191,13 @@ module.exports = {
    * três vêm de utils/gamesScore.js (números e uma constante nossa), não há
    * entrada de usuário no texto da query.
    */
-  async beat(conn, id_user, { resume = false } = {}) {
+  async beat(conn, id_user, { resume = false, kind = "games" } = {}) {
+    // A plataforma vem do chamador (a rota de games ou a do Financeiro) e passa
+    // pela MESMA lista fechada do resto do módulo. Aqui ela viaja como
+    // PARÂMETRO, e não como literal: é um valor de coluna comum, sem
+    // ambiguidade de tipo — diferente do `kind` do EXISTS e do filtro da
+    // presença, que vivem dentro de expressões e por isso são interpolados.
+    GamesScore.assertPlatformKind(kind, "PlatformActivityStorage.beat");
     // A parcela creditada é ESCOLHIDA AQUI, no JS, e não por um parâmetro
     // comparado dentro da expressão — mesma disciplina do escopo do ranking
     // (ver o 42P08 em utils/gamesScore.js). "resume" credita zero: serve para o
@@ -196,18 +212,18 @@ module.exports = {
            ),
            ${GamesScore.MAX_BEAT_SECONDS}
          )`;
-    return runWithLogs(log, "beat", () => ({ id_user, resume }), async () => {
+    return runWithLogs(log, "beat", () => ({ id_user, resume, kind }), async () => {
       const r = await conn.query(
-        `INSERT INTO public.tb_games_presence (id_user, day, seconds, last_beat_at)
-         VALUES ($1, (NOW() AT TIME ZONE '${TZ}')::date, 0, NOW())
-         ON CONFLICT (id_user, day) DO UPDATE
+        `INSERT INTO public.tb_games_presence (id_user, kind, day, seconds, last_beat_at)
+         VALUES ($1, $2, (NOW() AT TIME ZONE '${TZ}')::date, 0, NOW())
+         ON CONFLICT (id_user, kind, day) DO UPDATE
             SET seconds = LEAST(
                             public.tb_games_presence.seconds + ${credito},
                             ${GamesScore.DAILY_CAP_SECONDS}
                           ),
                 last_beat_at = NOW()
          RETURNING seconds, day`,
-        [id_user]
+        [id_user, kind]
       );
       return r.rows[0];
     });
