@@ -83,7 +83,13 @@ const TERRITORIAL_KINDS = new Set(["condo", "neighborhood"]);
 // manda modalidade desconhecida para a política mais restritiva — sem esta
 // linha as três nasceriam com contagem escondida e feed só para membro, e
 // ninguém entenderia por que a comunidade do Civic parece um condomínio.
-const SUBJECT_KINDS = new Set(["pet", "car", "games"]);
+//
+// `finance` (mig 229) entra aqui pela mesma razão, e com um motivo a mais: ela
+// é a plataforma financeira da Freelandoo INTEIRA, onde ninguém entra e todo
+// mundo publica. Caindo no default territorial, o feed exigiria membresia — e
+// como não existe membresia ali, a tela ficaria vazia para todo mundo, para
+// sempre, sem erro nenhum aparecer.
+const SUBJECT_KINDS = new Set(["pet", "car", "games", "finance"]);
 
 /**
  * Política da comunidade. Modalidade desconhecida cai na MAIS RESTRITIVA de

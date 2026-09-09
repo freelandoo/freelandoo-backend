@@ -829,17 +829,26 @@ class CommunityService {
         const id_portfolio_item = body?.id_portfolio_item;
         if (!id_portfolio_item) return { error: "Post não informado." };
 
-        // Precisa ser membro da comunidade.
-        const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
-        if (!membership) {
-          return { error: "Você precisa ser membro para publicar na comunidade." };
-        }
-        // E o post tem que ser dele (anti-spoof).
-        const owns = await CommunityStorage.itemBelongsToUser(pool, id_portfolio_item, id_user);
-        if (!owns) return { error: "Este post não é seu." };
-
         const community = await CommunityStorage.getById(pool, params.id_profile);
         if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+        // Precisa ser membro da comunidade — MENOS no Financeiro (mig 229), que
+        // é a plataforma do site inteiro e onde ninguém entra: exigir membresia
+        // ali seria cobrar uma porta que não existe, e o composer devolveria
+        // "você precisa ser membro" a todo usuário logado. É a mesma leitura da
+        // plataforma de games, onde o botão de Entrar sumiu; a diferença é que
+        // lá o espaço é de uma pessoa e aqui é de todas.
+        if (community.kind !== "finance") {
+          const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
+          if (!membership) {
+            return { error: "Você precisa ser membro para publicar na comunidade." };
+          }
+        }
+        // E o post tem que ser dele (anti-spoof). Vale para o Financeiro
+        // também: sem membresia, ESTE é o único guard que impede alguém de
+        // pendurar o post de um desconhecido no mural de todo mundo.
+        const owns = await CommunityStorage.itemBelongsToUser(pool, id_portfolio_item, id_user);
+        if (!owns) return { error: "Este post não é seu." };
 
         // Post exclusivo de OUTRA comunidade privada não pode ser republicado.
         const exclusiveOf = await CommunityStorage.getItemExclusiveCommunity(pool, id_portfolio_item);
