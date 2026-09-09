@@ -25,6 +25,7 @@
 const jwt = require("jsonwebtoken");
 const pool = require("../databases");
 const GameProfileStorage = require("../storages/GameProfileStorage");
+const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const PlatformActivityStorage = require("../storages/PlatformActivityStorage");
 const GamesScore = require("../utils/gamesScore");
 const FeatureFlagService = require("./FeatureFlagService");
@@ -497,6 +498,55 @@ class GameProfileService {
         total: totals.total,
         total_minutes: Number(totals.minutes),
         locked: false,
+      };
+    });
+  }
+
+  /**
+   * O CABEÇALHO DO PERFIL GAMER DE ALGUÉM: quem é a pessoa e o que ela joga.
+   *
+   * ⚠️ ESTA É A PORTA DO *CONTEXTO* DA PLATAFORMA. Games é uma casa só (mig
+   * 232) — o feed é de todos e a casa é do admin —, mas o que está DENTRO dela
+   * é de cada um. Entrar pelo perfil de alguém é pedir para ver o recorte
+   * DAQUELA pessoa, e é esta porta que monta o cabeçalho. As outras duas
+   * metades já têm as delas: a estante em `userShelf` (que carrega a
+   * privacidade da estante) e os posts na porta da comunidade.
+   *
+   * ⚠️ O GATE É `games` E NÃO `games_conexao`. O jogo atual é DIGITADO à mão e
+   * não passa por plataforma nenhuma: gateá-lo pela flag da conexão faria
+   * desligar a Steam esconder o que a pessoa escreveu com o próprio teclado —
+   * a mesma armadilha que o ranking de atividade já teve de desviar.
+   *
+   * ⚠️ O JOGO ATUAL É PÚBLICO, e isso é decisão, não esquecimento. Ele é uma
+   * declaração deliberada ("é isto que eu estou jogando"), escrita para
+   * aparecer no cabeçalho da plataforma; quem não quer anunciá-lo apaga o
+   * campo. A estante é o oposto — ela chega inteira da Steam, sem ninguém
+   * escolher item por item —, e é por isso que só ela tem `visibility`.
+   */
+  static async publicProfile(viewer_id, username) {
+    return runWithLogs(log, "publicProfile", () => ({ viewer_id, username }), async () => {
+      const blocked = await this._assertActivityEnabled();
+      if (blocked) return blocked;
+
+      // @username e não id: é o que cabe numa URL que alguém vai mandar por
+      // mensagem ("olha o meu games"), e é o mesmo endereçamento do "Frente a
+      // frente". O id_user sai NA RESPOSTA — é ele que a estante e o recorte
+      // de posts usam depois, sem a página ter de adivinhá-lo.
+      const owner = await GameProfileStorage.findUserByUsername(
+        pool,
+        String(username || "").replace(/^@/, "")
+      );
+      if (!owner) return { error: "Perfil não encontrado.", statusCode: 404 };
+
+      const subject = await SubjectCommunityStorage.getCurrentGame(pool, owner.id_user);
+      return {
+        owner: this._card(owner),
+        subject,
+        // Quem olha o próprio contexto EDITA; quem olha o de outra pessoa LÊ.
+        // A resposta vem do servidor porque o front compara ids que ele mesmo
+        // carregou de duas origens diferentes — e a que discordasse abriria o
+        // "Salvar" do jogo de um sobre a linha de outro.
+        is_me: String(viewer_id) === String(owner.id_user),
       };
     });
   }

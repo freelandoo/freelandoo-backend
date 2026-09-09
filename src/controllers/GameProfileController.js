@@ -105,6 +105,11 @@ class GameProfileController {
     return sendServiceResult(res, result);
   }
 
+  static async publicProfile(req, res) {
+    const result = await GameProfileService.publicProfile(req.user.id_user, req.params.username);
+    return sendServiceResult(res, result);
+  }
+
   static async userShelf(req, res) {
     const result = await GameProfileService.userShelf(req.user.id_user, req.params.id_user, {
       limit: Math.min(Number(req.query.limit) || 60, 200),

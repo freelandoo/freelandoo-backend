@@ -685,10 +685,34 @@ class CommunityService {
         const limit = Math.min(Math.max(Number(query?.limit) || 12, 1), 24);
 
         // +1 em cada fonte garante que o top-`limit` da mescla está completo.
-        // ⚠️ `author=me` É O RECORTE DA VITRINE DE POSTS, e o valor é lido do
-        // TOKEN, nunca da querystring: aceitar um id ali daria a qualquer um
-        // uma listagem por autor dentro de uma comunidade fechada.
-        const author_id_user = query?.author === "me" ? viewer?.id_user || null : null;
+        //
+        // ⚠️ `author` É O RECORTE DA VITRINE DE POSTS, E ELE TEM DOIS REGIMES.
+        //
+        // `me` sai do TOKEN e vale em QUALQUER comunidade — é a pessoa pedindo
+        // os próprios posts, e ela já pode vê-los.
+        //
+        // Um ID explícito ("os posts do @fulano dentro da plataforma") só é
+        // aceito quando a comunidade é PLATAFORMA, e essa condição é a regra
+        // inteira: numa plataforma ninguém entra, o feed é público e
+        // comunitário, então filtrar por autor não revela nada que rolar o
+        // mural já não revelasse. Numa comunidade FECHADA seria o oposto —
+        // daria a qualquer um uma listagem por autor de dentro de um lugar em
+        // que ele não entrou. Fora da plataforma o id é IGNORADO (cai no mural
+        // inteiro, que é o que ele já podia ver), nunca recusado: a porta é a
+        // mesma para as sete modalidades, e um 400 aqui quebraria o mural de
+        // quem só passou o parâmetro à toa.
+        const isPlatform = PLATFORM_KINDS.includes(gate.community?.kind);
+        // UUID conferido antes de virar parâmetro: id torto não é injeção (o
+        // valor vai bindado), mas estoura 22P02 no cast e derrubaria a leitura
+        // inteira do mural com erro de servidor.
+        const asked = String(query?.author || "");
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(asked);
+        const author_id_user =
+          asked === "me"
+            ? viewer?.id_user || null
+            : isPlatform && isUuid
+              ? asked
+              : null;
 
         const [postRows, recadoRows] = await Promise.all([
           CommunityStorage.listCommunityFeedPosts(pool, params.id_profile, {

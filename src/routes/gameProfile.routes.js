@@ -70,6 +70,23 @@ router.post(
   asyncHandler(GameProfileController.presenceBeat)
 );
 
+// O CABEÇALHO do perfil gamer de alguém (quem é + o jogo atual). É a porta do
+// CONTEXTO da plataforma: games é uma casa só, e visitá-la pelo perfil de
+// alguém troca o recorte pessoal de dentro dela.
+//
+// ⚠️ `requireFeature("games")`, NUNCA "games_conexao": o jogo atual é digitado
+// à mão e não depende de plataforma conectada nenhuma. As duas rotas abaixo
+// (estante e comparação) usam a outra flag porque elas SÃO a conexão.
+//
+// Fica antes de "/gamer/:provider/connect" pela disciplina do arquivo: caminho
+// mais específico primeiro, para nenhum parâmetro engolir um literal.
+router.get(
+  "/gamer/profile/:username",
+  authMiddleware,
+  requireFeature("games"),
+  asyncHandler(GameProfileController.publicProfile)
+);
+
 router.get(
   "/gamer/shelf/:id_user",
   authMiddleware,
