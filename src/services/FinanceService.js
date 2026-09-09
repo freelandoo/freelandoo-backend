@@ -11,7 +11,7 @@
 // um campo e ele aparecesse numa tela e não na outra.
 
 const pool = require("../databases");
-const FinanceStorage = require("../storages/FinanceStorage");
+const PlatformStorage = require("../storages/PlatformStorage");
 const PlatformActivityStorage = require("../storages/PlatformActivityStorage");
 const GamesScore = require("../utils/gamesScore");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -26,7 +26,7 @@ class FinanceService {
    */
   static async getPlatform() {
     return runWithLogs(log, "getPlatform", () => ({}), async () => {
-      const platform = await FinanceStorage.getOrCreatePlatform(pool);
+      const platform = await PlatformStorage.getOrCreatePlatform(pool, PlatformStorage.FINANCE_KIND);
       if (!platform) {
         // Só acontece em base sem NENHUM usuário: não há a quem pendurar a
         // linha. Recusar aqui é melhor que devolver uma plataforma inventada.
@@ -78,8 +78,8 @@ class FinanceService {
       if (!place) return { metric: "activity", scope, place: null, weights, rows: [], me: null };
 
       const [rows, me] = await Promise.all([
-        PlatformActivityStorage.rankByActivity(pool, { id_user: viewer_id, scope, limit, kind: FinanceStorage.FINANCE_KIND }),
-        PlatformActivityStorage.getActivityRank(pool, { id_user: viewer_id, scope, kind: FinanceStorage.FINANCE_KIND }),
+        PlatformActivityStorage.rankByActivity(pool, { id_user: viewer_id, scope, limit, kind: PlatformStorage.FINANCE_KIND }),
+        PlatformActivityStorage.getActivityRank(pool, { id_user: viewer_id, scope, kind: PlatformStorage.FINANCE_KIND }),
       ]);
 
       const shape = (r) => ({
@@ -126,7 +126,7 @@ class FinanceService {
       if (!id_user) return { error: "Usuário não autenticado" };
       const row = await PlatformActivityStorage.beat(pool, id_user, {
         resume: !!opts.resume,
-        kind: FinanceStorage.FINANCE_KIND,
+        kind: PlatformStorage.FINANCE_KIND,
       });
       // Resposta curta de propósito: isto é chamado a cada 2 minutos por cada
       // pessoa online. Devolver o ranking aqui multiplicaria por 30 o custo de

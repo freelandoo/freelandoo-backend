@@ -12,6 +12,8 @@ const CondoStorage = require("../storages/CondoStorage");
 const StoryStorage = require("../storages/StoryStorage");
 const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
 const CommunityPolicy = require("../utils/communityPolicy");
+const AuthStorage = require("../storages/AuthStorage");
+const { PLATFORM_KINDS } = require("../utils/gamesScore");
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const Subject = require("../utils/subjectCommunities");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -286,7 +288,7 @@ class CommunityService {
       "updatePrivacy",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile, privacy: body?.privacy }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
 
         const privacy = body?.privacy === "private" ? "private" : body?.privacy === "public" ? "public" : null;
@@ -514,12 +516,37 @@ class CommunityService {
     );
   }
 
-  // ─── Edição de perfil (só líder) ──────────────────────────────────────────────
-  // Guard reutilizável: carrega a comunidade e confirma que o user é o líder.
-  static async _assertLeader(id_user, id_profile) {
+  // ─── Edição da comunidade ─────────────────────────────────────────────────────
+  /**
+   * Guard reutilizável de TODA escrita de administração: perfil, tema, foto,
+   * banner, privacidade, temporada e avisos passam por aqui.
+   *
+   * ⚠️ E ELE TEM DOIS REGIMES, porque existem dois tipos de espaço nesta tela.
+   * Numa COMUNIDADE (comum, condomínio, bairro, pet, carro) quem manda é o
+   * LÍDER — ela é dele. Numa PLATAFORMA (games e Financeiro, migs 229/232)
+   * não existe líder: `id_leader_user` é NULL de propósito, ninguém entra e
+   * ninguém é promovido, e quem edita nome, foto e CORES é o ADMIN DA
+   * PLATAFORMA (pedido do Alex, 2026-09-09: "só o admin da plataforma pode
+   * alterar (...) e as cores só o admin pode alterar").
+   *
+   * ⚠️ O REGIME É ESCOLHIDO NUM LUGAR SÓ. Espalhado por cada escrita, a que
+   * esquecesse deixaria uma porta da plataforma aberta para quem abrisse a
+   * tela primeiro — e, como o líder é NULL, nem o admin conseguiria usar as
+   * outras.
+   */
+  static async _assertCommunityAdmin(id_user, id_profile) {
     if (!id_user) return { error: "Usuário não autenticado" };
     const community = await CommunityStorage.getById(pool, id_profile);
     if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+    if (PLATFORM_KINDS.includes(community.kind)) {
+      const isPlatformAdmin = await AuthStorage.isAdmin(pool, id_user);
+      if (!isPlatformAdmin) {
+        return { error: "Só o administrador da plataforma pode editar.", statusCode: 403 };
+      }
+      return { community };
+    }
+
     if (String(community.id_leader_user) !== String(id_user)) {
       return { error: "Apenas o líder pode editar a comunidade." };
     }
@@ -532,7 +559,7 @@ class CommunityService {
       "updateProfile",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
 
         const patch = {};
@@ -594,7 +621,7 @@ class CommunityService {
       "setAvatar",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
         const updated = await CommunityStorage.setAvatar(
           pool,
@@ -612,7 +639,7 @@ class CommunityService {
       "setBanner",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
         const updated = await CommunityStorage.setBanner(
           pool,
@@ -658,17 +685,24 @@ class CommunityService {
         const limit = Math.min(Math.max(Number(query?.limit) || 12, 1), 24);
 
         // +1 em cada fonte garante que o top-`limit` da mescla está completo.
+        // ⚠️ `author=me` É O RECORTE DA VITRINE DE POSTS, e o valor é lido do
+        // TOKEN, nunca da querystring: aceitar um id ali daria a qualquer um
+        // uma listagem por autor dentro de uma comunidade fechada.
+        const author_id_user = query?.author === "me" ? viewer?.id_user || null : null;
+
         const [postRows, recadoRows] = await Promise.all([
           CommunityStorage.listCommunityFeedPosts(pool, params.id_profile, {
             viewer_id_user: viewer?.id_user || null,
             limit: limit + 1,
             before_ts,
             before_key,
+            author_id_user,
           }),
           CommunityStorage.listCommunityRecados(pool, params.id_profile, {
             limit: limit + 1,
             before_ts,
             before_key,
+            author_id_user,
           }),
         ]);
 
@@ -832,13 +866,16 @@ class CommunityService {
         const community = await CommunityStorage.getById(pool, params.id_profile);
         if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
 
-        // Precisa ser membro da comunidade — MENOS no Financeiro (mig 229), que
-        // é a plataforma do site inteiro e onde ninguém entra: exigir membresia
-        // ali seria cobrar uma porta que não existe, e o composer devolveria
-        // "você precisa ser membro" a todo usuário logado. É a mesma leitura da
-        // plataforma de games, onde o botão de Entrar sumiu; a diferença é que
-        // lá o espaço é de uma pessoa e aqui é de todas.
-        if (community.kind !== "finance") {
+        // Precisa ser membro da comunidade — MENOS numa PLATAFORMA (o
+        // Financeiro da mig 229 e o games da mig 232), que é do site inteiro e
+        // onde ninguém entra: exigir membresia ali seria cobrar uma porta que
+        // não existe, e o composer devolveria "você precisa ser membro" a todo
+        // usuário logado.
+        //
+        // ⚠️ FOI ISTO QUE FEZ O FEED DE GAMES NÃO SER COMUNITÁRIO até a mig
+        // 232: sem membros e sem a isenção, só o dono do espaço publicava nele.
+        // "O feed é da plataforma" (Alex, 2026-09-09) mora nesta linha.
+        if (!PLATFORM_KINDS.includes(community.kind)) {
           const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
           if (!membership) {
             return { error: "Você precisa ser membro para publicar na comunidade." };
@@ -1069,7 +1106,7 @@ class CommunityService {
       "setGoal",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
 
         const title = String(body?.title || "").trim();
@@ -1118,7 +1155,7 @@ class CommunityService {
       "clearGoal",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
         return CommunityStorage.clearGoal(pool, params.id_profile);
       }
@@ -1148,7 +1185,7 @@ class CommunityService {
       "createAnnouncement",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
         const text = String(body?.body || "").trim();
         if (!text) return { error: "Escreva o recado." };
@@ -1169,7 +1206,7 @@ class CommunityService {
       "deleteAnnouncement",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile, id: params?.id_announcement }),
       async () => {
-        const guard = await this._assertLeader(user?.id_user, params?.id_profile);
+        const guard = await this._assertCommunityAdmin(user?.id_user, params?.id_profile);
         if (guard.error) return guard;
         const ok = await CommunityStorage.deleteAnnouncement(pool, params.id_profile, params.id_announcement);
         return { ok };
@@ -1186,11 +1223,11 @@ class CommunityService {
       async () => {
         const id_user = user?.id_user;
         if (!id_user) return { error: "Usuário não autenticado" };
-        const community = await CommunityStorage.getById(pool, params.id_profile);
-        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
-        if (String(community.id_leader_user) !== String(id_user)) {
-          return { error: "Apenas o líder pode alterar o tema." };
-        }
+        // ⚠️ PASSA PELO MESMO GUARD DAS OUTRAS ESCRITAS. Aqui havia uma cópia
+        // da checagem de líder, e era ela que deixaria as CORES de fora do
+        // regime de plataforma — justamente o que o pedido do Alex nomeia.
+        const guard = await this._assertCommunityAdmin(id_user, params.id_profile);
+        if (guard.error) return guard;
         const updated = await CommunityStorage.updateTheme(
           pool,
           params.id_profile,

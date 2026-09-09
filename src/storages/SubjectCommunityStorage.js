@@ -109,6 +109,39 @@ class SubjectCommunityStorage {
     return r.rows[0];
   }
 
+  /** O jogo atual de UMA PESSOA (mig 232), ou null se ela nunca escolheu. */
+  static async getCurrentGame(conn, id_user) {
+    const r = await conn.query(
+      `SELECT platform, game_title, gamertag
+         FROM public.tb_user_current_game WHERE id_user = $1 LIMIT 1`,
+      [id_user]
+    );
+    return r.rowCount ? { kind: "games", ...r.rows[0] } : null;
+  }
+
+  /**
+   * Grava o jogo atual da pessoa.
+   *
+   * Uma linha por usuário — é o que "atual" quer dizer. O `updated_at` é
+   * escrito à mão porque a coluna só tem default no INSERT; sem ele, a linha
+   * de quem troca de jogo continuaria com a data da primeira escolha.
+   */
+  static async upsertCurrentGame(conn, id_user, game) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_user_current_game
+         (id_user, platform, game_title, gamertag)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id_user) DO UPDATE
+          SET platform   = EXCLUDED.platform,
+              game_title = EXCLUDED.game_title,
+              gamertag   = EXCLUDED.gamertag,
+              updated_at = NOW()
+       RETURNING platform, game_title, gamertag`,
+      [id_user, game.platform ?? null, game.game_title ?? null, game.gamertag ?? null]
+    );
+    return r.rows[0];
+  }
+
   static async upsertGame(conn, id_profile, game) {
     const r = await conn.query(
       `INSERT INTO public.tb_community_game
@@ -208,14 +241,12 @@ class SubjectCommunityStorage {
       );
       return r.rowCount ? { kind: "pet", ...r.rows[0] } : null;
     }
-    if (kind === "games") {
-      const r = await conn.query(
-        `SELECT platform, game_title, gamertag
-           FROM public.tb_community_game WHERE id_profile = $1 LIMIT 1`,
-        [id_profile]
-      );
-      return r.rowCount ? { kind: "games", ...r.rows[0] } : null;
-    }
+    // ⚠️ GAMES NÃO TEM ASSUNTO DE COMUNIDADE DESDE A MIG 232. O jogo atual é
+    // do USUÁRIO (`tb_user_current_game`), como a Carteira é dentro do
+    // Financeiro: a plataforma é o feed, e "o que EU jogo agora" acompanha a
+    // pessoa. Devolver aqui o jogo da linha da plataforma mostraria o jogo da
+    // casa a todo visitante como se fosse o dele.
+    if (kind === "games") return null;
     if (kind === "car") {
       const r = await conn.query(
         `SELECT cm.id_car_model, cm.brand_code, cm.brand_label,

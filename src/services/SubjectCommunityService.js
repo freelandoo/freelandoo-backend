@@ -4,9 +4,14 @@
 // As três criam o MESMO perfil-comunidade que a comunidade temática, o
 // condomínio e o bairro criam — o que muda é o que faz o assunto existir:
 //   • pet   → espécie + raça (ou vira-lata), uma por bicho;
-//   • games → plataforma + jogo, uma por jogo da pessoa;
 //   • car   → marca + modelo, UMA no site inteiro (o primeiro funda, o resto
 //             entra).
+//
+// ⚠️ GAMES SAIU DESTA LISTA NA MIG 232: ele deixou de ser o espaço de cada
+// pessoa e virou PLATAFORMA do site inteiro, como o Financeiro. O que sobrou
+// aqui dele é a porta de abrir (get-or-create do singleton) e o JOGO ATUAL,
+// que é do USUÁRIO — a mesma divisão do Financeiro, onde o feed é da
+// plataforma e a Carteira é de cada um.
 //
 // Nenhuma delas passa pelo gate de nível 5 nem pelos tetos de comunidade: são
 // utilidade pessoal, como o condomínio e o bairro (mig 196/204). Cobrar
@@ -16,6 +21,7 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
+const PlatformStorage = require("../storages/PlatformStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const fipe = require("../integrations/fipe/catalog");
@@ -127,53 +133,77 @@ class SubjectCommunityService {
   }
 
   // ─── Games ──────────────────────────────────────────────────────────────────
-  static async createGame(user, payload) {
+  /**
+   * ABRE A PLATAFORMA DE GAMES — não cria a de ninguém (mig 232).
+   *
+   * Antes, esta porta criava um espaço POR PESSOA. Agora ela devolve sempre a
+   * MESMA linha, e quem garante isso é o banco (`ux_profile_games_singleton`):
+   * duas primeiras aberturas simultâneas viram um insert e um conflito, e o
+   * perdedor relê a linha do vencedor. Sem o índice, a plataforma nasceria
+   * duplicada e os posts se dividiriam entre dois murais.
+   *
+   * ⚠️ A FLAG CONTINUA VALENDO na rota (`requireFeature("games")`): com o
+   * ambiente desligado no Painel de Controle, ninguém abre a plataforma — nem
+   * a cria sem querer.
+   */
+  static async openGamesPlatform(user) {
     return runWithLogs(
       log,
-      "createGame",
-      () => ({ id_user: user?.id_user, platform: payload?.platform }),
+      "openGamesPlatform",
+      () => ({ id_user: user?.id_user }),
       async () => {
-        const id_user = user?.id_user;
-        if (!id_user) return { error: "Usuário não autenticado" };
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
         const gate = await this._assertEnabled("games");
         if (gate) return gate;
+        const community = await PlatformStorage.getOrCreatePlatform(
+          pool,
+          PlatformStorage.GAMES_KIND
+        );
+        if (!community) return { error: "Não foi possível abrir a plataforma de games." };
+        return { community };
+      }
+    );
+  }
 
+  /** O jogo atual de quem está pedindo. É DELE, não do espaço (mig 232). */
+  static async getCurrentGame(user) {
+    return runWithLogs(
+      log,
+      "getCurrentGame",
+      () => ({ id_user: user?.id_user }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const subject = await SubjectCommunityStorage.getCurrentGame(pool, user.id_user);
+        return { subject };
+      }
+    );
+  }
+
+  /**
+   * Troca o jogo atual de quem está pedindo.
+   *
+   * ⚠️ NÃO HÁ GATE DE LÍDER AQUI, e não é esquecimento: o alvo da escrita é a
+   * PRÓPRIA pessoa (a chave é o `id_user` do token), não um espaço de alguém.
+   * É a mesma leitura da Carteira dentro do Financeiro — a plataforma é de
+   * todos, o que está dentro dela é de cada um.
+   */
+  static async setCurrentGame(user, payload) {
+    return runWithLogs(
+      log,
+      "setCurrentGame",
+      () => ({ id_user: user?.id_user, platform: payload?.platform }),
+      async () => {
+        if (!user?.id_user) return { error: "Usuário não autenticado" };
+        const gate = await this._assertEnabled("games");
+        if (gate) return gate;
         const game = Subject.validateGame(payload);
         if (game.error) return { error: game.error, statusCode: 400 };
-        // Sem nome próprio a comunidade se chama como o jogo — é o que a pessoa
-        // esperaria ver. Sem jogo escolhido ainda, fica o rascunho, que o dono
-        // troca no headcard.
-        const { display_name, bio } = Subject.normalizeCommon(payload);
-        const name = display_name || game.game_title || Subject.PLACEHOLDER_NAME.games;
-
-        const client = await pool.connect();
-        try {
-          await client.query("BEGIN");
-          const community = await this._createShell(client, {
-            id_user,
-            kind: "games",
-            display_name: name,
-            bio,
-            avatar_url: payload?.avatar_url,
-          });
-          const row = await SubjectCommunityStorage.createGame(
-            client,
-            community.id_profile,
-            game
-          );
-          await client.query("COMMIT");
-          return { community, game: row };
-        } catch (err) {
-          try {
-            await client.query("ROLLBACK");
-          } catch {
-            /* noop */
-          }
-          log.error("createGame.fail", { id_user, error: err.message });
-          return { error: "Não foi possível criar a comunidade do jogo." };
-        } finally {
-          client.release();
-        }
+        const row = await SubjectCommunityStorage.upsertCurrentGame(
+          pool,
+          user.id_user,
+          game
+        );
+        return { subject: { kind: "games", ...row } };
       }
     );
   }
@@ -333,7 +363,11 @@ class SubjectCommunityService {
 
   // ─── Edição do assunto (dentro da página, sem modal) ────────────────────────
   /**
-   * Troca o assunto de uma comunidade de pet/carro/games. Só o líder.
+   * Troca o assunto de uma comunidade de pet/carro. Só o líder.
+   *
+   * ⚠️ GAMES NÃO PASSA MAIS POR AQUI (mig 232): o jogo atual é da PESSOA, e
+   * quem o grava é `setCurrentGame`, sem gate de líder — porque o alvo da
+   * escrita é quem está pedindo, e não o espaço de alguém.
    *
    * O carro é o caso interessante: escolher o modelo é o momento em que a
    * unicidade passa a valer (até então `id_car_model` é NULL, e NULLs não
@@ -370,20 +404,6 @@ class SubjectCommunityService {
           return { subject: { kind: "pet", ...row } };
         }
 
-        if (params.kind === "games") {
-          const game = Subject.validateGame(payload);
-          if (game.error) return { error: game.error, statusCode: 400 };
-          const row = await SubjectCommunityStorage.upsertGame(pool, params.id_profile, game);
-          if (game.game_title) {
-            await SubjectCommunityStorage.renameIfPlaceholder(
-              pool,
-              params.id_profile,
-              Subject.PLACEHOLDER_NAME.games,
-              game.game_title
-            );
-          }
-          return { subject: { kind: "games", ...row } };
-        }
 
         // Carro
         const car = Subject.validateCar(payload);

@@ -685,7 +685,16 @@ class CommunityStorage {
 
   // Feed unificado (posts + bees, cronológico) na MESMA projeção do /feed.
   // Sem o gate de assinatura da vitrine: o que vale é ser membro + post válido.
-  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key }) {
+  /**
+   * ⚠️ `author_id_user` É O RECORTE DA VITRINE, e não um filtro qualquer.
+   * Dentro de uma PLATAFORMA (games, mig 232) o feed é de todo mundo, mas a
+   * página "Posts" é do PERFIL DE QUEM OLHA — "o feed é da plataforma; a
+   * estante, o jogo atual e os posts são do perfil do usuário" (Alex,
+   * 2026-09-09). Passando NULL, nada muda: é a MESMA consulta do mural.
+   * Uma segunda consulta "só dos meus" daria dois lugares decidindo o que é
+   * post daquele espaço.
+   */
+  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key, author_id_user }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 24);
     const r = await conn.query(
       `SELECT
@@ -768,9 +777,17 @@ class CommunityStorage {
            )
          )
          AND ($4::timestamptz IS NULL OR (ppi.published_at, ppi.id_portfolio_item::text) < ($4::timestamptz, $5::text))
+         AND ($6::uuid IS NULL OR pro.id_user = $6::uuid)
        ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC
        LIMIT $3`,
-      [id_community, viewer_id_user || null, lim, before_ts || null, before_key || null]
+      [
+        id_community,
+        viewer_id_user || null,
+        lim,
+        before_ts || null,
+        before_key || null,
+        author_id_user || null,
+      ]
     );
     return r.rows;
   }
@@ -813,7 +830,9 @@ class CommunityStorage {
   // Lista recados (texto) já no shape FeedPost (via shapeRow). Identidade do autor
   // = perfil de maior XP (mesmo critério do ranking de temporada). Paginação
   // unificada com os posts via chave textual ('r' || id) na MESMA stream.
-  static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key }) {
+  // O mesmo recorte por autor do `listCommunityFeedPosts` — sem ele, a vitrine
+  // "meus posts" traria os recados de todo mundo no meio dos posts do dono.
+  static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key, author_id_user }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 25);
     const r = await conn.query(
       `SELECT
@@ -853,9 +872,10 @@ class CommunityStorage {
       WHERE cfi.id_community_profile = $1
         AND cfi.kind = 'recado'
         AND ($2::timestamptz IS NULL OR (cfi.created_at, ('r' || cfi.id::text)) < ($2::timestamptz, $3::text))
+        AND ($5::uuid IS NULL OR cfi.id_author_user = $5::uuid)
       ORDER BY cfi.created_at DESC, cfi.id DESC
       LIMIT $4`,
-      [id_community, before_ts || null, before_key || null, lim]
+      [id_community, before_ts || null, before_key || null, lim, author_id_user || null]
     );
     return r.rows;
   }

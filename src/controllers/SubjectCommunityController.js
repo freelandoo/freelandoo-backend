@@ -19,9 +19,21 @@ class SubjectCommunityController {
   }
 
   // ─── Games ──────────────────────────────────────────────────────────────────
-  static async createGame(req, res) {
-    const result = await SubjectCommunityService.createGame(req.user, req.body || {});
-    return sendServiceResult(res, result, 201);
+  // 200 e não 201: esta porta quase nunca cria — ela ABRE a plataforma, que
+  // é uma só para o site inteiro (mig 232).
+  static async openGamesPlatform(req, res) {
+    const result = await SubjectCommunityService.openGamesPlatform(req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async getCurrentGame(req, res) {
+    const result = await SubjectCommunityService.getCurrentGame(req.user);
+    return sendServiceResult(res, result);
+  }
+
+  static async setCurrentGame(req, res) {
+    const result = await SubjectCommunityService.setCurrentGame(req.user, req.body || {});
+    return sendServiceResult(res, result);
   }
 
   // ─── Carro ──────────────────────────────────────────────────────────────────

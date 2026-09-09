@@ -54,12 +54,38 @@ router.post(
   asyncHandler(SubjectCommunityController.createOrJoinCar)
 );
 
-// ─── Games ────────────────────────────────────────────────────────────────────
+// ─── Games (mig 232: PLATAFORMA, não o espaço de cada um) ─────────────────────
+// ⚠️ AS ROTAS LITERAIS VÊM ANTES DE QUALQUER PARÂMETRO. "/games/current" depois
+// de "/games/:id_profile" seria engolido pelo parâmetro — a mesma disciplina
+// que "/bees/timeline" e "/cars/brands" já exigiram.
+router.get(
+  "/games/platform",
+  authMiddleware,
+  requireFeature("games"),
+  asyncHandler(SubjectCommunityController.openGamesPlatform)
+);
+// Mantida porque o front antigo abre a plataforma com POST. Ela faz o MESMO
+// get-or-create: nunca mais cria um segundo espaço.
 router.post(
   "/games",
   authMiddleware,
   requireFeature("games"),
-  asyncHandler(SubjectCommunityController.createGame)
+  asyncHandler(SubjectCommunityController.openGamesPlatform)
+);
+
+// O JOGO ATUAL é do USUÁRIO — sem id de comunidade na URL, porque não existe
+// espaço de ninguém para nomear.
+router.get(
+  "/games/current",
+  authMiddleware,
+  requireFeature("games"),
+  asyncHandler(SubjectCommunityController.getCurrentGame)
+);
+router.patch(
+  "/games/current",
+  authMiddleware,
+  requireFeature("games"),
+  asyncHandler(SubjectCommunityController.setCurrentGame)
 );
 
 // ─── Edição do assunto (o headcard da própria comunidade) ────────────────────
@@ -84,12 +110,14 @@ router.patch(
   withKind("car"),
   asyncHandler(SubjectCommunityController.updateSubject)
 );
-router.patch(
-  "/games/:id_profile",
-  authMiddleware,
-  requireFeature("games"),
-  withKind("games"),
-  asyncHandler(SubjectCommunityController.updateSubject)
+// ⚠️ APOSENTADA (mig 232). O jogo atual deixou de ser o assunto de um espaço
+// e virou coisa da pessoa; um cliente antigo que ainda mande PATCH aqui
+// estaria escrevendo no espaço de outro. 410 e não 404: a diferença entre
+// "nunca existiu" e "mudou de lugar" é o que faz alguém achar o lugar novo.
+router.patch("/games/:id_profile", authMiddleware, (_req, res) =>
+  res.status(410).json({
+    error: "O jogo atual agora é do seu perfil: use PATCH /games/current.",
+  })
 );
 
 // ─── Meus espaços ─────────────────────────────────────────────────────────────
