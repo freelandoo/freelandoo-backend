@@ -34,10 +34,14 @@ const FEATURE_FLAG = Object.freeze({
 // página no modo de edição). Estes nomes são o rascunho que o dono substitui —
 // e o backend os usa para saber se pode renomear sozinho quando o assunto
 // finalmente chega: nome que o dono trocou nunca é sobrescrito.
+//
+// ⚠️ GAMES SAIU DA LISTA (mig 232): ele deixou de ser o espaço de cada um, e a
+// linha única da plataforma foi rebatizada para "Games" pela própria migration.
+// Manter o rascunho aqui prometeria um espaço de games por pessoa que não
+// existe mais.
 const PLACEHOLDER_NAME = Object.freeze({
   pet: "Meu pet",
   car: "Meu carro",
-  games: "Meus games",
 });
 
 const PET_SPECIES = Object.freeze(["dog", "cat", "other"]);

@@ -98,16 +98,15 @@ class SubjectCommunityStorage {
   }
 
   // ─── Games ──────────────────────────────────────────────────────────────────
-  static async createGame(conn, id_profile, game) {
-    const r = await conn.query(
-      `INSERT INTO public.tb_community_game
-         (id_profile, platform, game_title, gamertag)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id_profile, platform, game_title, gamertag`,
-      [id_profile, game.platform, game.game_title, game.gamertag ?? null]
-    );
-    return r.rows[0];
-  }
+  //
+  // ⚠️ `createGame` E `upsertGame` FORAM REMOVIDOS (mig 232), e não apenas
+  // deixados sem chamador. Eles ESCREVIAM em `tb_community_game`, que a
+  // migration esvaziou para games justamente para que o jogo da casa não
+  // pudesse reaparecer como se fosse o de cada visitante. Um escritor vivo
+  // sem caller é o convite para alguém religá-lo — e o estrago não daria
+  // erro: voltaria só a mostrar o jogo de um no cabeçalho de todos.
+  //
+  // O jogo atual é da PESSOA e mora logo abaixo.
 
   /** O jogo atual de UMA PESSOA (mig 232), ou null se ela nunca escolheu. */
   static async getCurrentGame(conn, id_user) {
@@ -142,20 +141,6 @@ class SubjectCommunityStorage {
     return r.rows[0];
   }
 
-  static async upsertGame(conn, id_profile, game) {
-    const r = await conn.query(
-      `INSERT INTO public.tb_community_game
-         (id_profile, platform, game_title, gamertag)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (id_profile) DO UPDATE
-          SET platform   = EXCLUDED.platform,
-              game_title = EXCLUDED.game_title,
-              gamertag   = EXCLUDED.gamertag
-       RETURNING id_profile, platform, game_title, gamertag`,
-      [id_profile, game.platform ?? null, game.game_title ?? null, game.gamertag ?? null]
-    );
-    return r.rows[0];
-  }
 
   // ─── Carro ──────────────────────────────────────────────────────────────────
   /**
