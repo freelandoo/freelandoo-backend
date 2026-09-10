@@ -262,6 +262,20 @@ async function processUserMedia(file) {
   );
 }
 
+// Compoe o video no servidor a partir do arquivo ORIGINAL em disco.
+// ⚠️ O 1o argumento e um CAMINHO, nao um Buffer: e isso que mantem os bytes do
+// celular (um 4K de 70s passa de 200MB) fora da memoria do Node. O
+// serializador do worker so desvia Buffers para arquivo; string passa direto, e
+// pai e filho leem o mesmo disco.
+async function composeVideoFromFile(inputPath, params = {}) {
+  return run(
+    "composeVideoFromFile",
+    [inputPath, params],
+    { aspect: params.aspect, has_overlay: !!params.overlayPath, has_pip: !!params.pipPath },
+    () => mediaProcessing.composeVideoFromFile(inputPath, params)
+  );
+}
+
 async function splitVideoIntoChunks(file, chunkSeconds = 60) {
   return run(
     "splitVideoIntoChunks",
@@ -290,6 +304,7 @@ module.exports = {
   startMediaWorker,
   processPortfolioMedia,
   processUserMedia,
+  composeVideoFromFile,
   splitVideoIntoChunks,
   processConversationAudio,
   processCourseVideo,

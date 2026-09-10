@@ -5,6 +5,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const sharp = require("sharp");
 const ffmpegPath = require("ffmpeg-static");
+const { buildCubeLut } = require("./composerLut");
 
 const MB = 1024 * 1024;
 
@@ -581,6 +582,18 @@ async function processVideo(file, options = {}) {
   }
 }
 
+// ⚠️ O upload de portfólio passou a chegar em DISCO (multer diskStorage), para
+// que o arquivo original do celular — que pode passar de 200MB num 4K — nunca
+// entre no heap do Node. Os processadores de sempre trabalham sobre Buffer,
+// então quem NÃO vai pelo caminho de composição lê o arquivo aqui, num lugar
+// só: espalhado pelos services, o caller que esquecesse receberia
+// `file.buffer === undefined` e falharia com "Arquivo nao enviado", que é a
+// mensagem errada para o problema certo.
+async function ensureFileBuffer(file) {
+  if (!file || file.buffer || !file.path) return file;
+  file.buffer = await fs.readFile(file.path);
+  return file;
+}
 async function processPortfolioMedia(file, mediaType, options = {}) {
   // Curtos (feed_kind='bees') aceitam imagem 9:16 além de 4:5; feed é 4:5 estrito.
   if (mediaType === "image") {
@@ -794,6 +807,7 @@ async function processConversationAudio(file) {
 }
 
 async function processUserMedia(file) {
+  await ensureFileBuffer(file);
   const mt = (file?.mimetype || "").toLowerCase();
   if (mt.startsWith("image/")) return processPostImage(file);
   if (mt.startsWith("video/")) return processVideo(file);
@@ -871,6 +885,296 @@ async function compressVideoFile(inputPath, outDir, options = {}) {
   return { outputPath, size };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPOSIÇÃO DE VÍDEO NO SERVIDOR
+//
+// O celular deixa de re-codificar: ele manda o ARQUIVO ORIGINAL mais os
+// parâmetros de corte/cor e um PNG transparente com o que foi desenhado por
+// cima (texto, vinheta, sobreposição de imagem). Aqui tudo vira UM passe de
+// ffmpeg — corte → escala → cor → grão → sobreposição → H.264.
+//
+// ⚠️ POR QUE ISTO EXISTE: o caminho antigo codificava DUAS vezes (uma no
+// aparelho, via canvas + WebCodecs/MediaRecorder, e outra aqui). A primeira já
+// jogava qualidade fora, travava a linha do tempo no iOS (buraco preto, quadro
+// congelado) e dependia de um encoder de navegador que o Safari implementa mal.
+// Passando o original, nenhum aparelho codifica nada e o resultado sai ao mesmo
+// tempo MELHOR e MENOR que o de antes.
+//
+// ⚠️ O ENQUADRAMENTO USA A MESMA CONTA DO PREVIEW (`uvWindow`, em
+// lib/composer/renderer.ts no front). Ela precisa continuar idêntica nos dois
+// lados: o que a pessoa vê no editor é o que sai publicado, e uma segunda régua
+// aqui faria o vídeo sair deslocado do que ela enquadrou com o dedo.
+const MAX_COMPOSE_SECONDS = 70;
+const COMPOSE_SHORT_SIDE = 1080; // 4K, 1440p e 1080p descem todos para cá.
+
+function evenDown(n) {
+  const r = Math.round(n);
+  return r % 2 === 0 ? r : r - 1;
+}
+
+/** Espelho de `outSize` do front: `base` é o LADO CURTO, não a largura. */
+function composeOutputSize(aspect, base = COMPOSE_SHORT_SIDE) {
+  const short = evenDown(base);
+  const w = aspect >= 1 ? evenDown(base * aspect) : short;
+  const h = aspect >= 1 ? short : evenDown(base / aspect);
+  return { w: Math.max(2, w), h: Math.max(2, h) };
+}
+
+/** Espelho de `uvWindow`: devolve o retângulo visível em PIXELS da fonte. */
+function composeCropRect(srcW, srcH, aspect, zoom, panX, panY) {
+  const sa = srcW / srcH || 1;
+  const ta = aspect;
+  let sx = 1;
+  let sy = 1;
+  if (sa > ta) sx = ta / sa;
+  else sy = sa / ta;
+  const z = Math.max(1, Number(zoom) || 1);
+  sx /= z;
+  sy /= z;
+  const px = Math.max(-1, Math.min(1, Number(panX) || 0));
+  const py = Math.max(-1, Math.min(1, Number(panY) || 0));
+  const w = Math.max(2, Math.min(evenDown(sx * srcW), evenDown(srcW)));
+  const h = Math.max(2, Math.min(evenDown(sy * srcH), evenDown(srcH)));
+  // ⚠️ O deslocamento sai da largura JÁ ARREDONDADA, e não da fração crua. Com
+  // a conta sobre `srcW` direto, pan +1 parava 1px antes da borda — a largura
+  // tinha sido arredondada para baixo e o offset não acompanhava —, e sobrava
+  // na tela uma faixa que a pessoa havia empurrado para fora com o dedo.
+  // Com `(srcW - w)` os dois extremos encostam de verdade e pan 0 segue
+  // centrado, que é a mesma coisa que `mx/2` dizia.
+  const x = Math.max(0, Math.min(Math.round(((1 + px) / 2) * (srcW - w)), srcW - w));
+  const y = Math.max(0, Math.min(Math.round(((1 + py) / 2) * (srcH - h)), srcH - h));
+  return { w, h, x, y };
+}
+
+/** Escapa um caminho para uso DENTRO de um argumento de filtro do ffmpeg. */
+function escapeFilterPath(p) {
+  return String(p).replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+}
+
+/**
+ * Compõe o vídeo final a partir do arquivo ORIGINAL em disco.
+ *
+ * @param {string} inputPath  arquivo do celular, cru — nunca passa pela memória do Node
+ * @param {object} params
+ *   - aspect, zoom, panX, panY : enquadramento (mesma semântica do editor)
+ *   - filter                   : FilterState do composer (vira LUT 3D)
+ *   - overlayPath              : PNG RGBA no tamanho do alvo (texto/vinheta/PiP-imagem)
+ *   - pipPath                  : vídeo de sobreposição (opcional)
+ *   - pip                      : { x, y, scale } — centro em 0..1, largura relativa
+ *   - originalname             : nome do arquivo, só para nomear a saída
+ */
+async function composeVideoFromFile(inputPath, params = {}) {
+  const aspect = Number(params.aspect) > 0 ? Number(params.aspect) : 9 / 16;
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "freelandoo-compose-"));
+  const outputPath = path.join(tempDir, "output.mp4");
+
+  try {
+    const probed = await probeVideoDimensions(inputPath);
+    if (!probed) {
+      throw httpError("Nao foi possivel ler este video. Tente outro arquivo.");
+    }
+
+    let duration = 0;
+    try {
+      duration = await getVideoDuration(inputPath);
+    } catch {
+      duration = 0;
+    }
+    const seconds =
+      Number.isFinite(duration) && duration > 0
+        ? Math.min(MAX_COMPOSE_SECONDS, duration)
+        : MAX_COMPOSE_SECONDS;
+
+    const crop = composeCropRect(
+      probed.width,
+      probed.height,
+      aspect,
+      params.zoom,
+      params.panX,
+      params.panY
+    );
+    const target = composeOutputSize(aspect);
+    // ⚠️ NUNCA AMPLIA: um vídeo de 720p enquadrado em 9:16 rende ~405x720, e
+    // esticá-lo até 1080x1920 só acrescentaria bytes, nunca detalhe. Depois do
+    // corte a proporção já é exata, então basta reduzir na mesma escala nos
+    // dois eixos.
+    const scale = Math.min(1, crop.w / target.w);
+    const outW = Math.max(2, evenDown(target.w * scale));
+    const outH = Math.max(2, evenDown(target.h * scale));
+
+    // ─── grafo de filtros ──────────────────────────────────────────────────
+    const inputs = ["-i", inputPath];
+    const chain = [
+      `crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`,
+      `scale=${outW}:${outH}:flags=lanczos`,
+    ];
+
+    const cube = buildCubeLut(params.filter);
+    if (cube) {
+      const lutPath = path.join(tempDir, "grade.cube");
+      await fs.writeFile(lutPath, cube, "utf8");
+      chain.push(`lut3d='${escapeFilterPath(lutPath)}'`);
+    }
+
+    // Grão: precisa mudar a cada quadro — assado num PNG viraria sujeira parada
+    // na lente. É o único item da cadeia de cor que não cabe na LUT.
+    const grain = Math.max(0, Math.min(1, Number(params.filter?.grain) || 0));
+    if (grain > 0.001) {
+      chain.push(`noise=alls=${Math.max(1, Math.round(grain * 100))}:allf=t+u`);
+    }
+
+    const parts = [`[0:v]${chain.join(",")}[base]`];
+    let cur = "base";
+
+    if (params.pipPath) {
+      inputs.push("-i", params.pipPath);
+      const idx = inputs.length / 2 - 1;
+      const pip = params.pip || {};
+      // ⚠️ `?? 0.5` NÃO pega NaN (só null/undefined), e `Number("abc")` é NaN:
+      // sem `finiteOr`, um valor torto viraria `main_w*NaN` no grafo de
+      // filtros e o ffmpeg falharia falando de sintaxe de filtro em vez do
+      // pedido. Quem vem pela porta HTTP já passou por utils/composeParams;
+      // isto protege quem chamar a função direto.
+      const finiteOr = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+      const pipScale = Math.max(0.05, Math.min(1, finiteOr(pip.scale, 0.4)));
+      const px = Math.max(0, Math.min(1, finiteOr(pip.x, 0.5))).toFixed(4);
+      const py = Math.max(0, Math.min(1, finiteOr(pip.y, 0.5))).toFixed(4);
+      parts.push(`[${idx}:v]scale=${evenDown(outW * pipScale)}:-2[pip]`);
+      // `eof_action=pass`: a sobreposição pode ser mais curta que o vídeo
+      // principal — sem isso o resultado terminaria junto com ela.
+      parts.push(
+        `[${cur}][pip]overlay=x=main_w*${px}-overlay_w/2:y=main_h*${py}-overlay_h/2:eof_action=pass:shortest=0[withpip]`
+      );
+      cur = "withpip";
+    }
+
+    if (params.overlayPath) {
+      inputs.push("-i", params.overlayPath);
+      const idx = inputs.length / 2 - 1;
+      // O PNG é rasterizado no tamanho-alvo pelo cliente; se a saída encolheu
+      // (fonte menor que 1080), a escala aqui o acompanha.
+      parts.push(`[${idx}:v]scale=${outW}:${outH}[ov]`);
+      parts.push(`[${cur}][ov]overlay=0:0:format=auto[withov]`);
+      cur = "withov";
+    }
+
+    parts.push(`[${cur}]format=yuv420p[v]`);
+    const filterComplex = parts.join(";");
+
+    async function encode(outPath, crf) {
+      await runFfmpeg(
+        [
+          "-y",
+          ...inputs,
+          "-t",
+          String(seconds),
+          "-map_metadata",
+          "-1",
+          "-filter_complex",
+          filterComplex,
+          "-map",
+          "[v]",
+          // O áudio do original é PRESERVADO. O caminho antigo o perdia (o
+          // canvas não carrega som), e Curto mudo é Curto quebrado. O `?` torna
+          // o mapeamento opcional: vídeo sem trilha não falha.
+          "-map",
+          "0:a:0?",
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          String(crf),
+          "-profile:v",
+          "high",
+          "-level",
+          "4.1",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-ac",
+          "2",
+          "-ar",
+          "48000",
+          "-movflags",
+          "+faststart",
+          outPath,
+        ],
+        9 * 60 * 1000
+      );
+    }
+
+    await encode(outputPath, 23);
+    let finalPath = outputPath;
+    let size = (await fs.stat(outputPath)).size;
+
+    if (size > MAX_VIDEO_OUTPUT_BYTES) {
+      const secondPath = path.join(tempDir, "output-2.mp4");
+      try {
+        await encode(secondPath, 28);
+        const secondSize = (await fs.stat(secondPath)).size;
+        if (secondSize < size) {
+          finalPath = secondPath;
+          size = secondSize;
+        }
+      } catch {
+        /* mantém a 1ª saída */
+      }
+    }
+    if (size > MAX_VIDEO_OUTPUT_BYTES) {
+      throw httpError(
+        "O video ficou grande demais mesmo depois de comprimido. Tente um trecho mais curto."
+      );
+    }
+
+    const buffer = await fs.readFile(finalPath);
+
+    let thumbnail = null;
+    try {
+      thumbnail = await extractVideoThumbnail(finalPath, tempDir);
+    } catch {
+      thumbnail = null;
+    }
+
+    const baseFile = {
+      originalname: params.originalname || "video.mp4",
+      mimetype: "video/mp4",
+    };
+    const processed = buildProcessedFile(
+      baseFile,
+      buffer,
+      "video/mp4",
+      outputName(baseFile.originalname, "video/mp4"),
+      {
+        media_type: "video",
+        width: outW,
+        height: outH,
+        duration_seconds: Math.max(1, Math.round(seconds)),
+        composed_by: "server",
+        ...(thumbnail
+          ? { thumbnail_width: thumbnail.width, thumbnail_height: thumbnail.height }
+          : {}),
+      }
+    );
+
+    if (thumbnail) {
+      processed.thumbnail = {
+        buffer: thumbnail.buffer,
+        mimetype: thumbnail.mimetype,
+        originalname: outputName(baseFile.originalname, "image/webp"),
+        size: thumbnail.buffer.length,
+        width: thumbnail.width,
+        height: thumbnail.height,
+      };
+    }
+
+    return processed;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 module.exports = {
   POST_ORIENTATIONS,
   pickPostOrientation,
@@ -889,4 +1193,10 @@ module.exports = {
   getVideoDuration,
   splitVideoIntoChunks,
   compressVideoFile,
+  ensureFileBuffer,
+  composeVideoFromFile,
+  composeCropRect,
+  composeOutputSize,
+  MAX_COMPOSE_SECONDS,
+  COMPOSE_SHORT_SIDE,
 };

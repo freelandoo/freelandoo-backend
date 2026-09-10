@@ -4,7 +4,9 @@ const ProfileStorage = require("../../storages/ProfileStorage");
 const PortfolioStorage = require("../../storages/PortfolioStorage");
 const uploadPortfolioMediaToR2 = require("../../integrations/r2/uploadPortfolioMedia");
 const { createLogger, runWithLogs } = require("../../utils/logger");
-const { processPortfolioMedia } = require("../../utils/mediaJobs");
+const { processPortfolioMedia, composeVideoFromFile } = require("../../utils/mediaJobs");
+const { parseComposeParams } = require("../../utils/composeParams");
+const { MAX_VIDEO_INPUT_BYTES } = require("../../utils/mediaProcessing");
 
 const log = createLogger("UploadPortfolioMediaService");
 
@@ -49,7 +51,7 @@ function normalizeInt(value, fieldName) {
 }
 
 module.exports = class UploadPortfolioMediaService {
-  static async execute({ id_user, params, body, file }) {
+  static async execute({ id_user, params, body, file, overlayFile = null, pipFile = null }) {
     return runWithLogs(
       log,
       "execute",
@@ -58,6 +60,7 @@ module.exports = class UploadPortfolioMediaService {
         id_profile: params?.id_profile,
         id_portfolio_item: params?.id_portfolio_item,
         hasFile: !!file,
+        hasCompose: !!body?.compose,
       }),
       async () => {
     const { id_profile, id_portfolio_item } = params;
@@ -90,6 +93,36 @@ module.exports = class UploadPortfolioMediaService {
     const media_type = normalizeMediaType(body?.media_type, file);
     if (media_type?.error) {
       const err = new Error(media_type.error);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // ⚠️ O campo `compose` é o que separa os DOIS regimes desta porta:
+    //   • ausente → o cliente mandou mídia já pronta (é o que sempre foi).
+    //   • presente → o cliente mandou o arquivo ORIGINAL e o servidor compõe.
+    // O segundo existe porque codificar vídeo no navegador nunca foi
+    // confiável — no iOS produzia buraco preto, quadro congelado e erro de
+    // `decoderConfig`, e mesmo quando dava certo era a PRIMEIRA de duas
+    // codificações, jogando qualidade fora antes de o servidor comprimir.
+    // Manter a porta ÚNICA (em vez de abrir uma rota nova) é o que faz
+    // cliente antigo continuar publicando sem saber que algo mudou.
+    const compose = parseComposeParams(body?.compose);
+    if (compose?.error) {
+      const err = new Error(compose.error);
+      err.statusCode = 400;
+      throw err;
+    }
+    const serverCompose = !!compose && media_type === "video";
+
+    // Sem composição, o pipeline antigo precisa dos bytes em memória — e aí
+    // o teto de vídeo de sempre volta a valer. Com composição, os bytes ficam
+    // no disco e só o ffmpeg os lê: é o que permite receber um 4K de celular
+    // sem que o heap do Node encoste nele.
+    // Quem leva os bytes para a memória é `ensureFileBuffer`, dentro de
+    // mediaProcessing — aqui só vale o teto de sempre, checado ANTES de abrir
+    // transação e de ler o arquivo.
+    if (!serverCompose && media_type === "video" && file.size > MAX_VIDEO_INPUT_BYTES) {
+      const err = new Error("O video precisa ter no maximo 100MB.");
       err.statusCode = 400;
       throw err;
     }
@@ -179,7 +212,19 @@ module.exports = class UploadPortfolioMediaService {
         err.statusCode = 400;
         throw err;
       }
-      const processedFile = await processPortfolioMedia(file, media_type, { feedKind });
+      const processedFile = serverCompose
+        ? await composeVideoFromFile(file.path, {
+            aspect: compose.aspect,
+            zoom: compose.zoom,
+            panX: compose.panX,
+            panY: compose.panY,
+            filter: compose.filter,
+            overlayPath: overlayFile?.path || null,
+            pipPath: pipFile?.path || null,
+            pip: compose.pip,
+            originalname: file.originalname,
+          })
+        : await processPortfolioMedia(file, media_type, { feedKind });
       const finalMediaType = processedFile.mediaMetadata?.media_type || media_type;
 
       // upload no R2 (thumbnail extraída automaticamente sobe junto, se houver)

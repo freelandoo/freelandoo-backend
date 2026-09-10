@@ -107,7 +107,7 @@ router.delete(
 // UPLOAD MEDIA (multipart)
 router.post(
   "/:id_portfolio_item/upload",
-  uploadPortfolioMedia.single("file"),
+  uploadPortfolioMedia.withComposeParts,
   asyncHandler(async (req, res) => {
     const id_profile = req.userAccountProfileId;
     const { id_user } = req.user;
@@ -117,6 +117,8 @@ router.post(
       params: { id_profile, id_portfolio_item: req.params.id_portfolio_item },
       body: req.body,
       file: req.file,
+      overlayFile: req.overlayFile,
+      pipFile: req.pipFile,
     });
     return res.status(201).json(result);
   })

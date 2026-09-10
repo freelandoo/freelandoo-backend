@@ -70,6 +70,8 @@ class PortfolioController {
       params: req.params,
       body: req.body,
       file: req.file,
+      overlayFile: req.overlayFile,
+      pipFile: req.pipFile,
     });
     return res.status(201).json(result);
   }

@@ -37,7 +37,10 @@ router.post(
   "/:id_portfolio_item/upload",
   authMiddleware,
   rateLimit.upload,
-  uploadPortfolioMedia.single("file"),
+  // `.withComposeParts` em vez de `.single("file")`: além da mídia, a porta
+  // passou a aceitar o PNG de sobreposição e o vídeo de PiP que a composição
+  // no servidor usa. Quem manda só o `file` continua chegando igual.
+  uploadPortfolioMedia.withComposeParts,
   asyncHandler(PortfolioController.uploadMedia)
 );
 

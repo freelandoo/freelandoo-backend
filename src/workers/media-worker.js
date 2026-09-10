@@ -28,6 +28,10 @@ const FUNCTIONS = {
     mediaProcessing.processPortfolioMedia(args[0], args[1], args[2] || {}),
   processUserMedia: (args) => mediaProcessing.processUserMedia(args[0]),
   processVideo: (args) => mediaProcessing.processVideo(args[0], args[1] || {}),
+  // Compoe o video a partir do arquivo ORIGINAL em disco: args[0] e um CAMINHO,
+  // nao um Buffer — os bytes do celular nunca entram na memoria do Node.
+  composeVideoFromFile: (args) =>
+    mediaProcessing.composeVideoFromFile(args[0], args[1] || {}),
   processPostImage: (args) => mediaProcessing.processPostImage(args[0]),
   splitVideoIntoChunks: (args) =>
     mediaProcessing.splitVideoIntoChunks(args[0], args[1] || 60),
