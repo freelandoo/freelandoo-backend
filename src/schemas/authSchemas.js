@@ -89,6 +89,14 @@ const activateQuery = z
   })
   .passthrough();
 
+// Disponibilidade do CPF no cadastro: chega formatado (000.000.000-00) ou só
+// dígitos; quem normaliza é o service. O teto de 14 é o CPF com máscara.
+const checkCpfQuery = z
+  .object({
+    cpf: z.string().trim().min(11).max(14),
+  })
+  .passthrough();
+
 module.exports = {
   signupBody,
   signinBody,
@@ -96,5 +104,6 @@ module.exports = {
   forgotPasswordBody,
   resetPasswordBody,
   checkUsernameQuery,
+  checkCpfQuery,
   activateQuery,
 };

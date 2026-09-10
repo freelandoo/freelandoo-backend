@@ -19,6 +19,18 @@ router.get(
   validate({ query: authSchemas.checkUsernameQuery }),
   asyncHandler(AuthController.checkUsername)
 );
+// Disponibilidade do CPF enquanto a pessoa digita (mig 188: 1 CPF = 1 conta).
+// O signup já dizia "cpf_taken" no fim — isto só ANTECIPA a mesma resposta
+// para o campo, antes de a pessoa preencher o resto. Com rate limit próprio
+// porque a porta é anônima e responde sobre um documento: o `auth` (5/min)
+// derrubaria quem corrige um dígito duas vezes, e sem limite nenhum viraria
+// varredura de CPF.
+router.get(
+  "/check-cpf",
+  rateLimit.lookup,
+  validate({ query: authSchemas.checkCpfQuery }),
+  asyncHandler(AuthController.checkCpf)
+);
 router.post(
   "/signin",
   rateLimit.auth,

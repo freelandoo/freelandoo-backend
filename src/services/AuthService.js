@@ -56,6 +56,23 @@ class AuthService {
     return { available: !exists, username: v.username };
   }
 
+  // Disponibilidade do CPF para o campo do cadastro. Mesma régua do signup
+  // (normaliza + dígito verificador + `findUserIdByCpf`), lida ANTES de a
+  // pessoa preencher o resto — antes, o "cpf_taken" só aparecia no fim, depois
+  // de nome, e-mail, senha e termos. Não devolve quem é o dono: só se está
+  // livre. `conn` é injetável só para o teste unitário.
+  static async checkCpf(payload, conn = pool) {
+    const cpf = normalizeCPF(payload?.cpf);
+    if (!cpf) {
+      return { available: false, reason: "cpf_invalid" };
+    }
+    const exists = await AuthStorage.findUserIdByCpf(conn, cpf);
+    if (exists) {
+      return { available: false, reason: "cpf_taken" };
+    }
+    return { available: true };
+  }
+
   static async signup(payload, meta = {}) {
     const client = await pool.connect();
     return runWithLogs(

@@ -55,6 +55,15 @@ const auth = makeLimiter({
   max: 5,
 });
 
+// 20 consultas/min por IP — portas anônimas de "isto já existe?" (CPF no
+// cadastro). Folgado para quem corrige um dígito algumas vezes, apertado o
+// bastante para não servir de varredura de documento.
+const lookup = makeLimiter({
+  name: "lookup",
+  windowMs: 60 * 1000,
+  max: 20,
+});
+
 // 20 uploads por hora por IP — cobre todo o fluxo de portfólio + avatar
 // + manifestação + curso. Multer já barra payload acima do limite.
 const upload = makeLimiter({
@@ -78,4 +87,4 @@ const checkout = makeLimiter({
   max: 30,
 });
 
-module.exports = { auth, upload, chat, checkout };
+module.exports = { auth, lookup, upload, chat, checkout };

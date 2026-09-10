@@ -25,6 +25,11 @@ class AuthController {
     return res.status(200).json(result);
   }
 
+  static async checkCpf(req, res) {
+    const result = await AuthService.checkCpf({ cpf: req.query.cpf });
+    return res.status(200).json(result);
+  }
+
   static async signin(req, res) {
     const result = await AuthService.signin(req.body);
     return sendServiceResult(res, result, 200);
