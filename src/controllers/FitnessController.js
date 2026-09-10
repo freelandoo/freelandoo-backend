@@ -14,6 +14,11 @@ module.exports = {
     return sendServiceResult(res, result);
   },
 
+  async history(req, res) {
+    const result = await FitnessService.history(req.user.id_user, req.query.days);
+    return sendServiceResult(res, result);
+  },
+
   async searchFoods(req, res) {
     const result = await FitnessService.searchFoods(req.query.q);
     return res.json(result);

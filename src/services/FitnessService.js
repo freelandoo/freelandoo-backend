@@ -223,6 +223,45 @@ class FitnessService {
     });
   }
 
+  // ─── Histórico (a sala do pill turquesa do /fitness) ──────────────────────
+  // Os dias já ficam gravados conforme a pessoa registra (o diário e a água
+  // são UPSERT por data) — aqui só se LÊ o que ficou: um dia por linha, com o
+  // que comeu e o que bebeu, só os dias em que algo foi registrado. As
+  // medições (peso/altura) saem de `listMeasurements`, que já existia.
+  static async history(id_user, daysRaw) {
+    return runWithLogs(log, "history", () => ({ id_user }), async () => {
+      const days = Math.min(365, Math.max(7, Number(daysRaw) || 60));
+      const from = new Date(Date.now() - (days - 1) * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const [settings, kcalRows, waterRows] = await Promise.all([
+        FitnessStorage.getSettings(pool, id_user),
+        FitnessStorage.kcalDailySeries(pool, id_user, from),
+        FitnessStorage.waterDailySeries(pool, id_user, from),
+      ]);
+      const byDate = new Map();
+      for (const r of kcalRows) {
+        byDate.set(r.date, {
+          date: r.date,
+          kcal: Math.round(Number(r.kcal) || 0),
+          protein_g: Math.round(Number(r.protein_g) || 0),
+          carbs_g: Math.round(Number(r.carbs_g) || 0),
+          fat_g: Math.round(Number(r.fat_g) || 0),
+          water_ml: 0,
+        });
+      }
+      for (const r of waterRows) {
+        const cur = byDate.get(r.date) || { date: r.date, kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, water_ml: 0 };
+        cur.water_ml = Number(r.total_ml) || 0;
+        byDate.set(r.date, cur);
+      }
+      const list = Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+      return {
+        days: list,
+        goals: { daily_kcal_goal: Number(settings.daily_kcal_goal), water_goal_ml: Number(settings.water_goal_ml) },
+        window_days: days,
+      };
+    });
+  }
+
   // ─── Alimentos ─────────────────────────────────────────────────────────────
   static async searchFoods(q) {
     const query = String(q || "").trim();

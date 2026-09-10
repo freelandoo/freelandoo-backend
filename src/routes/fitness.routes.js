@@ -17,6 +17,7 @@ router.use(authMiddleware);
 
 router.get("/summary", asyncHandler(FitnessController.summary));
 router.get("/indicators", asyncHandler(FitnessController.indicators));
+router.get("/history", asyncHandler(FitnessController.history));
 
 // Alimentos
 router.get("/foods", asyncHandler(FitnessController.searchFoods));
