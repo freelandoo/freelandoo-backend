@@ -87,6 +87,15 @@ const SIZES = {
   HEIGHT_MAX: 2400,
   MAXW_MIN: 320,
   MAXW_MAX: 1920,
+  // Deslocamento da caixa dentro do bloco dela. O eixo X é em % da largura do
+  // BLOCO (a mesma regua de `width`) e o Y em pixels, e a diferenca nao e
+  // capricho: o que muda entre o computador e o celular e a LARGURA, entao um
+  // X gravado em pixels jogaria a caixa para fora da tela no aparelho menor,
+  // enquanto a altura de um texto nao acompanha a largura da janela.
+  X_MIN: -100,
+  X_MAX: 100,
+  Y_MIN: -600,
+  Y_MAX: 600,
 };
 
 const SECTION_KINDS = [
@@ -461,9 +470,10 @@ const SECTION_NORMALIZERS = {
 
 /**
  * Tamanho da SEÇÃO escolhido nas alças do construtor: altura mínima e largura
- * da coluna de conteúdo. Só isso — nada de posição livre. Uma seção arrastável
- * em (x, y) deixaria de ser responsiva, e o mesmo site precisa caber no celular
- * de quem visita.
+ * da coluna de conteúdo. Só isso — seção não tem posição. Elas são empilhadas
+ * uma sob a outra, e arrastar UMA para (x, y) abriria um buraco no lugar dela
+ * sem dizer por quê. O deslocamento existe só para a CAIXA DE TEXTO, dentro do
+ * bloco em que ela já mora (ver `normalizeTextStyles`).
  */
 function normalizeLayout(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
@@ -474,7 +484,15 @@ function normalizeLayout(raw) {
 }
 
 /**
- * Tamanhos por CAIXA DE TEXTO, num mapa `caminho -> { fontSize, width }`.
+ * Tamanho e POSICAO por CAIXA DE TEXTO, num mapa
+ * `caminho -> { fontSize, width, x, y }`.
+ *
+ * `x`/`y` sao deslocamento, nao coordenada absoluta: o front os aplica como
+ * `left`/`top` de um elemento `position: relative`, que desloca a caixa SEM
+ * tirar o espaco dela do fluxo. E o que permite mover uma manchete alguns
+ * dedos para o lado sem que o paragrafo de baixo suba junto — e o que mantem
+ * a pagina responsiva para quem visita, diferente de um `position: absolute`,
+ * que congelaria a caixa num ponto da tela do computador.
  *
  * Mapa à parte, e não um campo dentro de cada texto: os textos do site são
  * strings simples espalhadas por seis formatos de seção, e pendurar estilo em
@@ -502,9 +520,13 @@ function normalizeTextStyles(raw, liveSectionIds) {
     const d = rawValue && typeof rawValue === "object" ? rawValue : {};
     const fontSize = num(d.fontSize, SIZES.FONT_MIN, SIZES.FONT_MAX);
     const width = num(d.width, SIZES.WIDTH_MIN, SIZES.WIDTH_MAX);
-    // Entrada sem nenhum tamanho é lixo: gravá-la só ocuparia o teto.
-    if (fontSize === null && width === null) continue;
-    out[key] = { fontSize, width };
+    const x = num(d.x, SIZES.X_MIN, SIZES.X_MAX);
+    const y = num(d.y, SIZES.Y_MIN, SIZES.Y_MAX);
+    // Entrada sem tamanho E sem deslocamento é lixo: gravá-la só ocuparia o
+    // teto. ⚠️ Zero é escolha do líder ("de volta ao lugar"), não ausência —
+    // por isso a comparação é com null, e nunca por valor falsy.
+    if (fontSize === null && width === null && x === null && y === null) continue;
+    out[key] = { fontSize, width, x, y };
     kept += 1;
   }
 

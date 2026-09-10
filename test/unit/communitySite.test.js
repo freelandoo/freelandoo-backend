@@ -12,6 +12,7 @@ const assert = require("node:assert");
 const {
   SECTION_KINDS,
   ICONS,
+  SIZES,
   normalizeSection,
   normalizeConfig,
   buildDefaultConfig,
@@ -170,4 +171,77 @@ test("o site semeado já abre com o botão de agendar na hero e na chamada", () 
   const cta = config.sections.find((s) => s.kind === "cta");
   assert.strictEqual(hero.data.slides[0].ctaUrl, "agendar");
   assert.strictEqual(cta.data.ctaUrl, "agendar");
+});
+
+
+// ─── Posição da caixa de texto (2026-09-10) ───────────────────────────────────
+// A caixa passou a poder ser ARRASTADA dentro do bloco dela, e o deslocamento
+// viaja no mesmo mapa do tamanho.
+
+/** Atalho: normaliza um mapa de estilos e devolve a entrada pedida. */
+function style(raw, key = "sec:s1.title") {
+  const out = normalizeConfig({
+    sections: [{ id: "s1", kind: "about", data: {} }],
+    textStyles: { [key]: raw },
+  });
+  return out.textStyles[key];
+}
+
+test("posição entra no mapa junto do tamanho e sobrevive a uma segunda normalização", () => {
+  const first = style({ fontSize: 40, width: 60, x: 12, y: -80 });
+  assert.deepStrictEqual(first, { fontSize: 40, width: 60, x: 12, y: -80 });
+  // Idempotência: gravar de volta o que saiu não pode mudar nada.
+  assert.deepStrictEqual(style(first), first);
+});
+
+test("caixa só deslocada é guardada — posição sem tamanho NÃO é entrada vazia", () => {
+  assert.deepStrictEqual(style({ x: 20 }), {
+    fontSize: null,
+    width: null,
+    x: 20,
+    y: null,
+  });
+});
+
+test("zero é escolha do líder (de volta ao lugar) e não ausência", () => {
+  // A armadilha: `if (!x)` descartaria o 0 e a caixa voltaria para o
+  // deslocamento antigo no próximo carregamento.
+  assert.deepStrictEqual(style({ x: 0, y: 0 }), {
+    fontSize: null,
+    width: null,
+    x: 0,
+    y: 0,
+  });
+});
+
+test("caixa sem tamanho e sem posição continua sendo descartada", () => {
+  const out = normalizeConfig({
+    sections: [{ id: "s1", kind: "about", data: {} }],
+    textStyles: { "sec:s1.title": { fontSize: null, width: null, x: null, y: null } },
+  });
+  assert.strictEqual(out.textStyles["sec:s1.title"], undefined);
+});
+
+test("deslocamento fora da faixa fixa na borda, nos dois sentidos, sem recusar o save", () => {
+  assert.strictEqual(style({ x: 9000 }).x, SIZES.X_MAX);
+  assert.strictEqual(style({ x: -9000 }).x, SIZES.X_MIN);
+  assert.strictEqual(style({ y: 99999 }).y, SIZES.Y_MAX);
+  assert.strictEqual(style({ y: -99999 }).y, SIZES.Y_MIN);
+});
+
+test("deslocamento torto vira AUTO em vez de derrubar a entrada inteira", () => {
+  // `Number("esquerda")` é NaN e `Number(undefined)` idem — nenhum dos dois
+  // pode virar 0 e fingir que o líder pediu a caixa de volta ao lugar.
+  const out = style({ fontSize: 24, x: "esquerda", y: undefined });
+  assert.deepStrictEqual(out, { fontSize: 24, width: null, x: null, y: null });
+});
+
+test("a seção continua SEM posição — deslocar uma abriria buraco no empilhamento", () => {
+  const section = normalizeSection({
+    id: "s1",
+    kind: "about",
+    layout: { minHeight: 300, maxWidth: 900, x: 50, y: 50 },
+    data: {},
+  });
+  assert.deepStrictEqual(section.layout, { minHeight: 300, maxWidth: 900 });
 });
