@@ -41,6 +41,7 @@ const condoRoutes = require("./condo.routes");
 const residenceRoutes = require("./residence.routes");
 const neighborhoodRoutes = require("./neighborhood.routes");
 const spacesRoutes = require("./spaces.routes");
+const platformAvatarRoutes = require("./platformAvatar.routes");
 const gameProfileRoutes = require("./gameProfile.routes");
 const financeRoutes = require("./finance.routes");
 const whatsappRoutes = require("./whatsapp.routes");
@@ -206,6 +207,10 @@ module.exports = (app) => {
   // games, e o que mora aqui é a biblioteca da PESSOA (ver o cabeçalho do
   // arquivo de rotas).
   app.use("/", gameProfileRoutes);
+  // A foto de alguém DENTRO de uma plataforma (mig 233). Montada na raiz
+  // porque ela é `/me/...`: a foto é da PESSOA em cada ambiente, e não do
+  // ambiente — e por isso não cabe sob `/games` nem sob `/finance`.
+  app.use("/", platformAvatarRoutes);
   // A plataforma Financeiro (mig 229). Base própria e curta porque ela responde
   // UMA pergunta — "qual é o espaço financeiro" —; o feed e a publicação dela
   // continuam em /communities/:id_profile, que é o que ela É.

@@ -29,6 +29,7 @@ const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const PlatformActivityStorage = require("../storages/PlatformActivityStorage");
 const GamesScore = require("../utils/gamesScore");
 const FeatureFlagService = require("./FeatureFlagService");
+const PlatformAvatarService = require("./PlatformAvatarService");
 const providers = require("../integrations/gameProvider");
 const { slugify } = require("../utils/slug");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -341,30 +342,39 @@ class GameProfileService {
         viewer_id ? GameProfileStorage.getPlaytimeRank(pool, viewer_id) : Promise.resolve(null),
       ]);
 
-      return {
-        metric: "playtime",
-        rows: rows.map((r) => ({
-          id_user: r.id_user,
-          username: r.username,
-          name: r.nome,
-          avatar_url: r.avatar,
-          position: r.position,
-          minutes: Number(r.minutes),
-          games: r.games,
-          achievements: Number(r.achievements),
-        })),
-        me: me
-          ? {
-              position: me.position,
-              total: me.total,
-              minutes: Number(me.minutes),
-              games: me.games,
-              username: me.username,
-              name: me.nome,
-              avatar_url: me.avatar,
-            }
-          : null,
-      };
+      const shaped = rows.map((r) => ({
+        id_user: r.id_user,
+        username: r.username,
+        name: r.nome,
+        avatar_url: r.avatar,
+        position: r.position,
+        minutes: Number(r.minutes),
+        games: r.games,
+        achievements: Number(r.achievements),
+      }));
+      const mine = me
+        ? {
+            id_user: viewer_id,
+            position: me.position,
+            total: me.total,
+            minutes: Number(me.minutes),
+            games: me.games,
+            username: me.username,
+            name: me.nome,
+            avatar_url: me.avatar,
+          }
+        : null;
+
+      // A foto que vale DENTRO de games (mig 233). Numa passada só para a fila
+      // inteira: perguntar linha a linha faria a fila de 50 custar 50 idas ao
+      // banco. `me` entra na MESMA lista — fora dela, quem trocou a foto se
+      // veria com o rosto antigo na própria linha e com o novo na dos outros.
+      const [withAvatar, mineWithAvatar] = await Promise.all([
+        PlatformAvatarService.applyToRows(shaped, "games"),
+        mine ? PlatformAvatarService.applyToRows([mine], "games") : Promise.resolve([null]),
+      ]);
+
+      return { metric: "playtime", rows: withAvatar, me: mineWithAvatar[0] };
     });
   }
 
@@ -432,13 +442,22 @@ class GameProfileService {
         minutes: Math.floor(Number(r.seconds) / 60),
       });
 
+      // Ver a nota do ranking por horas: a foto de games (mig 233) entra numa
+      // passada só, e `me` vai na mesma lista.
+      const shapedRows = rows.map(shape);
+      const mine = me ? shape(me) : null;
+      const [withAvatar, mineWithAvatar] = await Promise.all([
+        PlatformAvatarService.applyToRows(shapedRows, "games"),
+        mine ? PlatformAvatarService.applyToRows([mine], "games") : Promise.resolve([null]),
+      ]);
+
       return {
         metric: "activity",
         scope,
         place,
         weights,
-        rows: rows.map(shape),
-        me: me ? shape(me) : null,
+        rows: withAvatar,
+        me: mineWithAvatar[0],
       };
     });
   }
@@ -484,7 +503,7 @@ class GameProfileService {
         // "não conectou nada": dizer "esta pessoa tem uma estante privada"
         // entregaria justamente o que ela escondeu.
         if (!accounts.some((a) => a.visibility === "public")) {
-          return { owner: this._card(owner), games: [], total: 0, total_minutes: 0, locked: true };
+          return { owner: await this._cardFor(owner), games: [], total: 0, total_minutes: 0, locked: true };
         }
       }
 
@@ -493,7 +512,7 @@ class GameProfileService {
         GameProfileStorage.countShelf(pool, id_user),
       ]);
       return {
-        owner: this._card(owner),
+        owner: await this._cardFor(owner),
         games,
         total: totals.total,
         total_minutes: Number(totals.minutes),
@@ -540,7 +559,7 @@ class GameProfileService {
 
       const subject = await SubjectCommunityStorage.getCurrentGame(pool, owner.id_user);
       return {
-        owner: this._card(owner),
+        owner: await this._cardFor(owner),
         subject,
         // Quem olha o próprio contexto EDITA; quem olha o de outra pessoa LÊ.
         // A resposta vem do servidor porque o front compara ids que ele mesmo
@@ -573,7 +592,7 @@ class GameProfileService {
 
       const accounts = await GameProfileStorage.listAccounts(pool, other.id_user);
       if (!accounts.some((a) => a.visibility === "public")) {
-        return { other: this._card(other), locked: true, games: [] };
+        return { other: await this._cardFor(other), locked: true, games: [] };
       }
 
       const games = await GameProfileStorage.listCommon(pool, viewer_id, other.id_user);
@@ -581,7 +600,7 @@ class GameProfileService {
       const theirs = await GameProfileStorage.countShelf(pool, other.id_user);
 
       return {
-        other: this._card(other),
+        other: await this._cardFor(other),
         locked: false,
         games,
         summary: {
@@ -661,6 +680,22 @@ class GameProfileService {
 
   static _card(u) {
     return { id_user: u.id_user, username: u.username, name: u.nome, avatar_url: u.avatar };
+  }
+
+  /**
+   * O MESMO cartão, com a foto que vale DENTRO de games (mig 233).
+   *
+   * ⚠️ TODA leitura que mostra o rosto de alguém dentro da plataforma passa por
+   * aqui. Quem trocou a foto só de games aparece com ela; quem nunca trocou
+   * herda o rosto de sempre (`tb_user.avatar`) e continua herdando depois, se
+   * mudar a foto principal. Chamar `_card` cru numa porta nova faria aquela
+   * tela mostrar a foto do site enquanto a vizinha mostra a de games — a
+   * divergência calada que a mig 215 já teve de desfazer uma vez.
+   */
+  static async _cardFor(u) {
+    const card = this._card(u);
+    card.avatar_url = await PlatformAvatarService.resolve(u.id_user, "games", u.avatar);
+    return card;
   }
 
   /**

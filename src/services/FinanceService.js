@@ -14,6 +14,7 @@ const pool = require("../databases");
 const PlatformStorage = require("../storages/PlatformStorage");
 const PlatformActivityStorage = require("../storages/PlatformActivityStorage");
 const GamesScore = require("../utils/gamesScore");
+const PlatformAvatarService = require("./PlatformAvatarService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("FinanceService");
@@ -24,15 +25,21 @@ class FinanceService {
    * semeado (banco sem admin no momento do deploy).
    *
    */
-  static async getPlatform() {
-    return runWithLogs(log, "getPlatform", () => ({}), async () => {
+  static async getPlatform(viewer_id = null) {
+    return runWithLogs(log, "getPlatform", () => ({ viewer_id }), async () => {
       const platform = await PlatformStorage.getOrCreatePlatform(pool, PlatformStorage.FINANCE_KIND);
       if (!platform) {
         // Só acontece em base sem NENHUM usuário: não há a quem pendurar a
         // linha. Recusar aqui é melhor que devolver uma plataforma inventada.
         return { error: "Plataforma financeira indisponível.", statusCode: 503 };
       }
-      return { platform };
+      // A foto de quem está olhando, já resolvida (mig 233): a tela desenha o
+      // headcard com ela sem pagar uma segunda ida ao servidor só por causa de
+      // um campo. Sem override, é o rosto de sempre.
+      const viewer_avatar = viewer_id
+        ? await PlatformAvatarService.resolve(viewer_id, PlatformStorage.FINANCE_KIND, null)
+        : null;
+      return { platform, viewer_avatar };
     });
   }
 
@@ -99,7 +106,16 @@ class FinanceService {
         minutes: Math.floor(Number(r.seconds) / 60),
       });
 
-      return { metric: "activity", scope, place, weights, rows: rows.map(shape), me: me ? shape(me) : null };
+      // A foto que vale DENTRO do Financeiro (mig 233), numa passada só para a
+      // fila inteira. `me` entra na MESMA lista: fora dela, quem trocou a foto
+      // se veria com o rosto antigo na própria linha e com o novo na dos outros.
+      const mine = me ? shape(me) : null;
+      const [withAvatar, mineWithAvatar] = await Promise.all([
+        PlatformAvatarService.applyToRows(rows.map(shape), "finance"),
+        mine ? PlatformAvatarService.applyToRows([mine], "finance") : Promise.resolve([null]),
+      ]);
+
+      return { metric: "activity", scope, place, weights, rows: withAvatar, me: mineWithAvatar[0] };
     });
   }
 

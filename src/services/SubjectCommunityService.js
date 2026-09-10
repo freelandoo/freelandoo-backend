@@ -22,6 +22,7 @@ const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const PlatformStorage = require("../storages/PlatformStorage");
+const PlatformAvatarService = require("./PlatformAvatarService");
 const AcademyStorage = require("../storages/AcademyStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const fipe = require("../integrations/fipe/catalog");
@@ -160,7 +161,15 @@ class SubjectCommunityService {
           PlatformStorage.GAMES_KIND
         );
         if (!community) return { error: "Não foi possível abrir a plataforma de games." };
-        return { community };
+        // A foto de quem está olhando DENTRO de games (mig 233), já resolvida:
+        // a tela desenha o headcard com ela sem pagar uma segunda ida ao
+        // servidor. Sem override, vem null e o front cai no rosto de sempre.
+        const viewer_avatar = await PlatformAvatarService.resolve(
+          user.id_user,
+          PlatformStorage.GAMES_KIND,
+          null
+        );
+        return { community, viewer_avatar };
       }
     );
   }

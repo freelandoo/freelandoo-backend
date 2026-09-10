@@ -3,7 +3,7 @@ const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class FinanceController {
   static async getPlatform(req, res) {
-    const result = await FinanceService.getPlatform();
+    const result = await FinanceService.getPlatform(req.user?.id_user);
     return sendServiceResult(res, result);
   }
 
