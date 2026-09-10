@@ -22,6 +22,15 @@
  * pedido — as duas cairiam de presente no colo da base inteira. Os casos 8 a 13
  * são exatamente essa fronteira.
  *
+ * ═══ MIG 234 (2026-09-10): O PLANO VIROU O "NEGÓCIO" ═══
+ *
+ * A 225 prendia a chave `communities` inteira no plano. A 234 inverte: o
+ * negócio e o site são de todo mundo, e o plano passa a liberar três PORTAS —
+ * `community_members`, `site_share` e `atendimento_ia`. Esta suíte aplica as
+ * DUAS migrations (é o mundo que a produção tem) e os casos de posse descrevem
+ * o estado depois da 234. As portas em si (join, publicar, IA incluída) estão
+ * em `business-plan.e2e.js`.
+ *
  * Uso: `npm run test:plans` (transacional: BEGIN → ROLLBACK, por isso pode
  * rodar contra o banco de produção sem deixar linha)
  */
@@ -78,6 +87,15 @@ async function main() {
     await client.query(sql);
     check("225 é idempotente (2ª aplicação não estoura)", true);
 
+    // A 234 vem em cima — e também tem que aguentar a segunda passada.
+    const sql234 = fs.readFileSync(
+      path.join(__dirname, "..", "src", "databases", "migrations", "234_business_plan.sql"),
+      "utf8"
+    );
+    await client.query(sql234);
+    await client.query(sql234);
+    check("234 aplicada e idempotente", true);
+
     const planCount = await client.query("SELECT COUNT(*)::int AS n FROM public.tb_plan WHERE slug = 'profissional'");
     check("2ª passada não duplicou o plano", planCount.rows[0].n === 1, `n=${planCount.rows[0].n}`);
 
@@ -90,11 +108,14 @@ async function main() {
     const plans = await PlanStorage.listPlans(pool);
     const seeded = plans.find((p) => p.slug === "profissional");
     const feats = seeded ? seeded.features.slice().sort() : [];
+    check("o plano se chama Negócio (mig 234)", seeded && seeded.name === "Negócio", seeded && seeded.name);
     check(
-      "inclui exatamente site, agenda e whatsapp",
-      JSON.stringify(feats) === JSON.stringify(["agenda", "communities", "whatsapp"]),
+      "inclui exatamente agenda, atendimento_ia, community_members, site_share e whatsapp",
+      JSON.stringify(feats) ===
+        JSON.stringify(["agenda", "atendimento_ia", "community_members", "site_share", "whatsapp"]),
       JSON.stringify(feats)
     );
+    check("communities SAIU do plano (o negócio é de todo mundo)", !feats.includes("communities"));
 
     // ⚠️ O que NÃO pode entrar: as funções que HOJE são grátis (migs 216/217/
     // 222). Pô-las no pacote tiraria da base o que ela já tem — regressão
@@ -253,12 +274,17 @@ async function main() {
     check("assinante TEM whatsapp", mapAssinante.whatsapp === true);
     check("assinante TEM communities", mapAssinante.communities === true);
     check("assinante TEM agenda", mapAssinante.agenda === true);
+    check("assinante TEM community_members", mapAssinante.community_members === true);
+    check("assinante TEM site_share", mapAssinante.site_share === true);
+    check("assinante TEM atendimento_ia", mapAssinante.atendimento_ia === true);
 
     check("forasteiro NÃO tem whatsapp", mapForasteiro.whatsapp === false);
-    check(
-      "forasteiro NÃO tem communities (saiu da venda ≠ virou grátis)",
-      mapForasteiro.communities === false
-    );
+    // Mig 234: fora do plano E fora da vitrine, communities cai no terceiro
+    // ramo — GRÁTIS. É o "todos têm acesso ao meus negócios".
+    check("forasteiro TEM communities (o negócio é grátis, mig 234)", mapForasteiro.communities === true);
+    check("forasteiro NÃO tem community_members", mapForasteiro.community_members === false);
+    check("forasteiro NÃO tem site_share", mapForasteiro.site_share === false);
+    check("forasteiro NÃO tem atendimento_ia", mapForasteiro.atendimento_ia === false);
     check("forasteiro NÃO tem agenda", mapForasteiro.agenda === false);
 
     // O que é grátis continua grátis para os dois — o pacote não pode ter
@@ -297,7 +323,7 @@ async function main() {
     check("quem comprou vitalício mantém a função sem assinar", comVitalicio === true);
     const mapVitalicio = await PlanService.ownershipMap(forasteiro, USER_FEATURE_KEYS);
     check("e o mapa concorda", mapVitalicio.communities === true);
-    check("mas isso não lhe dá o resto do plano", mapVitalicio.whatsapp === false);
+    check("mas isso não lhe dá o resto do plano", mapVitalicio.whatsapp === false && mapVitalicio.site_share === false);
     await client.query("ROLLBACK TO SAVEPOINT sp_vitalicio");
 
     // ─── 9. Plano desativado solta as chaves ──────────────────────────────
@@ -327,7 +353,8 @@ async function main() {
     // ─── 11. Visitante ────────────────────────────────────────────────────
     console.log("\n[11] Sem sessão");
     const anon = await PlanService.ownershipMap(null, USER_FEATURE_KEYS);
-    check("visitante não tem o que é de plano", anon.whatsapp === false && anon.communities === false);
+    check("visitante não tem o que é de plano", anon.whatsapp === false && anon.site_share === false);
+    check("visitante vê o negócio como grátis", anon.communities === true);
     check("visitante vê o que é grátis", anon.wallet === true);
     check("visitante nunca é 'dono' do que está à venda", anon.courses === false);
   } finally {

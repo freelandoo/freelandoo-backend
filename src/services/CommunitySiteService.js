@@ -29,6 +29,8 @@ const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
 const CommunityProfessionalStorage = require("../storages/CommunityProfessionalStorage");
 const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStorage");
 const BookingAvailabilityService = require("./BookingAvailabilityService");
+const PlanService = require("./PlanService");
+const { BUSINESS_GATES } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunitySiteService");
@@ -410,6 +412,21 @@ class CommunitySiteService {
         }
 
         const published = body?.published !== false;
+
+        // PUBLICAR passa pelo Plano Negócio (mig 234): montar o site é de todo
+        // mundo, e é a publicação que o torna compartilhável — é ela que se
+        // paga. DESPUBLICAR fica fora do gate: porta de saída trancada é a
+        // única que não pode existir (regra das migs 220/223).
+        if (published) {
+          const has = await PlanService.hasFeature(id_user, BUSINESS_GATES.siteShare);
+          if (!has) {
+            return await PlanService.planRefusal(
+              BUSINESS_GATES.siteShare,
+              "Publicar e compartilhar o site exige o Plano Negócio."
+            );
+          }
+        }
+
         const row = await CommunitySiteStorage.setPublished(
           pool,
           params.id_profile,

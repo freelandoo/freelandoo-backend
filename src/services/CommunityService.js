@@ -16,6 +16,8 @@ const AuthStorage = require("../storages/AuthStorage");
 const { PLATFORM_KINDS } = require("../utils/gamesScore");
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const Subject = require("../utils/subjectCommunities");
+const PlanService = require("./PlanService");
+const { BUSINESS_GATES } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { normalizeFeedKind } = require("../utils/feedKind");
 
@@ -262,10 +264,22 @@ class CommunityService {
           ? await SubjectCommunityStorage.getSubject(pool, community.id_profile, community.kind)
           : null;
 
+        // O NEGÓCIO (mig 234): as três portas do Plano Negócio, lidas do LÍDER
+        // e não de quem olha — é o plano dele que decide se o negócio aceita
+        // membro e se o site pode ser publicado. Leitura pública de propósito:
+        // o visitante precisa saber que "Entrar" não existe aqui ANTES de
+        // apertar, e o líder precisa ver a porta trancada para saber o que
+        // comprar.
+        const business_plan =
+          community.kind === "common"
+            ? await PlanService.businessGates(community.id_leader_user)
+            : null;
+
         return {
           community: {
             ...CommunityPolicy.projectCommunity(community, tier),
             ...(subject ? { subject } : {}),
+            ...(business_plan ? { business_plan } : {}),
             viewer_is_member: !!viewer_membership,
             viewer_role: viewer_membership,
             viewer_sub_status,
@@ -1339,6 +1353,23 @@ class CommunityService {
           if (existing) {
             await client.query("COMMIT");
             return { ok: true, role: existing.role };
+          }
+
+          // O NEGÓCIO só aceita membro se o LÍDER assina o Plano Negócio
+          // (mig 234). O gate é do lado de quem RECEBE, não de quem entra: o
+          // negócio é de graça para existir, e o que se paga é ter gente
+          // dentro. Vem ANTES da mensalidade da comunidade privada — sem plano,
+          // nem a entrada paga abre (senão a cobrança do membro entraria num
+          // negócio que não pode tê-lo).
+          if (community.kind === "common") {
+            const gates = await PlanService.businessGates(community.id_leader_user);
+            if (!gates.members_enabled) {
+              await client.query("ROLLBACK");
+              return await PlanService.planRefusal(
+                BUSINESS_GATES.members,
+                "Este negócio ainda não aceita membros."
+              );
+            }
           }
 
           // Comunidade privada: a entrada é paga (assinatura mensal). O front

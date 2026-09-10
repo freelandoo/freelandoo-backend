@@ -23,6 +23,7 @@ const pool = require("../databases");
 const PlanStorage = require("../storages/PlanStorage");
 const FunctionStoreStorage = require("../storages/FunctionStoreStorage");
 const StripeService = require("./StripeService");
+const { BUSINESS_GATES, BUSINESS_GATE_KEYS } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PlanService");
@@ -101,6 +102,39 @@ class PlanService {
   }
 
   /**
+   * As três portas do Plano NEGÓCIO (mig 234) para UMA pessoa — o líder de um
+   * negócio — num mapa só: `{ members_enabled, site_share_enabled, ai_enabled }`.
+   *
+   * É o que a página da comunidade recebe para saber se mostra "Entrar" ao
+   * visitante e o aviãozinho ao líder. Sem líder (plataforma) tudo é falso.
+   */
+  static async businessGates(id_leader_user) {
+    if (!id_leader_user) {
+      return { members_enabled: false, site_share_enabled: false, ai_enabled: false };
+    }
+    const map = await PlanService.ownershipMap(id_leader_user, BUSINESS_GATE_KEYS);
+    return {
+      members_enabled: !!map[BUSINESS_GATES.members],
+      site_share_enabled: !!map[BUSINESS_GATES.siteShare],
+      ai_enabled: !!map[BUSINESS_GATES.ai],
+    };
+  }
+
+  /**
+   * A recusa de uma porta do plano, pronta para o `sendServiceResult`: 402 com
+   * o motivo escrito. O front reconhece o plano pelo STATUS (402) — o corpo de
+   * erro só carrega `error`.
+   */
+  static async planRefusal(feature_key, message) {
+    const plan = await PlanService.planSellingFeature(feature_key);
+    return {
+      error: plan ? `${message} Faz parte do plano ${plan.name}.` : message,
+      statusCode: 402,
+      needs_plan: plan ? plan.slug : null,
+    };
+  }
+
+  /**
    * O plano que vende esta chave — para a recusa dizer o que fazer.
    *
    * Uma porta paga que responde só "indisponível" manda a pessoa procurar o
@@ -124,6 +158,17 @@ class PlanService {
    */
   static async endSubscription(id_subscription, id_user) {
     const row = await PlanStorage.setStatus(pool, id_subscription, "canceled");
+
+    // O atendente de IA INCLUÍDO (mig 234) cai junto com o plano: ele é o
+    // outro recurso que continuaria custando (tokens de LLM) depois do fim. Só
+    // a assinatura marcada como incluída cai — quem paga o Atendimento IA à
+    // parte não é tocado. `require` lazy pelo mesmo motivo do WhatsApp abaixo.
+    try {
+      const AtendimentoIaService = require("./AtendimentoIaService");
+      await AtendimentoIaService.revokeIncluded(id_subscription);
+    } catch (e) {
+      log.warn("endSubscription.ai_revoke_failed", { message: e && e.message });
+    }
 
     // A sessão do WhatsApp é o único recurso que continuaria CUSTANDO depois do
     // fim do plano — uma sessão de pé consome memória todo dia, pagando ou não.
@@ -250,6 +295,7 @@ class PlanService {
       stripe_customer_id: customerId,
       current_period_end: null,
     });
+    await PlanService._afterActivation(row.id_user, row.id_subscription);
     return { activated: true, id_user: row.id_user };
   }
 
@@ -261,6 +307,7 @@ class PlanService {
       stripe_customer_id: null,
       current_period_end: PlanService._periodEnd(invoice),
     });
+    await PlanService._afterActivation(row.id_user, row.id_subscription);
     return { renewed: true, id_user: row.id_user };
   }
 
@@ -293,6 +340,7 @@ class PlanService {
         typeof subscription.customer === "string" ? subscription.customer : null,
       current_period_end: PlanService._periodEnd(invoice),
     });
+    await PlanService._afterActivation(id_user, created.id_subscription);
     return { activated: true, id_user };
   }
 
@@ -310,6 +358,23 @@ class PlanService {
     if (!row) return { ignored: true };
     await PlanService.endSubscription(row.id_subscription, row.id_user);
     return { canceled: true, id_user: row.id_user };
+  }
+
+  /**
+   * O que a ativação (ou renovação) do plano ABRE além da posse: hoje, o
+   * atendente de IA incluído. Best-effort e fora do caminho do webhook — falha
+   * aqui não pode fazer o Stripe reentregar uma fatura já aplicada.
+   */
+  static async _afterActivation(id_user, id_subscription) {
+    try {
+      const sub = await PlanStorage.getActiveSubscription(pool, id_user);
+      if (!sub || String(sub.id_subscription) !== String(id_subscription)) return;
+      if (!(sub.features || []).includes(BUSINESS_GATES.ai)) return;
+      const AtendimentoIaService = require("./AtendimentoIaService");
+      await AtendimentoIaService.syncIncluded(id_user, id_subscription);
+    } catch (e) {
+      log.warn("afterActivation.failed", { id_user, message: e && e.message });
+    }
   }
 
   static _periodEnd(invoice) {

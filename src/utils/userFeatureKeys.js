@@ -17,6 +17,12 @@ const USER_FEATURE_KEYS = [
   // mensal, e por isso não tem linha em `tb_function_product`. O ownership
   // trata isso: chave em plano exige assinatura, com ou sem produto de vitrine.
   "whatsapp",
+  // Plano NEGÓCIO (mig 234): o negócio e o site são de todos; estas três são as
+  // PORTAS que o plano libera — aceitar membro, PUBLICAR o site (compartilhar)
+  // e o atendente de IA incluído. Nunca vendidas avulsas (sem linha na Loja).
+  "community_members",
+  "site_share",
+  "atendimento_ia",
   // "vitrine" é a única com efeito SERVER-SIDE: desligada, os perfis do user
   // somem da vitrine pública (SearchStorage) pra todo mundo — não é só UI.
   "vitrine",

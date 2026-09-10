@@ -12,6 +12,8 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const StripeService = require("./StripeService");
+const PlanService = require("./PlanService");
+const { BUSINESS_GATES } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunityMembershipService");
@@ -37,6 +39,19 @@ class CommunityMembershipService {
 
         const existing = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
         if (existing) return { error: "Você já é membro desta comunidade.", statusCode: 409 };
+
+        // Mesmo gate do join gratuito (mig 234): o negócio do líder sem Plano
+        // Negócio não recebe membro — nem pagante. Sem isto a porta paga
+        // seria a porta dos fundos da porta grátis.
+        if (community.kind === "common") {
+          const gates = await PlanService.businessGates(community.id_leader_user);
+          if (!gates.members_enabled) {
+            return await PlanService.planRefusal(
+              BUSINESS_GATES.members,
+              "Este negócio ainda não aceita membros."
+            );
+          }
+        }
 
         // Mesmos requisitos do join gratuito: perfil + teto de participação.
         const sub = await CommunityStorage.getHighestSubprofile(pool, id_user);

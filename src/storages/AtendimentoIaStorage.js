@@ -91,6 +91,42 @@ class AtendimentoIaStorage {
     return rows[0] || null;
   }
 
+  // ─── Assinatura INCLUÍDA no Plano Negócio (mig 234) ──────────────────────
+  static async getPlanByName(conn, name) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.tb_atendimento_ia_plan WHERE name = $1 LIMIT 1`,
+      [name]
+    );
+    return rows[0] || null;
+  }
+
+  /** A assinatura viva aberta por ESTA assinatura de plano (null = nenhuma). */
+  static async getLiveSubByPlanSubscription(conn, id_plan_subscription) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.tb_atendimento_ia_sub
+        WHERE id_plan_subscription = $1 AND status IN ('active','past_due')
+        LIMIT 1`,
+      [id_plan_subscription]
+    );
+    return rows[0] || null;
+  }
+
+  /**
+   * Nasce ATIVA e sem Stripe: quem cobra é o plano. `current_period_start` é
+   * a âncora do contador de tokens no bot; a renovação do plano a empurra.
+   */
+  static async createIncludedSub(conn, { id_user, id_plan, token_limit_monthly, id_plan_subscription }) {
+    const { rows } = await conn.query(
+      `INSERT INTO public.tb_atendimento_ia_sub
+         (id_user, id_plan, monthly_cents, token_limit_monthly, status, activated_at,
+          current_period_start, id_plan_subscription)
+       VALUES ($1, $2, 0, $3, 'active', NOW(), NOW(), $4)
+       RETURNING *`,
+      [id_user, id_plan, token_limit_monthly, id_plan_subscription]
+    );
+    return rows[0];
+  }
+
   static async getSubBySession(conn, session_id) {
     const { rows } = await conn.query(
       `SELECT * FROM public.tb_atendimento_ia_sub WHERE stripe_session_id = $1 LIMIT 1`,

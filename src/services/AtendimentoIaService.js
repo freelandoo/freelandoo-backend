@@ -8,6 +8,7 @@ const AtendimentoIaStorage = require("../storages/AtendimentoIaStorage");
 const AtendimentoIaProvisionService = require("./AtendimentoIaProvisionService");
 const StripeService = require("./StripeService");
 const { isFullRefund } = require("../utils/refunds");
+const { INCLUDED_AI_PLAN_NAME } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("AtendimentoIaService");
@@ -38,6 +39,8 @@ function publicSub(s) {
     config: s.config || {},
     activated_at: s.activated_at,
     created_at: s.created_at,
+    // Aberta pelo Plano Negócio (mig 234): sem cobrança própria, cai com o plano.
+    included: !!s.id_plan_subscription,
   };
 }
 
@@ -139,6 +142,58 @@ class AtendimentoIaService {
       await this._teardown(sub, "user_cancel");
       return { ok: true };
     });
+  }
+
+  // ─── Incluída no Plano NEGÓCIO (mig 234) ───────────────────────────────────
+  /**
+   * Abre (ou renova) a assinatura INCLUÍDA de quem assina o Plano Negócio.
+   *
+   * Chamada pelo PlanService a cada ativação/renovação do plano:
+   *   • sem assinatura viva → cria a incluída (ativa, R$0) e provisiona o bot;
+   *   • já é a incluída deste plano → é RENOVAÇÃO: empurra o ciclo (zera o
+   *     contador de tokens no bot) — sem isso a cota do incluído nunca viraria;
+   *   • é uma assinatura PAGA → não mexe. A pessoa comprou cota maior que a do
+   *     incluído; trocar por R$0 seria tirar o que ela pagou.
+   *   • pendente (checkout abandonado) → expira e abre a incluída.
+   */
+  static async syncIncluded(id_user, id_plan_subscription) {
+    return runWithLogs(log, "syncIncluded", () => ({ id_user, id_plan_subscription }), async () => {
+      let live = await AtendimentoIaStorage.getLiveSubByUser(pool, id_user);
+      if (live && live.status === "pending") {
+        await AtendimentoIaStorage.markSubCanceled(pool, live.id_sub);
+        live = null;
+      }
+      if (live) {
+        if (!live.id_plan_subscription) return { skipped: true, reason: "paid_sub" };
+        await AtendimentoIaStorage.setPeriod(pool, live.id_sub, {
+          period_start: new Date(),
+          period_end: null,
+        });
+        if (live.provisioning_status === "provisioned") {
+          AtendimentoIaProvisionService.pushConfig(live.id_sub).catch(() => {});
+        }
+        return { ok: true, renewed: true };
+      }
+
+      const plan = await AtendimentoIaStorage.getPlanByName(pool, INCLUDED_AI_PLAN_NAME);
+      if (!plan) return { error: "Plano incluído não encontrado" };
+      const sub = await AtendimentoIaStorage.createIncludedSub(pool, {
+        id_user,
+        id_plan: plan.id_plan,
+        token_limit_monthly: Number(plan.token_limit_monthly),
+        id_plan_subscription,
+      });
+      await AtendimentoIaProvisionService.scheduleProvision(sub.id_sub);
+      return { ok: true, created: true };
+    });
+  }
+
+  /** O plano acabou: só a assinatura que ELE abriu cai. Idempotente. */
+  static async revokeIncluded(id_plan_subscription) {
+    const sub = await AtendimentoIaStorage.getLiveSubByPlanSubscription(pool, id_plan_subscription);
+    if (!sub) return { ignored: true };
+    await this._teardown(sub, "plan_ended");
+    return { ok: true };
   }
 
   // Desliga tudo: Stripe (imediato), tokens gerenciados e o bot. Idempotente.
