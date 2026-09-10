@@ -243,5 +243,27 @@ test("a seção continua SEM posição — deslocar uma abriria buraco no empilh
     layout: { minHeight: 300, maxWidth: 900, x: 50, y: 50 },
     data: {},
   });
-  assert.deepStrictEqual(section.layout, { minHeight: 300, maxWidth: 900 });
+  assert.deepStrictEqual(section.layout, { minHeight: 300, maxWidth: 900, padY: null });
+});
+
+/** Atalho: normaliza uma seção e devolve o layout dela. */
+function layout(raw) {
+  return normalizeSection({ id: "s1", kind: "about", layout: raw, data: {} }).layout;
+}
+
+test("o respiro vertical da seção é guardado e ZERO é escolha, não ausência", () => {
+  // É o 0 que deixa a seção encostar no conteúdo quando o líder aperta a linha
+  // divisória até o fim; lido como ausência, o respiro voltaria sozinho.
+  assert.strictEqual(layout({ padY: 0 }).padY, 0);
+  assert.strictEqual(layout({ padY: 40 }).padY, 40);
+});
+
+test("seção nunca apertada continua em AUTO — o respiro é o do CSS", () => {
+  assert.strictEqual(layout({ minHeight: 300 }).padY, null);
+  assert.strictEqual(layout({ padY: "muito" }).padY, null);
+});
+
+test("respiro fora da faixa fixa na borda, sem recusar o save", () => {
+  assert.strictEqual(layout({ padY: -50 }).padY, SIZES.PADY_MIN);
+  assert.strictEqual(layout({ padY: 9000 }).padY, SIZES.PADY_MAX);
 });

@@ -96,6 +96,11 @@ const SIZES = {
   X_MAX: 100,
   Y_MIN: -600,
   Y_MAX: 600,
+  // Respiro vertical da secao (o `py` de cima e de baixo), em pixels. Zero e
+  // valor legitimo: e ele que deixa a secao encostar no conteudo quando o
+  // lider aperta a linha divisoria ate o fim.
+  PADY_MIN: 0,
+  PADY_MAX: 240,
 };
 
 const SECTION_KINDS = [
@@ -480,6 +485,13 @@ function normalizeLayout(raw) {
   return {
     minHeight: num(d.minHeight, SIZES.HEIGHT_MIN, SIZES.HEIGHT_MAX),
     maxWidth: num(d.maxWidth, SIZES.MAXW_MIN, SIZES.MAXW_MAX),
+    // ⚠️ `padY` existe porque `minHeight` sozinho SO CRESCE: as secoes tem um
+    // respiro fixo no CSS (`py-16 md:py-24`), entao pedir uma altura menor que
+    // o conteudo + esse respiro nao encolhia nada, e a alca parecia quebrada.
+    // Quem cede primeiro quando o lider aperta a linha divisoria e o respiro.
+    // ⚠️ ZERO e escolha, nao ausencia — por isso `num` (que so devolve null
+    // para vazio/NaN) e nunca um `|| null`, que engoliria o 0.
+    padY: num(d.padY, SIZES.PADY_MIN, SIZES.PADY_MAX),
   };
 }
 
