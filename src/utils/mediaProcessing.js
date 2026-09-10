@@ -595,6 +595,7 @@ async function ensureFileBuffer(file) {
   return file;
 }
 async function processPortfolioMedia(file, mediaType, options = {}) {
+  await ensureFileBuffer(file);
   // Curtos (feed_kind='bees') aceitam imagem 9:16 além de 4:5; feed é 4:5 estrito.
   if (mediaType === "image") {
     return options.feedKind === "bees" ? processCurtoImage(file) : processPostImage(file);
@@ -634,6 +635,10 @@ async function getVideoDuration(filePath) {
  * Se a duração total for <= chunkSeconds, retorna [file] sem modificar.
  */
 async function splitVideoIntoChunks(file, chunkSeconds = 60) {
+  // A porta de story também passou a receber o arquivo em DISCO; sem isto o
+  // assertRealVideo abaixo recusaria com "Arquivo nao enviado", que é a
+  // mensagem errada para o problema certo.
+  await ensureFileBuffer(file);
   await assertRealVideo(file);
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "freelandoo-split-"));
   const inputPath = path.join(tempDir, `input-${crypto.randomUUID()}`);
@@ -980,10 +985,14 @@ async function composeVideoFromFile(inputPath, params = {}) {
     } catch {
       duration = 0;
     }
+    // ⚠️ O TETO É POR SUPERFÍCIE, e não uma constante só. `tb_story` tem
+    // `CHECK (duration_seconds <= 60)`: um story de 70s passaria por todo o
+    // upload e todo o encode para só então bater na constraint do banco — a
+    // falha mais cara possível. Cortar aqui faz o ARQUIVO e o número gravado
+    // dizerem a mesma coisa.
+    const cap = Math.max(1, Math.min(MAX_COMPOSE_SECONDS, Number(params.maxSeconds) || MAX_COMPOSE_SECONDS));
     const seconds =
-      Number.isFinite(duration) && duration > 0
-        ? Math.min(MAX_COMPOSE_SECONDS, duration)
-        : MAX_COMPOSE_SECONDS;
+      Number.isFinite(duration) && duration > 0 ? Math.min(cap, duration) : cap;
 
     const crop = composeCropRect(
       probed.width,

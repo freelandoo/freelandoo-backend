@@ -71,6 +71,23 @@ async function probe(f) { try { return await run(["-i", f, "-f", "null", "-"]); 
   ck("cortado em ~70s", Math.abs(secs - 70) < 1.5, secs + "s");
   ck("metadado diz 70s", out3.mediaMetadata.duration_seconds === 70, out3.mediaMetadata.duration_seconds + "");
 
+  console.log("\n[teto por superfície] story é 60s (CHECK da mig 055)");
+  // ⚠️ O corte tem que sair no ARQUIVO, não só no número gravado: `tb_story`
+  // tem `CHECK (duration_seconds <= 60)`, e um clipe de 70s passaria por todo o
+  // upload e todo o encode para só então bater na constraint — a falha mais
+  // cara possível.
+  const out4 = await composeVideoFromFile(long, { aspect: 9 / 16, zoom: 1, panX: 0, panY: 0, filter: null, maxSeconds: 60 });
+  const p4 = path.join(dir, "s.mp4");
+  await fsp.writeFile(p4, out4.buffer);
+  const i4 = await probe(p4);
+  const d4 = i4.match(/Duration:\s*(\d+):(\d+):([\d.]+)/) || [];
+  const s4 = d4.length ? +d4[1] * 3600 + +d4[2] * 60 + +d4[3] : -1;
+  ck("arquivo cortado em ~60s", Math.abs(s4 - 60) < 1.5, s4 + "s");
+  ck("metadado diz 60s — bate com o arquivo", out4.mediaMetadata.duration_seconds === 60, out4.mediaMetadata.duration_seconds + "");
+  const out5 = await composeVideoFromFile(long, { aspect: 16 / 9, zoom: 1, panX: 0, panY: 0, filter: null, maxSeconds: 999 });
+  ck("teto acima do global é ignorado (70s continua sendo o máximo)", out5.mediaMetadata.duration_seconds === 70, out5.mediaMetadata.duration_seconds + "");
+
+
   console.log("\n" + pass + "/" + (pass + fail) + " checks");
   if (!fail) await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
   process.exit(fail ? 1 : 0);

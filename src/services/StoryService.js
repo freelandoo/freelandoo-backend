@@ -8,7 +8,9 @@ const presignStory = require("../integrations/r2/presignStoryUpload");
 const { publicUrl: audioPublicUrl } = require("../integrations/r2/uploadAudioTrack");
 const ChatModerationService = require("./ChatModerationService");
 const ConversationService = require("./ConversationService");
-const { processPortfolioMedia, splitVideoIntoChunks } = require("../utils/mediaJobs");
+const { processPortfolioMedia, splitVideoIntoChunks, composeVideoFromFile } = require("../utils/mediaJobs");
+const { ensureFileBuffer } = require("../utils/mediaProcessing");
+const { parseComposeParams } = require("../utils/composeParams");
 const { assertProfileCanPublish } = require("../utils/profilePaywall");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -253,7 +255,7 @@ class StoryService {
     return null;
   }
 
-  static async createStory(user, { id_profile }, body, file) {
+  static async createStory(user, { id_profile }, body, file, parts = {}) {
     return runWithLogs(
       log,
       "createStory",
@@ -262,6 +264,7 @@ class StoryService {
         id_profile,
         kind: body?.kind,
         hasFile: !!file,
+        hasCompose: !!body?.compose,
       }),
       async () => {
         if (!user?.id_user) return { error: "Usuário não autenticado" };
@@ -276,8 +279,19 @@ class StoryService {
         const kind = normalizeKind();
 
         const autoSplit = body?.auto_split === true || body?.auto_split === "true" || body?.auto_split === "1";
+        // ⚠️ O campo `compose` separa os DOIS regimes desta porta: ausente = o
+        // cliente mandou vídeo já codificado por ele (o que sempre foi);
+        // presente = mandou o ORIGINAL e quem compõe é o servidor. Codificar
+        // vídeo no navegador nunca foi confiável — no iOS dava buraco preto,
+        // quadro congelado e erro de `decoderConfig` — e ainda era a primeira
+        // de duas codificações.
+        const compose = parseComposeParams(body?.compose);
+        if (compose?.error) return { error: compose.error };
+        const serverCompose = !!compose;
         const duration_seconds = normalizeDuration(body?.duration_seconds);
-        if (!autoSplit && !duration_seconds) {
+        // Compondo aqui, a duração é MEDIDA no arquivo: exigi-la do cliente
+        // seria cobrar um número que o servidor já vai apurar melhor.
+        if (!autoSplit && !serverCompose && !duration_seconds) {
           return {
             error:
               "duration_seconds inválido — informe a duração em segundos (1..60)",
@@ -336,39 +350,80 @@ class StoryService {
         const paywallErr = await assertProfileCanPublish(pool, id_profile);
         if (paywallErr) return paywallErr;
 
-        // ─── Split (no-op se duração ≤ 60s) ─────────────────────────────────
+        // ─── Composição no servidor OU split (no-op se duração ≤ 60s) ───────
+        //
+        // ⚠️ `compose` presente significa que o cliente mandou o arquivo
+        // ORIGINAL do celular, e não um vídeo que ele mesmo codificou. Aqui não
+        // há split: o composer entrega um clipe único já limitado, e fatiar uma
+        // peça EDITADA repetiria o texto queimado em cada parte, como se cada
+        // pedaço fosse uma publicação inteira. O autoSplit continua valendo,
+        // intacto, para quem sobe um vídeo longo sem editar.
         let chunks;
-        try {
-          chunks = autoSplit
-            ? await splitVideoIntoChunks(file, 60)
-            : [{ buffer: file.buffer, index: 0, duration: duration_seconds, originalname: file.originalname }];
-        } catch (err) {
-          return { error: err?.message || "Falha ao analisar vídeo" };
+        if (serverCompose) {
+          chunks = [{ index: 0, duration: null, originalname: file.originalname }];
+        } else {
+          try {
+            // A porta passou a receber o arquivo em DISCO; sem isto o
+            // `chunk.buffer.length` abaixo estouraria em `undefined`.
+            await ensureFileBuffer(file);
+            chunks = autoSplit
+              ? await splitVideoIntoChunks(file, 60)
+              : [{ buffer: file.buffer, index: 0, duration: duration_seconds, originalname: file.originalname }];
+          } catch (err) {
+            return { error: err?.message || "Falha ao analisar vídeo" };
+          }
         }
 
         const total = chunks.length;
         const stories = [];
         for (const chunk of chunks) {
-          const chunkFile = {
-            ...file,
-            buffer: chunk.buffer,
-            originalname: chunk.originalname,
-            size: chunk.buffer.length,
-          };
           let processedFile;
           try {
-            processedFile = await processPortfolioMedia(chunkFile, "video");
+            if (serverCompose) {
+              processedFile = await composeVideoFromFile(file.path, {
+                aspect: compose.aspect,
+                zoom: compose.zoom,
+                panX: compose.panX,
+                panY: compose.panY,
+                filter: compose.filter,
+                overlayPath: parts?.overlayFile?.path || null,
+                pipPath: parts?.pipFile?.path || null,
+                pip: compose.pip,
+                // Story é limitado a 60s pelo CHECK da mig 055; o corte tem
+                // que acontecer no ffmpeg, não na hora de gravar.
+                maxSeconds: 60,
+                originalname: file.originalname,
+              });
+            } else {
+              const chunkFile = {
+                ...file,
+                buffer: chunk.buffer,
+                originalname: chunk.originalname,
+                size: chunk.buffer.length,
+              };
+              processedFile = await processPortfolioMedia(chunkFile, "video");
+            }
           } catch (err) {
             return { error: err?.message || "Falha ao processar vídeo" };
           }
           const uploaded = await uploadStoryVideoToR2({ id_profile, file: processedFile });
-          const finalWidth = width || processedFile.mediaMetadata?.width || null;
-          const finalHeight = height || processedFile.mediaMetadata?.height || null;
+          // ⚠️ Compondo no servidor, quem sabe o tamanho REAL é o servidor: o
+          // cliente manda o tamanho-ALVO, e a saída pode ter ficado menor (ele
+          // nunca amplia). Confiar no número do cliente faria o player desenhar
+          // uma moldura que não é a do arquivo.
+          const finalWidth = serverCompose
+            ? processedFile.mediaMetadata?.width || width || null
+            : width || processedFile.mediaMetadata?.width || null;
+          const finalHeight = serverCompose
+            ? processedFile.mediaMetadata?.height || height || null
+            : height || processedFile.mediaMetadata?.height || null;
           const chunkCaption =
             total > 1
               ? (caption ? `${caption} (Parte ${chunk.index + 1}/${total})` : `Parte ${chunk.index + 1}/${total}`)
               : caption;
-          const chunkDuration = Math.max(1, Math.min(60, Math.round(chunk.duration)));
+          const chunkDuration = serverCompose
+            ? Math.max(1, Math.round(processedFile.mediaMetadata?.duration_seconds || duration_seconds || 1))
+            : Math.max(1, Math.min(60, Math.round(chunk.duration)));
 
           const client = await pool.connect();
           try {

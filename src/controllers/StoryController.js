@@ -12,7 +12,8 @@ class StoryController {
       req.user,
       { id_profile: req.body?.id_profile },
       req.body,
-      req.file
+      req.file,
+      { overlayFile: req.overlayFile, pipFile: req.pipFile }
     );
     return sendServiceResult(res, result, 201);
   }

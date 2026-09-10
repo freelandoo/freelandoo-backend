@@ -1,26 +1,21 @@
-const multer = require("multer");
-const { createLogger } = require("../utils/logger");
+// Upload de vídeo de story/bee pela porta multipart.
+//
+// Mesma forma da porta de portfólio (disco, campos `video`/`overlay`/`pip`,
+// limpeza dos temporários quando a resposta fecha) — a mecânica mora em
+// `composeUpload.js`, compartilhada, para que a limpeza não exista em uma porta
+// e falte na outra.
 
-const log = createLogger("uploadStoryVideo");
+const { createComposeUpload, MAX_UPLOAD_BYTES } = require("./composeUpload");
 
-const storage = multer.memoryStorage();
-const allowedTypes = new Set([
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-]);
+const allowedTypes = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 
-const uploadStoryVideo = multer({
-  storage,
-  limits: { fileSize: 80 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const mt = (file.mimetype || "").toLowerCase();
-    if (!allowedTypes.has(mt)) {
-      log.warn("rejected_type", { mimetype: file.mimetype });
-      return cb(new Error("Tipo de arquivo nao permitido"));
-    }
-    cb(null, true);
-  },
+const { upload, withComposeParts, isAllowedUploadType } = createComposeUpload({
+  name: "uploadStoryVideo",
+  mainField: "video",
+  allowedTypes,
 });
 
-module.exports = uploadStoryVideo;
+module.exports = upload;
+module.exports.withComposeParts = withComposeParts;
+module.exports.isAllowedUploadType = (mimetype) => isAllowedUploadType("video", mimetype);
+module.exports.MAX_UPLOAD_BYTES = MAX_UPLOAD_BYTES;

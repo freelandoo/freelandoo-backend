@@ -14,7 +14,10 @@ router.post(
   "/",
   authMiddleware,
   rateLimit.upload,
-  uploadStoryVideo.single("video"),
+  // `.withComposeParts` em vez de `.single("video")`: além do vídeo, a porta
+  // aceita o PNG de sobreposição e o PiP que a composição no servidor usa.
+  // Quem manda só o `video` continua chegando igual.
+  uploadStoryVideo.withComposeParts,
   asyncHandler(StoryController.createMine)
 );
 
