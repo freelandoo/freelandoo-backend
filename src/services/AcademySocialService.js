@@ -9,7 +9,7 @@ const AcademyStorage = require("../storages/AcademyStorage");
 const AcademyService = require("./AcademyService");
 const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
 const uploadAcademyMediaToR2 = require("../integrations/r2/uploadAcademyMedia");
-const { processPortfolioMedia } = require("../utils/mediaProcessing");
+const { ensureFileBuffer, hasUpload, processPortfolioMedia } = require("../utils/mediaProcessing");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("academy-social");
@@ -87,12 +87,12 @@ class AcademySocialService {
       }
 
       const caption = String(body?.caption || "").slice(0, 3000);
-      if (!caption.trim() && !file?.buffer) return { error: "Escreva algo ou anexe uma mídia" };
+      if (!caption.trim() && !hasUpload(file)) return { error: "Escreva algo ou anexe uma mídia" };
 
       let media_url = null;
       let thumbnail_url = null;
       let media_kind = null;
-      if (file?.buffer) {
+      if (hasUpload(file)) {
         const mimetype = String(file.mimetype || "").toLowerCase();
         media_kind = mimetype.startsWith("image/") ? "image" : mimetype.startsWith("video/") ? "video" : null;
         if (!media_kind) return { error: "Tipo de arquivo não permitido" };
@@ -287,10 +287,12 @@ class AcademySocialService {
       if (guard.error) return guard;
       if (!guard.is_owner) return { error: "Sem permissão", statusCode: 403 };
       if (!["avatar", "cover"].includes(kind)) return { error: "Tipo inválido (avatar|cover)" };
-      if (!file?.buffer) return { error: "Arquivo obrigatório" };
+      if (!hasUpload(file)) return { error: "Arquivo obrigatório" };
       if (!String(file.mimetype || "").toLowerCase().startsWith("image/")) {
         return { error: "Envie uma imagem (JPG/PNG/WebP)" };
       }
+      // ⚠️ Vai CRUA para o R2, sem processador: a leitura do disco é aqui.
+      await ensureFileBuffer(file);
       const { url } = await uploadAcademyMediaToR2({ id_academy, file });
       const patch = kind === "avatar" ? { avatar_url: url } : { cover_url: url };
       await AcademyStorage.updateAcademy(pool, id_academy, patch);

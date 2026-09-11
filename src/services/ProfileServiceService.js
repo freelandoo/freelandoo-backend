@@ -7,6 +7,7 @@ const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadServiceMediaToR2 = require("../integrations/r2/uploadServiceMedia");
 const { processPortfolioMedia } = require("../utils/mediaJobs");
+const { hasUpload } = require("../utils/mediaProcessing");
 const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -291,7 +292,9 @@ class ProfileServiceService {
         return { error: "Só o criador do serviço ou o dono do clan podem editá-lo" };
       }
 
-      if (!file || !file.buffer) return { error: "Arquivo não enviado" };
+      // Pergunta pelo ARQUIVO, não pelo buffer: ele chega em disco e só vira
+      // Buffer dentro de `processPortfolioMedia`, logo abaixo.
+      if (!hasUpload(file)) return { error: "Arquivo não enviado" };
 
       const mimetype = String(file.mimetype || "").toLowerCase();
       const mediaType = mimetype.startsWith("image/")

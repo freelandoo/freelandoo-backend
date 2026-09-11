@@ -5,6 +5,7 @@ const pool = require("../databases");
 const VaquinhaStorage = require("../storages/VaquinhaStorage");
 const PaymentGateway = require("../integrations/payments");
 const { processPortfolioMedia } = require("../utils/mediaJobs");
+const { ensureFileBuffer, hasUpload } = require("../utils/mediaProcessing");
 const uploadVaquinhaMediaToR2 = require("../integrations/r2/uploadVaquinhaMedia");
 const uploadVaquinhaCoverToR2 = require("../integrations/r2/uploadVaquinhaCover");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -218,10 +219,14 @@ class VaquinhaService {
       const v = await VaquinhaStorage.getById(pool, id);
       if (!v || v.id_user !== user.id_user) return { error: "Vaquinha não encontrada", statusCode: 404 };
       if (v.status !== "active") return { error: "Vaquinha encerrada", statusCode: 400 };
-      if (!file?.buffer) return { error: "Imagem obrigatória", statusCode: 400 };
+      if (!hasUpload(file)) return { error: "Imagem obrigatória", statusCode: 400 };
       if (!String(file.mimetype || "").toLowerCase().startsWith("image/")) {
         return { error: "Envie uma imagem", statusCode: 400 };
       }
+      // ⚠️ A capa vai CRUA para o R2, sem passar por um processador — então a
+      // leitura do disco tem que acontecer aqui. Sem isto o `Body` do putObject
+      // seria `undefined`.
+      await ensureFileBuffer(file);
       const { url } = await uploadVaquinhaCoverToR2({ id_vaquinha: id, file });
       const updated = await VaquinhaStorage.update(pool, id, { cover_url: url });
       return { vaquinha: publicShape(updated) };
@@ -629,12 +634,12 @@ class VaquinhaService {
       const kind = ["post", "bee", "text"].includes(body.kind) ? body.kind : "post";
       const caption = String(body.caption || "").slice(0, 3000);
       if (kind === "text" && !caption.trim()) return { error: "Escreva algo", statusCode: 400 };
-      if (kind !== "text" && !file?.buffer) return { error: "Mídia obrigatória", statusCode: 400 };
+      if (kind !== "text" && !hasUpload(file)) return { error: "Mídia obrigatória", statusCode: 400 };
 
       let media_url = null;
       let thumbnail_url = null;
       let media_type = null;
-      if (kind !== "text" && file?.buffer) {
+      if (kind !== "text" && hasUpload(file)) {
         const mimetype = String(file.mimetype || "").toLowerCase();
         media_type = mimetype.startsWith("image/") ? "image" : mimetype.startsWith("video/") ? "video" : null;
         if (!media_type) return { error: "Tipo de arquivo não permitido", statusCode: 400 };

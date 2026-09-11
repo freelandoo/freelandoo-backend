@@ -9,6 +9,7 @@ const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("./r2Client");
 const uploadProductMediaToR2 = require("../integrations/r2/uploadProductMedia");
 const { processPortfolioMedia } = require("../utils/mediaJobs");
+const { hasUpload } = require("../utils/mediaProcessing");
 const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { isProfilePaid } = require("../utils/profilePaywall");
@@ -472,7 +473,8 @@ class ProfileProductService {
         return { error: "Produto não encontrado" };
       }
 
-      if (!file || !file.buffer) return { error: "Arquivo não enviado" };
+      // Ver `hasUpload`: o arquivo chega em DISCO, sem buffer.
+      if (!hasUpload(file)) return { error: "Arquivo não enviado" };
 
       const mimetype = String(file.mimetype || "").toLowerCase();
       const mediaType = mimetype.startsWith("image/")

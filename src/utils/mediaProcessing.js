@@ -589,6 +589,24 @@ async function processVideo(file, options = {}) {
 // só: espalhado pelos services, o caller que esquecesse receberia
 // `file.buffer === undefined` e falharia com "Arquivo nao enviado", que é a
 // mensagem errada para o problema certo.
+/**
+ * Veio arquivo nesta requisição?
+ *
+ * ⚠️ PERGUNTE ISTO, NUNCA `file.buffer`. Desde que o upload de portfólio
+ * passou a chegar em DISCO (multer diskStorage, para o 4K do celular não
+ * entrar no heap), o multer entrega `file.path` e `file.size` e o `buffer`
+ * só aparece DEPOIS que alguém lê o arquivo — o que `processPortfolioMedia`
+ * faz lá dentro. Um guard escrito como `if (!file.buffer)` recusa ANTES
+ * disso e responde "Arquivo não enviado" com o arquivo ali, em disco.
+ *
+ * Foi exatamente o que aconteceu com as fotos de serviço, de produto, da
+ * vaquinha e do mural da academia: os quatro ficaram para trás quando o
+ * middleware virou disco, e o sintoma é uma recusa que culpa o usuário.
+ */
+function hasUpload(file) {
+  return !!(file && (file.buffer?.length || file.path));
+}
+
 async function ensureFileBuffer(file) {
   if (!file || file.buffer || !file.path) return file;
   file.buffer = await fs.readFile(file.path);
@@ -1203,6 +1221,7 @@ module.exports = {
   splitVideoIntoChunks,
   compressVideoFile,
   ensureFileBuffer,
+  hasUpload,
   composeVideoFromFile,
   composeCropRect,
   composeOutputSize,
