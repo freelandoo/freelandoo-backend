@@ -84,10 +84,23 @@ function cancelSubscription(subscriptionId, { immediate = false } = {}) {
     : StripeService.cancelSubscription(subscriptionId);
 }
 
+/**
+ * A janela do ciclo vigente. No Stripe ela vem pronta na assinatura.
+ */
+async function getSubscriptionPeriod(subscriptionId) {
+  const sub = await StripeService.retrieveSubscription(subscriptionId);
+  const toDate = (s) => (Number.isFinite(s) ? new Date(s * 1000) : null);
+  return {
+    period_start: toDate(sub?.current_period_start),
+    period_end: toDate(sub?.current_period_end),
+  };
+}
+
 module.exports = {
   PROVIDER,
   UNSUPPORTED_FIELDS,
   createCheckout,
   refund,
   cancelSubscription,
+  getSubscriptionPeriod,
 };

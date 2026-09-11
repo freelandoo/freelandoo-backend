@@ -149,6 +149,50 @@ function cancelSubscription(subscriptionId) {
   return asaas.cancelSubscription(subscriptionId);
 }
 
+/**
+ * Quantos MESES dura um ciclo do Asaas.
+ *
+ * A plataforma só cria `MONTHLY`, mas uma assinatura pode ter o ciclo trocado
+ * no painel — e cair num default de 1 mês nesse caso encurtaria a janela de
+ * quem paga por ano, zerando a cota do bot doze vezes mais do que devia.
+ */
+const CYCLE_MONTHS = Object.freeze({
+  WEEKLY: 0.25,
+  BIWEEKLY: 0.5,
+  MONTHLY: 1,
+  BIMONTHLY: 2,
+  QUARTERLY: 3,
+  SEMIANNUALLY: 6,
+  YEARLY: 12,
+});
+
+/**
+ * A janela do ciclo vigente.
+ *
+ * ⚠️ O ASAAS NÃO TEM `current_period_start` / `current_period_end` — só
+ * `nextDueDate` e `cycle`. É por isso que a janela é DERIVADA aqui, e não lida:
+ * o fim do ciclo que acabou de ser pago é o vencimento do PRÓXIMO, e o começo é
+ * um ciclo antes dele.
+ *
+ * Pedir esses campos ao Asaas (que é o que o caminho do Stripe fazia) devolve
+ * `undefined` nos dois, e o efeito é mudo: o contador de tokens do bot nunca
+ * ganha âncora e a cota do assinante nunca zera.
+ */
+async function getSubscriptionPeriod(subscriptionId) {
+  const sub = await asaas.getSubscription(subscriptionId);
+  const next = sub && sub.nextDueDate ? new Date(`${sub.nextDueDate}T00:00:00-03:00`) : null;
+  if (!next || Number.isNaN(next.getTime())) return { period_start: null, period_end: null };
+
+  const months = CYCLE_MONTHS[String(sub.cycle || "MONTHLY").toUpperCase()] ?? 1;
+  const start = new Date(next.getTime());
+  if (months >= 1) {
+    start.setMonth(start.getMonth() - Math.round(months));
+  } else {
+    start.setDate(start.getDate() - Math.round(months * 30));
+  }
+  return { period_start: start, period_end: next };
+}
+
 module.exports = {
   PROVIDER,
   UNSUPPORTED_FIELDS,
@@ -159,4 +203,6 @@ module.exports = {
   createCheckout,
   refund,
   cancelSubscription,
+  getSubscriptionPeriod,
+  CYCLE_MONTHS,
 };

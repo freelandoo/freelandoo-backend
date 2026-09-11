@@ -209,6 +209,30 @@ async function cancelSubscription(subscriptionId, { provider, immediate = false 
   return impl.cancelSubscription(subscriptionId, { immediate });
 }
 
+/**
+ * A janela do ciclo vigente de uma assinatura, NO PROVEDOR QUE A CRIOU.
+ *
+ * ⚠️ Como o estorno, o provedor sai da INTENÇÃO e nunca do ambiente: uma
+ * assinatura criada no Stripe continua tendo o ciclo lido lá depois da
+ * plataforma inteira migrar.
+ *
+ * Existe porque os dois provedores respondem isto de formas incompatíveis — o
+ * Stripe entrega `current_period_start/end` prontos, o Asaas só tem
+ * `nextDueDate` + `cycle` e a janela precisa ser derivada. Quem consome (hoje o
+ * Atendimento IA, para zerar a cota de tokens do bot a cada renovação) não pode
+ * ter que saber dessa diferença: perguntar `current_period_start` ao Asaas
+ * devolve `undefined` e a cota nunca zera, sem erro nenhum.
+ */
+async function getSubscriptionPeriod(subscriptionId, { provider } = {}) {
+  if (!subscriptionId) return { period_start: null, period_end: null };
+  const resolved = provider || (await resolveProviderByRef(subscriptionId));
+  const impl = PROVIDERS[resolved] || PROVIDERS.stripe;
+  if (typeof impl.getSubscriptionPeriod !== "function") {
+    return { period_start: null, period_end: null };
+  }
+  return impl.getSubscriptionPeriod(subscriptionId);
+}
+
 module.exports = {
   PROVIDERS,
   providerName,
@@ -218,4 +242,5 @@ module.exports = {
   createCheckout,
   refund,
   cancelSubscription,
+  getSubscriptionPeriod,
 };

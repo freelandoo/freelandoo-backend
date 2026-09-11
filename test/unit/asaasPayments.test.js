@@ -447,3 +447,68 @@ test("evento de assinatura de OUTRA conta não mexe em nada nosso", async () => 
     assert.deepStrictEqual(seen.dispatched, []);
   });
 });
+
+// ───────── A3: A JANELA DO CICLO (o Asaas não tem current_period_*) ─────────
+
+test("o charge de estorno carrega a ASSINATURA, sem viagem ao Stripe", () => {
+  // ⚠️ No Stripe, achar a assinatura a partir de um estorno é
+  // charge → invoice → subscription, com ida à rede no meio. No Asaas não
+  // existe `invoice`: a cobrança É a fatura. Sem estes dois campos, os três
+  // consumidores pediriam ao Stripe uma fatura com id do Asaas, cairiam no
+  // catch e devolveriam "ignorado" — dinheiro devolvido e serviço ligado.
+  const c = AsaasWebhookService.buildChargeLike({
+    id: "pay_sub_1",
+    value: 59.9,
+    subscription: "sub_asaas_7",
+  });
+  assert.strictEqual(c.subscription, "sub_asaas_7");
+  assert.strictEqual(c.invoice, "pay_sub_1");
+});
+
+test("cobrança avulsa estornada não inventa assinatura", () => {
+  const c = AsaasWebhookService.buildChargeLike({ id: "pay_avulsa", value: 10 });
+  assert.strictEqual(c.subscription, null);
+});
+
+test("a janela do ciclo é DERIVADA de nextDueDate + cycle", async () => {
+  // O Asaas não tem `current_period_start/end`. Pedi-los (que é o que o
+  // caminho do Stripe fazia) devolve undefined nos dois, e o efeito é mudo:
+  // o contador de tokens do bot nunca ganha âncora e a cota nunca zera.
+  const orig = asaas.getSubscription;
+  try {
+    asaas.getSubscription = async () => ({ id: "sub_1", cycle: "MONTHLY", nextDueDate: "2026-10-15" });
+    const { period_start, period_end } = await asaasProvider.getSubscriptionPeriod("sub_1");
+    assert.strictEqual(period_end.toISOString().slice(0, 10), "2026-10-15");
+    assert.strictEqual(period_start.toISOString().slice(0, 10), "2026-09-15");
+  } finally {
+    asaas.getSubscription = orig;
+  }
+});
+
+test("ciclo ANUAL não é encurtado para um mês", async () => {
+  // Cair num default de 1 mês zeraria a cota de quem paga por ano doze vezes
+  // mais do que devia.
+  const orig = asaas.getSubscription;
+  try {
+    asaas.getSubscription = async () => ({ id: "sub_2", cycle: "YEARLY", nextDueDate: "2027-03-01" });
+    const { period_start, period_end } = await asaasProvider.getSubscriptionPeriod("sub_2");
+    assert.strictEqual(period_end.toISOString().slice(0, 10), "2027-03-01");
+    assert.strictEqual(period_start.toISOString().slice(0, 10), "2026-03-01");
+  } finally {
+    asaas.getSubscription = orig;
+  }
+});
+
+test("assinatura sem vencimento não inventa janela", async () => {
+  // Melhor âncora nula (que só não zera a cota) do que uma janela inventada,
+  // que zeraria a cota na hora errada.
+  const orig = asaas.getSubscription;
+  try {
+    asaas.getSubscription = async () => ({ id: "sub_3", cycle: "MONTHLY", nextDueDate: null });
+    const p = await asaasProvider.getSubscriptionPeriod("sub_3");
+    assert.strictEqual(p.period_start, null);
+    assert.strictEqual(p.period_end, null);
+  } finally {
+    asaas.getSubscription = orig;
+  }
+});

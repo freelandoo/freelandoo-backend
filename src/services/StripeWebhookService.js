@@ -389,14 +389,22 @@ async function handleChargeRefunded(conn, charge) {
       ? await ProfileSubscriptionStorage.findByPaymentIntentId(conn, paymentIntentId)
       : null);
 
-  if (!profileSubscription && charge.invoice) {
+  if (!profileSubscription && (charge.subscription || charge.invoice)) {
     const invoiceId = typeof charge.invoice === "string" ? charge.invoice : charge.invoice?.id;
     try {
-      const invoice = await StripeService.retrieveInvoice?.(invoiceId);
-      const subscriptionId =
-        typeof invoice?.subscription === "string"
-          ? invoice.subscription
-          : invoice?.subscription?.id || null;
+      // ⚠️ A ASSINATURA VEM NO PRÓPRIO CHARGE quando o provedor a manda (Asaas).
+      // Lá não existe o objeto `invoice` do Stripe — a cobrança É a fatura —, e
+      // pedir essa fatura ao Stripe com um id do Asaas cai no catch: o estorno
+      // não acharia a assinatura e o perfil seguiria ativo depois de devolvido.
+      let subscriptionId =
+        typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
+      if (!subscriptionId) {
+        const invoice = await StripeService.retrieveInvoice?.(invoiceId);
+        subscriptionId =
+          typeof invoice?.subscription === "string"
+            ? invoice.subscription
+            : invoice?.subscription?.id || null;
+      }
       if (subscriptionId) {
         profileSubscription = await ProfileSubscriptionStorage.findBySubscriptionId(
           conn,
@@ -456,15 +464,20 @@ async function handleChargeRefunded(conn, charge) {
     order = byPi.rows[0] || null;
   }
 
-  if (!order && charge.invoice) {
+  if (!order && (charge.subscription || charge.invoice)) {
     const invoiceId = typeof charge.invoice === "string" ? charge.invoice : charge.invoice?.id;
-    let subscriptionId = null;
+    // Mesma razão do bloco acima: no Asaas a assinatura chega no charge, e a
+    // viagem charge → invoice → subscription do Stripe não existe.
+    let subscriptionId =
+      typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
     try {
-      const invoice = await StripeService.retrieveInvoice?.(invoiceId);
-      subscriptionId =
-        typeof invoice?.subscription === "string"
-          ? invoice.subscription
-          : invoice?.subscription?.id || null;
+      if (!subscriptionId) {
+        const invoice = await StripeService.retrieveInvoice?.(invoiceId);
+        subscriptionId =
+          typeof invoice?.subscription === "string"
+            ? invoice.subscription
+            : invoice?.subscription?.id || null;
+      }
     } catch (err) {
       log.warn("charge.refunded.invoice_lookup_fail", { invoiceId, error: err.message });
     }

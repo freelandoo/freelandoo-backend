@@ -219,6 +219,18 @@ function buildChargeLike(payment) {
     payment_intent: (payment && payment.id) || null,
     amount: cents,
     amount_refunded: asaas.reaisToCents(refundedRaw),
+    // ⚠️ ESTES DOIS CAMPOS SÃO O QUE FAZ O ESTORNO DE ASSINATURA FUNCIONAR.
+    //
+    // No Stripe, achar a assinatura a partir de um estorno é uma viagem:
+    // charge → invoice → subscription, com uma ida à rede no meio. No Asaas não
+    // existe `invoice` — a cobrança É a fatura —, e a assinatura vem junto do
+    // próprio evento.
+    //
+    // Sem eles, os três consumidores (Atendimento IA, assinatura de perfil e a
+    // busca do pedido) pediriam ao STRIPE uma fatura com id do Asaas, cairiam
+    // no catch e devolveriam "ignorado": dinheiro devolvido e serviço ligado.
+    invoice: (payment && payment.id) || null,
+    subscription: (payment && payment.subscription) || null,
     asaas_payment: payment || null,
   };
 }

@@ -45,11 +45,6 @@ function publicSub(s) {
   };
 }
 
-function toTimestamp(epoch) {
-  if (!epoch) return null;
-  return new Date(Number(epoch) * 1000);
-}
-
 class AtendimentoIaService {
   // ─── Vendedor ──────────────────────────────────────────────────────────────
   static async getMine(user) {
@@ -260,12 +255,20 @@ class AtendimentoIaService {
 
   static async _applyInvoice(invoice, subscriptionId, sub) {
     // Período novo do ciclo — a âncora que zera o contador de tokens no bot.
+    // ⚠️ O CICLO SAI DO GATEWAY, e antes saía do Stripe direto. Com a cobrança
+    // no Asaas, `retrieveSubscription` recebia um id DELE e estourava — o erro
+    // caía neste catch, virava um log.warn e a âncora ficava nula. O efeito é
+    // mudo e caro: o contador de tokens do bot nunca zerava, então o assinante
+    // do Asaas perdia o serviço no meio do primeiro ciclo e não voltava nunca.
+    //
+    // O gateway resolve o provedor pela intenção e deriva a janela em cada um
+    // (o Asaas não tem `current_period_*`; lá ela sai de `nextDueDate`+`cycle`).
     let periodStart = null;
     let periodEnd = null;
     try {
-      const subscription = await StripeService.retrieveSubscription(subscriptionId);
-      periodStart = toTimestamp(subscription?.current_period_start);
-      periodEnd = toTimestamp(subscription?.current_period_end);
+      const period = await PaymentGateway.getSubscriptionPeriod(subscriptionId);
+      periodStart = period.period_start || null;
+      periodEnd = period.period_end || null;
     } catch (err) {
       log.warn("invoice.sub_lookup_fail", { subscriptionId, message: err.message });
     }
@@ -310,15 +313,25 @@ class AtendimentoIaService {
   // Parcial não desliga o serviço (tratamento manual, como nos outros fluxos).
   static async handleChargeRefunded(charge) {
     const invoiceId = typeof charge.invoice === "string" ? charge.invoice : charge.invoice?.id || null;
-    if (!invoiceId) return { ignored: true };
+    const chargeSubscription =
+      typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
+    if (!invoiceId && !chargeSubscription) return { ignored: true };
     if (!isFullRefund(charge)) return { ignored: true };
-    let subscriptionId = null;
-    try {
-      const invoice = await StripeService.retrieveInvoice(invoiceId);
-      subscriptionId =
-        typeof invoice?.subscription === "string" ? invoice.subscription : invoice?.subscription?.id || null;
-    } catch {
-      return { ignored: true };
+    // ⚠️ ATALHO QUE O ASAAS EXIGE: lá não existe o objeto `invoice` do Stripe —
+    // a cobrança É a fatura. Sem ler a assinatura do próprio charge, este
+    // caminho chamaria `retrieveInvoice` no STRIPE com um id do Asaas, cairia
+    // no catch e devolveria `ignored` — um estorno de Atendimento IA que não
+    // desliga o serviço, com o dinheiro já devolvido.
+    let subscriptionId =
+      typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
+    if (!subscriptionId) {
+      try {
+        const invoice = await StripeService.retrieveInvoice(invoiceId);
+        subscriptionId =
+          typeof invoice?.subscription === "string" ? invoice.subscription : invoice?.subscription?.id || null;
+      } catch {
+        return { ignored: true };
+      }
     }
     if (!subscriptionId) return { ignored: true };
     const sub = await AtendimentoIaStorage.getSubBySubscriptionId(pool, subscriptionId);
