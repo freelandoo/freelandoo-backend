@@ -2,7 +2,6 @@ const pool = require("../databases");
 const CasaParticipantStorage = require("../storages/CasaParticipantStorage");
 const CasaProductStorage = require("../storages/CasaProductStorage");
 const CasaStoreStorage = require("../storages/CasaStoreStorage");
-const StripeService = require("./StripeService");
 const PaymentGateway = require("../integrations/payments");
 const uploadCasaParticipantMediaToR2 = require("../integrations/r2/uploadCasaParticipantMedia");
 const { slugify } = require("../utils/slug");
@@ -188,11 +187,14 @@ class CasaParticipantService {
         typeof session.payment_intent === "string"
           ? session.payment_intent
           : session.payment_intent?.id || null;
+      // ⚠️ PELO GATEWAY, não pelo Stripe. Com a cobrança no Asaas este lookup
+      // recebia um id DELE e estourava — o chargeId ficava nulo e o
+      // `charge.refunded` depois não encontraria o pedido pelo charge.
       let chargeId = null;
       if (paymentIntent) {
         try {
-          const pi = await StripeService.retrievePaymentIntent(paymentIntent, { expand: ["latest_charge"] });
-          chargeId = typeof pi.latest_charge === "object" ? pi.latest_charge?.id : pi.latest_charge || null;
+          const fee = await PaymentGateway.getChargeFee(paymentIntent);
+          chargeId = fee.charge_id || null;
         } catch (err) {
           log.warn("confirm.pi_lookup_fail", { paymentIntent, message: err.message });
         }

@@ -3,7 +3,6 @@ const ProfileProductStorage = require("../storages/ProfileProductStorage");
 const ProfileProductOrderStorage = require("../storages/ProfileProductOrderStorage");
 const SellerBalanceStorage = require("../storages/SellerBalanceStorage");
 const ShippingService = require("./ShippingService");
-const StripeService = require("./StripeService");
 const PaymentGateway = require("../integrations/payments");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const NotificationService = require("./NotificationService");
@@ -196,27 +195,31 @@ class ProfileProductOrderService {
       // charge_id só fica disponível via PI; pode ser preenchido em charge.refunded.
       let charge_id = null;
       let stripe_fee_cents = null;
-      // ⚠️ A busca da taxa REAL só existe no Stripe (`balance_transaction.fee`).
-      // Um pagamento feito pelo Asaas chega aqui com o id DELE, e pedir esse id
-      // ao Stripe devolveria "não encontrado" — uma ida à rede inútil por
-      // pedido, mais um aviso no log que pareceria defeito. O prefixo `pi_` é o
-      // que diz de quem é a cobrança.
-      const isStripeIntent = typeof payment_intent_id === "string" && payment_intent_id.startsWith("pi_");
-      if (payment_intent_id && isStripeIntent) {
+      let fee_source = null;
+      // ⚠️ A TAXA REAL AGORA É APURADA NOS DOIS PROVEDORES.
+      //
+      // Antes, este bloco só rodava quando o id começava com `pi_` — ou seja,
+      // só no Stripe. Toda venda cobrada pelo Asaas ficava presa na taxa
+      // ESTIMADA, que está calibrada para a tarifa do Stripe. E isso não é
+      // detalhe contábil: `processor_fee_cents` é DESCONTADO DO REPASSE, então
+      // a diferença entre as duas tarifas virava retenção indevida do dinheiro
+      // do vendedor (ou prejuízo nosso, no outro sentido) em cada venda.
+      //
+      // O gateway resolve o provedor pela intenção e pergunta na língua certa:
+      // `balance_transaction.fee` no Stripe, `value - netValue` no Asaas.
+      if (payment_intent_id) {
         try {
-          const stripe = StripeService.client();
-          const pi = await stripe.paymentIntents.retrieve(payment_intent_id, {
-            expand: ["latest_charge.balance_transaction"],
-          });
-          const charge = typeof pi.latest_charge === "object" ? pi.latest_charge : null;
-          charge_id = charge?.id || (typeof pi.latest_charge === "string" ? pi.latest_charge : null);
-          // balance_transaction.fee é o valor REAL cobrado pelo Stripe em centavos.
-          const bt = charge?.balance_transaction;
-          if (bt && typeof bt === "object" && Number.isFinite(bt.fee)) {
-            stripe_fee_cents = Number(bt.fee);
+          const fee = await PaymentGateway.getChargeFee(payment_intent_id);
+          charge_id = fee.charge_id || null;
+          // ⚠️ `null` aqui significa "não deu para apurar", e a estimativa TEM
+          // que ficar de pé. Tratar como zero zeraria a taxa e pagaria ao
+          // vendedor um dinheiro que o provedor já reteve.
+          if (Number.isFinite(fee.fee_cents)) {
+            stripe_fee_cents = Number(fee.fee_cents);
+            fee_source = fee.source;
           }
         } catch (err) {
-          log.warn("confirm.pi_lookup_fail", { payment_intent_id, message: err.message });
+          log.warn("confirm.fee_lookup_fail", { payment_intent_id, message: err.message });
         }
       }
 
@@ -261,12 +264,13 @@ class ProfileProductOrderService {
         charge_id,
       });
 
-      // Substitui processor_fee estimado pela fee REAL do Stripe (balance_transaction.fee).
-      // Vendedor recebe seller_amount_cents fixo; eventual diferença (estimado vs real)
-      // é absorvida pela plataforma — service_fee_cents do order é o ganho bruto da plat.
-      if (Number.isFinite(stripe_fee_cents) && stripe_fee_cents >= 0) {
-        const updated = await ProfileProductOrderStorage.updateProcessorFeeFromStripe(
-          client, paid.id_order, stripe_fee_cents
+      // Substitui o processor_fee ESTIMADO pela taxa REAL apurada no provedor
+      // que cobrou (balance_transaction.fee no Stripe, value - netValue no
+      // Asaas). Vendedor recebe seller_amount_cents fixo; a diferença entre
+      // estimado e real é absorvida pela plataforma.
+      if (Number.isFinite(stripe_fee_cents) && stripe_fee_cents >= 0 && fee_source) {
+        const updated = await ProfileProductOrderStorage.settleProcessorFee(
+          client, paid.id_order, stripe_fee_cents, fee_source
         );
         if (updated) paid = updated;
       }

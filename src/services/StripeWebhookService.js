@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const StripeService = require("./StripeService");
+const { providerOf } = require("../integrations/payments/contract");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
@@ -310,7 +311,7 @@ async function attributeRecurringCommission(conn, { invoice, row }) {
       id_profile: row.id_profile || null,
       total_cents,
       source_context: "profile_subscription",
-      payment_provider: "stripe",
+      payment_provider: providerOf(invoice),
       payment_provider_ref: invoice.id,
       raw_webhook: invoice,
       id_affiliate_resolved: referral.id_affiliate,
@@ -436,7 +437,7 @@ async function handleChargeRefunded(conn, charge) {
 
     if (profileSubscription.stripe_checkout_session_id) {
       const bySession = await conn.query(
-        `SELECT * FROM tb_order WHERE payment_provider = 'stripe' AND payment_provider_ref = $1 LIMIT 1`,
+        `SELECT * FROM tb_order WHERE payment_provider_ref = $1 LIMIT 1`,
         [profileSubscription.stripe_checkout_session_id]
       );
       const subscriptionOrder = bySession.rows[0] || null;
@@ -458,7 +459,7 @@ async function handleChargeRefunded(conn, charge) {
   let order = null;
   if (paymentIntentId) {
     const byPi = await conn.query(
-      `SELECT * FROM tb_order WHERE payment_provider = 'stripe' AND payment_provider_ref = $1 LIMIT 1`,
+      `SELECT * FROM tb_order WHERE payment_provider_ref = $1 LIMIT 1`,
       [paymentIntentId]
     );
     order = byPi.rows[0] || null;
@@ -485,7 +486,7 @@ async function handleChargeRefunded(conn, charge) {
       const sub = await ProfileSubscriptionStorage.findBySubscriptionId(conn, subscriptionId);
       if (sub?.stripe_checkout_session_id) {
         const bySession = await conn.query(
-          `SELECT * FROM tb_order WHERE payment_provider = 'stripe' AND payment_provider_ref = $1 LIMIT 1`,
+          `SELECT * FROM tb_order WHERE payment_provider_ref = $1 LIMIT 1`,
           [sub.stripe_checkout_session_id]
         );
         order = bySession.rows[0] || null;
@@ -765,7 +766,7 @@ async function maybeAttributeCouponCommission(conn, session, meta) {
       id_user_buyer,
       total_cents,
       source_context: ctx.source_context,
-      payment_provider: "stripe",
+      payment_provider: providerOf(session),
       payment_provider_ref: session.id,
       raw_webhook: session,
       explicit_commission_cents,

@@ -5,6 +5,7 @@ const AffiliateRuleResolver = require("./AffiliateRuleResolver");
 const XpStorage = require("../storages/XpStorage");
 const NotificationService = require("./NotificationService");
 const pool = require("../databases");
+const { providerOf } = require("../integrations/payments/contract");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("AffiliateConversionService");
@@ -96,6 +97,11 @@ async function ensureStripeSubscriptionOrder(conn, {
   total_cents,
   discount_cents,
 }) {
+  // Quem cobrou de verdade. Gravar 'stripe' fixo (como era) fazia TODA venda do
+  // Asaas ser registrada como se fosse do Stripe — a coluna que existe para
+  // distinguir provedor nunca distinguia, e um estorno rastreado por ela
+  // apontaria para o gateway errado.
+  const payment_provider = providerOf(session);
   const sessionId =
     session?.id || subscription?.stripe_checkout_session_id || null;
   const paid_at = new Date();
@@ -106,10 +112,13 @@ async function ensureStripeSubscriptionOrder(conn, {
   if (sessionId) {
     const existing = await conn.query(
       `
+      -- ⚠️ A BUSCA É PELA REFERÊNCIA, sem filtrar provedor. O ref é único no
+      -- mundo (session do Stripe ou UUID da nossa intenção), e amarrar a
+      -- leitura em 'stripe' faria o pedido de uma cobrança do Asaas não ser
+      -- encontrado: a comissão do afiliado nasceria DUPLICADA a cada evento.
       SELECT *
       FROM tb_order
-      WHERE payment_provider = 'stripe'
-        AND payment_provider_ref = $1
+      WHERE payment_provider_ref = $1
       LIMIT 1
       `,
       [sessionId]
@@ -163,7 +172,7 @@ async function ensureStripeSubscriptionOrder(conn, {
       paid_at,
       raw_webhook
     )
-    VALUES ($1, $2, 'PAID', $3, $4, $5, 'stripe', $6, $7, $7, $8)
+    VALUES ($1, $2, 'PAID', $3, $4, $5, $9, $6, $7, $7, $8)
     RETURNING *
     `,
     [
@@ -175,6 +184,7 @@ async function ensureStripeSubscriptionOrder(conn, {
       sessionId,
       paid_at,
       session || null,
+      payment_provider,
     ]
   );
   const order = insertedOrder.rows[0];

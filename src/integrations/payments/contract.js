@@ -115,9 +115,24 @@ function assertNoUnsupportedFields(req, unsupported, providerName) {
   }
 }
 
+/**
+ * De qual provedor é este objeto (session, invoice, charge)?
+ *
+ * ⚠️ A AUSÊNCIA SIGNIFICA STRIPE, e não "desconhecido" — pela mesma razão de
+ * `resolveProviderByRef`: o objeto CRU do Stripe não tem campo `provider`
+ * nenhum, enquanto tudo que a reidratação do Asaas monta carimba o dele. É essa
+ * assimetria que permite gravar a verdade em `payment_provider` sem que o
+ * caminho do Stripe precise mudar uma linha.
+ */
+function providerOf(obj) {
+  const p = obj && typeof obj.provider === "string" ? obj.provider.trim().toLowerCase() : "";
+  return p || "stripe";
+}
+
 module.exports = {
   STRIPE_ONLY_FIELDS,
   CHARGE_STATUS,
   EVENT_KIND,
   assertNoUnsupportedFields,
+  providerOf,
 };

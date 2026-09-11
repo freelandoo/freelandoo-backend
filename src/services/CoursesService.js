@@ -342,7 +342,7 @@ class CoursesService {
       if (enrollment.stripe_session_id) {
         const bySession = await client.query(
           `SELECT * FROM public.tb_order
-            WHERE payment_provider = 'stripe' AND payment_provider_ref = $1
+            WHERE payment_provider_ref = $1
             LIMIT 1`,
           [enrollment.stripe_session_id],
         );
@@ -351,7 +351,7 @@ class CoursesService {
       if (!order) {
         const byPaymentIntent = await client.query(
           `SELECT * FROM public.tb_order
-            WHERE payment_provider = 'stripe' AND payment_provider_ref = $1
+            WHERE payment_provider_ref = $1
             LIMIT 1`,
           [paymentIntentId],
         );

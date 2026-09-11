@@ -233,6 +233,26 @@ async function getSubscriptionPeriod(subscriptionId, { provider } = {}) {
   return impl.getSubscriptionPeriod(subscriptionId);
 }
 
+/**
+ * A taxa REAL cobrada pelo provedor, e o id da cobrança.
+ *
+ * ⚠️ O provedor sai da INTENÇÃO, como no estorno: uma venda antiga feita no
+ * Stripe continua tendo a taxa apurada lá. Ler `providerName()` aqui perguntaria
+ * ao gateway errado e a venda ficaria para sempre na taxa estimada.
+ *
+ * Devolve `{ fee_cents: null }` quando não dá para apurar — e quem chama tem
+ * que MANTER a estimativa nesse caso, nunca assumir zero.
+ */
+async function getChargeFee(provider_ref, { provider } = {}) {
+  if (!provider_ref) return { fee_cents: null, charge_id: null, source: null };
+  const resolved = provider || (await resolveProviderByRef(provider_ref));
+  const impl = PROVIDERS[resolved] || PROVIDERS.stripe;
+  if (typeof impl.getChargeFee !== "function") {
+    return { fee_cents: null, charge_id: null, source: null };
+  }
+  return impl.getChargeFee(provider_ref);
+}
+
 module.exports = {
   PROVIDERS,
   providerName,
@@ -243,4 +263,5 @@ module.exports = {
   refund,
   cancelSubscription,
   getSubscriptionPeriod,
+  getChargeFee,
 };

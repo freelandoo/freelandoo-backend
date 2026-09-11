@@ -38,17 +38,30 @@ class ProfileProductOrderStorage {
    * Atualiza a fee real do Stripe vinda do webhook (balance_transaction.fee).
    * Idempotente: só atualiza se ainda estiver como 'fallback'.
    */
-  static async updateProcessorFeeFromStripe(conn, id_order, fee_cents) {
+  /**
+   * Crava a taxa REAL apurada no provedor, sobrescrevendo a estimativa.
+   *
+   * ⚠️ `source` É PARÂMETRO, e não mais o literal 'stripe_balance_tx'. Com a
+   * cobrança no Asaas a taxa real vem de `value - netValue`, e carimbá-la como
+   * apurada no Stripe faria a coluna que existe para dizer DE ONDE veio o
+   * número dizer a coisa errada — justamente na coluna que o índice parcial da
+   * mig 074 usa como radar de quem nunca foi apurado.
+   *
+   * O `WHERE processor_fee_source = 'fallback'` é o que torna isto idempotente:
+   * o webhook é at-least-once, e uma segunda apuração não pode sobrescrever a
+   * primeira.
+   */
+  static async settleProcessorFee(conn, id_order, fee_cents, source) {
     const r = await conn.query(
       `UPDATE public.tb_profile_product_order
           SET processor_fee_cents = $2,
-              processor_fee_source = 'stripe_balance_tx',
+              processor_fee_source = $3,
               processor_fee_settled_at = NOW(),
               updated_at = NOW()
         WHERE id_order = $1
           AND processor_fee_source = 'fallback'
         RETURNING *`,
-      [id_order, fee_cents]
+      [id_order, fee_cents, source]
     );
     return r.rows[0] || null;
   }

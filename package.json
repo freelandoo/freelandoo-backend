@@ -32,6 +32,7 @@
     "test:plans": "node test/plans.e2e.js",
     "test:business-plan": "node test/business-plan.e2e.js",
     "test:asaas": "node test/asaas-payments.e2e.js",
+    "test:asaas-truth": "node test/asaas-provider-truth.e2e.js",
     "test:compose": "node test/compose-video.e2e.js && node test/compose-video-rotation.e2e.js && node test/upload-compose-door.e2e.js"
   },
   "repository": {

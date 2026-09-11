@@ -193,6 +193,35 @@ async function getSubscriptionPeriod(subscriptionId) {
   return { period_start: start, period_end: next };
 }
 
+/**
+ * A taxa REAL que o provedor cobrou desta cobrança.
+ *
+ * ⚠️ ISTO SAI DO BOLSO DO VENDEDOR: `processor_fee_cents` é descontado do
+ * repasse. Enquanto ela não é apurada, a Loja usa a ESTIMATIVA — que está
+ * calibrada para a tarifa do Stripe —, então a diferença entre as duas tarifas
+ * vira retenção indevida (ou prejuízo nosso) em toda venda cobrada pelo Asaas.
+ *
+ * No Asaas não há campo de tarifa: há `netValue`, que a doc define como "valor
+ * líquido da cobrança após desconto da tarifa do Asaas". A tarifa é a
+ * diferença.
+ */
+async function getChargeFee(provider_ref) {
+  const payment = await asaas.getPayment(provider_ref);
+  const value = Number(payment && payment.value);
+  const net = Number(payment && payment.netValue);
+  // ⚠️ `Number(undefined)` é NaN e `Number(null)` é ZERO — e o zero é o
+  // perigoso: sem este guard, uma cobrança sem `netValue` produziria "taxa =
+  // valor inteiro" e zeraria o repasse do vendedor.
+  if (!Number.isFinite(value) || !Number.isFinite(net) || net <= 0) {
+    return { fee_cents: null, charge_id: (payment && payment.id) || null, source: null };
+  }
+  const fee = asaas.reaisToCents(value) - asaas.reaisToCents(net);
+  if (!Number.isFinite(fee) || fee < 0) {
+    return { fee_cents: null, charge_id: (payment && payment.id) || null, source: null };
+  }
+  return { fee_cents: fee, charge_id: (payment && payment.id) || null, source: "asaas_fee" };
+}
+
 module.exports = {
   PROVIDER,
   UNSUPPORTED_FIELDS,
@@ -204,5 +233,6 @@ module.exports = {
   refund,
   cancelSubscription,
   getSubscriptionPeriod,
+  getChargeFee,
   CYCLE_MONTHS,
 };

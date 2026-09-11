@@ -14,6 +14,7 @@ const CondoService = require("./CondoService");
 const CondoListingStorage = require("../storages/CondoListingStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const PaymentGateway = require("../integrations/payments");
+const { providerOf } = require("../integrations/payments/contract");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -326,7 +327,10 @@ class CondoListingService {
           id_user: user.id_user,
           kind,
           quantity,
-          payment_provider: "stripe",
+          // A vaga registra QUEM COBROU. Antes era 'stripe' fixo — e o CHECK
+          // da mig 198 nem aceitava outro valor, o que tornava a mentira
+          // obrigatória. A mig 237 abriu o CHECK para 'asaas'.
+          payment_provider: providerOf(session),
           amount_cents: unit * quantity,
           stripe_session_id: session.id,
         });

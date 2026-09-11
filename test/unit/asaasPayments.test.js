@@ -512,3 +512,61 @@ test("assinatura sem vencimento não inventa janela", async () => {
     asaas.getSubscription = orig;
   }
 });
+
+// ───────────── A4: A TAXA REAL (sai do bolso do vendedor) ───────────────────
+
+test("a taxa do Asaas é value - netValue, em centavos", async () => {
+  // O Asaas não tem campo de tarifa: tem `netValue`, que a doc define como
+  // "valor líquido da cobrança após desconto da tarifa do Asaas".
+  const orig = asaas.getPayment;
+  try {
+    asaas.getPayment = async () => ({ id: "pay_f1", value: 129.9, netValue: 124.9 });
+    const r = await asaasProvider.getChargeFee("pay_f1");
+    assert.strictEqual(r.fee_cents, 500);
+    assert.strictEqual(r.source, "asaas_fee");
+    assert.strictEqual(r.charge_id, "pay_f1");
+  } finally {
+    asaas.getPayment = orig;
+  }
+});
+
+test("netValue AUSENTE não vira taxa igual ao valor inteiro", async () => {
+  // ⚠️ O GUARD QUE PROTEGE O REPASSE: `Number(null)` é ZERO e passa no
+  // isFinite. Sem ele, `value - 0` daria "taxa = venda inteira" e o vendedor
+  // receberia zero.
+  const orig = asaas.getPayment;
+  try {
+    for (const bad of [null, undefined, 0]) {
+      asaas.getPayment = async () => ({ id: "pay_f2", value: 100, netValue: bad });
+      const r = await asaasProvider.getChargeFee("pay_f2");
+      assert.strictEqual(r.fee_cents, null, `netValue=${bad} não pode virar taxa`);
+      assert.strictEqual(r.source, null);
+    }
+  } finally {
+    asaas.getPayment = orig;
+  }
+});
+
+test("taxa negativa é recusada em vez de creditada", async () => {
+  // netValue > value não deveria acontecer; se acontecer, a estimativa fica de
+  // pé — nunca uma "taxa negativa" que PAGARIA o vendedor a mais.
+  const orig = asaas.getPayment;
+  try {
+    asaas.getPayment = async () => ({ id: "pay_f3", value: 10, netValue: 12 });
+    const r = await asaasProvider.getChargeFee("pay_f3");
+    assert.strictEqual(r.fee_cents, null);
+  } finally {
+    asaas.getPayment = orig;
+  }
+});
+
+test("a ausência de campo `provider` significa STRIPE, não desconhecido", () => {
+  // É essa assimetria que deixa gravar a verdade em `payment_provider` sem o
+  // caminho do Stripe mudar uma linha: o objeto CRU dele não tem o campo, e
+  // tudo que a reidratação do Asaas monta carimba o dele.
+  const { providerOf } = contract;
+  assert.strictEqual(providerOf({ id: "cs_123" }), "stripe");
+  assert.strictEqual(providerOf(null), "stripe");
+  assert.strictEqual(providerOf({ provider: "asaas" }), "asaas");
+  assert.strictEqual(providerOf({ provider: "ASAAS" }), "asaas");
+});

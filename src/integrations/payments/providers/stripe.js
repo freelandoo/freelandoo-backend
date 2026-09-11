@@ -96,6 +96,20 @@ async function getSubscriptionPeriod(subscriptionId) {
   };
 }
 
+/**
+ * A taxa REAL, no Stripe: `balance_transaction.fee` da última cobrança.
+ */
+async function getChargeFee(provider_ref) {
+  const pi = await StripeService.retrievePaymentIntent(provider_ref, {
+    expand: ["latest_charge.balance_transaction"],
+  });
+  const charge = typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+  const charge_id = charge?.id || (typeof pi.latest_charge === "string" ? pi.latest_charge : null);
+  const bt = charge?.balance_transaction;
+  const fee = bt && typeof bt === "object" && Number.isFinite(bt.fee) ? Number(bt.fee) : null;
+  return { fee_cents: fee, charge_id, source: fee == null ? null : "stripe_balance_tx" };
+}
+
 module.exports = {
   PROVIDER,
   UNSUPPORTED_FIELDS,
@@ -103,4 +117,5 @@ module.exports = {
   refund,
   cancelSubscription,
   getSubscriptionPeriod,
+  getChargeFee,
 };
