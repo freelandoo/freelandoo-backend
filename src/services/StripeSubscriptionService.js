@@ -355,21 +355,26 @@ async function refundSubscriptionForUser(user, body) {
       let chargeId = sub.stripe_charge_id || null;
 
       if (!chargeId && sub.stripe_payment_intent_id) {
-        // Ativação one-time — pega charge via Payment Intent.
+        // Ativação one-time — a cobrança, PELO GATEWAY.
+        //
+        // ⚠️ ISTO É O QUE FAZIA O REEMBOLSO DO ASAAS MORRER. Antes a pergunta
+        // ia direto ao Stripe: com um id do Asaas ela estourava, o catch
+        // engolia, e o `if (!chargeId)` logo abaixo respondia 500 com
+        // "Cobrança Stripe não encontrada" — para alguém dentro do prazo de 7
+        // dias, com direito ao dinheiro de volta. No Asaas a cobrança É a
+        // referência, e o gateway devolve o id certo em cada provedor.
         try {
-          const pi = await StripeService.retrievePaymentIntent(sub.stripe_payment_intent_id, {
-            expand: ["latest_charge"],
-          });
-          chargeId = typeof pi.latest_charge === "object"
-            ? pi.latest_charge?.id
-            : pi.latest_charge || null;
+          const fee = await PaymentGateway.getChargeFee(sub.stripe_payment_intent_id);
+          chargeId = fee.charge_id || null;
         } catch (err) {
-          log.warn("refund.pi_lookup_fail", { pi: sub.stripe_payment_intent_id, message: err.message });
+          log.warn("refund.charge_lookup_fail", { ref: sub.stripe_payment_intent_id, message: err.message });
         }
       }
 
       if (!chargeId && sub.stripe_subscription_id) {
-        // Subscription legacy — caminho antigo via invoice.
+        // Subscription LEGACY do Stripe — caminho antigo via invoice. Só existe
+        // para ativações recorrentes anteriores ao one-time; no Asaas não há
+        // `invoice`, e este ramo nunca é alcançado porque o de cima já resolveu.
         try {
           const stripeSub = await StripeService.retrieveSubscription(sub.stripe_subscription_id);
           const latestInvoiceId =
@@ -388,7 +393,7 @@ async function refundSubscriptionForUser(user, body) {
       }
 
       if (!chargeId) {
-        throw new ServiceError("Cobrança Stripe não encontrada para esta ativação", 500);
+        throw new ServiceError("Cobrança não encontrada para esta ativação", 500);
       }
 
       // Emite reembolso integral

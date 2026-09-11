@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const { providerOf } = require("../integrations/payments/contract");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const StripeWebhookEventStorage = require("../storages/StripeWebhookEventStorage");
@@ -39,11 +40,6 @@ async function getStatusIdByDesc(conn, desc) {
     [desc]
   );
   return rows[0]?.id_status || null;
-}
-
-function toTimestamp(epoch) {
-  if (!epoch) return null;
-  return new Date(Number(epoch) * 1000);
 }
 
 async function applyProfileActivation(conn, { id_profile, id_user }) {
@@ -129,22 +125,25 @@ async function handleCheckoutCompleted(conn, session) {
 
   if (isOneTime && paymentIntentId) {
     try {
-      const pi = await StripeService.retrievePaymentIntent(paymentIntentId, {
-        expand: ["latest_charge"],
-      });
-      chargeId = typeof pi.latest_charge === "object"
-        ? pi.latest_charge?.id
-        : pi.latest_charge || null;
+      // ⚠️ PELO GATEWAY. Antes isto perguntava direto ao Stripe, e numa
+      // ativação cobrada pelo Asaas o id era DELE: estourava, caía no catch e
+      // `stripe_charge_id` ficava NULL. O estrago só aparecia depois, no
+      // pedido de reembolso — que não achava a cobrança e respondia 500 para
+      // quem tinha direito a receber de volta, dentro do prazo de 7 dias.
+      const fee = await PaymentGateway.getChargeFee(paymentIntentId);
+      chargeId = fee.charge_id || null;
     } catch (err) {
-      log.warn("checkout.completed.pi_lookup_fail", { paymentIntentId, message: err.message });
+      log.warn("checkout.completed.charge_lookup_fail", { paymentIntentId, message: err.message });
     }
     periodStart = new Date();
     periodEnd = null; // vitalício
   } else if (subscriptionId) {
     try {
-      const subscription = await StripeService.retrieveSubscription(subscriptionId);
-      periodStart = toTimestamp(subscription?.current_period_start);
-      periodEnd = toTimestamp(subscription?.current_period_end);
+      // Mesma razão: o Asaas não tem `current_period_*`, e o gateway deriva a
+      // janela na língua de cada provedor.
+      const period = await PaymentGateway.getSubscriptionPeriod(subscriptionId);
+      periodStart = period.period_start || null;
+      periodEnd = period.period_end || null;
     } catch (err) {
       log.warn("checkout.completed.sub_lookup_fail", { subscriptionId, message: err.message });
     }
@@ -216,7 +215,15 @@ async function handleInvoicePaid(conn, invoice) {
     // nossa linha ainda não tem o subscription id. A metadata da subscription
     // (subscription_data.metadata) diz de quem é a fatura.
     try {
-      const subscription = await StripeService.retrieveSubscription(subscriptionId);
+      // ⚠️ NO ASAAS O `metadata` JÁ VIAJA NA FATURA (a reidratação o traz do
+      // payload da intenção), então perguntar ao provedor seria uma ida à rede
+      // para descobrir o que está na mão — e, com um id do Asaas, uma ida que
+      // estoura. O objeto cru do Stripe não tem metadata na invoice, e aí sim
+      // a assinatura precisa ser buscada.
+      const subscription =
+        invoice && invoice.metadata && invoice.metadata.type
+          ? { id: subscriptionId, metadata: invoice.metadata }
+          : await StripeService.retrieveSubscription(subscriptionId);
       const metaType = subscription?.metadata?.type || null;
       if (metaType === "community_membership") {
         await CommunityMembershipService.handleInvoicePaidByMetadata(invoice, subscription);
@@ -242,13 +249,23 @@ async function handleInvoicePaid(conn, invoice) {
     return;
   }
 
-  const subscription = await StripeService.retrieveSubscription(subscriptionId);
+  // ⚠️ ESTAVA SEM try/catch E FALANDO DIRETO COM O STRIPE — o pior par
+  // possível: com uma assinatura do Asaas o id era DELE, a chamada estourava, e
+  // como ninguém pegava, o webhook inteiro falhava. O Asaas é at-least-once,
+  // então ele re-tentaria a mesma renovação para sempre, e a mensalidade nunca
+  // seria creditada.
+  let period = { period_start: null, period_end: null };
+  try {
+    period = await PaymentGateway.getSubscriptionPeriod(subscriptionId);
+  } catch (err) {
+    log.warn("invoice.paid.period_lookup_fail", { subscriptionId, message: err.message });
+  }
 
   await ProfileSubscriptionStorage.updateBySubscriptionId(conn, subscriptionId, {
     status: "active",
     paid_at: new Date(),
-    current_period_start: toTimestamp(subscription.current_period_start),
-    current_period_end: toTimestamp(subscription.current_period_end),
+    current_period_start: period.period_start || null,
+    current_period_end: period.period_end || null,
     raw_event: invoice,
   });
 
