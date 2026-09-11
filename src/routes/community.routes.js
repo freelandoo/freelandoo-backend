@@ -5,6 +5,7 @@ const requireFeature = require("../middlewares/requireFeature");
 const CommunityController = require("../controllers/CommunityController");
 const CommunitySiteController = require("../controllers/CommunitySiteController");
 const CommunityDomainController = require("../controllers/CommunityDomainController");
+const BusinessIndicatorsController = require("../controllers/BusinessIndicatorsController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -66,6 +67,16 @@ router.get(
   "/:id_profile/membership/summary",
   authMiddleware,
   asyncHandler(CommunityController.getMembershipSummary)
+);
+
+// INDICADORES DO NEGÓCIO (mig 235) — leads, site, agendamentos e faturamento.
+// Só o LÍDER, e só na modalidade `common`: o guard mora no service, como o do
+// site. Sem `requireFeature` de propósito — não há superfície nova a segurar
+// aqui, só a leitura do que as outras features já gravaram.
+router.get(
+  "/:id_profile/indicators",
+  authMiddleware,
+  asyncHandler(BusinessIndicatorsController.get)
 );
 
 // Edição de perfil da comunidade (só líder; guard no service).

@@ -3,6 +3,8 @@ const CommunityController = require("../controllers/CommunityController");
 const CommunitySiteController = require("../controllers/CommunitySiteController");
 const CommunityDomainController = require("../controllers/CommunityDomainController");
 const optionalAuthMiddleware = require("../middlewares/optionalAuthMiddleware");
+const BusinessIndicatorsController = require("../controllers/BusinessIndicatorsController");
+const { lookup } = require("../middlewares/rateLimit");
 const asyncHandler = require("../utils/asyncHandler");
 
 // Comunidades são públicas/indexadas: leitura sem autenticação.
@@ -28,6 +30,27 @@ router.get(
 router.get(
   "/site/by-slug/:slug",
   asyncHandler(CommunitySiteController.getPublicBySlug)
+);
+
+// CONTADOR DO SITE (mig 235): visualização e cliques, mandados pelo navegador
+// de quem visita o site publicado.
+//
+// ⚠️ SEM AUTENTICAÇÃO, e não poderia ser diferente: quem visita o site de uma
+// barbearia não tem conta aqui. Quem valida o alvo é o próprio INSERT, que só
+// grava para comunidade de NEGÓCIO com site PUBLICADO, e o `kind` passa por
+// lista fechada (`utils/siteEvents.js`) antes de virar valor de coluna.
+//
+// Rate limit `lookup` (20/min por IP) pela mesma razão da porta de CPF: porta
+// anônima sem teto vira ferramenta de inflar (ou de zerar o custo de) o painel
+// de outra pessoa. Um visitante real manda uma visualização e um ou dois
+// cliques na sessão inteira.
+//
+// Declarada ANTES de `/:id_profile` só por convenção do arquivo — os métodos
+// diferem (POST × GET), então não há colisão possível.
+router.post(
+  "/:id_profile/site-events",
+  lookup,
+  asyncHandler(BusinessIndicatorsController.recordSiteEvent)
 );
 
 // Auth opcional: resolve membership/assinatura do viewer (comunidade privada).
