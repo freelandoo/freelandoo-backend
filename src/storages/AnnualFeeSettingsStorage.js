@@ -25,18 +25,6 @@ class AnnualFeeSettingsStorage {
     return rows[0];
   }
 
-  static async setStripeIds(conn, { stripe_product_id, stripe_price_id }) {
-    const { rows } = await conn.query(
-      `UPDATE public.tb_annual_fee_settings
-       SET stripe_product_id = $1,
-           stripe_price_id   = $2,
-           updated_at        = NOW()
-       WHERE id = 1
-       RETURNING *`,
-      [stripe_product_id, stripe_price_id]
-    );
-    return rows[0];
-  }
 }
 
 module.exports = AnnualFeeSettingsStorage;

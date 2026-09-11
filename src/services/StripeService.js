@@ -1,7 +1,4 @@
 const Stripe = require("stripe");
-const { createLogger } = require("../utils/logger");
-
-const log = createLogger("StripeService");
 
 let _client = null;
 function client() {
@@ -14,59 +11,11 @@ function client() {
   return _client;
 }
 
-/**
- * Cria Product + Price recorrente anual em BRL. Usado no bootstrap.
- */
-async function createAnnualProductAndPrice({ amount_cents, currency = "BRL", name = "Freelandoo — Anuidade" }) {
-  const stripe = client();
-  const product = await stripe.products.create({ name });
-  const price = await stripe.prices.create({
-    product: product.id,
-    unit_amount: amount_cents,
-    currency: String(currency).toLowerCase(),
-    recurring: { interval: "year" },
-  });
-  log.info("bootstrap.created", { productId: product.id, priceId: price.id });
-  return { product, price };
-}
-
-/**
- * Cria uma checkout session em modo subscription. Se `promotionCode` vier,
- * pré-aplica o código; caso contrário deixa o campo de cupom visível.
- */
-async function createSubscriptionCheckoutSession({
-  priceId,
-  customerId,
-  customerEmail,
-  clientReferenceId,
-  successUrl,
-  cancelUrl,
-  promotionCode,
-  metadata,
-}) {
-  const stripe = client();
-
-  const params = {
-    mode: "subscription",
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-    client_reference_id: clientReferenceId,
-    allow_promotion_codes: promotionCode ? undefined : true,
-    metadata: metadata || {},
-    subscription_data: { metadata: metadata || {} },
-  };
-
-  if (customerId) params.customer = customerId;
-  else if (customerEmail) params.customer_email = customerEmail;
-
-  if (promotionCode) {
-    params.discounts = [{ promotion_code: promotionCode }];
-  }
-
-  const session = await stripe.checkout.sessions.create(params);
-  return session;
-}
+// ⚠️ REMOVIDAS por falta de dono: `createAnnualProductAndPrice` (só o script
+// scripts/stripe-bootstrap.js a chamava, e ele saiu junto — criava um
+// Product/Price no Stripe que NADA lia: `stripe_price_id` é gravado como
+// `null` em toda ativação, que cobra por `price_data` ad-hoc) e
+// `createSubscriptionCheckoutSession` (zero chamadores). Não recriar.
 
 /**
  * Cria checkout session em modo `subscription` com price_data ad-hoc MENSAL
@@ -324,10 +273,18 @@ async function cancelSubscription(stripeSubscriptionId) {
   });
 }
 
+// ⚠️ `client` NÃO É MAIS EXPORTADO, e isso é uma TRAVA, não arrumação.
+//
+// Ele era a escotilha: com o cliente cru na mão, qualquer service falava Stripe
+// direto e furava o PaymentGateway — foi por ali que a Loja ficou perguntando a
+// taxa só ao Stripe, deixando toda venda do Asaas presa na estimativa. Hoje não
+// há um único chamador fora deste arquivo, e mantê-lo exportado seria deixar a
+// porta aberta para o próximo atalho.
+//
+// Precisa de capacidade nova do provedor? Ela entra no CONTRATO
+// (integrations/payments/contract.js) e ganha implementação nos DOIS — como
+// `getChargeFee` e `getSubscriptionPeriod` ganharam.
 module.exports = {
-  client,
-  createAnnualProductAndPrice,
-  createSubscriptionCheckoutSession,
   createProfileActivationCheckoutSession,
   createOneTimeCheckoutSession,
   createMultiItemCheckoutSession,
