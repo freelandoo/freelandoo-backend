@@ -311,42 +311,12 @@ function constructWebhookEvent(rawBody, signature) {
 
 // ─────────── Coupons / Promotion codes (sync com cupom interno) ───────────
 
-async function createCoupon({ discount_type, discount_value, max_redemptions, expires_at, name }) {
-  const stripe = client();
-  const params = { name, duration: "once" };
-  if (discount_type === "percent") {
-    params.percent_off = Number(discount_value);
-  } else {
-    params.amount_off = Math.round(Number(discount_value));
-    params.currency = "brl";
-  }
-  if (max_redemptions) params.max_redemptions = Number(max_redemptions);
-  if (expires_at) {
-    const redeemBy = Math.floor(new Date(expires_at).getTime() / 1000);
-    if (Number.isFinite(redeemBy)) params.redeem_by = redeemBy;
-  }
-  return stripe.coupons.create(params);
-}
-
-async function createPromotionCode({ coupon, code, expires_at, max_redemptions }) {
-  const stripe = client();
-  const params = { coupon, code };
-  if (max_redemptions) params.max_redemptions = Number(max_redemptions);
-  if (expires_at) {
-    const expiresEpoch = Math.floor(new Date(expires_at).getTime() / 1000);
-    if (Number.isFinite(expiresEpoch)) params.expires_at = expiresEpoch;
-  }
-  return stripe.promotionCodes.create(params);
-}
-
-async function deactivatePromotionCode(promotionCodeId) {
-  try {
-    return await client().promotionCodes.update(promotionCodeId, { active: false });
-  } catch (err) {
-    log.warn("deactivatePromotionCode.fail", { promotionCodeId, message: err?.message });
-    return null;
-  }
-}
+// ⚠️ As três funções de CUPOM (createCoupon / createPromotionCode /
+// deactivatePromotionCode) foram REMOVIDAS. O cupom da plataforma nunca foi
+// resolvido pelo provedor: quem calcula o desconto é o CouponDiscountResolver,
+// e o valor desce embutido em `amount_cents`. O Asaas não tem cupom — o
+// contrato RECUSA `promotionCode` em voz alta, e cunhar um no Stripe deixaria
+// um objeto lá que nada aqui consulta. Não recriar.
 
 async function cancelSubscription(stripeSubscriptionId) {
   return client().subscriptions.update(stripeSubscriptionId, {
@@ -370,8 +340,5 @@ module.exports = {
   createRefund,
   createRefundForPaymentIntent,
   constructWebhookEvent,
-  createCoupon,
-  createPromotionCode,
-  deactivatePromotionCode,
   cancelSubscription,
 };

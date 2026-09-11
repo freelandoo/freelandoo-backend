@@ -1,41 +1,27 @@
 const db = require("../databases");
 const CouponStorage = require("../storages/CouponStorage");
 const CouponDiscountResolver = require("./CouponDiscountResolver");
-const StripeService = require("./StripeService");
 const { generateCouponCode } = require("../utils/couponCode");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CouponService");
 
-async function syncCouponToStripe(coupon) {
-  try {
-    const stripeCoupon = await StripeService.createCoupon({
-      discount_type: coupon.discount_type,
-      discount_value: coupon.value,
-      max_redemptions: coupon.max_uses || null,
-      expires_at: coupon.expires_at || null,
-      name: `Freelandoo ${coupon.code}`,
-    });
-    const promo = await StripeService.createPromotionCode({
-      coupon: stripeCoupon.id,
-      code: coupon.code,
-      expires_at: coupon.expires_at || null,
-      max_redemptions: coupon.max_uses || null,
-    });
-    await CouponStorage.setStripeIds(db, coupon.id_coupon, {
-      stripe_coupon_id: stripeCoupon.id,
-      stripe_promotion_code_id: promo.id,
-    });
-    return { stripe_coupon_id: stripeCoupon.id, stripe_promotion_code_id: promo.id };
-  } catch (err) {
-    log.error("syncCouponToStripe.fail", {
-      id_coupon: coupon.id_coupon,
-      code: coupon.code,
-      message: err?.message,
-    });
-    throw err;
-  }
-}
+// ─── O CUPOM NÃO PASSA MAIS POR PROVEDOR DE PAGAMENTO ───────────────────────
+//
+// Antes, criar um cupom cunhava um Coupon + PromotionCode no Stripe e gravava
+// os dois ids. Isso nunca foi usado para NADA: quem calcula o desconto é o
+// `CouponDiscountResolver`, no backend, e o valor já desce embutido em
+// `amount_cents`. Os dois ids eram escrita pura — nenhuma leitura no código
+// inteiro.
+//
+// ⚠️ E era um BLOQUEADOR: a sincronização lançava, sem try/catch no chamador,
+// DEPOIS de a linha do cupom já estar gravada. Sem `STRIPE_SECRET_KEY` o botão
+// "gerar cupom" respondia 500 e deixava um cupom órfão no banco — e o Asaas não
+// tem cupom nenhum para colocar no lugar.
+//
+// As colunas `stripe_coupon_id` / `stripe_promotion_code_id` continuam na
+// tabela como legado inerte (mesma disciplina de `tb_machine`): removê-las
+// exigiria migration destrutiva para apagar dado que ninguém lê.
 
 class CouponService {
   static validateCreatePayload(payload) {
@@ -182,9 +168,7 @@ class CouponService {
           is_active: true,
         };
 
-        const coupon = await CouponStorage.create(db, createPayload);
-        const stripeIds = await syncCouponToStripe(coupon);
-        return { ...coupon, ...stripeIds };
+        return CouponStorage.create(db, createPayload);
       }
     );
   }
