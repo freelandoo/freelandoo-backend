@@ -28,7 +28,13 @@
 
 const pool = require("../databases");
 const WhatsappStorage = require("../storages/WhatsappStorage");
-const evolution = require("../integrations/evolution");
+// ⚠️ O REGISTRO DE PROVEDORES entra AQUI, no Service, e NUNCA no
+// `WhatsappIngestService`. A ingestão não pode ter caminho de código até um
+// envio: é isso, e não uma regra escrita, que garante que ninguém é respondido
+// automaticamente pelo WhatsApp de um usuário — e é o que sustenta, perante a
+// Meta, que a Freelandoo não opera ferramenta de disparo em massa (o gatilho
+// declarado de ação legal dela desde 07/12/2019).
+const whatsappProvider = require("../integrations/whatsappProvider");
 const FeatureFlagService = require("./FeatureFlagService");
 const realtime = require("../realtime/socket");
 const { instanceNameFor } = require("../utils/whatsappInstance");
@@ -58,10 +64,9 @@ class WhatsappService {
     return null;
   }
 
-  /** `{ error }` quando o ambiente não tem credencial da Evolution. */
+  /** `{ error }` quando NENHUM provedor tem credencial neste ambiente. */
   static _assertConfigured() {
-    const cfg = evolution.config();
-    if (!cfg) {
+    if (!whatsappProvider.isAnyAvailable()) {
       return {
         error:
           "A integração com o WhatsApp ainda não está configurada nesta instalação.",
@@ -69,6 +74,21 @@ class WhatsappService {
       };
     }
     return null;
+  }
+
+  /**
+   * O adaptador de uma instância gravada — e `null` quando o provedor DELA não
+   * está configurado neste ambiente.
+   *
+   * A pergunta é por INSTÂNCIA, não por ambiente: quem conectou pela Evolution
+   * continua na Evolution mesmo depois de a plataforma inteira passar a abrir
+   * conexões novas na Cloud API. **Provedor sai da LINHA, nunca do ambiente** —
+   * é a mesma lição do Asaas (mig 236), onde cobrança feita num provedor tem
+   * que ser estornada nele mesmo.
+   */
+  static _providerFor(instance) {
+    const p = whatsappProvider.forInstance(instance);
+    return p && p.isAvailable() ? p : null;
   }
 
   /* ──────────────────────────── status / conexão ───────────────────────── */
@@ -87,19 +107,25 @@ class WhatsappService {
    */
   static async status(id_user) {
     return runWithLogs(log, "status", () => ({ id_user }), async () => {
-      const cfg = evolution.config();
+      const configured = whatsappProvider.isAnyAvailable();
       const instance = await WhatsappStorage.getInstanceByUser(pool, id_user);
 
       if (!instance) {
-        return { configured: !!cfg, exists: false, status: "disconnected", number: "" };
+        return { configured, exists: false, status: "disconnected", number: "" };
       }
 
       // Abrir a aba é usar: é isto que segura a sessão de pé (ver IDLE_DAYS).
       await WhatsappStorage.touchSeen(pool, id_user);
 
+      const provider = this._providerFor(instance);
       let status = instance.status;
-      if (cfg) {
-        const open = await evolution.connectionState(cfg, instance.evolution_instance);
+      if (provider) {
+        // `null` = o provedor não respondeu; o último status conhecido vale
+        // mais do que piscar "desconectado" por causa de um soluço de rede.
+        const open = await provider
+          .state(instance)
+          .then((r) => (r && typeof r.connected === "boolean" ? r.connected : null))
+          .catch(() => null);
         if (open !== null) {
           status = open ? "connected" : instance.status === "connecting" ? "connecting" : "disconnected";
           if (status !== instance.status) {
@@ -114,7 +140,7 @@ class WhatsappService {
       }
 
       return {
-        configured: !!cfg,
+        configured,
         exists: true,
         status,
         number: formatPhone(instance.connected_number),
@@ -142,13 +168,38 @@ class WhatsappService {
       const blocked = (await this._assertEnabled()) || this._assertConfigured();
       if (blocked) return blocked;
 
-      const cfg = evolution.config();
       const name = instanceNameFor(id_user);
 
       try {
-        await evolution.createInstance(cfg, name);
-        const instance = await WhatsappStorage.ensureInstance(pool, id_user, name);
-        const r = await evolution.connect(cfg, name);
+        // A instância existente manda no provedor; só uma conexão NOVA cai no
+        // padrão do ambiente. É o que impede alguém que já está pareado na
+        // Evolution de receber, no meio de uma renovação de QR, uma tela de
+        // cadastro de número da Cloud API.
+        const existing = await WhatsappStorage.getInstanceByUser(pool, id_user);
+        const provider = existing
+          ? this._providerFor(existing)
+          : whatsappProvider.defaultProvider();
+        if (!provider) return this._assertConfigured();
+
+        // Quem não parea por QR não passa por aqui: a Cloud API cadastra o
+        // número e confirma por código (W3). Dizer isso é melhor do que
+        // devolver um QR vazio que a tela tentaria desenhar.
+        if (!provider.capabilities.qrPairing) {
+          return {
+            error: "Este provedor não usa QR Code para conectar.",
+            statusCode: 409,
+          };
+        }
+
+        // ⚠️ O PROVEDOR VEM ANTES DO BANCO, e a ordem é a da mig 223: se a
+        // criação lá falhar, não fica uma linha local apontando para uma
+        // instância que não existe do outro lado. Para conexão nova o `ref` é
+        // derivado do id_user — o mesmo que `ensureInstance` vai gravar.
+        const ref = existing || { provider: provider.provider, evolution_instance: name };
+        await provider.ensure(ref);
+
+        const instance = existing || (await WhatsappStorage.ensureInstance(pool, id_user, name));
+        const r = await provider.connect(instance);
 
         await WhatsappStorage.setInstanceStatus(
           pool,
@@ -183,11 +234,12 @@ class WhatsappService {
       if (!instance) return { ok: true };
 
       try {
-        await evolution.logout(evolution.config(), instance.evolution_instance);
+        const provider = this._providerFor(instance);
+        if (provider) await provider.disconnect(instance);
       } catch (e) {
         // A sessão pode já ter caído do lado de lá. O estado local vale mais do
         // que o erro: deixar "conectado" aqui mentiria para a pessoa.
-        log.warn("disconnect.evolution_failed", { id_user, message: e && e.message });
+        log.warn("disconnect.provider_failed", { id_user, message: e && e.message });
       }
       await WhatsappStorage.setInstanceStatus(
         pool,
@@ -287,22 +339,22 @@ class WhatsappService {
       if (!(await FeatureFlagService.isEnabled(FLAG))) {
         return { sent: false, reason: "flag_off" };
       }
-      const cfg = evolution.config();
-      if (!cfg) return { sent: false, reason: "not_configured" };
-
       const instance = await WhatsappStorage.getInstanceByUser(pool, id_user);
       if (!instance) return { sent: false, reason: "no_instance" };
+
+      const provider = this._providerFor(instance);
+      if (!provider) return { sent: false, reason: "not_configured" };
       // Sessão caída não enfileira: a Evolution recusaria, e insistir mais tarde
       // entregaria o "novo agendamento" de ontem como se fosse de agora.
       if (instance.status !== "connected") return { sent: false, reason: "not_connected" };
       if (!instance.connected_number) return { sent: false, reason: "no_number" };
 
       try {
-        await evolution.sendText(cfg, instance.evolution_instance, instance.connected_number, body);
+        await provider.sendText(instance, instance.connected_number, body);
         return { sent: true };
       } catch (e) {
         log.warn("notifyOwner.fail", { id_user, error: e.message });
-        return { sent: false, reason: "evolution_error" };
+        return { sent: false, reason: "provider_error" };
       }
     });
   }
@@ -337,12 +389,11 @@ class WhatsappService {
 
       let waMessageId = null;
       try {
-        waMessageId = await evolution.sendText(
-          evolution.config(),
-          conversation.evolution_instance,
-          destination,
-          body
-        );
+        // A conversa carrega o provedor da instância dela — responder usa o
+        // MESMO transporte por onde a mensagem chegou.
+        const provider = this._providerFor(conversation);
+        if (!provider) return this._assertConfigured();
+        waMessageId = await provider.sendText(conversation, destination, body);
       } catch (e) {
         return this._evolutionError(e);
       }
@@ -399,11 +450,9 @@ class WhatsappService {
       }
 
       try {
-        const file = await evolution.fetchMedia(
-          evolution.config(),
-          row.evolution_instance,
-          row.wa_message_id
-        );
+        const provider = this._providerFor(row);
+        if (!provider) return this._assertConfigured();
+        const file = await provider.fetchMedia(row, row.wa_message_id);
         return { file };
       } catch (e) {
         return this._evolutionError(e);
@@ -429,15 +478,28 @@ class WhatsappService {
    */
   static async sweepIdleInstances() {
     if (!(IDLE_DAYS > 0)) return 0;
-    const cfg = evolution.config();
-    if (!cfg) return 0;
+    if (!whatsappProvider.isAnyAvailable()) return 0;
 
     try {
       const rows = await WhatsappStorage.listIdleInstances(pool, IDLE_DAYS);
       let closed = 0;
       for (const row of rows) {
+        const provider = this._providerFor(row);
+        // ⚠️ O SWEEPER SÓ VALE PARA QUEM TEM SESSÃO DE PÉ.
+        //
+        // Ele existe porque a Evolution mantém uma sessão Baileys viva por
+        // número, e ela custa memória mesmo de quem conectou e sumiu. A Cloud
+        // API é STATELESS: não há sessão a desligar, e derrubar um cliente
+        // oficial por ociosidade arrancaria a integração dele sem motivo
+        // nenhum — em silêncio, 30 dias depois de ele conectar.
+        //
+        // Quem declara isso é o provedor (`capabilities.idleSession`), e não um
+        // `if (provider === 'evolution')` aqui: provedor novo sem sessão herda
+        // a isenção sem ninguém lembrar de vir editar este laço.
+        if (!provider || !provider.capabilities.idleSession) continue;
+
         try {
-          await evolution.logout(cfg, row.evolution_instance);
+          await provider.disconnect(row);
         } catch (e) {
           log.warn("sweep.logout_failed", {
             instance: row.evolution_instance,
@@ -499,12 +561,20 @@ class WhatsappService {
     };
   }
 
-  /** Erro da Evolution vira `{ error }` com o status que ela deu. */
+  /**
+   * Erro do PROVEDOR vira `{ error }` com o status que ele deu.
+   *
+   * Os dois adaptadores lançam erro nomeado (`EvolutionError`, `CloudApiError`)
+   * justamente para que a mensagem deles chegue à tela: quando o provedor tem
+   * algo a dizer — número já em uso, sessão caída, janela fechada —, é a fala
+   * dele que ajuda quem está olhando. O que não é reconhecido vira uma frase
+   * genérica, porque texto interno de biblioteca na tela não ajuda ninguém.
+   */
   static _evolutionError(e) {
-    if (e && e.name === "EvolutionError") {
+    if (e && (e.name === "EvolutionError" || e.name === "CloudApiError")) {
       return { error: e.message, statusCode: e.statusCode || 502 };
     }
-    log.error("evolution.unexpected", { message: e && e.message });
+    log.error("whatsapp.provider_unexpected", { message: e && e.message });
     return { error: "Falha ao falar com o WhatsApp.", statusCode: 502 };
   }
 }

@@ -23,7 +23,8 @@ class WhatsappStorage {
 
   static async getInstanceByUser(conn, id_user) {
     const r = await conn.query(
-      `SELECT id_instance, id_user, evolution_instance, status, connected_number,
+      `SELECT id_instance, id_user, provider, evolution_instance, waba_id,
+              status, connected_number, quality_rating, number_status,
               last_state_at, last_seen_at, disconnect_reason, created_at
          FROM public.tb_whatsapp_instance
         WHERE id_user = $1
@@ -40,7 +41,8 @@ class WhatsappStorage {
    */
   static async getInstanceByName(conn, evolution_instance) {
     const r = await conn.query(
-      `SELECT id_instance, id_user, evolution_instance, status, connected_number
+      `SELECT id_instance, id_user, provider, evolution_instance, waba_id,
+              status, connected_number
          FROM public.tb_whatsapp_instance
         WHERE evolution_instance = $1
         LIMIT 1`,
@@ -63,8 +65,8 @@ class WhatsappStorage {
             VALUES ($1, $2)
        ON CONFLICT (id_user)
        DO UPDATE SET evolution_instance = EXCLUDED.evolution_instance
-         RETURNING id_instance, id_user, evolution_instance, status, connected_number,
-                   last_state_at, created_at`,
+         RETURNING id_instance, id_user, provider, evolution_instance, waba_id,
+                   status, connected_number, last_state_at, created_at`,
       [id_user, evolution_instance]
     );
     return r.rows[0];
@@ -98,8 +100,8 @@ class WhatsappStorage {
               END,
               last_state_at = NOW()
         WHERE evolution_instance = $1
-        RETURNING id_instance, id_user, evolution_instance, status, connected_number,
-                  disconnect_reason`,
+        RETURNING id_instance, id_user, provider, evolution_instance, waba_id,
+                  status, connected_number, disconnect_reason`,
       [
         evolution_instance,
         status,
@@ -138,7 +140,7 @@ class WhatsappStorage {
    */
   static async listIdleInstances(conn, days, limit = 200) {
     const r = await conn.query(
-      `SELECT id_instance, id_user, evolution_instance, last_seen_at
+      `SELECT id_instance, id_user, provider, evolution_instance, last_seen_at
          FROM public.tb_whatsapp_instance
         WHERE status = 'connected'
           AND last_seen_at < NOW() - ($1 || ' days')::interval
@@ -200,7 +202,8 @@ class WhatsappStorage {
     const r = await conn.query(
       `SELECT c.id_conversation, c.id_instance, c.remote_jid, c.phone, c.push_name,
               c.is_group, c.unread_count, c.last_message_at,
-              i.evolution_instance, i.status AS instance_status
+              i.provider, i.evolution_instance, i.waba_id,
+              i.status AS instance_status
          FROM public.tb_whatsapp_conversation c
          JOIN public.tb_whatsapp_instance i ON i.id_instance = c.id_instance
         WHERE c.id_conversation = $1 AND i.id_user = $2
@@ -306,7 +309,7 @@ class WhatsappStorage {
   static async getMessage(conn, id_user, id_message) {
     const r = await conn.query(
       `SELECT m.id_message, m.wa_message_id, m.media_type, m.body,
-              c.id_conversation, i.evolution_instance
+              c.id_conversation, i.provider, i.evolution_instance, i.waba_id
          FROM public.tb_whatsapp_message m
          JOIN public.tb_whatsapp_conversation c ON c.id_conversation = m.id_conversation
          JOIN public.tb_whatsapp_instance i ON i.id_instance = c.id_instance

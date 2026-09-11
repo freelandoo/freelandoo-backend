@@ -1,239 +1,242 @@
 # Migração WhatsApp: Evolution (não-oficial) → Meta Cloud API oficial
 
 **Data:** 2026-09-11
-**Decisão do Alex:** Tech Provider direto na Meta — sem BSP, sem custo recorrente, aprovações feitas por ele.
-**Motivo:** o risco de ban permanente do número dos usuários (Baileys/Evolution viola os ToS da Meta) e a exposição jurídica que isso cria.
+**Decisão do Alex:** sair da Evolution (Baileys) para a Cloud API oficial, conduzindo as aprovações sozinho, sem BSP e sem custo recorrente.
+**Motivo:** o ban do número dos usuários é **permanente e sem recurso**, e a exposição jurídica que ele cria não é principalmente com a Meta — é com o próprio usuário (CDC art. 14, responsabilidade objetiva; cláusula de não-indenizar é nula pelo art. 51, I).
 
 ---
 
-## 0. A decisão de produto que precede o código
+## 0. Duas fases, e a primeira entra em dias
 
-**Tech Provider obriga CADA cliente a cadastrar um método de pagamento próprio na Meta antes de enviar qualquer mensagem** — mesmo que o uso seja 100% gratuito (atendimento não é cobrado). Quem dispensa isso é o **Solution Partner**, que compartilha a própria linha de crédito; e Solution Partner não é self-serve ("a lengthy process", com contrato comercial).
+A pergunta que definiu o desenho foi do Alex: *"não tem como só eu colocar o cartão e os usuários não precisarem?"* — **tem**, e ela encurta a entrega de semanas para dias.
 
-Consequência no funil de conexão do Ricardo:
+### Fase 1 — os números moram no WABA da Freelandoo *(agora)*
 
-| Evolution (hoje) | Cloud API via Tech Provider |
-|---|---|
-| Aponta a câmera no QR | Ter o app **WhatsApp Business** (o verde) — o comum não serve |
-| — | Ter conta Facebook/Meta Business |
-| — | Passar pelo Embedded Signup |
-| — | **Cadastrar cartão de crédito na Meta** |
-| — | Conectar |
+Um Business Portfolio da Freelandoo; os números dos clientes entram como *business phone numbers* dentro dele. **Um único método de pagamento, o seu.** O cliente não cadastra cartão, não precisa de conta Meta Business, não passa por Embedded Signup — o número dele é verificado por SMS uma vez.
 
-Isso não muda uma linha do plano abaixo — muda quantos vão até o fim. Decisão consciente do Alex: assume a fricção em troca de zero custo recorrente e de não depender de BSP.
+**Por que isso funciona aqui, e não funcionaria num produto de disparo:** o contra clássico do modelo é que os *messaging limits* são do portfólio e compartilhados entre todos os números. Só que
 
-**Mitigação possível (fora do escopo desta migração):** entrar depois em multi-partner solution com um Solution Partner, que permite herdar a linha de crédito sem perder a arquitetura. A modelagem abaixo não impede isso.
+> messaging limits valem **apenas para conversas iniciadas pelo negócio**. Conversas iniciadas pelo cliente **não têm teto**.
+
+O produto é atendimento reativo. O limite compartilhado não entra na conta. Pelo mesmo motivo, **mesmo sem display name aprovado o atendimento funciona** — a punição de 250/24h atinge só disparo ativo.
+
+**E o ganho maior:** Advanced access só é exigido para WABAs *não pertencentes ao seu negócio*. Sendo o WABA seu, **Standard access basta** → sem Tech Provider, sem App Review, sem vídeo, sem Embedded Signup.
+
+**⚠️ Zona cinzenta declarada:** a Meta define partner como quem opera "em nome dos clientes", que é o que a Freelandoo faz. Ela **não proíbe** hospedar números de terceiros no próprio portfólio e a documentação não cobre o caso — o gatilho técnico de Advanced access é a posse do WABA. É um caminho que ela não fecha, não um que ela abençoa. Decisão tomada de olhos abertos; se quiser certeza, o caminho é um ticket ao Direct Support descrevendo o caso, que não bloqueia nada.
+
+### Fase 2 — Tech Provider *(disparada pelo teto de 20)*
+
+O limite de números começa em **2**, sobe **automaticamente até 20** (negócio verificado + uso + qualidade alta), e acima de 20 exige **ticket no Direct Support** (*Account & WABA → Increase WABA limit for a business*). Abrir vários Business Managers **não é saída**.
+
+Ou seja: **a fase 1 não escala por design** — e é exatamente para isso que o Tech Provider existe. Lá cada cliente tem o WABA no portfólio *dele* e o seu teto deixa de existir. Chegar nele com a integração pronta, rodando e com histórico de qualidade é o que faz a Meta aprovar rápido.
+
+**Gatilho:** ao passar de ~15 números conectados, abrir a fase 2.
 
 ---
 
-## 1. Mapa: o que se aproveita da mig 223
+## 1. Coexistência, e o risco que ela traz
 
-A arquitetura da mig 223 foi desenhada certo e **a maior parte sobrevive intacta**. A instância já é POR PESSOA, o roteamento já é por referência do provedor, e a ingestão já é isolada do envio.
+**Coexistência é assumida** — o número continua no app WhatsApp Business do profissional, com histórico sincronizado. Tirar o WhatsApp do celular do Ricardo não é uma opção realista para este público; sem coexistência a adoção morre.
+
+O preço é que o comportamento dele **fora** da plataforma passa a tocar um número que está no seu portfólio. Como isso se propaga:
+
+- A qualidade é medida **por número** (bloqueios e denúncias dos clientes dele, janela de 7 dias). O número vira `FLAGGED` e a punição direta — restrição, ban — **é dele**. Você não é banido junto.
+- **Mas o crescimento é do portfólio:** a escala automática de limites depende da qualidade agregada de *todos* os seus números. Um número ruim **trava o aumento do teto de 20 para todo mundo**.
+
+> Você não é punido junto. Você fica **preso** junto.
+
+É isso que torna o **W6 (monitor de qualidade)** parte do produto, e não um refinamento: sem ele você só descobre o problema no dia em que o crescimento travar — e aí já não dá para saber quem causou.
+
+Nota de justiça: o risco de ban do número não é criado por você. Quem faz spam hoje já é banido pela Meta, com ou sem Freelandoo. O que muda é que você passa a **herdar uma parte da consequência**.
+
+---
+
+## 2. Mapa: o que se aproveita da mig 223
+
+A mig 223 foi desenhada certo. A instância já é POR PESSOA, o roteamento já é por referência do provedor, e a ingestão já é isolada do envio.
 
 ### Sobrevive sem mudança
 
-| Peça | Linhas | Por quê sobrevive |
+| Peça | Linhas | Por quê |
 |---|---|---|
-| `tb_whatsapp_conversation` | — | `remote_jid`/`phone` acomodam o `wa_id` da Meta (só dígitos) |
-| `tb_whatsapp_message` | — | `wa_message_id` recebe o `wamid.*` |
+| `tb_whatsapp_conversation` / `tb_whatsapp_message` | — | acomodam o `wa_id` e o `wamid.*` da Meta |
 | `WhatsappStorage` | 321 | fala com as tabelas, não com o provedor |
 | `WhatsappService.listConversations/listMessages` | — | a caixa não sabe de onde veio a mensagem |
-| `use-whatsapp-inbox.ts`, `whatsapp-list`, `whatsapp-thread` | 772 | o front da caixa é agnóstico |
-| eventos `whatsapp:message` / `whatsapp:status` | — | push já registrado em `lib/realtime.ts` |
-| flag `whatsapp_atendimento`, `requirePlanFeature("whatsapp")`, rate limit | — | política, não transporte |
-| sweeper de ociosidade (mig 224) | — | ver nota em W1 |
+| `use-whatsapp-inbox.ts`, `whatsapp-list`, `whatsapp-thread` | 772 | front agnóstico |
+| `whatsapp:message` / `whatsapp:status` | — | push já registrado em `lib/realtime.ts` |
+| flag, `requirePlanFeature("whatsapp")`, rate limit | — | política, não transporte |
 
 ### Muda
 
-| Peça | O que muda |
+| Peça | O quê |
 |---|---|
-| `integrations/evolution/` | vira **um adaptador** dentro de um registry de provedores |
-| `tb_whatsapp_instance` | ganha `provider`, `waba_id`, token cifrado |
-| `WhatsappIngestService` | o payload da Meta é outro formato; o roteamento passa a ser por `phone_number_id` |
-| `webhooks.routes.js` → `/whatsapp` | a Meta exige **GET de verificação** e **assinatura HMAC sobre o corpo cru** |
-| `WhatsappService.qrcode` | não existe QR na Cloud API — vira Embedded Signup |
-| `WhatsappService.sendText` | passa a depender da **janela de 24h** |
-| `whatsapp-connect-modal.tsx` | QR → botão que abre o SDK do Facebook |
-| `next.config.mjs` (CSP) | liberar `connect.facebook.net` e `www.facebook.com` |
+| `integrations/evolution/` | vira **um adaptador** dentro de um registry |
+| `tb_whatsapp_instance` | ganha `provider`, `waba_id`, token cifrado, qualidade |
+| `WhatsappIngestService` | payload da Meta é outro; roteamento por `phone_number_id` |
+| webhook `/whatsapp` | GET de verificação + **assinatura HMAC sobre o corpo cru** |
+| `WhatsappService.qrcode` | não há QR na Cloud API → vira cadastro de número + SMS |
+| `sendText` | passa a depender da **janela de 24h** |
+| `whatsapp-connect-modal.tsx` | QR → informar número e confirmar o código |
 
-### A lição da mig 223 que se repete igual
+### A lição da 223 que se repete igual
 
 > *"a pergunta 'de quem é esta mensagem?' só tem uma resposta legítima: o campo do próprio evento, casado com a instância. Instância desconhecida é IGNORADA — nunca atribuída a alguém."*
 
-Na Cloud API a Meta entrega **todos os clientes no MESMO webhook** (o app da Freelandoo). O campo que roteia é `entry[].changes[].value.metadata.phone_number_id`. **A regra é idêntica e o erro de copiar seria o mesmo:** tratar "a instância" no singular faz a mensagem de um cliente cair na caixa de outro, sem erro nenhum aparecer.
+Na Cloud API a Meta entrega **todos os números no MESMO webhook**. O campo que roteia é `entry[].changes[].value.metadata.phone_number_id`. **Mesma armadilha, outro nome:** tratar "a instância" no singular faz a mensagem de um cliente cair na caixa de outro, sem erro nenhum.
 
 ### O invariante que NÃO pode ser perdido
 
-`WhatsappIngestService` **não importa** o módulo de envio. Não existe caminho de código de uma mensagem que chega até uma que sai. Isso não é higiene: é o que sustenta, perante a Meta, que a Freelandoo não opera ferramenta de disparo — o gatilho declarado de ação legal dela desde 07/12/2019. **O adaptador novo não pode quebrar isso:** `whatsappProvider` é importado pelo Service, nunca pelo Ingest.
+`WhatsappIngestService` **não importa** o módulo de envio. Não existe caminho de código de uma mensagem que chega até uma que sai. Isso sustenta, perante a Meta, que a Freelandoo não opera ferramenta de disparo — o gatilho declarado de ação legal dela desde 07/12/2019. **O registry é importado pelo Service, NUNCA pelo Ingest.**
 
 ---
 
-## 2. Slices
-
-Ordenados pelo que destrava a **aprovação** mais cedo: o App Review exige **vídeo do fluxo funcionando**, então não dá para submeter antes do W3.
+## 3. Slices
 
 ```
-W0 (Alex, dia 0, sem código) ─── Business Verification ── 2-5 dias ──┐
-                                                                      │
-W1 adaptador + schema ──→ W2 webhook ──→ W3 Embedded Signup ──→ App Review (~1-5d)
-                                                     │                │
-                                                     └→ W4 envio + janela 24h
-                                                        W5 convivência e corte
+W0 (Alex, sem código) ── verificação + app Meta ── 2-5 dias ──┐
+                                                               │
+W1 adaptador + schema ──→ W2 webhook ──→ W3 cadastro de número ──→ W4 envio + janela
+                                                                    │
+                                                              W5 convivência
+                                                              W6 monitor de qualidade
 ```
 
----
+### W0 — Verificação e app Meta *(Alex, sem código)*
 
-### W0 — Verificação e app Meta *(sem código — é o Alex)*
+Maior lead time, zero dependência. **Começa hoje.**
 
-Maior lead time, zero dependência. **Começar hoje.**
+1. Business Verification da Freelandoo (2–5 dias úteis).
+2. App no Meta for Developers com use case **WhatsApp**; ícone, política de privacidade, categoria.
+3. Criar o WABA da Freelandoo e **cadastrar o método de pagamento** (o único da operação).
+4. Gerar **System User token** permanente (é ele que opera os números do portfólio próprio).
+5. Guardar `META_APP_ID`, `META_APP_SECRET`, `META_SYSTEM_USER_TOKEN`, `META_WABA_ID`, `META_WEBHOOK_VERIFY_TOKEN`.
 
-1. Meta Business Verification da Freelandoo (CNPJ, documentos) — 2 a 5 dias úteis.
-2. Criar o app no Meta for Developers com o use case **WhatsApp**.
-3. Preencher ícone, política de privacidade e categoria (pré-requisito do App Review).
-4. Guardar `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID` (do Embedded Signup), `META_WEBHOOK_VERIFY_TOKEN`.
+### W1 — Adaptador de provedor + schema *(backend, mig 240)*
 
-**Saída:** negócio verificado + app criado. Sem isso o App Review nem é aceito.
+Refactor puro: **o Evolution continua idêntico**. Zero mudança para o usuário.
 
----
-
-### W1 — O adaptador de provedor + schema *(backend, migration)*
-
-Refactor puro: **o Evolution continua funcionando idêntico**. Zero mudança para o usuário.
-
-**`src/integrations/whatsappProvider/`** no padrão já estabelecido pelo `gameProvider` e pelo `PaymentGateway` — registry + contrato, nunca `if (provider === 'cloud')` espalhado. Contrato:
+`src/integrations/whatsappProvider/` no padrão do `gameProvider`/`PaymentGateway` — registry + contrato, nunca `if (provider === 'cloud')` espalhado:
 
 ```
-provider          'evolution' | 'cloud'   (valor gravado no banco)
-isAvailable()     → boolean   — a ENV decide, não a flag (regra da mig 214)
-capabilities      { qrPairing, embeddedSignup, serviceWindow, templates }
-connect(inst)     → { qr } | { signupUrl }
-state(inst)       → { connected, number }
+provider       'evolution' | 'cloud'
+isAvailable()  → boolean   (a ENV decide, não a flag — regra da mig 214)
+capabilities   { qrPairing, numberRegistration, serviceWindow, qualityRating }
+connect(inst)  → { qr } | { needsCode }
+state(inst)    → { connected, number }
 disconnect(inst)
 sendText(inst, dest, text)
 fetchMedia(inst, mediaId)
 ```
 
-`capabilities` existe pela mesma razão do `gameProvider`: a Cloud API **não tem QR** e a Evolution **não tem janela de 24h**. A tela omite o que não existe em vez de desenhar um botão morto.
+`capabilities` existe pela mesma razão do `gameProvider`: a Cloud API **não tem QR** e a Evolution **não tem janela de 24h nem quality rating**. A tela omite o que não existe em vez de desenhar botão morto.
 
-**Migration nova** (a 223 já rodou em produção — não pode ser editada):
+**mig 240** (a 223 já rodou em produção — não pode ser editada):
 
 - `tb_whatsapp_instance.provider VARCHAR(16) NOT NULL DEFAULT 'evolution'` + CHECK de lista fechada.
 - `waba_id VARCHAR(32) NULL`, `access_token_sealed TEXT NULL` (via `utils/secretBox.js`, o mesmo das academias).
-- `evolution_instance` **fica com o nome físico legado** e passa a ser o `provider_ref` genérico — na Cloud ela guarda o `phone_number_id`. Mesma disciplina de `tb_machine` (enxames) e `tb_games_presence` (Financeiro): **rename é só de aplicação**, e renomear coluna que a 223 criou quebraria migration histórica.
-- O UNIQUE de `evolution_instance` vira **UNIQUE (provider, evolution_instance)** — o espaço de ids dos dois provedores é diferente e não pode colidir.
-- `tb_whatsapp_conversation.service_window_expires_at TIMESTAMPTZ NULL` — quando a janela de 24h fecha. **NULL = fechada/desconhecida**, nunca "aberta por omissão": errar para o lado aberto faz o envio ser recusado pela Meta depois de a pessoa já ter digitado.
-- `wa_message_id` de VARCHAR(128) → VARCHAR(255) (folga para o `wamid.*`).
+- `quality_rating VARCHAR(16) NULL`, `number_status VARCHAR(24) NULL` — alimentados pelo W6.
+- `evolution_instance` **mantém o nome físico legado** e passa a ser o `provider_ref` genérico; na Cloud guarda o `phone_number_id`. Mesma disciplina de `tb_machine` e `tb_games_presence`: **rename é só de aplicação**, e renomear coluna da 223 quebraria migration histórica.
+- UNIQUE de `evolution_instance` → **UNIQUE (provider, evolution_instance)**: os espaços de id dos dois provedores são diferentes e não podem colidir.
+- `tb_whatsapp_conversation.service_window_expires_at TIMESTAMPTZ NULL`. **NULL = fechada**, nunca "aberta por omissão": errar para o lado aberto faz o envio ser recusado pela Meta depois de a pessoa já ter digitado.
+- `wa_message_id` VARCHAR(128) → VARCHAR(255) (folga para o `wamid.*`).
 
-**⚠️ O sweeper da mig 224 é só do Evolution.** Ele desliga sessão ociosa porque sessão Baileys custa memória enquanto está de pé. **Na Cloud API não há sessão** — é stateless, e desconectar um cliente ocioso seria arrancar a integração dele sem motivo. O sweeper passa a filtrar `provider = 'evolution'`. Esquecer isso derruba clientes oficiais em 30 dias, em silêncio.
+**⚠️ O sweeper da mig 224 é só do Evolution.** Ele desliga sessão ociosa porque sessão Baileys custa memória de pé. **Na Cloud API não há sessão** — desconectar cliente ocioso arrancaria a integração dele sem motivo. Passa a filtrar `provider = 'evolution'`. Esquecer isso derruba clientes oficiais em 30 dias, em silêncio.
 
-**Validação:** migration 2× em transação com ROLLBACK contra produção; `test:unit`; o Evolution segue funcionando (nenhum comportamento muda).
+### W2 — Webhook da Meta: o que CHEGA *(backend)*
 
----
+Testável **antes de qualquer cliente** — a Meta fornece número de teste.
 
-### W2 — O webhook da Meta: o que CHEGA *(backend)*
+1. **GET de verificação** (`hub.mode`, `hub.verify_token`, `hub.challenge` → challenge em texto puro). Sem isso a inscrição nem é aceita.
+2. **`X-Hub-Signature-256`** = HMAC-SHA256 do **corpo cru** com o App Secret. **⚠️ Hoje a rota usa `express.json()`** — precisa de `express.raw()`, como o Stripe já faz no mesmo arquivo. Ler o JSON antes torna a verificação impossível, e o sintoma é uma rota pública aceitando qualquer corpo da internet.
 
-Testável **antes de qualquer cliente existir** — a Meta fornece número de teste.
+`utils/whatsappCloudPayload.js` (irmão do `whatsappPayload.js`): `entry[].changes[].value` com `messages[]`, `statuses[]`, `metadata.phone_number_id`. **Desconhecido é IGNORADO.**
 
-**Duas metades que a Evolution não tem:**
+**A janela de 24h nasce aqui:** toda mensagem `in` empurra `service_window_expires_at = sent_at + 24h`. É o webhook que sabe quando o cliente falou.
 
-1. **GET de verificação.** A Meta chama com `hub.mode`, `hub.verify_token`, `hub.challenge` e espera o challenge de volta em texto puro. Sem isso a inscrição do webhook nem é aceita.
-2. **Assinatura `X-Hub-Signature-256`** = HMAC-SHA256 do **corpo cru** com o App Secret. **⚠️ Hoje a rota usa `express.json()`** — precisa de `express.raw()`, como o Stripe já faz no mesmo arquivo. Ler o JSON antes de conferir a assinatura torna a verificação impossível, e o sintoma é uma rota que aceita qualquer corpo da internet.
+**Nunca lança por conteúdo** (regra da 223): payload torto vira `ignored`; a Meta reentrega (at-least-once) e o UNIQUE de `wa_message_id` torna a repetição inofensiva.
 
-**Parser novo** (`utils/whatsappCloudPayload.js`, irmão do `whatsappPayload.js`): `entry[].changes[].value` com `messages[]`, `statuses[]` e `metadata.phone_number_id`. Roteamento por `phone_number_id` → `tb_whatsapp_instance`. **Desconhecido é IGNORADO**, nunca atribuído.
+### W3 — Cadastro do número *(backend + front)*
 
-**A janela de 24h nasce aqui:** toda mensagem `in` empurra `service_window_expires_at = sent_at + 24h`. É o webhook que sabe quando o cliente falou — calcular isso no envio seria adivinhar.
+Muito menor que o Embedded Signup da fase 2.
 
-**Nunca lança por conteúdo** (mesma regra da 223): payload torto vira `ignored`; só erro real sobe, e a Meta reentrega (at-least-once) com o UNIQUE de `wa_message_id` tornando a repetição inofensiva.
+- `POST /whatsapp/cloud/number` — adiciona o número ao WABA da Freelandoo e dispara o código de verificação (SMS ou chamada).
+- `POST /whatsapp/cloud/verify` — confirma o código, registra o número na Cloud API e grava `phone_number_id`.
+- **Coexistência:** inscrever também `history`, `smb_app_state_sync`, `smb_message_echoes` e sincronizar em até **24h**, ou o onboarding recomeça. Throughput fixo em 20 mps — irrelevante para atendimento.
+- Front: o modal troca o QR por "informe seu número" → "digite o código".
 
-**Validação:** suíte nova `test:whatsapp-cloud` com payloads reais da Meta — assinatura válida/inválida, GET de verificação, `phone_number_id` desconhecido, reentrega duplicada, janela sendo empurrada.
-
----
-
-### W3 — Embedded Signup: o que CONECTA *(backend + front)* ← **destrava o App Review**
-
-**Front:** SDK do Facebook (`connect.facebook.net/en_US/sdk.js`), `FB.login` com `config_id` e `version: "v4"` (⚠️ **a v2 é descontinuada em 15/10/2026** — nascer já na v4 evita retrabalho imediato). O callback devolve, por `message` event: **WABA ID**, **phone number ID** e um **code trocável**. O front manda **só o code** para o backend.
-
-**⚠️ CSP:** `next.config.mjs` precisa de `connect.facebook.net` em `script-src` e `www.facebook.com` em `frame-src`. Sem isso o SDK é bloqueado **sem erro visível** — o botão simplesmente não faz nada.
-
-**Backend** (`POST /whatsapp/cloud/onboard`):
-1. Troca o code por **business token do cliente** (server-to-server — o code nunca vira token no browser).
-2. **Registra o número** para uso na Cloud API.
-3. **Inscreve o app nos webhooks do WABA do cliente** — sem este passo nada chega, e é falha silenciosa: conecta, parece certo, e a caixa fica vazia para sempre.
-4. Grava `waba_id`, `phone_number_id` (em `evolution_instance`) e o token **cifrado com `secretBox`**.
-
-**⚠️ O token nunca sai do backend.** Nem para o dono da instância — mesma regra da apikey da Evolution.
-
-**⚠️ Coexistência:** para o número que já está no app WhatsApp Business, inscrever também `history`, `smb_app_state_sync` e `smb_message_echoes`, e sincronizar em até **24h** ou o onboarding tem que recomeçar. Throughput fica fixo em 20 mps — irrelevante para atendimento.
-
-**Depois deste slice:** gravar os vídeos e **submeter o App Review** pedindo Advanced access em `whatsapp_business_messaging` e `whatsapp_business_management`. Dá para gravar com o WABA da própria Freelandoo (Standard access já opera nas contas próprias). **W4 e W5 rodam enquanto a Meta analisa.**
-
----
+**⚠️ Não inscrever os webhooks é falha silenciosa:** conecta, parece certo, e a caixa fica vazia para sempre.
 
 ### W4 — Envio, janela de 24h e mídia *(backend + front)*
 
-`sendText` do adaptador `cloud`: `POST /{phone_number_id}/messages` com o token do cliente.
+`POST /{phone_number_id}/messages` com o System User token.
 
-**A regra nova que não existe no Evolution:** fora da janela de 24h, texto livre é **recusado pela Meta**. Então:
-- O backend recusa antes de chamar a Meta, com motivo — não depois, em erro de API.
-- **A caixa mostra o estado**: quanto resta da janela, e quando fechada, o campo desabilitado explicando que só o cliente pode reabrir escrevendo. Um campo que aceita texto e falha no envio é pior que um campo desabilitado.
+**A regra que não existe no Evolution:** fora da janela de 24h, texto livre é **recusado pela Meta**. Então o backend recusa **antes** de chamar a Meta, com motivo — não depois, em erro de API —, e a caixa **mostra o estado**: quanto resta da janela e, fechada, o campo desabilitado explicando que só o cliente reabre escrevendo. Campo que aceita texto e falha no envio é pior que campo desabilitado.
 
-**Mídia:** `GET /{media_id}` devolve URL temporária; baixar com o token do cliente e servir. **Nada em repouso** — mesma regra da 223: é conteúdo de terceiro que nunca consentiu conosco.
-
-**Validação:** `test:whatsapp-cloud` cobrindo recusa fora da janela, envio dentro, e a janela expirando.
-
----
+**Mídia:** `GET /{media_id}` devolve URL temporária; baixar e servir. **Nada em repouso** — regra da 223: é conteúdo de terceiro que nunca consentiu conosco.
 
 ### W5 — Convivência e corte *(backend + front)*
 
-Os dois provedores no ar ao mesmo tempo. **Não desligar a Evolution antes** — desligar cedo deixa todo mundo sem canal.
+Os dois provedores no ar. **Não desligar a Evolution antes** — desligar cedo deixa todo mundo sem canal.
 
-- A tela oferece o oficial a quem está na Evolution, explicando em texto claro **por que** (risco de ban permanente, sem recurso).
-- Quem conecta o oficial tem a instância Evolution **desligada na mesma transação** — dois provedores no mesmo número duplicaria toda mensagem recebida.
-- **Mitigação que vale desde hoje, antes de tudo:** avisar quem já usa a Evolution a preferir **número secundário, nunca o principal do negócio**.
-- `PAYMENT_PROVIDER`-style: `WHATSAPP_PROVIDER=cloud` decide o **padrão para conexões novas**; conexões existentes seguem no provedor gravado na linha. **Provedor sai da linha, nunca do ambiente** — mesma lição do Asaas (mig 236): cobrança feita num provedor é estornada nele mesmo depois da plataforma inteira migrar.
+- A tela oferece o oficial a quem está na Evolution, explicando **por quê** (ban permanente, sem recurso).
+- Conectar o oficial **desliga a instância Evolution na mesma transação** — dois provedores no mesmo número duplicaria toda mensagem recebida.
+- `WHATSAPP_PROVIDER=cloud` decide o **padrão para conexões novas**; conexões existentes seguem o provedor **gravado na linha**. **Provedor sai da linha, nunca do ambiente** — mesma lição do Asaas (mig 236).
+- **Mitigação que vale desde hoje:** avisar quem está na Evolution a preferir número secundário.
+
+### W6 — Monitor de qualidade *(backend + front)* — **não é opcional**
+
+É o que torna a fase 1 segura, porque na coexistência você herda o comportamento externo dos clientes.
+
+- Inscrever `phone_number_quality_update` e `account_update`: **a Meta avisa** quando a qualidade cai.
+- Guardar `quality_rating` e `number_status` por instância (colunas da mig 240).
+- **Avisar o dono** quando o número dele amarela — ele é quem pode corrigir o comportamento.
+- **Painel admin**: lista de números por qualidade, com botão de desconectar quem degrada **antes** de travar o teto do portfólio.
+
+**Sem isto, o sintoma chega como "o limite parou de crescer" e não há como saber quem causou.**
 
 ---
 
-## 3. Ordem de execução e dependências
+## 4. Ordem e dependências
 
-| Slice | Depende de | Pode rodar em paralelo com |
+| Slice | Depende de | Paralelo com |
 |---|---|---|
 | W0 | — | tudo |
 | W1 | — | W0 |
 | W2 | W1 | W0 |
 | W3 | W1, W2, **W0 concluído** | — |
-| App Review | W3 | W4, W5 |
-| W4 | W1, W3 | App Review |
-| W5 | W4 | App Review |
+| W4 | W1, W3 | — |
+| W5 | W4 | W6 |
+| W6 | W2 (webhooks) | W5 |
 
-**Caminho crítico = o código, não a Meta.** Somando: 2 a 4 semanas até o primeiro cliente conectado, com a Meta respondendo por menos de uma delas.
+**W1 e W2 não dependem do W0** — começam antes de qualquer aprovação. E servem às **duas fases**: nada do que for construído agora é jogado fora quando o Tech Provider entrar.
 
 ---
 
-## 4. ENVs novas
+## 5. ENVs novas
 
 | Variável | Onde | Para quê |
 |---|---|---|
-| `META_APP_ID` | back + front | SDK e troca de token |
-| `META_APP_SECRET` | back | assinatura do webhook e troca de token |
-| `META_CONFIG_ID` | front | configuração do Embedded Signup |
+| `META_APP_ID` | back | troca de token, identificação |
+| `META_APP_SECRET` | back | assinatura do webhook |
+| `META_SYSTEM_USER_TOKEN` | back | operar os números do portfólio próprio |
+| `META_WABA_ID` | back | o WABA da Freelandoo (fase 1) |
 | `META_WEBHOOK_VERIFY_TOKEN` | back | GET de verificação |
 | `META_GRAPH_VERSION` | back | fixar a versão da Graph API |
-| `WHATSAPP_PROVIDER` | back | padrão para conexões novas (`evolution` \| `cloud`) |
-| `SECRET_BOX_KEY` | back | **passa a ser obrigatória** — hoje cai no `JWT_SECRET`, e trocar o JWT_SECRET invalidaria os tokens dos clientes |
+| `WHATSAPP_PROVIDER` | back | padrão para conexões novas |
+| `SECRET_BOX_KEY` | back | **passa a ser obrigatória** — hoje cai no `JWT_SECRET`, e trocá-lo invalidaria os tokens gravados |
 
-**Regra da mig 214 mantida:** sem `META_APP_ID`/`META_APP_SECRET` o provedor `cloud` se declara indisponível e a tela **diz isso**, em vez de oferecer um botão que só falha depois do clique.
+**Regra da mig 214 mantida:** sem `META_APP_ID`/`META_APP_SECRET` o provedor `cloud` se declara indisponível e a tela **diz isso**, em vez de oferecer botão que só falha depois do clique.
 
 ---
 
-## 5. Armadilhas catalogadas (todas com custo conhecido)
+## 6. Armadilhas catalogadas
 
-1. **Raw body no webhook** — sem ele não há como conferir a assinatura, e a rota aceita qualquer corpo.
-2. **CSP** — SDK bloqueado é falha silenciosa: o botão não faz nada.
-3. **Não inscrever os webhooks do WABA do cliente** — conecta, parece certo, caixa vazia para sempre.
-4. **Sweeper da 224 atingindo o cloud** — derruba cliente oficial em 30 dias, sem motivo e sem erro.
-5. **Embedded Signup v2** — descontinuado em 15/10/2026; nascer em v4.
-6. **`phone_number_id` no singular** — a armadilha que a 223 já documentou; aqui ela volta com outro nome.
-7. **Janela de 24h "aberta por omissão"** — `NULL` é fechada, não aberta.
-8. **Token em claro ou exposto ao dono** — `secretBox`, e nunca sai do backend.
-9. **Quebrar o isolamento Ingest ↔ envio** — é o ativo jurídico, não só higiene.
+1. **Raw body no webhook** — sem ele a assinatura é inconferível e a rota aceita qualquer corpo.
+2. **CSP** — se a fase 2 trouxer o SDK do Facebook, liberar `connect.facebook.net`/`www.facebook.com`. Bloqueio de CSP é silencioso: o botão não faz nada.
+3. **Não inscrever os webhooks** — conecta, parece certo, caixa vazia para sempre.
+4. **Sweeper da 224 atingindo o cloud** — derruba cliente oficial em 30 dias, sem erro.
+5. **`phone_number_id` no singular** — a armadilha que a 223 já documentou, de volta.
+6. **Janela de 24h "aberta por omissão"** — `NULL` é fechada.
+7. **Token em claro ou exposto ao dono** — `secretBox`, e nunca sai do backend.
+8. **Quebrar o isolamento Ingest ↔ envio** — é ativo jurídico, não higiene.
+9. **Ignorar a qualidade (W6)** — o teto do portfólio trava e não se sabe por quem.
