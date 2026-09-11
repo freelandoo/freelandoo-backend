@@ -53,10 +53,19 @@ No painel do Asaas: **Integrações → Webhooks → Adicionar**.
 | URL | `https://<seu-backend>/webhooks/asaas` |
 | Token de autenticação | o **mesmo** valor de `ASAAS_WEBHOOK_TOKEN` |
 | Versão da API | v3 |
-| Eventos | `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`, `PAYMENT_REFUNDED`, `PAYMENT_DELETED`, `PAYMENT_OVERDUE` |
+| Eventos — **cobranças** | `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`, `PAYMENT_REFUNDED`, `PAYMENT_DELETED`, `PAYMENT_OVERDUE` |
+| Eventos — **assinaturas** | `SUBSCRIPTION_DELETED`, `SUBSCRIPTION_INACTIVATED` |
 
 > ⚠️ **Sem o token configurado a rota responde 503 e recusa tudo.** Um endpoint de
 > webhook aberto credita Polén e ativa perfil para quem souber a URL.
+
+> ⚠️ **OS EVENTOS DE ASSINATURA FICAM NUMA ABA SEPARADA DO PAINEL** ("eventos para
+> assinaturas", ao lado de "eventos para cobranças"). Marcar só o grupo de
+> cobranças — que é o caminho óbvio — deixa os **4 fluxos recorrentes** (Plano
+> Negócio, mensalidade de comunidade, bolsa patrocínio e Atendimento IA) sem
+> saber que a assinatura ACABOU: quem cancelar pelo painel do Asaas, ou tiver a
+> assinatura desativada, segue com o acesso aqui dentro **para sempre**, e não
+> há erro nenhum para investigar. O mesmo endpoint recebe os dois grupos.
 
 ### 2.4 Conferir
 

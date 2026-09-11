@@ -297,3 +297,153 @@ test("estorno PARCIAL do painel do Asaas não é tratado como total", () => {
   assert.strictEqual(c.amount_refunded, 3000);
   assert.strictEqual(isFullRefund(c), false);
 });
+
+// ───────────────── A2: O FIM DA ASSINATURA NO ASAAS ─────────────────────────
+
+test("assinatura removida e inativada caem no MESMO balde", () => {
+  // Para quem assinou, "foi desativada" e "foi removida" são a mesma notícia:
+  // parou de ser cobrado, então para de ter acesso.
+  assert.strictEqual(AsaasWebhookService.kindOf("SUBSCRIPTION_DELETED"), "subscription_ended");
+  assert.strictEqual(AsaasWebhookService.kindOf("SUBSCRIPTION_INACTIVATED"), "subscription_ended");
+});
+
+test("eventos de assinatura que NÃO encerram nada seguem ignorados", () => {
+  // SUBSCRIPTION_CREATED chega no mesmo endpoint. Tratá-lo como fim da
+  // assinatura derrubaria o acesso no instante em que ela é criada.
+  for (const e of ["SUBSCRIPTION_CREATED", "SUBSCRIPTION_UPDATED", "SUBSCRIPTION_SPLIT_DISABLED"]) {
+    assert.strictEqual(AsaasWebhookService.kindOf(e), "ignored", `${e} deveria ser ignorado`);
+  }
+});
+
+test("o subscription reidratado usa o id do ASAAS, não o da intenção", () => {
+  // ⚠️ A REGRESSÃO QUE ESTE TESTE TRAVA: ao contrário da session (que carrega o
+  // id da intenção), aqui o id tem que ser o da assinatura no Asaas — é ele que
+  // os quatro fluxos gravaram em `stripe_subscription_id`. Trocar os dois faria
+  // o cancelamento não encontrar linha nenhuma e não ter efeito, em silêncio.
+  const sub = AsaasWebhookService.buildSubscriptionLike({
+    id: "sub_asaas_123",
+    status: "INACTIVE",
+    externalReference: "intent-uuid-999",
+    deleted: true,
+  });
+  assert.strictEqual(sub.id, "sub_asaas_123");
+  assert.notStrictEqual(sub.id, "intent-uuid-999");
+  assert.strictEqual(sub.object, "subscription");
+  assert.strictEqual(sub.status, "INACTIVE");
+});
+
+// ─── O ROTEAMENTO: inadimplência × cobrança removida × fim da assinatura ─────
+//
+// Estes exercitam `dispatchEvent` com o banco e o confirmador DUBLADOS: o que
+// se mede aqui é para ONDE cada evento vai, que é exatamente o que estava
+// errado antes (a renovação vencida caía em `already_settled` e sumia).
+
+const PaymentIntentStorage = require("../../src/storages/PaymentIntentStorage");
+const StripeWebhookService = require("../../src/services/StripeWebhookService");
+
+function withStubs(intent, run) {
+  const orig = {
+    getById: PaymentIntentStorage.getById,
+    getByProviderRef: PaymentIntentStorage.getByProviderRef,
+    setStatus: PaymentIntentStorage.setStatus,
+    dispatchEvent: StripeWebhookService.dispatchEvent,
+    fulfill: StripeWebhookService.fulfillCheckoutSession,
+    expire: StripeWebhookService.expireCheckoutSession,
+  };
+  const seen = { dispatched: [], fulfilled: 0, expired: 0, status: null };
+
+  PaymentIntentStorage.getById = async () => intent;
+  PaymentIntentStorage.getByProviderRef = async () => intent;
+  PaymentIntentStorage.setStatus = async (_c, _id, st) => { seen.status = st; };
+  StripeWebhookService.dispatchEvent = async (e) => { seen.dispatched.push(e.type); };
+  StripeWebhookService.fulfillCheckoutSession = async () => { seen.fulfilled++; };
+  StripeWebhookService.expireCheckoutSession = async () => { seen.expired++; };
+
+  return Promise.resolve(run(seen)).finally(() => {
+    PaymentIntentStorage.getById = orig.getById;
+    PaymentIntentStorage.getByProviderRef = orig.getByProviderRef;
+    PaymentIntentStorage.setStatus = orig.setStatus;
+    StripeWebhookService.dispatchEvent = orig.dispatchEvent;
+    StripeWebhookService.fulfillCheckoutSession = orig.fulfill;
+    StripeWebhookService.expireCheckoutSession = orig.expire;
+  });
+}
+
+const PAID_INTENT = { id_payment_intent: "int-1", status: "paid", payload: {}, amount_cents: 5000, currency: "BRL" };
+const NEW_INTENT = { id_payment_intent: "int-2", status: "created", payload: {}, amount_cents: 5000, currency: "BRL" };
+
+test("mensalidade VENCIDA vira inadimplência, não cobrança expirada", async () => {
+  // ⚠️ O FURO QUE ISTO FECHA: antes caía em `already_settled` e era descartada.
+  // Quem parasse de pagar seguia com acesso, para sempre, sem uma linha de log.
+  await withStubs(PAID_INTENT, async (seen) => {
+    const r = await AsaasWebhookService.dispatchEvent({
+      id: "evt_1",
+      event: "PAYMENT_OVERDUE",
+      payment: { id: "pay_1", value: 50, subscription: "sub_asaas_1" },
+    });
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(seen.dispatched, ["invoice.payment_failed"]);
+    assert.strictEqual(seen.expired, 0, "não pode expirar um pedido já entregue");
+  });
+});
+
+test("cobrança de renovação REMOVIDA não marca ninguém como caloteiro", async () => {
+  // PAYMENT_DELETED numa renovação é quase sempre o lojista cancelando a
+  // cobrança à mão. Tratá-la como falha marcaria `past_due` quem não deve nada.
+  await withStubs(PAID_INTENT, async (seen) => {
+    const r = await AsaasWebhookService.dispatchEvent({
+      id: "evt_2",
+      event: "PAYMENT_DELETED",
+      payment: { id: "pay_2", value: 50, subscription: "sub_asaas_1" },
+    });
+    assert.strictEqual(r.ignored, true);
+    assert.strictEqual(r.reason, "already_settled");
+    assert.deepStrictEqual(seen.dispatched, []);
+  });
+});
+
+test("a PRIMEIRA cobrança vencida ainda expira o pedido", async () => {
+  // A assinatura que nunca chegou a ser paga continua sendo um checkout que
+  // expirou — este caminho não pode ter sido levado junto pela mudança acima.
+  await withStubs(NEW_INTENT, async (seen) => {
+    const r = await AsaasWebhookService.dispatchEvent({
+      id: "evt_3",
+      event: "PAYMENT_OVERDUE",
+      payment: { id: "pay_3", value: 50, subscription: "sub_asaas_2" },
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(seen.expired, 1);
+    assert.strictEqual(seen.status, "expired");
+  });
+});
+
+test("assinatura removida no Asaas chega ao cancelamento dos 4 fluxos", async () => {
+  // O payload de assinatura NÃO tem `payment` — tem `subscription`. Antes, o
+  // guard `!payment` engolia o evento e a assinatura seguia ativa aqui dentro.
+  await withStubs(PAID_INTENT, async (seen) => {
+    const r = await AsaasWebhookService.dispatchEvent({
+      id: "evt_4",
+      event: "SUBSCRIPTION_DELETED",
+      subscription: { id: "sub_asaas_9", status: "INACTIVE", externalReference: "int-1", deleted: true },
+    });
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(seen.dispatched, ["customer.subscription.deleted"]);
+    assert.strictEqual(seen.status, "canceled");
+  });
+});
+
+test("evento de assinatura de OUTRA conta não mexe em nada nosso", async () => {
+  // O Asaas manda evento de toda assinatura da conta, inclusive as criadas à
+  // mão no painel. Sem intenção, é silêncio — nunca um 500 que faz o Asaas
+  // re-tentar para sempre uma assinatura que não é nossa.
+  await withStubs(null, async (seen) => {
+    const r = await AsaasWebhookService.dispatchEvent({
+      id: "evt_5",
+      event: "SUBSCRIPTION_DELETED",
+      subscription: { id: "sub_alheia", status: "ACTIVE" },
+    });
+    assert.strictEqual(r.ignored, true);
+    assert.strictEqual(r.reason, "intent_not_found");
+    assert.deepStrictEqual(seen.dispatched, []);
+  });
+});

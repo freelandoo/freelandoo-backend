@@ -55,6 +55,22 @@ const EVENT_MAP = Object.freeze({
   PAYMENT_REFUNDED: EVENT_KIND.REFUNDED,
   PAYMENT_DELETED: EVENT_KIND.CHECKOUT_EXPIRED,
   PAYMENT_OVERDUE: EVENT_KIND.CHECKOUT_EXPIRED,
+
+  // ⚠️ OS DOIS EVENTOS QUE FALTAVAM, e sem eles a assinatura era um caminho só
+  // de ida: a plataforma sabia COMEÇAR a cobrar pelo Asaas e nunca ficava
+  // sabendo que a cobrança tinha ACABADO.
+  //
+  // Eles chegam numa FILA PRÓPRIA do Asaas — o painel lista "eventos para
+  // assinaturas" separado de "eventos para cobranças", e o mesmo endpoint
+  // recebe os dois desde que os dois estejam marcados. ⚠️ Marcar só o grupo de
+  // cobranças (que é o caminho óbvio) deixa este bloco inteiro morto, sem erro
+  // nenhum aparecer.
+  //
+  // INACTIVATED e DELETED terminam no mesmo lugar de propósito: para quem
+  // assinou, "a assinatura foi desativada" e "a assinatura foi removida" são a
+  // mesma notícia — parou de ser cobrado, então para de ter acesso.
+  SUBSCRIPTION_DELETED: EVENT_KIND.SUBSCRIPTION_ENDED,
+  SUBSCRIPTION_INACTIVATED: EVENT_KIND.SUBSCRIPTION_ENDED,
 });
 
 function kindOf(eventType) {
@@ -85,6 +101,50 @@ async function findIntent(payment) {
     if (byPayment) return byPayment;
   }
   return null;
+}
+
+/**
+ * A intenção a partir de um evento de ASSINATURA.
+ *
+ * ⚠️ O payload de assinatura não tem `payment` — tem `subscription`, com uma
+ * forma própria (`{ id, status, externalReference, deleted }`). Reusar
+ * `findIntent` aqui devolveria `null` sempre, e o evento viraria um no-op
+ * silencioso: a assinatura acabaria no Asaas e seguiria ativa aqui dentro.
+ *
+ * O `externalReference` é o id da nossa intenção (nós o mandamos ao criar), mas
+ * ele pode voltar vazio; o segundo salto é pelo `provider_ref`, que é onde o id
+ * da assinatura do Asaas foi carimbado na criação.
+ */
+async function findIntentForSubscription(subscription) {
+  const externalRef = subscription && subscription.externalReference;
+  if (externalRef) {
+    const byRef = await PaymentIntentStorage.getById(pool, externalRef).catch(() => null);
+    if (byRef) return byRef;
+  }
+  if (subscription && subscription.id) {
+    return PaymentIntentStorage.getByProviderRef(pool, "asaas", subscription.id);
+  }
+  return null;
+}
+
+/**
+ * A "subscription" que `handleSubscriptionDeleted` espera.
+ *
+ * ⚠️ `id` é o da assinatura NO ASAAS, e não o da intenção — ao contrário do
+ * `buildSessionLike`. A diferença não é capricho: os quatro fluxos recorrentes
+ * gravaram `session.subscription` na coluna `stripe_subscription_id`, e é por
+ * ESSE valor que os handlers procuram a linha. Passar o id da intenção aqui
+ * faria os quatro responderem "não encontrado" e o cancelamento não teria
+ * efeito nenhum.
+ */
+function buildSubscriptionLike(subscription) {
+  return {
+    id: (subscription && subscription.id) || null,
+    object: "subscription",
+    provider: "asaas",
+    status: (subscription && subscription.status) || null,
+    asaas_subscription: subscription || null,
+  };
 }
 
 /**
@@ -164,10 +224,40 @@ function buildChargeLike(payment) {
 }
 
 async function dispatchEvent(event) {
-  const payment = (event && event.payment) || null;
   const kind = kindOf(event && event.event);
 
-  if (kind === EVENT_KIND.IGNORED || !payment) {
+  if (kind === EVENT_KIND.IGNORED) {
+    log.debug("unhandled.event", { type: (event && event.event) || null });
+    return { ignored: true };
+  }
+
+  // ─── ASSINATURA ENCERRADA ─────────────────────────────────────────────────
+  //
+  // Vem ANTES do caminho de cobrança porque o payload é outro: aqui existe
+  // `event.subscription` e NÃO existe `event.payment`. Deixado para depois, o
+  // guard `!payment` engoliria o evento.
+  if (kind === EVENT_KIND.SUBSCRIPTION_ENDED) {
+    const subscription = (event && event.subscription) || null;
+    if (!subscription || !subscription.id) return { ignored: true, reason: "no_subscription" };
+
+    const intent = await findIntentForSubscription(subscription);
+    if (!intent) {
+      log.info("intent.not_found", { subscription_id: subscription.id, event: event.event });
+      return { ignored: true, reason: "intent_not_found" };
+    }
+
+    await StripeWebhookService.dispatchEvent({
+      id: event.id,
+      type: "customer.subscription.deleted",
+      data: { object: buildSubscriptionLike(subscription) },
+    });
+    await PaymentIntentStorage.setStatus(pool, intent.id_payment_intent, "canceled");
+    return { ok: true, kind };
+  }
+
+  // ─── COBRANÇA ─────────────────────────────────────────────────────────────
+  const payment = (event && event.payment) || null;
+  if (!payment) {
     log.debug("unhandled.event", { type: (event && event.event) || null });
     return { ignored: true };
   }
@@ -216,6 +306,32 @@ async function dispatchEvent(event) {
   }
 
   if (kind === EVENT_KIND.CHECKOUT_EXPIRED) {
+    // ⚠️ MENSALIDADE QUE VENCEU SEM SER PAGA NÃO É "COBRANÇA EXPIRADA" — é
+    // INADIMPLÊNCIA, e os dois casos terminam em lugares opostos: expirar
+    // cancela um pedido que nunca foi entregue; inadimplir marca `past_due`
+    // numa assinatura que está de pé e entregando.
+    //
+    // Antes isto caía em `already_settled` e a renovação vencida era
+    // silenciosamente descartada: quem parasse de pagar seguia com o acesso,
+    // para sempre, sem uma linha de log dizendo por quê.
+    //
+    // ⚠️ Só o OVERDUE entra aqui. `PAYMENT_DELETED` numa renovação é uma
+    // cobrança REMOVIDA (quase sempre à mão, no painel) — tratá-la como falha
+    // de pagamento marcaria como caloteiro quem teve a cobrança cancelada pelo
+    // próprio lojista.
+    if (isRecurring && !firstCharge) {
+      if (event.event !== "PAYMENT_OVERDUE") {
+        return { ignored: true, reason: "already_settled" };
+      }
+      const invoice = buildInvoiceLike(intent, payment, { firstCharge: false });
+      await StripeWebhookService.dispatchEvent({
+        id: event.id,
+        type: "invoice.payment_failed",
+        data: { object: invoice },
+      });
+      return { ok: true, kind: EVENT_KIND.SUBSCRIPTION_PAYMENT_FAILED, recurring: true };
+    }
+
     // ⚠️ Só expira o que ainda não foi pago. Um boleto que vence DEPOIS de pago
     // (o Asaas manda OVERDUE em cobranças antigas) não pode cancelar um pedido
     // já entregue.
@@ -269,6 +385,8 @@ module.exports = {
   buildSessionLike,
   buildInvoiceLike,
   buildChargeLike,
+  buildSubscriptionLike,
+  findIntentForSubscription,
   dispatchEvent,
   processEvent,
 };
