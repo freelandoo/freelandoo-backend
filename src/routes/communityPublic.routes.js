@@ -40,6 +40,9 @@ router.get(
 // grava para comunidade de NEGÓCIO com site PUBLICADO, e o `kind` passa por
 // lista fechada (`utils/siteEvents.js`) antes de virar valor de coluna.
 //
+// O `kind` viaja na QUERYSTRING (`?kind=view`): quem chama é um `sendBeacon`,
+// e um corpo JSON viraria preflight — ver o controller.
+//
 // Rate limit `lookup` (20/min por IP) pela mesma razão da porta de CPF: porta
 // anônima sem teto vira ferramenta de inflar (ou de zerar o custo de) o painel
 // de outra pessoa. Um visitante real manda uma visualização e um ou dois

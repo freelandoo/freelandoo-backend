@@ -33,6 +33,27 @@ const allowedOriginPatterns = [
   /^https:\/\/([a-z0-9-]+\.)*freelandoo\.com\.br$/i,
 ];
 
+/**
+ * O CONTADOR DO SITE (mig 235) — a única porta que aceita QUALQUER origem.
+ *
+ * O site publicado de uma comunidade é servido em TRÊS endereços, e um deles é
+ * o domínio do próprio cliente (`padariadoze.com.br`, mig 214). Esse domínio
+ * não tem como estar na lista acima: ele é escolhido pelo lojista, muda a cada
+ * cadastro novo, e a lista é um conjunto fechado de propósito.
+ *
+ * Sem esta exceção o contador funcionaria em `freelandoo.com.br/c/<slug>` e no
+ * subdomínio, e ficaria MUDO justamente no endereço que o negócio divulga —
+ * um painel zerado que pareceria "ninguém visitou".
+ *
+ * ⚠️ ABRIR AQUI NÃO AFROUXA NADA, e é por isto: a rota não lê a sessão
+ * (`credentials: false`), não devolve dado nenhum (204 sem corpo) e não aceita
+ * parâmetro que não seja um `kind` de lista fechada. O que ela pode fazer é
+ * somar 1 num contador — e CORS nunca foi a defesa contra isso (um `curl`
+ * ignora CORS por completo); quem defende é o rate limit e o `EXISTS` de site
+ * publicado dentro do próprio INSERT.
+ */
+const SITE_EVENT_PATH = /^\/communities\/[^/]+\/site-events$/;
+
 const corsOptions = {
   origin(origin, callback) {
     if (!origin) return callback(null, true);
@@ -77,7 +98,21 @@ app.use(
 app.use(requestId);
 
 app.use("/storage", express.static(path.join(__dirname, "..", "storage")));
-app.use(cors(corsOptions));
+// Delegate (e não `cors(corsOptions)` direto) porque a decisão depende do
+// CAMINHO: só o contador do site aceita qualquer origem — ver SITE_EVENT_PATH.
+app.use(
+  cors((req, callback) => {
+    if (SITE_EVENT_PATH.test(req.path)) {
+      return callback(null, {
+        ...corsOptions,
+        origin: true,
+        credentials: false,
+        methods: ["POST", "OPTIONS"],
+      });
+    }
+    return callback(null, corsOptions);
+  })
+);
 
 // Webhooks precisam do body raw (verificação de assinatura Stripe/Melhor Envio).
 // Montado ANTES do express.json() pra não ser consumido, e ANTES do rate limit
