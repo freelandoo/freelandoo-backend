@@ -9,7 +9,7 @@
 class CommunitySiteStorage {
   static async getByProfile(conn, id_profile) {
     const r = await conn.query(
-      `SELECT id_profile, site_name, tagline, theme, sections,
+      `SELECT id_profile, site_name, tagline, theme, sections, text_styles, pages,
               is_published, published_at, created_at, updated_at
          FROM public.tb_community_site
         WHERE id_profile = $1
@@ -30,15 +30,17 @@ class CommunitySiteStorage {
   static async upsert(conn, id_profile, config) {
     const r = await conn.query(
       `INSERT INTO public.tb_community_site
-              (id_profile, site_name, tagline, theme, sections, updated_at)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, NOW())
+              (id_profile, site_name, tagline, theme, sections, text_styles, pages, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, NOW())
        ON CONFLICT (id_profile) DO UPDATE
-          SET site_name  = EXCLUDED.site_name,
-              tagline    = EXCLUDED.tagline,
-              theme      = EXCLUDED.theme,
-              sections   = EXCLUDED.sections,
-              updated_at = NOW()
-       RETURNING id_profile, site_name, tagline, theme, sections,
+          SET site_name   = EXCLUDED.site_name,
+              tagline     = EXCLUDED.tagline,
+              theme       = EXCLUDED.theme,
+              sections    = EXCLUDED.sections,
+              text_styles = EXCLUDED.text_styles,
+              pages       = EXCLUDED.pages,
+              updated_at  = NOW()
+       RETURNING id_profile, site_name, tagline, theme, sections, text_styles, pages,
                  is_published, published_at, created_at, updated_at`,
       [
         id_profile,
@@ -46,6 +48,11 @@ class CommunitySiteStorage {
         config.tagline,
         JSON.stringify(config.theme),
         JSON.stringify(config.sections),
+        // ⚠️ Estes dois vêm do normalizador e SEMPRE existem. Guardar `config.x
+        // || {}` aqui esconderia um normalizador quebrado: a coluna nasceria
+        // vazia e o sintoma seria o tamanho do texto sumindo de novo.
+        JSON.stringify(config.textStyles),
+        JSON.stringify(config.pages),
       ]
     );
     return r.rows[0];
@@ -102,7 +109,7 @@ class CommunitySiteStorage {
               p.community_site_slug AS slug,
               p.community_privacy   AS privacy,
               p.community_kind      AS kind,
-              cs.site_name, cs.tagline, cs.theme, cs.sections,
+              cs.site_name, cs.tagline, cs.theme, cs.sections, cs.text_styles, cs.pages,
               cs.is_published, cs.published_at, cs.updated_at
          FROM public.tb_profile p
          JOIN public.tb_community_site cs ON cs.id_profile = p.id_profile
@@ -130,7 +137,7 @@ class CommunitySiteStorage {
               END,
               updated_at = NOW()
         WHERE id_profile = $1
-       RETURNING id_profile, site_name, tagline, theme, sections,
+       RETURNING id_profile, site_name, tagline, theme, sections, text_styles, pages,
                  is_published, published_at, created_at, updated_at`,
       [id_profile, isPublished]
     );

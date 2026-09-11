@@ -99,6 +99,16 @@ function toConfig(row) {
     tagline: row.tagline || "",
     theme: CommunitySite.normalizeTheme(row.theme),
     sections: Array.isArray(row.sections) ? row.sections : [],
+    // ⚠️ Projeção campo a campo: o que não está aqui NÃO CHEGA no construtor,
+    // por mais que tenha sido gravado. Foi assim que `textStyles` se perdeu —
+    // ele era validado no save, não tinha coluna, e nunca voltava no GET, então
+    // toda alça de tamanho voltava ao padrão no recarregamento (mig 238).
+    // Campo novo do documento entra NESTA lista e na coluna correspondente.
+    textStyles:
+      row.text_styles && typeof row.text_styles === "object" && !Array.isArray(row.text_styles)
+        ? row.text_styles
+        : {},
+    pages: Array.isArray(row.pages) ? row.pages : [],
   };
 }
 

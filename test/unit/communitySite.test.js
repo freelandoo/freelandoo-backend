@@ -10,6 +10,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 
 const {
+  LIMITS,
   SECTION_KINDS,
   ICONS,
   SIZES,
@@ -266,4 +267,117 @@ test("seção nunca apertada continua em AUTO — o respiro é o do CSS", () => 
 test("respiro fora da faixa fixa na borda, sem recusar o save", () => {
   assert.strictEqual(layout({ padY: -50 }).padY, SIZES.PADY_MIN);
   assert.strictEqual(layout({ padY: 9000 }).padY, SIZES.PADY_MAX);
+});
+
+// ─── Sub-páginas e as seções `faq` / `areas` (E1, 2026-09-11) ───────────────
+//
+// O site do construtor era de uma página só. Estas asserções travam o modelo
+// novo — e, principalmente, o caso que quebraria em silêncio: a poda de
+// `textStyles` apagando o tamanho de texto das seções que vivem fora da home.
+
+test("faq e areas entraram na lista fechada e nascem vazias", () => {
+  assert.ok(SECTION_KINDS.includes("faq"));
+  assert.ok(SECTION_KINDS.includes("areas"));
+  assert.deepStrictEqual(data("faq", {}), { items: [] });
+  assert.deepStrictEqual(data("areas", {}), { items: [], columns: 3, note: "" });
+});
+
+test("faq guarda pergunta e resposta, com teto de itens", () => {
+  const d = data("faq", {
+    items: Array.from({ length: 40 }, (_, i) => ({ question: `P${i}`, answer: "R" })),
+  });
+  assert.strictEqual(d.items.length, LIMITS.FAQ_ITEMS);
+  assert.strictEqual(d.items[0].question, "P0");
+  assert.strictEqual(d.items[0].answer, "R");
+  assert.ok(d.items[0].id, "item sem id quebraria a reordenação");
+});
+
+test("areas aceita cidade com destino, e recusa destino hostil", () => {
+  const d = data("areas", {
+    columns: 2,
+    items: [
+      { name: "Aguaí", uf: "SP", note: "Atendimento no mesmo dia", url: "pagina:aguai" },
+      { name: "Mogi Guaçu", uf: "SP", url: "javascript:alert(1)" },
+    ],
+  });
+  assert.strictEqual(d.columns, 2);
+  assert.strictEqual(d.items[0].url, "pagina:aguai");
+  assert.strictEqual(d.items[1].url, "", "javascript: num href é XSS no clique");
+});
+
+test("o link de sub-página é TOKEN, e o slug dele é validado", () => {
+  const ok = data("cta", { ctaUrl: "pagina:conserto-de-fogoes" });
+  assert.strictEqual(ok.ctaUrl, "pagina:conserto-de-fogoes");
+  // maiúscula, acento e barra não são endereço de página
+  for (const torto of ["pagina:Conserto", "pagina:aguaí", "pagina:a/b", "pagina:"]) {
+    assert.strictEqual(data("cta", { ctaUrl: torto }).ctaUrl, "", `aceitou ${torto}`);
+  }
+});
+
+test("documento antigo (sem `pages`) continua valendo e ganha lista vazia", () => {
+  const c = normalizeConfig({ sections: [{ id: "a", kind: "about", data: { body: "oi" } }] });
+  assert.deepStrictEqual(c.pages, []);
+  assert.strictEqual(c.sections.length, 1, "a home não pode ser afetada");
+});
+
+test("página sem endereço válido é descartada, como kind fora da lista", () => {
+  const c = normalizeConfig({
+    pages: [
+      { slug: "servicos", title: "Serviços" },
+      { slug: "COM MAIÚSCULA" },
+      { slug: "com/barra" },
+      { slug: "agendar" }, // reservado: já é a página de agendamento
+      {},
+    ],
+  });
+  assert.strictEqual(c.pages.length, 1);
+  assert.strictEqual(c.pages[0].slug, "servicos");
+});
+
+test("endereço repetido não gera duas páginas na mesma URL", () => {
+  const c = normalizeConfig({
+    pages: [
+      { slug: "aguai", title: "Primeira" },
+      { slug: "aguai", title: "Segunda" },
+    ],
+  });
+  assert.strictEqual(c.pages.length, 1);
+  assert.strictEqual(c.pages[0].title, "Primeira");
+});
+
+test("id de seção repetido entre a home e uma sub-página é desempatado", () => {
+  const c = normalizeConfig({
+    sections: [{ id: "mesmo", kind: "about", data: {} }],
+    pages: [{ slug: "p", sections: [{ id: "mesmo", kind: "faq", data: {} }] }],
+  });
+  assert.notStrictEqual(
+    c.sections[0].id,
+    c.pages[0].sections[0].id,
+    "ids iguais fariam as duas dividirem a mesma entrada de textStyles",
+  );
+});
+
+test("o tamanho de texto de uma seção de SUB-PÁGINA sobrevive ao save", () => {
+  // Este é o caso que quebraria calado: a poda de textStyles só conhecia as
+  // seções da home, então tudo que o líder dimensionasse fora dela sumiria no
+  // salvamento seguinte, sem erro nenhum.
+  const c = normalizeConfig({
+    sections: [{ id: "home1", kind: "about", data: {} }],
+    pages: [{ slug: "servicos", sections: [{ id: "sub1", kind: "faq", data: {} }] }],
+    textStyles: {
+      "sec:home1.title": { fontSize: 40 },
+      "sec:sub1.title": { fontSize: 32 },
+      "sec:fantasma.title": { fontSize: 20 },
+    },
+  });
+  assert.ok(c.textStyles["sec:home1.title"], "a home regrediu");
+  assert.ok(c.textStyles["sec:sub1.title"], "o tamanho da sub-página foi podado");
+  assert.ok(!c.textStyles["sec:fantasma.title"], "seção morta não pode sobreviver");
+});
+
+test("o teto de páginas vale", () => {
+  const c = normalizeConfig({
+    pages: Array.from({ length: 40 }, (_, i) => ({ slug: `p-${i}` })),
+  });
+  assert.strictEqual(c.pages.length, LIMITS.PAGES);
 });

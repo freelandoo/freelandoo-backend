@@ -58,6 +58,15 @@ const LIMITS = {
   CTA_ITEMS: 4,
   // Selos da seção de pessoa ("Cuidado", "Atenção", "Qualidade"...).
   TAGS: 8,
+  // Sub-páginas do site (E1). O teto é baixo de propósito: o construtor é um
+  // site de negócio, não um gerenciador de conteúdo — passar disso é sinal de
+  // que a pessoa queria outra ferramenta.
+  PAGES: 12,
+  // Perguntas frequentes de uma seção `faq`.
+  FAQ_ITEMS: 20,
+  // Cidades/bairros de uma seção `areas`.
+  AREA_ITEMS: 24,
+  PAGE_SLUG: 48,
   SITE_NAME: 120,
   TAGLINE: 240,
   TITLE: 120,
@@ -112,6 +121,8 @@ const SECTION_KINDS = [
   "person",
   "gallery",
   "contact",
+  "faq",
+  "areas",
 ];
 
 /**
@@ -200,6 +211,43 @@ function hex(value, fallback) {
 const BOOKING_LINK = "agendar";
 
 /**
+ * Destino de uma SUB-PÁGINA do próprio site: `pagina:<slug>`.
+ *
+ * Token pela MESMA razão do `agendar` acima, e a armadilha aqui é maior porque
+ * um caminho parece funcionar: gravar "/servicos" acerta em
+ * `freelandoo.com.br/c/padaria` — não, nem lá: o endereço real é
+ * `/c/padaria/servicos`. Erra nos TRÊS. Quem monta o endereço é o front, que
+ * sabe por onde a página está sendo servida.
+ *
+ * O slug NÃO é conferido contra as páginas existentes aqui: apagar uma página
+ * deixaria links pendentes e o save recusaria a edição inteira por causa deles.
+ * Link para página que sumiu vira 404, que é o comportamento honesto.
+ */
+const PAGE_LINK_PREFIX = "pagina:";
+
+/**
+ * Alfabeto do endereço de uma sub-página. Ele vira segmento de URL e chave de
+ * roteamento, então é kebab-case puro — sem acento, sem barra, sem ponto.
+ */
+const PAGE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Endereços que uma sub-página NÃO pode tomar.
+ *
+ * `agendar` é a página de agendamento da mig 221 e já responde nesse caminho —
+ * uma sub-página com esse slug seria invisível, e o líder não teria como saber
+ * por quê. Os outros são caminhos que o Next reserva na origem do site.
+ */
+const RESERVED_PAGE_SLUGS = new Set([
+  BOOKING_LINK,
+  "api",
+  "_next",
+  "favicon.ico",
+  "robots.txt",
+  "sitemap.xml",
+]);
+
+/**
  * URL de destino. Aceita http(s), mailto:, tel:, caminho interno começando com
  * "/" e o token `agendar`. Recusa TODO o resto — `javascript:` e `data:` num
  * href viram XSS no clique, e a seção de contato é justamente onde um link
@@ -209,6 +257,10 @@ function link(value) {
   const raw = str(value, LIMITS.URL);
   if (!raw) return "";
   if (raw === BOOKING_LINK) return raw;
+  if (raw.startsWith(PAGE_LINK_PREFIX)) {
+    const slug = raw.slice(PAGE_LINK_PREFIX.length);
+    return PAGE_SLUG_RE.test(slug) && slug.length <= LIMITS.PAGE_SLUG ? raw : "";
+  }
   if (raw.startsWith("//")) return "";
   if (raw.startsWith("/")) return raw;
   if (/^(mailto:|tel:)[^\s]+$/i.test(raw)) return raw;
@@ -380,6 +432,30 @@ function normalizePhoto(raw) {
   };
 }
 
+function normalizeFaqItem(raw) {
+  const d = raw && typeof raw === "object" ? raw : {};
+  return {
+    id: id(d.id),
+    question: str(d.question, LIMITS.TITLE),
+    answer: str(d.answer, LIMITS.SHORT * 4),
+  };
+}
+
+function normalizeAreaItem(raw) {
+  const d = raw && typeof raw === "object" ? raw : {};
+  return {
+    id: id(d.id),
+    name: str(d.name, 60),
+    // Sigla do estado. Livre e curta: a lista de UF muda pouco, mas fechá-la
+    // aqui obrigaria a tocar nesta fonte para atender fora do Brasil.
+    uf: str(d.uf, 4),
+    note: str(d.note, LIMITS.SHORT),
+    // Para onde o item leva: outra sub-página ("pagina:aguai"), o agendamento
+    // ou um link externo. Vazio = o item é só informativo, sem clique.
+    url: link(d.url),
+  };
+}
+
 function normalizeSocial(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
   return {
@@ -461,6 +537,30 @@ const SECTION_NORMALIZERS = {
   gallery: (d) => ({
     photos: list(d.photos, LIMITS.GALLERY, normalizePhoto),
     columns: [2, 3, 4].includes(Number(d.columns)) ? Number(d.columns) : 3,
+  }),
+
+  /**
+   * Perguntas frequentes.
+   *
+   * Ganha seção própria porque é o bloco que mais rende em busca: o Google lê
+   * pergunta-e-resposta como FAQPage e mostra o par direto no resultado. Posto
+   * como texto corrido dentro de "sobre", esse ganho não existe.
+   */
+  faq: (d) => ({
+    items: list(d.items, LIMITS.FAQ_ITEMS, normalizeFaqItem),
+  }),
+
+  /**
+   * Áreas atendidas.
+   *
+   * Existe separada de "contato" porque responde outra pergunta: contato é
+   * "onde você está", área atendida é "até onde você vai" — e é esta que decide
+   * se quem está na cidade vizinha liga ou não.
+   */
+  areas: (d) => ({
+    items: list(d.items, LIMITS.AREA_ITEMS, normalizeAreaItem),
+    columns: [2, 3, 4].includes(Number(d.columns)) ? Number(d.columns) : 3,
+    note: str(d.note, LIMITS.SHORT),
   }),
 
   contact: (d) => ({
@@ -563,6 +663,44 @@ function normalizeSection(raw) {
   };
 }
 
+/**
+ * Endereço da sub-página. Devolve "" quando não serve — quem chama decide o
+ * que fazer com isso (aqui, descartar a página).
+ */
+function pageSlug(value) {
+  const raw = str(value, LIMITS.PAGE_SLUG).toLowerCase();
+  if (!PAGE_SLUG_RE.test(raw)) return "";
+  if (RESERVED_PAGE_SLUGS.has(raw)) return "";
+  return raw;
+}
+
+/**
+ * Sub-página do site: um endereço próprio e a mesma pilha de seções da home.
+ *
+ * É a MESMA `normalizeSection` de propósito. Uma segunda lista de seções "de
+ * sub-página" faria a seção nova nascer num lugar e faltar no outro, e a
+ * divergência só apareceria quando alguém montasse a página.
+ *
+ * `title` é o que vai para a aba do navegador e para o resultado de busca;
+ * `subtitle` é a descrição. Sem página sem endereço: slug inválido devolve
+ * null e a página é descartada, como o kind fora da lista.
+ */
+function normalizePage(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const slug = pageSlug(raw.slug);
+  if (!slug) return null;
+  return {
+    id: id(raw.id),
+    slug,
+    title: str(raw.title, LIMITS.TITLE),
+    subtitle: str(raw.subtitle, LIMITS.SUBTITLE),
+    enabled: bool(raw.enabled, true),
+    sections: Array.isArray(raw.sections)
+      ? raw.sections.slice(0, LIMITS.SECTIONS).map(normalizeSection).filter(Boolean)
+      : [],
+  };
+}
+
 function normalizeTheme(raw) {
   const input = raw && typeof raw === "object" ? raw : {};
   const out = {};
@@ -584,17 +722,44 @@ function normalizeConfig(raw) {
         .filter(Boolean)
     : [];
 
-  // Ids repetidos quebram a reordenação e a remoção no construtor (remover uma
-  // seção removeria a irmã de mesmo id), então o segundo ganha id novo.
+  // Sub-páginas (E1). Ausentes, o site é o de sempre: uma página só. Chave nova
+  // num documento antigo não muda nada — é o que mantém no ar quem já publicou.
+  const pages = Array.isArray(input.pages)
+    ? input.pages.slice(0, LIMITS.PAGES).map(normalizePage).filter(Boolean)
+    : [];
+
+  // Dois endereços iguais dariam duas páginas disputando a mesma URL, e quem
+  // ganha seria a ordem do array — invisível para quem edita. A primeira fica.
+  const seenSlugs = new Set();
+  const uniquePages = [];
+  for (const page of pages) {
+    if (seenSlugs.has(page.slug)) continue;
+    seenSlugs.add(page.slug);
+    uniquePages.push(page);
+  }
+
+  // ⚠️ Ids repetidos quebram a reordenação e a remoção no construtor (remover
+  // uma seção removeria a irmã de mesmo id), então o segundo ganha id novo.
+  //
+  // O desempate é do SITE INTEIRO, e não de cada página: as chaves de
+  // `textStyles` são globais (`sec:<id>`), então uma seção da home e uma de
+  // sub-página com o mesmo id dividiriam o tamanho do texto — mexer numa
+  // mudaria a outra, à distância e sem aviso.
   const seen = new Set();
-  for (const section of sections) {
+  for (const section of allSections(sections, uniquePages)) {
     if (seen.has(section.id)) section.id = crypto.randomUUID();
     seen.add(section.id);
   }
 
   // Depois do desempate, não antes: a seção que trocou de id perdeu a
   // identidade, e os tamanhos que apontavam para o id velho não são dela.
-  const liveSectionIds = new Set(sections.map((s) => s.id));
+  //
+  // ⚠️ E com as seções de TODAS as páginas: a poda apaga a entrada cujo id não
+  // está vivo, então deixar as sub-páginas de fora zeraria, em silêncio, todo
+  // tamanho de texto escolhido fora da home.
+  const liveSectionIds = new Set(
+    [...allSections(sections, uniquePages)].map((s) => s.id),
+  );
 
   return {
     siteName: str(input.siteName, LIMITS.SITE_NAME),
@@ -602,7 +767,14 @@ function normalizeConfig(raw) {
     theme: normalizeTheme(input.theme),
     textStyles: normalizeTextStyles(input.textStyles, liveSectionIds),
     sections,
+    pages: uniquePages,
   };
+}
+
+/** Toda seção do site, na ordem: a home primeiro, depois cada sub-página. */
+function* allSections(homeSections, pages) {
+  yield* homeSections;
+  for (const page of pages) yield* page.sections;
 }
 
 // ─── Template inicial ───────────────────────────────────────────────────────
@@ -788,6 +960,9 @@ function buildEmptySection(kind) {
 
 module.exports = {
   LIMITS,
+  PAGE_LINK_PREFIX,
+  RESERVED_PAGE_SLUGS,
+  normalizePage,
   SITE_KINDS,
   kindHasSite,
   SIZES,
