@@ -172,6 +172,11 @@ async function createOneTimeCheckoutSession({
   amount_cents,
   currency = "BRL",
   productName,
+  // `description` e `customText` existem para o SINAL DE AGENDAMENTO, que
+  // montava a sessão chamando `client()` direto só por causa deles — furando a
+  // costura do gateway. Opcionais: quem não manda, sai exatamente como antes.
+  description,
+  customText,
   customerEmail,
   customerId,
   clientReferenceId,
@@ -187,12 +192,16 @@ async function createOneTimeCheckoutSession({
       {
         price_data: {
           currency: String(currency).toLowerCase(),
-          product_data: { name: productName },
+          product_data: {
+            name: productName,
+            ...(description ? { description } : {}),
+          },
           unit_amount: amount_cents,
         },
         quantity: 1,
       },
     ],
+    ...(customText ? { custom_text: customText } : {}),
     success_url: successUrl,
     cancel_url: cancelUrl,
     client_reference_id: clientReferenceId,

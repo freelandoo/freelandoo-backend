@@ -11,7 +11,7 @@
 // subscription (id_sub) e ativamos por ali mesmo.
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -84,7 +84,7 @@ class CommunityMembershipService {
           }));
 
         const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-        const session = await StripeService.createMonthlySubscriptionCheckoutSession({
+        const session = await PaymentGateway.createCheckout({
           amount_cents: monthly_cents,
           currency: "BRL",
           productName: `Mensalidade — ${community.display_name}`,
@@ -252,7 +252,7 @@ class CommunityMembershipService {
     if (!row) return { none: true };
     if (row.stripe_subscription_id) {
       try {
-        await StripeService.cancelSubscriptionImmediate(row.stripe_subscription_id);
+        await PaymentGateway.cancelSubscription(row.stripe_subscription_id, { immediate: true });
       } catch (err) {
         log.warn("cancelForUser.stripe_fail", { id_sub: row.id_sub, message: err.message });
       }
@@ -268,7 +268,7 @@ class CommunityMembershipService {
     for (const row of rows) {
       if (row.stripe_subscription_id) {
         try {
-          await StripeService.cancelSubscription(row.stripe_subscription_id); // period end
+          await PaymentGateway.cancelSubscription(row.stripe_subscription_id); // period end
         } catch (err) {
           log.warn("releaseAll.stripe_fail", { id_sub: row.id_sub, message: err.message });
         }

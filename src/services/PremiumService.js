@@ -3,7 +3,7 @@ const pool = require("../databases");
 const PremiumStorage = require("../storages/PremiumStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -188,7 +188,7 @@ class PremiumService {
       if (taken >= pricing.slots) return { error: "Cidade lotada — sem vagas premium disponíveis" };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await StripeService.createOneTimeCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: pricing.price_cents,
         currency: "BRL",
         productName: `Premium - ${profile.display_name || profile.username || "Perfil"}`,
@@ -250,7 +250,7 @@ class PremiumService {
         await client.query("COMMIT");
         if (refundPaymentIntent) {
           try {
-            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+            await PaymentGateway.refund({ payment_intent_id: refundPaymentIntent });
           } catch (err) {
             log.error("premium.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
           }
@@ -276,7 +276,7 @@ class PremiumService {
             await client.query("COMMIT");
             if (paymentIntent) {
               try {
-                await StripeService.createRefundForPaymentIntent(paymentIntent);
+                await PaymentGateway.refund({ payment_intent_id: paymentIntent });
               } catch (err) {
                 log.error("premium.confirm.refund_fail", { paymentIntent, message: err.message });
               }

@@ -1,10 +1,42 @@
 const pool = require("../databases");
 const PaymentOpsStorage = require("../storages/PaymentOpsStorage");
+const PaymentIntentStorage = require("../storages/PaymentIntentStorage");
 const StripeService = require("./StripeService");
 const StripeWebhookService = require("./StripeWebhookService");
+const asaas = require("../integrations/payments/asaasClient");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PaymentReconciliationService");
+
+/**
+ * Estados do Asaas em que o dinheiro já é do vendedor.
+ *
+ * ⚠️ `CONFIRMED` entra junto de `RECEIVED` pela mesma razão do webhook: o
+ * cliente pagou, e num boleto o repasse pode levar dias. Reconciliar só em
+ * RECEIVED deixaria de socorrer exatamente quem pagou e não recebeu.
+ */
+const ASAAS_PAID = new Set(["CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"]);
+
+/**
+ * Recupera uma pendente que nasceu no ASAAS.
+ *
+ * ⚠️ Sem isto a reconciliação ficaria cega para metade da plataforma: o
+ * `session_id` de uma cobrança do Asaas é o UUID da nossa intenção, e pedir
+ * esse id ao Stripe devolve "não encontrado". O radar continuaria acusando a
+ * pendência e o socorro nunca chegaria.
+ */
+async function recoverAsaas(intent) {
+  if (!intent.provider_ref) return null;
+  const payment = await asaas.getPayment(intent.provider_ref);
+  if (!ASAAS_PAID.has(String(payment && payment.status))) return null;
+
+  // Mesma reidratação do webhook — uma só, senão as duas divergem.
+  const AsaasWebhookService = require("./AsaasWebhookService");
+  const session = AsaasWebhookService.buildSessionLike(intent, payment);
+  await StripeWebhookService.fulfillCheckoutSession(session);
+  await PaymentIntentStorage.setStatus(pool, intent.id_payment_intent, "paid");
+  return session;
+}
 
 /**
  * Rede de segurança para webhooks perdidos (projeto PayDebug, D6).
@@ -36,6 +68,18 @@ class PaymentReconciliationService {
         seen.add(session_id);
         checked++;
         try {
+          // De quem é esta pendente? A intenção (mig 231) sabe. Não achar
+          // significa Stripe: é toda cobrança anterior ao gateway.
+          const intent = await PaymentIntentStorage.getById(pool, session_id).catch(() => null);
+
+          if (intent && intent.provider === "asaas") {
+            const rescued = await recoverAsaas(intent);
+            if (!rescued) continue;
+            recovered++;
+            log.warn("reconcile.recovered", { session_id, flow, provider: "asaas" });
+            continue;
+          }
+
           const session = await StripeService.retrieveSession(session_id);
           const paid =
             session?.payment_status === "paid" ||
@@ -43,7 +87,7 @@ class PaymentReconciliationService {
           if (!paid) continue;
           await StripeWebhookService.fulfillCheckoutSession(session);
           recovered++;
-          log.warn("reconcile.recovered", { session_id, flow });
+          log.warn("reconcile.recovered", { session_id, flow, provider: "stripe" });
         } catch (err) {
           log.error("reconcile.session_fail", { session_id, flow, message: err.message });
         }

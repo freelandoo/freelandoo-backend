@@ -4,7 +4,7 @@
 // de afiliado. Entrega = evento de XP idempotente (top-up até o nível-alvo) +
 // recálculo do nível. Espelha PolenProductService.
 const pool = require("../databases");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const XpBoostStorage = require("../storages/XpBoostStorage");
 const XpStorage = require("../storages/XpStorage");
 const { isFullRefund } = require("../utils/refunds");
@@ -44,7 +44,7 @@ class XpBoostService {
         }
 
         const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(/\/$/, "");
-        const session = await StripeService.createOneTimeCheckoutSession({
+        const session = await PaymentGateway.createCheckout({
           amount_cents: PRICE_CENTS,
           currency: "BRL",
           productName: `Booster de XP — Nível ${TARGET_LEVEL}`,

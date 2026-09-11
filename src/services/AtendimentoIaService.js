@@ -7,6 +7,7 @@ const pool = require("../databases");
 const AtendimentoIaStorage = require("../storages/AtendimentoIaStorage");
 const AtendimentoIaProvisionService = require("./AtendimentoIaProvisionService");
 const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const { isFullRefund } = require("../utils/refunds");
 const { INCLUDED_AI_PLAN_NAME } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -93,7 +94,7 @@ class AtendimentoIaService {
       }
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await StripeService.createMonthlySubscriptionCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: Number(sub.monthly_cents),
         currency: "BRL",
         productName: `Atendimento IA — ${plan.name}`,
@@ -200,7 +201,7 @@ class AtendimentoIaService {
   static async _teardown(sub, reason) {
     if (sub.stripe_subscription_id) {
       try {
-        await StripeService.cancelSubscriptionImmediate(sub.stripe_subscription_id);
+        await PaymentGateway.cancelSubscription(sub.stripe_subscription_id, { immediate: true });
       } catch (err) {
         log.warn("teardown.stripe_fail", { id_sub: sub.id_sub, message: err.message });
       }

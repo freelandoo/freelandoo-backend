@@ -2,7 +2,7 @@ const pool = require("../databases");
 const ClanStorage = require("../storages/ClanStorage");
 const PortfolioStorage = require("../storages/PortfolioStorage");
 const ConversationStorage = require("../storages/ConversationStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const NotificationService = require("./NotificationService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -906,7 +906,7 @@ class ClanService {
             process.env.FRONTEND_URL ||
             "https://freelandoo.com.br";
 
-          const session = await StripeService.createOneTimeCheckoutSession({
+          const session = await PaymentGateway.createCheckout({
             amount_cents,
             currency: "BRL",
             productName: `Vaga adicional — ${clan.display_name}`,

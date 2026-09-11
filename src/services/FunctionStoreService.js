@@ -5,7 +5,7 @@
 // Produto com is_for_sale = FALSE é função GRÁTIS (comporta-se como antes).
 // Espelha XpBoostService (idempotência por session id, expire, refund).
 const pool = require("../databases");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const FunctionStoreStorage = require("../storages/FunctionStoreStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const { USER_FEATURE_KEYS } = require("../utils/userFeatureKeys");
@@ -81,7 +81,7 @@ class FunctionStoreService {
         if (alreadyOwns) return { error: "Você já possui esta função." };
 
         const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(/\/$/, "");
-        const session = await StripeService.createOneTimeCheckoutSession({
+        const session = await PaymentGateway.createCheckout({
           amount_cents: Number(product.price_cents),
           currency: "BRL",
           productName: `Função ${product.nav_label} — Freelandoo`,

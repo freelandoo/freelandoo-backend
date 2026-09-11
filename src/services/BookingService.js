@@ -5,7 +5,7 @@ const ProfileStorage = require("../storages/ProfileStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
 const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const NotificationService = require("./NotificationService");
 const BookingAlertService = require("./BookingAlertService");
@@ -156,23 +156,20 @@ class BookingService {
       const description = service
         ? `Reserva: ${dateLabel} às ${start_time} (${service.duration_minutes} min). Sinal de ${formatBRL(charge_amount)} para confirmar o horário com ${profile.display_name}.`
         : `Reserva: ${dateLabel} às ${start_time}. Sinal de ${formatBRL(charge_amount)} para confirmar o horário com ${profile.display_name}.`;
-      const session = await StripeService.client().checkout.sessions.create({
-        mode: "payment",
-        line_items: [{
-          price_data: {
-            currency: "brl",
-            product_data: {
-              name: productName,
-              description,
-            },
-            unit_amount: charge_amount,
-          },
-          quantity: 1,
-        }],
-        customer_email: client_email,
-        success_url: `${frontendUrl}/agendamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${frontendUrl}/freelancer/${id_profile}?booking=canceled`,
-        custom_text: {
+      // ⚠️ ANTES ISTO CHAMAVA `StripeService.client()` DIRETO, furando a costura
+      // do gateway — era um dos dois pontos que o commit A0 apontou como
+      // impedimento para o fluxo migrar. O que prendia era `custom_text`, que só
+      // o Stripe tem; agora ele desce como parâmetro opcional e o Asaas aproveita
+      // o mesmo texto como `description` da cobrança, em vez de perdê-lo.
+      const session = await PaymentGateway.createCheckout({
+        amount_cents: charge_amount,
+        currency: "BRL",
+        productName,
+        description,
+        customerEmail: client_email,
+        successUrl: `${frontendUrl}/agendamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${frontendUrl}/freelancer/${id_profile}?booking=canceled`,
+        customText: {
           submit: {
             message: `Este pagamento é o sinal que confirma a sua reserva de ${dateLabel} às ${start_time}. Após a aprovação, o horário fica bloqueado pela duração do serviço. Taxa Freelandoo: ${formatBRL(PLATFORM_FEE_CENTS)}.`,
           },

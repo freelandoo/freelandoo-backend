@@ -3,6 +3,7 @@ const CasaParticipantStorage = require("../storages/CasaParticipantStorage");
 const CasaProductStorage = require("../storages/CasaProductStorage");
 const CasaStoreStorage = require("../storages/CasaStoreStorage");
 const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const uploadCasaParticipantMediaToR2 = require("../integrations/r2/uploadCasaParticipantMedia");
 const { slugify } = require("../utils/slug");
 const { isFullRefund } = require("../utils/refunds");
@@ -93,8 +94,8 @@ class CasaParticipantService {
       const successUrl = `${frontend}/acasaviews/participantes/${participant.slug}?compra=success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${frontend}/acasaviews/participantes/${participant.slug}?compra=cancel`;
 
-      const session = await StripeService.createMultiItemCheckoutSession({
-        line_items: [{ name: `Conveniência Views — ${product.name}`, amount_cents: amount, quantity: 1 }],
+      const session = await PaymentGateway.createCheckout({
+        lineItems: [{ name: `Conveniência Views — ${product.name}`, amount_cents: amount, quantity: 1 }],
         currency: "BRL",
         customerEmail: user.email || undefined,
         clientReferenceId: user.id_user,
@@ -175,7 +176,7 @@ class CasaParticipantService {
         await client.query("COMMIT");
         if (refundPaymentIntent) {
           try {
-            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+            await PaymentGateway.refund({ payment_intent_id: refundPaymentIntent });
           } catch (err) {
             log.error("casa.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
           }

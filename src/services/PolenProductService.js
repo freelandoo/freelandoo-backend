@@ -1,7 +1,7 @@
 const pool = require("../databases");
 const PolenProductStorage = require("../storages/PolenProductStorage");
 const PolenStorage = require("../storages/PolenStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const uploadPolenProductImageToR2 = require("../integrations/r2/uploadPolenProductImage");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -150,7 +150,7 @@ class PolenProductService {
       if (totalPolens <= 0) return { error: "Produto sem Poléns configurados" };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await StripeService.createOneTimeCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: amount,
         currency: "BRL",
         productName: `Loja de Polén - ${product.name}`,

@@ -16,7 +16,7 @@ const CourseMemberStorage = require("../storages/CourseMemberStorage");
 const ClanStorage = require("../storages/ClanStorage");
 const ClanPayoutStorage = require("../storages/ClanPayoutStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const AffiliateConversionService = require("./AffiliateConversionService");
 const NotificationService = require("./NotificationService");
@@ -216,7 +216,7 @@ class CoursesService {
           process.env.FRONTEND_URL || "https://freelandoo.com",
         ).replace(/\/$/, "");
 
-        const session = await StripeService.createOneTimeCheckoutSession({
+        const session = await PaymentGateway.createCheckout({
           amount_cents: display,
           currency: "BRL",
           productName: `Curso - ${course.title}`,

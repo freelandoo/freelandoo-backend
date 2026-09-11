@@ -1,7 +1,7 @@
 const pool = require("../databases");
 const ManifestationStorage = require("../storages/ManifestationStorage");
 const PolenStorage = require("../storages/PolenStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const uploadManifestationBannerToR2 = require("../integrations/r2/uploadManifestationBanner");
 const { slugify } = require("../utils/slug");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -263,7 +263,7 @@ class ManifestationService {
       if (!gate.ok) return { error: gate.error, eligibility: gate.eligibility };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await StripeService.createOneTimeCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: amount,
         currency: "BRL",
         productName: `Manifestação - ${product.name}`,
@@ -302,7 +302,7 @@ class ManifestationService {
         await client.query("ROLLBACK");
         if (refundPaymentIntent) {
           try {
-            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+            await PaymentGateway.refund({ payment_intent_id: refundPaymentIntent });
           } catch (err) {
             log.error("manifestation.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
           }
@@ -314,7 +314,7 @@ class ManifestationService {
         await client.query("ROLLBACK");
         if (refundPaymentIntent) {
           try {
-            await StripeService.createRefundForPaymentIntent(refundPaymentIntent);
+            await PaymentGateway.refund({ payment_intent_id: refundPaymentIntent });
           } catch (err) {
             log.error("manifestation.confirm.refund_fail", { paymentIntent: refundPaymentIntent, message: err.message });
           }
@@ -340,7 +340,7 @@ class ManifestationService {
         await client.query("COMMIT");
         if (paymentIntent) {
           try {
-            await StripeService.createRefundForPaymentIntent(paymentIntent);
+            await PaymentGateway.refund({ payment_intent_id: paymentIntent });
           } catch (err) {
             log.error("manifestation.confirm.refund_fail", { paymentIntent, message: err.message });
           }

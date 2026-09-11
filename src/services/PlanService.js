@@ -22,7 +22,7 @@
 const pool = require("../databases");
 const PlanStorage = require("../storages/PlanStorage");
 const FunctionStoreStorage = require("../storages/FunctionStoreStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const { BUSINESS_GATES, BUSINESS_GATE_KEYS } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -214,7 +214,7 @@ class PlanService {
         };
       }
 
-      const session = await StripeService.createMonthlySubscriptionCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: plan.price_cents,
         productName: `Plano ${plan.name}`,
         customerEmail: user.email || undefined,
@@ -253,7 +253,7 @@ class PlanService {
       // `customer.subscription.deleted`, quando o período acaba.
       if (sub.stripe_subscription_id) {
         try {
-          await StripeService.cancelSubscription(sub.stripe_subscription_id);
+          await PaymentGateway.cancelSubscription(sub.stripe_subscription_id);
         } catch (e) {
           log.warn("cancel.stripe_fail", { message: e && e.message });
           return { error: "Não foi possível cancelar agora. Tente de novo.", statusCode: 502 };

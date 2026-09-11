@@ -8,17 +8,17 @@ class StripeWebhookEventStorage {
    *   { row, duplicate:false } → processar (novo ou re-reivindicado)
    *   { row:null, duplicate:true } → já concluído ('done'), pular.
    */
-  static async claim(conn, { event_id, event_type, payload }) {
+  static async claim(conn, { event_id, event_type, payload, provider = "stripe" }) {
     const { rows } = await conn.query(
       `INSERT INTO public.tb_stripe_webhook_event
-         (event_id, event_type, payload, status, attempts)
-       VALUES ($1, $2, $3, 'pending', 1)
+         (event_id, event_type, payload, status, attempts, provider)
+       VALUES ($1, $2, $3, 'pending', 1, $4)
        ON CONFLICT (event_id) DO UPDATE
          SET attempts = public.tb_stripe_webhook_event.attempts + 1,
              updated_at = NOW()
        WHERE public.tb_stripe_webhook_event.status <> 'done'
        RETURNING id_event, event_id, event_type, status, attempts`,
-      [event_id, event_type, payload]
+      [event_id, event_type, payload, provider]
     );
     if (rows[0]) return { row: rows[0], duplicate: false };
     // Sem linha = conflito numa linha já 'done' (o WHERE bloqueou o UPDATE).

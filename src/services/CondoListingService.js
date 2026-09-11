@@ -13,7 +13,7 @@ const pool = require("../databases");
 const CondoService = require("./CondoService");
 const CondoListingStorage = require("../storages/CondoListingStorage");
 const PolenStorage = require("../storages/PolenStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -304,7 +304,7 @@ class CondoListingService {
 
         const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(/\/$/, "");
         const label = kind === "service" ? "serviço" : "produto";
-        const session = await StripeService.createOneTimeCheckoutSession({
+        const session = await PaymentGateway.createCheckout({
           amount_cents: unit * quantity,
           currency: "BRL",
           productName: `${quantity} vaga(s) de anúncio de ${label} — ${ctx.condo.display_name}`,

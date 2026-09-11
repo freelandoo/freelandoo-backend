@@ -1112,6 +1112,11 @@ module.exports = {
   processEvent,
   reprocessEvent,
   fulfillCheckoutSession,
+  // Exportado para o webhook do ASAAS: uma cobranca removida/vencida la precisa
+  // liberar o mesmo estoque, o mesmo slot de agenda e o mesmo pendente que uma
+  // checkout session expirada do Stripe. Dois caminhos de expiracao
+  // divergiriam no primeiro fluxo novo.
+  expireCheckoutSession,
   dispatchEvent,
   // Exportados para teste: a precedência vínculo × cupom é a regra de negócio
   // do programa de afiliados e precisa ser verificável isoladamente.

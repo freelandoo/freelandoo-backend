@@ -3,7 +3,7 @@
 // (holdback 8 dias, espelha BookingPayout) menos a taxa da plataforma.
 const pool = require("../databases");
 const VaquinhaStorage = require("../storages/VaquinhaStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const { processPortfolioMedia } = require("../utils/mediaJobs");
 const uploadVaquinhaMediaToR2 = require("../integrations/r2/uploadVaquinhaMedia");
 const uploadVaquinhaCoverToR2 = require("../integrations/r2/uploadVaquinhaCover");
@@ -239,7 +239,7 @@ class VaquinhaService {
       for (const s of live) {
         if (s.stripe_subscription_id) {
           try {
-            await StripeService.cancelSubscriptionImmediate(s.stripe_subscription_id);
+            await PaymentGateway.cancelSubscription(s.stripe_subscription_id, { immediate: true });
           } catch (err) {
             log.warn("close.cancel_sponsorship_fail", { id_sponsorship: s.id_sponsorship, message: err.message });
           }
@@ -330,7 +330,7 @@ class VaquinhaService {
       const message = String(body.message || "").trim().slice(0, 280) || null;
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await StripeService.createOneTimeCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: gross_cents,
         currency: "BRL",
         productName: `Doação — ${v.title}`,
@@ -450,7 +450,7 @@ class VaquinhaService {
         }));
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await StripeService.createMonthlySubscriptionCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: Number(row.monthly_cents) || monthly_cents,
         currency: "BRL",
         productName: `Patrocínio mensal — ${v.title}`,
@@ -481,7 +481,7 @@ class VaquinhaService {
       if (!live) return { error: "Você não patrocina esta bolsa.", statusCode: 404 };
       if (live.stripe_subscription_id) {
         try {
-          await StripeService.cancelSubscriptionImmediate(live.stripe_subscription_id);
+          await PaymentGateway.cancelSubscription(live.stripe_subscription_id, { immediate: true });
         } catch (err) {
           log.warn("cancelSponsorship.stripe_fail", { id_sponsorship: live.id_sponsorship, message: err.message });
         }

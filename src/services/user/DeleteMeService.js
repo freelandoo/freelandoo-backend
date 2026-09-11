@@ -1,4 +1,4 @@
-const StripeService = require("../StripeService");
+const PaymentGateway = require("../../integrations/payments");
 const ProfileSubscriptionStorage = require("../../storages/ProfileSubscriptionStorage");
 const { createLogger } = require("../../utils/logger");
 
@@ -10,7 +10,7 @@ async function execute({ db, id_user }) {
   for (const sub of subscriptions) {
     if (sub.status === "active" && sub.stripe_subscription_id && !sub.canceled_at) {
       try {
-        await StripeService.cancelSubscription(sub.stripe_subscription_id);
+        await PaymentGateway.cancelSubscription(sub.stripe_subscription_id);
         log.info("stripe.canceled", { stripe_subscription_id: sub.stripe_subscription_id });
       } catch (err) {
         log.warn("stripe.cancel_fail", { stripe_subscription_id: sub.stripe_subscription_id, message: err?.message });

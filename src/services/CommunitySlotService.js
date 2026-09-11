@@ -5,7 +5,7 @@
 
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
-const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunitySlotService");
@@ -40,7 +40,7 @@ class CommunitySlotService {
         const userEmail = emailRow.rows[0]?.email || undefined;
         const baseUrl = process.env.FRONTEND_URL || "https://freelandoo.com.br";
 
-        const session = await StripeService.createOneTimeCheckoutSession({
+        const session = await PaymentGateway.createCheckout({
           amount_cents: BUNDLE_PRICE_CENTS,
           currency: "BRL",
           productName: "Ingresso de Comunidade (+1 criar / +1 entrar)",

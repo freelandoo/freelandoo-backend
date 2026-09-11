@@ -1,5 +1,6 @@
 const pool = require("../databases");
 const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const CouponDiscountResolver = require("./CouponDiscountResolver");
 const AnnualFeeSettingsStorage = require("../storages/AnnualFeeSettingsStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
@@ -202,7 +203,7 @@ async function createSessionForUser(user, body) {
         }
       }
 
-      const session = await StripeService.createProfileActivationCheckoutSession({
+      const session = await PaymentGateway.createCheckout({
         amount_cents: chargeAmount,
         currency: settings.currency || "BRL",
         productName: `Ativação do perfil — ${profile.display_name || "Freelandoo"}`,
@@ -211,6 +212,13 @@ async function createSessionForUser(user, body) {
         successUrl,
         cancelUrl,
         metadata,
+        // ⚠️ FECHA o campo de cupom da página de pagamento. O desconto já foi
+        // calculado no backend e embutido em `chargeAmount`; deixar o campo
+        // aberto permitiria digitar um código avulso POR CIMA e furar a
+        // validação do cupom próprio (override, cupom de terceiro, etc.).
+        // É `false` explícito, e não ausência: é ele que faz o provider escolher
+        // o caminho de ativação em vez do one-time comum.
+        allowPromotionCodes: false,
       });
 
       await ProfileSubscriptionStorage.create(pool, {
@@ -283,7 +291,7 @@ async function cancelSubscriptionForUser(user, body) {
       }
       if (sub.canceled_at) throw new ServiceError("Cancelamento já agendado", 409);
 
-      const stripeSub = await StripeService.cancelSubscription(sub.stripe_subscription_id);
+      const stripeSub = await PaymentGateway.cancelSubscription(sub.stripe_subscription_id);
 
       const cancelAt = stripeSub.cancel_at
         ? new Date(stripeSub.cancel_at * 1000)
@@ -384,12 +392,12 @@ async function refundSubscriptionForUser(user, body) {
       }
 
       // Emite reembolso integral
-      const refund = await StripeService.createRefund(chargeId);
+      const refund = await PaymentGateway.refund({ provider_ref: chargeId });
 
       // Se ainda houver subscription legacy ativa, cancela no Stripe pra parar renovação.
       if (sub.stripe_subscription_id) {
         try {
-          await StripeService.cancelSubscriptionImmediate(sub.stripe_subscription_id);
+          await PaymentGateway.cancelSubscription(sub.stripe_subscription_id, { immediate: true });
         } catch (err) {
           log.warn("refund.cancel_legacy_sub_fail", { sub: sub.stripe_subscription_id, message: err.message });
         }

@@ -4,6 +4,7 @@ const ProfileProductOrderStorage = require("../storages/ProfileProductOrderStora
 const SellerBalanceStorage = require("../storages/SellerBalanceStorage");
 const ShippingService = require("./ShippingService");
 const StripeService = require("./StripeService");
+const PaymentGateway = require("../integrations/payments");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const NotificationService = require("./NotificationService");
 const { purchaseLabel } = require("../integrations/melhorenvio/purchaseLabel");
@@ -112,8 +113,8 @@ class ProfileProductOrderService {
       const successUrl = `${frontend}/account/compras?status=success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${frontend}/p/${product.id_profile}/produto/${id_profile_product}?status=cancel`;
 
-      const session = await StripeService.createMultiItemCheckoutSession({
-        line_items: [
+      const session = await PaymentGateway.createCheckout({
+        lineItems: [
           { name: product.name, amount_cents: unit_display, quantity },
           { name: `Frete — ${option.carrier} ${option.service_name}`, amount_cents: shipping_cents, quantity: 1 },
         ],
@@ -195,7 +196,13 @@ class ProfileProductOrderService {
       // charge_id só fica disponível via PI; pode ser preenchido em charge.refunded.
       let charge_id = null;
       let stripe_fee_cents = null;
-      if (payment_intent_id) {
+      // ⚠️ A busca da taxa REAL só existe no Stripe (`balance_transaction.fee`).
+      // Um pagamento feito pelo Asaas chega aqui com o id DELE, e pedir esse id
+      // ao Stripe devolveria "não encontrado" — uma ida à rede inútil por
+      // pedido, mais um aviso no log que pareceria defeito. O prefixo `pi_` é o
+      // que diz de quem é a cobrança.
+      const isStripeIntent = typeof payment_intent_id === "string" && payment_intent_id.startsWith("pi_");
+      if (payment_intent_id && isStripeIntent) {
         try {
           const stripe = StripeService.client();
           const pi = await stripe.paymentIntents.retrieve(payment_intent_id, {
@@ -240,8 +247,8 @@ class ProfileProductOrderService {
         // Devolve o dinheiro: por charge se disponível, senão pelo PaymentIntent
         // (não deixa o comprador pagando por um pedido cancelado).
         try {
-          if (charge_id) await StripeService.createRefund(charge_id);
-          else if (payment_intent_id) await StripeService.createRefundForPaymentIntent(payment_intent_id);
+          if (charge_id) await PaymentGateway.refund({ provider_ref: charge_id });
+          else if (payment_intent_id) await PaymentGateway.refund({ payment_intent_id: payment_intent_id });
           else log.error("confirm.refund_no_ref", { id_order: existing.id_order });
         } catch (err) {
           log.error("confirm.refund_fail", { id_order: existing.id_order, message: err.message });
