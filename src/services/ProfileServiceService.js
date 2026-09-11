@@ -52,7 +52,22 @@ function validateInput(payload, { partial = false } = {}) {
     if (!Number.isInteger(d) || d <= 0) return { error: "Duração inválida (em minutos, > 0)" };
     out.duration_minutes = d;
   }
-  if (!partial || Object.prototype.hasOwnProperty.call(payload, "price_amount")) {
+  // ⚠️ O ORÇAMENTO VEM ANTES DO PREÇO, e a ordem importa (mig 239).
+  //
+  // "Sob orçamento" é o serviço cujo valor só existe depois da visita. Quando
+  // ele está ligado, o preço deixa de ser exigido E é ZERADO aqui, num lugar
+  // só: se o número enviado fosse guardado, ele voltaria à tela no dia em que
+  // alguém desligasse a flag, anunciando um valor que o profissional não
+  // escolheu. Zero + flag é o único estado possível, e é o backend que garante
+  // isso — o front é espelho, não dono da regra.
+  if (Object.prototype.hasOwnProperty.call(payload, "price_on_request")) {
+    if (typeof payload.price_on_request !== "boolean") return { error: "price_on_request inválido" };
+    out.price_on_request = payload.price_on_request;
+  }
+  const quoteOnly = out.price_on_request === true;
+  if (quoteOnly) {
+    out.price_amount = 0;
+  } else if (!partial || Object.prototype.hasOwnProperty.call(payload, "price_amount")) {
     const p = Number(payload.price_amount);
     if (!Number.isInteger(p) || p < 0) return { error: "Valor inválido (em centavos, >= 0)" };
     out.price_amount = p;

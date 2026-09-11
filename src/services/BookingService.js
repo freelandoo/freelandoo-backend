@@ -81,6 +81,15 @@ class BookingService {
       return { error: "Serviço não encontrado ou inativo" };
     }
 
+    // ⚠️ Serviço SOB ORÇAMENTO não é reservável (mig 239): não existe valor a
+    // cobrar antes da visita, e sinal é pagamento. O card público já manda essa
+    // pessoa para o WhatsApp — este guard é o que impede a porta de trás, e
+    // precisa vir ANTES da conta do preço: sem ele a recusa sairia como "valor
+    // inferior à taxa mínima", que não explica nada a quem só queria um orçamento.
+    if (service.price_on_request === true) {
+      return { error: "Este serviço é sob orçamento — fale com o profissional antes de agendar" };
+    }
+
     // Valor base do serviço — define o que o profissional recebe (price − R$10).
     const service_price = service.price_amount;
     if (service_price < PLATFORM_FEE_CENTS) {

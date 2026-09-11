@@ -202,7 +202,12 @@ async function loadShowcase(id_community, id_leader_user) {
         description: r.description || "",
         // Centavos, e não texto pronto: quem formata é o front, que conhece o
         // idioma de quem está lendo. O site é traduzido em 3 idiomas.
-        price_amount: r.price_amount,
+        //
+        // ⚠️ Sob orçamento (mig 239) sai como NULL, e não como zero: o card
+        // desenha o preço quando ele existe, e zero viraria "R$ 0,00" — a
+        // vitrine anunciando de graça o que ainda vai ser orçado.
+        price_amount: r.price_on_request ? null : r.price_amount,
+        price_on_request: r.price_on_request === true,
         duration_minutes: r.duration_minutes,
         image_url: media[0]?.media_url || null,
         // De quem é o serviço. Sem isto a tela de agendamento não sabe qual
