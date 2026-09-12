@@ -64,6 +64,39 @@ class WhatsappStorage {
    *
    * Todo webhook resolve o dono POR AQUI, passando o provedor de quem o chamou.
    */
+  /**
+   * Aponta a linha da pessoa para um número da Cloud API.
+   *
+   * ⚠️ É UM `UPDATE` NA LINHA EXISTENTE, e isso não é otimização — é o que
+   * salva o histórico. As conversas pendem de `id_instance` com `ON DELETE
+   * CASCADE`, e só existe UMA linha por usuário (`ux_whatsapp_instance_user`).
+   * Apagar a linha da Evolution para inserir a da Cloud levaria junto TODA a
+   * caixa de entrada da pessoa — sem erro, sem aviso, e sem volta. Por isso o
+   * `ON CONFLICT (id_user) DO UPDATE`: o `id_instance` é preservado e as
+   * conversas seguem penduradas nele, agora sob o provedor novo.
+   *
+   * Nasce em `connecting`: o número existe no WABA mas ainda não foi
+   * confirmado por código. Quem promove para `connected` é o `confirmCode`.
+   */
+  static async upsertCloudInstance(conn, id_user, { ref, waba_id, number }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_whatsapp_instance
+              (id_user, provider, evolution_instance, waba_id, status, connected_number)
+            VALUES ($1, 'cloud', $2, NULLIF($3, ''), 'connecting', NULLIF($4, ''))
+       ON CONFLICT (id_user) DO UPDATE
+          SET provider           = 'cloud',
+              evolution_instance = EXCLUDED.evolution_instance,
+              waba_id            = EXCLUDED.waba_id,
+              status             = 'connecting',
+              connected_number   = EXCLUDED.connected_number,
+              last_state_at      = NOW()
+         RETURNING id_instance, id_user, provider, evolution_instance, waba_id,
+                   status, connected_number`,
+      [id_user, ref, waba_id || "", String(number || "").replace(/\D/g, "")]
+    );
+    return r.rows[0];
+  }
+
   static async getInstanceByRef(conn, provider, evolution_instance) {
     const r = await conn.query(
       `SELECT id_instance, id_user, provider, evolution_instance, waba_id,

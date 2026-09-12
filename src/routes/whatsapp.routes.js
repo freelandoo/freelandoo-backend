@@ -38,6 +38,43 @@ router.get(
 );
 
 /**
+ * Cadastro de número — o caminho da Cloud API, que NÃO tem QR (W3).
+ *
+ * Mesmos dois guards do QR, e pela mesma razão: é este clique que cria o
+ * número dentro do NOSSO WABA, e o teto da fase 1 é o número de números (2 no
+ * começo, até 20). Deixar sem `requirePlanFeature` faria qualquer conta gastar
+ * uma das vagas do portfólio.
+ *
+ * São duas rotas porque são dois passos separados por um SMS: entre informar o
+ * número e digitar o código passa o tempo da operadora, e uma chamada só teria
+ * que segurar a requisição aberta esperando a pessoa ler o celular.
+ */
+router.post(
+  "/instance/number",
+  authMiddleware,
+  requireFeature("whatsapp_atendimento"),
+  requirePlanFeature("whatsapp"),
+  asyncHandler(WhatsappController.cloudAddNumber)
+);
+
+router.post(
+  "/instance/number/verify",
+  authMiddleware,
+  requireFeature("whatsapp_atendimento"),
+  requirePlanFeature("whatsapp"),
+  asyncHandler(WhatsappController.cloudVerifyCode)
+);
+
+/** Reenviar o código: o SMS se perde, e sem isto a saída seria recomeçar. */
+router.post(
+  "/instance/number/resend",
+  authMiddleware,
+  requireFeature("whatsapp_atendimento"),
+  requirePlanFeature("whatsapp"),
+  asyncHandler(WhatsappController.cloudResendCode)
+);
+
+/**
  * Desconectar NÃO passa pela flag: desligada a feature, quem já conectou tem
  * que continuar podendo desligar o próprio número. Porta de saída trancada é a
  * única que não pode existir (regra da mig 220).

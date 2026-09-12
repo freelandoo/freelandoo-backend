@@ -25,6 +25,29 @@ class WhatsappController {
     return sendServiceResult(res, result);
   }
 
+  /* ────────────── W3 — cadastro de número (Cloud API) ─────────────────── */
+
+  static async cloudAddNumber(req, res) {
+    const result = await WhatsappService.cloudAddNumber(req.user.id_user, req.body || {});
+    return sendServiceResult(res, result);
+  }
+
+  static async cloudVerifyCode(req, res) {
+    const result = await WhatsappService.cloudVerifyCode(
+      req.user.id_user,
+      (req.body || {}).code
+    );
+    return sendServiceResult(res, result);
+  }
+
+  static async cloudResendCode(req, res) {
+    const result = await WhatsappService.cloudResendCode(
+      req.user.id_user,
+      (req.body || {}).method
+    );
+    return sendServiceResult(res, result);
+  }
+
   static async listConversations(req, res) {
     const result = await WhatsappService.listConversations(req.user.id_user, req.query || {});
     return sendServiceResult(res, result);

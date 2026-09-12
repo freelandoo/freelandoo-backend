@@ -38,7 +38,7 @@ const whatsappProvider = require("../integrations/whatsappProvider");
 const FeatureFlagService = require("./FeatureFlagService");
 const realtime = require("../realtime/socket");
 const { instanceNameFor } = require("../utils/whatsappInstance");
-const { formatPhone } = require("../utils/whatsappJid");
+const { formatPhone, splitPhone } = require("../utils/whatsappJid");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("WhatsappService");
@@ -213,6 +213,161 @@ class WhatsappService {
           qr_base64: r.qrBase64,
           pairing_code: r.pairingCode,
         };
+      } catch (e) {
+        return this._evolutionError(e);
+      }
+    });
+  }
+
+  /* ─────────────── W3 — cadastro de número (Cloud API) ─────────────────── */
+
+  /**
+   * O provedor da vez para uma conexão NOVA, exigindo cadastro de número.
+   *
+   * A pergunta é pela CAPABILITY e não pelo nome: um provedor futuro que também
+   * cadastre número entra sem tocar aqui, e a Evolution — que pareia por QR —
+   * é recusada com a razão certa em vez de um erro genérico.
+   */
+  static _numberProviderFor(existing) {
+    const provider = existing
+      ? this._providerFor(existing)
+      : whatsappProvider.defaultProvider();
+    if (!provider) return { error: this._assertConfigured().error, statusCode: 503 };
+    if (!provider.capabilities.numberRegistration) {
+      return {
+        error: "Este provedor conecta por QR Code, não por cadastro de número.",
+        statusCode: 409,
+      };
+    }
+    return { provider };
+  }
+
+  /**
+   * Passo 1 — a pessoa informa o número e a Meta manda o código.
+   *
+   * ⚠️ O NÚMERO É SEPARADO EM DDI + RESTO porque a Graph API exige os dois
+   * campos; mandar tudo junto falha com uma mensagem que não explica nada.
+   * Brasil é o padrão quando quem digita não põe o DDI — que é o caso comum de
+   * alguém que escreve o próprio celular como escreve para um amigo.
+   *
+   * ⚠️ A ORDEM É META PRIMEIRO, BANCO DEPOIS (regra da mig 223): se o cadastro
+   * lá falhar, não fica uma linha local apontando para um número que não existe
+   * do outro lado.
+   */
+  static async cloudAddNumber(id_user, { phone, display_name, method } = {}) {
+    return runWithLogs(log, "cloudAddNumber", () => ({ id_user }), async () => {
+      const blocked = (await this._assertEnabled()) || this._assertConfigured();
+      if (blocked) return blocked;
+
+      // A separação DDI/resto é função PURA (`utils/whatsappJid`) para ser
+      // testável: errar a inferência do DDI cadastra na Meta um número que não
+      // existe, e o sintoma só aparece quando o código não chega.
+      const parsed = splitPhone(phone);
+      if (!parsed) {
+        return { error: "Informe o número com DDD, apenas dígitos.", statusCode: 400 };
+      }
+      const displayName = String(display_name || "").trim();
+      if (displayName.length < 3) {
+        return {
+          error: "Informe o nome que vai aparecer para o cliente (mínimo 3 letras).",
+          statusCode: 400,
+        };
+      }
+
+      const existing = await WhatsappStorage.getInstanceByUser(pool, id_user);
+      const picked = this._numberProviderFor(existing);
+      if (picked.error) return picked;
+
+      try {
+        const r = await picked.provider.addNumber(existing || {}, {
+          cc: parsed.cc,
+          number: parsed.number,
+          displayName,
+          method,
+        });
+
+        // ⚠️ UPDATE na linha existente — as conversas pendem de `id_instance`
+        // com CASCADE, e trocar a linha apagaria a caixa de entrada de quem
+        // está migrando da Evolution. Ver o comentário no storage.
+        await WhatsappStorage.upsertCloudInstance(pool, id_user, {
+          ref: r.ref,
+          waba_id: r.waba,
+          number: parsed.full,
+        });
+
+        return { needs_code: true, method: r.method, number: parsed.full };
+      } catch (e) {
+        return this._evolutionError(e);
+      }
+    });
+  }
+
+  /**
+   * Passo 2 — a pessoa digita o código que chegou.
+   *
+   * Só promove para `connected` DEPOIS que o provedor confirmou os dois passos
+   * (verificar + registrar). Marcar antes deixaria a tela dizendo "conectado"
+   * para um número que não envia nem recebe nada.
+   */
+  static async cloudVerifyCode(id_user, code) {
+    return runWithLogs(log, "cloudVerifyCode", () => ({ id_user }), async () => {
+      const blocked = (await this._assertEnabled()) || this._assertConfigured();
+      if (blocked) return blocked;
+
+      const digits = String(code || "").replace(/\D/g, "");
+      if (!digits) return { error: "Informe o código recebido.", statusCode: 400 };
+
+      const instance = await WhatsappStorage.getInstanceByUser(pool, id_user);
+      if (!instance || !instance.evolution_instance) {
+        return { error: "Informe o número antes de confirmar o código.", statusCode: 409 };
+      }
+
+      const provider = this._providerFor(instance);
+      if (!provider) return this._assertConfigured();
+      if (!provider.capabilities.numberRegistration) {
+        return { error: "Este provedor não usa código de verificação.", statusCode: 409 };
+      }
+
+      try {
+        await provider.confirmCode(instance, digits);
+      } catch (e) {
+        return this._evolutionError(e);
+      }
+
+      await WhatsappStorage.setInstanceStatus(
+        pool,
+        instance.evolution_instance,
+        "connected",
+        instance.connected_number || undefined
+      );
+
+      realtime.emitToUser(id_user, "whatsapp:status", {
+        status: "connected",
+        number: formatPhone(instance.connected_number),
+      });
+
+      return { connected: true, number: instance.connected_number || "" };
+    });
+  }
+
+  /** Reenvia o código — o SMS se perde, e sem isto a saída é recomeçar. */
+  static async cloudResendCode(id_user, method) {
+    return runWithLogs(log, "cloudResendCode", () => ({ id_user }), async () => {
+      const blocked = (await this._assertEnabled()) || this._assertConfigured();
+      if (blocked) return blocked;
+
+      const instance = await WhatsappStorage.getInstanceByUser(pool, id_user);
+      if (!instance || !instance.evolution_instance) {
+        return { error: "Informe o número primeiro.", statusCode: 409 };
+      }
+      const provider = this._providerFor(instance);
+      if (!provider || !provider.capabilities.numberRegistration) {
+        return { error: "Este provedor não usa código de verificação.", statusCode: 409 };
+      }
+
+      try {
+        await provider.requestCode(instance, method);
+        return { ok: true };
       } catch (e) {
         return this._evolutionError(e);
       }

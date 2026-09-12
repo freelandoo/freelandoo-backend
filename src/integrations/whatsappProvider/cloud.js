@@ -35,6 +35,8 @@
 // `tb_whatsapp_conversation.service_window_expires_at` (mig 240), preenchida
 // pelo webhook — o único que sabe quando o cliente falou.
 
+const crypto = require("crypto");
+
 const TIMEOUT_MS = 15_000;
 const DEFAULT_GRAPH_VERSION = "v21.0";
 
@@ -158,16 +160,6 @@ function notYet(step) {
   );
 }
 
-/** W3 — cadastrar o número no WABA e disparar o código de verificação. */
-async function ensure() {
-  return notYet("cadastro de número");
-}
-
-/** W3 — a Cloud API não tem QR: devolve `needsCode` e a tela pede o código. */
-async function connect() {
-  return notYet("cadastro de número");
-}
-
 /** W4 */
 async function sendText() {
   return notYet("envio de mensagem");
@@ -176,6 +168,153 @@ async function sendText() {
 /** W4 */
 async function fetchMedia() {
   return notYet("download de mídia");
+}
+
+/* ─────────────────────────── W3 — cadastro do número ─────────────────────── */
+
+/**
+ * O PIN de verificação em duas etapas, DERIVADO em vez de guardado.
+ *
+ * A Cloud API exige um PIN de 6 dígitos no `/register`, e ele é cobrado de novo
+ * toda vez que o número for registrado outra vez (troca de WABA, re-registro
+ * depois de um problema). Perdê-lo trava o número: a Meta não o devolve, e
+ * limpá-lo leva 7 dias de espera.
+ *
+ * Guardá-lo pediria coluna nova (migration) e criaria mais um segredo em
+ * repouso. Derivar de um HMAC do App Secret com o `phone_number_id` dá as duas
+ * propriedades que importam: é sempre o mesmo para aquele número, e não existe
+ * escrito em lugar nenhum.
+ *
+ * ⚠️ TROCAR O APP SECRET MUDA TODOS OS PINS. Se um dia ele for rotacionado, os
+ * números já registrados continuam funcionando (o PIN só é pedido no
+ * `/register`), mas um re-registro vai precisar do PIN antigo — que passa a ser
+ * recalculável só com o segredo anterior.
+ */
+function deriveTwoStepPin(cfg, phoneNumberId) {
+  const mac = crypto
+    .createHmac("sha256", cfg.appSecret)
+    .update(`whatsapp-2fa:${phoneNumberId}`)
+    .digest();
+  // 6 dígitos com zeros à esquerda preservados — "012345" é PIN válido, e
+  // tratá-lo como número o transformaria em "12345", que a Meta recusa.
+  return String(mac.readUInt32BE(0) % 1_000_000).padStart(6, "0");
+}
+
+/**
+ * Inscreve o NOSSO app nos webhooks do WABA.
+ *
+ * ⚠️ NÃO É REDUNDANTE com a inscrição do app no painel. São dois níveis
+ * diferentes: lá o app declara que quer eventos de `whatsapp_business_account`;
+ * aqui ele é ligado a UM WABA específico. Sem este passo a Meta aceita tudo,
+ * não dá erro nenhum, e a caixa fica vazia para sempre — a falha silenciosa que
+ * este módulo inteiro existe para evitar.
+ *
+ * Idempotente: chamar de novo devolve `success: true` sem duplicar.
+ */
+async function ensure(instance) {
+  const cfg = ensureConfigured();
+  const waba = instance?.waba_id || cfg.wabaId;
+  ensureOk(await call(cfg, "POST", `/${waba}/subscribed_apps`));
+}
+
+/**
+ * A Cloud API não tem QR. `needsCode` diz à tela para pedir o NÚMERO — e é a
+ * capability `qrPairing: false` que a impede de tentar desenhar um QR vazio.
+ */
+async function connect(instance) {
+  const ref = refOf(instance);
+  if (!ref) return { connected: false, needsCode: true };
+
+  const s = await state(instance);
+  return { connected: s.connected, needsCode: !s.connected };
+}
+
+/**
+ * Passo 1 — acrescenta o número ao WABA e dispara o código de verificação.
+ *
+ * ⚠️ `cc` e `phone_number` vão SEPARADOS. A Meta não aceita o número inteiro
+ * num campo só, e mandar "5511988887777" como `phone_number` com `cc` vazio
+ * falha com uma mensagem que não explica nada.
+ *
+ * O `verified_name` é o que o CLIENTE vê no topo da conversa, e passa por
+ * análise da Meta. Nome que não corresponde ao negócio é reprovado — e a
+ * reprovação chega depois, por webhook, não aqui.
+ */
+async function addNumber(instance, { cc, number, displayName, method = "SMS" } = {}) {
+  const cfg = ensureConfigured();
+  const waba = instance?.waba_id || cfg.wabaId;
+
+  const created = ensureOk(
+    await call(cfg, "POST", `/${waba}/phone_numbers`, {
+      cc: String(cc || "").replace(/\D/g, ""),
+      phone_number: String(number || "").replace(/\D/g, ""),
+      verified_name: String(displayName || "").trim(),
+    })
+  );
+
+  const ref = String(created?.id || "").trim();
+  if (!ref) throw new CloudApiError("A Meta não devolveu o id do número.", 502);
+
+  // O código é pedido SEPARADAMENTE de criar o número. Falhar aqui deixa o
+  // número criado e não verificado — que é recuperável (pede o código de novo),
+  // ao contrário de perder o `ref`, que deixaria um número órfão no WABA.
+  ensureOk(
+    await call(cfg, "POST", `/${ref}/request_code`, {
+      code_method: String(method).toUpperCase() === "VOICE" ? "VOICE" : "SMS",
+      language: "pt_BR",
+    })
+  );
+
+  return { ref, waba, method: String(method).toUpperCase() === "VOICE" ? "VOICE" : "SMS" };
+}
+
+/** Reenvia o código para um número já criado. */
+async function requestCode(instance, method = "SMS") {
+  const cfg = ensureConfigured();
+  const ref = refOf(instance);
+  if (!ref) throw new CloudApiError("Número ainda não cadastrado.", 409);
+
+  ensureOk(
+    await call(cfg, "POST", `/${ref}/request_code`, {
+      code_method: String(method).toUpperCase() === "VOICE" ? "VOICE" : "SMS",
+      language: "pt_BR",
+    })
+  );
+  return { ok: true };
+}
+
+/**
+ * Passo 2 — confirma o código e REGISTRA o número na Cloud API.
+ *
+ * ⚠️ SÃO DOIS PASSOS, e parar no primeiro é o erro que não dá sintoma: o
+ * `verify_code` só prova a posse do número; é o `/register` que o liga à Cloud
+ * API. Sem ele o número aparece verificado no painel e não envia nem recebe
+ * nada.
+ */
+async function confirmCode(instance, code) {
+  const cfg = ensureConfigured();
+  const ref = refOf(instance);
+  if (!ref) throw new CloudApiError("Número ainda não cadastrado.", 409);
+
+  ensureOk(
+    await call(cfg, "POST", `/${ref}/verify_code`, {
+      code: String(code || "").replace(/\D/g, ""),
+    })
+  );
+
+  ensureOk(
+    await call(cfg, "POST", `/${ref}/register`, {
+      messaging_product: "whatsapp",
+      pin: deriveTwoStepPin(cfg, ref),
+    })
+  );
+
+  // A inscrição do WABA vem DEPOIS do registro e é o último passo de propósito:
+  // é ela que faz a mensagem chegar, e deixá-la para o fim garante que um
+  // número inscrito é um número que já está de pé.
+  await ensure(instance);
+
+  return { connected: true };
 }
 
 /* ──────────────────────────────── já vale ────────────────────────────────── */
@@ -230,6 +369,10 @@ module.exports = {
   connect,
   state,
   disconnect,
+  addNumber,
+  requestCode,
+  confirmCode,
+  deriveTwoStepPin,
   sendText,
   fetchMedia,
 };

@@ -69,6 +69,34 @@ function redactPhone(value) {
   return d.length <= 4 ? "****" : `****${d.slice(-4)}`;
 }
 
+/**
+ * Separa DDI do resto — a Cloud API exige os dois campos (`cc` e
+ * `phone_number`) e RECUSA o número inteiro num só, com uma mensagem que não
+ * explica o motivo.
+ *
+ * ⚠️ O DDI É INFERIDO, e a régua é o COMPRIMENTO. No Brasil o número completo
+ * tem 10 dígitos (fixo com DDD) ou 11 (celular com DDD); com o 55 na frente,
+ * 12 ou 13. Quem digita o próprio celular escreve "11988887777", sem DDI —
+ * é assim que se escreve para um amigo, e é o caso comum.
+ *
+ * O erro que isto evita é silencioso nos dois sentidos: sem inferir, o número
+ * vira DDI "11" + resto e a Meta cadastra um número que não existe; inferindo
+ * sem olhar o tamanho, "5511988887777" viraria "55" + "5511988887777".
+ *
+ * @returns {{cc: string, number: string, full: string} | null} `null` quando
+ *   não dá para afirmar nada — e aí é melhor recusar do que adivinhar um
+ *   número de telefone.
+ */
+function splitPhone(value, defaultCc = "55") {
+  const digits = onlyDigits(value);
+  // 10 = fixo brasileiro com DDD. Menos que isso não é número completo em
+  // lugar nenhum; mais que 15 é o teto do E.164.
+  if (digits.length < 10 || digits.length > 15) return null;
+
+  const full = digits.length <= 11 ? `${defaultCc}${digits}` : digits;
+  return { cc: full.slice(0, defaultCc.length), number: full.slice(defaultCc.length), full };
+}
+
 module.exports = {
   onlyDigits,
   isGroupJid,
@@ -77,4 +105,5 @@ module.exports = {
   phoneFromJid,
   formatPhone,
   redactPhone,
+  splitPhone,
 };
