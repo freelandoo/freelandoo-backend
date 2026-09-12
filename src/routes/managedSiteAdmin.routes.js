@@ -25,6 +25,17 @@ const admin = [authMiddleware, roleMiddleware("Administrator")];
 // comunidade chamada "templates". Mesma armadilha de `/live-clusters/mine`.
 router.get("/templates", ...admin, asyncHandler(ManagedSiteController.listTemplates));
 
+// ⚠️ `/requests` TAMBÉM VEM ANTES DE `/:id_profile`, pela mesma armadilha de
+// `/templates`: é um segmento só, então na ordem inversa o parâmetro engoliria
+// a palavra e pedir a fila viraria a busca por uma comunidade chamada
+// "requests" — 404 num painel que deveria listar quem está esperando.
+router.get("/requests", ...admin, asyncHandler(ManagedSiteController.listRequests));
+router.post(
+  "/requests/:id_request/dismiss",
+  ...admin,
+  asyncHandler(ManagedSiteController.dismissRequest)
+);
+
 router.get("/", ...admin, asyncHandler(ManagedSiteController.list));
 router.get("/:id_profile", ...admin, asyncHandler(ManagedSiteController.get));
 // Converte o site do construtor neste tema e DEVOLVE, sem gravar.

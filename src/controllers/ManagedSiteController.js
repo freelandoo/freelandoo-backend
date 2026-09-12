@@ -37,6 +37,20 @@ class ManagedSiteController {
   }
 
 
+  // ─── A fila de pedidos (mig 243) ──────────────────────────────────────────
+  // Quem pediu um site e ainda não foi atendido. Quem abre o pedido é o
+  // cliente, por `/communities/:id/site/request`.
+
+  static async listRequests(req, res) {
+    const result = await ManagedSiteService.listRequests();
+    return sendServiceResult(res, result);
+  }
+
+  static async dismissRequest(req, res) {
+    const result = await ManagedSiteService.dismissRequest(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   // ─── A oferta (mig 242) ───────────────────────────────────────────────────
   // Reservar o site para o cliente aceitar, e retirar o convite. Quem aceita é
   // ele, por `/communities/:id/site/offer/accept` — e lá o corpo não carrega

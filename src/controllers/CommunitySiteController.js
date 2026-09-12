@@ -79,6 +79,15 @@ class CommunitySiteController {
   // Qualquer outro campo que chegue é ignorado — é essa recusa em ler conteúdo
   // do cliente que mantém a brecha da mig 241 fechada.
 
+  static async requestSite(req, res) {
+    const result = await CommunitySiteService.requestSite(
+      req.user,
+      req.params,
+      req.body || {}
+    );
+    return sendServiceResult(res, result);
+  }
+
   static async getOffer(req, res) {
     const result = await CommunitySiteService.getOffer(req.user, req.params);
     return sendServiceResult(res, result);

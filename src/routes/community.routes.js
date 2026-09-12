@@ -197,6 +197,14 @@ router.post(
 // ⚠️ E `release` fica fora dela por um motivo a mais: é porta de SAÍDA. Quem
 // aceitou tem que conseguir voltar atrás mesmo com o construtor desligado —
 // senão a única saída de quem se arrependeu vira o suporte.
+// PEDIR O SITE (mig 243). Fora do `requireFeature("comunidade_site")` como as
+// irmãs, e sem gate de plano: pedir orçamento é o começo da venda, e cobrar
+// assinatura para poder PEDIR é cobrar antes de mostrar o produto.
+router.post(
+  "/:id_profile/site/request",
+  authMiddleware,
+  asyncHandler(CommunitySiteController.requestSite)
+);
 router.get(
   "/:id_profile/site/offer",
   authMiddleware,

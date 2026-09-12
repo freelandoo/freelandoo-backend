@@ -199,6 +199,25 @@ class AuthStorage {
     return r.rowCount > 0;
   }
 
+  /**
+   * Os ids de quem administra a plataforma.
+   *
+   * Serve para AVISAR (socket), nunca para autorizar — quem autoriza continua
+   * sendo o `roleMiddleware` de cada rota. Existe porque `emitToAll` mandaria o
+   * aviso de "alguem pediu um site" para toda sessao conectada, e o aviso e
+   * nosso: o payload diz de que negocio e, e isso nao e assunto dos outros.
+   */
+  static async listAdminUserIds(db) {
+    const r = await db.query(
+      `SELECT ur.id_user
+         FROM tb_user_role ur
+         JOIN tb_role r ON r.id_role = ur.id_role
+        WHERE ur.is_active = TRUE AND r.is_active = TRUE
+          AND r.desc_role = 'Administrator'`
+    );
+    return r.rows.map((x) => x.id_user);
+  }
+
   static async createActivationToken(client, { id_user, token, expiresAt }) {
     await client.query(
       `

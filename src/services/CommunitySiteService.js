@@ -31,8 +31,11 @@ const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStora
 const BookingAvailabilityService = require("./BookingAvailabilityService");
 const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
-const { isManaged, managedRefusal } = require("../utils/managedSite");const SiteTemplates = require("../utils/siteTemplates");
+const { isManaged, managedRefusal, MANAGED_SITE_GATE } = require("../utils/managedSite");const SiteTemplates = require("../utils/siteTemplates");
 const ManagedSiteOfferStorage = require("../storages/ManagedSiteOfferStorage");
+const ManagedSiteRequestStorage = require("../storages/ManagedSiteRequestStorage");
+const AuthStorage = require("../storages/AuthStorage");
+const realtime = require("../realtime/socket");
 
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -525,18 +528,44 @@ class CommunitySiteService {
         // paga. DESPUBLICAR fica fora do gate: porta de saída trancada é a
         // única que não pode existir (regra das migs 220/223).
         if (published) {
-          // Site feito por nós: quem coloca no ar somos nós (mig 241). O
-          // cliente nunca publicou este site — republicar sozinho o que a
-          // plataforma tirou do ar (fim de carência, correção pedida por nós)
-          // desfaria a decisão de quem o mantém.
+          // ⚠️ O SITE GERENCIADO TAMBÉM É PUBLICADO PELO CLIENTE (decisão do
+          // Alex, 2026-09-12) — antes esta porta recusava, e quem colocava no
+          // ar éramos só nós. O que mudou é o desenho do produto: o cliente
+          // aceita o site, publica quando quiser e cunha o endereço dele.
+          //
+          // ⚠️ E O QUE SUBSTITUIU A TRAVA É O GATE DE PLANO, logo abaixo. A
+          // razão da recusa antiga era real: republicar sozinho o que a
+          // plataforma tirou do ar desfaria a decisão de quem mantém o site — e
+          // o caso que importa é o FIM DA CARÊNCIA (mig 241), quando o site sai
+          // do ar por falta de pagamento. Esse caso continua fechado, porque o
+          // plano que carrega `managed_site` é o mesmo que carrega `site_share`
+          // (as chaves do Negócio foram copiadas para ele): plano vencido =
+          // sem a chave = não republica. A regra do dinheiro não depende de
+          // ninguém lembrar de conferir.
+          //
+          // PUBLICAR paga; DESPUBLICAR fica fora do gate — porta de saída
+          // trancada é a única que não pode existir (regra das migs 220/223).
+          // ⚠️ A CHAVE DEPENDE DA NATUREZA DO SITE, e não é detalhe: as duas
+          // são carregadas pelo plano do site, mas `site_share` é carregada
+          // TAMBÉM pelo Negócio. Gateando o site gerenciado por `site_share`,
+          // a recusa diria "assine o Plano Negócio" — e quem assinasse
+          // recuperaria o botão de publicar e MESMO ASSIM veria o site sair do
+          // ar, porque quem para o relógio da carência (mig 241) é a chave
+          // `managed_site`, que só o plano do site tem. A pessoa pagaria o
+          // plano errado para resolver um problema que ele não resolve.
           const existing = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
-          if (isManaged(existing)) return managedRefusal();
+          const gate = isManaged(existing) ? MANAGED_SITE_GATE : BUSINESS_GATES.siteShare;
 
-          const has = await PlanService.hasFeature(id_user, BUSINESS_GATES.siteShare);
+          const has = await PlanService.hasFeature(id_user, gate);
           if (!has) {
+            // `planRefusal` completa a frase com o nome do plano que vende a
+            // chave e devolve o slug dele em `needs_plan` — é o que leva a
+            // pessoa ao lugar certo em vez de a um "indisponível".
             return await PlanService.planRefusal(
-              BUSINESS_GATES.siteShare,
-              "Publicar e compartilhar o site exige o Plano Negócio."
+              gate,
+              isManaged(existing)
+                ? "Para publicar o seu site é preciso ter o plano do site ativo."
+                : "Publicar e compartilhar o site exige o Plano Negócio."
             );
           }
         }
@@ -647,6 +676,82 @@ class CommunitySiteService {
    * política de comunidades existe para impedir.
    */
   /**
+   * O CLIENTE PEDE O SITE (mig 243).
+   *
+   * O começo da conversa: até aqui o painel dizia "fale com a gente pelo
+   * suporte", que é mandar a pessoa sair da tela em que ela está decidindo para
+   * procurar um canal que ela não sabe qual é. Pedido que depende de
+   * iniciativa fora do produto é pedido que não acontece.
+   *
+   * ⚠️ NÃO CHECA PLANO NEM FLAG, e as duas ausências são deliberadas:
+   *
+   *   • plano — pedir orçamento é o começo da venda. Cobrar assinatura para
+   *     poder PEDIR é cobrar antes de mostrar o produto. Quem decide se atende
+   *     somos nós, olhando a fila;
+   *   • `comunidade_site` — aquela flag é o kill-switch do CONSTRUTOR.
+   *     Desligá-la para segurar um problema lá não pode fechar o caixa.
+   *
+   * ⚠️ FUNCIONA SEM SITE NENHUM, e é justamente o caso que mais importa:
+   * comunidade que nunca abriu o construtor não tem linha em
+   * `tb_community_site` — e é para quem nunca montou nada que o site pronto
+   * mais vale. Por isso o guard é `loadAsLeader` (a comunidade existe e é
+   * minha?), nunca "o site existe?".
+   */
+  static async requestSite(user, params, body) {
+    return runWithLogs(
+      log,
+      "requestSite",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const loaded = await loadAsLeader(user, params.id_profile);
+        if (loaded.error) return loaded;
+
+        // Já é nosso? Então não há o que pedir — e um pedido aberto aqui cairia
+        // na fila para alguém descobrir, ao abrir, que o negócio já tem site.
+        const row = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
+        if (isManaged(row)) {
+          return { error: "O seu site já é feito pela Freelandoo.", statusCode: 409 };
+        }
+
+        const note = String(body?.note || "").trim().slice(0, 2000);
+        const { request, created } = await ManagedSiteRequestStorage.open(pool, {
+          id_profile: params.id_profile,
+          requestedBy: loaded.id_user,
+          note,
+        });
+
+        // ⚠️ O AVISO É FIRE-AND-FORGET. O pedido já está gravado quando isto
+        // roda; falha de socket não pode transformar "pedi o site" em erro na
+        // tela de quem pediu — a fila continua de pé e é ela que manda.
+        //
+        // Só no pedido NOVO: o segundo clique não acorda a nossa tela de novo.
+        if (created) {
+          void (async () => {
+            try {
+              const admins = await AuthStorage.listAdminUserIds(pool);
+              for (const id_admin of admins) {
+                realtime.emitToUser(id_admin, "managed_site:request", {
+                  id_profile: params.id_profile,
+                  community_name: loaded.community.display_name,
+                });
+              }
+            } catch (e) {
+              log.warn("requestSite: aviso aos admins falhou", { erro: e.message });
+            }
+          })();
+        }
+
+        return {
+          request: request
+            ? { id_request: request.id_request, created_at: request.created_at }
+            : null,
+          created,
+        };
+      }
+    );
+  }
+
+  /**
    * TEM UM SITE PRONTO ESPERANDO POR MIM? (mig 242)
    *
    * É a pergunta que o painel "Site pronto" faz ao abrir, do lado do cliente, e
@@ -669,9 +774,14 @@ class CommunitySiteService {
         const loaded = await loadAsLeader(user, params.id_profile);
         if (loaded.error) return loaded;
 
-        const [row, pending] = await Promise.all([
+        const [row, pending, request] = await Promise.all([
           CommunitySiteStorage.getByProfile(pool, params.id_profile),
           ManagedSiteOfferStorage.getPending(pool, params.id_profile),
+          // O pedido (mig 243) vem na MESMA leitura: é ele que decide se o
+          // painel desenha o botão "Pedir site" ou o aviso de que o pedido já
+          // chegou. Numa segunda chamada, as duas metades da tela apareceriam
+          // em momentos diferentes e o botão piscaria antes de virar aviso.
+          ManagedSiteRequestStorage.getPending(pool, params.id_profile),
         ]);
 
         return {
@@ -683,6 +793,9 @@ class CommunitySiteService {
           // seu site hoje" ao lado de "o que entra no lugar".
           current: row?.template
             ? SiteTemplates.summarizeTemplateData(row.template, row.template_data)
+            : null,
+          request: request
+            ? { id_request: request.id_request, created_at: request.created_at }
             : null,
           offer: pending
             ? {

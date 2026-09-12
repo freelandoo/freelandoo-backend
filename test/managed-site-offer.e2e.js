@@ -117,6 +117,13 @@ async function main() {
     // ela já está; aplicá-la de novo é no-op, e é o que faz esta suíte rodar
     // também num banco que ainda não a viu.
     await client.query(fs.readFileSync(path.join(migDir, "241_managed_site.sql"), "utf8"));
+    // ⚠️ A 243 TAMBÉM, e não por completude: `prepareOffer` passou a fechar o
+    // pedido do cliente na mesma transação, então sem a tabela dela a reserva
+    // estoura aqui dentro. Em produção o runner aplica na ordem e ela já está
+    // de pé quando o código roda.
+    await client.query(
+      fs.readFileSync(path.join(migDir, "243_managed_site_request.sql"), "utf8")
+    );
     const sql = fs.readFileSync(path.join(migDir, "242_managed_site_offer.sql"), "utf8");
     await client.query(sql);
     await client.query(sql);

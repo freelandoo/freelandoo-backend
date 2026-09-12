@@ -233,8 +233,31 @@ async function main() {
     );
     check("o tema seguiu intacto", aposTentativa.template === "oficina-local");
 
+    // ⚠️ ESTA ASSERÇÃO ENVELHECEU E FOI REESCRITA (2026-09-12). Ela dizia
+    // "publicar é recusado com 403 (quem põe no ar somos nós)" — era a regra da
+    // mig 241, e o Alex a inverteu: o cliente aceita o site e publica ele
+    // mesmo, junto com o domínio. O que segurava o caso real (republicar o que
+    // a plataforma tirou do ar por falta de pagamento) passou a ser o GATE DE
+    // PLANO, e é ele que esta asserção passa a exigir.
+    //
+    // O líder do fixture não assina nada, então a recusa aqui é 402 por plano —
+    // nunca mais 403 por ser gerenciado. Os dois sentidos (com e sem plano)
+    // estão em `test/managed-site-request.e2e.js`.
     const pubCliente = await CommunitySiteService.setPublished({ id_user: leader }, { id_profile: idc }, { published: true });
-    check("publicar é recusado com 403 (quem põe no ar somos nós)", pubCliente.statusCode === 403, JSON.stringify(pubCliente));
+    check(
+      "publicar é recusado por PLANO (402), não por ser gerenciado",
+      pubCliente.statusCode === 402,
+      JSON.stringify(pubCliente)
+    );
+    check(
+      "e a recusa aponta o plano do site — o Negócio devolveria o botão sem parar a carência",
+      pubCliente.needs_plan === "site-freelandoo",
+      String(pubCliente.needs_plan)
+    );
+    check(
+      "o site continua fora do ar",
+      (await CommunitySiteStorage.getByProfile(pool, idc)).is_published === false
+    );
 
     // ─── 6. Publicação pela plataforma ────────────────────────────────────
     console.log("\n[6] A plataforma publica");

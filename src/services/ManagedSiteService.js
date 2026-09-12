@@ -21,6 +21,7 @@ const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const CommunitySiteStorage = require("../storages/CommunitySiteStorage");
 const ManagedSiteOfferStorage = require("../storages/ManagedSiteOfferStorage");
+const ManagedSiteRequestStorage = require("../storages/ManagedSiteRequestStorage");
 const CommunitySiteService = require("./CommunitySiteService");
 const CommunitySite = require("../utils/communitySite");
 const SiteTemplates = require("../utils/siteTemplates");
@@ -100,11 +101,19 @@ class ManagedSiteService {
       // que responde "o cliente já foi convidado a aceitar?", e uma segunda
       // chamada só para isso faria a tela mostrar as duas metades em momentos
       // diferentes.
-      const [offer, offers] = await Promise.all([
+      const [offer, offers, request] = await Promise.all([
         ManagedSiteOfferStorage.getPending(pool, params.id_profile),
         ManagedSiteOfferStorage.listForProfile(pool, params.id_profile),
+        // O pedido do cliente (mig 243): é o que explica POR QUE este caso está
+        // aberto na nossa tela, e traz a nota que ele escreveu.
+        ManagedSiteRequestStorage.getPending(pool, params.id_profile),
       ]);
-      return { ...project(row, loaded.community, slug), offer: offer || null, offers };
+      return {
+        ...project(row, loaded.community, slug),
+        offer: offer || null,
+        offers,
+        request: request || null,
+      };
     });
   }
 
@@ -232,6 +241,53 @@ class ManagedSiteService {
   }
 
   /**
+   * A FILA DE PEDIDOS (mig 243) — quem está esperando um site.
+   *
+   * É o que o modal da plataforma mostra. Mais antigo primeiro: quem esperou
+   * mais é atendido antes.
+   */
+  static async listRequests() {
+    return runWithLogs(log, "listRequests", () => ({}), async () => {
+      const [requests, total] = await Promise.all([
+        ManagedSiteRequestStorage.listPending(pool),
+        ManagedSiteRequestStorage.countPending(pool),
+      ]);
+      return { requests, total };
+    });
+  }
+
+  /**
+   * Tira um pedido da fila sem virar site.
+   *
+   * Existe porque fila que não esvazia é fila que se aprende a ignorar — a
+   * mesma razão pela qual a matrícula cancelada fica fora do alerta de ficha
+   * vencida (mig 189). Serve a desistência e ao caso que não fechou.
+   *
+   * ⚠️ NÃO avisa o cliente, de propósito: "seu pedido foi recusado" dentro do
+   * produto é a pior forma de dizer isso. Quando um pedido não vira site, quem
+   * fala é gente, pelo canal em que a conversa já estava.
+   */
+  static async dismissRequest(user, params) {
+    return runWithLogs(
+      log,
+      "dismissRequest",
+      () => ({ id_request: params?.id_request }),
+      async () => {
+        const row = await ManagedSiteRequestStorage.decide(
+          pool,
+          params.id_request,
+          "dismissed",
+          user?.id_user || null
+        );
+        // Já decidido por outra aba (ou respondido por uma oferta no meio do
+        // caminho): não é erro, o estado final é o mesmo que se queria.
+        if (!row) return { error: "Este pedido já foi respondido.", statusCode: 409 };
+        return { request: row };
+      }
+    );
+  }
+
+  /**
    * RESERVA o site pronto para o cliente aceitar (mig 242).
    *
    * É a diferença entre trocar o site de alguém e OFERECER a troca. Ligar
@@ -270,8 +326,21 @@ class ManagedSiteService {
             note: body?.note,
             createdBy: user?.id_user || null,
           });
+
+          // ⚠️ RESERVAR A OFERTA É A RESPOSTA AO PEDIDO (mig 243), e por isso
+          // fecha o pedido na MESMA transação. Num segundo clique, a fila
+          // continuaria mostrando um negócio já atendido e o jeito de descobrir
+          // seria abrir um por um; antes do INSERT, o pedido sumiria se a
+          // oferta falhasse. Devolve NULL quando ninguém pediu — a venda ativa
+          // (nós oferecemos sem pedido) é caminho normal, não erro.
+          const answered = await ManagedSiteRequestStorage.answerPendingForProfile(
+            client,
+            params.id_profile,
+            user?.id_user || null
+          );
+
           await client.query("COMMIT");
-          return { offer };
+          return { offer, answered_request: answered?.id_request || null };
         } catch (e) {
           await client.query("ROLLBACK");
           throw e;

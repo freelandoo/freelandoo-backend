@@ -38,7 +38,8 @@
     "test:compose": "node test/compose-video.e2e.js && node test/compose-video-rotation.e2e.js && node test/upload-compose-door.e2e.js",
     "test:whatsapp-cloud-webhook": "node test/whatsapp-cloud-webhook.e2e.js",
     "test:managed-site": "node test/managed-site.e2e.js",
-    "test:managed-site-offer": "node test/managed-site-offer.e2e.js"
+    "test:managed-site-offer": "node test/managed-site-offer.e2e.js",
+    "test:managed-site-request": "node test/managed-site-request.e2e.js"
   },
   "repository": {
     "type": "git",
