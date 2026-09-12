@@ -105,13 +105,39 @@ class WhatsappService {
    * ou reconexão em curso), e rebaixá-lo a "desconectado" apagaria o QR que a
    * pessoa está lendo neste segundo.
    */
+  /**
+   * COMO esta pessoa conecta: lendo um QR ou cadastrando o número.
+   *
+   * ⚠️ A tela não pode adivinhar isso, e adivinhar errado é caro nos dois
+   * sentidos: desenhar QR para a Cloud API mostra uma caixa vazia para sempre
+   * (ela não tem QR), e pedir número para a Evolution manda a pessoa digitar
+   * algo que ninguém vai usar.
+   *
+   * A resposta é a CAPABILITY do provedor — da instância dela quando já existe
+   * uma (quem conectou pela Evolution continua na Evolution), e do padrão do
+   * ambiente para uma conexão nova.
+   */
+  static _pairingModeFor(instance) {
+    const provider = instance
+      ? this._providerFor(instance)
+      : whatsappProvider.defaultProvider();
+    if (!provider) return null;
+    return provider.capabilities.qrPairing ? "qr" : "number";
+  }
+
   static async status(id_user) {
     return runWithLogs(log, "status", () => ({ id_user }), async () => {
       const configured = whatsappProvider.isAnyAvailable();
       const instance = await WhatsappStorage.getInstanceByUser(pool, id_user);
 
       if (!instance) {
-        return { configured, exists: false, status: "disconnected", number: "" };
+        return {
+          configured,
+          exists: false,
+          status: "disconnected",
+          number: "",
+          pairing: this._pairingModeFor(null),
+        };
       }
 
       // Abrir a aba é usar: é isto que segura a sessão de pé (ver IDLE_DAYS).
@@ -143,6 +169,7 @@ class WhatsappService {
         configured,
         exists: true,
         status,
+        pairing: this._pairingModeFor(instance),
         number: formatPhone(instance.connected_number),
         // Por que caiu. Sem isto, quem volta depois de um mês encontra o botão
         // "Conectar" e conclui que o produto quebrou — desconectado silencioso
