@@ -14,7 +14,29 @@ const COLS = `id_offer, id_profile, template, template_data, note, status,
               created_by_user, created_at, updated_at, decided_at`;
 
 class ManagedSiteOfferStorage {
+  /**
+   * Existe um site pronto esperando esta comunidade?
+   *
+   * ⚠️ EXISTS, e não a linha inteira: quem faz esta pergunta é a leitura do
+   * site — a chamada que o construtor faz a cada visita —, e ela só precisa
+   * saber se acende a bolinha no botão. Trazer o documento junto seria carregar
+   * até 512 KB de texto em toda abertura do construtor para desenhar um ponto
+   * de 8 pixels. Mesma disciplina do `has_site` (mig 241), que também é um
+   * EXISTS dentro da consulta que já acontece.
+   */
+  static async hasPending(conn, id_profile) {
+    const r = await conn.query(
+      `SELECT EXISTS (
+                SELECT 1 FROM public.tb_managed_site_offer
+                 WHERE id_profile = $1 AND status = 'pending'
+              ) AS has`,
+      [id_profile]
+    );
+    return !!r.rows[0].has;
+  }
+
   /** A oferta viva de uma comunidade, se houver. No máximo uma (índice parcial). */
+
   static async getPending(conn, id_profile) {
     const r = await conn.query(
       `SELECT ${COLS}

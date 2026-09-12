@@ -288,6 +288,21 @@ async function main() {
     check("conta as páginas — home + 2 serviços + 2 cidades", vista.offer?.summary?.counts?.pages === 5, JSON.stringify(vista.offer?.summary?.counts));
     check("e lista os endereços que o site vai ter", (vista.offer?.summary?.pages || []).map((p) => p.slug).join(",") === "conserto-residencial,industriais,aguai,casa-branca");
 
+    // ⚠️⚠️ A OFERTA TEM QUE SE ANUNCIAR. `has_offer` vem na leitura do site — a
+    // que o construtor faz a cada visita — e é o que acende a bolinha no botão.
+    // Sem ele a oferta fica esperando atrás de um botão que não muda de
+    // aparência, e o líder só a encontra se resolver abrir o painel por conta
+    // própria. Foi exatamente o que aconteceu no primeiro teste desta feature:
+    // o site estava reservado e a tela não dizia nada.
+    const leituraDoSite = await CommunitySiteService.get(
+      { id_user: leader },
+      { id_profile: idc }
+    );
+    check("a leitura do site avisa que há oferta esperando", leituraDoSite.has_offer === true, JSON.stringify(leituraDoSite.has_offer));
+
+    const semNada = await CommunitySiteService.get({ id_user: leader }, { id_profile: idc2 });
+    check("e não avisa onde não há", semNada.has_offer === false, JSON.stringify(semNada.has_offer));
+
     // ⚠️ O documento NÃO sai nesta porta: ela abre a cada clique no botão, e o
     // texto é de um site que talvez nunca seja aceito.
     const serial = JSON.stringify(vista);

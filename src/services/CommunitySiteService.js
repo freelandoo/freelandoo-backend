@@ -391,9 +391,20 @@ class CommunitySiteService {
             managed: isManaged(row),
             template: toTemplate(row),
             grace_until: row?.grace_until || null,
+            // ⚠️ TEM UM SITE PRONTO ESPERANDO (mig 242)? É por este booleano que
+            // o botão "Site pronto" acende a bolinha — sem ele, a oferta ficaria
+            // esperando atrás de um botão que não muda de aparência, e o líder
+            // só a encontraria se resolvesse abrir o painel por conta própria.
+            // Site reservado que ninguém vê é o mesmo que site não reservado.
+            //
+            // Vem de carona na leitura que o construtor já faz a cada visita, e
+            // é um EXISTS: uma requisição a mais por abertura de construtor para
+            // desenhar um ponto seria caro no lugar mais visitado desta tela.
+            has_offer: await ManagedSiteOfferStorage.hasPending(pool, params.id_profile),
             config: row ? toConfig(row) : CommunitySite.buildDefaultConfig(community),
             ...showcase,
           };
+
         }
 
         // Visitante: rascunho não existe para ele, e site de comunidade fechada
