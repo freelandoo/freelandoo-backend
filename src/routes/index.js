@@ -116,6 +116,7 @@ const meOfferingsRoutes = require("./meOfferings.routes");
 const monetizationIntentRoutes = require("./monetizationIntent.routes");
 const audioLibraryRoutes = require("./audioLibrary.routes");
 const audioLibraryAdminRoutes = require("./audioLibraryAdmin.routes");
+const managedSiteAdminRoutes = require("./managedSiteAdmin.routes");
 const casaPublicRoutes = require("./casaPublic.routes");
 const casaAdminRoutes = require("./casaAdmin.routes");
 const blogRoutes = require("./blog.routes");
@@ -291,6 +292,9 @@ module.exports = (app) => {
   app.use("/onboarding/intent", monetizationIntentRoutes);
   app.use("/audio-library", audioLibraryRoutes);
   app.use("/admin/audio-library", audioLibraryAdminRoutes);
+  // Site feito pela Freelandoo (mig 241). Sob `/admin` de propósito: é o
+  // prefixo que o audit log estruturado do app.js já cobre inteiro.
+  app.use("/admin/managed-sites", managedSiteAdminRoutes);
   app.use("/casa", casaPublicRoutes);
   app.use("/admin/casa", casaAdminRoutes);
   app.use("/blog", blogRoutes);

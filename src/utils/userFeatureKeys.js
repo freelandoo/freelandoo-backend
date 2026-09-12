@@ -23,6 +23,12 @@ const USER_FEATURE_KEYS = [
   "community_members",
   "site_share",
   "atendimento_ia",
+  // Site feito pela Freelandoo (mig 241): o direito de ter um site GERENCIADO
+  // no ar. Não abre porta de tela nenhuma — quem monta o site somos nós —, e é
+  // por isso que ela existe: é a resposta de "ainda tem direito?" que a
+  // carência lê antes de despublicar. Nunca vendida avulsa: linha na Loja com
+  // `is_for_sale = FALSE` significaria GRÁTIS PARA TODO MUNDO.
+  "managed_site",
   // "vitrine" é a única com efeito SERVER-SIDE: desligada, os perfis do user
   // somem da vitrine pública (SearchStorage) pra todo mundo — não é só UI.
   "vitrine",

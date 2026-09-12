@@ -31,6 +31,7 @@ const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStora
 const BookingAvailabilityService = require("./BookingAvailabilityService");
 const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
+const { isManaged, managedRefusal } = require("../utils/managedSite");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunitySiteService");
@@ -110,6 +111,27 @@ function toConfig(row) {
         : {},
     pages: Array.isArray(row.pages) ? row.pages : [],
   };
+}
+
+/**
+ * O TEMA (mig 241), quando o site é um dos que nós desenhamos.
+ *
+ * Vive FORA do `config` de propósito, e não por arrumação: `config` é o
+ * documento do construtor, e é ele que o autosave devolve para o backend
+ * inteiro no save seguinte. Um `config.template` faria o valor completar a
+ * volta pelo cliente e voltar como payload — e aí bastaria o normalizador
+ * aprender a chave, um dia, para a brecha abrir sozinha.
+ *
+ * `null` significa "site do construtor", que é o caso de todos os que existem
+ * hoje — e é o que faz a bifurcação do front cair no canvas de sempre.
+ */
+function toTemplate(row) {
+  if (!row || !row.template) return null;
+  const data =
+    row.template_data && typeof row.template_data === "object" && !Array.isArray(row.template_data)
+      ? row.template_data
+      : {};
+  return { slug: row.template, data };
 }
 
 /**
@@ -284,6 +306,18 @@ async function ensureSlug(id_profile, displayName) {
 
 class CommunitySiteService {
   /**
+   * Reserva o endereço público (`/c/<slug>`) se ainda não houver.
+   *
+   * Exposto porque a porta de admin do site gerenciado (mig 241) publica por
+   * fora desta classe e precisa do MESMO endereço: uma segunda derivação de
+   * slug daria dois endereços possíveis para o mesmo site, e o que está no
+   * Google é um só.
+   */
+  static async ensureSlug(id_profile, displayName) {
+    return ensureSlug(id_profile, displayName);
+  }
+
+  /**
    * Lê o site. Para o líder sem linha ainda, devolve o TEMPLATE montado a
    * partir da própria comunidade (nome, bio, capa) com `exists: false` — não
    * grava nada: o site só vira linha quando ele salva. Tela em branco não
@@ -324,6 +358,13 @@ class CommunitySiteService {
             published_at: row?.published_at || null,
             updated_at: row?.updated_at || null,
             slug,
+            // O líder precisa saber que o site é gerenciado ANTES de ver o
+            // construtor: é com isto que o front esconde as três portas de
+            // edição (a aba, o item do menu "+" e o globo do dock) e põe no
+            // lugar o painel de quem tem site feito por nós.
+            managed: isManaged(row),
+            template: toTemplate(row),
+            grace_until: row?.grace_until || null,
             config: row ? toConfig(row) : CommunitySite.buildDefaultConfig(community),
             ...showcase,
           };
@@ -350,6 +391,8 @@ class CommunitySiteService {
           published_at: row.published_at,
           updated_at: row.updated_at,
           slug,
+          managed: isManaged(row),
+          template: toTemplate(row),
           config: toConfig(row),
           ...showcase,
         };
@@ -382,6 +425,18 @@ class CommunitySiteService {
         if (String(community.id_leader_user) !== String(id_user)) {
           return { error: "Apenas o líder pode editar o site." };
         }
+
+        // ⚠️ SITE FEITO POR NÓS NÃO ACEITA ESCRITA DO CLIENTE (mig 241), e a
+        // recusa é do documento INTEIRO, não de parte dele: o site de tema tem
+        // `sections` vazio, então um save que passasse gravaria esse vazio por
+        // cima e o cliente veria a própria página ficar em branco — sem erro,
+        // e sem ter pedido nada disso.
+        //
+        // Esta é a SEGUNDA das três travas. A primeira é `template` não ser
+        // campo do documento; a terceira é o `upsert` não mencionar as colunas.
+        // Ver `src/utils/managedSite.js`.
+        const existing = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
+        if (isManaged(existing)) return managedRefusal();
 
         const config = CommunitySite.normalizeConfig(body?.config ?? body);
         const row = await CommunitySiteStorage.upsert(pool, params.id_profile, config);
@@ -433,6 +488,13 @@ class CommunitySiteService {
         // paga. DESPUBLICAR fica fora do gate: porta de saída trancada é a
         // única que não pode existir (regra das migs 220/223).
         if (published) {
+          // Site feito por nós: quem coloca no ar somos nós (mig 241). O
+          // cliente nunca publicou este site — republicar sozinho o que a
+          // plataforma tirou do ar (fim de carência, correção pedida por nós)
+          // desfaria a decisão de quem o mantém.
+          const existing = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
+          if (isManaged(existing)) return managedRefusal();
+
           const has = await PlanService.hasFeature(id_user, BUSINESS_GATES.siteShare);
           if (!has) {
             return await PlanService.planRefusal(
@@ -441,6 +503,10 @@ class CommunitySiteService {
             );
           }
         }
+        // ⚠️ DESPUBLICAR CONTINUA VALENDO, inclusive no site gerenciado, e de
+        // propósito: é a única saída imediata de quem precisa tirar do ar hoje
+        // (endereço errado, promoção que acabou, problema legal). Cancelar o
+        // plano também tira, mas só depois da carência de 30 dias.
 
         const row = await CommunitySiteStorage.setPublished(
           pool,
@@ -594,6 +660,11 @@ class CommunitySiteService {
             avatar_url: row.avatar_url,
             bio: row.bio,
           },
+          // ⚠️ É por aqui que o site gerenciado chega ao mundo. Sem `template`
+          // nesta projeção a página abriria pelo canvas de seções — que num
+          // site de tema está vazio —, e o resultado seria uma página em
+          // branco no domínio do cliente, sem um único erro em lugar nenhum.
+          template: toTemplate(row),
           config: toConfig(row),
           ...showcase,
         };

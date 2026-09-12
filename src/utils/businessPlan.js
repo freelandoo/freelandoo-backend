@@ -13,6 +13,15 @@
 // errasse a grafia liberaria de graça — em silêncio, porque chave desconhecida
 // cai no ramo "grátis" do ownership.
 
+// ⚠️ EXISTE UM SEGUNDO PLANO QUE CARREGA ESTAS MESMAS CHAVES: o
+// `site-freelandoo` (mig 241), que é o Negócio mais o site feito por nós. Ele
+// NÃO herda nada em tempo de execução — o seed COPIOU as chaves uma vez, e
+// cópia não é vínculo.
+//
+// Então: CHAVE NOVA AQUI ENTRA NOS DOIS PLANOS, numa migration que insira as
+// duas linhas em `tb_plan_feature`. Esquecida no segundo, quem paga MAIS perde
+// uma porta que quem paga menos tem — e o sintoma chega como suporte, não como
+// erro. Ver `src/utils/managedSite.js`.
 const BUSINESS_PLAN_SLUG = "profissional";
 
 const BUSINESS_GATES = Object.freeze({
