@@ -31,12 +31,22 @@ class WhatsappCloudWebhookController {
     const verifyToken = String(process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim();
     const result = readVerification(req.query || {}, verifyToken);
 
+    // ⚠️ QUEM chamou entra no log, e não é enfeite: o handshake é disparado
+    // pela Meta, por um teste manual (curl) e por qualquer monitor apontado
+    // aqui. Sem distinguir, "a Meta salvou o webhook?" vira arqueologia de
+    // carimbo de tempo — e a resposta errada faz perder tempo procurando
+    // defeito onde só havia o próprio eco.
+    //
+    // O user-agent NÃO é confiável como autenticação (qualquer um o forja).
+    // Ele é só rastro de diagnóstico; quem autentica é o verify token.
+    const agent = String(req.headers["user-agent"] || "").slice(0, 60);
+
     if (!result.ok) {
-      log.warn("cloud.verify.rejected", { reason: result.reason });
+      log.warn("cloud.verify.rejected", { reason: result.reason, agent });
       return res.status(403).type("text/plain").send("forbidden");
     }
 
-    log.info("cloud.verify.ok", {});
+    log.info("cloud.verify.ok", { agent });
     return res.status(200).type("text/plain").send(result.challenge);
   }
 
