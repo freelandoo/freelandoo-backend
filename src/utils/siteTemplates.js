@@ -344,12 +344,57 @@ function normalizeOficinaLocal(raw) {
   };
 }
 
+/**
+ * O RESUMO que o cliente lê antes de aceitar a troca (mig 242).
+ *
+ * ⚠️ Existe porque o painel NÃO pode receber o documento inteiro só para
+ * escrever quatro números: ele tem teto de 512 KB, e esta é a chamada que o
+ * painel faz toda vez que abre. E porque "o que eu estou aceitando" é uma
+ * pergunta do PRODUTO — as páginas que o site vai ter, o nome do negócio, o
+ * telefone —, não uma amostra do JSON.
+ *
+ * A lista de páginas é montada na MESMA ORDEM do dedupe (serviços antes de
+ * cidades): é ela que o cliente vai encontrar no menu, e uma ordem diferente
+ * aqui prometeria um site com outra cara.
+ */
+function summarizeOficinaLocal(data) {
+  const d = obj(data);
+  const b = obj(d.business);
+  const services = Array.isArray(d.services) ? d.services : [];
+  const cities = Array.isArray(d.cities) ? d.cities : [];
+  return {
+    business: b.name || "",
+    city: b.city || "",
+    state: b.state || "",
+    phone: b.phoneDisplay || "",
+    whatsapp: !!b.whatsappNumber,
+    // A foto do banner: `true`/`false`, nunca a URL. O resumo é lido por quem
+    // ainda não aceitou nada, e um endereço de arquivo nosso não acrescenta
+    // nada à decisão dele.
+    hasPhoto: !!b.heroPhoto,
+    counts: {
+      services: services.length,
+      cities: cities.length,
+      faq: Array.isArray(d.faq) ? d.faq.length : 0,
+      reviews: Array.isArray(d.reviews) ? d.reviews.length : 0,
+      // A home entra na conta: é a página que o endereço abre, e dizer "11
+      // páginas" e listar 10 faria o cliente procurar a que falta.
+      pages: 1 + services.length + cities.length,
+    },
+    pages: [
+      ...services.map((s) => ({ slug: s.slug, label: s.label, kind: "service" })),
+      ...cities.map((c) => ({ slug: c.slug, label: c.name, kind: "city" })),
+    ],
+  };
+}
+
 // ─── O registro ─────────────────────────────────────────────────────────────
 
 const TEMPLATES = Object.freeze({
   "oficina-local": {
     label: "Oficina / prestador local",
     normalize: normalizeOficinaLocal,
+    summarize: summarizeOficinaLocal,
   },
 });
 
@@ -385,10 +430,24 @@ function normalizeTemplateData(template, raw) {
   return { data };
 }
 
+/**
+ * O resumo de um documento já gravado.
+ *
+ * Tema desconhecido devolve `null` em vez de estourar: quem chama está
+ * descrevendo um site que existe, e uma tela de resumo não é lugar de derrubar
+ * a requisição inteira por causa de um tema que saiu do registro.
+ */
+function summarizeTemplateData(template, data) {
+  if (!isTemplate(template)) return null;
+  const fn = TEMPLATES[template].summarize;
+  return typeof fn === "function" ? { label: TEMPLATES[template].label, ...fn(data) } : null;
+}
+
 module.exports = {
   LIMITS,
   TEMPLATES,
   TEMPLATE_SLUGS,
   isTemplate,
   normalizeTemplateData,
+  summarizeTemplateData,
 };

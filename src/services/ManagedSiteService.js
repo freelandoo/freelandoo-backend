@@ -20,6 +20,7 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const CommunitySiteStorage = require("../storages/CommunitySiteStorage");
+const ManagedSiteOfferStorage = require("../storages/ManagedSiteOfferStorage");
 const CommunitySiteService = require("./CommunitySiteService");
 const CommunitySite = require("../utils/communitySite");
 const SiteTemplates = require("../utils/siteTemplates");
@@ -94,7 +95,16 @@ class ManagedSiteService {
 
       const row = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
       const slug = await CommunitySiteStorage.getSlug(pool, params.id_profile);
-      return project(row, loaded.community, slug);
+
+      // A oferta viva e o histórico (mig 242) acompanham o estado: é o painel
+      // que responde "o cliente já foi convidado a aceitar?", e uma segunda
+      // chamada só para isso faria a tela mostrar as duas metades em momentos
+      // diferentes.
+      const [offer, offers] = await Promise.all([
+        ManagedSiteOfferStorage.getPending(pool, params.id_profile),
+        ManagedSiteOfferStorage.listForProfile(pool, params.id_profile),
+      ]);
+      return { ...project(row, loaded.community, slug), offer: offer || null, offers };
     });
   }
 
@@ -219,6 +229,76 @@ class ManagedSiteService {
         return project(row, loaded.community, slug);
       }
     );
+  }
+
+  /**
+   * RESERVA o site pronto para o cliente aceitar (mig 242).
+   *
+   * É a diferença entre trocar o site de alguém e OFERECER a troca. Ligar
+   * direto (`apply`) continua existindo — é o que serve a entrega combinada por
+   * fora, em que o cliente já disse sim por outro canal. Esta porta é para o
+   * caminho normal: montamos, reservamos, e ele decide.
+   *
+   * ⚠️ O CONTEÚDO É VALIDADO E GRAVADO AQUI, e é isso que permite à rota do
+   * cliente não receber conteúdo nenhum. Quem escreve o site continua sendo
+   * quem tem o papel de admin — o cliente só vira a chave.
+   */
+  static async prepareOffer(user, params, body) {
+    return runWithLogs(
+      log,
+      "prepareOffer",
+      () => ({ id_profile: params?.id_profile, template: body?.template }),
+      async () => {
+        const loaded = await loadCommunity(params.id_profile);
+        if (loaded.error) return loaded;
+
+        // A MESMA porta de normalização do `apply`: uma oferta que não passe
+        // por ela guardaria um documento que o aceite recusaria depois, e o
+        // erro apareceria na mão do cliente em vez de na nossa.
+        const normalized = SiteTemplates.normalizeTemplateData(body?.template, body?.data);
+        if (normalized.error) return { error: normalized.error, statusCode: 400 };
+
+        // ⚠️ Transação por causa do índice parcial: retirar a pendente e criar a
+        // nova são um gesto só. Ver `ManagedSiteOfferStorage.create`.
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const offer = await ManagedSiteOfferStorage.create(client, {
+            id_profile: params.id_profile,
+            template: body.template,
+            templateData: normalized.data,
+            note: body?.note,
+            createdBy: user?.id_user || null,
+          });
+          await client.query("COMMIT");
+          return { offer };
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
+      }
+    );
+  }
+
+  /**
+   * Retira a oferta que estava esperando.
+   *
+   * Não mexe em site nenhum: se o cliente já tinha aceitado, o site dele
+   * continua exatamente onde está. O que isto cancela é o CONVITE.
+   */
+  static async withdrawOffer(params) {
+    return runWithLogs(log, "withdrawOffer", () => ({ id_profile: params?.id_profile }), async () => {
+      const loaded = await loadCommunity(params.id_profile);
+      if (loaded.error) return loaded;
+
+      const pending = await ManagedSiteOfferStorage.getPending(pool, params.id_profile);
+      if (!pending) return { error: "Não há oferta esperando.", statusCode: 404 };
+
+      const offer = await ManagedSiteOfferStorage.decide(pool, pending.id_offer, "withdrawn");
+      return { offer };
+    });
   }
 
   /**

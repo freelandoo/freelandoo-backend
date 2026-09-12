@@ -36,6 +36,25 @@ class ManagedSiteController {
     return sendServiceResult(res, result);
   }
 
+
+  // ─── A oferta (mig 242) ───────────────────────────────────────────────────
+  // Reservar o site para o cliente aceitar, e retirar o convite. Quem aceita é
+  // ele, por `/communities/:id/site/offer/accept` — e lá o corpo não carrega
+  // conteúdo nenhum.
+
+  static async prepareOffer(req, res) {
+    const result = await ManagedSiteService.prepareOffer(
+      req.user,
+      req.params,
+      req.body || {}
+    );
+    return sendServiceResult(res, result);
+  }
+
+  static async withdrawOffer(req, res) {
+    const result = await ManagedSiteService.withdrawOffer(req.params);
+    return sendServiceResult(res, result);
+  }
   static async release(req, res) {
     const result = await ManagedSiteService.release(req.params);
     return sendServiceResult(res, result);

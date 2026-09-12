@@ -35,6 +35,17 @@ router.get(
 );
 router.put("/:id_profile", ...admin, asyncHandler(ManagedSiteController.apply));
 router.post("/:id_profile/publish", ...admin, asyncHandler(ManagedSiteController.setPublished));
+// A OFERTA (mig 242) — reservar o site pronto para o cliente aceitar, em vez
+// de trocar o site dele por conta própria.
+//
+// `:id_profile` não captura barra, então estas duas não disputam caminho com
+// `PUT /:id_profile` nem com `DELETE /:id_profile` — diferente de `/templates`,
+// que é um segmento só e por isso precisa vir antes.
+//
+// Quem aceita é o cliente, em `POST /communities/:id/site/offer/accept`, e lá o
+// corpo carrega só o id da linha criada aqui.
+router.put("/:id_profile/offer", ...admin, asyncHandler(ManagedSiteController.prepareOffer));
+router.delete("/:id_profile/offer", ...admin, asyncHandler(ManagedSiteController.withdrawOffer));
 router.delete("/:id_profile", ...admin, asyncHandler(ManagedSiteController.release));
 
 module.exports = router;

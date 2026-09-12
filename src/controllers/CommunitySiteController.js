@@ -73,6 +73,30 @@ class CommunitySiteController {
    * aberta vê, o líder vê dentro do construtor, e o forasteiro de comunidade
    * fechada recebe `slot: null` — quem recorta é o service.
    */
+
+  // ─── Site pronto: a oferta (mig 242) ──────────────────────────────────────
+  // ⚠️ `acceptOffer` passa `req.body`, e o service lê dali SÓ o `id_offer`.
+  // Qualquer outro campo que chegue é ignorado — é essa recusa em ler conteúdo
+  // do cliente que mantém a brecha da mig 241 fechada.
+
+  static async getOffer(req, res) {
+    const result = await CommunitySiteService.getOffer(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async acceptOffer(req, res) {
+    const result = await CommunitySiteService.acceptOffer(
+      req.user,
+      req.params,
+      req.body || {}
+    );
+    return sendServiceResult(res, result);
+  }
+
+  static async releaseManaged(req, res) {
+    const result = await CommunitySiteService.releaseManaged(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
   static async getNextSlot(req, res) {
     const result = await CommunitySiteService.getNextSlot(req.user, req.params);
     return sendServiceResult(res, result);

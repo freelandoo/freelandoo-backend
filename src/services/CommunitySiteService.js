@@ -31,7 +31,9 @@ const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStora
 const BookingAvailabilityService = require("./BookingAvailabilityService");
 const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
-const { isManaged, managedRefusal } = require("../utils/managedSite");
+const { isManaged, managedRefusal } = require("../utils/managedSite");const SiteTemplates = require("../utils/siteTemplates");
+const ManagedSiteOfferStorage = require("../storages/ManagedSiteOfferStorage");
+
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunitySiteService");
@@ -50,6 +52,30 @@ function siteBlockedByKind(community) {
     error: "Site é uma função da comunidade de negócio.",
     statusCode: 403,
   };
+}
+
+/**
+ * Carrega a comunidade exigindo que quem pede seja o LÍDER dela.
+ *
+ * As portas antigas repetem este trio (existe? tem site? é o líder?) porque
+ * cada uma tem a frase de recusa própria. As três portas da oferta (mig 242)
+ * dividem a mesma frase, e escrever o trio três vezes seguidas é como uma delas
+ * ficaria para trás no dia em que a regra mudasse.
+ */
+async function loadAsLeader(user, id_profile) {
+  const id_user = user?.id_user;
+  if (!id_user) return { error: "Usuário não autenticado", statusCode: 401 };
+
+  const community = await CommunityStorage.getById(pool, id_profile);
+  if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+
+  const blockedKind = siteBlockedByKind(community);
+  if (blockedKind) return blockedKind;
+
+  if (String(community.id_leader_user) !== String(id_user)) {
+    return { error: "Apenas o líder pode decidir sobre o site.", statusCode: 403 };
+  }
+  return { community, id_user };
 }
 
 /** Teto da varredura do próximo horário: duas semanas e cinco profissionais. */
@@ -609,6 +635,231 @@ class CommunitySiteService {
    * comunidade fechada esconde por dentro — exatamente o vazamento que a
    * política de comunidades existe para impedir.
    */
+  /**
+   * TEM UM SITE PRONTO ESPERANDO POR MIM? (mig 242)
+   *
+   * É a pergunta que o painel "Site pronto" faz ao abrir, do lado do cliente, e
+   * ela responde as duas metades: o que está valendo hoje (o site é gerenciado?
+   * em que tema?) e o que está reservado para ele.
+   *
+   * ⚠️ O QUE SAI É UM RESUMO, NUNCA O DOCUMENTO. Quem ainda não aceitou não
+   * precisa do conteúdo — precisa saber o que vai ganhar (quantas páginas,
+   * quais endereços, que negócio) para decidir. O documento tem teto de 512 KB,
+   * e esta porta abre a cada clique no botão: mandá-lo inteiro publicaria o
+   * texto de um site que talvez nunca seja aceito, para transferir quatro
+   * números.
+   */
+  static async getOffer(user, params) {
+    return runWithLogs(
+      log,
+      "getOffer",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const loaded = await loadAsLeader(user, params.id_profile);
+        if (loaded.error) return loaded;
+
+        const [row, pending] = await Promise.all([
+          CommunitySiteStorage.getByProfile(pool, params.id_profile),
+          ManagedSiteOfferStorage.getPending(pool, params.id_profile),
+        ]);
+
+        return {
+          managed: isManaged(row),
+          template: row?.template || null,
+          is_published: !!row?.is_published,
+          slug: await CommunitySiteStorage.getSlug(pool, params.id_profile),
+          // O que está no ar hoje, resumido — é com isto que a tela escreve "o
+          // seu site hoje" ao lado de "o que entra no lugar".
+          current: row?.template
+            ? SiteTemplates.summarizeTemplateData(row.template, row.template_data)
+            : null,
+          offer: pending
+            ? {
+                id_offer: pending.id_offer,
+                template: pending.template,
+                note: pending.note || "",
+                created_at: pending.created_at,
+                summary: SiteTemplates.summarizeTemplateData(
+                  pending.template,
+                  pending.template_data
+                ),
+              }
+            : null,
+        };
+      }
+    );
+  }
+
+  /**
+   * O CLIENTE ACEITA A TROCA (mig 242).
+   *
+   * ⚠️ ESTA PORTA NÃO RECEBE CONTEÚDO, e é esse o desenho inteiro. O corpo
+   * carrega só o id da oferta — o texto, as páginas e os links vêm da linha que
+   * NÓS gravamos pela porta de admin. Aceitasse "data", esta seria exatamente a
+   * brecha que a mig 241 trancou: qualquer líder apontaria o próprio site para
+   * um tema nosso, com o conteúdo que quisesse. Ver utils/managedSite.js.
+   *
+   * ⚠️ E O ID NÃO É BUROCRACIA: ele pina a decisão na oferta que o cliente
+   * ESTAVA VENDO. Sem ele, uma revisão nossa entre abrir o modal e apertar o
+   * botão faria a pessoa confirmar um site que nunca leu — é o mesmo raciocínio
+   * do if_version, e é por isso que revisar cria linha nova em vez de editar a
+   * que está esperando.
+   */
+  static async acceptOffer(user, params, body) {
+    return runWithLogs(
+      log,
+      "acceptOffer",
+      () => ({
+        id_user: user?.id_user,
+        id_profile: params?.id_profile,
+        id_offer: body?.id_offer,
+      }),
+      async () => {
+        const loaded = await loadAsLeader(user, params.id_profile);
+        if (loaded.error) return loaded;
+
+        const id_offer = String(body?.id_offer || "");
+        if (!id_offer) return { error: "Oferta não informada.", statusCode: 400 };
+
+        const offer = await ManagedSiteOfferStorage.getPendingById(
+          pool,
+          params.id_profile,
+          id_offer
+        );
+        if (!offer) {
+          // Uma frase só para os três casos (id errado, oferta de outra
+          // comunidade, oferta já decidida): distinguir entregaria a quem
+          // adivinhasse um UUID a informação de quais comunidades têm oferta.
+          return {
+            error: "Esta oferta não está mais disponível. Abra o painel de novo.",
+            statusCode: 409,
+          };
+        }
+
+        // ⚠️ RE-NORMALIZA ANTES DE GRAVAR. O documento já passou pela porta de
+        // admin, mas o que chega a tb_community_site passa pelo normalizador da
+        // VEZ — e entre a oferta e o aceite pode ter havido deploy. Tema que
+        // saiu do registro recusa aqui, em voz alta, em vez de aplicar um tema
+        // que o front não sabe desenhar (lá o sintoma é 404 no site do cliente,
+        // e ninguém relaciona à causa).
+        const normalized = SiteTemplates.normalizeTemplateData(
+          offer.template,
+          offer.template_data
+        );
+        if (normalized.error) {
+          return {
+            error: "Este site pronto precisa de um ajuste nosso antes de entrar no ar.",
+            statusCode: 409,
+          };
+        }
+
+        // Gravar o site e decidir a oferta são um gesto só: separados, uma
+        // falha no meio deixaria o site trocado com a oferta ainda "esperando"
+        // — e o cliente aceitaria de novo o que já está valendo.
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const row = await CommunitySiteStorage.setManaged(client, params.id_profile, {
+            template: offer.template,
+            templateData: normalized.data,
+            managed: true,
+          });
+          const decided = await ManagedSiteOfferStorage.decide(
+            client,
+            offer.id_offer,
+            "accepted"
+          );
+          // O UPDATE só pega linha pendente. Não pegando, alguém decidiu esta
+          // oferta entre a leitura e agora (duplo clique, duas abas) — e o
+          // ROLLBACK é o que impede a segunda passagem de gravar de novo.
+          if (!decided) {
+            await client.query("ROLLBACK");
+            return {
+              error: "Esta oferta não está mais disponível. Abra o painel de novo.",
+              statusCode: 409,
+            };
+          }
+          await client.query("COMMIT");
+
+          return {
+            managed: true,
+            template: row.template,
+            is_published: !!row.is_published,
+            slug: await CommunitySiteStorage.getSlug(pool, params.id_profile),
+            current: SiteTemplates.summarizeTemplateData(row.template, row.template_data),
+            offer: null,
+          };
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
+      }
+    );
+  }
+
+  /**
+   * O CLIENTE DEVOLVE O SITE AO CONSTRUTOR (mig 242) — a porta de saída.
+   *
+   * ⚠️ ELA EXISTE PORQUE O ACEITE EXISTE. Quem pode ligar tem que poder
+   * desligar: sem isto, um clique de curiosidade tiraria da pessoa a edição do
+   * próprio site e a única saída seria abrir suporte. É a regra que já vale
+   * para o WhatsApp (mig 224), a conta de jogo (mig 220) e o despublicar —
+   * porta de saída trancada é a única que não pode existir.
+   *
+   * ⚠️ E DEVOLVER NÃO QUEIMA O PRODUTO: a oferta aceita volta para a fila, com
+   * o conteúdo intacto na linha dela. O setManaged limpa o template_data do
+   * site (é o que devolve o construtor), então sem a reabertura o site que nós
+   * escrevemos se perderia num clique — e recuperá-lo seria montar tudo de
+   * novo.
+   *
+   * O documento do construtor nunca foi tocado, então o que reaparece é o que
+   * ele tinha antes. Não despublica, pelo mesmo motivo do release de admin:
+   * tirar do ar o site de alguém como efeito colateral é a surpresa que ninguém
+   * relaciona à causa.
+   */
+  static async releaseManaged(user, params) {
+    return runWithLogs(
+      log,
+      "releaseManaged",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
+      async () => {
+        const loaded = await loadAsLeader(user, params.id_profile);
+        if (loaded.error) return loaded;
+
+        const existing = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
+        if (!isManaged(existing)) {
+          return { error: "Este site já é editado por você.", statusCode: 409 };
+        }
+
+        const accepted = await ManagedSiteOfferStorage.getAccepted(pool, params.id_profile);
+
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await CommunitySiteStorage.setManaged(client, params.id_profile, {
+            template: null,
+            templateData: {},
+            managed: false,
+          });
+          // Só quando houve oferta: site que NÓS ligamos direto (o apply do
+          // painel) não tem linha para reabrir, e devolvê-lo é decisão nossa de
+          // qualquer forma.
+          if (accepted) await ManagedSiteOfferStorage.reopen(client, accepted.id_offer);
+          await client.query("COMMIT");
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
+
+        return { managed: false, template: null, released: true };
+      }
+    );
+  }
+
   static async getPublicBySlug(params) {
     return runWithLogs(
       log,

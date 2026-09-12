@@ -185,6 +185,34 @@ router.post(
   asyncHandler(CommunitySiteController.setPublished)
 );
 
+// ─── Site pronto: a oferta (mig 242) ────────────────────────────────────────
+// O lado do CLIENTE. Ele lê o que está reservado para ele, aceita a troca e
+// pode devolver o site ao construtor.
+//
+// ⚠️ SEM `requireFeature("comunidade_site")`, nas três — e é a mesma decisão
+// das rotas de `/admin/managed-sites`. Aquela flag é o kill-switch do
+// CONSTRUTOR; desligá-la um dia para segurar um problema lá não pode impedir a
+// entrega (nem a devolução) de um site que foi vendido.
+//
+// ⚠️ E `release` fica fora dela por um motivo a mais: é porta de SAÍDA. Quem
+// aceitou tem que conseguir voltar atrás mesmo com o construtor desligado —
+// senão a única saída de quem se arrependeu vira o suporte.
+router.get(
+  "/:id_profile/site/offer",
+  authMiddleware,
+  asyncHandler(CommunitySiteController.getOffer)
+);
+router.post(
+  "/:id_profile/site/offer/accept",
+  authMiddleware,
+  asyncHandler(CommunitySiteController.acceptOffer)
+);
+router.post(
+  "/:id_profile/site/release",
+  authMiddleware,
+  asyncHandler(CommunitySiteController.releaseManaged)
+);
+
 // ─── Domínio próprio (mig 214) ──────────────────────────────────────────────
 // Só o líder (guard no service). `verify` confere o TXT no DNS e pede o
 // certificado; `refresh` só reconsulta o provedor — são botões diferentes
