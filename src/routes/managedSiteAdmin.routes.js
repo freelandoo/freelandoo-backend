@@ -27,6 +27,12 @@ router.get("/templates", ...admin, asyncHandler(ManagedSiteController.listTempla
 
 router.get("/", ...admin, asyncHandler(ManagedSiteController.list));
 router.get("/:id_profile", ...admin, asyncHandler(ManagedSiteController.get));
+// Converte o site do construtor neste tema e DEVOLVE, sem gravar.
+router.get(
+  "/:id_profile/from-canvas",
+  ...admin,
+  asyncHandler(ManagedSiteController.draftFromCanvas)
+);
 router.put("/:id_profile", ...admin, asyncHandler(ManagedSiteController.apply));
 router.post("/:id_profile/publish", ...admin, asyncHandler(ManagedSiteController.setPublished));
 router.delete("/:id_profile", ...admin, asyncHandler(ManagedSiteController.release));

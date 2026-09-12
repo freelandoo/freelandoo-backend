@@ -21,6 +21,11 @@ class ManagedSiteController {
     return sendServiceResult(res, result);
   }
 
+  static async draftFromCanvas(req, res) {
+    const result = await ManagedSiteService.draftFromCanvas(req.params, req.query || {});
+    return sendServiceResult(res, result);
+  }
+
   static async apply(req, res) {
     const result = await ManagedSiteService.apply(req.params, req.body || {});
     return sendServiceResult(res, result);

@@ -23,6 +23,7 @@ const CommunitySiteStorage = require("../storages/CommunitySiteStorage");
 const CommunitySiteService = require("./CommunitySiteService");
 const CommunitySite = require("../utils/communitySite");
 const SiteTemplates = require("../utils/siteTemplates");
+const CanvasToTemplate = require("../utils/canvasToTemplate");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ManagedSiteService");
@@ -95,6 +96,50 @@ class ManagedSiteService {
       const slug = await CommunitySiteStorage.getSlug(pool, params.id_profile);
       return project(row, loaded.community, slug);
     });
+  }
+
+  /**
+   * O que o site do CONSTRUTOR vira, neste tema, SEM gravar nada.
+   *
+   * ⚠️ CONVERTER E GRAVAR SÃO DOIS GESTOS de propósito. A conversão é com
+   * perda (ela lê a intenção de blocos de texto livre) e devolve `warnings`
+   * dizendo tudo que deduziu. Aplicar no mesmo gesto tiraria o único momento em
+   * que um erro de leitura ainda é barato — depois de gravado, ele já é o site
+   * que o cliente vê.
+   */
+  static async draftFromCanvas(params, query) {
+    return runWithLogs(
+      log,
+      "draftFromCanvas",
+      () => ({ id_profile: params?.id_profile, template: query?.template }),
+      async () => {
+        const loaded = await loadCommunity(params.id_profile);
+        if (loaded.error) return loaded;
+
+        const template = String(query?.template || "");
+        if (!SiteTemplates.isTemplate(template)) {
+          return { error: "Tema desconhecido.", statusCode: 400 };
+        }
+
+        const row = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
+        if (!row) return { error: "Este negócio ainda não tem site.", statusCode: 404 };
+
+        const { data, warnings } = CanvasToTemplate.deriveTemplateData(
+          template,
+          row,
+          loaded.community
+        );
+
+        // Passa pelo normalizador ANTES de sair: o painel tem que ver o que
+        // seria GRAVADO, não o que a conversão produziu. São coisas diferentes
+        // — o normalizador descarta slug repetido, link perigoso e texto acima
+        // do teto, e uma prévia do documento cru mentiria sobre o resultado.
+        const normalized = SiteTemplates.normalizeTemplateData(template, data);
+        if (normalized.error) return { error: normalized.error, statusCode: 400 };
+
+        return { template, data: normalized.data, warnings };
+      }
+    );
   }
 
   /**
