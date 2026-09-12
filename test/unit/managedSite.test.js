@@ -54,9 +54,13 @@ test("os temas do backend são os que o front sabe desenhar", () => {
 test("link perigoso vira vazio — javascript: e data: num href são XSS no clique", () => {
   const { data } = normalizeTemplateData("oficina-local", {
     googleProfileUrl: "javascript:alert(1)",
+    business: { heroPhoto: "javascript:alert(2)" },
     services: [servico({ photo: "data:text/html;base64,PHNjcmlwdD4=" })],
   });
   assert.strictEqual(data.googleProfileUrl, "");
+  // O retrato do banner termina num `src` renderizado no domínio do cliente:
+  // ele passa pela MESMA régua das outras URLs, não por uma própria.
+  assert.strictEqual(data.business.heroPhoto, "");
   assert.strictEqual(data.services[0].photo, "");
 });
 
@@ -126,6 +130,19 @@ test("endereço repetido: fica o primeiro — duas páginas na mesma URL seriam 
   assert.strictEqual(data.services[0].label, "Primeiro");
   assert.strictEqual(data.cities.length, 1);
   assert.strictEqual(data.cities[0].name, "Aguaí");
+});
+
+test("e o dedupe é GLOBAL: serviço e cidade dividem o namespace de /pagina/<slug>", () => {
+  // `/pagina` é o único prefixo que o proxy do front reescreve nos três
+  // endereços sem consultar nada, então as duas listas caem na mesma URL.
+  // Deduplicando em separado, as duas passariam e quem abre o endereço seria
+  // decidido pela ordem de busca do front — sem erro, e diferente do esperado.
+  const { data } = normalizeTemplateData("oficina-local", {
+    services: [servico({ slug: "instalacao", label: "Instalação" })],
+    cities: [{ slug: "instalacao", name: "Cidade que colide" }],
+  });
+  assert.strictEqual(data.services.length, 1);
+  assert.strictEqual(data.cities.length, 0, "a cidade colidente sai; o serviço vem primeiro");
 });
 
 test("depoimento sem fonte é descartado — elogio sem origem seria mentira sobre alguém", () => {

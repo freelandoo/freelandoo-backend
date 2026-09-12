@@ -190,6 +190,12 @@ function oficinaBusiness(raw) {
     subTagline: text(b.subTagline, LIMITS.LINE),
     owner: text(b.owner, LIMITS.SHORT),
 
+    // O retrato do banner. Passa por `link()` como qualquer outra URL do
+    // documento: ela termina num `src`, e um `javascript:` ali seria execução
+    // no domínio do cliente. Vazio degrada para o banner tipográfico — a home
+    // continua de pé, que é o que separa "sem foto" de "quebrado".
+    heroPhoto: link(b.heroPhoto),
+
     // O telefone tem três formas porque tem três empregos: a que se lê, a do
     // `tel:` e a do WhatsApp. Derivar uma da outra parece economia e erra no
     // primeiro número com DDD de duas casas ou nono dígito ausente.
@@ -311,15 +317,25 @@ function normalizeOficinaLocal(raw) {
   // Dois endereços iguais dariam duas páginas disputando a mesma URL, e quem
   // ganha seria a ordem do array — invisível para quem escreveu. A primeira
   // fica, mesma regra das sub-páginas do construtor (mig 238).
-  const dedupe = (arr) => {
-    const seen = new Set();
-    return arr.filter((it) => (seen.has(it.slug) ? false : seen.add(it.slug)));
-  };
+  //
+  // ⚠️ E O DEDUPE É GLOBAL, não uma lista de cada vez: serviços e cidades
+  // dividem UM namespace de endereços (`/pagina/conserto` e `/pagina/aguai` são
+  // vizinhos), porque `/pagina` é o único prefixo que o proxy do front sabe
+  // reescrever nos três endereços sem consultar nada. Deduplicando em separado,
+  // uma cidade chamada "instalacao" e um serviço de mesmo nome passariam os
+  // dois, e qual das duas páginas o endereço abre seria decidido pela ordem de
+  // busca do front — sem erro, e diferente do que quem escreveu esperava.
+  //
+  // Serviço ganha por vir primeiro, e o front procura na MESMA ordem.
+  const seen = new Set();
+  const dedupe = (arr) => arr.filter((it) => (seen.has(it.slug) ? false : seen.add(it.slug)));
+  const uniqueServices = dedupe(services);
+  const uniqueCities = dedupe(cities);
 
   return {
     business: oficinaBusiness(d.business),
-    services: dedupe(services),
-    cities: dedupe(cities),
+    services: uniqueServices,
+    cities: uniqueCities,
     reviews: list(d.reviews, oficinaReview, 24),
     faq: list(d.faq, faqItem),
     googleProfileUrl: link(d.googleProfileUrl),
