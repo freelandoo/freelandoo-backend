@@ -65,44 +65,74 @@ function reachableLocalModules(entry) {
   return seen;
 }
 
-test("a ingestão do WhatsApp não alcança nenhum módulo de envio", () => {
-  const entry = path.join(SRC, "services", "WhatsappIngestService.js");
+/** Os lugares do backend que sabem ENVIAR mensagem de WhatsApp. */
+const SENDERS = [
+  path.join(SRC, "integrations", "evolution", "index.js"),
+  path.join(SRC, "integrations", "whatsappProvider", "index.js"),
+  path.join(SRC, "integrations", "whatsappProvider", "evolution.js"),
+  path.join(SRC, "integrations", "whatsappProvider", "cloud.js"),
+  // O Service é quem envia; alcançá-lo daria ao Ingest um caminho indireto.
+  path.join(SRC, "services", "WhatsappService.js"),
+];
+
+// ⚠️ A LISTA É POR PROVEDOR, e cada ingestão nova entra aqui. O invariante vale
+// para o canal, não para um arquivo: uma segunda porta de entrada que pudesse
+// enviar reabriria exatamente o caminho que a primeira fecha — e o teste da
+// primeira continuaria passando, verde, enquanto a garantia já não existe.
+//
+// Na Cloud API isso pesa MAIS: o número está no nosso Business Portfolio, então
+// um disparo automático nosso seria, perante a Meta, a plataforma operando
+// ferramenta de automação — com o portfólio inteiro, e portanto o número de
+// todos os clientes, no mesmo risco.
+const INGESTS = [
+  path.join(SRC, "services", "WhatsappIngestService.js"),
+  path.join(SRC, "services", "WhatsappCloudIngestService.js"),
+];
+
+for (const entry of INGESTS) {
+  const name = path.basename(entry, ".js");
+
+  test(`${name} não alcança nenhum módulo de envio`, () => {
+    const reachable = reachableLocalModules(entry);
+
+    for (const sender of SENDERS) {
+      assert.ok(
+        !reachable.has(sender),
+        `${name} alcança ${path.relative(SRC, sender)} — isso abre um ` +
+          `caminho de código de "mensagem que chega" para "mensagem que sai". ` +
+          `Se a ingestão precisa mesmo falar com o provedor, é uma decisão a tomar ` +
+          `de olhos abertos, não um require acrescentado de passagem.`
+      );
+    }
+  });
+}
+
+for (const parser of ["whatsappPayload", "whatsappCloudPayload"]) {
+  test(`o parser ${parser} também não alcança envio`, () => {
+    // O parser é a primeira coisa que toca o corpo vindo de fora. Se ele puder
+    // enviar, o isolamento do Ingest não vale nada.
+    const reachable = reachableLocalModules(path.join(SRC, "utils", `${parser}.js`));
+
+    for (const sender of SENDERS) {
+      assert.ok(
+        !reachable.has(sender),
+        `${parser} alcança ${path.relative(SRC, sender)}`
+      );
+    }
+  });
+}
+
+test("o módulo de assinatura do webhook é puro — só criptografia", () => {
+  // Ele decide se um corpo vindo da internet é aceito. Alcançar banco, rede ou
+  // provedor daqui transformaria a checagem de autenticidade numa superfície
+  // com efeitos colaterais, executada ANTES de qualquer autenticação.
+  const entry = path.join(SRC, "utils", "whatsappCloudSignature.js");
   const reachable = reachableLocalModules(entry);
 
-  // Os dois lugares do backend que sabem ENVIAR mensagem de WhatsApp.
-  const senders = [
-    path.join(SRC, "integrations", "evolution", "index.js"),
-    path.join(SRC, "integrations", "whatsappProvider", "index.js"),
-    path.join(SRC, "integrations", "whatsappProvider", "evolution.js"),
-    path.join(SRC, "integrations", "whatsappProvider", "cloud.js"),
-    // O Service é quem envia; alcançá-lo daria ao Ingest um caminho indireto.
-    path.join(SRC, "services", "WhatsappService.js"),
-  ];
-
-  for (const sender of senders) {
-    assert.ok(
-      !reachable.has(sender),
-      `WhatsappIngestService alcança ${path.relative(SRC, sender)} — isso abre um ` +
-        `caminho de código de "mensagem que chega" para "mensagem que sai". ` +
-        `Se a ingestão precisa mesmo falar com o provedor, é uma decisão a tomar ` +
-        `de olhos abertos, não um require acrescentado de passagem.`
-    );
-  }
-});
-
-test("o parser de payload também não alcança envio", () => {
-  // O parser é a primeira coisa que toca o corpo vindo de fora. Se ele puder
-  // enviar, o isolamento do Ingest não vale nada.
-  const entry = path.join(SRC, "utils", "whatsappPayload.js");
-  const reachable = reachableLocalModules(entry);
-
-  assert.ok(
-    !reachable.has(path.join(SRC, "integrations", "evolution", "index.js")),
-    "whatsappPayload alcança o cliente da Evolution"
-  );
-  assert.ok(
-    !reachable.has(path.join(SRC, "integrations", "whatsappProvider", "index.js")),
-    "whatsappPayload alcança o registry de provedores"
+  assert.deepStrictEqual(
+    [...reachable],
+    [entry],
+    "whatsappCloudSignature deixou de ser autocontido"
   );
 });
 

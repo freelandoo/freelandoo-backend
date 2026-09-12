@@ -52,6 +52,31 @@ class WhatsappStorage {
   }
 
   /**
+   * Busca a instância pelo par (provedor, referência) — a chave REAL desde a
+   * mig 240.
+   *
+   * ⚠️ Não é o mesmo que `getInstanceByName`, e a diferença é de segurança.
+   * Aquele consulta só `evolution_instance`, herdado de quando havia um
+   * provedor só. Os dois espaços de id são diferentes — um nome derivado do
+   * id_user × um `phone_number_id` numérico da Meta — e uma colisão entre eles
+   * seria resolvida para a linha errada: a conversa de um cliente entregue na
+   * caixa de outro, que é a falha que a mig 223 inteira existe para impedir.
+   *
+   * Todo webhook resolve o dono POR AQUI, passando o provedor de quem o chamou.
+   */
+  static async getInstanceByRef(conn, provider, evolution_instance) {
+    const r = await conn.query(
+      `SELECT id_instance, id_user, provider, evolution_instance, waba_id,
+              status, connected_number
+         FROM public.tb_whatsapp_instance
+        WHERE provider = $1 AND evolution_instance = $2
+        LIMIT 1`,
+      [provider, evolution_instance]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
    * Cria ou reaproveita a linha da pessoa. Idempotente pelo mesmo motivo que
    * `createInstance` da Evolution é: a tela chama isto toda vez que alguém pede
    * um QR, inclusive na reconexão.
@@ -218,16 +243,38 @@ class WhatsappStorage {
    * para o que CHEGA — o eco do que a própria pessoa mandou pelo celular dela
    * não pode acender um "não lida" contra ela mesma.
    */
-  static async touchConversation(conn, id_conversation, { preview, sent_at, inc_unread }) {
+  static async touchConversation(
+    conn,
+    id_conversation,
+    { preview, sent_at, inc_unread, service_window_expires_at = null }
+  ) {
     await conn.query(
       `UPDATE public.tb_whatsapp_conversation
           SET last_message_preview = LEFT($2, 300),
               -- GREATEST: o webhook pode reentregar fora de ordem, e uma
               -- mensagem antiga não pode puxar a conversa para trás na lista.
               last_message_at = GREATEST(last_message_at, $3::timestamptz),
-              unread_count = unread_count + CASE WHEN $4::boolean THEN 1 ELSE 0 END
+              unread_count = unread_count + CASE WHEN $4::boolean THEN 1 ELSE 0 END,
+              -- A janela de 24h da Cloud API (mig 240). GREATEST resolve as
+              -- DUAS coisas de uma vez, e por uma propriedade do Postgres que
+              -- vale a pena saber: ele IGNORA NULL na lista.
+              --
+              --   • Evolution passa NULL e a coluna fica intocada — lá a janela
+              --     não existe, e zerá-la faria a tela recusar um envio que o
+              --     provedor aceitaria;
+              --   • reentrega fora de ordem não ENCURTA a janela: uma mensagem
+              --     antiga reentregue traria um vencimento menor, e sem o
+              --     GREATEST ela fecharia uma janela que ainda está de pé.
+              service_window_expires_at =
+                GREATEST(service_window_expires_at, $5::timestamptz)
         WHERE id_conversation = $1`,
-      [id_conversation, String(preview || ""), sent_at, !!inc_unread]
+      [
+        id_conversation,
+        String(preview || ""),
+        sent_at,
+        !!inc_unread,
+        service_window_expires_at,
+      ]
     );
   }
 
