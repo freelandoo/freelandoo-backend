@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const PostReportStorage = require("../storages/PostReportStorage");
 const AffiliatePayoutService = require("./AffiliatePayoutService");
+const ManagedSiteRequestStorage = require("../storages/ManagedSiteRequestStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PostReportService");
@@ -169,6 +170,19 @@ class PostReportService {
           log.warn("alertSummary.affiliates_failed", { message: err?.message });
         }
 
+        // ⚠️ OS PEDIDOS DE SITE (mig 243) ENTRAM AQUI, e não num modal próprio:
+        // este já É o modal de pendências do admin, uma vez por login. Um
+        // segundo modal global brigaria com ele pela tela, e as duas filas
+        // seriam duas portas para a mesma pergunta ("o que falta eu resolver?")
+        // — que é exatamente como uma delas para de acompanhar a outra.
+        let siteRequests = [];
+        try {
+          siteRequests = await ManagedSiteRequestStorage.listPending(pool, 20);
+        } catch (err) {
+          // Nunca derruba o alerta dos posts (mesma disciplina dos afiliados).
+          log.warn("alertSummary.site_requests_failed", { message: err?.message });
+        }
+
         const urgentTotalCents = urgentAffiliates.reduce((s, a) => s + a.urgent_cents, 0);
 
         return {
@@ -177,7 +191,10 @@ class PostReportService {
           urgent_affiliates: urgentAffiliates,
           urgent_affiliates_count: urgentAffiliates.length,
           urgent_total_cents: urgentTotalCents,
-          has_alerts: reportedPosts.length > 0 || urgentAffiliates.length > 0,
+          site_requests: siteRequests,
+          site_requests_count: siteRequests.length,
+          has_alerts:
+            reportedPosts.length > 0 || urgentAffiliates.length > 0 || siteRequests.length > 0,
         };
       }
     );
