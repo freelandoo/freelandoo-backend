@@ -10,6 +10,19 @@ class BookingStorage {
     // Quem valida que a origem é verdadeira é o service — a coluna é afirmada
     // pelo cliente, e é ela que decide para quem o aviso do agendamento vai.
     id_origin_community = null,
+    // ⚠️ OS DOIS ESTADOS DEIXARAM DE SER LITERAIS NO SQL (mig 244).
+    // Eram `'pending_payment','pending'` cravados no INSERT, porque existia um
+    // caminho só: toda reserva nascia esperando um pagamento. Com o "pagar no
+    // balcão" existe reserva que nasce VALENDO e sem cobrança nenhuma — e ela
+    // não pode nascer `pending`, senão o sweeper de pendentes cancela sozinho o
+    // horário de quem escolheu pagar na cadeira.
+    // Os defaults são os literais de antes: quem não passa nada entra igual.
+    status = "pending_payment",
+    payment_status = "pending",
+    // Tarifa do gateway descontada do profissional. `fallback` = estimativa da
+    // criação, `gateway` = apurado de verdade, `none` = não há cobrança.
+    processor_fee_cents = 0,
+    processor_fee_source = "fallback",
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_bookings
@@ -19,8 +32,8 @@ class BookingStorage {
          deposit_amount, platform_fee_amount, professional_amount,
          stripe_checkout_session_id, status, payment_status,
          id_profile_service, service_name_snapshot, service_price_amount,
-         id_origin_community)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending_payment','pending',$14,$15,$16,$17)
+         id_origin_community, processor_fee_cents, processor_fee_source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$18,$19,$14,$15,$16,$17,$20,$21)
        RETURNING *`,
       [id_profile, profile_owner_user_id, id_client_user,
        client_name, client_email, client_whatsapp,
@@ -28,7 +41,9 @@ class BookingStorage {
        deposit_amount, platform_fee_amount, professional_amount,
        stripe_checkout_session_id,
        id_profile_service, service_name_snapshot, service_price_amount,
-       id_origin_community]
+       id_origin_community,
+       status, payment_status,
+       processor_fee_cents, processor_fee_source]
     );
     return r.rows[0];
   }
@@ -62,6 +77,40 @@ class BookingStorage {
          AND status = 'pending_payment'
        RETURNING *`,
       [sessionId, paymentIntentId]
+    );
+    return r.rows[0] || null;
+  }
+
+  /**
+   * Troca a ESTIMATIVA da tarifa do gateway pelo valor REAL e reajusta, na
+   * mesma instrução, o que o profissional recebe (mig 244).
+   *
+   * ⚠️ O AJUSTE É POR DELTA (`+ estimativa − real`), e não um recálculo da
+   * fórmula inteira. Recalcular aqui obrigaria esta camada a conhecer de novo
+   * a taxa da plataforma E a comissão do afiliado — uma segunda cópia da conta
+   * do `utils/bookingFee`, que divergiria da primeira na próxima regra nova.
+   * O delta preserva qualquer que tenha sido a fórmula da criação.
+   *
+   * Num UPDATE as colunas do lado direito valem o valor ANTIGO, então
+   * `professional_amount + processor_fee_cents` é a soma de antes da troca.
+   *
+   * ⚠️ CHAMAR ANTES DO REPASSE. Depois de `BookingPayoutService` a linha do
+   * payout já foi criada com o líquido velho, e corrigir a booking não corrige
+   * mais o dinheiro.
+   *
+   * Idempotência vem de quem chama: `confirmBySessionId` só transita
+   * `pending_payment`, então a reentrega do webhook não chega aqui.
+   */
+  static async applyProcessorFee(conn, id, feeCents) {
+    const r = await conn.query(
+      `UPDATE public.tb_profile_bookings
+          SET processor_fee_cents  = $2::int,
+              processor_fee_source = 'gateway',
+              professional_amount  = GREATEST(0, professional_amount + processor_fee_cents - $2::int),
+              updated_at           = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [id, feeCents]
     );
     return r.rows[0] || null;
   }

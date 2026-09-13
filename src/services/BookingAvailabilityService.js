@@ -331,6 +331,11 @@ class BookingAvailabilityService {
           serviceName: b.service_name_snapshot,
           clientName: b.client_name,
           bookingId: b.id,
+          // ⚠️ SÓ NA VISÃO DO DONO, e ele PRECISA deste campo: no modo balcão
+          // (mig 244) a reserva nasce confirmada sem dinheiro nenhum ter
+          // entrado — quem cobra é ele, na cadeira. Sem isto a agenda mostra
+          // "confirmado" e ele atende achando que já recebeu.
+          paymentStatus: b.payment_status || null,
         } : undefined,
       };
     });
