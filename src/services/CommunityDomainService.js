@@ -42,8 +42,72 @@ const REASON = {
   platform: "Este domínio pertence à plataforma.",
 };
 
+/**
+ * A lista completa do que a pessoa precisa colar no painel do registrador.
+ *
+ * ⚠️ ELA É MONTADA AQUI, E NÃO NA TELA. Os três pedaços da resposta vêm de
+ * lugares diferentes — o token é nosso, o IP e o CNAME são da Vercel, e o
+ * nome relativo depende de saber onde a zona termina — e é justamente por
+ * isso que montá-la no front sairia diferente da que o backend consegue
+ * provar. Uma lista só, num lugar só.
+ *
+ * `name` é RELATIVO à zona porque é o que o campo "Nome/Host" dos painéis
+ * espera (Registro.br incluso); `host` vai junto, completo, para os poucos
+ * painéis que pedem o FQDN.
+ */
+function buildRecords(row, dns) {
+  const zone = Domain.apexOf(row.domain);
+  const records = [
+    {
+      purpose: "verify",
+      type: "TXT",
+      name: Domain.relativeName(Domain.verificationHost(row.domain), zone),
+      host: Domain.verificationHost(row.domain),
+      value: Domain.verificationValue(row.verification_token),
+    },
+  ];
+
+  // Sem provedor automatizado não há valor de rota para prometer — e um valor
+  // errado aqui manda o domínio do cliente para o servidor de outra pessoa.
+  if (!dns) return records;
+
+  if (Domain.isApexDomain(row.domain)) {
+    // Raiz não aceita CNAME (conflita com o SOA/NS da própria zona): só A.
+    for (const ip of dns.a || []) {
+      records.push({
+        purpose: "route",
+        type: "A",
+        name: "@",
+        host: row.domain,
+        value: ip,
+      });
+    }
+    // O `www` não é exigência nossa: é o que a pessoa digita por reflexo, e
+    // sem ele o site "não abre" para metade de quem recebe o endereço.
+    if (dns.cname) {
+      records.push({
+        purpose: "optional",
+        type: "CNAME",
+        name: "www",
+        host: `www.${row.domain}`,
+        value: dns.cname,
+      });
+    }
+  } else if (dns.cname) {
+    records.push({
+      purpose: "route",
+      type: "CNAME",
+      name: Domain.relativeName(row.domain, zone),
+      host: row.domain,
+      value: dns.cname,
+    });
+  }
+
+  return records;
+}
+
 /** Nunca devolve o token de outra pessoa nem o estado cru do provedor. */
-function toPublic(row) {
+function toPublic(row, dns) {
   return {
     id_domain: Number(row.id_domain),
     domain: row.domain,
@@ -60,6 +124,9 @@ function toPublic(row) {
       type: "TXT",
       value: Domain.verificationValue(row.verification_token),
     },
+    // A lista pronta, na ordem de fazer. `verification` continua acima por
+    // compatibilidade: front antigo em cache ainda lê aquele formato.
+    records: buildRecords(row, dns),
   };
 }
 
@@ -107,8 +174,17 @@ class CommunityDomainService {
 
         const rows = await CommunityDomainStorage.listByProfile(pool, params.id_profile);
         const slug = await CommunitySiteStorage.getSlug(pool, params.id_profile);
+
+        // Os valores de rota são PERGUNTADOS ao provedor, nunca escritos aqui.
+        // Falhar não pode derrubar a tela: sem eles o painel mostra só o TXT
+        // de posse, que é exatamente o que ele mostrava antes desta mudança.
+        const provider = getProvider();
+        const dnsList = await Promise.all(
+          rows.map((r) => provider.dnsRecords(r.domain).catch(() => null))
+        );
+
         return {
-          domains: rows.map(toPublic),
+          domains: rows.map((r, i) => toPublic(r, dnsList[i])),
           slug,
           provider: resolveProviderName(),
           max_domains: MAX_DOMAINS,
@@ -296,3 +372,7 @@ class CommunityDomainService {
 
 module.exports = CommunityDomainService;
 module.exports.MAX_DOMAINS = MAX_DOMAINS;
+// Exportado para teste: a montagem da lista de DNS é a parte desta feature
+// que quebra em silêncio (nome relativo errado cria um registro que existe e
+// não serve para nada).
+module.exports.buildRecords = buildRecords;

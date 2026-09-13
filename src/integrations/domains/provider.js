@@ -58,6 +58,10 @@ const manualProvider = {
   async checkDomain(domain) {
     return { ok: true, state: { mode: "manual" }, active: false, domain };
   },
+  // Sem credencial não há a quem perguntar: a tela mostra só o TXT de posse.
+  async dnsRecords() {
+    return null;
+  },
   async removeDomain(domain) {
     log.info("manual.remove", { domain });
     return { ok: true };
@@ -85,6 +89,65 @@ async function vercelFetch(path, init = {}) {
     body = { raw: text };
   }
   return { status: res.status, ok: res.ok, body };
+}
+
+/**
+ * Cache dos valores recomendados pela Vercel.
+ *
+ * Eles são da CONTA, não de cada domínio: o IP do ápice e o CNAME
+ * (`<hash>.vercel-dns-017.com`) são os mesmos para todos os domínios do
+ * projeto. Sem cache, cada abertura do painel de endereço custaria uma ida à
+ * API da Vercel para redesenhar três linhas que não mudam.
+ */
+let recommendedCache = { at: 0, value: null };
+const RECOMMENDED_TTL_MS = 60 * 60 * 1000;
+
+/** Tira o ponto final do FQDN — painel de DNS quase sempre quer sem. */
+function trimDot(value) {
+  return String(value || "").replace(/\.+$/, "");
+}
+
+/**
+ * O primeiro registro de cada família, em ordem de preferência da própria
+ * Vercel (`rank` 1 é o que ela recomenda hoje; os demais são legado que ela
+ * mantém aceitando). Pegar o rank mais baixo é o que evita cravarmos um IP
+ * antigo no código e mandarmos o cliente apontar para o lugar errado.
+ */
+function pickRecommended(config) {
+  const byRank = (list) =>
+    (Array.isArray(list) ? [...list] : []).sort((a, b) => (a?.rank ?? 99) - (b?.rank ?? 99))[0];
+
+  const ipv4 = byRank(config?.recommendedIPv4);
+  const cname = byRank(config?.recommendedCNAME);
+
+  const a = (ipv4?.value || []).map(trimDot).filter(Boolean);
+  return {
+    a,
+    cname: trimDot(cname?.value) || null,
+  };
+}
+
+async function fetchDomainConfig(domain) {
+  const r = await vercelFetch(`/v6/domains/${encodeURIComponent(domain)}/config`);
+  return r.ok ? r.body : null;
+}
+
+/**
+ * Um domínio do projeto que já esteja configurado, para servir de referência.
+ *
+ * Existe porque `/config` responde 404 para domínio que a conta ainda não
+ * conhece — e é exatamente esse o caso do domínio recém-reivindicado, que é
+ * quando a pessoa mais precisa saber o que colar no registrador. Como os
+ * valores recomendados são da conta, perguntar por um domínio que já está lá
+ * dá a MESMA resposta sem precisar registrar nada antes da hora.
+ */
+async function referenceDomainName() {
+  const projectId = encodeURIComponent(process.env.VERCEL_PROJECT_ID);
+  const r = await vercelFetch(`/v9/projects/${projectId}/domains?limit=50`);
+  if (!r.ok) return null;
+  const list = Array.isArray(r.body?.domains) ? r.body.domains : [];
+  const pick = list.find((d) => d?.verified && d?.name && !d.name.endsWith(".vercel.app"));
+  return pick?.name || null;
 }
 
 const vercelProvider = {
@@ -146,6 +209,44 @@ const vercelProvider = {
       state: { mode: "vercel", verified, checked_at: new Date().toISOString() },
       active: verified,
     };
+  },
+
+
+  /**
+   * Os registros que o dono precisa criar no registrador dele.
+   *
+   * ⚠️ NUNCA devolver isto de uma constante escrita à mão. O IP do ápice e o
+   * CNAME mudaram de valor na Vercel e o CNAME é específico da conta — um
+   * literal no código manda o cliente apontar o domínio para um endereço que
+   * não é o nosso, e o sintoma disso é o site "no ar" servindo a página de
+   * outra pessoa (ou um 404 que ninguém sabe explicar).
+   */
+  async dnsRecords(domain) {
+    const fresh = Date.now() - recommendedCache.at < RECOMMENDED_TTL_MS;
+    if (fresh && recommendedCache.value) {
+      // O `misconfigured` é do domínio e não entra no cache da conta: ele muda
+      // no minuto em que a pessoa cria o registro, que é justamente o que a
+      // tela precisa refletir.
+      const own = await fetchDomainConfig(domain);
+      return { ...recommendedCache.value, misconfigured: own?.misconfigured ?? null };
+    }
+
+    let config = await fetchDomainConfig(domain);
+    const misconfigured = config?.misconfigured ?? null;
+
+    // Domínio ainda desconhecido da conta: os valores recomendados vêm de um
+    // domínio que já está lá.
+    if (!config?.recommendedIPv4 && !config?.recommendedCNAME) {
+      const ref = await referenceDomainName();
+      config = ref ? await fetchDomainConfig(ref) : null;
+    }
+    if (!config) return null;
+
+    const picked = pickRecommended(config);
+    if (!picked.a.length && !picked.cname) return null;
+
+    recommendedCache = { at: Date.now(), value: picked };
+    return { ...picked, misconfigured };
   },
 
   async removeDomain(domain) {

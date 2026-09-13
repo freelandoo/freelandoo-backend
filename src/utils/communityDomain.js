@@ -106,6 +106,68 @@ function verificationValue(token) {
   return `freelandoo-site-verification=${token}`;
 }
 
+
+/**
+ * Sufixos de dois níveis: nestes, o domínio raiz tem TRÊS partes
+ * ("ricardofogoes.com.br"), não duas.
+ *
+ * A lista é curta de propósito. A resposta completa a "onde termina o sufixo
+ * público" é a Public Suffix List, que tem ~9 mil linhas e muda sozinha — e o
+ * preço de errar aqui é pequeno e visível: o painel sugere CNAME onde caberia
+ * um A, a pessoa lê o rótulo e escolhe. Carregar a lista inteira para isso
+ * seria pagar caro por uma decisão que o próprio texto da tela corrige.
+ */
+const TWO_LEVEL_SUFFIXES = new Set([
+  "com.br", "net.br", "org.br", "adv.br", "eng.br", "art.br", "blog.br",
+  "dev.br", "app.br", "eco.br", "ind.br", "inf.br", "rec.br", "srv.br",
+  "tur.br", "tv.br", "vet.br", "med.br", "psi.br", "esp.br",
+  "co.uk", "org.uk", "me.uk", "com.ar", "com.mx", "com.pt", "com.es",
+  "com.co", "com.pe", "com.uy", "com.py", "co.jp", "com.au", "co.nz",
+]);
+
+/**
+ * O domínio é a RAIZ da zona, ou um subdomínio dela?
+ *
+ * Isso decide o registro que a pessoa vai criar, e os dois não são
+ * intercambiáveis: a raiz não aceita CNAME (é regra do DNS, não do provedor —
+ * um CNAME no ápice conflita com os registros SOA e NS que têm de existir
+ * ali), então raiz só pode ser apontada por A.
+ */
+/**
+ * O domínio → a ZONA a que ele pertence ("loja.exemplo.com.br" → "exemplo.com.br").
+ *
+ * É a zona que define contra o que o nome do registro é relativo: quem edita
+ * "exemplo.com.br" no painel do registrador cria "loja", não "loja.exemplo".
+ */
+function apexOf(domain) {
+  const labels = String(domain || "").split(".").filter(Boolean);
+  if (labels.length <= 2) return labels.join(".");
+  const size = TWO_LEVEL_SUFFIXES.has(labels.slice(-2).join(".")) ? 3 : 2;
+  return labels.slice(-size).join(".");
+}
+
+function isApexDomain(domain) {
+  const d = String(domain || "").replace(/\.+$/, "");
+  return !!d && apexOf(d) === d;
+}
+
+/**
+ * Nome ABSOLUTO → nome RELATIVO à zona, que é o que a maioria dos painéis de
+ * DNS espera no campo "Nome/Host".
+ *
+ * Esta é a armadilha nº 1 deste fluxo: colar o nome completo num painel que
+ * espera o relativo cria "_freelandoo.exemplo.com.br.exemplo.com.br", que não
+ * dá erro em lugar nenhum — o registro é criado, só não é o que procuramos.
+ * A raiz vira "@", a convenção que quase todo painel entende.
+ */
+function relativeName(fullHost, domain) {
+  const host = String(fullHost || "").replace(/\.+$/, "");
+  const zone = String(domain || "").replace(/\.+$/, "");
+  if (host === zone) return "@";
+  if (host.endsWith(`.${zone}`)) return host.slice(0, -(zone.length + 1));
+  return host;
+}
+
 module.exports = {
   RESERVED_APEX,
   normalizeDomain,
@@ -113,4 +175,7 @@ module.exports = {
   validateDomain,
   verificationHost,
   verificationValue,
+  isApexDomain,
+  apexOf,
+  relativeName,
 };
