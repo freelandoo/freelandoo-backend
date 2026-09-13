@@ -388,6 +388,83 @@ function summarizeOficinaLocal(data) {
   };
 }
 
+// ─── Tema AUTORAL: o conteúdo mora no CÓDIGO ────────────────────────────────
+
+/**
+ * `ricardo-fogoes` não tem documento.
+ *
+ * ⚠️ O `normalize` DESCARTA TUDO e devolve `{}` de propósito. Este tema foi
+ * desenhado para UM cliente e todo o texto dele — serviços, cidades, FAQ,
+ * telefone — mora no código do próprio tema, no front. Guardar uma cópia aqui
+ * criaria a segunda verdade de sempre: alguém edita o site, esquece do
+ * documento, e o resumo que o cliente lê antes de aceitar passa a descrever
+ * uma página que não existe mais.
+ *
+ * Aceitar `{}` não é falta de validação: é a validação dizendo que não há
+ * campo nenhum a aceitar. Qualquer coisa enviada aqui é jogada fora — o que
+ * também impede alguém de achar que dá para mudar a página por esta porta.
+ */
+function normalizeRicardoFogoes() {
+  return {};
+}
+
+/**
+ * O resumo que enche o modal do cliente.
+ *
+ * ⚠️ NUM TEMA COM CONTEÚDO NO CÓDIGO ELE É FIXO, e declarar mesmo assim é
+ * obrigatório: sem `summarize`, o modal mostra "Seu negócio · 1 página" e a
+ * pessoa aceita a troca no escuro.
+ *
+ * ⚠️ ESTA LISTA É ESPELHO DO `pages.ts` DO TEMA. Ela é o que o cliente vê
+ * antes de decidir; uma página a mais lá e a menos aqui faz o modal prometer
+ * um site diferente do que vai ao ar. As 15 são: a home, o índice de
+ * serviços, 6 serviços, 4 cidades, áreas atendidas, contato e sobre.
+ */
+function summarizeRicardoFogoes() {
+  const services = [
+    ["conserto-de-fogoes-residenciais", "Conserto residencial"],
+    ["conserto-de-fogoes-industriais", "Conserto industrial"],
+    ["reforma-de-fogoes", "Reforma"],
+    ["limpeza-de-fogoes", "Limpeza técnica"],
+    ["manutencao-de-chapas", "Chapas"],
+    ["instalacao-de-fogoes", "Instalação"],
+  ];
+  const cities = [
+    ["aguai", "Aguaí"],
+    ["sao-joao-da-boa-vista", "São João da Boa Vista"],
+    ["casa-branca", "Casa Branca"],
+    ["mogi-guacu", "Mogi Guaçu"],
+  ];
+  const fixed = [
+    ["servicos", "Serviços"],
+    ["areas-atendidas", "Onde atendemos"],
+    ["sobre", "Sobre"],
+    ["contato", "Contato"],
+  ];
+  return {
+    business: "Ricardo Fogões",
+    city: "Aguaí",
+    state: "SP",
+    phone: "(19) 99495-7125",
+    whatsapp: true,
+    hasPhoto: true,
+    counts: {
+      services: services.length,
+      cities: cities.length,
+      faq: 0,
+      reviews: 0,
+      // A home entra na conta: é a página que o endereço abre, e dizer "14
+      // páginas" e listar 15 faria o cliente procurar a que sobra.
+      pages: 1 + fixed.length + services.length + cities.length,
+    },
+    pages: [
+      ...services.map(([slug, label]) => ({ slug, label, kind: "service" })),
+      ...cities.map(([slug, label]) => ({ slug, label, kind: "city" })),
+      ...fixed.map(([slug, label]) => ({ slug, label, kind: "page" })),
+    ],
+  };
+}
+
 // ─── O registro ─────────────────────────────────────────────────────────────
 
 const TEMPLATES = Object.freeze({
@@ -395,6 +472,11 @@ const TEMPLATES = Object.freeze({
     label: "Oficina / prestador local",
     normalize: normalizeOficinaLocal,
     summarize: summarizeOficinaLocal,
+  },
+  "ricardo-fogoes": {
+    label: "Ricardo Fogões — conserto de fogões (autoral)",
+    normalize: normalizeRicardoFogoes,
+    summarize: summarizeRicardoFogoes,
   },
 });
 
