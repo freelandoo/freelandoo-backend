@@ -148,8 +148,12 @@ async function main() {
       idx.rowCount === 1 && /UNIQUE/i.test(idx.rows[0].indexdef) && /WHERE/i.test(idx.rows[0].indexdef)
     );
 
-    const limpo = await client.query(`SELECT COUNT(*)::int AS n FROM public.tb_managed_site_offer`);
-    check("a tabela nasce vazia — a migration não inventa oferta para ninguém", limpo.rows[0].n === 0, `n=${limpo.rows[0].n}`);
+    // ⚠️ AQUI HAVIA UMA CONFERÊNCIA GLOBAL ("a tabela inteira está vazia") e
+    // ela envelheceu no dia em que a feature passou a ser usada de verdade:
+    // produção tem oferta legítima, e o teste acusava a existência do produto
+    // como defeito. O que a migration não pode fazer é inventar oferta para
+    // uma comunidade NOVA — e é isso que se confere abaixo, com o recorte
+    // certo, depois das fixtures.
 
     // ─── 2. Fixtures ──────────────────────────────────────────────────────
     const stamp = Date.now().toString(36);
@@ -223,6 +227,12 @@ async function main() {
       faq: [{ q: "Atende no sábado?", a: "Sim, até as 12h." }],
     };
 
+    const ofertaZero = await client.query(
+      `SELECT COUNT(*)::int AS n FROM public.tb_managed_site_offer WHERE id_profile = ANY($1::uuid[])`,
+      [[idc, idc2]]
+    );
+    check("a migration não inventa oferta para comunidade nenhuma", ofertaZero.rows[0].n === 0, `n=${ofertaZero.rows[0].n}`);
+
     // ─── 3. Nós reservamos o site ─────────────────────────────────────────
     console.log("\n[3] A plataforma reserva o site");
 
@@ -234,7 +244,12 @@ async function main() {
     check("tema desconhecido é recusado ANTES de virar oferta", !!ruim.error, JSON.stringify(ruim).slice(0, 90));
     check(
       "e nada foi gravado",
-      (await client.query(`SELECT COUNT(*)::int AS n FROM public.tb_managed_site_offer`)).rows[0].n === 0
+      (
+        await client.query(
+          `SELECT COUNT(*)::int AS n FROM public.tb_managed_site_offer WHERE id_profile = $1`,
+          [idc]
+        )
+      ).rows[0].n === 0
     );
 
     const r1 = await ManagedSiteService.prepareOffer(
@@ -399,17 +414,51 @@ async function main() {
     check("não há mais oferta esperando", depois.offer === null);
     check("e a tela diz em que tema o site está", depois.current?.business === "Ricardo Fogões 2");
 
-    // ─── 6. A porta de saída ──────────────────────────────────────────────
-    console.log("\n[6] Devolver ao construtor");
+    // ─── 6. O aceite é DEFINITIVO ─────────────────────────────────────────
+    //
+    // ⚠️ ESTA SEÇÃO INVERTEU (2026-09-12). Ela exigia que o LÍDER devolvesse o
+    // site ao construtor; a regra virou outra — quem aceitou, aceitou. O que
+    // continua tendo volta é a NOSSA metade, e é ela que a seção passa a
+    // travar: é a única coisa que conserta erro nosso sem UPDATE na mão.
+    console.log("");
+    console.log("[6] O aceite é definitivo — e a rede de segurança é do admin");
 
     const alheio3 = await CommunitySiteService.releaseManaged({ id_user: forasteiro }, { id_profile: idc });
-    check("quem não é o líder não devolve", alheio3.statusCode === 403);
+    check("⚠️ o forasteiro esbarra no guard de POSSE (403), nunca na recusa", alheio3.statusCode === 403);
 
-    const solto = await CommunitySiteService.releaseManaged({ id_user: leader }, { id_profile: idc2 });
-    check("devolver um site que não é gerenciado é recusado", solto.statusCode === 409);
+    const tentou = await CommunitySiteService.releaseManaged({ id_user: leader }, { id_profile: idc });
+    check("o líder NÃO devolve mais o site ao construtor", tentou.statusCode === 410, JSON.stringify(tentou).slice(0, 120));
+    check("e a recusa aponta uma saída (suporte) em vez de só negar", /suporte/i.test(tentou.error || ""));
 
-    const devolveu = await CommunitySiteService.releaseManaged({ id_user: leader }, { id_profile: idc });
-    check("o líder devolve o site ao construtor", devolveu.released === true, JSON.stringify(devolveu).slice(0, 90));
+    const seguiu = await CommunitySiteStorage.getByProfile(pool, idc);
+    check("o site continua gerenciado depois da tentativa", seguiu.managed_by_platform === true);
+    check("e continua no tema que ele aceitou", seguiu.template === "oficina-local");
+
+    const aindaTravado = await CommunitySiteService.save({ id_user: leader }, { id_profile: idc }, {
+      config: { siteName: "deixa eu editar", sections: [] },
+    });
+    check("e ele segue sem conseguir editar", !!aindaTravado.error, JSON.stringify(aindaTravado).slice(0, 90));
+
+    // ⚠️ TROCAR O TEMA DE UM SITE JÁ ENTREGUE — sem oferta, sem novo aceite.
+    // É isto que substitui o vaivém: o site é nosso para manter, e manter
+    // inclui corrigir o tema errado que NÓS apontamos. Sem esta porta, o
+    // conserto seria devolver → reofertar → pedir que o cliente aceite de
+    // novo — ou seja, pedir a ele que resolva um erro que não foi dele.
+    const trocou = await ManagedSiteService.apply(
+      { id_profile: idc },
+      { template: "ricardo-fogoes", data: {} }
+    );
+    check("o admin troca o tema de um site já entregue", trocou.template === "ricardo-fogoes", JSON.stringify(trocou).slice(0, 90));
+
+    const posTroca = await CommunitySiteStorage.getByProfile(pool, idc);
+    check("a troca não devolve nada ao cliente", posTroca.managed_by_platform === true);
+
+    const semPergunta = await CommunitySiteService.getOffer({ id_user: leader }, { id_profile: idc });
+    check("⚠️ e NÃO nasce oferta nova — o cliente não é perguntado outra vez", semPergunta.offer === null, JSON.stringify(semPergunta.offer).slice(0, 90));
+
+    // A metade que continua aberta é a nossa.
+    const devolveuAdmin = await ManagedSiteService.release({ id_profile: idc });
+    check("o ADMIN ainda devolve ao construtor", devolveuAdmin.managed === false, JSON.stringify(devolveuAdmin).slice(0, 90));
 
     const voltou = await CommunitySiteStorage.getByProfile(pool, idc);
     check("o site volta a ser editável por ele", voltou.managed_by_platform === false);
@@ -421,28 +470,21 @@ async function main() {
     });
     check("e ele volta a salvar de verdade", !salvouDeNovo.error, JSON.stringify(salvouDeNovo).slice(0, 90));
 
-    // ⚠️ O produto não foi queimado: a oferta voltou para a fila, inteira.
-    const reaberta = await CommunitySiteService.getOffer({ id_user: leader }, { id_profile: idc });
-    check("⚠️ a oferta volta a ESPERAR depois da devolução", reaberta.offer?.id_offer === r2.offer.id_offer, JSON.stringify(reaberta.offer).slice(0, 90));
-    check("com o conteúdo intacto", reaberta.offer?.summary?.business === "Ricardo Fogões 2");
-
-    const aceitaDeNovo = await CommunitySiteService.acceptOffer(
-      { id_user: leader },
-      { id_profile: idc },
-      { id_offer: r2.offer.id_offer }
-    );
-    check("e ele consegue aceitar outra vez", aceitaDeNovo.managed === true);
-    check(
-      "com o MESMO texto de antes",
-      (await CommunitySiteStorage.getByProfile(pool, idc)).template_data?.business?.name === "Ricardo Fogões 2"
-    );
 
     // ─── 7. Retirar o convite ─────────────────────────────────────────────
     console.log("\n[7] Retirar a oferta");
 
-    await CommunitySiteService.releaseManaged({ id_user: leader }, { id_profile: idc });
+    // ⚠️ Uma oferta NOVA, montada aqui. Antes ela vinha de graça: devolver
+    // reabria a oferta aceita. Essa porta não existe mais para o cliente, e a
+    // do admin não reabre nada — o teste tem que criar o que vai retirar.
+    const r3 = await ManagedSiteService.prepareOffer(
+      { id_user: adminUser },
+      { id_profile: idc },
+      { template: "oficina-local", data: DOC }
+    );
+    check("há uma oferta nova esperando", !r3.error, JSON.stringify(r3).slice(0, 90));
     const pend = await OfferStorage.getPending(pool, idc);
-    check("a oferta está esperando de novo", !!pend);
+    check("a oferta está esperando", !!pend);
 
     const retirou = await ManagedSiteService.withdrawOffer({ id_profile: idc });
     check("a plataforma retira o convite", retirou.offer?.status === "withdrawn", JSON.stringify(retirou).slice(0, 90));

@@ -924,24 +924,26 @@ class CommunitySiteService {
   }
 
   /**
-   * O CLIENTE DEVOLVE O SITE AO CONSTRUTOR (mig 242) — a porta de saída.
+   * O CLIENTE NÃO DEVOLVE MAIS O SITE (2026-09-12) — o aceite é DEFINITIVO.
    *
-   * ⚠️ ELA EXISTE PORQUE O ACEITE EXISTE. Quem pode ligar tem que poder
-   * desligar: sem isto, um clique de curiosidade tiraria da pessoa a edição do
-   * próprio site e a única saída seria abrir suporte. É a regra que já vale
-   * para o WhatsApp (mig 224), a conta de jogo (mig 220) e o despublicar —
-   * porta de saída trancada é a única que não pode existir.
+   * ⚠️ ISTO INVERTE A PORTA DE SAÍDA DA MIG 242, e a inversão é deliberada.
+   * O site pronto é um PRODUTO que nós escrevemos, entregamos e mantemos.
+   * Enquanto devolver era um botão do cliente, construtor e site gerenciado
+   * eram dois estados que a mesma comunidade alternava — e cada ida e volta
+   * custava um aceite novo, um tema reapontado e mais uma chance de a pessoa
+   * ficar olhando um site que não é o dela. Quem quiser voltar a montar o
+   * próprio site abre OUTRO perfil; este aqui já foi entregue.
    *
-   * ⚠️ E DEVOLVER NÃO QUEIMA O PRODUTO: a oferta aceita volta para a fila, com
-   * o conteúdo intacto na linha dela. O setManaged limpa o template_data do
-   * site (é o que devolve o construtor), então sem a reabertura o site que nós
-   * escrevemos se perderia num clique — e recuperá-lo seria montar tudo de
-   * novo.
+   * ⚠️⚠️ QUEM AINDA DEVOLVE É O ADMIN (`ManagedSiteService.release`), e essa
+   * metade NÃO pode ser fechada junto — é ela que conserta o NOSSO erro (tema
+   * errado apontado, entrega na comunidade trocada). Fechando as duas, um
+   * engano nosso viraria algo sem conserto fora de um UPDATE na mão em
+   * produção, que é precisamente o que esta mudança existe para evitar.
    *
-   * O documento do construtor nunca foi tocado, então o que reaparece é o que
-   * ele tinha antes. Não despublica, pelo mesmo motivo do release de admin:
-   * tirar do ar o site de alguém como efeito colateral é a surpresa que ninguém
-   * relaciona à causa.
+   * ⚠️ A ROTA CONTINUA MONTADA, e responde 410 em vez de 404: quem chega aqui
+   * é um front antigo em cache ainda desenhando o botão que saiu, e "esta
+   * porta não existe mais" é a única resposta que explica a tela. 404 diria
+   * "nunca existiu" e mandaria procurar defeito onde não há.
    */
   static async releaseManaged(user, params) {
     return runWithLogs(
@@ -949,37 +951,17 @@ class CommunitySiteService {
       "releaseManaged",
       () => ({ id_user: user?.id_user, id_profile: params?.id_profile }),
       async () => {
+        // ⚠️ O GUARD DE POSSE VEM ANTES DA RECUSA. Recusando de cara, esta
+        // porta responderia a mesma frase para qualquer logado — e viraria um
+        // jeito de descobrir quais comunidades têm site gerenciado.
         const loaded = await loadAsLeader(user, params.id_profile);
         if (loaded.error) return loaded;
 
-        const existing = await CommunitySiteStorage.getByProfile(pool, params.id_profile);
-        if (!isManaged(existing)) {
-          return { error: "Este site já é editado por você.", statusCode: 409 };
-        }
-
-        const accepted = await ManagedSiteOfferStorage.getAccepted(pool, params.id_profile);
-
-        const client = await pool.connect();
-        try {
-          await client.query("BEGIN");
-          await CommunitySiteStorage.setManaged(client, params.id_profile, {
-            template: null,
-            templateData: {},
-            managed: false,
-          });
-          // Só quando houve oferta: site que NÓS ligamos direto (o apply do
-          // painel) não tem linha para reabrir, e devolvê-lo é decisão nossa de
-          // qualquer forma.
-          if (accepted) await ManagedSiteOfferStorage.reopen(client, accepted.id_offer);
-          await client.query("COMMIT");
-        } catch (e) {
-          await client.query("ROLLBACK");
-          throw e;
-        } finally {
-          client.release();
-        }
-
-        return { managed: false, template: null, released: true };
+        return {
+          error:
+            "O seu site é mantido pela Freelandoo e não volta para o construtor. Fale com o suporte para mudar qualquer coisa nele.",
+          statusCode: 410,
+        };
       }
     );
   }

@@ -46,7 +46,7 @@ test("o tema tem que existir — recusa em voz alta, nunca cai num tema qualquer
 test("os temas do backend são os que o front sabe desenhar", () => {
   // Se esta lista mudar, o espelho `lib/site-templates.ts` muda junto. Tema só
   // aqui = dados que a página não sabe montar; tema só lá = save recusado.
-  assert.deepStrictEqual(TEMPLATE_SLUGS, ["oficina-local"]);
+  assert.deepStrictEqual(TEMPLATE_SLUGS, ["oficina-local", "ricardo-fogoes"]);
 });
 
 // ─── A fronteira de confiança ───────────────────────────────────────────────

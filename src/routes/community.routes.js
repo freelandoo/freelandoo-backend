@@ -194,9 +194,11 @@ router.post(
 // CONSTRUTOR; desligá-la um dia para segurar um problema lá não pode impedir a
 // entrega (nem a devolução) de um site que foi vendido.
 //
-// ⚠️ E `release` fica fora dela por um motivo a mais: é porta de SAÍDA. Quem
-// aceitou tem que conseguir voltar atrás mesmo com o construtor desligado —
-// senão a única saída de quem se arrependeu vira o suporte.
+// ⚠️ `release` CONTINUA MONTADA MAS RECUSA (410, 2026-09-12): o aceite do
+// cliente virou definitivo. Quem devolve agora é só o admin, pela porta de
+// `/admin/managed-sites` — ver a justificativa inteira no service. A rota
+// fica de pé porque front antigo em cache ainda a chama, e uma recusa que
+// se explica vale mais que um 404 que manda procurar defeito.
 // PEDIR O SITE (mig 243). Fora do `requireFeature("comunidade_site")` como as
 // irmãs, e sem gate de plano: pedir orçamento é o começo da venda, e cobrar
 // assinatura para poder PEDIR é cobrar antes de mostrar o produto.

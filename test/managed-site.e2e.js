@@ -109,12 +109,40 @@ async function main() {
     );
     check("índice da carência existe e é PARCIAL", idx.rowCount === 1 && /WHERE/i.test(idx.rows[0].indexdef));
 
-    // Nenhum site existente virou gerenciado — a migration não mexe em dado.
-    const contaminados = await client.query(
-      `SELECT COUNT(*)::int AS n FROM public.tb_community_site
-        WHERE managed_by_platform = TRUE OR template IS NOT NULL`
+    // ⚠️ AQUI HAVIA UMA CONTAGEM GLOBAL ("nenhum site é gerenciado") e ela
+    // envelheceu no dia em que o primeiro site foi entregue de verdade: lia a
+    // tabela inteira e acusava o produto funcionando como contaminação. As
+    // duas perguntas abaixo dizem a mesma coisa e continuam verdadeiras
+    // depois de mil entregas.
+
+    // 1. ESTRUTURAL: acrescentar as colunas não pôde ligar nada, porque a
+    //    linha que já existia nasceu com o default seguro.
+    const defs = await client.query(
+      `SELECT column_name, column_default, is_nullable
+         FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'tb_community_site'
+          AND column_name IN ('template', 'managed_by_platform')`
     );
-    check("nenhum site que já existia virou gerenciado", contaminados.rows[0].n === 0, `n=${contaminados.rows[0].n}`);
+    const porNome = Object.fromEntries(defs.rows.map((r) => [r.column_name, r]));
+    check(
+      "o default de managed_by_platform é FALSE — a migration não liga nada",
+      /false/i.test(String(porNome.managed_by_platform?.column_default || "")),
+      JSON.stringify(porNome.managed_by_platform)
+    );
+    check(
+      "e `template` nasce NULL (o site continua sendo o do canvas)",
+      porNome.template?.column_default === null && porNome.template?.is_nullable === "YES",
+      JSON.stringify(porNome.template)
+    );
+
+    // 2. INVARIANTE: não existe site gerenciado SEM tema — o estado que o
+    //    código chama de pior dos dois mundos (o cliente editaria seções que
+    //    ninguém vê). É o que um backfill mal feito produziria.
+    const orfaos = await client.query(
+      `SELECT COUNT(*)::int AS n FROM public.tb_community_site
+        WHERE managed_by_platform = TRUE AND template IS NULL`
+    );
+    check("nenhum site gerenciado ficou sem tema", orfaos.rows[0].n === 0, `n=${orfaos.rows[0].n}`);
 
     // ─── 2. O plano ───────────────────────────────────────────────────────
     console.log("\n[2] O plano superior");

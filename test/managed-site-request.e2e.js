@@ -149,8 +149,10 @@ async function main() {
     );
     check("o CHECK de status é NOMEADO (alargável sem varrer o catálogo)", chk.rowCount === 1);
 
-    const vazia = await client.query(`SELECT COUNT(*)::int AS n FROM public.tb_managed_site_request`);
-    check("a tabela nasce vazia — a migration não inventa pedido para ninguém", vazia.rows[0].n === 0);
+    // ⚠️ AQUI HAVIA UMA CONTAGEM GLOBAL ("a tabela nasce vazia") e ela
+    // envelheceu no primeiro pedido de verdade feito em produção: lia a
+    // tabela inteira e acusava o produto funcionando. A mesma pergunta, com
+    // o recorte certo, está logo depois das fixtures.
 
     // --- 2. Fixtures --------------------------------------------------------
     const stamp = Date.now().toString(36);
@@ -210,6 +212,12 @@ async function main() {
       services: [{ slug: "conserto", label: "Conserto", cardText: "Fogao." }],
       cities: [{ slug: "aguai", name: "Aguai", uf: "SP" }],
     };
+
+    const pedidoZero = await client.query(
+      `SELECT COUNT(*)::int AS n FROM public.tb_managed_site_request WHERE id_profile = ANY($1::uuid[])`,
+      [[semSite, comSite]]
+    );
+    check("a migration não inventa pedido para comunidade nenhuma", pedidoZero.rows[0].n === 0, `n=${pedidoZero.rows[0].n}`);
 
     // --- 3. O cliente pede --------------------------------------------------
     console.log("\n[3] Pedir o site");
