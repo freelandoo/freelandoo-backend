@@ -14,9 +14,11 @@ const test = require("node:test");
 const assert = require("node:assert");
 
 const {
+  TEMPLATES,
   TEMPLATE_SLUGS,
   isTemplate,
   normalizeTemplateData,
+  summarizeTemplateData,
   LIMITS,
 } = require("../../src/utils/siteTemplates");
 const { isManaged, managedRefusal } = require("../../src/utils/managedSite");
@@ -44,9 +46,62 @@ test("o tema tem que existir — recusa em voz alta, nunca cai num tema qualquer
 });
 
 test("os temas do backend são os que o front sabe desenhar", () => {
-  // Se esta lista mudar, o espelho `lib/site-templates.ts` muda junto. Tema só
-  // aqui = dados que a página não sabe montar; tema só lá = save recusado.
-  assert.deepStrictEqual(TEMPLATE_SLUGS, ["oficina-local", "ricardo-fogoes"]);
+  // Se esta lista mudar, o espelho do front (`components/site-templates/
+  // registry.ts`) muda junto. Tema só aqui = dados que a página não sabe
+  // montar; tema só lá = save recusado.
+  //
+  // ⚠️ A LISTA CONGELADA É FRICÇÃO DELIBERADA, não uma asserção que envelheceu
+  // por descuido: ela quebra de propósito quando alguém acrescenta um tema, e
+  // é esse tranco que lembra de atualizar o registro do outro lado. Quem a
+  // atualizar sem mexer no front terá trocado um teste vermelho por um 404 na
+  // página de um cliente.
+  assert.deepStrictEqual(TEMPLATE_SLUGS, [
+    "oficina-local",
+    "ricardo-fogoes",
+    "enzo-cortes",
+  ]);
+});
+
+test("todo tema registrado entrega o contrato inteiro", () => {
+  // ⚠️ O QUE ISTO PEGA É A FALTA DE `summarize`, e o defeito dela é SILENCIOSO:
+  // `summarizeTemplateData` devolve `null` para tema sem a função, o modal do
+  // cliente cai no texto de reserva ("Seu negócio · 1 página") e a pessoa
+  // aceita a troca do site dela no escuro. Nada estoura, nada aparece em
+  // revisão — e o contrato de tema (`docs/SITE_TEMPLATE_CONTRACT.md`) pede
+  // `summarize` justamente por isso.
+  //
+  // Diferente da lista acima, esta asserção NÃO envelhece: ela vale para
+  // qualquer tema que exista agora ou venha a existir.
+  for (const slug of TEMPLATE_SLUGS) {
+    const t = TEMPLATES[slug];
+    assert.ok(t, `${slug}: sem entrada no registro`);
+    assert.strictEqual(typeof t.label, "string", `${slug}: label`);
+    assert.ok(t.label.trim(), `${slug}: label vazio — é o que o admin lê na lista`);
+    assert.strictEqual(typeof t.normalize, "function", `${slug}: normalize`);
+    assert.strictEqual(typeof t.summarize, "function", `${slug}: summarize`);
+
+    // E o resumo tem que ter FORMA. Note que o conteúdo dele NÃO é exigido:
+    // num tema dirigido por dados (o `oficina-local`), resumir um documento
+    // vazio devolve nome vazio e zero páginas — e isso é correto, não defeito.
+    // Exigir nome de negócio aqui reprovaria o tema que funciona.
+    const resumo = summarizeTemplateData(slug, {});
+    assert.ok(resumo, `${slug}: summarizeTemplateData devolveu null`);
+    assert.ok(Array.isArray(resumo.pages), `${slug}: resumo sem lista de páginas`);
+    assert.ok(
+      Number.isInteger(resumo.counts?.pages) && resumo.counts.pages >= 1,
+      `${slug}: resumo sem contagem de páginas`,
+    );
+
+    // ⚠️ O INVARIANTE QUE IMPORTA: a contagem é a lista MAIS A HOME, que não
+    // entra na lista por não ter endereço próprio. É o que os dois temas
+    // autorais dizem em comentário e nada conferia — e o defeito é o cliente
+    // ler "14 páginas", contar 13 no modal e ir procurar a que falta.
+    assert.strictEqual(
+      resumo.counts.pages,
+      resumo.pages.length + 1,
+      `${slug}: a contagem de páginas não bate com a lista + a home`,
+    );
+  }
 });
 
 // ─── A fronteira de confiança ───────────────────────────────────────────────

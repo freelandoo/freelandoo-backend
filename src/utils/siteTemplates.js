@@ -465,6 +465,86 @@ function summarizeRicardoFogoes() {
   };
 }
 
+/**
+ * `enzo-cortes` também não tem documento.
+ *
+ * ⚠️ MESMA NATUREZA DO `ricardo-fogoes`: tema autoral escrito para UM
+ * cliente — a barbearia do Jardim Pinheiros, em São Bernardo do Campo. Todo o
+ * texto dele, INCLUSIVE A TABELA DE PREÇOS, mora no código do tema, no front.
+ *
+ * ⚠️ E A TABELA DE PREÇOS MORAR NO CÓDIGO É DECISÃO, não descuido. A
+ * alternativa seria gravá-la no documento e deixá-la editável por esta porta
+ * — e aí o site passaria a ter DUAS tabelas de preço possíveis, a do
+ * documento e a que o tema desenha quando o documento vem vazio. A vitrine do
+ * construtor já pagou essa conta uma vez (back `5782dd1`): preço em dois
+ * lugares é preço que diverge, e quem descobre é o cliente na cadeira.
+ */
+function normalizeEnzoCortes() {
+  return {};
+}
+
+/**
+ * O resumo que enche o modal do cliente.
+ *
+ * ⚠️ ESTA LISTA É ESPELHO DO `pages.ts` DO TEMA. Ela é o que o cliente vê
+ * antes de decidir; uma página a mais lá e a menos aqui faz o modal prometer
+ * um site diferente do que vai ao ar. As 14 são: a home, 6 serviços, 4
+ * bairros, o índice de serviços, "a barbearia" e "onde fica".
+ *
+ * ⚠️ `hasPhoto` É `false` E ISSO É VERDADE, não campo esquecido: este site é
+ * inteiramente tipográfico porque não existe nenhuma foto da barbearia. Pôr
+ * `true` aqui faria o modal prometer uma imagem que a página não tem.
+ */
+function summarizeEnzoCortes() {
+  const services = [
+    ["corte-de-cabelo", "Corte"],
+    ["barba", "Barba"],
+    ["sobrancelha", "Sobrancelha"],
+    ["risco-e-desenho", "Risco / desenho"],
+    ["corte-e-barba", "Corte + barba"],
+    ["corte-barba-e-sobrancelha", "Corte + barba + sobrancelha"],
+  ];
+  // Bairros, e não cidades: a barbearia não se desloca. O campo se chama
+  // `cities` porque é o contrato do resumo, compartilhado com o tema de
+  // oficina — o rótulo que o cliente lê é montado pelo front.
+  const cities = [
+    ["jardim-pinheiros", "Jardim Pinheiros"],
+    ["alvarenga", "Alvarenga"],
+    ["jardim-represa", "Jardim Represa"],
+    ["batistini", "Batistini"],
+  ];
+  const fixed = [
+    ["servicos", "Serviços e preços"],
+    ["sobre", "A barbearia"],
+    ["contato", "Onde fica"],
+  ];
+  return {
+    business: "Enzo Cortes",
+    city: "São Bernardo do Campo",
+    state: "SP",
+    // ⚠️ ESPAÇO RESERVADO enquanto o telefone real não for informado. Ele
+    // aparece no modal de propósito: é a última tela antes do aceite, e é
+    // onde dá para notar que o número ainda não é o de verdade.
+    phone: "(11) 90000-0000",
+    whatsapp: true,
+    hasPhoto: false,
+    counts: {
+      services: services.length,
+      cities: cities.length,
+      faq: 6,
+      reviews: 0,
+      // A home entra na conta: é a página que o endereço abre, e dizer "13
+      // páginas" e listar 14 faria o cliente procurar a que sobra.
+      pages: 1 + fixed.length + services.length + cities.length,
+    },
+    pages: [
+      ...services.map(([slug, label]) => ({ slug, label, kind: "service" })),
+      ...cities.map(([slug, label]) => ({ slug, label, kind: "city" })),
+      ...fixed.map(([slug, label]) => ({ slug, label, kind: "page" })),
+    ],
+  };
+}
+
 // ─── O registro ─────────────────────────────────────────────────────────────
 
 const TEMPLATES = Object.freeze({
@@ -477,6 +557,11 @@ const TEMPLATES = Object.freeze({
     label: "Ricardo Fogões — conserto de fogões (autoral)",
     normalize: normalizeRicardoFogoes,
     summarize: summarizeRicardoFogoes,
+  },
+  "enzo-cortes": {
+    label: "Enzo Cortes — barbearia, São Bernardo do Campo (autoral)",
+    normalize: normalizeEnzoCortes,
+    summarize: summarizeEnzoCortes,
   },
 });
 
