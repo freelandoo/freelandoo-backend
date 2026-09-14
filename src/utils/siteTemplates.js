@@ -545,6 +545,83 @@ function summarizeEnzoCortes() {
   };
 }
 
+/**
+ * `ecoluz` também não tem documento.
+ *
+ * ⚠️ MESMA NATUREZA DOS DOIS ACIMA: tema autoral escrito para UM cliente — a
+ * EcoLuz Energia Solar, de São Luís/MA. Todo o texto dele mora no código do
+ * tema, no front.
+ *
+ * ⚠️ E ESTE SITE NÃO PUBLICA PREÇO EM LUGAR NENHUM, de propósito. Preço de
+ * sistema solar depende de consumo, telhado e arranjo: um número na página
+ * seria chute publicado como fato, e o "a partir de" que o ramo usa é
+ * justamente o que faz a pessoa se sentir enganada na proposta. Não há campo
+ * de preço a gravar aqui porque não há preço a publicar.
+ */
+function normalizeEcoluz() {
+  return {};
+}
+
+/**
+ * O resumo que enche o modal do cliente.
+ *
+ * ⚠️ ESTA LISTA É ESPELHO DO `pages.ts` DO TEMA. Ela é o que o cliente vê
+ * antes de decidir; uma página a mais lá e a menos aqui faz o modal prometer
+ * um site diferente do que vai ao ar. As 14 são: a home, 5 serviços, 4
+ * municípios atendidos, o índice de serviços, "onde atendemos", "a EcoLuz" e
+ * contato.
+ *
+ * ⚠️ `hasPhoto` É `false` E ISSO É VERDADE, não campo esquecido: não existe
+ * nenhuma foto de obra da EcoLuz, e o site é tipográfico por isso. Pôr `true`
+ * aqui faria o modal prometer uma imagem que a página não tem.
+ */
+function summarizeEcoluz() {
+  const services = [
+    ["energia-solar-residencial", "Solar residencial"],
+    ["energia-solar-para-empresas", "Solar para empresas"],
+    ["sistema-off-grid", "Sistema off-grid"],
+    ["projeto-e-homologacao", "Projeto e homologação"],
+    ["manutencao-e-monitoramento", "Manutenção e monitoramento"],
+  ];
+  // Municípios, e não bairros: aqui quem se desloca é a EMPRESA — instalação
+  // acontece no imóvel do cliente. O campo se chama `cities` porque é o
+  // contrato do resumo, compartilhado com o tema de oficina.
+  const cities = [
+    ["sao-luis", "São Luís"],
+    ["sao-jose-de-ribamar", "São José de Ribamar"],
+    ["paco-do-lumiar", "Paço do Lumiar"],
+    ["raposa", "Raposa"],
+  ];
+  const fixed = [
+    ["servicos", "Serviços"],
+    ["areas-atendidas", "Onde atendemos"],
+    ["sobre", "A EcoLuz"],
+    ["contato", "Contato"],
+  ];
+  return {
+    business: "EcoLuz Energia Solar",
+    city: "São Luís",
+    state: "MA",
+    phone: "(98) 99138-0808",
+    whatsapp: true,
+    hasPhoto: false,
+    counts: {
+      services: services.length,
+      cities: cities.length,
+      faq: 6,
+      reviews: 0,
+      // A home entra na conta: é a página que o endereço abre, e dizer "13
+      // páginas" e listar 14 faria o cliente procurar a que sobra.
+      pages: 1 + fixed.length + services.length + cities.length,
+    },
+    pages: [
+      ...services.map(([slug, label]) => ({ slug, label, kind: "service" })),
+      ...cities.map(([slug, label]) => ({ slug, label, kind: "city" })),
+      ...fixed.map(([slug, label]) => ({ slug, label, kind: "page" })),
+    ],
+  };
+}
+
 // ─── O registro ─────────────────────────────────────────────────────────────
 
 const TEMPLATES = Object.freeze({
@@ -562,6 +639,11 @@ const TEMPLATES = Object.freeze({
     label: "Enzo Cortes — barbearia, São Bernardo do Campo (autoral)",
     normalize: normalizeEnzoCortes,
     summarize: summarizeEnzoCortes,
+  },
+  ecoluz: {
+    label: "EcoLuz — energia solar, São Luís/MA (autoral)",
+    normalize: normalizeEcoluz,
+    summarize: summarizeEcoluz,
   },
 });
 

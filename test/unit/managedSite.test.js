@@ -59,6 +59,7 @@ test("os temas do backend são os que o front sabe desenhar", () => {
     "oficina-local",
     "ricardo-fogoes",
     "enzo-cortes",
+    "ecoluz",
   ]);
 });
 
