@@ -160,12 +160,58 @@ function notYet(step) {
   );
 }
 
-/** W4 */
-async function sendText() {
-  return notYet("envio de mensagem");
+/**
+ * W4 — envio de texto.
+ *
+ * ⚠️ A JANELA DE 24H NÃO É CONFERIDA AQUI, e sim no `WhatsappService`, ANTES de
+ * chegar neste módulo. A Meta recusa texto livre fora da janela com um erro de
+ * API, e deixar a recusa acontecer aqui significaria: a pessoa digita,
+ * aperta enviar, espera a ida à Meta e só então descobre. Recusar antes deixa a
+ * tela desabilitar o campo e EXPLICAR — campo que aceita texto e falha no envio
+ * é pior que campo desabilitado.
+ *
+ * ⚠️ GRUPO NÃO EXISTE NA CLOUD API. A Evolution endereça grupo pelo JID
+ * inteiro; aqui isso viraria um `to` inválido e a Meta responderia algo sobre
+ * formato de telefone, que não explica nada. A recusa é nossa e diz o motivo.
+ */
+async function sendText(instance, dest, text) {
+  const cfg = ensureConfigured();
+  const ref = refOf(instance);
+  if (!ref) throw new CloudApiError("Número ainda não cadastrado.", 409);
+
+  const to = String(dest || "");
+  if (to.includes("@g.us") || to.includes("-")) {
+    throw new CloudApiError(
+      "O WhatsApp oficial não envia mensagem para grupos.",
+      409
+    );
+  }
+  const digits = to.replace(/\D/g, "");
+  if (!digits) throw new CloudApiError("Destinatário inválido.", 400);
+
+  const data = ensureOk(
+    await call(cfg, "POST", `/${ref}/messages`, {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: digits,
+      type: "text",
+      // `preview_url: false` de propósito: a prévia de link faz a Meta buscar a
+      // página do outro lado, e o que aparece na conversa do cliente passa a
+      // depender de um site de terceiro — inclusive de um que mudou desde que
+      // a pessoa escreveu.
+      text: { preview_url: false, body: String(text || "") },
+    })
+  );
+
+  // O `wamid` é o que amarra o eco do webhook à linha que acabamos de gravar —
+  // é ele que faz a mensagem enviada NÃO aparecer duplicada quando a Meta
+  // reentrega o próprio envio como evento.
+  const id = ((data && data.messages && data.messages[0]) || {}).id;
+  return String(id || "") || null;
 }
 
-/** W4 */
+/** W4b — depende de guardar o `media_id` do webhook (a Cloud API não busca
+ *  mídia pelo id da mensagem, como a Evolution fazia). Migration pendente. */
 async function fetchMedia() {
   return notYet("download de mídia");
 }

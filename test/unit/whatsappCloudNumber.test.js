@@ -121,9 +121,28 @@ test("o adaptador da Cloud expõe os três passos do cadastro", () => {
   }
 });
 
-test("envio e mídia ainda RECUSAM em voz alta (são do W4)", () => {
+test("o envio de texto EXISTE (W4) — e mídia ainda recusa em voz alta", async () => {
+  // ⚠️ Este caso já afirmou o contrário: até o W4 o `sendText` recusava com
+  // "ainda não está disponível". Envelheceu quando o envio entrou, e a
+  // asserção antiga passou a proteger o mundo errado.
+  //
   // Provedor que responde "ok" sem fazer nada é a falha que só aparece quando
-  // o cliente reclama que ninguém respondeu.
-  assert.rejects(() => cloud.sendText(), /não está disponível/);
-  assert.rejects(() => cloud.fetchMedia(), /não está disponível/);
+  // o cliente reclama que ninguém respondeu — por isso o que NÃO existe
+  // continua recusando alto.
+  assert.strictEqual(typeof cloud.sendText, "function");
+  await assert.rejects(() => cloud.fetchMedia(), /não está disponível/);
+});
+
+test("⚠️ o envio recusa GRUPO antes de falar com a Meta", async () => {
+  // A Cloud API não envia para grupos. Sem esta recusa o JID viraria um `to`
+  // inválido e a Meta responderia algo sobre formato de telefone, que não
+  // explica nada a quem só tentou responder uma conversa.
+  //
+  // A recusa vem ANTES do `ensureConfigured`? Não: sem credencial o módulo se
+  // declara indisponível primeiro, e é isso que este caso mede em ambiente de
+  // teste — o importante é que NENHUM dos dois caminhos chame a Meta.
+  await assert.rejects(
+    () => cloud.sendText({ evolution_instance: "123" }, "5511999999999-123@g.us", "oi"),
+    (e) => /grupos|não está configurado/.test(String(e.message))
+  );
 });

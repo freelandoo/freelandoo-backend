@@ -570,12 +570,40 @@ class WhatsappService {
       // um grupo a dígitos produziria um telefone inexistente.
       const destination = conversation.is_group ? conversation.remote_jid : conversation.phone;
 
+      // A conversa carrega o provedor da instância dela — responder usa o MESMO
+      // transporte por onde a mensagem chegou.
+      const provider = this._providerFor(conversation);
+      if (!provider) return this._assertConfigured();
+
+      // ⚠️ A JANELA DE 24H É CONFERIDA AQUI, ANTES de falar com a Meta.
+      //
+      // Fora dela a Cloud API recusa texto livre — só template aprovado passa.
+      // Deixar a recusa chegar como erro de API faria a pessoa escrever a
+      // resposta inteira, apertar enviar, esperar a ida à Meta e só então
+      // descobrir. Recusando antes, a tela desabilita o campo e explica.
+      //
+      // Só o cliente reabre a janela, escrevendo. Não há nada que o dono do
+      // número possa fazer deste lado — e é por isso que a mensagem diz isso
+      // em vez de sugerir "tente de novo".
+      //
+      // A Evolution não tem janela (`serviceWindow: false`) e passa direto.
+      if (provider.capabilities.serviceWindow) {
+        const until = conversation.service_window_expires_at
+          ? new Date(conversation.service_window_expires_at)
+          : null;
+        if (!until || until.getTime() <= Date.now()) {
+          return {
+            error:
+              "A janela de 24h desta conversa fechou. Só é possível responder" +
+              " depois que a pessoa escrever de novo.",
+            statusCode: 409,
+            code: "service_window_closed",
+          };
+        }
+      }
+
       let waMessageId = null;
       try {
-        // A conversa carrega o provedor da instância dela — responder usa o
-        // MESMO transporte por onde a mensagem chegou.
-        const provider = this._providerFor(conversation);
-        if (!provider) return this._assertConfigured();
         waMessageId = await provider.sendText(conversation, destination, body);
       } catch (e) {
         return this._evolutionError(e);

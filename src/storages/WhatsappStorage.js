@@ -244,7 +244,11 @@ class WhatsappStorage {
     }
     const r = await conn.query(
       `SELECT c.id_conversation, c.remote_jid, c.phone, c.push_name, c.is_group,
-              c.unread_count, c.last_message_at, c.last_message_preview
+              c.unread_count, c.last_message_at, c.last_message_preview,
+              -- A janela de 24h da Cloud API. Vem na LISTA, e não só ao abrir a
+              -- conversa, porque a tela precisa saber antes de a pessoa clicar
+              -- se aquela conversa ainda aceita resposta.
+              c.service_window_expires_at
          FROM public.tb_whatsapp_conversation c
          JOIN public.tb_whatsapp_instance i ON i.id_instance = c.id_instance
         WHERE i.id_user = $1${filter}
@@ -260,6 +264,7 @@ class WhatsappStorage {
     const r = await conn.query(
       `SELECT c.id_conversation, c.id_instance, c.remote_jid, c.phone, c.push_name,
               c.is_group, c.unread_count, c.last_message_at,
+              c.last_message_preview, c.service_window_expires_at,
               i.provider, i.evolution_instance, i.waba_id,
               i.status AS instance_status
          FROM public.tb_whatsapp_conversation c

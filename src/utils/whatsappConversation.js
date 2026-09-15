@@ -40,6 +40,10 @@ function publicConversation(c) {
     unread_count: c.unread_count || 0,
     last_message_at: c.last_message_at,
     last_message_preview: c.last_message_preview || "",
+    // A janela de 24h da Cloud API — `null` quando não se aplica (Evolution não
+    // tem janela). É a tela que desabilita o campo, mas quem RECUSA de verdade
+    // é o service: espelho que erra esconde um botão, nunca abre uma porta.
+    service_window_expires_at: c.service_window_expires_at || null,
   };
 }
 
