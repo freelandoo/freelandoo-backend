@@ -39,6 +39,7 @@ const FeatureFlagService = require("./FeatureFlagService");
 const realtime = require("../realtime/socket");
 const { instanceNameFor } = require("../utils/whatsappInstance");
 const { formatPhone, splitPhone } = require("../utils/whatsappJid");
+const { publicConversation } = require("../utils/whatsappConversation");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("WhatsappService");
@@ -728,19 +729,13 @@ class WhatsappService {
    * roteamento do webhook, e publicá-lo daria a quem quisesse o endereço exato
    * para tentar se passar por essa caixa.
    */
+  /**
+   * A projeção mora em `utils/whatsappConversation` porque o PUSH do
+   * `WhatsappIngestService` precisa da MESMA — e ele não pode importar este
+   * service, que carrega o provedor de envio. Ver o comentário do util.
+   */
   static _publicConversation(c) {
-    return {
-      id_conversation: c.id_conversation,
-      phone: c.phone || "",
-      phone_display: formatPhone(c.phone),
-      // Sem nome de perfil, o telefone formatado é o melhor título. Sem os dois
-      // (grupo sem assunto sincronizado), a tela decide o rótulo.
-      title: c.push_name || formatPhone(c.phone) || "",
-      is_group: c.is_group,
-      unread_count: c.unread_count || 0,
-      last_message_at: c.last_message_at,
-      last_message_preview: c.last_message_preview || "",
-    };
+    return publicConversation(c);
   }
 
   /**

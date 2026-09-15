@@ -26,6 +26,7 @@
 const pool = require("../databases");
 const WhatsappStorage = require("../storages/WhatsappStorage");
 const realtime = require("../realtime/socket");
+const { publicConversation } = require("../utils/whatsappConversation");
 const { readMessage, messagesOfEvent, isConnectionOpen } = require("../utils/whatsappPayload");
 const {
   isConversationJid,
@@ -122,12 +123,14 @@ class WhatsappIngestService {
       realtime.emitToUser(instance.id_user, "whatsapp:message", {
         id_conversation: conversation.id_conversation,
         message: saved_row,
+        // ⚠️ A MESMA projeção da leitura (`utils/whatsappConversation`), e não um
+        // objeto montado à mão: os dois caminhos alimentam a MESMA lista, e
+        // enquanto divergiram a conversa que chegava ao vivo aparecia como
+        // "Contato sem nome" enquanto a leitura mostrava o nome certo.
+        // `last_message_*` vêm da mensagem porque a linha lida pode ser
+        // anterior ao UPDATE desta iteração.
         conversation: {
-          id_conversation: conversation.id_conversation,
-          remote_jid: conversation.remote_jid,
-          phone: conversation.phone,
-          push_name: conversation.push_name,
-          is_group: conversation.is_group,
+          ...publicConversation(conversation),
           last_message_preview: msg.body.slice(0, 300),
           last_message_at: msg.sentAt,
         },
