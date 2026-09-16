@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const StripeService = require("./StripeService");
 const PaymentGateway = require("../integrations/payments");
+const SubscriptionEndService = require("./SubscriptionEndService");
 const CouponDiscountResolver = require("./CouponDiscountResolver");
 const AnnualFeeSettingsStorage = require("../storages/AnnualFeeSettingsStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
@@ -291,11 +292,19 @@ async function cancelSubscriptionForUser(user, body) {
       }
       if (sub.canceled_at) throw new ServiceError("Cancelamento já agendado", 409);
 
-      const stripeSub = await PaymentGateway.cancelSubscription(sub.stripe_subscription_id);
+      // ⚠️ PELO SubscriptionEndService, e a data vem NORMALIZADA dele.
+      //
+      // Ler `cancel_at` cru do resultado amarrava esta linha ao formato do
+      // Stripe (epoch em segundos) — no provedor sem `cancel_at_period_end` o
+      // campo não existe, e `canceled_at` cairia no `current_period_end` local
+      // (que pode estar vazio) enquanto a assinatura tinha sido cortada NA HORA.
+      const ended = await SubscriptionEndService.cancelAtPeriodEnd({
+        subscriptionId: sub.stripe_subscription_id,
+        id_user: sub.id_user || null,
+        reason: "ativacao cancelada pelo assinante",
+      });
 
-      const cancelAt = stripeSub.cancel_at
-        ? new Date(stripeSub.cancel_at * 1000)
-        : sub.current_period_end;
+      const cancelAt = ended && ended.cancel_at ? ended.cancel_at : sub.current_period_end;
 
       await ProfileSubscriptionStorage.updateBySubscriptionId(
         pool,

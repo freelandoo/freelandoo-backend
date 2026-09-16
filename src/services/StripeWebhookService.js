@@ -1176,7 +1176,7 @@ module.exports = {
   processEvent,
   reprocessEvent,
   fulfillCheckoutSession,
-  // Exportado para o webhook do ASAAS: uma cobranca removida/vencida la precisa
+  // Exportado para o webhook do MERCADO PAGO: uma cobranca cancelada la precisa
   // liberar o mesmo estoque, o mesmo slot de agenda e o mesmo pendente que uma
   // checkout session expirada do Stripe. Dois caminhos de expiracao
   // divergiriam no primeiro fluxo novo.

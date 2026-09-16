@@ -5,26 +5,32 @@
 //
 // ─── POR QUE UM CONTRATO, E NÃO "TROCAR A LIB" ──────────────────────────────
 //
-// Stripe e Asaas não são a mesma API com nomes diferentes. O Stripe tem
+// Stripe e Mercado Pago não são a mesma API com nomes diferentes. O Stripe tem
 // Checkout Session (um objeto que existe só para hospedar o pagamento) e um
-// mapa de metadata arbitrário. O Asaas tem `payment` (a cobrança em si), uma
-// `invoiceUrl` para pagar, e um `externalReference` que é UMA STRING.
+// mapa de metadata arbitrário. O Mercado Pago tem `preference` (só a PÁGINA),
+// `payment` (a cobrança, que nasce depois e com outro id) e um
+// `external_reference` que é UMA STRING.
 //
-// Trocar `require("stripe")` por `require("asaas")` num arquivo só não
-// funcionaria: os 20 pontos que criam cobrança hoje falam a língua do Stripe —
-// pedem `price_data`, leem `session.payment_intent`, mandam `metadata`. O
-// contrato é o que dá a eles uma língua que os dois provedores falam.
+// Trocar o `require` num arquivo só não funcionaria: os ~20 pontos que criam
+// cobrança hoje falam a língua do Stripe — pedem `price_data`, leem
+// `session.payment_intent`, mandam `metadata`. O contrato é o que dá a eles uma
+// língua que todos os provedores falam.
+//
+// ⚠️ E ELE JÁ PROVOU O VALOR DUAS VEZES: foi por causa dele que a integração do
+// Asaas inteira pôde ser REMOVIDA sem tocar em nenhum dos ~20 chamadores, e que
+// o Mercado Pago entrou no lugar do mesmo jeito.
 //
 // ─── O QUE ENTRA NO CONTRATO E O QUE FICA DE FORA ───────────────────────────
 //
-// ENTRA o que os dois sabem fazer: cobrar um valor, hospedar uma página de
+// ENTRA o que todos sabem fazer: cobrar um valor, hospedar uma página de
 // pagamento, devolver uma referência, reembolsar, cancelar assinatura.
 //
-// FICA DE FORA o que só um sabe. `promotionCode` é o exemplo: o Asaas não tem
-// cupom nenhum, e fingir que tem — aceitando o campo e ignorando — produziria
-// um desconto que o comprador viu na tela e não saiu na fatura. O campo é
-// declarado como `stripeOnly` e o provedor Asaas RECUSA em voz alta se alguém
-// mandar, em vez de cobrar o valor cheio calado.
+// FICA DE FORA o que só um sabe. `promotionCode` é o exemplo: o Mercado Pago
+// tem cupom PRÓPRIO, que não é o cupom da Freelandoo, e fingir que é —
+// aceitando o campo e repassando — produziria um desconto que não existe no
+// nosso catálogo (ou nenhum, calado). O campo é declarado como `stripeOnly` e o
+// provedor RECUSA em voz alta se alguém mandar, em vez de cobrar o valor cheio.
+// O desconto da casa é calculado no backend e embutido em `amount_cents`.
 
 /**
  * @typedef {Object} CheckoutRequest

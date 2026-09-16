@@ -7,9 +7,16 @@
 // que já existiam no StripeService chamar. Nenhum parâmetro novo chega ao
 // Stripe, nenhum deixa de chegar.
 //
-// Isso é deliberado e é o que torna a migração reversível: enquanto o Asaas
-// estiver sendo testado, virar a chave de volta para `stripe` devolve
-// exatamente o comportamento de antes do adapter existir.
+// ⚠️ HOJE ESTE ARQUIVO É LEGADO, e fica por dois motivos concretos:
+//
+// 1. Ele ainda COBRA enquanto `MERCADOPAGO_ACCESS_TOKEN` nao existir. Sem esse
+//    fallback, o deploy fecharia o caixa da plataforma inteira.
+// 2. Existem assinaturas de perfil ATIVAS vivas no Stripe. Elas sao cobradas
+//    LA, todo mes, independente deste codigo — arrancar o adapter nao para a
+//    cobranca, so nos deixa cegos e sem conseguir cancelar.
+//
+// Com a credencial do Mercado Pago no ar, ele passa a ser so a porta de estorno
+// e cancelamento do que ja foi cobrado aqui.
 //
 // ⚠️ DEVOLVE A SESSION INTEIRA, e não só `{id, url}`. Há chamadores que leem
 // `session.customer` (a ativação de perfil grava `stripe_customer_id`) e
@@ -23,6 +30,16 @@ const PROVIDER = "stripe";
 
 /** O Stripe entende todos os campos do contrato — nada a recusar. */
 const UNSUPPORTED_FIELDS = Object.freeze([]);
+
+/**
+ * ⚠️ O ÚNICO PROVEDOR QUE SABE "cancelar no fim do ciclo" SOZINHO.
+ *
+ * `SubscriptionEndService` lê isto para decidir se delega ao gateway ou se
+ * agenda a data na fila da mig 251. Manter no gateway quando ele sabe fazer é
+ * mais confiável que qualquer agendamento nosso: a decisão fica do lado de quem
+ * cobra, e não depende de um sweeper nosso estar de pé no dia do vencimento.
+ */
+const SUPPORTS_PERIOD_END = true;
 
 async function createCheckout(req) {
   const common = {
@@ -113,6 +130,7 @@ async function getChargeFee(provider_ref) {
 module.exports = {
   PROVIDER,
   UNSUPPORTED_FIELDS,
+  SUPPORTS_PERIOD_END,
   createCheckout,
   refund,
   cancelSubscription,

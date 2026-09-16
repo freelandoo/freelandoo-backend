@@ -1,4 +1,4 @@
-const PaymentGateway = require("../../integrations/payments");
+const SubscriptionEndService = require("../SubscriptionEndService");
 const ProfileSubscriptionStorage = require("../../storages/ProfileSubscriptionStorage");
 const { createLogger } = require("../../utils/logger");
 
@@ -10,8 +10,17 @@ async function execute({ db, id_user }) {
   for (const sub of subscriptions) {
     if (sub.status === "active" && sub.stripe_subscription_id && !sub.canceled_at) {
       try {
-        await PaymentGateway.cancelSubscription(sub.stripe_subscription_id);
-        log.info("stripe.canceled", { stripe_subscription_id: sub.stripe_subscription_id });
+        // ⚠️ PELO SubscriptionEndService: apagar a conta não pode devolver
+        // menos do que a pessoa comprou. Fora do Stripe a chamada crua cortaria
+        // o mês pago na hora.
+        await SubscriptionEndService.cancelAtPeriodEnd({
+          subscriptionId: sub.stripe_subscription_id,
+          id_user,
+          reason: "conta apagada",
+        });
+        log.info("subscription.cancel_scheduled", {
+          stripe_subscription_id: sub.stripe_subscription_id,
+        });
       } catch (err) {
         log.warn("stripe.cancel_fail", { stripe_subscription_id: sub.stripe_subscription_id, message: err?.message });
       }

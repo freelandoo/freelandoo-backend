@@ -34,15 +34,15 @@
     "test:indicators": "node test/business-indicators.e2e.js",
     "test:plans": "node test/plans.e2e.js",
     "test:business-plan": "node test/business-plan.e2e.js",
-    "test:asaas": "node test/asaas-payments.e2e.js",
-    "test:asaas-truth": "node test/asaas-provider-truth.e2e.js",
     "test:compose": "node test/compose-video.e2e.js && node test/compose-video-rotation.e2e.js && node test/upload-compose-door.e2e.js",
     "test:whatsapp-cloud-webhook": "node test/whatsapp-cloud-webhook.e2e.js",
     "test:managed-site": "node test/managed-site.e2e.js",
     "test:managed-site-offer": "node test/managed-site-offer.e2e.js",
     "test:managed-site-request": "node test/managed-site-request.e2e.js",
     "test:booking-fee": "node test/booking-fee.e2e.js",
-    "test:community-delivery": "node test/community-delivery.e2e.js"
+    "test:community-delivery": "node test/community-delivery.e2e.js",
+    "test:payments": "node test/payment-provider-truth.e2e.js",
+    "test:subscription-end": "node test/subscription-end.e2e.js"
   },
   "repository": {
     "type": "git",

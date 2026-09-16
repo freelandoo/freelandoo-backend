@@ -23,6 +23,7 @@ const pool = require("../databases");
 const PlanStorage = require("../storages/PlanStorage");
 const FunctionStoreStorage = require("../storages/FunctionStoreStorage");
 const PaymentGateway = require("../integrations/payments");
+const SubscriptionEndService = require("./SubscriptionEndService");
 const { BUSINESS_GATES, BUSINESS_GATE_KEYS } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -253,7 +254,15 @@ class PlanService {
       // `customer.subscription.deleted`, quando o período acaba.
       if (sub.stripe_subscription_id) {
         try {
-          await PaymentGateway.cancelSubscription(sub.stripe_subscription_id);
+          // ⚠️ PELO SubscriptionEndService: fora do Stripe não existe
+          // `cancel_at_period_end`, e a chamada crua faria a promessa do
+          // comentário acima ("o acesso segue até o fim do que foi pago")
+          // deixar de ser verdade em silêncio.
+          await SubscriptionEndService.cancelAtPeriodEnd({
+            subscriptionId: sub.stripe_subscription_id,
+            id_user,
+            reason: "plano cancelado pelo assinante",
+          });
         } catch (e) {
           log.warn("cancel.stripe_fail", { message: e && e.message });
           return { error: "Não foi possível cancelar agora. Tente de novo.", statusCode: 502 };

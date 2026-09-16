@@ -29,8 +29,14 @@
  * ── ⚠️ NENHUM NÚMERO DE TARIFA ESTÁ CRAVADO AQUI ────────────────────────────
  *
  * A mesma venda rende coisas diferentes conforme quem cobra (Stripe cartão
- * hoje; Asaas Pix no dia em que o Alex ligar a credencial). A tarifa entra como
- * PARÂMETRO, sempre — estimada na criação, apurada na confirmação.
+ * enquanto o legado roda; Mercado Pago Pix quando a credencial entrar). A
+ * tarifa entra como PARÂMETRO, sempre — estimada na criação, apurada na
+ * confirmação.
+ *
+ * ⚠️ E a ESTIMATIVA da criação continua calibrada para o Stripe. Ela é o que a
+ * tela de quem entrega mostra ANTES do aceite, então no Mercado Pago ela erra
+ * para BAIXO (prometeria menos do que cai) — direção segura, mas é tela sobre
+ * dinheiro e está na lista de calibração.
  */
 
 const { createLogger } = require("./logger");

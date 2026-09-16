@@ -9,9 +9,10 @@
 // mas um erro de digitação no service produzia um pagamento COBRADO que nenhum
 // confirmador reconhecia, e o dinheiro ficava parado sem erro nenhum aparecer.
 //
-// Na troca para o Asaas isso deixa de ser tolerável: lá o identificador viaja
-// como `externalReference` (uma string só) e é o ÚNICO fio entre a cobrança e o
-// que ela significa. Fio torto = entrega perdida.
+// Fora do Stripe isso deixa de ser tolerável: no Mercado Pago o identificador
+// viaja como `external_reference` (uma string só, sem mapa de metadata) e é o
+// ÚNICO fio entre a cobrança e o que ela significa. Fio torto = entrega
+// perdida.
 //
 // Mora em utils, e não numa CHECK do banco, porque fluxo novo entra JUNTO do
 // código que sabe confirmá-lo. Uma CHECK obrigaria uma migration para cada
@@ -19,16 +20,21 @@
 //
 // ─── `recurring` NÃO É ENFEITE ──────────────────────────────────────────────
 //
-// É o que decide a chamada no Asaas: fluxo avulso vira `POST /payments`
-// (cobrança), recorrente vira `POST /subscriptions` (assinatura). São objetos
-// diferentes, com webhooks diferentes e cancelamento diferente. Sem esta
-// marca, quem escrevesse o adapter teria que adivinhar pelo nome do fluxo.
+// É o que decide a chamada no gateway: no Mercado Pago, fluxo avulso vira
+// `POST /checkout/preferences` (a página de pagamento) e recorrente vira
+// `POST /preapproval` (a assinatura). São objetos diferentes, com webhooks
+// diferentes (tópicos diferentes!) e cancelamento diferente. Sem esta marca,
+// quem escrevesse o adapter teria que adivinhar pelo nome do fluxo.
 //
-// ⚠️ E carrega um aviso de produto: no Asaas só o CARTÃO cobra sozinho. Em Pix
-// ou boleto a assinatura GERA a cobrança e o cliente precisa pagar cada mês —
-// não é débito automático. Os quatro fluxos marcados aqui mudam de
-// comportamento quando saem do Stripe, e isso é decisão de negócio, não
+// ⚠️ E carrega um aviso de produto: o `preapproval` do Mercado Pago cobra por
+// CARTÃO. Pix recorrente clássico não existe — o Pix Automático é outro produto
+// e precisa estar habilitado na conta. Os quatro fluxos marcados aqui mudam de
+// MEIO DE PAGAMENTO quando saem do Stripe, e isso é decisão de negócio, não
 // detalhe de implementação.
+//
+// ⚠️ Os quatro também carregam a dívida do "vale até o fim do ciclo": nem o
+// Mercado Pago nem o Asaas têm `cancel_at_period_end`, então a data é agendada
+// em `tb_subscription_end` (mig 251) e o cancelamento só sai quando ela vence.
 
 /** @type {Record<string, { recurring: boolean, label: string }>} */
 const PAYMENT_FLOWS = {

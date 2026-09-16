@@ -3,37 +3,45 @@ const PaymentOpsStorage = require("../storages/PaymentOpsStorage");
 const PaymentIntentStorage = require("../storages/PaymentIntentStorage");
 const StripeService = require("./StripeService");
 const StripeWebhookService = require("./StripeWebhookService");
-const asaas = require("../integrations/payments/asaasClient");
+const mp = require("../integrations/payments/mercadoPagoClient");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PaymentReconciliationService");
 
 /**
- * Estados do Asaas em que o dinheiro já é do vendedor.
+ * Recupera uma pendente que nasceu no MERCADO PAGO.
  *
- * ⚠️ `CONFIRMED` entra junto de `RECEIVED` pela mesma razão do webhook: o
- * cliente pagou, e num boleto o repasse pode levar dias. Reconciliar só em
- * RECEIVED deixaria de socorrer exatamente quem pagou e não recebeu.
- */
-const ASAAS_PAID = new Set(["CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"]);
-
-/**
- * Recupera uma pendente que nasceu no ASAAS.
+ * ⚠️ Sem isto a reconciliação ficaria cega para a plataforma inteira: o
+ * `session_id` de uma cobrança do Mercado Pago é o UUID da nossa intenção, e
+ * pedir esse id ao Stripe devolve "não encontrado". O radar continuaria
+ * acusando a pendência e o socorro nunca chegaria.
  *
- * ⚠️ Sem isto a reconciliação ficaria cega para metade da plataforma: o
- * `session_id` de uma cobrança do Asaas é o UUID da nossa intenção, e pedir
- * esse id ao Stripe devolve "não encontrado". O radar continuaria acusando a
- * pendência e o socorro nunca chegaria.
+ * ⚠️⚠️ A BUSCA É POR `external_reference`, E NÃO POR `provider_ref` — e é este
+ * o detalhe que faz a função existir de verdade.
+ *
+ * `provider_ref` nasce com o id da PREFERÊNCIA e só vira o id do PAYMENT quando
+ * o webhook chega. Mas este código roda justamente no caso em que o webhook NÃO
+ * chegou: ali a referência ainda é a preferência, e `GET /v1/payments/<pref>`
+ * responde 404. A busca pela nossa própria referência é o único caminho que
+ * funciona no cenário para o qual a reconciliação foi escrita.
  */
-async function recoverAsaas(intent) {
-  if (!intent.provider_ref) return null;
-  const payment = await asaas.getPayment(intent.provider_ref);
-  if (!ASAAS_PAID.has(String(payment && payment.status))) return null;
+async function recoverMercadoPago(intent) {
+  const payment = await mp.findPaymentByExternalReference(intent.id_payment_intent);
+  if (!payment) return null;
+  if (String(payment.status || "").toLowerCase() !== "approved") return null;
 
-  // Mesma reidratação do webhook — uma só, senão as duas divergem.
-  const AsaasWebhookService = require("./AsaasWebhookService");
-  const session = AsaasWebhookService.buildSessionLike(intent, payment);
+  // Mesma reidratação do webhook — uma só, senão as duas divergem na primeira
+  // regra de negócio nova e o socorro entrega diferente da entrega normal.
+  const MercadoPagoWebhookService = require("./MercadoPagoWebhookService");
+  const session = MercadoPagoWebhookService.buildSessionLike(intent, payment);
   await StripeWebhookService.fulfillCheckoutSession(session);
+  // Carimba o id do payment: sem isso, um estorno futuro desta cobrança
+  // receberia o id da preferência e falharia.
+  await PaymentIntentStorage.setProviderRef(
+    pool,
+    intent.id_payment_intent,
+    String(payment.id)
+  ).catch(() => null);
   await PaymentIntentStorage.setStatus(pool, intent.id_payment_intent, "paid");
   return session;
 }
@@ -72,11 +80,11 @@ class PaymentReconciliationService {
           // significa Stripe: é toda cobrança anterior ao gateway.
           const intent = await PaymentIntentStorage.getById(pool, session_id).catch(() => null);
 
-          if (intent && intent.provider === "asaas") {
-            const rescued = await recoverAsaas(intent);
+          if (intent && intent.provider === "mercadopago") {
+            const rescued = await recoverMercadoPago(intent);
             if (!rescued) continue;
             recovered++;
-            log.warn("reconcile.recovered", { session_id, flow, provider: "asaas" });
+            log.warn("reconcile.recovered", { session_id, flow, provider: "mercadopago" });
             continue;
           }
 

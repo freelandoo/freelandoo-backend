@@ -360,7 +360,8 @@ class CommunityListingService {
           quantity,
           // A vaga registra QUEM COBROU. Antes era 'stripe' fixo — e o CHECK
           // da mig 198 nem aceitava outro valor, o que tornava a mentira
-          // obrigatória. A mig 237 abriu o CHECK para 'asaas'.
+          // obrigatória. As migs 237/250 abriram o CHECK para os provedores
+          // seguintes — hoje 'mercadopago'.
           payment_provider: providerOf(session),
           amount_cents: unit * quantity,
           stripe_session_id: session.id,

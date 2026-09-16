@@ -3,7 +3,7 @@ const express = require("express");
 const asyncHandler = require("../utils/asyncHandler");
 const StripeController = require("../controllers/StripeController");
 const WhatsappCloudWebhookController = require("../controllers/WhatsappCloudWebhookController");
-const AsaasController = require("../controllers/AsaasController");
+const MercadoPagoController = require("../controllers/MercadoPagoController");
 
 const router = Router();
 
@@ -41,21 +41,23 @@ router.post(
 );
 
 /**
- * Asaas → cobranças (mig 231/236).
+ * Mercado Pago → cobranças e assinaturas (migs 231/250).
  *
- * ⚠️ `express.json()` explícito, e NÃO `express.raw`: diferente do Stripe, o
- * Asaas não assina o corpo — não há HMAC a conferir sobre os bytes crus. A
- * autenticação é o header `asaas-access-token`, checado no controller.
+ * ⚠️ `express.json()` explícito, e NÃO `express.raw`: diferente do Stripe e da
+ * Meta, o Mercado Pago não assina os BYTES do corpo — ele assina um MANIFESTO
+ * montado com `data.id` (da querystring), `x-request-id` e `ts`. O corpo pode
+ * ser lido como JSON normal sem invalidar a assinatura.
  *
  * Montado aqui, junto dos outros webhooks, para herdar as duas propriedades
  * que esta posição no app.js garante: ANTES do express.json() global e ANTES
  * do rate limit — senão um retry legítimo do provedor levaria 429 e o
- * pagamento ficaria cobrado e sem entrega.
+ * pagamento ficaria cobrado e sem entrega. O Mercado Pago re-entrega a cada 15
+ * minutos o que não recebe 2xx em 22 segundos.
  */
 router.post(
-  "/asaas",
+  "/mercadopago",
   express.json({ limit: "1mb" }),
-  asyncHandler(AsaasController.handleWebhook)
+  asyncHandler(MercadoPagoController.handleWebhook)
 );
 
 module.exports = router;

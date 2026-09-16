@@ -12,6 +12,7 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const PaymentGateway = require("../integrations/payments");
+const SubscriptionEndService = require("./SubscriptionEndService");
 const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -268,7 +269,16 @@ class CommunityMembershipService {
     for (const row of rows) {
       if (row.stripe_subscription_id) {
         try {
-          await PaymentGateway.cancelSubscription(row.stripe_subscription_id); // period end
+          // ⚠️ PELO SubscriptionEndService, não pelo gateway direto: fora do
+          // Stripe não existe `cancel_at_period_end`, e a chamada crua cortaria
+          // NA HORA o mês que o membro já pagou. Aqui isso é pior que no
+          // cancelamento normal — quem pediu para sair foi o LÍDER, então o
+          // membro perderia acesso pago sem ter feito nada.
+          await SubscriptionEndService.cancelAtPeriodEnd({
+            subscriptionId: row.stripe_subscription_id,
+            id_user: row.id_user || null,
+            reason: "comunidade virou gratuita",
+          });
         } catch (err) {
           log.warn("releaseAll.stripe_fail", { id_sub: row.id_sub, message: err.message });
         }

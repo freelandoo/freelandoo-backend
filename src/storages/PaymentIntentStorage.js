@@ -60,6 +60,38 @@ class PaymentIntentStorage {
     return rows[0] || null;
   }
 
+  /**
+   * SOBRESCREVE a referência do gateway.
+   *
+   * ⚠️ EXISTE POR CAUSA DO MERCADO PAGO, e é uma exceção deliberada à guarda de
+   * `attachProviderRef`.
+   *
+   * No Stripe e no Asaas a cobrança já existia na criação, então a referência
+   * nascia definitiva. No Mercado Pago o que se cria é uma PREFERÊNCIA (a
+   * página de pagamento); o `payment` nasce quando alguém paga, com um id
+   * DIFERENTE — e é o id do payment que o estorno recebe.
+   *
+   * Sem este caminho, `refund({ intent_id })` mandaria o id de uma preferência
+   * para a rota de estorno de pagamento (404, dinheiro não volta) e
+   * `resolveProviderByRef(payment_id)` não acharia nada — devolvendo "stripe"
+   * pela regra da ausência, que mandaria o estorno para o gateway errado.
+   *
+   * ⚠️ NÃO USAR NO CAMINHO DE CRIAÇÃO. Lá a guarda de `attachProviderRef` é o
+   * que impede um retry de sobrescrever a referência de uma cobrança que já
+   * pode ter sido paga.
+   */
+  static async setProviderRef(conn, id_payment_intent, provider_ref) {
+    const { rows } = await conn.query(
+      `UPDATE public.tb_payment_intent
+          SET provider_ref = $2,
+              updated_at = NOW()
+        WHERE id_payment_intent = $1
+        RETURNING *`,
+      [id_payment_intent, provider_ref]
+    );
+    return rows[0] || null;
+  }
+
   static async getById(conn, id_payment_intent) {
     const { rows } = await conn.query(
       `SELECT * FROM public.tb_payment_intent WHERE id_payment_intent = $1 LIMIT 1`,

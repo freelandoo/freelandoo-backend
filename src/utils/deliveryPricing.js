@@ -21,15 +21,20 @@
  * ── ⚠️ O NÚMERO LÍQUIDO NÃO PODE SER CRAVADO EM LUGAR NENHUM ────────────────
  *
  * A MESMA corrida de R$3 rende coisas diferentes conforme quem estiver
- * cobrando (apurado em 2026-09-16):
+ * cobrando (ordens de grandeza de 2026-09-16, NÃO medidas em extrato):
  *
- *   Stripe cartão (3,99% + R$0,39) — o que roda HOJE → líquido R$2,49
- *   Asaas Pix (R$1,99 fixo)        — o que foi escolhido → líquido R$1,01
+ *   Stripe cartão (3,99% + R$0,39) — legado, ainda cobra → líquido ~R$2,49
+ *   Mercado Pago Pix (~0,99%)      — o escolhido        → líquido ~R$2,97
+ *   Asaas Pix (R$1,99 FIXO)        — REMOVIDO           → líquido  R$1,01
  *
- * O Asaas está DESLIGADO em produção (sem `ASAAS_API_KEY`), e o Pix nem está
- * habilitado na conta Stripe. Escrever "R$2,49" ou "R$1,01" em qualquer lugar
- * — código, teste ou tela — cria um número que fica errado no dia do switch,
- * sem ninguém perceber. A conta sai SEMPRE do `PaymentGateway` ativo.
+ * ⚠️ FOI ESTA LINHA QUE MATOU O ASAAS: tarifa FIXA come dois terços de uma
+ * corrida de R$3. Tarifa PERCENTUAL come centavos. Como praticamente nenhum
+ * ticket da Freelandoo passa de R$150, o ponto em que a fixa ganha da
+ * percentual (~R$201) nunca é alcançado.
+ *
+ * Escrever "R$2,49" ou "R$2,97" em qualquer lugar — código, teste ou tela —
+ * cria um número que fica errado no dia do switch, sem ninguém perceber. A
+ * conta sai SEMPRE do `PaymentGateway` ativo.
  */
 
 const { createLogger } = require("./logger");
@@ -155,8 +160,9 @@ function estimateProcessorFee(chargeAmountCents, governanceSettings) {
  * O que sobra para quem entrega.
  *
  * ⚠️ NUNCA NEGATIVO, e este é o caso concreto que a trava existe para impedir:
- * uma corrida de comida de R$3,00 com a tarifa do Asaas Pix (R$1,99) deixa
- * R$1,01; com uma tarifa fixa maior que o preço, a subtração crua daria
+ * uma corrida de comida de R$3,00 com uma tarifa FIXA de R$1,99 (era a do Asaas
+ * Pix, já removido) deixa R$1,01; com uma tarifa fixa maior que o preço — que é
+ * o que acontece num pedido de R$1,50 —, a subtração crua daria
  * NEGATIVO — e um número negativo aqui viraria **débito na carteira de quem
  * carregou a sacola**, a plataforma cobrando dele por ter trabalhado. Fixar no
  * zero é a perda ficar com quem calibrou o preço, não com quem entregou.

@@ -52,6 +52,16 @@ const server = app.listen(PORT, () => {
   const ResidenceService = require("./src/services/ResidenceService");
   ResidenceService.startSweeper();
 
+  // "Cancelar no fim do ciclo" (mig 251) — a capacidade que só o Stripe tem
+  // nativamente. Fora dele, cancelar é IMEDIATO, então a data do ciclo pago é
+  // agendada e executada aqui.
+  //
+  // ⚠️ SEM ESTE SWEEPER A FILA NUNCA ESVAZIA, e o sintoma é o pior possível:
+  // a pessoa cancelou, a plataforma disse que cancelou, e o cartão dela segue
+  // sendo debitado todo mês — porque quem ia mandar o "pare" era isto.
+  const SubscriptionEndService = require("./src/services/SubscriptionEndService");
+  SubscriptionEndService.startSweeper();
+
   // Catálogo de alimentos (TACO curada): seed idempotente fill-if-absent.
   // Falha não derruba o boot (fitness fica sem catálogo até o próximo deploy).
   const { seedTacoFoods } = require("./scripts/seed-taco");
