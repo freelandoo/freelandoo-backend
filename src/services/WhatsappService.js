@@ -146,13 +146,30 @@ class WhatsappService {
 
       const provider = this._providerFor(instance);
       let status = instance.status;
+      let quality = { rating: instance.quality_rating, status: instance.number_status };
       if (provider) {
         // `null` = o provedor não respondeu; o último status conhecido vale
         // mais do que piscar "desconectado" por causa de um soluço de rede.
-        const open = await provider
-          .state(instance)
-          .then((r) => (r && typeof r.connected === "boolean" ? r.connected : null))
-          .catch(() => null);
+        const snapshot = await provider.state(instance).catch(() => null);
+        const open = snapshot && typeof snapshot.connected === "boolean" ? snapshot.connected : null;
+
+        // W6 — a qualidade vem DE CARONA nesta mesma chamada.
+        //
+        // ⚠️ O GET do número já devolvia `quality_rating` e `status` desde o W1
+        // e os dois eram DESCARTADOS aqui. Aproveitá-los custa zero chamada
+        // nova, e é o que preenche quem conectou antes de existir monitor: o
+        // webhook só avisa quando algo MUDA, então quem está estável há meses
+        // nunca receberia um evento e ficaria para sempre sem dado no painel.
+        //
+        // E é a única fonte que sabe o RATING: o webhook de qualidade manda
+        // evento, não GREEN/YELLOW/RED (ver `utils/whatsappCloudQuality`).
+        if (snapshot && (snapshot.qualityRating || snapshot.numberStatus)) {
+          const saved = await WhatsappStorage.setQuality(pool, instance.id_instance, {
+            rating: snapshot.qualityRating || null,
+            status: snapshot.numberStatus || null,
+          }).catch(() => null);
+          if (saved) quality = { rating: saved.quality_rating, status: saved.number_status };
+        }
         if (open !== null) {
           status = open ? "connected" : instance.status === "connecting" ? "connecting" : "disconnected";
           if (status !== instance.status) {
@@ -177,6 +194,10 @@ class WhatsappService {
         // é indistinguível de defeito.
         disconnect_reason: status === "connected" ? null : instance.disconnect_reason || null,
         idle_days: IDLE_DAYS,
+        // A saúde do número, para a tela poder avisar o dono sem esperar ele
+        // abrir o sino. `null` é "ainda não sabemos", nunca "está tudo bem".
+        quality_rating: quality.rating || null,
+        number_status: quality.status || null,
         unread: await WhatsappStorage.unreadTotal(pool, id_user),
       };
     });

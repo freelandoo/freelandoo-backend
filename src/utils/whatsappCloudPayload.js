@@ -197,6 +197,19 @@ function readEnvelope(body) {
         messages: Array.isArray(value.messages) ? value.messages : [],
         statuses: Array.isArray(value.statuses) ? value.statuses : [],
         contacts: Array.isArray(value.contacts) ? value.contacts : [],
+        // O `value` cru, para os campos que NÃO são conversa.
+        //
+        // ⚠️ Os eventos do W6 (qualidade do número, apuro na conta) não têm
+        // forma fixa: a Meta acrescenta objeto novo (`ban_info`, `restriction_info`)
+        // sem avisar, e cada um traz o número num nome de campo diferente.
+        // Nomear campo a campo aqui faria cada evento novo exigir uma edição
+        // neste arquivo — e, até ela sair, o evento chegaria vazio em vez de
+        // chegar desconhecido.
+        //
+        // Quem lê isto é SÓ `utils/whatsappCloudQuality`. O caminho de mensagem
+        // continua passando pelos campos nomeados acima, que é o que impede
+        // "ler qualquer coisa do value" de virar o padrão da casa.
+        value,
       });
     }
   }

@@ -66,8 +66,27 @@ async function main() {
     process.exit(1);
   }
 
-  const client = new Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  // ⚠️ `sslmode=no-verify` na própria URL, e não só o `ssl` do cliente: quando a
+  // connection string traz `sslmode=require`, o pg v8 a deixa vencer o objeto e
+  // a conexão morre com "self-signed certificate in certificate chain" — o
+  // certificado do Railway é self-signed. Sem isto a suíte só roda para quem
+  // souber exportar NODE_TLS_REJECT_UNAUTHORIZED=0, e teste que precisa de
+  // ritual é teste que ninguém roda.
+  const client = new Client({
+    connectionString: `${url.replace(/[?&]sslmode=[^&]*/, "")}?sslmode=no-verify`,
+    ssl: { rejectUnauthorized: false },
+  });
   await client.connect();
+
+  // O estado ANTES da transação. É o ponto de retorno que o rollback tem que
+  // devolver — em produção a mig 240 já rodou e a coluna existe legitimamente.
+  const before = await client.query(
+    `SELECT COUNT(*)::int AS n FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='tb_whatsapp_instance'
+        AND column_name='provider'`
+  );
+  const hadProviderBefore = before.rows[0].n > 0;
+
   await client.query("BEGIN");
 
   try {
@@ -105,19 +124,26 @@ async function main() {
     check("number_status existe", !!byName.number_status);
     check("quality_checked_at existe", !!byName.quality_checked_at);
 
-    // ── 3. Toda linha EXISTENTE é da Evolution ───────────────────────────────
+    // ── 3. Linha SEM provedor declarado cai na Evolution ─────────────────────
     //
     // É o que garante que ninguém que já conectou muda de transporte por causa
     // do deploy: o default retroage para as linhas que já estavam lá.
+    //
+    // ⚠️ ESTA ASSERÇÃO ERA UMA CONTAGEM GLOBAL ("toda instância da tabela é
+    // 'evolution'") e ENVELHECEU no dia em que a mig 240 foi para produção: a
+    // primeira conexão pela Cloud API fez o teste acusar o produto funcionando
+    // como defeito. Contagem global sobre tabela de produto novo tem prazo de
+    // validade — a pergunta certa é sobre o DEFAULT, que é o que a migration
+    // realmente promete, e essa não envelhece.
     const legacy = await client.query(
-      `SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (WHERE provider = 'evolution')::int AS evo
-         FROM public.tb_whatsapp_instance`
+      `SELECT column_default FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='tb_whatsapp_instance'
+          AND column_name='provider'`
     );
     check(
-      "toda instância existente ficou como 'evolution'",
-      legacy.rows[0].total === legacy.rows[0].evo,
-      `total=${legacy.rows[0].total} evo=${legacy.rows[0].evo}`
+      "o default da coluna é 'evolution' (linha antiga não troca de transporte)",
+      /'evolution'/.test(String(legacy.rows[0] && legacy.rows[0].column_default)),
+      `default=${legacy.rows[0] && legacy.rows[0].column_default}`
     );
 
     // ── 4. O CHECK recusa provedor inventado, PELO NOME da constraint ────────
@@ -276,14 +302,25 @@ async function main() {
   } finally {
     await client.query("ROLLBACK");
 
-    // Produção conferida INTOCADA depois do rollback: a coluna não pode ter
-    // sobrado, e nenhuma linha de teste pode ter ficado.
+    // Produção conferida INTOCADA depois do rollback: o banco tem que voltar
+    // ao estado em que ESTAVA — não a um estado fixo.
+    //
+    // ⚠️ A asserção original exigia que a coluna NÃO existisse depois do
+    // rollback, e ela envelheceu no deploy da própria mig 240: em produção a
+    // coluna existe legitimamente, aplicada no boot. Perguntar "a coluna sumiu?"
+    // passou a acusar o mundo correto como defeito. A pergunta que não envelhece
+    // é "o rollback me devolveu ao ponto de partida?", e por isso o estado é
+    // medido ANTES (ver `hadProviderBefore`).
     const after = await client.query(
       `SELECT COUNT(*)::int AS n FROM information_schema.columns
         WHERE table_schema='public' AND table_name='tb_whatsapp_instance'
           AND column_name='provider'`
     );
-    check("ROLLBACK desfez a migration (coluna não existe mais)", after.rows[0].n === 0);
+    check(
+      "ROLLBACK devolveu o banco ao estado anterior",
+      (after.rows[0].n > 0) === hadProviderBefore,
+      `antes=${hadProviderBefore} depois=${after.rows[0].n > 0}`
+    );
 
     const leftovers = await client.query(
       `SELECT COUNT(*)::int AS n FROM public.tb_whatsapp_instance

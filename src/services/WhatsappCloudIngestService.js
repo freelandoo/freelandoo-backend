@@ -27,6 +27,13 @@ const pool = require("../databases");
 const WhatsappStorage = require("../storages/WhatsappStorage");
 const realtime = require("../realtime/socket");
 const { readEnvelope, readMessage, namesOf } = require("../utils/whatsappCloudPayload");
+// W6. ⚠️ Nenhum dos dois alcança quem ENVIA — o parser de qualidade é função
+// pura e o NotificationService fala com banco e socket, nunca com a Meta. O
+// `whatsappIngestIsolation.test.js` confere isto pelo fecho transitivo dos
+// `require`, e é ele que impede um import de passagem de abrir o caminho de
+// "mensagem que chega" para "mensagem que sai".
+const { readQualityEvent } = require("../utils/whatsappCloudQuality");
+const NotificationService = require("./NotificationService");
 const { redactPhone } = require("../utils/whatsappJid");
 const { createLogger } = require("../utils/logger");
 
@@ -116,6 +123,77 @@ class WhatsappCloudIngestService {
   }
 
   /**
+   * W6 — a saúde do número. Devolve um rótulo curto para o resumo do webhook,
+   * ou `null` quando o bloco não é de qualidade (aí quem chama o ignora).
+   *
+   * ⚠️ O ROTEAMENTO AQUI É PELO NÚMERO, e essa é a diferença que quebra quem
+   * copia o caminho das mensagens: `phone_number_quality_update` e
+   * `account_update` NÃO trazem `value.metadata.phone_number_id`. Casar por
+   * `phoneNumberId` acharia sempre vazio, todo evento cairia em "desconhecido"
+   * e o painel ficaria eternamente sem dado — sem um erro sequer.
+   *
+   * ⚠️ Número que não é nosso é IGNORADO, como nas mensagens. Um evento de ban
+   * atribuído por aproximação mandaria para uma pessoa o susto causado por
+   * outra.
+   */
+  static async _handleQuality(block) {
+    const ev = readQualityEvent(block);
+    if (!ev) return null;
+
+    if (!ev.phone) {
+      log.warn("cloud.quality.no_phone", { field: ev.field, event: ev.event });
+      return `${ev.field}: sem número`;
+    }
+
+    const instance = await WhatsappStorage.getInstanceByNumber(pool, PROVIDER, ev.phone);
+    if (!instance) {
+      // LGPD: telefone nunca inteiro no log — nem o de quem não é nosso.
+      log.warn("cloud.quality.unknown_number", {
+        field: ev.field,
+        event: ev.event,
+        phone: redactPhone(ev.phone),
+      });
+      return `${ev.field}: número desconhecido`;
+    }
+
+    await WhatsappStorage.setQuality(pool, instance.id_instance, {
+      rating: ev.rating,
+      status: ev.status,
+    });
+
+    if (ev.alert) {
+      // Fire-and-forget como toda notificação: o webhook não pode falhar (e
+      // provocar reentrega da Meta) porque o sino não acendeu.
+      await NotificationService.notifyWhatsappQuality({
+        recipient_user_id: instance.id_user,
+        id_instance: instance.id_instance,
+        event: ev.event,
+        rating: ev.rating,
+        status: ev.status,
+      }).catch(() => null);
+
+      // Quem está com a aba aberta vê na hora, sem esperar o próximo load.
+      try {
+        realtime.emitToUser(instance.id_user, "whatsapp:quality", {
+          event: ev.event,
+          rating: ev.rating,
+          status: ev.status,
+        });
+      } catch {
+        /* realtime é best-effort */
+      }
+    }
+
+    log.info("cloud.quality.applied", {
+      field: ev.field,
+      event: ev.event,
+      status: ev.status,
+      alert: ev.alert,
+    });
+    return `${ev.field}: ${ev.event || "sem evento"}`;
+  }
+
+  /**
    * Ponto de entrada. Recebe o corpo JÁ PARSEADO — quem confere a assinatura
    * sobre os bytes crus é o controller, antes de chamar isto.
    *
@@ -130,12 +208,22 @@ class WhatsappCloudIngestService {
     let duplicated = 0;
     let statuses = 0;
     const ignored = [];
+    const quality = [];
 
     for (const block of blocks) {
-      // `field` diz o que a mudança é. Só `messages` traz conversa; o resto
-      // (qualidade do número, status de template, conta) é do W6.
+      // `field` diz o que a mudança é. Só `messages` traz conversa; a saúde do
+      // número (W6) entra pelo caminho ao lado, e o resto segue ignorado.
+      //
+      // ⚠️ IGNORAR NÃO ERA NEUTRO: `phone_number_quality_update` e
+      // `account_update` já estavam ASSINADOS no app desde o começo, então a
+      // Meta vinha entregando aviso de número sinalizado e de conta restrita —
+      // e nós os jogávamos fora, com 200 na resposta. O sintoma dessa perda só
+      // apareceria meses depois, como "o teto de números parou de subir", sem
+      // nome e sem data.
       if (block.field !== "messages") {
-        ignored.push(block.field || "vazio");
+        const label = await this._handleQuality(block);
+        if (label) quality.push(label);
+        else ignored.push(block.field || "vazio");
         continue;
       }
 
@@ -171,7 +259,7 @@ class WhatsappCloudIngestService {
       statuses += block.statuses.length;
     }
 
-    return { type: "messages", saved, duplicated, statuses, ignored };
+    return { type: "messages", saved, duplicated, statuses, ignored, quality };
   }
 
   /** Log de webhook NUNCA leva telefone inteiro (LGPD) — nem o de terceiro. */

@@ -856,6 +856,45 @@ class NotificationService {
       },
     });
   }
+  /**
+   * W6 — o número do WhatsApp dele está em apuros.
+   *
+   * ⚠️ QUEM PODE CORRIGIR É O DONO, e é por isso que este aviso existe. Na
+   * fase 1 o número mora no WABA da Freelandoo: a punição direta (restrição,
+   * ban) é dele, mas é a qualidade AGREGADA do portfólio que destrava o teto de
+   * números para todo mundo. Guardar isto só num painel de admin faria a única
+   * pessoa capaz de mudar o comportamento ser a última a saber.
+   *
+   * ⚠️ SEM ATOR, e não por esquecimento: quem "fez" isto é a Meta, não um
+   * usuário — e `safeNotify` DESCARTA a notificação quando ator e destinatário
+   * são a mesma pessoa. Carimbar o próprio dono como ator faria o aviso sumir
+   * em silêncio, que é o modo de falhar mais caro possível para um alerta.
+   *
+   * O texto NÃO é montado aqui: o payload leva o EVENTO cru da Meta
+   * (`FLAGGED`, `ACCOUNT_RESTRICTION`) e quem escreve a frase é a tela, que
+   * fala os três idiomas. Frase gravada no banco nasce em português para
+   * sempre.
+   */
+  static async notifyWhatsappQuality({
+    recipient_user_id,
+    id_instance,
+    event,
+    rating,
+    status,
+  }) {
+    if (!recipient_user_id || !event) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      type: "whatsapp_quality_alert",
+      entity_type: "whatsapp_instance",
+      entity_id: id_instance || null,
+      payload: {
+        event: String(event).slice(0, 40),
+        rating: rating ? String(rating).slice(0, 16) : null,
+        status: status ? String(status).slice(0, 24) : null,
+      },
+    });
+  }
 }
 
 module.exports = NotificationService;

@@ -110,6 +110,108 @@ class WhatsappStorage {
   }
 
   /**
+   * Acha a instância PELO NÚMERO — o caminho dos eventos do W6.
+   *
+   * ⚠️ Os webhooks de qualidade e de conta NÃO trazem `phone_number_id`, só o
+   * número em texto. Por isso a comparação é sobre DÍGITOS dos dois lados: o
+   * que está gravado veio do cadastro (`5511968128174`) e o que chega pode vir
+   * formatado (`+55 11 96812-8174`).
+   *
+   * ⚠️ O FALLBACK PELOS 8 ÚLTIMOS DÍGITOS existe por causa do nono dígito
+   * brasileiro: a Meta devolve o número ora com ele, ora sem, e um match exato
+   * perderia o evento silenciosamente — que é o pior resultado possível, porque
+   * o sintoma é "o painel nunca mostra qualidade" sem um erro sequer.
+   *
+   * ⚠️ E o fallback só decide quando a resposta é ÚNICA. Dois números com o
+   * mesmo final atribuiriam o apuro de um ao outro, e o aviso iria para a
+   * pessoa errada. Ambíguo devolve `null`: ignorar é melhor que acusar quem não
+   * fez nada.
+   */
+  static async getInstanceByNumber(conn, provider, digits) {
+    const clean = String(digits || "").replace(/\D/g, "");
+    if (!clean) return null;
+
+    const exact = await conn.query(
+      `SELECT id_instance, id_user, provider, evolution_instance, waba_id,
+              status, connected_number, quality_rating, number_status
+         FROM public.tb_whatsapp_instance
+        WHERE provider = $1
+          AND regexp_replace(COALESCE(connected_number, ''), '[^0-9]', '', 'g') = $2
+        LIMIT 1`,
+      [provider, clean]
+    );
+    if (exact.rowCount) return exact.rows[0];
+
+    const tail = clean.slice(-8);
+    if (tail.length < 8) return null;
+
+    const loose = await conn.query(
+      `SELECT id_instance, id_user, provider, evolution_instance, waba_id,
+              status, connected_number, quality_rating, number_status
+         FROM public.tb_whatsapp_instance
+        WHERE provider = $1
+          AND regexp_replace(COALESCE(connected_number, ''), '[^0-9]', '', 'g') LIKE $2
+        LIMIT 2`,
+      [provider, `%${tail}`]
+    );
+    return loose.rowCount === 1 ? loose.rows[0] : null;
+  }
+
+  /**
+   * Grava o que se sabe sobre a saúde do número (colunas da mig 240).
+   *
+   * ⚠️ `null` NÃO SOBRESCREVE, e é o coração deste método: as duas fontes sabem
+   * coisas diferentes. O webhook de qualidade afirma o STATUS e não manda
+   * rating nenhum; o GET do número afirma os dois. Gravando `null` por cima, um
+   * evento de webhook APAGARIA o rating que o GET tinha trazido, e o painel
+   * ficaria vazio logo depois de um problema — exatamente quando ele importa.
+   *
+   * `quality_checked_at` é sempre carimbado: saber QUANDO foi a última notícia
+   * é o que distingue "o número está bem" de "ninguém olha para ele há meses".
+   */
+  static async setQuality(conn, id_instance, { rating = null, status = null } = {}) {
+    const r = await conn.query(
+      `UPDATE public.tb_whatsapp_instance
+          SET quality_rating    = COALESCE($2, quality_rating),
+              number_status     = COALESCE($3, number_status),
+              quality_checked_at = NOW()
+        WHERE id_instance = $1
+        RETURNING id_instance, id_user, connected_number, quality_rating, number_status`,
+      [id_instance, rating, status]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  /**
+   * A lista do painel de admin. Traz o dono junto porque a pergunta que o
+   * painel responde é "de QUEM é o número que está degradando" — sem isso
+   * sobra um telefone solto e a conversa não acontece.
+   *
+   * Ordenada por gravidade, não por data: quem está vermelho tem que aparecer
+   * primeiro mesmo que o evento seja antigo.
+   */
+  static async listForAdmin(conn, { limit = 200 } = {}) {
+    const r = await conn.query(
+      `SELECT i.id_instance, i.id_user, i.provider, i.evolution_instance,
+              i.waba_id, i.status, i.connected_number, i.quality_rating,
+              i.number_status, i.quality_checked_at, i.last_seen_at,
+              i.created_at, u.username, u.nome AS user_name, u.email
+         FROM public.tb_whatsapp_instance i
+         JOIN public.tb_user u ON u.id_user = i.id_user
+        ORDER BY CASE UPPER(COALESCE(i.quality_rating, ''))
+                   WHEN 'RED' THEN 0
+                   WHEN 'YELLOW' THEN 1
+                   WHEN 'GREEN' THEN 3
+                   ELSE 2
+                 END,
+                 i.created_at DESC
+        LIMIT $1`,
+      [limit]
+    );
+    return r.rows;
+  }
+
+  /**
    * Cria ou reaproveita a linha da pessoa. Idempotente pelo mesmo motivo que
    * `createInstance` da Evolution é: a tela chama isto toda vez que alguém pede
    * um QR, inclusive na reconexão.

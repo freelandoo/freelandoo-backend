@@ -179,7 +179,13 @@ async function main() {
       assert.strictEqual(broken.status, 200)
     );
 
-    /* ── POST: campo que não é conversa é ignorado sem tocar o banco ───── */
+    /* ── POST: evento de qualidade SEM número não chega ao banco ───────── */
+    //
+    // ⚠️ Desde o W6 este campo é TRATADO, não ignorado — mas o payload abaixo
+    // não traz `display_phone_number`, e é exatamente aí que o tratamento para:
+    // sem número não há a quem atribuir, e ir ao banco seria varrer a tabela
+    // para não achar nada. É isso que mantém esta suíte rodando em máquina sem
+    // Postgres, como o cabeçalho promete.
 
     const quality = JSON.stringify({
       object: "whatsapp_business_account",
@@ -201,7 +207,7 @@ async function main() {
       headers: { ...json, "x-hub-signature-256": sign(quality) },
       body: quality,
     });
-    check("mudança de qualidade é aceita e ignorada (é do W6)", () => {
+    check("mudança de qualidade é aceita e tratada pelo W6, sem ir ao banco", () => {
       assert.strictEqual(q2.status, 200);
       assert.match(q2.body, /phone_number_quality_update/);
     });
