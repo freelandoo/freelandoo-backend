@@ -115,11 +115,18 @@ campos que **reprovam sozinhos** estão sem valor:
 |---|---|---|
 | **Política de privacidade** | *** vazio *** | `https://www.freelandoo.com.br/privacy-policy` — **conferido, responde 200** |
 | **Categoria** | *** vazio *** | *Business and Pages* (ou *Productivity*) |
-| **Ícone** | ícone **padrão** do Facebook (`rsrc.php/…`) | 1024×1024 com a marca Freelandoo |
+| **Ícone** | ícone **padrão** do Facebook (`rsrc.php/…`) | 1024×1024 com a marca — ⚠️ **não existe pronto**, ver nota |
 | Termos de serviço | *** vazio *** | `https://www.freelandoo.com.br/terms` — **conferido, 200** (não obrigatório, mas some do checklist) |
 
 Onde: **App Dashboard → Settings → Basic**. Salvar.
 
+> ⚠️ **O ícone precisa ser gerado — não há asset no tamanho.** O maior que o
+> front tem é **666×666** (`public/icon.png`, `apple-icon.png` e
+> `freelandoo-logo.png` são o mesmo arquivo; `public/icons/icon-512.png` tem
+> 512). **Não existe SVG da marca** no repo — os únicos vetores são os dos
+> Poléns —, então dá para ampliar o 666 ou reexportar do original. A Meta pede
+> **1024×1024**.
+>
 > ⚠️ **O ícone padrão conta como ausente.** O que está lá é o placeholder que
 > todo app novo recebe, não uma escolha — um review de identidade lê isso como
 > app não configurado.
