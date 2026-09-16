@@ -61,6 +61,21 @@ async function main() {
   const pool = new Pool({ connectionString: `${url}?sslmode=no-verify` });
   const c = await pool.connect();
 
+  // O estado ANTES da transação — o ponto de retorno que o ROLLBACK tem que
+  // devolver.
+  //
+  // ⚠️ Medir isto é o que impede a asserção final de envelhecer. Ela nasceu
+  // exigindo que o tipo NÃO existisse depois do rollback, e isso deixou de ser
+  // verdade no dia em que a própria mig 246 foi para produção: lá o tipo passou
+  // a existir legitimamente, aplicado no boot, e o teste começou a acusar o
+  // mundo correto como defeito. A pergunta que não envelhece é "o rollback me
+  // devolveu ao ponto de partida?".
+  const hadTypeBefore = (
+    await c.query(
+      "SELECT pg_get_constraintdef(oid) d FROM pg_constraint WHERE conname = 'tb_notification_type_chk'"
+    )
+  ).rows[0].d.includes("whatsapp_quality_alert");
+
   console.log("\nW6 — qualidade do número (transação com ROLLBACK)");
   console.log("-".repeat(58));
   await c.query("BEGIN");
@@ -219,8 +234,9 @@ async function main() {
     "SELECT pg_get_constraintdef(oid) d FROM pg_constraint WHERE conname = 'tb_notification_type_chk'"
   );
   check(
-    "e o CHECK de producao voltou ao que era (sem o tipo novo)",
-    chk.rowCount === 1 && !chk.rows[0].d.includes("whatsapp_quality_alert")
+    "e o CHECK de producao voltou ao estado anterior",
+    chk.rowCount === 1 && chk.rows[0].d.includes("whatsapp_quality_alert") === hadTypeBefore,
+    `antes=${hadTypeBefore} depois=${chk.rows[0].d.includes("whatsapp_quality_alert")}`
   );
 
   c.release();

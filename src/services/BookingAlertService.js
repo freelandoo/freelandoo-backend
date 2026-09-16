@@ -3,7 +3,7 @@
 //
 // Pedido do Alex (2026-09-08), olhando o construtor do site: "quando agendar
 // ali, vá uma mensagem pra caixa de mensagens do perfil líder da comunidade, e
-// também, se tiver conectado o Evolution, com o número de WhatsApp cadastrado.
+// também, se tiver o WhatsApp conectado, no número dele.
 // As notificações dos agendamentos precisam ir pra lá."
 //
 // ═══ POR QUE O SINO NÃO BASTAVA ═════════════════════════════════════════════
@@ -182,7 +182,7 @@ class BookingAlertService {
             );
 
             // O WhatsApp NÃO é esperado: a caixa de mensagens é a entrega que
-            // fica, e uma Evolution lenta não pode segurar o webhook do Stripe.
+            // fica, e uma Meta lenta não pode segurar o webhook do Stripe.
             // O retorno é informativo — ele devolve `{ sent:false, reason }` em
             // vez de erro quando o número não está conectado.
             WhatsappService.notifyOwner(id_user, text)

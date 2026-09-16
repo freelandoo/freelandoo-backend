@@ -20,25 +20,13 @@ const router = Router();
 /**
  * Status. FORA da flag de propósito: com a feature desligada a aba ainda
  * precisa saber dizer o que houve, e um 403 aqui deixaria a tela sem nenhuma
- * resposta para desenhar. Quem realmente bloqueia é o QR e o envio.
+ * resposta para desenhar. Quem realmente bloqueia é o cadastro e o envio.
  */
 router.get("/instance", authMiddleware, asyncHandler(WhatsappController.status));
 
-/** O QR do pareamento. Idempotente: a tela chama a cada renovação (~20s). */
-router.get(
-  "/instance/qrcode",
-  authMiddleware,
-  requireFeature("whatsapp_atendimento"),
-  // A posse entra AQUI, e não no status: é este clique que levanta a sessão na
-  // Evolution, e é a sessão que custa memória enquanto estiver de pé (mig 224).
-  // O status fica aberto para a aba conseguir escrever o motivo em vez de
-  // mostrar um botão que só falha depois do clique.
-  requirePlanFeature("whatsapp"),
-  asyncHandler(WhatsappController.qrcode)
-);
-
 /**
- * Cadastro de número — o caminho da Cloud API, que NÃO tem QR (W3).
+ * Cadastro de número — como se conecta na Cloud API (W3). NÃO existe QR: a
+ * Evolution, que pareava por QR, foi removida em 2026-09-16.
  *
  * Mesmos dois guards do QR, e pela mesma razão: é este clique que cria o
  * número dentro do NOSSO WABA, e o teto da fase 1 é o número de números (2 no
@@ -104,7 +92,7 @@ router.post(
   asyncHandler(WhatsappController.sendText)
 );
 
-/** Bytes da mídia recebida, buscados na Evolution na hora (nada em repouso). */
+/** Bytes da mídia recebida, buscados na Meta na hora (nada em repouso). */
 router.get(
   "/messages/:id_message/media",
   authMiddleware,

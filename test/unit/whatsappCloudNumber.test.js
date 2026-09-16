@@ -106,13 +106,18 @@ test("⚠️ trocar o App Secret muda o PIN — é a consequência a conhecer", 
 
 /* ──────────────────────────────── capabilities ───────────────────────────── */
 
-test("a Cloud declara cadastro de número; a Evolution, QR", () => {
+test("a Cloud declara cadastro de número, e a Evolution não existe mais", () => {
   // É por esta capability que o service escolhe o caminho — e não por
-  // `provider === "cloud"` espalhado, que é como o gate de uma delas acabaria
-  // ficando para trás.
+  // `provider === "cloud"` espalhado, que é como um gate acabaria ficando para
+  // trás no dia do provedor seguinte.
+  //
+  // ⚠️ `get("evolution")` devolve `null` desde a remoção (2026-09-16), e o teste
+  // afirma isso de propósito: o valor continua aceito pelo CHECK do banco (é
+  // histórico), e é o `null` — não uma exceção — que faz o service responder
+  // "não configurado" em vez de estourar no meio de uma requisição.
   const wp = require("../../src/integrations/whatsappProvider");
   assert.strictEqual(wp.get("cloud").capabilities.numberRegistration, true);
-  assert.strictEqual(wp.get("evolution").capabilities.numberRegistration, false);
+  assert.strictEqual(wp.get("evolution"), null);
 });
 
 test("o adaptador da Cloud expõe os três passos do cadastro", () => {

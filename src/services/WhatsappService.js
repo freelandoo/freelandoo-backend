@@ -13,7 +13,8 @@
 //    solto (o guard está no `WhatsappStorage`, e é dele que este service depende).
 //
 // 3. QUEM DECIDE SE A INTEGRAÇÃO EXISTE É A ENV, NÃO A FLAG (mig 214/220).
-//    Sem `EVOLUTION_URL`/`EVOLUTION_API_KEY` a resposta é "não configurado",
+//    Sem as credenciais da Meta (`META_APP_ID`, `META_APP_SECRET`,
+//    `META_SYSTEM_USER_TOKEN`, `META_WABA_ID`) a resposta é "não configurado",
 //    dita em voz alta — nunca um botão que só falha depois do clique.
 //
 // 4. ENVIAR É SEMPRE UM CLIQUE DO DONO. A ingestão não conhece este módulo, e
@@ -21,10 +22,10 @@
 //
 // ─── POR QUE DESCONECTAR NÃO APAGA NADA ─────────────────────────────────────
 //
-// `logout` derruba a sessão na Evolution e zera o status aqui, mas a instância
-// e as conversas ficam. Quem troca de aparelho (ou cai) volta e encontra a
-// caixa como deixou; apagar seria transformar uma queda de rede em perda de
-// histórico.
+// Desconectar tira o número do nosso WABA e zera o status aqui, mas a instância
+// e as conversas FICAM. Quem desliga por engano (ou é desligado pelo painel de
+// admin) volta e encontra a caixa como deixou; apagar transformaria um clique
+// numa perda de histórico que ninguém pediu.
 
 const pool = require("../databases");
 const WhatsappStorage = require("../storages/WhatsappStorage");
@@ -37,7 +38,6 @@ const WhatsappStorage = require("../storages/WhatsappStorage");
 const whatsappProvider = require("../integrations/whatsappProvider");
 const FeatureFlagService = require("./FeatureFlagService");
 const realtime = require("../realtime/socket");
-const { instanceNameFor } = require("../utils/whatsappInstance");
 const { formatPhone, splitPhone } = require("../utils/whatsappJid");
 const { publicConversation } = require("../utils/whatsappConversation");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -48,16 +48,6 @@ const FLAG = "whatsapp_atendimento";
 // Teto do corpo de uma mensagem de texto do WhatsApp com folga: o que passa
 // disso não é conversa, é payload.
 const MAX_TEXT = 4096;
-/**
- * Dias sem o DONO abrir a caixa até a sessão ser desligada.
- *
- * Existe porque uma sessão do WhatsApp custa memória enquanto está de pé, e ela
- * fica de pé sozinha: quem conecta e some custa o mesmo que quem atende todo
- * dia. Configurável por ENV para o corte ser afrouxado sem deploy — 0 desliga o
- * sweeper inteiro, que é a saída para o dia em que ele estiver atrapalhando.
- */
-const IDLE_DAYS = Number(process.env.WHATSAPP_IDLE_DAYS ?? 30);
-
 class WhatsappService {
   static async _assertEnabled() {
     const enabled = await FeatureFlagService.isEnabled(FLAG);
@@ -81,11 +71,11 @@ class WhatsappService {
    * O adaptador de uma instância gravada — e `null` quando o provedor DELA não
    * está configurado neste ambiente.
    *
-   * A pergunta é por INSTÂNCIA, não por ambiente: quem conectou pela Evolution
-   * continua na Evolution mesmo depois de a plataforma inteira passar a abrir
-   * conexões novas na Cloud API. **Provedor sai da LINHA, nunca do ambiente** —
-   * é a mesma lição do Asaas (mig 236), onde cobrança feita num provedor tem
-   * que ser estornada nele mesmo.
+   * A pergunta é por INSTÂNCIA, não por ambiente, e isso FICA mesmo agora que
+   * só existe a Cloud API: **provedor sai da LINHA, nunca do ambiente** — é a
+   * mesma lição do Asaas (mig 236), onde cobrança feita num provedor tem que
+   * ser estornada nele mesmo. É essa regra que vai permitir o provedor da fase
+   * 2 (Tech Provider) conviver com este sem migrar ninguém à força.
    */
   static _providerFor(instance) {
     const p = whatsappProvider.forInstance(instance);
@@ -97,26 +87,24 @@ class WhatsappService {
   /**
    * O que a aba WhatsApp desenha ao abrir.
    *
-   * A Evolution é a fonte da verdade da SESSÃO; o banco é cache. Quando ela não
+   * A Meta é a fonte da verdade do NÚMERO; o banco é cache. Quando ela não
    * responde (`null`), preservamos o último status conhecido em vez de piscar
    * "desconectado" — a pessoa veria a caixa dela virar um botão de conectar por
    * causa de um soluço de rede.
    *
-   * ⚠️ `connecting` é preservado de propósito: é estado de PASSAGEM (QR na tela,
-   * ou reconexão em curso), e rebaixá-lo a "desconectado" apagaria o QR que a
-   * pessoa está lendo neste segundo.
+   * ⚠️ `connecting` é preservado de propósito: é estado de PASSAGEM (o número
+   * cadastrado esperando o código do SMS), e rebaixá-lo a "desconectado" faria
+   * a pessoa recomeçar o cadastro com o código já a caminho.
    */
   /**
-   * COMO esta pessoa conecta: lendo um QR ou cadastrando o número.
+   * COMO esta pessoa conecta. Hoje a resposta é sempre `"number"` — a Cloud API
+   * cadastra o número e confirma por código; QR era da Evolution, removida em
+   * 2026-09-16.
    *
-   * ⚠️ A tela não pode adivinhar isso, e adivinhar errado é caro nos dois
-   * sentidos: desenhar QR para a Cloud API mostra uma caixa vazia para sempre
-   * (ela não tem QR), e pedir número para a Evolution manda a pessoa digitar
-   * algo que ninguém vai usar.
-   *
-   * A resposta é a CAPABILITY do provedor — da instância dela quando já existe
-   * uma (quem conectou pela Evolution continua na Evolution), e do padrão do
-   * ambiente para uma conexão nova.
+   * ⚠️ O CAMPO FICA, e derivado da CAPABILITY em vez de escrito à mão: é ele
+   * que o front lê para escolher o fluxo, e no dia do provedor seguinte a tela
+   * passa a desenhar o caminho certo sem deploy do front. Cravar a string aqui
+   * seria pedir para alguém esquecer deste lugar.
    */
   static _pairingModeFor(instance) {
     const provider = instance
@@ -141,7 +129,11 @@ class WhatsappService {
         };
       }
 
-      // Abrir a aba é usar: é isto que segura a sessão de pé (ver IDLE_DAYS).
+      // Abrir a aba é usar. Não há mais sweeper de ociosidade (ele era da
+      // Evolution, que mantinha uma sessão Baileys de pé custando memória); a
+      // Cloud API é STATELESS, e desligar quem não abre a caixa arrancaria a
+      // integração de alguém sem motivo nenhum. O carimbo fica porque o painel
+      // de admin responde "há quanto tempo ninguém olha para este número".
       await WhatsappStorage.touchSeen(pool, id_user);
 
       const provider = this._providerFor(instance);
@@ -189,11 +181,12 @@ class WhatsappService {
         status,
         pairing: this._pairingModeFor(instance),
         number: formatPhone(instance.connected_number),
-        // Por que caiu. Sem isto, quem volta depois de um mês encontra o botão
-        // "Conectar" e conclui que o produto quebrou — desconectado silencioso
-        // é indistinguível de defeito.
+        // Por que caiu. Desconectado silencioso é indistinguível de defeito:
+        // sem isto, quem volta encontra o botão "Conectar" e conclui que o
+        // produto quebrou. Hoje só existe um motivo ('user' — alguém desligou,
+        // aqui ou no painel de admin): o sweeper de ociosidade saiu junto com a
+        // Evolution, porque a Cloud API não mantém sessão de pé para expirar.
         disconnect_reason: status === "connected" ? null : instance.disconnect_reason || null,
-        idle_days: IDLE_DAYS,
         // A saúde do número, para a tela poder avisar o dono sem esperar ele
         // abrir o sino. `null` é "ainda não sabemos", nunca "está tudo bem".
         quality_rating: quality.rating || null,
@@ -203,79 +196,14 @@ class WhatsappService {
     });
   }
 
-  /**
-   * O QR para parear. Uma chamada só faz as duas coisas — garantir a instância
-   * e pedir o código — porque separá-las obrigaria a tela a acertar a ordem, e
-   * o primeiro clique de quem nunca conectou cairia num 409 ("instância ainda
-   * não criada") que não diz nada a quem está olhando.
-   *
-   * O QR do WhatsApp expira em ~20s: a tela chama isto de novo a cada renovação,
-   * e por isso tudo aqui é idempotente.
-   */
-  static async qrcode(id_user) {
-    return runWithLogs(log, "qrcode", () => ({ id_user }), async () => {
-      const blocked = (await this._assertEnabled()) || this._assertConfigured();
-      if (blocked) return blocked;
-
-      const name = instanceNameFor(id_user);
-
-      try {
-        // A instância existente manda no provedor; só uma conexão NOVA cai no
-        // padrão do ambiente. É o que impede alguém que já está pareado na
-        // Evolution de receber, no meio de uma renovação de QR, uma tela de
-        // cadastro de número da Cloud API.
-        const existing = await WhatsappStorage.getInstanceByUser(pool, id_user);
-        const provider = existing
-          ? this._providerFor(existing)
-          : whatsappProvider.defaultProvider();
-        if (!provider) return this._assertConfigured();
-
-        // Quem não parea por QR não passa por aqui: a Cloud API cadastra o
-        // número e confirma por código (W3). Dizer isso é melhor do que
-        // devolver um QR vazio que a tela tentaria desenhar.
-        if (!provider.capabilities.qrPairing) {
-          return {
-            error: "Este provedor não usa QR Code para conectar.",
-            statusCode: 409,
-          };
-        }
-
-        // ⚠️ O PROVEDOR VEM ANTES DO BANCO, e a ordem é a da mig 223: se a
-        // criação lá falhar, não fica uma linha local apontando para uma
-        // instância que não existe do outro lado. Para conexão nova o `ref` é
-        // derivado do id_user — o mesmo que `ensureInstance` vai gravar.
-        const ref = existing || { provider: provider.provider, evolution_instance: name };
-        await provider.ensure(ref);
-
-        const instance = existing || (await WhatsappStorage.ensureInstance(pool, id_user, name));
-        const r = await provider.connect(instance);
-
-        await WhatsappStorage.setInstanceStatus(
-          pool,
-          instance.evolution_instance,
-          r.connected ? "connected" : "connecting",
-          r.connected ? undefined : null
-        );
-
-        return {
-          connected: r.connected,
-          qr_base64: r.qrBase64,
-          pairing_code: r.pairingCode,
-        };
-      } catch (e) {
-        return this._evolutionError(e);
-      }
-    });
-  }
-
   /* ─────────────── W3 — cadastro de número (Cloud API) ─────────────────── */
 
   /**
    * O provedor da vez para uma conexão NOVA, exigindo cadastro de número.
    *
    * A pergunta é pela CAPABILITY e não pelo nome: um provedor futuro que também
-   * cadastre número entra sem tocar aqui, e a Evolution — que pareia por QR —
-   * é recusada com a razão certa em vez de um erro genérico.
+   * cadastre número entra sem tocar aqui, e um provedor que NÃO cadastre é
+   * recusado com a razão certa em vez de um erro genérico.
    */
   static _numberProviderFor(existing) {
     const provider = existing
@@ -337,7 +265,7 @@ class WhatsappService {
 
         // ⚠️ UPDATE na linha existente — as conversas pendem de `id_instance`
         // com CASCADE, e trocar a linha apagaria a caixa de entrada de quem
-        // está migrando da Evolution. Ver o comentário no storage.
+        // já tem conversas gravadas. Ver o comentário no storage.
         await WhatsappStorage.upsertCloudInstance(pool, id_user, {
           ref: r.ref,
           waba_id: r.waba,
@@ -346,7 +274,7 @@ class WhatsappService {
 
         return { needs_code: true, method: r.method, number: parsed.full };
       } catch (e) {
-        return this._evolutionError(e);
+        return this._providerError(e);
       }
     });
   }
@@ -380,7 +308,7 @@ class WhatsappService {
       try {
         await provider.confirmCode(instance, digits);
       } catch (e) {
-        return this._evolutionError(e);
+        return this._providerError(e);
       }
 
       await WhatsappStorage.setInstanceStatus(
@@ -418,7 +346,7 @@ class WhatsappService {
         await provider.requestCode(instance, method);
         return { ok: true };
       } catch (e) {
-        return this._evolutionError(e);
+        return this._providerError(e);
       }
     });
   }
@@ -627,7 +555,7 @@ class WhatsappService {
       try {
         waMessageId = await provider.sendText(conversation, destination, body);
       } catch (e) {
-        return this._evolutionError(e);
+        return this._providerError(e);
       }
 
       const sentAt = new Date();
@@ -687,97 +615,11 @@ class WhatsappService {
         const file = await provider.fetchMedia(row, row.wa_message_id);
         return { file };
       } catch (e) {
-        return this._evolutionError(e);
+        return this._providerError(e);
       }
     });
   }
 
-  /* ─────────────────────────────── sweeper ─────────────────────────────── */
-
-  /**
-   * Desliga a sessão de quem não abre a caixa há `IDLE_DAYS` dias.
-   *
-   * ⚠️ DESLIGAR NÃO É PERDER MENSAGEM, e é isso que torna o corte aceitável: a
-   * nossa sessão é um APARELHO CONECTADO do WhatsApp da pessoa, como o
-   * WhatsApp Web. Derrubá-la não afeta o número — as mensagens seguem chegando
-   * no celular dela — e o histórico já recebido continua aqui. O que ela perde
-   * é a entrada de mensagens NOVAS nesta caixa até reconectar, e a tela diz
-   * isso com todas as letras quando ela volta (`disconnect_reason = 'idle'`).
-   *
-   * O estado local é gravado MESMO SE a Evolution recusar o logout: se a sessão
-   * já caiu do lado de lá, insistir em chamá-la a cada 6h para sempre seria uma
-   * fila que nunca esvazia.
-   */
-  static async sweepIdleInstances() {
-    if (!(IDLE_DAYS > 0)) return 0;
-    if (!whatsappProvider.isAnyAvailable()) return 0;
-
-    try {
-      const rows = await WhatsappStorage.listIdleInstances(pool, IDLE_DAYS);
-      let closed = 0;
-      for (const row of rows) {
-        const provider = this._providerFor(row);
-        // ⚠️ O SWEEPER SÓ VALE PARA QUEM TEM SESSÃO DE PÉ.
-        //
-        // Ele existe porque a Evolution mantém uma sessão Baileys viva por
-        // número, e ela custa memória mesmo de quem conectou e sumiu. A Cloud
-        // API é STATELESS: não há sessão a desligar, e derrubar um cliente
-        // oficial por ociosidade arrancaria a integração dele sem motivo
-        // nenhum — em silêncio, 30 dias depois de ele conectar.
-        //
-        // Quem declara isso é o provedor (`capabilities.idleSession`), e não um
-        // `if (provider === 'evolution')` aqui: provedor novo sem sessão herda
-        // a isenção sem ninguém lembrar de vir editar este laço.
-        if (!provider || !provider.capabilities.idleSession) continue;
-
-        try {
-          await provider.disconnect(row);
-        } catch (e) {
-          log.warn("sweep.logout_failed", {
-            instance: row.evolution_instance,
-            message: e && e.message,
-          });
-        }
-        await WhatsappStorage.setInstanceStatus(
-          pool,
-          row.evolution_instance,
-          "disconnected",
-          null,
-          "idle"
-        );
-        realtime.emitToUser(row.id_user, "whatsapp:status", {
-          status: "disconnected",
-          number: "",
-          disconnect_reason: "idle",
-        });
-        closed++;
-      }
-      if (closed) log.info("whatsapp.sweep", { closed, idle_days: IDLE_DAYS });
-      return closed;
-    } catch (err) {
-      log.error("sweepIdleInstances.fail", { error: err && err.message });
-      return 0;
-    }
-  }
-
-  static startSweeper() {
-    const SIX_HOURS = 6 * 60 * 60 * 1000;
-    this.sweepIdleInstances().catch(() => {});
-    const timer = setInterval(() => {
-      this.sweepIdleInstances().catch(() => {});
-    }, SIX_HOURS);
-    if (typeof timer.unref === "function") timer.unref();
-    return timer;
-  }
-
-  /* ──────────────────────────────── apoio ──────────────────────────────── */
-
-  /**
-   * Projeção da conversa. Enxuta campo a campo: `id_instance` e
-   * `evolution_instance` NÃO saem daqui — o nome da instância é a chave de
-   * roteamento do webhook, e publicá-lo daria a quem quisesse o endereço exato
-   * para tentar se passar por essa caixa.
-   */
   /**
    * A projeção mora em `utils/whatsappConversation` porque o PUSH do
    * `WhatsappIngestService` precisa da MESMA — e ele não pode importar este
@@ -796,7 +638,7 @@ class WhatsappService {
    * dele que ajuda quem está olhando. O que não é reconhecido vira uma frase
    * genérica, porque texto interno de biblioteca na tela não ajuda ninguém.
    */
-  static _evolutionError(e) {
+  static _providerError(e) {
     if (e && (e.name === "EvolutionError" || e.name === "CloudApiError")) {
       return { error: e.message, statusCode: e.statusCode || 502 };
     }

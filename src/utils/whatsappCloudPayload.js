@@ -27,7 +27,20 @@
 //   for tratado, a caixa mostra só o lado do cliente — e é melhor que isso
 //   fique VISÍVEL num `ignored` com motivo do que escondido num `else`.
 
-const { MEDIA_LABEL } = require("./whatsappPayload");
+/**
+ * O rótulo que substitui a mídia na PRÉVIA da conversa.
+ *
+ * Morava em `utils/whatsappPayload` (o parser do Baileys) e veio para cá quando
+ * a Evolution foi removida: ele nunca foi do formato dela — é o texto que a
+ * nossa lista mostra quando a mensagem não tem texto.
+ */
+const MEDIA_LABEL = {
+  image: "📷 Imagem",
+  audio: "🎤 Áudio",
+  video: "🎬 Vídeo",
+  document: "📎 Documento",
+  other: "Mensagem não suportada",
+};
 
 /**
  * Rótulos do que a Cloud API entrega e o banco não modela como mídia.

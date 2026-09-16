@@ -1,14 +1,14 @@
 // src/services/WhatsappCloudIngestService.js
 // Ingestão do webhook da Meta Cloud API (mig 240): o que CHEGA.
 //
-// ─── INVARIANTE DO SUBSISTEMA (o mesmo do irmão da Evolution) ───────────────
+// ─── O INVARIANTE DO SUBSISTEMA ────────────────────────────────────────────
 //
 // Este módulo NÃO importa `integrations/whatsappProvider` nem `WhatsappService`
 // — os lugares que sabem ENVIAR. Não existe caminho de código daqui até um
 // `sendText`, e é isso, e não uma regra escrita, que garante que ninguém é
 // respondido automaticamente pelo WhatsApp de um usuário da Freelandoo.
 //
-// Aqui isso pesa MAIS que na Evolution: o número está no NOSSO Business
+// E isso pesa mais do que pesava no provedor não-oficial: o número está no NOSSO Business
 // Portfolio. Uma resposta automática disparada por nós seria, perante a Meta,
 // a plataforma operando ferramenta de disparo — com o portfólio inteiro, e
 // portanto o número de todos os clientes, no mesmo risco.
@@ -102,7 +102,7 @@ class WhatsappCloudIngestService {
         service_window_expires_at: new Date(msg.sentAt.getTime() + SERVICE_WINDOW_MS),
       });
 
-      // Mesmo evento que a Evolution emite: a caixa de entrada é UMA só, e a
+      // O evento da caixa de entrada é UM só, e a
       // tela não deve precisar saber por qual provedor a mensagem entrou.
       realtime.emitToUser(instance.id_user, "whatsapp:message", {
         id_conversation: conversation.id_conversation,

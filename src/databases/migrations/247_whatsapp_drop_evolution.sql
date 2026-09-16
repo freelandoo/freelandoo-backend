@@ -1,0 +1,51 @@
+-- 247_whatsapp_drop_evolution.sql
+-- A Evolution saiu do código. O DEFAULT da coluna precisa sair junto.
+--
+-- ─── O QUE ESTA MIGRATION IMPEDE ────────────────────────────────────────────
+--
+-- A mig 240 criou `provider` com `DEFAULT 'evolution'`, porque naquele momento
+-- toda linha existente era da Evolution e o default retroagia para elas. Com o
+-- adaptador removido, esse default virou uma armadilha: qualquer INSERT que não
+-- informe o provedor explicitamente nasce apontando para um adaptador que NÃO
+-- EXISTE MAIS — e o sintoma não é um erro, é uma pessoa conectando o WhatsApp e
+-- a caixa dela nunca receber nada.
+--
+-- ⚠️ Não é teoria: `ensureInstance` insere só (`id_user`, `evolution_instance`).
+-- Era a Evolution que dependia dela, e ela saiu junto — mas deixar o default
+-- errado é confiar que ninguém vai escrever um INSERT parecido depois.
+--
+-- ─── O QUE **NÃO** ESTÁ AQUI, E POR QUÊ ─────────────────────────────────────
+--
+-- **O CHECK não é apertado.** `chk_whatsapp_instance_provider` continua
+-- aceitando `'evolution'`, e isso é decisão, não esquecimento:
+--
+--   • o valor é HISTÓRICO, do mesmo tipo do nome da coluna `evolution_instance`
+--     — que hoje guarda o `phone_number_id` da Cloud e não vai ser renomeada,
+--     porque o rename quebraria a migration 223 que o runner re-executa em
+--     banco virgem e cujo checksum ele confere no boot;
+--
+--   • apertá-lo exigiria decidir o que fazer com uma eventual linha antiga, e
+--     as duas saídas são ruins: converter para `'cloud'` em silêncio apontaria
+--     um `provider_ref` que é NOME DE INSTÂNCIA para um campo que a Meta lê
+--     como `phone_number_id` (erro remoto sem explicação), e apagar levaria
+--     junto as conversas por CASCADE. Falhar seria a terceira — e uma migration
+--     que falha **derruba o boot**;
+--
+--   • e o ganho seria zero: quem decide qual adaptador usar é o registry
+--     (`integrations/whatsappProvider`), que devolve `null` para `'evolution'`.
+--     `null` faz o service responder "não configurado", que é a verdade.
+--
+-- Conferido antes da remoção: **nenhuma linha em produção usa `'evolution'`**
+-- (a única instância é `cloud`). Não houve ninguém para migrar.
+
+-- ─── O default passa a ser o único provedor que existe ──────────────────────
+
+ALTER TABLE public.tb_whatsapp_instance
+  ALTER COLUMN provider SET DEFAULT 'cloud';
+
+-- ─── Nada de dado é tocado ──────────────────────────────────────────────────
+--
+-- Sem UPDATE de propósito. Se um dia uma linha `'evolution'` aparecer num banco
+-- qualquer (um dump antigo restaurado, por exemplo), ela fica visível como é —
+-- e a pessoa vê "reconecte seu número", que é o caminho certo — em vez de virar
+-- uma linha `'cloud'` que aponta para um id que a Meta não conhece.

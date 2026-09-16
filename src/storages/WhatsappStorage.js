@@ -292,25 +292,6 @@ class WhatsappStorage {
     );
   }
 
-  /**
-   * As sessões de pé que o dono não visita há mais de `days` dias.
-   *
-   * Só `status = 'connected'`: quem já está desligado não tem sessão custando
-   * memória, e varrê-lo seria pedir um logout à Evolution para nada.
-   */
-  static async listIdleInstances(conn, days, limit = 200) {
-    const r = await conn.query(
-      `SELECT id_instance, id_user, provider, evolution_instance, last_seen_at
-         FROM public.tb_whatsapp_instance
-        WHERE status = 'connected'
-          AND last_seen_at < NOW() - ($1 || ' days')::interval
-        ORDER BY last_seen_at ASC
-        LIMIT $2`,
-      [String(days), limit]
-    );
-    return r.rows;
-  }
-
   /* ─────────────────────────────── conversas ────────────────────────────── */
 
   /**

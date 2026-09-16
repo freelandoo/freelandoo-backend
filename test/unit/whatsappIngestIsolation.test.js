@@ -67,9 +67,7 @@ function reachableLocalModules(entry) {
 
 /** Os lugares do backend que sabem ENVIAR mensagem de WhatsApp. */
 const SENDERS = [
-  path.join(SRC, "integrations", "evolution", "index.js"),
   path.join(SRC, "integrations", "whatsappProvider", "index.js"),
-  path.join(SRC, "integrations", "whatsappProvider", "evolution.js"),
   path.join(SRC, "integrations", "whatsappProvider", "cloud.js"),
   // O Service é quem envia; alcançá-lo daria ao Ingest um caminho indireto.
   path.join(SRC, "services", "WhatsappService.js"),
@@ -84,10 +82,7 @@ const SENDERS = [
 // um disparo automático nosso seria, perante a Meta, a plataforma operando
 // ferramenta de automação — com o portfólio inteiro, e portanto o número de
 // todos os clientes, no mesmo risco.
-const INGESTS = [
-  path.join(SRC, "services", "WhatsappIngestService.js"),
-  path.join(SRC, "services", "WhatsappCloudIngestService.js"),
-];
+const INGESTS = [path.join(SRC, "services", "WhatsappCloudIngestService.js")];
 
 for (const entry of INGESTS) {
   const name = path.basename(entry, ".js");
@@ -107,7 +102,7 @@ for (const entry of INGESTS) {
   });
 }
 
-for (const parser of ["whatsappPayload", "whatsappCloudPayload"]) {
+for (const parser of ["whatsappCloudPayload"]) {
   test(`o parser ${parser} também não alcança envio`, () => {
     // O parser é a primeira coisa que toca o corpo vindo de fora. Se ele puder
     // enviar, o isolamento do Ingest não vale nada.
@@ -136,45 +131,54 @@ test("o módulo de assinatura do webhook é puro — só criptografia", () => {
   );
 });
 
-test("o registry de provedores conhece evolution e cloud, e nada mais", () => {
+test("o registry conhece SÓ a Cloud — a Evolution foi removida", () => {
   const wp = require(path.join(SRC, "integrations", "whatsappProvider"));
   const names = wp.all().map((p) => p.provider).sort();
 
-  // A lista é FECHADA e espelha o CHECK `chk_whatsapp_instance_provider` da
-  // mig 240. Provedor novo entra nos DOIS lugares: aqui e numa migration. Se
-  // só entrar aqui, a gravação estoura; se só entrar no banco, a linha fica
-  // sem adaptador e a pessoa sem canal.
-  assert.deepStrictEqual(names, ["cloud", "evolution"]);
+  // ⚠️ A lista é FECHADA e não espelha mais o CHECK do banco, de propósito: o
+  // CHECK da mig 240 continua aceitando `'evolution'` como valor HISTÓRICO (o
+  // mesmo tipo de legado que o nome da coluna `evolution_instance`, que hoje
+  // guarda o `phone_number_id` da Cloud). Apertar o CHECK exigiria uma
+  // migration que falharia o boot se alguma linha antiga existisse — e o ganho
+  // seria zero, porque quem decide é este registry.
+  //
+  // Provedor NOVO entra aqui E numa migration. Só aqui, a gravação estoura; só
+  // no banco, a linha fica sem adaptador e a pessoa sem canal.
+  assert.deepStrictEqual(names, ["cloud"]);
 });
 
-test("provedor desconhecido não resolve, e linha sem provider é da Evolution", () => {
+test("provedor desconhecido não resolve, e linha sem provider é da Cloud", () => {
   const wp = require(path.join(SRC, "integrations", "whatsappProvider"));
 
   assert.strictEqual(wp.get("telegram"), null, "provedor inventado tem que devolver null");
   assert.strictEqual(wp.get(undefined), null);
 
-  // Linha anterior à mig 240 (ou projeção que não trouxe a coluna) é da
-  // Evolution — é o que o DEFAULT da coluna afirma.
-  assert.strictEqual(wp.forInstance({}).provider, "evolution");
+  // ⚠️ `'evolution'` devolve `null` — e é isso que queremos: `null` faz o
+  // service responder "não configurado", que é a verdade, em vez de estourar
+  // com TypeError no meio de uma requisição. Em produção não existe linha
+  // assim (conferido antes da remoção).
+  assert.strictEqual(wp.get("evolution"), null);
+
+  // Projeção que não trouxe a coluna cai na Cloud, que é o único provedor.
+  assert.strictEqual(wp.forInstance({}).provider, "cloud");
   assert.strictEqual(wp.forInstance({ provider: "cloud" }).provider, "cloud");
 });
 
-test("só a Evolution declara sessão ociosa — é isso que governa o sweeper", () => {
+test("a Cloud não pareia por QR, e a janela de 24h é dela", () => {
   const wp = require(path.join(SRC, "integrations", "whatsappProvider"));
+  const cloud = wp.get("cloud");
 
-  // O sweeper da mig 224 desliga sessão parada porque a sessão Baileys custa
-  // memória de pé. A Cloud API é stateless: desconectar um cliente oficial por
-  // ociosidade arrancaria a integração dele sem motivo, em silêncio, 30 dias
-  // depois de conectar.
-  assert.strictEqual(wp.get("evolution").capabilities.idleSession, true);
-  assert.strictEqual(wp.get("cloud").capabilities.idleSession, false);
+  // A tela decide o que desenhar por estas capabilities, nunca pelo nome do
+  // provedor: desenhar QR para a Cloud mostraria uma caixa vazia para sempre.
+  assert.strictEqual(cloud.capabilities.qrPairing, false);
+  assert.strictEqual(cloud.capabilities.numberRegistration, true);
 
-  // E só a Evolution pareia por QR: a Cloud API cadastra número e confirma por
-  // código. A tela decide o que desenhar por esta capability.
-  assert.strictEqual(wp.get("evolution").capabilities.qrPairing, true);
-  assert.strictEqual(wp.get("cloud").capabilities.qrPairing, false);
+  // A janela de 24h e a nota de qualidade são regras da Meta.
+  assert.strictEqual(cloud.capabilities.serviceWindow, true);
 
-  // A janela de 24h e a nota de qualidade são da Meta, e só ela as tem.
-  assert.strictEqual(wp.get("cloud").capabilities.serviceWindow, true);
-  assert.strictEqual(wp.get("evolution").capabilities.serviceWindow, false);
+  // ⚠️ `idleSession` false é o que tirou o sweeper da mig 224 do boot: ele
+  // existia porque a sessão Baileys ficava de pé custando memória. A Cloud é
+  // STATELESS — desconectar quem não abre a caixa arrancaria a integração de
+  // alguém sem motivo nenhum, 30 dias depois de conectar.
+  assert.strictEqual(cloud.capabilities.idleSession, false);
 });

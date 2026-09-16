@@ -2,7 +2,6 @@ const { Router } = require("express");
 const express = require("express");
 const asyncHandler = require("../utils/asyncHandler");
 const StripeController = require("../controllers/StripeController");
-const WhatsappController = require("../controllers/WhatsappController");
 const WhatsappCloudWebhookController = require("../controllers/WhatsappCloudWebhookController");
 const AsaasController = require("../controllers/AsaasController");
 
@@ -14,30 +13,14 @@ router.post(
   asyncHandler(StripeController.handleWebhook)
 );
 
-/**
- * Evolution API → WhatsApp do usuário (mig 223).
- *
- * `express.json()` explícito porque todo o /webhooks é montado ANTES do
- * express.json() global (o Stripe precisa do corpo cru para conferir a
- * assinatura). Aqui a autenticação é o header `x-webhook-secret`, conferido no
- * controller, então o corpo pode ser lido como JSON normalmente.
- *
- * 2mb: o webhook traz texto e metadado, nunca o binário da mídia
- * (`base64: false` na configuração da instância).
- */
-router.post(
-  "/whatsapp",
-  express.json({ limit: "2mb" }),
-  asyncHandler(WhatsappController.webhook)
-);
 
 /**
  * Meta WhatsApp Cloud API → o caminho OFICIAL (mig 240, W2).
  *
- * ⚠️ CAMINHO PRÓPRIO, e não `/whatsapp`: aquele é da Evolution e continua de
- * pé durante toda a coexistência. Um endereço só para os dois faria cada POST
- * ser testado contra dois formatos e dois esquemas de autenticação — e o
- * provedor errado ganharia o empate em silêncio.
+ * ⚠️ CAMINHO PRÓPRIO (`/whatsapp-cloud`), e ele FICA assim mesmo agora que a
+ * Cloud é o único provedor: este endereço já está inscrito no app da Meta, e
+ * trocá-lo exigiria reconfigurar a inscrição — que, errada, falha em silêncio
+ * (conecta, parece certo, e a caixa fica vazia para sempre).
  *
  * ⚠️ `express.raw()`, como o Stripe e ao contrário dos outros três: aqui a
  * autenticação é HMAC-SHA256 sobre os BYTES CRUS do corpo
