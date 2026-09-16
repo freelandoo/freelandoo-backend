@@ -3,7 +3,7 @@
 
 const CondoService = require("../services/CondoService");
 const CondoNoticeService = require("../services/CondoNoticeService");
-const CondoListingService = require("../services/CondoListingService");
+const CommunityListingService = require("../services/CommunityListingService");
 const CondoPollService = require("../services/CondoPollService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
@@ -102,37 +102,37 @@ class CondoController {
   /* ------------------------------- anúncios ------------------------------ */
 
   static async listListings(req, res) {
-    const result = await CondoListingService.list(req.user, req.params, req.query || {});
+    const result = await CommunityListingService.list(req.user, req.params, req.query || {});
     return sendServiceResult(res, result);
   }
 
   static async getQuota(req, res) {
-    const result = await CondoListingService.getQuota(req.user, req.params, req.query || {});
+    const result = await CommunityListingService.getQuota(req.user, req.params, req.query || {});
     return sendServiceResult(res, result);
   }
 
   static async createListing(req, res) {
-    const result = await CondoListingService.create(req.user, req.params, req.body || {});
+    const result = await CommunityListingService.create(req.user, req.params, req.body || {});
     return sendServiceResult(res, result, 201);
   }
 
   static async updateListing(req, res) {
-    const result = await CondoListingService.update(req.user, req.params, req.body || {});
+    const result = await CommunityListingService.update(req.user, req.params, req.body || {});
     return sendServiceResult(res, result);
   }
 
   static async setListingStatus(req, res) {
-    const result = await CondoListingService.setStatus(req.user, req.params, req.body || {});
+    const result = await CommunityListingService.setStatus(req.user, req.params, req.body || {});
     return sendServiceResult(res, result);
   }
 
   static async createSlotCheckout(req, res) {
-    const result = await CondoListingService.createSlotCheckout(req.user, req.params, req.body || {});
+    const result = await CommunityListingService.createSlotCheckout(req.user, req.params, req.body || {});
     return sendServiceResult(res, result, 201);
   }
 
   static async purchaseSlotWithPolens(req, res) {
-    const result = await CondoListingService.purchaseSlotWithPolens(req.user, req.params, req.body || {});
+    const result = await CommunityListingService.purchaseSlotWithPolens(req.user, req.params, req.body || {});
     return sendServiceResult(res, result, 201);
   }
 

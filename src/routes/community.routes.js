@@ -6,6 +6,8 @@ const CommunityController = require("../controllers/CommunityController");
 const CommunitySiteController = require("../controllers/CommunitySiteController");
 const CommunityDomainController = require("../controllers/CommunityDomainController");
 const BusinessIndicatorsController = require("../controllers/BusinessIndicatorsController");
+const CommunityListingController = require("../controllers/CommunityListingController");
+const CommunityDeliveryController = require("../controllers/CommunityDeliveryController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -292,6 +294,107 @@ router.post(
   requireFeature("comunidade_site"),
   uploadAvatar.single("file"),
   asyncHandler(CommunitySiteController.uploadMedia)
+);
+
+/* ------------------- vitrines territoriais (condo + bairro) ---------------- */
+// As duas vitrines da mig 198 promovidas a ABA e estendidas ao bairro. A rota
+// antiga (`/condos/:id_condo/listings*`) continua montada, apontando para o
+// MESMO service, porque front em cache ainda a chama.
+//
+// ⚠️ SEM `requireFeature` AQUI, de propósito: a porta serve condomínio E
+// bairro, e cada um tem o seu kill-switch. Um gate fixo mandaria o errado —
+// desligar `condominio` fecharia a vitrine do bairro. Quem escolhe a flag é
+// `territorialContext`, depois de descobrir a modalidade.
+//
+// ⚠️ `/listings/quota` ANTES de `/listings/:id_listing` — rota estática vence a
+// param, senão "quota" é lido como o id de um anúncio.
+router.get(
+  "/:id_profile/listings/quota",
+  authMiddleware,
+  asyncHandler(CommunityListingController.quota)
+);
+router.get(
+  "/:id_profile/listings",
+  authMiddleware,
+  asyncHandler(CommunityListingController.list)
+);
+router.post(
+  "/:id_profile/listings",
+  authMiddleware,
+  asyncHandler(CommunityListingController.create)
+);
+router.patch(
+  "/:id_profile/listings/:id_listing",
+  authMiddleware,
+  asyncHandler(CommunityListingController.update)
+);
+router.patch(
+  "/:id_profile/listings/:id_listing/status",
+  authMiddleware,
+  asyncHandler(CommunityListingController.setStatus)
+);
+router.post(
+  "/:id_profile/listing-slots/checkout",
+  authMiddleware,
+  asyncHandler(CommunityListingController.slotCheckout)
+);
+router.post(
+  "/:id_profile/listing-slots/polens",
+  authMiddleware,
+  asyncHandler(CommunityListingController.slotPolens)
+);
+
+/* ------------------ delivery entre vizinhos (condo + bairro) --------------- */
+// Mig 248. Qualquer MORADOR abre um chamado pago; qualquer MORADOR aceita e
+// recebe. Não existe papel promovido de entregador (decisão do Alex).
+//
+// ⚠️ SEM `requireFeature` AQUI, pelos DOIS motivos: (a) a porta serve as duas
+// modalidades territoriais, cada uma com o seu kill-switch, e (b) o gate da
+// própria feature (`delivery_vizinho`) é checado NO SERVICE, que sabe distinguir
+// "abrir chamado novo" de "concluir uma corrida que já está em pé" — desligar o
+// interruptor não pode prender o dinheiro de quem já carregou o sofá.
+//
+// ⚠️ A CARTEIRA do entregador NÃO mora aqui: ela é `/me/delivery-payouts`,
+// porque o saldo é da PESSOA e não de uma comunidade (ver bookingPayout.routes).
+router.get(
+  "/:id_profile/deliveries",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.board)
+);
+router.post(
+  "/:id_profile/deliveries",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.open)
+);
+router.post(
+  "/:id_profile/deliveries/availability",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.setAvailability)
+);
+router.post(
+  "/:id_profile/deliveries/:id_delivery/accept",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.accept)
+);
+router.post(
+  "/:id_profile/deliveries/:id_delivery/delivered",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.markDelivered)
+);
+router.post(
+  "/:id_profile/deliveries/:id_delivery/confirm",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.confirm)
+);
+router.post(
+  "/:id_profile/deliveries/:id_delivery/release",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.release)
+);
+router.post(
+  "/:id_profile/deliveries/:id_delivery/cancel",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.cancel)
 );
 
 router.post(

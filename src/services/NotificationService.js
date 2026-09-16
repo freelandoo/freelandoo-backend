@@ -895,6 +895,47 @@ class NotificationService {
       },
     });
   }
+
+  /**
+   * DELIVERY ENTRE VIZINHOS (mig 248) — os cinco momentos da corrida.
+   *
+   * ⚠️ UM MÉTODO PARA OS CINCO TIPOS, e não cinco métodos: o que muda entre
+   * "abriram um chamado" e "confirmaram sua entrega" é o `type` e quem recebe;
+   * o resto do payload é idêntico. Cinco cópias divergiriam no primeiro campo
+   * novo, e a que ficasse para trás mandaria uma notificação sem o valor.
+   *
+   * ⚠️ O TEXTO É MONTADO NA TELA, e o payload leva só os DADOS (tipo da
+   * corrida, valor, nome da comunidade). Frase gravada no banco nasce em
+   * português para sempre, e a plataforma fala três idiomas — a mesma decisão
+   * do aviso de qualidade do WhatsApp logo acima.
+   */
+  static async notifyDelivery({
+    recipient_user_id,
+    actor_user_id,
+    type,
+    id_community,
+    id_delivery,
+    kind,
+    price_cents,
+    community_name,
+  }) {
+    if (!recipient_user_id || !id_community || !type) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_community,
+      type,
+      id_actor_user: actor_user_id || null,
+      entity_type: "community_delivery",
+      entity_id: id_community,
+      payload: {
+        id_delivery: id_delivery ?? null,
+        kind: kind ? String(kind).slice(0, 24) : null,
+        price_cents: Number.isFinite(Number(price_cents)) ? Number(price_cents) : null,
+        community_name:
+          typeof community_name === "string" ? community_name.slice(0, 120) : null,
+      },
+    });
+  }
 }
 
 module.exports = NotificationService;

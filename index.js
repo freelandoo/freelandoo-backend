@@ -170,6 +170,35 @@ const server = app.listen(PORT, () => {
   setTimeout(tickBookingReminders, 8 * 60 * 1000);
   setInterval(tickBookingReminders, 30 * 60 * 1000);
 
+  // Job: DELIVERY entre vizinhos (mig 248). Dois varredores no mesmo tique,
+  // porque eles guardam as duas pontas do tempo da corrida:
+  //
+  //  (1) chamado ABERTO que ninguém pegou morre sozinho (2h na comida, 24h no
+  //      resto). ⚠️ E morre SEM COBRAR NINGUÉM — a cobrança só nasce no aceite.
+  //  (2) chamado ENTREGUE e não confirmado dentro do prazo conclui sozinho e
+  //      vira saldo. ⚠️ É ele que fecha a fraude de quem recebe a encomenda e
+  //      nunca confirma para não pagar: sem prazo, o repasse dependeria da boa
+  //      vontade de quem já ficou com a coisa.
+  //
+  // A cada 10 min, e não a cada 2h: a comida expira em 2h, e varrer de duas em
+  // duas horas deixaria um chamado morto de pé por até o dobro do tempo de
+  // vida dele.
+  const CommunityDeliveryService = require("./src/services/CommunityDeliveryService");
+  const TEN_MIN = 10 * 60 * 1000;
+  const tickDelivery = async () => {
+    try {
+      const a = await CommunityDeliveryService.sweepExpired();
+      const b = await CommunityDeliveryService.sweepConfirmations();
+      if (a?.expired || b?.completed) {
+        bootLog.info("delivery.sweep", { expired: a?.expired || 0, completed: b?.completed || 0 });
+      }
+    } catch (err) {
+      bootLog.error("delivery.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickDelivery, 4 * 60 * 1000);
+  setInterval(tickDelivery, TEN_MIN);
+
   // Job: reconciliação de pagamentos — para webhooks perdidos, cruza pendentes
   // antigos com o estado real da session no Stripe e re-entrega os que já foram
   // pagos. Roda 7 min após boot e a cada 2h (projeto PayDebug, D6).

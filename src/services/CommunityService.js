@@ -10,7 +10,7 @@ const FeatureFlagService = require("./FeatureFlagService");
 const CondoRules = require("../utils/condoRules");
 const CondoStorage = require("../storages/CondoStorage");
 const StoryStorage = require("../storages/StoryStorage");
-const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
+const TerritorialCommunity = require("../utils/territorialCommunity");
 const CommunityPolicy = require("../utils/communityPolicy");
 const AuthStorage = require("../storages/AuthStorage");
 const { PLATFORM_KINDS } = require("../utils/gamesScore");
@@ -791,26 +791,18 @@ class CommunityService {
    * esquecia metade das modalidades. Modalidade não-territorial devolve
    * `confirmed: false` sem tocar o banco — lá "morador" não quer dizer nada.
    */
+  /**
+   * "Esta pessoa mora aqui?" — DELEGADO, nunca reescrito.
+   *
+   * ⚠️ Este método já foi a cópia canônica da regra, e virou a segunda quando a
+   * vitrine e o delivery precisaram da mesma resposta. Agora ele só repassa
+   * para `utils/territorialCommunity.resolveResident`, que é a fonte única das
+   * DUAS formas de chegar no vínculo (condomínio pelo endereço, bairro pelo
+   * território). Escrever a regra aqui de novo faria a página dizer que a
+   * pessoa mora enquanto a vitrine diz que não — sem erro nenhum aparecer.
+   */
   static async _resolveResident(community, viewer) {
-    if (!viewer?.id_user || !community) return { confirmed: false };
-    if (community.kind === "condo") {
-      return (
-        (await CondoStorage.getResidentStatus(
-          pool,
-          community.id_profile,
-          viewer.id_user
-        )) || { confirmed: false }
-      );
-    }
-    if (community.kind === "neighborhood") {
-      if (!community.id_territory) return { confirmed: false };
-      const status = await NeighborhoodStorage.getResidentStatus(pool, {
-        id_territory: community.id_territory,
-        id_user: viewer.id_user,
-      });
-      return { confirmed: status.recognized, status: status.status };
-    }
-    return { confirmed: false };
+    return TerritorialCommunity.resolveResident(pool, community, viewer?.id_user);
   }
 
   static async createRecado(user, params, body) {

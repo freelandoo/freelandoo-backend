@@ -848,8 +848,14 @@ async function fulfillCheckoutSession(session) {
     const FunctionStoreService = require("./FunctionStoreService");
     result = await FunctionStoreService.confirmStripeSession(session);
   } else if (meta.type === "condo_listing_slot") {
-    const CondoListingService = require("./CondoListingService");
-    result = await CondoListingService.confirmStripeSession(session);
+    const CommunityListingService = require("./CommunityListingService");
+    result = await CommunityListingService.confirmStripeSession(session);
+  } else if (meta.type === "community_delivery") {
+    // Delivery entre vizinhos (mig 248): o pagamento do ACEITE caiu. O
+    // confirmador é idempotente por session id e apura a tarifa real ANTES de
+    // qualquer repasse existir.
+    const CommunityDeliveryService = require("./CommunityDeliveryService");
+    result = await CommunityDeliveryService.confirmStripeSession(session);
   } else if (meta.type === "premium") {
     result = await PremiumService.confirmStripeSession(session);
   } else if (meta.type === "course_purchase") {
@@ -924,9 +930,18 @@ async function expireCheckoutSession(session, reason) {
         break;
       }
       case "condo_listing_slot": {
-        const CondoListingService = require("./CondoListingService");
-        const expired = await CondoListingService.expireBySession(session.id);
+        const CommunityListingService = require("./CommunityListingService");
+        const expired = await CommunityListingService.expireBySession(session.id);
         if (expired) log.info("expire.condo_listing_slot", { session_id: session.id, reason });
+        break;
+      }
+      case "community_delivery": {
+        // ⚠️ A sessão caducou sem pagamento: o chamado NÃO morre — ele volta
+        // para a fila, aberto, para outra pessoa pegar. Quem pediu continua
+        // querendo a entrega, e quem aceitou não fez nada de errado.
+        const CommunityDeliveryService = require("./CommunityDeliveryService");
+        const released = await CommunityDeliveryService.expireBySession(session.id);
+        if (released) log.info("expire.community_delivery", { session_id: session.id, reason });
         break;
       }
       case "premium": {
@@ -1069,9 +1084,12 @@ async function dispatchEvent(event) {
       const FunctionStoreService = require("./FunctionStoreService");
       const functionStoreResult = await FunctionStoreService.handleChargeRefunded(charge);
       if (functionStoreResult && !functionStoreResult.ignored) break;
-      const CondoListingService = require("./CondoListingService");
-      const condoSlotResult = await CondoListingService.handleChargeRefunded(charge);
+      const CommunityListingService = require("./CommunityListingService");
+      const condoSlotResult = await CommunityListingService.handleChargeRefunded(charge);
       if (condoSlotResult && !condoSlotResult.ignored) break;
+      const CommunityDeliveryService = require("./CommunityDeliveryService");
+      const deliveryResult = await CommunityDeliveryService.handleChargeRefunded(charge);
+      if (deliveryResult && !deliveryResult.ignored) break;
       const premiumResult = await PremiumService.handleChargeRefunded(charge);
       if (premiumResult && !premiumResult.ignored) break;
       const CoursesService = require("./CoursesService");

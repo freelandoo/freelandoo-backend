@@ -1,11 +1,26 @@
-// src/storages/CondoListingStorage.js
-// SQL dos anúncios internos do condomínio e das vagas de publicação (mig 198).
+// src/storages/CommunityListingStorage.js
+// SQL das VITRINES de serviços e produtos das comunidades territoriais
+// (condomínio e bairro) e das vagas de publicação (mig 198).
 //
-// Cota = free (condo_settings, com override por condomínio em tb_condo_config)
+// Cota = free (condo_settings, com override por comunidade em tb_condo_config)
 // + vagas compradas. O que conta contra a cota são os anúncios ATIVOS: ao
 // arquivar um, a vaga volta a ficar disponível.
+//
+// ─── ⚠️ O NOME FÍSICO É LEGADO, E FICA ──────────────────────────────────────
+//
+// A tabela chama-se `tb_condo_listing` e a coluna de dono do quadro chama-se
+// `id_condo` — os dois nomes da mig 198, de quando a vitrine só existia no
+// condomínio. Hoje ela serve BAIRRO também, e `id_condo` guarda o
+// `id_profile` da comunidade territorial, seja ela qual for.
+//
+// Renomear quebraria a mig 198, que o runner re-executa em banco virgem e
+// cujo checksum ele confere no boot (erro = exit 1, produção fora do ar). É a
+// mesma regra de `tb_machine` (guarda enxames), `tb_story` (guarda bees),
+// `tb_games_presence` (guarda a presença do Financeiro) e `evolution_instance`
+// (guarda o `phone_number_id` da Cloud API). O rename é só de APLICAÇÃO: o
+// storage e o service falam "comunidade", o banco continua dizendo "condo".
 
-class CondoListingStorage {
+class CommunityListingStorage {
   /* ------------------------------- anúncios ------------------------------ */
 
   static async create(conn, { id_condo, id_user, kind, title, description, price_cents, contact, image_url }) {
@@ -312,4 +327,4 @@ class CondoListingStorage {
   }
 }
 
-module.exports = CondoListingStorage;
+module.exports = CommunityListingStorage;

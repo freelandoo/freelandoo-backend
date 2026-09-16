@@ -30,6 +30,10 @@ const INVENTARIO_STRIPE = [
   "clan_slot", "community_slot", "condo_listing_slot", "donation",
   "plan_subscription", "community_membership", "vaquinha_sponsorship",
   "atendimento_ia",
+  // Delivery entre vizinhos (mig 248). O confirmador é
+  // `CommunityDeliveryService.confirmStripeSession`, e ele está montado nos
+  // TRÊS pontos do webhook (fulfill, expire e a cadeia de charge.refunded).
+  "community_delivery",
 ];
 
 test("todo metadata.type do Stripe está declarado", () => {

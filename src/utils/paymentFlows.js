@@ -46,6 +46,10 @@ const PAYMENT_FLOWS = {
   clan_slot:              { recurring: false, label: "Vaga de clan" },
   community_slot:         { recurring: false, label: "Vaga de comunidade" },
   condo_listing_slot:     { recurring: false, label: "Vaga de anúncio de condomínio" },
+  // Delivery entre vizinhos (mig 248). AVULSO: cada corrida é uma cobrança
+  // própria, criada no ACEITE — não existe assinatura nem carteira pré-paga
+  // aqui (o Alex recusou as duas).
+  community_delivery:     { recurring: false, label: "Delivery entre vizinhos" },
   donation:               { recurring: false, label: "Vaquinha — doação" },
 
   // ── Recorrentes ───────────────────────────────────────────────────────────
