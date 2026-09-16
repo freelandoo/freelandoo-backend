@@ -98,6 +98,14 @@ async function main() {
   }
 
   // ── 2. O negócio está verificado? ────────────────────────────────────────
+  // ⚠️ A verificação tem DUAS fontes, e só uma delas precisa de escopo extra.
+  // Ler o objeto do PORTFÓLIO exige `business_management`, que o System User
+  // token não tem — mas o WABA expõe `business_verification_status` com o
+  // escopo que já temos. Por isso aqui não se declara derrota: quando o
+  // portfólio recusa, o veredito sai no bloco 3, que é onde o WABA é lido.
+  // (Antes este script pedia a verificação só ao portfólio, imprimia ⚠️ e
+  // seguia — enquanto o bloco 3 BUSCAVA o campo do WABA e o descartava.)
+  let verificado = null; // null = ainda não sei; true/false = sei
   let businessId = String(process.env.META_BUSINESS_ID || "").trim();
   if (!businessId) {
     const biz = await get("/me/businesses?fields=id,name,verification_status");
@@ -106,19 +114,19 @@ async function main() {
   }
 
   if (!businessId) {
-    say(HM, "Não consegui descobrir o Business Portfolio pelo token.", "Informe META_BUSINESS_ID para conferir a verificação.");
+    say(HM, "Não descobri o Business Portfolio pelo token (só o nome se perde).", "A verificação é lida do WABA, logo abaixo.");
   } else {
     const b = await get(`/${businessId}?fields=id,name,verification_status`);
     if (b.error) {
-      say(HM, `Não consegui ler o portfólio ${businessId}.`, b.error);
+      // Falta de escopo é o caso ESPERADO, não uma falha do ambiente.
+      say(OK, `Portfólio ${businessId} — nome não legível por este token.`, "Precisa de business_management; a verificação vem do WABA, logo abaixo.");
     } else {
       const v = String(b.data.verification_status || "").toLowerCase();
+      verificado = v === "verified";
       say(
-        v === "verified" ? OK : NO,
+        verificado ? OK : NO,
         `Portfólio "${b.data.name}" — verificação: ${b.data.verification_status || "desconhecida"}`,
-        v === "verified"
-          ? ""
-          : "O display name dos números só é aprovado com o negócio verificado."
+        verificado ? "" : "O display name dos números só é aprovado com o negócio verificado."
       );
     }
   }
@@ -139,6 +147,26 @@ async function main() {
       say(NO, `Não consegui ler o WABA ${wabaId}.`, w.error);
     } else {
       say(OK, `WABA encontrado: ${w.data.name || wabaId} (${wabaId})`);
+
+      // A verificação do negócio DONO, legível sem `business_management`.
+      // Só fala se o bloco 2 não soube — duas linhas dizendo a mesma coisa
+      // fariam parecer que são duas verificações diferentes.
+      if (verificado === null) {
+        const bv = String(w.data.business_verification_status || "").toLowerCase();
+        if (!bv) {
+          say(HM, "Verificação do negócio: não informada pela Meta.");
+        } else {
+          verificado = bv === "verified";
+          say(
+            verificado ? OK : NO,
+            `Verificação do negócio dono: ${w.data.business_verification_status}`,
+            verificado
+              ? "É o pré-requisito do App Review da fase 2 — está pago."
+              : "O display name dos números só é aprovado com o negócio verificado."
+          );
+        }
+      }
+
       const review = String(w.data.account_review_status || "").toUpperCase();
       say(
         review === "APPROVED" || !review ? OK : HM,
