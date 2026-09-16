@@ -295,6 +295,38 @@ class CommunityDeliveryStorage {
   }
 
   /**
+   * O entregador desiste de um chamado PRÉ-PAGO (o add-on "+R$3" de uma compra
+   * na vitrine, mig 249).
+   *
+   * ⚠️ AQUI O PAGAMENTO FICA. É a diferença inteira para o `releaseByCourier`
+   * acima: naquele, a cobrança era da corrida e o estorno é integral; neste, a
+   * cobrança é a do PEDIDO INTEIRO — zerar `provider_ref` e `payment_status`
+   * aqui faria a entrega parecer não paga, e o próximo vizinho a aceitar seria
+   * cobrado por uma entrega que o comprador já pagou.
+   *
+   * O que muda é só quem está com ela: volta para a fila, ainda paga, com o
+   * líquido intacto para quem pegar.
+   */
+  static async releasePrepaidByCourier(conn, id_delivery, id_courier, { expires_at }) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_delivery_request
+          SET status = 'open',
+              id_courier = NULL,
+              accepted_at = NULL,
+              expires_at = $3,
+              cancel_reason = 'courier',
+              updated_at = NOW()
+        WHERE id_delivery = $1
+          AND id_courier = $2
+          AND status IN ('accepted', 'delivered')
+          AND id_listing_order IS NOT NULL
+        RETURNING *`,
+      [id_delivery, id_courier, expires_at]
+    );
+    return r.rows[0] || null;
+  }
+
+  /**
    * Quem PEDIU cancela — só enquanto ninguém pegou.
    *
    * ⚠️ Depois do aceite ele não cancela mais: alguém já foi cobrado e já está a

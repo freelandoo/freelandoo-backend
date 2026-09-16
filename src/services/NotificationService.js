@@ -936,6 +936,39 @@ class NotificationService {
       },
     });
   }
+
+  /**
+   * VENDA NA VITRINE DO VIZINHO (mig 249) — os cinco momentos do pedido.
+   *
+   * Mesma decisão do delivery acima: UM método para os cinco tipos, e o TEXTO
+   * é montado na TELA — o payload leva só os dados (título, valor). Frase
+   * gravada no banco nasce em português para sempre, e a plataforma fala três
+   * idiomas.
+   */
+  static async notifyListingOrder({
+    recipient_user_id,
+    actor_user_id,
+    type,
+    id_community,
+    id_order,
+    title,
+    amount_cents,
+  }) {
+    if (!recipient_user_id || !id_community || !type) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      id_recipient_profile: id_community,
+      type,
+      id_actor_user: actor_user_id || null,
+      entity_type: "community_listing_order",
+      entity_id: id_community,
+      payload: {
+        id_order: id_order ?? null,
+        title: typeof title === "string" ? title.slice(0, 120) : null,
+        amount_cents: Number.isFinite(Number(amount_cents)) ? Number(amount_cents) : null,
+      },
+    });
+  }
 }
 
 module.exports = NotificationService;

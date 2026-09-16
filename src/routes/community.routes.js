@@ -8,6 +8,7 @@ const CommunityDomainController = require("../controllers/CommunityDomainControl
 const BusinessIndicatorsController = require("../controllers/BusinessIndicatorsController");
 const CommunityListingController = require("../controllers/CommunityListingController");
 const CommunityDeliveryController = require("../controllers/CommunityDeliveryController");
+const CommunityListingOrderController = require("../controllers/CommunityListingOrderController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -395,6 +396,45 @@ router.post(
   "/:id_profile/deliveries/:id_delivery/cancel",
   authMiddleware,
   asyncHandler(CommunityDeliveryController.cancel)
+);
+
+/* ------------------ venda dentro da vitrine (condo + bairro) --------------- */
+// Mig 249. O anúncio da mig 198 passa a VENDER: checkout vizinho-a-vizinho,
+// retenção de 8 dias (CDC), confirmação de recebimento, disputa — e o add-on
+// "+R$3" que abre um chamado de entrega já pago.
+//
+// ⚠️ SEM `requireFeature` AQUI, pelos mesmos dois motivos das rotas de
+// delivery: a porta serve as duas modalidades territoriais, e o gate da feature
+// (`vitrine_venda`) é checado NO SERVICE — que sabe distinguir "comprar" de
+// "concluir um pedido já pago". Desligar o interruptor não pode prender
+// dinheiro que já entrou.
+//
+// ⚠️ `/orders/mine` ANTES de `/orders/:id_order` — rota estática vence a param,
+// senão "mine" é lido como o id de um pedido.
+router.get(
+  "/:id_profile/orders/mine",
+  authMiddleware,
+  asyncHandler(CommunityListingOrderController.listMine)
+);
+router.post(
+  "/:id_profile/listings/:id_listing/checkout",
+  authMiddleware,
+  asyncHandler(CommunityListingOrderController.checkout)
+);
+router.post(
+  "/:id_profile/orders/:id_order/delivered",
+  authMiddleware,
+  asyncHandler(CommunityListingOrderController.markDelivered)
+);
+router.post(
+  "/:id_profile/orders/:id_order/confirm",
+  authMiddleware,
+  asyncHandler(CommunityListingOrderController.confirm)
+);
+router.post(
+  "/:id_profile/orders/:id_order/dispute",
+  authMiddleware,
+  asyncHandler(CommunityListingOrderController.openDispute)
 );
 
 router.post(

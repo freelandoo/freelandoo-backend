@@ -273,6 +273,25 @@ class CommunityDeliveryService {
           return { error: "Alguém já pegou este chamado.", statusCode: 409 };
         }
 
+        // ⚠️ CHAMADO JÁ PAGO NÃO COBRA DE NOVO (mig 249). Quando a entrega veio
+        // como add-on de uma compra na vitrine ("+R$3"), o dinheiro entrou
+        // JUNTO com o do produto, numa cobrança só — e a linha já nasce
+        // `payment_status = 'paid'` com `id_listing_order` preenchido. Sem esta
+        // saída antecipada, o aceite criaria uma segunda cobrança e o vizinho
+        // pagaria a entrega DUAS VEZES.
+        //
+        // O `courier_cents` já veio calculado do pedido (com a tarifa do
+        // gateway rateada entre produto e entrega), então quem aceita recebe
+        // exatamente o que a tela prometeu.
+        if (locked.payment_status === "paid") {
+          this._notifyAccepted(ctx.community, locked, user).catch(() => {});
+          push([locked.id_requester, locked.id_courier], {
+            id_delivery: locked.id_delivery,
+            status: locked.status,
+          });
+          return { delivery: locked, prepaid: true };
+        }
+
         // ── a cobrança ────────────────────────────────────────────────────────
         // Daqui para baixo o chamado JÁ ESTÁ TRAVADO no nome de quem aceitou.
         // Se a criação da cobrança falhar, ele é devolvido para `open` — senão
@@ -466,10 +485,17 @@ class CommunityDeliveryService {
           return { error: "Você não aceitou este chamado.", statusCode: 403 };
         }
 
+        // ⚠️ CHAMADO PRÉ-PAGO NÃO ESTORNA AQUI. Quando a entrega é o add-on de
+        // uma compra (mig 249), a cobrança é a do PEDIDO INTEIRO — estorná-la
+        // aqui devolveria também o dinheiro do produto, que está entregue. O
+        // chamado volta para a fila e outro vizinho o pega; se a venda toda
+        // precisar ser desfeita, quem faz isso é a disputa do pedido.
+        const prepaid = !!delivery.id_listing_order;
+
         // Estorna ANTES de soltar a linha: soltando primeiro, os campos de
         // pagamento já teriam sido zerados e não haveria por onde achar a
         // cobrança para devolver.
-        if (delivery.provider_ref && delivery.payment_status === "paid") {
+        if (!prepaid && delivery.provider_ref && delivery.payment_status === "paid") {
           try {
             await PaymentGateway.refund({ provider_ref: delivery.provider_ref });
           } catch (err) {
@@ -485,12 +511,19 @@ class CommunityDeliveryService {
 
         const t = await getDeliveryType(pool, delivery.kind, { onlyActive: false });
         const minutes = Number(t?.expires_minutes) || 1440;
-        const row = await CommunityDeliveryStorage.releaseByCourier(
-          pool,
-          params.id_delivery,
-          user.id_user,
-          { expires_at: new Date(Date.now() + minutes * 60 * 1000) }
-        );
+        const row = prepaid
+          ? await CommunityDeliveryStorage.releasePrepaidByCourier(
+              pool,
+              params.id_delivery,
+              user.id_user,
+              { expires_at: new Date(Date.now() + minutes * 60 * 1000) }
+            )
+          : await CommunityDeliveryStorage.releaseByCourier(
+              pool,
+              params.id_delivery,
+              user.id_user,
+              { expires_at: new Date(Date.now() + minutes * 60 * 1000) }
+            );
         if (!row) return { error: "Esta corrida não está mais com você.", statusCode: 409 };
 
         // Se já havia repasse (entregou e depois desistiu), ele é revertido.

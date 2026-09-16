@@ -47,6 +47,7 @@ const financeRoutes = require("./finance.routes");
 const whatsappRoutes = require("./whatsapp.routes");
 const planRoutes = require("./plan.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
+const communityCommerceAdminRoutes = require("./communityCommerceAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
 const portfolioFeedRoutes = require("./portfolioFeed.routes");
@@ -218,6 +219,9 @@ module.exports = (app) => {
   // continuam em /communities/:id_profile, que é o que ela É.
   app.use("/finance", financeRoutes);
   app.use("/admin/booking-fees", bookingFeeAdminRoutes);
+  // Comércio entre vizinhos (migs 248/249): preços do delivery, régua da venda
+  // e a fila de disputas.
+  app.use("/admin/community-commerce", communityCommerceAdminRoutes);
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);
   app.use("/feed", portfolioFeedRoutes);

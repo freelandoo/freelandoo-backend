@@ -50,6 +50,10 @@ const PAYMENT_FLOWS = {
   // própria, criada no ACEITE — não existe assinatura nem carteira pré-paga
   // aqui (o Alex recusou as duas).
   community_delivery:     { recurring: false, label: "Delivery entre vizinhos" },
+  // Venda dentro da vitrine (mig 249). Uma cobrança só carrega o PRODUTO e o
+  // add-on de entrega ("+R$3") — por isso a tarifa do gateway é rateada entre
+  // os dois em `utils/listingOrder.js`.
+  community_listing_order: { recurring: false, label: "Venda na vitrine do vizinho" },
   donation:               { recurring: false, label: "Vaquinha — doação" },
 
   // ── Recorrentes ───────────────────────────────────────────────────────────

@@ -34,6 +34,10 @@ const INVENTARIO_STRIPE = [
   // `CommunityDeliveryService.confirmStripeSession`, e ele está montado nos
   // TRÊS pontos do webhook (fulfill, expire e a cadeia de charge.refunded).
   "community_delivery",
+  // Venda na vitrine (mig 249). Confirmador:
+  // `CommunityListingOrderService.confirmStripeSession`, montado nos TRÊS
+  // pontos do webhook.
+  "community_listing_order",
 ];
 
 test("todo metadata.type do Stripe está declarado", () => {

@@ -856,6 +856,12 @@ async function fulfillCheckoutSession(session) {
     // qualquer repasse existir.
     const CommunityDeliveryService = require("./CommunityDeliveryService");
     result = await CommunityDeliveryService.confirmStripeSession(session);
+  } else if (meta.type === "community_listing_order") {
+    // Venda na vitrine (mig 249): a compra do vizinho caiu. O confirmador apura
+    // a tarifa, reparte entre produto e entrega, escreve o repasse COM
+    // holdback e — se houve add-on — abre o chamado de entrega JÁ PAGO.
+    const CommunityListingOrderService = require("./CommunityListingOrderService");
+    result = await CommunityListingOrderService.confirmStripeSession(session);
   } else if (meta.type === "premium") {
     result = await PremiumService.confirmStripeSession(session);
   } else if (meta.type === "course_purchase") {
@@ -933,6 +939,12 @@ async function expireCheckoutSession(session, reason) {
         const CommunityListingService = require("./CommunityListingService");
         const expired = await CommunityListingService.expireBySession(session.id);
         if (expired) log.info("expire.condo_listing_slot", { session_id: session.id, reason });
+        break;
+      }
+      case "community_listing_order": {
+        const CommunityListingOrderService = require("./CommunityListingOrderService");
+        const ex = await CommunityListingOrderService.expireBySession(session.id);
+        if (ex) log.info("expire.community_listing_order", { session_id: session.id, reason });
         break;
       }
       case "community_delivery": {
@@ -1090,6 +1102,9 @@ async function dispatchEvent(event) {
       const CommunityDeliveryService = require("./CommunityDeliveryService");
       const deliveryResult = await CommunityDeliveryService.handleChargeRefunded(charge);
       if (deliveryResult && !deliveryResult.ignored) break;
+      const CommunityListingOrderService = require("./CommunityListingOrderService");
+      const listingOrderResult = await CommunityListingOrderService.handleChargeRefunded(charge);
+      if (listingOrderResult && !listingOrderResult.ignored) break;
       const premiumResult = await PremiumService.handleChargeRefunded(charge);
       if (premiumResult && !premiumResult.ignored) break;
       const CoursesService = require("./CoursesService");

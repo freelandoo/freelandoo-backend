@@ -199,6 +199,30 @@ const server = app.listen(PORT, () => {
   setTimeout(tickDelivery, 4 * 60 * 1000);
   setInterval(tickDelivery, TEN_MIN);
 
+  // Job: VENDA NA VITRINE (mig 249). Também dois varredores no mesmo tique:
+  //
+  //  (1) entregue e não confirmado no prazo → conclui sozinho. Sem ele, o
+  //      repasse dependeria da boa vontade de quem já ficou com a mercadoria.
+  //  (2) HOLDBACK vencido → o repasse do vendedor vira saldo sacável.
+  //      ⚠️ Ele PULA o que está em DISPUTA: liberar o dinheiro de uma briga
+  //      aberta porque o prazo bateu seria decidir a favor do vendedor por
+  //      decurso, e a disputa viraria um formulário que não segura nada.
+  //
+  // De hora em hora basta: aqui os prazos são de DIAS (7 para confirmar, 8 de
+  // holdback), ao contrário do delivery, onde a comida expira em 2h.
+  const CommunityListingOrderService = require("./src/services/CommunityListingOrderService");
+  const ONE_HOUR = 60 * 60 * 1000;
+  const tickListingOrders = async () => {
+    try {
+      const r = await CommunityListingOrderService.sweep();
+      if (r?.completed || r?.released) bootLog.info("listing_order.sweep", r);
+    } catch (err) {
+      bootLog.error("listing_order.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickListingOrders, 9 * 60 * 1000);
+  setInterval(tickListingOrders, ONE_HOUR);
+
   // Job: reconciliação de pagamentos — para webhooks perdidos, cruza pendentes
   // antigos com o estado real da session no Stripe e re-entrega os que já foram
   // pagos. Roda 7 min após boot e a cada 2h (projeto PayDebug, D6).

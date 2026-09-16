@@ -26,6 +26,11 @@ const { Client } = require("pg");
 
 const BE = path.join(__dirname, "..");
 const MIG = path.join(BE, "src/databases/migrations/248_community_delivery.sql");
+const MIG249 = path.join(BE, "src/databases/migrations/249_community_listing_order.sql");
+const OrderStorage = require(path.join(BE, "src/storages/CommunityListingOrderStorage"));
+const { computeOrder, platformFeeFor, splitProcessorFee } = require(
+  path.join(BE, "src/utils/listingOrder")
+);
 const Storage = require(path.join(BE, "src/storages/CommunityDeliveryStorage"));
 const {
   courierNet,
@@ -54,6 +59,8 @@ function check(name, cond, extra) {
 }
 
 let antesTabelas = null;
+let antesTabelas249 = null;
+let antesFlags = null;
 
 /**
  * Roda algo que PODE falhar sem derrubar a transação do teste.
@@ -89,10 +96,28 @@ async function attempt(c, fn) {
   await c.query("BEGIN");
 
   try {
+    // ⚠️ O ESTADO É MEDIDO ANTES, E NO FIM SE EXIGE VOLTAR A ELE — nunca
+    // "a tabela não existe". A mig 248 SUBIU PARA PRODUÇÃO no meio desta
+    // própria sessão, e uma asserção escrita como "depois do ROLLBACK não há
+    // tabela de delivery" passou a ser FALSA por motivo legítimo. É a lição já
+    // paga nas suítes das migs 241/246: asserção sobre "o banco não tem X"
+    // nasce com prazo de validade quando X é uma migration que vai subir.
     antesTabelas = (
       await c.query(
         `SELECT COUNT(*)::int n FROM information_schema.tables
           WHERE table_schema='public' AND table_name LIKE 'tb_community_delivery%'`
+      )
+    ).rows[0].n;
+    antesTabelas249 = (
+      await c.query(
+        `SELECT COUNT(*)::int n FROM information_schema.tables
+          WHERE table_schema='public' AND table_name LIKE 'tb_community_listing%'`
+      )
+    ).rows[0].n;
+    antesFlags = (
+      await c.query(
+        `SELECT COUNT(*)::int n FROM public.tb_feature_flag
+          WHERE flag_key IN ('delivery_vizinho', 'vitrine_venda')`
       )
     ).rows[0].n;
     const listingsAntes = (await c.query("SELECT COUNT(*)::int n FROM public.tb_condo_listing"))
@@ -103,6 +128,8 @@ async function attempt(c, fn) {
     /* ─────────────────────────── 1. a migration ─────────────────────────── */
     const sql = fs.readFileSync(MIG, "utf8");
     await c.query(sql);
+    const sql249 = fs.readFileSync(MIG249, "utf8");
+    await c.query(sql249);
     console.log("-- 1a aplicacao --");
 
     const tabelas = (
@@ -201,6 +228,7 @@ async function attempt(c, fn) {
 
     // 2ª aplicação: idempotência.
     await c.query(sql);
+    await c.query(sql249);
     const precos2 = (
       await c.query("SELECT COUNT(*)::int n FROM public.tb_community_delivery_settings")
     ).rows[0].n;
@@ -224,6 +252,16 @@ async function attempt(c, fn) {
       "UPDATE public.tb_community_delivery_settings SET price_cents = 999 WHERE kind = 'food'"
     );
     await c.query(sql);
+    // ⚠️ RE-APLICAR A 248 AQUI REVERTE O CHECK DE NOTIFICAÇÃO PARA O DELA.
+    // O CHECK é um SUPERSET reescrito INTEIRO a cada migration que o toca, e a
+    // 248 (mais velha) não conhece os tipos que a 249 acrescentou. Rodar a
+    // velha depois da nova apaga a lista nova — e o sintoma é o INSERT de um
+    // tipo novo sendo recusado por uma constraint que "deveria" aceitá-lo.
+    //
+    // Em PRODUÇÃO isso não acontece: o runner aplica cada migration UMA vez, em
+    // ordem. Aqui acontece porque a suíte re-aplica de propósito, para provar
+    // idempotência — então ela precisa refazer a ordem real logo em seguida.
+    await c.query(sql249);
     const foodDepois = (
       await c.query(
         "SELECT price_cents FROM public.tb_community_delivery_settings WHERE kind = 'food'"
@@ -693,6 +731,337 @@ async function attempt(c, fn) {
       !kindTorto.ok && /kind/.test(kindTorto.error.message),
       kindTorto.ok ? "aceitou!" : kindTorto.error.message
     );
+
+    /* ═══════════ 15. SUB-PROJETO 3: VENDER DENTRO DA VITRINE ═══════════════ */
+
+    // A regua da venda nasce com taxa ZERO — decisao registrada: o Alex pediu
+    // o checkout e nunca falou em taxa sobre a venda entre vizinhos.
+    const regua = (
+      await c.query(
+        `SELECT platform_fee_cents, platform_fee_percent, holdback_days, confirm_days, is_active
+           FROM public.tb_community_listing_settings WHERE id = 1`
+      )
+    ).rows[0];
+    check("a taxa da venda nasce em ZERO", Number(regua.platform_fee_cents) === 0 &&
+      Number(regua.platform_fee_percent) === 0, JSON.stringify(regua));
+    // ⚠️ AQUI O HOLDBACK VOLTA — e e o OPOSTO do delivery, de proposito (CDC).
+    check("o HOLDBACK da venda e de 8 dias (CDC), ao contrario do delivery",
+      Number(regua.holdback_days) === 8, String(regua.holdback_days));
+
+    const flagVenda = (
+      await c.query("SELECT is_enabled FROM public.tb_feature_flag WHERE flag_key = 'vitrine_venda'")
+    ).rows[0];
+    check("a flag da venda nasce LIGADA", flagVenda?.is_enabled === true);
+
+    for (const tipo of [
+      "listing_order_new", "listing_order_paid", "listing_order_confirmed",
+      "listing_order_disputed", "listing_order_resolved",
+    ]) {
+      const r = await attempt(c, () =>
+        c.query(
+          `INSERT INTO public.tb_notification (id_recipient_user, type, entity_type)
+           VALUES ($1, $2, 'test')`,
+          [alvoUser.id_user, tipo]
+        )
+      );
+      check("o CHECK aceita o tipo novo " + tipo, r.ok, r.error && r.error.message);
+    }
+    // O superset continua superset DEPOIS da 249: o tipo do delivery (248) tem
+    // que seguir entrando.
+    const aindaAceita = await attempt(c, () =>
+      c.query(
+        `INSERT INTO public.tb_notification (id_recipient_user, type, entity_type)
+         VALUES ($1, 'delivery_opened', 'test')`,
+        [alvoUser.id_user]
+      )
+    );
+    check("a 249 NAO derrubou os tipos da 248 (superset em cadeia)", aindaAceita.ok);
+
+    /* ── a conta do dinheiro, com o add-on "+R$3" ───────────────────────── */
+    // ⚠️ AS QUATRO PARTES FECHAM O QUE O COMPRADOR PAGOU. E a identidade que
+    // faz um erro de conta aparecer como numero em vez de sumir na diferenca.
+    const contaComEntrega = computeOrder({
+      priceCents: 5000, deliveryCents: 300, platformFeeCents: 0, processorFeeCents: 250,
+    });
+    check("o total cobrado e preco + entrega", contaComEntrega.amount_cents === 5300);
+    check(
+      "as QUATRO partes fecham o que o comprador pagou",
+      contaComEntrega.platform_fee_cents +
+        contaComEntrega.processor_fee_cents +
+        contaComEntrega.seller_cents +
+        contaComEntrega.courier_cents === contaComEntrega.amount_cents,
+      JSON.stringify(contaComEntrega)
+    );
+    // A tarifa e RATEADA: jogada inteira no entregador, uma corrida de R$3
+    // dentro de uma compra de R$200 viraria prejuizo.
+    check(
+      "a tarifa do gateway e RATEADA entre produto e entrega",
+      contaComEntrega.delivery_fee_cents > 0 &&
+        contaComEntrega.delivery_fee_cents < contaComEntrega.processor_fee_cents,
+      JSON.stringify(contaComEntrega)
+    );
+    check(
+      "e as duas partes da tarifa somam exatamente a tarifa (a sobra tem dono)",
+      contaComEntrega.price_fee_cents + contaComEntrega.delivery_fee_cents ===
+        contaComEntrega.processor_fee_cents
+    );
+    // Sem add-on, a tarifa inteira e do produto.
+    const semEntrega = computeOrder({
+      priceCents: 5000, deliveryCents: 0, platformFeeCents: 0, processorFeeCents: 250,
+    });
+    check("sem add-on, a tarifa inteira fica com o produto",
+      semEntrega.delivery_fee_cents === 0 && semEntrega.price_fee_cents === 250);
+    check("sem add-on nao ha entregador para pagar", semEntrega.courier_cents === 0);
+
+    // ⚠️ NENHUM LIQUIDO NEGATIVO, tambem aqui.
+    const precoBaixo = computeOrder({
+      priceCents: 100, deliveryCents: 0, platformFeeCents: 0, processorFeeCents: 199,
+    });
+    check("produto de R$1 com tarifa de R$1,99 NAO deixa o vendedor devendo",
+      precoBaixo.seller_cents === 0, String(precoBaixo.seller_cents));
+    // A tarifa tambem e limitada ao que foi cobrado: o gateway nao pode ficar
+    // com mais do que entrou. Sem esse teto, a conta registraria uma tarifa
+    // maior que a venda e as quatro partes deixariam de fechar.
+    check("a tarifa nunca passa do que o comprador pagou",
+      precoBaixo.processor_fee_cents === 100, String(precoBaixo.processor_fee_cents));
+    check("e as quatro partes continuam fechando mesmo no caso extremo",
+      precoBaixo.platform_fee_cents + precoBaixo.processor_fee_cents +
+        precoBaixo.seller_cents + precoBaixo.courier_cents === precoBaixo.amount_cents,
+      JSON.stringify(precoBaixo));
+
+    // A taxa nunca engole o preco inteiro.
+    check("taxa maior que o preco e limitada ao preco",
+      platformFeeFor(1000, { platform_fee_cents: 99999, platform_fee_percent: 0, is_active: true }) === 1000);
+    check("taxa desligada e zero",
+      platformFeeFor(1000, { platform_fee_cents: 500, platform_fee_percent: 0, is_active: false }) === 0);
+    // O rateio de uma tarifa que nao divide redondo continua somando a tarifa.
+    const rateio = splitProcessorFee({ processorFeeCents: 7, priceCents: 333, deliveryCents: 300 });
+    check("o rateio com arredondamento ainda soma a tarifa exata",
+      rateio.price_fee_cents + rateio.delivery_fee_cents === 7, JSON.stringify(rateio));
+
+    /* ── o pedido, ponta a ponta ────────────────────────────────────────── */
+    const anuncio = await CommunityListingStorage.create(c, {
+      id_condo: comunidade.id_profile,
+      id_user: entregador.id_user, // o vizinho VENDE
+      kind: "product",
+      title: "Bolo de cenoura",
+      price_cents: 3000,
+    });
+
+    const real = computeOrder({
+      priceCents: 3000, deliveryCents: 300, platformFeeCents: 0, processorFeeCents: 171,
+    });
+
+    const pedido = await OrderStorage.create(c, {
+      id_listing: anuncio.id_listing,
+      id_community: comunidade.id_profile,
+      id_buyer: pedinte.id_user,
+      id_seller: entregador.id_user,
+      listing_title: anuncio.title,
+      listing_kind: "product",
+      price_cents: 3000,
+      delivery_cents: 300,
+      delivery_kind: "food",
+      amount_cents: 3300,
+      platform_fee_cents: 0,
+      processor_fee_cents: 171,
+      processor_fee_source: "fallback",
+      seller_cents: real.seller_cents,
+      courier_cents: real.courier_cents,
+    });
+    check("o pedido nasce pendente", pedido.status === "pending");
+    check("o SNAPSHOT do titulo e do preco fica na linha",
+      pedido.listing_title === "Bolo de cenoura" && Number(pedido.price_cents) === 3000);
+
+    await OrderStorage.attachCharge(c, pedido.id_order, {
+      provider: "stripe",
+      session_id: "cs_test_order_" + agora,
+      provider_ref: "cs_test_order_" + agora,
+      checkout_url: "https://checkout.example/x",
+    });
+    const pagoPedido = await OrderStorage.markPaid(c, "cs_test_order_" + agora, "pi_order_" + agora);
+    check("o webhook marca o pedido pago", !!pagoPedido && pagoPedido.status === "paid");
+    const repetidoPedido = await OrderStorage.markPaid(c, "cs_test_order_" + agora, null);
+    check("IDEMPOTENTE: a reentrega do webhook devolve zero linhas", repetidoPedido === null);
+
+    // A tarifa real substitui a estimativa e OS DOIS liquidos sao recalculados.
+    const ajustadoPedido = await OrderStorage.applyProcessorFee(c, pedido.id_order, {
+      fee_cents: real.processor_fee_cents,
+      seller_cents: real.seller_cents,
+      courier_cents: real.courier_cents,
+    });
+    check("a origem da tarifa passa a dizer 'gateway'",
+      ajustadoPedido.processor_fee_source === "gateway");
+    check("os dois liquidos batem com o util",
+      Number(ajustadoPedido.seller_cents) === real.seller_cents &&
+      Number(ajustadoPedido.courier_cents) === real.courier_cents,
+      JSON.stringify({ db: ajustadoPedido.seller_cents, util: real.seller_cents }));
+
+    /* ── O REPASSE COM HOLDBACK (o oposto do delivery) ──────────────────── */
+    const payoutVenda = await OrderStorage.createPayout(c, {
+      id_order: pedido.id_order,
+      id_community: comunidade.id_profile,
+      id_seller: entregador.id_user,
+      listing_title: "Bolo de cenoura",
+      charge_cents: 3300,
+      platform_fee_cents: 0,
+      processor_fee_cents: real.processor_fee_cents,
+      net_cents: real.seller_cents,
+      available_at: new Date(agora + 8 * 86400000),
+    });
+    check("o repasse da VENDA nasce AGUARDANDO (holdback), nao aprovado",
+      payoutVenda.status === "aguardando", payoutVenda.status);
+    check("e a data de liberacao esta no FUTURO (8 dias) — o oposto do delivery",
+      new Date(payoutVenda.available_at) > new Date(),
+      String(payoutVenda.available_at));
+    const payoutDup = await OrderStorage.createPayout(c, {
+      id_order: pedido.id_order, id_community: comunidade.id_profile,
+      id_seller: entregador.id_user, listing_title: "x", charge_cents: 1,
+      platform_fee_cents: 0, processor_fee_cents: 0, net_cents: 1,
+      available_at: new Date(),
+    });
+    check("repasse da venda NAO duplica", payoutDup === null);
+
+    /* ── ⚠️ O "+R$3" ABRE UM CHAMADO JA PAGO ───────────────────────────── */
+    const entregaDoPedido = await Storage.create(c, {
+      id_community: comunidade.id_profile,
+      id_requester: pedinte.id_user,
+      kind: "food",
+      price_cents: 300,
+      expires_at: new Date(agora + 120 * 60 * 1000),
+    });
+    await c.query(
+      `UPDATE public.tb_community_delivery_request
+          SET id_listing_order = $2, payment_status = 'paid', provider_ref = $3,
+              courier_cents = $4
+        WHERE id_delivery = $1`,
+      [entregaDoPedido.id_delivery, pedido.id_order, "pi_order_" + agora, real.courier_cents]
+    );
+    const preParaAceitar = await Storage.getById(c, entregaDoPedido.id_delivery);
+    check("o chamado do add-on nasce JA PAGO", preParaAceitar.payment_status === "paid");
+    check("e carrega o vinculo com o pedido",
+      String(preParaAceitar.id_listing_order) === String(pedido.id_order));
+    check("com o liquido ja calculado (a tarifa foi rateada no pedido)",
+      Number(preParaAceitar.courier_cents) === real.courier_cents);
+
+    // ⚠️ DEFEITO ESCRITO COMO ASSERCAO #4: cobrar DE NOVO a entrega ja paga.
+    // O service sai do aceite ANTES de criar cobranca quando payment_status ja
+    // e 'paid'; se alguem tirar essa saida, o vizinho paga a entrega DUAS VEZES.
+    const aceitoPrePago = await Storage.accept(c, entregaDoPedido.id_delivery, entregador.id_user, {
+      accepted_at: new Date(),
+    });
+    check("o chamado pre-pago pode ser aceito", !!aceitoPrePago);
+    check(
+      "DEFEITO #4 — aceite de chamado PRE-PAGO nao cria segunda cobranca: segue 'paid'",
+      aceitoPrePago.payment_status === "paid",
+      aceitoPrePago.payment_status
+    );
+    check(
+      "DEFEITO #4 — e o session_id continua NULL (nao houve segundo checkout)",
+      aceitoPrePago.session_id === null,
+      String(aceitoPrePago.session_id)
+    );
+
+    // Devolver um chamado PRE-PAGO nao pode estornar: a cobranca e a do PEDIDO
+    // inteiro, e estorna-la devolveria tambem o dinheiro do produto entregue.
+    const devolvidoPrePago = await Storage.releasePrepaidByCourier(
+      c, entregaDoPedido.id_delivery, entregador.id_user,
+      { expires_at: new Date(agora + 120 * 60 * 1000) }
+    );
+    check("devolver um chamado pre-pago o reabre", devolvidoPrePago.status === "open");
+    check(
+      "e MANTEM o pagamento (a cobranca e a do pedido, nao da corrida)",
+      devolvidoPrePago.payment_status === "paid" && devolvidoPrePago.provider_ref !== null,
+      JSON.stringify({ ps: devolvidoPrePago.payment_status, ref: devolvidoPrePago.provider_ref })
+    );
+
+    /* ── a disputa CONGELA o repasse ────────────────────────────────────── */
+    await OrderStorage.markDelivered(c, pedido.id_order, entregador.id_user, {
+      delivered_at: new Date(agora - 60 * 1000),
+      confirm_due_at: new Date(agora - 30 * 1000), // prazo ja vencido
+    });
+    const disputa = await OrderStorage.openDispute(c, {
+      id_order: pedido.id_order,
+      id_opener: pedinte.id_user,
+      reason: "not_received",
+      detail: "nao chegou",
+    });
+    check("a disputa abre", !!disputa && disputa.status === "open");
+    const disputaDupla = await OrderStorage.openDispute(c, {
+      id_order: pedido.id_order, id_opener: pedinte.id_user, reason: "other", detail: null,
+    });
+    check("apertar duas vezes NAO empilha casos (indice parcial + ON CONFLICT)",
+      String(disputaDupla.id_dispute) === String(disputa.id_dispute));
+    await OrderStorage.markDisputed(c, pedido.id_order);
+
+    await c.query(
+      "UPDATE public.tb_community_listing_payout SET available_at = NOW() - INTERVAL '1 day' WHERE id_order = $1",
+      [pedido.id_order]
+    );
+
+    // Primeiro o caso simples: pedido em `disputed` nao e liberado porque o
+    // sweeper exige `completed`.
+    const liberadosVenda = await OrderStorage.releaseDuePayouts(c);
+    check(
+      "o sweeper NAO libera o repasse de um pedido EM DISPUTA",
+      !liberadosVenda.some((r) => String(r.id_payout) === String(payoutVenda.id_payout)),
+      JSON.stringify(liberadosVenda)
+    );
+    const autoConcluidos = await OrderStorage.releaseDueConfirmations(c);
+    check(
+      "e o prazo vencido tambem NAO conclui um pedido em disputa",
+      !autoConcluidos.some((r) => String(r.id_order) === String(pedido.id_order))
+    );
+
+    // ⚠️ DEFEITO ESCRITO COMO ASSERCAO #5 — E O CASO CERTO E ESTE.
+    //
+    // O pedido CONCLUIDO com disputa VIVA. Ele existe porque a confirmacao
+    // vence em 7 dias e o holdback em 8: no dia do meio o pedido ja concluiu
+    // sozinho, o dinheiro AINDA esta retido, e o comprador — justo o que nao
+    // confirmou porque nada chegou — abre a disputa. Se o sweeper do holdback
+    // olhasse so `status = 'completed'`, ele pagaria o vendedor no dia
+    // seguinte e a disputa viraria um formulario que nao segura nada.
+    //
+    // A primeira versao deste teste passava com o defeito de volta, porque o
+    // pedido estava em `disputed` e a condicao `o.status = 'completed'` ja o
+    // barrava — a assercao acertava pelo motivo errado. Este e o cenario que
+    // so a clausula `NOT EXISTS` da disputa resolve.
+    await OrderStorage.undispute(c, pedido.id_order);
+    await OrderStorage.markCompleted(c, pedido.id_order, { completed_at: new Date() });
+    const concluidoComBriga = await OrderStorage.getById(c, pedido.id_order);
+    check("o pedido esta CONCLUIDO", concluidoComBriga.status === "completed");
+    const brigaViva = await OrderStorage.getOpenDispute(c, pedido.id_order);
+    check("e a disputa continua VIVA", !!brigaViva && brigaViva.status === "open");
+    const liberadosComBriga = await OrderStorage.releaseDuePayouts(c);
+    check(
+      "DEFEITO #5 — holdback vencido NAO paga o vendedor com disputa aberta",
+      !liberadosComBriga.some((r) => String(r.id_payout) === String(payoutVenda.id_payout)),
+      JSON.stringify(liberadosComBriga)
+    );
+    const aindaAguardando = await OrderStorage.getPayoutByOrder(c, pedido.id_order);
+    check(
+      "DEFEITO #5 — o repasse segue AGUARDANDO ate alguem decidir",
+      aindaAguardando.status === "aguardando",
+      aindaAguardando.status
+    );
+
+    // O veredito "release": a venda segue e o repasse e liberado na hora.
+    const decidida = await OrderStorage.decideDispute(c, disputa.id_dispute, {
+      status: "released", decided_by: alvoUser.id_user, decision_note: "conferido",
+    });
+    check("o admin decide a disputa", decidida.status === "released");
+    const aprovado = await OrderStorage.approvePayout(c, pedido.id_order);
+    check("com a disputa resolvida, o repasse e liberado", aprovado.status === "aprovado");
+    const semDisputa = await OrderStorage.getOpenDispute(c, pedido.id_order);
+    check("e nao sobra disputa viva", semDisputa === null);
+
+    /* ── o pedido sobrevive ao anuncio ──────────────────────────────────── */
+    // ⚠️ SET NULL, e nao CASCADE: o pedido carrega dinheiro e historico.
+    await c.query("DELETE FROM public.tb_condo_listing WHERE id_listing = $1", [anuncio.id_listing]);
+    const orfao = await OrderStorage.getById(c, pedido.id_order);
+    check("apagar o anuncio NAO apaga o pedido", !!orfao, "pedido sumiu junto!");
+    check("e o SNAPSHOT continua dizendo o que foi comprado",
+      !!orfao && orfao.listing_title === "Bolo de cenoura" && orfao.id_listing === null);
   } catch (err) {
     fail++;
     console.log("\nERRO:", err.message);
@@ -708,17 +1077,39 @@ async function attempt(c, fn) {
     ).rows[0].n;
     const flagDepois = (
       await c.query(
-        "SELECT COUNT(*)::int n FROM public.tb_feature_flag WHERE flag_key = 'delivery_vizinho'"
+        `SELECT COUNT(*)::int n FROM public.tb_feature_flag
+          WHERE flag_key IN ('delivery_vizinho', 'vitrine_venda')`
       )
     ).rows[0].n;
     console.log(
       "\n[producao, depois do ROLLBACK] tabelas do delivery:",
       depois,
-      "| flag:",
+      "| tabelas da venda:",
+      "(abaixo)",
+      "| flags:",
       flagDepois
     );
-    check("PRODUCAO INTOCADA: as tabelas do delivery nao ficaram", depois === antesTabelas);
-    check("PRODUCAO INTOCADA: a flag nao ficou", flagDepois === 0);
+    const depois249 = (
+      await c.query(
+        `SELECT COUNT(*)::int n FROM information_schema.tables
+          WHERE table_schema='public' AND table_name LIKE 'tb_community_listing%'`
+      )
+    ).rows[0].n;
+    check(
+      "PRODUCAO INTOCADA: as tabelas do delivery voltaram ao estado de antes",
+      depois === antesTabelas,
+      "antes=" + antesTabelas + " depois=" + depois
+    );
+    check(
+      "PRODUCAO INTOCADA: as tabelas da venda voltaram ao estado de antes",
+      depois249 === antesTabelas249,
+      "antes=" + antesTabelas249 + " depois=" + depois249
+    );
+    check(
+      "PRODUCAO INTOCADA: as flags voltaram ao estado de antes",
+      flagDepois === antesFlags,
+      "antes=" + antesFlags + " depois=" + flagDepois
+    );
 
     await c.end();
     console.log("\n" + pass + "/" + (pass + fail) + " checks");
