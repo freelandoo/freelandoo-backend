@@ -159,7 +159,15 @@ class CommunityDeliveryService {
             ...t,
             ...courierNetPreview(t.price_cents, governance),
           })),
-          deliveries: items,
+          // ⚠️ O LINK DE PAGAMENTO SAI SÓ PARA QUEM PAGA. Ele é uma sessão de
+          // checkout no nome de quem PEDIU; entregue a qualquer um que abre o
+          // quadro, um vizinho curioso poderia pagar a corrida de outra pessoa
+          // (ou, pior, ver o link sumir do próprio card por já estar pago).
+          deliveries: items.map((d) => ({
+            ...d,
+            checkout_url:
+              String(d.id_requester) === String(user.id_user) ? d.checkout_url : undefined,
+          })),
           viewer: {
             id_user: user.id_user,
             is_available: available,
@@ -300,6 +308,7 @@ class CommunityDeliveryService {
             provider: providerOf(session),
             session_id: session.id,
             provider_ref: session.provider_ref || session.id,
+            checkout_url: session.url || null,
             processor_fee_cents: estimate.cents,
             processor_fee_source: estimate.source,
             courier_cents: courierNet({

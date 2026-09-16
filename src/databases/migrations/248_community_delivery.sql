@@ -124,6 +124,16 @@ CREATE TABLE IF NOT EXISTS public.tb_community_delivery_request (
                              OR payment_provider IN ('stripe', 'asaas')),
   session_id        TEXT        NULL,
   provider_ref      TEXT        NULL,
+  -- ⚠️ A URL DO CHECKOUT PRECISA SER GUARDADA, e o motivo é quem paga:
+  -- a cobrança nasce quando o ENTREGADOR aceita, mas quem paga é quem PEDIU —
+  -- e essa pessoa não está na tela naquele instante. Sem guardar o link, ele
+  -- existiria só na resposta de um clique que outra pessoa deu, e o pedinte
+  -- não teria por onde pagar a corrida que já aceitaram para ele.
+  --
+  -- Some junto com o resto quando o chamado é devolvido: link de checkout de
+  -- uma corrida que voltou para a fila levaria a pessoa a pagar por uma
+  -- entrega que ninguém está fazendo.
+  checkout_url      TEXT        NULL,
   payment_status    VARCHAR(16) NOT NULL DEFAULT 'none'
                       CHECK (payment_status IN ('none', 'pending', 'paid',
                                                 'refunded', 'canceled')),

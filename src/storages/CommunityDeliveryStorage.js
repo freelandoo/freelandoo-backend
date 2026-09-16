@@ -128,17 +128,24 @@ class CommunityDeliveryStorage {
     return r.rows[0] || null;
   }
 
-  /** Carimba a cobrança criada no aceite. */
-  static async attachCharge(conn, id_delivery, { provider, session_id, provider_ref, processor_fee_cents, processor_fee_source, courier_cents }) {
+  /**
+   * Carimba a cobrança criada no aceite.
+   *
+   * ⚠️ A `checkout_url` É GUARDADA porque quem paga não está na tela: a
+   * cobrança nasce quando o ENTREGADOR aceita, e quem paga é quem PEDIU. Sem
+   * guardar, o link existiria só na resposta do clique de outra pessoa.
+   */
+  static async attachCharge(conn, id_delivery, { provider, session_id, provider_ref, checkout_url, processor_fee_cents, processor_fee_source, courier_cents }) {
     const r = await conn.query(
       `UPDATE public.tb_community_delivery_request
           SET payment_provider = $2,
               session_id = $3,
               provider_ref = $4,
+              checkout_url = $5,
               payment_status = 'pending',
-              processor_fee_cents = $5,
-              processor_fee_source = $6,
-              courier_cents = $7,
+              processor_fee_cents = $6,
+              processor_fee_source = $7,
+              courier_cents = $8,
               updated_at = NOW()
         WHERE id_delivery = $1
         RETURNING *`,
@@ -147,6 +154,7 @@ class CommunityDeliveryStorage {
         provider,
         session_id,
         provider_ref,
+        checkout_url ?? null,
         processor_fee_cents,
         processor_fee_source,
         courier_cents,
@@ -270,6 +278,7 @@ class CommunityDeliveryStorage {
               session_id = NULL,
               provider_ref = NULL,
               payment_provider = NULL,
+              checkout_url = NULL,
               processor_fee_cents = 0,
               processor_fee_source = 'none',
               courier_cents = 0,
