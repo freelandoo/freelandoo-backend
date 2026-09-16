@@ -11,6 +11,26 @@
 
 ---
 
+## O que fazer agora (resumo)
+
+Tudo abaixo foi conferido na Graph API em **2026-09-16**, não é suposição.
+
+1. **Preencher 3 campos do app** — política de privacidade, categoria e ícone.
+   Estão **vazios** hoje, e cada um reprova sozinho. Os valores prontos estão
+   na §3.2. *(~15 min)*
+2. **Gravar os dois vídeos** — §4. O `hello_world` já está APPROVED e o número
+   está CONNECTED/GREEN, então **o vídeo 1 é gravável hoje**, sem construir
+   nada. *(~30 min)*
+3. **Submeter o App Review** pedindo Advanced access nas duas permissões. §3.3.
+
+**Não precisa mais:** Business Verification — **já está aprovada** (§2). Era o
+passo de maior lead time, e ele saiu do caminho.
+
+**Não faça:** renomear o portfólio `printtei_` (§5) — a verificação está
+concedida sob esse nome, e mexer nele pode disparar reverificação.
+
+---
+
 ## 0. Por que a fase 2, em uma frase
 
 Sem Tech Provider **não existe coexistência**, e sem coexistência o cliente
@@ -30,8 +50,9 @@ Lido direto na Graph API com o token de produção:
 
 | item | valor | leitura |
 |---|---|---|
-| App ID | `1591190522483184` | existe |
+| App | `1591190522483184` — **`zap-freelandoo`** | existe |
 | WABA | `1745921236638169` (`freelandoo`, BRL, fuso 25) | **`account_review_status: APPROVED`** |
+| **Business Verification** | **`business_verification_status: verified`** | ✅ **já aprovada — ver §2** |
 | Portfólio dono | `1524179176025054` — **nome `printtei_`** | ⚠️ ver §5 |
 | Números | 1 — `+55 11 96812-8174`, `CONNECTED`, `VERIFIED`, **`GREEN`** | saudável |
 | Templates | **`hello_world` · APPROVED · UTILITY · en_US** | ✅ dá para gravar o vídeo 1 hoje |
@@ -39,27 +60,36 @@ Lido direto na Graph API com o token de produção:
 
 ---
 
-## 2. PASSO 0 — 5 minutos, destrava duas respostas
+## 2. A Business Verification **já está aprovada** — o degrau mais longo saiu do caminho
 
-O token **não tem `business_management`**. Conferido: ler o portfólio devolve
+O pré-requisito do App Review, e o passo de maior lead time desta lista inteira,
+**já está feito**. A Graph API devolve, no objeto do WABA:
+
+```
+business_verification_status: "verified"
+```
+
+⚠️ **Isso é legível sem o escopo `business_management`** — ele é exigido para
+ler o objeto do portfólio direto, não este campo no WABA. Uma versão anterior
+deste doc afirmava que a resposta estava bloqueada; estava errada, e a
+consequência era mandar você refazer uma verificação que já existe.
+
+**Então a §3.1 está concluída. Você vai direto ao App Review (§3.3).**
+
+### O que o escopo faltante ainda esconde
+
+Sobrou **uma** pergunta atrás dele: **o teto de números é 2 ou 20?** Ler o
+portfólio devolve
 
 ```
 (#200) Requires business_management permission to manage the object
 ```
 
-Enquanto faltar, **não dá para saber**:
-
-1. se o **teto de números é 2 ou 20**, e
-2. se a **Business Verification está aprovada** — que é o pré-requisito do App
-   Review, ou seja, o primeiro degrau desta lista inteira.
-
-**O que fazer:** Business Settings → Users → System Users → o system user da
-Freelandoo → *Generate Token* incluindo **`business_management`**. Alternativa
-sem tocar em token: Business Settings → **Business Info**, e ler o status de
-verificação na tela.
-
-> Se a verificação já estiver aprovada, você **pula o passo de maior lead time**
-> e vai direto ao App Review.
+Isso **não bloqueia o App Review** — é planejamento de capacidade, não
+pré-requisito. Se quiser a resposta: Business Settings → Users → System Users →
+o system user da Freelandoo → *Generate Token* incluindo
+**`business_management`**. Ou, sem tocar em token, ler o limite na tela do
+WhatsApp Manager.
 
 ---
 
@@ -67,21 +97,36 @@ verificação na tela.
 
 ```
 1. Business Verification  ──►  2. App configurado  ──►  3. App Review
-                                                             │
+        ✅ FEITA              ⬅ AQUI — 3 campos VAZIOS      │
                                                              ▼
                                               4. webhooks + onboarding de clientes
 ```
 
-### 3.1 Business Verification
+### 3.1 Business Verification — ✅ concluída
 
-Nome, endereço, telefone, e-mail e site do negócio, mais um método de contato
-para a Meta confirmar. Documento societário se o negócio não for encontrado
-sozinho.
+Nada a fazer. Confirmado em 2026-09-16 (§2).
 
-### 3.2 App configurado
+### 3.2 App configurado — ⚠️ **é aqui que você está, e os 3 bloqueadores estão VAZIOS**
 
-Três campos que reprovam sozinhos se faltarem: **ícone**, **política de
-privacidade** (URL pública) e **categoria**.
+Conferido em 2026-09-16 lendo o app `1591190522483184` com o app token. Os três
+campos que **reprovam sozinhos** estão sem valor:
+
+| campo | hoje | o que pôr |
+|---|---|---|
+| **Política de privacidade** | *** vazio *** | `https://www.freelandoo.com.br/privacy-policy` — **conferido, responde 200** |
+| **Categoria** | *** vazio *** | *Business and Pages* (ou *Productivity*) |
+| **Ícone** | ícone **padrão** do Facebook (`rsrc.php/…`) | 1024×1024 com a marca Freelandoo |
+| Termos de serviço | *** vazio *** | `https://www.freelandoo.com.br/terms` — **conferido, 200** (não obrigatório, mas some do checklist) |
+
+Onde: **App Dashboard → Settings → Basic**. Salvar.
+
+> ⚠️ **O ícone padrão conta como ausente.** O que está lá é o placeholder que
+> todo app novo recebe, não uma escolha — um review de identidade lê isso como
+> app não configurado.
+>
+> ⚠️ E o app se chama **`zap-freelandoo`**. Se quiser que o nome exibido no
+> review seja o do produto, é neste mesmo lugar — renomear o **app** é
+> inofensivo (diferente de renomear o **portfólio**, ver §5).
 
 ### 3.3 App Review — Advanced access
 
@@ -171,13 +216,26 @@ Olá {{1}}, seu horário em {{2}} está confirmado. Qualquer mudança, é só re
 
 ## 5. Atrito previsto: o portfólio se chama `printtei_`
 
-O portfólio dono do WABA é **`printtei_`**, e o app/produto é **Freelandoo**.
-Review de identidade compara o que você diz ser com o que está registrado, e
-nome que não bate é motivo comum de pedido de esclarecimento.
+O portfólio dono do WABA é **`printtei_`**, o app é **`zap-freelandoo`** e o
+produto é **Freelandoo**. Review de identidade compara o que você diz ser com o
+que está registrado, e nome que não bate é motivo comum de pedido de
+esclarecimento.
 
-**Antes de submeter:** renomear o portfólio para o nome do negócio (Business
-Settings → Business Info → *Edit*) e conferir se ele bate com a razão social
-usada na verificação e com o site informado.
+**⚠️ NÃO renomeie o portfólio por reflexo.** Uma versão anterior deste doc
+mandava renomear antes de submeter — conselho que ficou perigoso quando se
+descobriu que **a verificação já está concedida sob esse nome** (§2). A Meta
+pode exigir **reverificação** quando os dados cadastrais do negócio mudam, e
+reverificar custa justamente o degrau de maior lead time, que hoje está pronto.
+Trocar o nome para "ficar bonito no review" pode derrubar o que já passou.
+
+**O que fazer em vez disso:**
+
+1. Submeta com o nome como está.
+2. Use o **campo de notas do App Review** para dizer, em uma linha, que
+   `printtei_` é o portfólio que opera o produto Freelandoo — explicação dada
+   de antemão vale mais que nome trocado às pressas.
+3. Se a Meta pedir esclarecimento, aí sim avalie renomear, **sabendo** que pode
+   vir reverificação junto.
 
 ---
 
