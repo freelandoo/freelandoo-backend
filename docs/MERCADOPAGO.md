@@ -1,8 +1,11 @@
 # Mercado Pago — ligar, testar e voltar atrás
 
-> Este documento é para **executar no painel**, não é plano de implementação. O
-> código já está no ar e **inerte**: sem `MERCADOPAGO_ACCESS_TOKEN` a plataforma
-> segue cobrando pelo Stripe.
+> Este documento é para **executar no painel**, não é plano de implementação.
+>
+> **Estado: LIGADO em produção desde 2026-09-17.** O Mercado Pago é o **único**
+> provedor — o Stripe e o Asaas foram removidos inteiros, e nenhum dos dois
+> chegou a cobrar um real. Sem `MERCADOPAGO_ACCESS_TOKEN` não existe plano B: a
+> compra estoura no primeiro clique, alto e imediato.
 >
 > **⚠️ Nenhum segredo entra aqui.** Este arquivo é versionado. Token e
 > assinatura secreta vivem só nas variáveis do Railway.
@@ -113,10 +116,16 @@ No Stripe isso funciona (`cancel_at_period_end` é nativo). No Mercado Pago **n�
 existe** — cancelar é imediato. Os quatro agora passam por
 `SubscriptionEndService`, que:
 
-- **delega ao Stripe** quando o provedor sabe fazer sozinho
+- **delega ao provedor** quando ele sabe fazer sozinho
   (`SUPPORTS_PERIOD_END = true`), e
 - **agenda a data** em `tb_subscription_end` quando não sabe. Um sweeper de 1h
   executa o cancelamento quando o ciclo pago acaba.
+
+⚠️ **Hoje o primeiro ramo está VAZIO e é só por isso que ele fica:** o Mercado
+Pago declara `SUPPORTS_PERIOD_END = false` e era o Stripe quem sabia fazer
+nativamente. O ramo continua porque é ele que mantém a decisão *por capacidade
+declarada*, e não *por nome de provedor* — foi essa distinção que permitiu
+trocar o gateway inteiro sem reabrir os quatro pontos de cancelamento.
 
 > **⚠️ Provedor novo declara `SUPPORTS_PERIOD_END`.** Esquecendo, o valor é
 > `undefined` e ele cai na fila — que é o lado seguro do erro.
@@ -143,7 +152,7 @@ de estorno iria para o gateway errado e o dinheiro ficaria com a gente.
 ### Rodar as suítes
 
 ```bash
-npm run test:unit              # 313 casos, inclui a tradução Stripe↔Mercado Pago
+npm run test:unit              # 313 casos, inclui a tradução para a forma de Checkout Session
 npm run test:payments          # mig 250 (os 5 CHECKs), contra o banco, com ROLLBACK
 npm run test:subscription-end  # mig 251 (a fila de cancelamento), idem
 ```
@@ -159,15 +168,20 @@ npm run test:subscription-end  # mig 251 (a fila de cancelamento), idem
 
 ## 5. Como voltar atrás
 
-Tirar `MERCADOPAGO_ACCESS_TOKEN` (ou pôr `PAYMENT_PROVIDER=stripe`) devolve a
-cobrança ao Stripe **sem deploy**. O log avisa alto:
+**Não dá mais, e isso é decisão.** O Stripe saiu do registry em 2026-09-17
+(*"se for pagamento é MP"*), então tirar `MERCADOPAGO_ACCESS_TOKEN` não devolve
+a cobrança a ninguém: ela simplesmente para, com erro alto no primeiro clique de
+compra.
 
-```
-[PaymentGateway] [WARN] provider.mercadopago_missing_using_legacy_stripe
-```
+Foi o preço aceito para acabar com o fallback silencioso — o modo de falhar que
+deixava uma migração pela metade por semanas sem ninguém notar. Se um dia for
+preciso voltar, é reintroduzir um adapter no registry (o contrato em
+`integrations/payments/contract.js` continua lá, e foi ele que permitiu trocar o
+provedor inteiro sem reescrever os 20 fluxos).
 
-Cobranças já feitas no Mercado Pago continuam sendo estornadas **nele** — o
-provedor sai da intenção (mig 231), nunca do ambiente.
+**O que sobrevive de qualquer provedor antigo:** os CHECKs do banco continuam
+aceitando `'stripe'` e `'asaas'` como valores **HISTÓRICOS** (mig 250), e o
+provedor de cada cobrança sai da **intenção** (mig 231), nunca do ambiente.
 
 ---
 
@@ -222,6 +236,10 @@ ambiente a porta responde 503**, nunca aceita o corpo.
 4. **Disputa (`charged_back`) passa a estornar.** Nem o Stripe nem o Asaas
    tratavam isso; é a primeira vez que a plataforma reage a um chargeback. Vale
    observar o primeiro caso real.
-5. **As 5 assinaturas de perfil vivas no Stripe continuam vivas lá.** Migrar uma
-   assinatura de gateway não existe: é preciso cancelar de um lado e assinar do
-   outro.
+5. ~~As 5 assinaturas de perfil vivas no Stripe~~ — **ERA FALSO, e foi medido
+   antes de remover o Stripe (2026-09-17).** A conta de produção
+   (`acct_1TZuuE452Tgx3qwD`) tem **ZERO cobranças e ZERO assinaturas em toda a
+   vida dela**. Aquelas 5 são linhas do NOSSO banco que nunca corresponderam a
+   uma assinatura viva do lado de lá. Foi esse fato que tornou a remoção segura
+   — e ele vale como aviso: *"conferido em produção"* num comentário precisa
+   dizer **onde** foi conferido, senão vira folclore que decide arquitetura.
