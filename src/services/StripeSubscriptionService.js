@@ -1,5 +1,4 @@
 const pool = require("../databases");
-const StripeService = require("./StripeService");
 const PaymentGateway = require("../integrations/payments");
 const SubscriptionEndService = require("./SubscriptionEndService");
 const CouponDiscountResolver = require("./CouponDiscountResolver");
@@ -380,26 +379,11 @@ async function refundSubscriptionForUser(user, body) {
         }
       }
 
-      if (!chargeId && sub.stripe_subscription_id) {
-        // Subscription LEGACY do Stripe — caminho antigo via invoice. Só existe
-        // para ativações recorrentes anteriores ao one-time; no Asaas não há
-        // `invoice`, e este ramo nunca é alcançado porque o de cima já resolveu.
-        try {
-          const stripeSub = await StripeService.retrieveSubscription(sub.stripe_subscription_id);
-          const latestInvoiceId =
-            typeof stripeSub.latest_invoice === "string"
-              ? stripeSub.latest_invoice
-              : stripeSub.latest_invoice?.id || null;
-          if (latestInvoiceId) {
-            const invoice = await StripeService.retrieveInvoice(latestInvoiceId);
-            chargeId = typeof invoice.charge === "string"
-              ? invoice.charge
-              : invoice.charge?.id || null;
-          }
-        } catch (err) {
-          log.warn("refund.invoice_lookup_fail", { sub: sub.stripe_subscription_id, message: err.message });
-        }
-      }
+      // ⚠️ AQUI HAVIA O RAMO LEGADO DO STRIPE (subscription → invoice → charge).
+      // Ele saiu com o provedor, e era comprovadamente morto: a conta Stripe de
+      // produção nunca teve uma assinatura — conferido antes de apagar. No
+      // Mercado Pago a cobrança É a referência, e o `getChargeFee` acima já
+      // resolve o `charge_id` nos dois casos (avulso e assinatura).
 
       if (!chargeId) {
         throw new ServiceError("Cobrança não encontrada para esta ativação", 500);

@@ -35,28 +35,38 @@
 // Freelandoo passa de R$150, o ponto em que a tarifa fixa ganha da percentual
 // (~R$201) nunca é alcançado.
 //
-// ─── ⚠️ E O STRIPE: LEGADO, AINDA COBRANDO ATÉ O MP TER CREDENCIAL ──────────
+// ─── ⚠️ E O STRIPE SAIU INTEIRO, PELO MESMO MOTIVO DO ASAAS ────────────────
 //
-// Ele NÃO foi arrancado, e isso é deliberado — por dois motivos, nesta ordem:
+// Decisão do Alex (2026-09-17): *"se for pagamento é MP"*. E o que tornou a
+// remoção segura não foi a decisão, foi um FATO MEDIDO na conta Stripe de
+// produção (`acct_1TZuuE452Tgx3qwD`, BR, livemode) antes de apagar qualquer
+// linha: **ZERO cobranças e ZERO assinaturas, em toda a vida da conta**.
 //
-// 1. Arrancá-lo antes de o Mercado Pago estar configurado FECHA O CAIXA. Todos
-//    os fluxos ficariam sem conseguir cobrar, e o sintoma apareceria no
-//    primeiro clique de compra, em produção. É a mesma razão pela qual a
-//    migração do Asaas manteve o fallback.
-// 2. Existem 5 assinaturas de perfil ATIVAS com assinatura recorrente viva no
-//    Stripe (conferido em produção). Elas são cobradas LÁ, todo mês,
-//    independente do nosso código — arrancar o adapter não para a cobrança, só
-//    nos deixa cegos e sem conseguir cancelar.
+// Isso derrubou as duas únicas razões que sustentavam mantê-lo:
 //
-// Assim que `MERCADOPAGO_ACCESS_TOKEN` existir, o Mercado Pago passa a cobrar
-// TUDO sozinho, sem deploy novo, e o Stripe fica só como porta de estorno e
-// cancelamento do que já foi cobrado nele.
+//   1. "arrancar fecha o caixa" — só valia enquanto o Mercado Pago não tinha
+//      credencial. Ele tem, e cobra em produção desde 2026-09-17.
+//   2. "existem 5 assinaturas de perfil vivas no Stripe" — ERA FALSO. A conta
+//      nunca teve uma assinatura sequer. Aquelas 5 são linhas do NOSSO banco,
+//      que nunca corresponderam a uma assinatura viva do lado do Stripe.
+//
+// ⚠️ SE UM DIA APARECER COBRANÇA ANTIGA DE STRIPE, ELA NÃO TEM COMO SER
+// ESTORNADA POR AQUI. É o preço aceito, e ele é zero porque não existe nenhuma.
+// O CHECK do banco continua aceitando 'stripe' e 'asaas' como valores
+// HISTÓRICOS (mig 250) — a constraint descreve o que a coluna pode ter contido
+// ao longo da vida do banco; o registry descreve quem opera hoje.
+//
+// ⚠️ O QUE TEM NOME DE STRIPE E **NÃO** É STRIPE — não apagar por causa do
+// nome: `StripeWebhookService` é o CONFIRMADOR dos 20 fluxos (o Mercado Pago
+// chama ele para entregar tudo) e `StripeWebhookEventStorage` é a dedupe
+// at-least-once do webhook. As rotas `/stripe/*` são produto (ativar perfil,
+// minhas assinaturas, cancelar, reembolsar). Os três são NOME LEGADO, mesma
+// disciplina de `tb_machine`, `tb_story` e `evolution_instance`.
 
 const pool = require("../../databases");
 const PaymentIntentStorage = require("../../storages/PaymentIntentStorage");
 const { assertPaymentFlow, isRecurringFlow } = require("../../utils/paymentFlows");
 const { assertNoUnsupportedFields } = require("./contract");
-const stripeProvider = require("./providers/stripe");
 const mercadoPagoProvider = require("./providers/mercadopago");
 const mp = require("./mercadoPagoClient");
 const { createLogger } = require("../../utils/logger");
@@ -75,37 +85,29 @@ const log = createLogger("PaymentGateway");
  */
 const PROVIDERS = Object.freeze({
   mercadopago: mercadoPagoProvider,
-  stripe: stripeProvider,
 });
 
 /**
- * Quem cobra.
+ * Quem cobra: o Mercado Pago. Não existe mais escolha.
  *
- * ⚠️ O FALLBACK PARA STRIPE NÃO É TIMIDEZ — é o que impede o deploy de derrubar
- * o caixa. Pedir `mercadopago` sem `MERCADOPAGO_ACCESS_TOKEN` configurado
- * deixaria TODOS os fluxos sem conseguir cobrar, e o sintoma só apareceria no
- * primeiro clique de compra, em produção. Enquanto a credencial não existir, o
- * Stripe segue.
+ * ⚠️ O FALLBACK SUMIU PORQUE NÃO HÁ PARA ONDE CAIR — e isso MUDA O MODO DE
+ * FALHAR, de propósito. Antes, credencial ausente caía no Stripe com um WARN:
+ * a plataforma seguia cobrando e a migração podia ficar pela metade por semanas
+ * sem ninguém notar. Agora, sem `MERCADOPAGO_ACCESS_TOKEN`, quem estoura é o
+ * próprio cliente (`MercadoPagoError`, 503, "não configurado") no primeiro
+ * clique de compra — alto, imediato e com o dinheiro ainda no bolso de quem ia
+ * pagar. Preferir o erro barulhento ao silêncio é a regra aqui: o caso que o
+ * fallback protegia (ficar sem caixa) não existe mais, porque o Stripe não tem
+ * como cobrar nada — ele não está no registry.
  *
- * ⚠️ O WARN é alto de propósito: fallback silencioso é como uma migração fica
- * pela metade por semanas sem ninguém notar.
+ * ⚠️ `PAYMENT_PROVIDER` deixou de ser lida. Deixá-la valendo permitiria
+ * `PAYMENT_PROVIDER=stripe` apontar para um provedor que não existe mais no
+ * registry, e `activeProvider()` devolveria `undefined` — o erro apareceria
+ * como "cannot read property createCheckout of undefined" no meio de uma
+ * compra, que é a pior tradução possível de "provedor desligado".
  */
 function providerName() {
-  const wanted = String(process.env.PAYMENT_PROVIDER || "").trim().toLowerCase();
-
-  if (wanted === "stripe") return "stripe";
-
-  if (wanted === "mercadopago" || wanted === "mp") {
-    if (mp.isConfigured()) return "mercadopago";
-    log.warn("provider.mercadopago_unconfigured_fallback_stripe");
-    return "stripe";
-  }
-
-  // Sem `PAYMENT_PROVIDER` declarado, quem decide é a CREDENCIAL — a regra das
-  // migs 214/220/223: quem diz se o provedor existe é a ENV, não a flag.
-  if (mp.isConfigured()) return "mercadopago";
-  log.warn("provider.mercadopago_missing_using_legacy_stripe");
-  return "stripe";
+  return "mercadopago";
 }
 
 function activeProvider() {
@@ -114,7 +116,7 @@ function activeProvider() {
 
 /** Em qual ambiente o provedor ativo está. Só para diagnóstico de boot. */
 function activeEnvironment() {
-  return providerName() === "mercadopago" ? mp.environment() : "stripe";
+  return mp.environment();
 }
 
 /**
@@ -211,12 +213,17 @@ async function createCheckout(req = {}) {
  * é a session, `cs_...`).
  */
 async function resolveProviderByRef(ref) {
-  if (!ref) return "stripe";
+  if (!ref) return "mercadopago";
   for (const name of Object.keys(PROVIDERS)) {
     const intent = await PaymentIntentStorage.getByProviderRef(pool, name, ref);
     if (intent) return intent.provider;
   }
-  return "stripe";
+  // ⚠️ A REGRA DA AUSÊNCIA MUDOU DE DONO: era "não achou = Stripe", porque toda
+  // cobrança anterior ao gateway tinha sido feita lá. Conferido em produção que
+  // NENHUMA foi: a conta Stripe nunca cobrou. Devolver "stripe" aqui mandaria o
+  // pedido para um provedor que não está mais no registry — e o `PROVIDERS[x]`
+  // viria `undefined`.
+  return "mercadopago";
 }
 
 /**
@@ -244,7 +251,7 @@ async function refund({ intent_id, provider_ref, payment_intent_id, provider }) 
     resolvedProvider = await resolveProviderByRef(payment_intent_id || ref);
   }
 
-  const impl = PROVIDERS[resolvedProvider] || PROVIDERS.stripe;
+  const impl = PROVIDERS[resolvedProvider] || PROVIDERS.mercadopago;
   // No Mercado Pago, como era no Asaas, a cobrança É a referência: não existe o
   // par charge/payment_intent do Stripe, então o estorno recebe o mesmo id nos
   // dois campos.
@@ -264,7 +271,7 @@ async function refund({ intent_id, provider_ref, payment_intent_id, provider }) 
  */
 async function cancelSubscription(subscriptionId, { provider, immediate = false } = {}) {
   const resolved = provider || (await resolveProviderByRef(subscriptionId));
-  const impl = PROVIDERS[resolved] || PROVIDERS.stripe;
+  const impl = PROVIDERS[resolved] || PROVIDERS.mercadopago;
   return impl.cancelSubscription(subscriptionId, { immediate });
 }
 
@@ -286,7 +293,7 @@ async function cancelSubscription(subscriptionId, { provider, immediate = false 
 async function getSubscriptionPeriod(subscriptionId, { provider } = {}) {
   if (!subscriptionId) return { period_start: null, period_end: null };
   const resolved = provider || (await resolveProviderByRef(subscriptionId));
-  const impl = PROVIDERS[resolved] || PROVIDERS.stripe;
+  const impl = PROVIDERS[resolved] || PROVIDERS.mercadopago;
   if (typeof impl.getSubscriptionPeriod !== "function") {
     return { period_start: null, period_end: null };
   }
@@ -306,7 +313,7 @@ async function getSubscriptionPeriod(subscriptionId, { provider } = {}) {
 async function getChargeFee(provider_ref, { provider } = {}) {
   if (!provider_ref) return { fee_cents: null, charge_id: null, source: null };
   const resolved = provider || (await resolveProviderByRef(provider_ref));
-  const impl = PROVIDERS[resolved] || PROVIDERS.stripe;
+  const impl = PROVIDERS[resolved] || PROVIDERS.mercadopago;
   if (typeof impl.getChargeFee !== "function") {
     return { fee_cents: null, charge_id: null, source: null };
   }

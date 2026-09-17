@@ -1,5 +1,4 @@
 const pool = require("../databases");
-const StripeService = require("./StripeService");
 const PaymentGateway = require("../integrations/payments");
 const { providerOf } = require("../integrations/payments/contract");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
@@ -215,15 +214,18 @@ async function handleInvoicePaid(conn, invoice) {
     // nossa linha ainda não tem o subscription id. A metadata da subscription
     // (subscription_data.metadata) diz de quem é a fatura.
     try {
-      // ⚠️ NO ASAAS O `metadata` JÁ VIAJA NA FATURA (a reidratação o traz do
-      // payload da intenção), então perguntar ao provedor seria uma ida à rede
-      // para descobrir o que está na mão — e, com um id do Asaas, uma ida que
-      // estoura. O objeto cru do Stripe não tem metadata na invoice, e aí sim
-      // a assinatura precisa ser buscada.
+      // ⚠️ O `metadata` JÁ VIAJA NA FATURA: quem monta o objeto é o
+      // `buildInvoiceLike` do MercadoPagoWebhookService, a partir do payload da
+      // intenção. Aqui havia uma ida ao Stripe para o caso do objeto CRU dele,
+      // que não carrega metadata na invoice — esse caso não existe mais.
+      //
+      // ⚠️ Sem metadata não há o que buscar: seguir sem `type` deixa o `return`
+      // de baixo tratar como fatura que não é nossa, que é a verdade. Inventar
+      // um tipo aqui entregaria produto pela fatura errada.
       const subscription =
         invoice && invoice.metadata && invoice.metadata.type
           ? { id: subscriptionId, metadata: invoice.metadata }
-          : await StripeService.retrieveSubscription(subscriptionId);
+          : { id: subscriptionId, metadata: {} };
       const metaType = subscription?.metadata?.type || null;
       if (metaType === "community_membership") {
         await CommunityMembershipService.handleInvoicePaidByMetadata(invoice, subscription);
@@ -410,19 +412,12 @@ async function handleChargeRefunded(conn, charge) {
   if (!profileSubscription && (charge.subscription || charge.invoice)) {
     const invoiceId = typeof charge.invoice === "string" ? charge.invoice : charge.invoice?.id;
     try {
-      // ⚠️ A ASSINATURA VEM NO PRÓPRIO CHARGE quando o provedor a manda (Asaas).
-      // Lá não existe o objeto `invoice` do Stripe — a cobrança É a fatura —, e
-      // pedir essa fatura ao Stripe com um id do Asaas cai no catch: o estorno
-      // não acharia a assinatura e o perfil seguiria ativo depois de devolvido.
-      let subscriptionId =
+      // ⚠️ A ASSINATURA VEM NO PRÓPRIO CHARGE: quem monta é o `buildChargeLike`
+      // do MercadoPagoWebhookService. No Mercado Pago a cobrança É a fatura —
+      // não existe a viagem charge → invoice → subscription do Stripe, e era
+      // essa viagem que morava aqui.
+      const subscriptionId =
         typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
-      if (!subscriptionId) {
-        const invoice = await StripeService.retrieveInvoice?.(invoiceId);
-        subscriptionId =
-          typeof invoice?.subscription === "string"
-            ? invoice.subscription
-            : invoice?.subscription?.id || null;
-      }
       if (subscriptionId) {
         profileSubscription = await ProfileSubscriptionStorage.findBySubscriptionId(
           conn,
@@ -483,22 +478,9 @@ async function handleChargeRefunded(conn, charge) {
   }
 
   if (!order && (charge.subscription || charge.invoice)) {
-    const invoiceId = typeof charge.invoice === "string" ? charge.invoice : charge.invoice?.id;
-    // Mesma razão do bloco acima: no Asaas a assinatura chega no charge, e a
-    // viagem charge → invoice → subscription do Stripe não existe.
-    let subscriptionId =
+    // Mesma razão do bloco acima: a assinatura chega no próprio charge.
+    const subscriptionId =
       typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
-    try {
-      if (!subscriptionId) {
-        const invoice = await StripeService.retrieveInvoice?.(invoiceId);
-        subscriptionId =
-          typeof invoice?.subscription === "string"
-            ? invoice.subscription
-            : invoice?.subscription?.id || null;
-      }
-    } catch (err) {
-      log.warn("charge.refunded.invoice_lookup_fail", { invoiceId, error: err.message });
-    }
     if (subscriptionId) {
       const sub = await ProfileSubscriptionStorage.findBySubscriptionId(conn, subscriptionId);
       if (sub?.stripe_checkout_session_id) {

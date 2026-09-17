@@ -6,7 +6,6 @@
 const pool = require("../databases");
 const AtendimentoIaStorage = require("../storages/AtendimentoIaStorage");
 const AtendimentoIaProvisionService = require("./AtendimentoIaProvisionService");
-const StripeService = require("./StripeService");
 const PaymentGateway = require("../integrations/payments");
 const { isFullRefund } = require("../utils/refunds");
 const { INCLUDED_AI_PLAN_NAME } = require("../utils/businessPlan");
@@ -317,22 +316,11 @@ class AtendimentoIaService {
       typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
     if (!invoiceId && !chargeSubscription) return { ignored: true };
     if (!isFullRefund(charge)) return { ignored: true };
-    // ⚠️ ATALHO QUE O ASAAS EXIGE: lá não existe o objeto `invoice` do Stripe —
-    // a cobrança É a fatura. Sem ler a assinatura do próprio charge, este
-    // caminho chamaria `retrieveInvoice` no STRIPE com um id do Asaas, cairia
-    // no catch e devolveria `ignored` — um estorno de Atendimento IA que não
-    // desliga o serviço, com o dinheiro já devolvido.
-    let subscriptionId =
+    // ⚠️ A ASSINATURA CHEGA NO PRÓPRIO CHARGE: no Mercado Pago a cobrança É a
+    // fatura, e o `buildChargeLike` a carrega. Havia aqui uma volta pelo objeto
+    // `invoice` do Stripe, que não existe mais.
+    const subscriptionId =
       typeof charge.subscription === "string" ? charge.subscription : charge.subscription?.id || null;
-    if (!subscriptionId) {
-      try {
-        const invoice = await StripeService.retrieveInvoice(invoiceId);
-        subscriptionId =
-          typeof invoice?.subscription === "string" ? invoice.subscription : invoice?.subscription?.id || null;
-      } catch {
-        return { ignored: true };
-      }
-    }
     if (!subscriptionId) return { ignored: true };
     const sub = await AtendimentoIaStorage.getSubBySubscriptionId(pool, subscriptionId);
     if (!sub) return { ignored: true };

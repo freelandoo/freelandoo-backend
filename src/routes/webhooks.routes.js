@@ -1,17 +1,15 @@
 const { Router } = require("express");
 const express = require("express");
 const asyncHandler = require("../utils/asyncHandler");
-const StripeController = require("../controllers/StripeController");
 const WhatsappCloudWebhookController = require("../controllers/WhatsappCloudWebhookController");
 const MercadoPagoController = require("../controllers/MercadoPagoController");
 
 const router = Router();
 
-router.post(
-  "/stripe",
-  express.raw({ type: "application/json" }),
-  asyncHandler(StripeController.handleWebhook)
-);
+// ⚠️ A PORTA DO STRIPE FOI REMOVIDA (2026-09-17), e a ausência é deliberada:
+// uma rota de webhook que responde sem ter quem a assine é convite para alguém
+// religar um provedor que não existe mais no registry. O caminho responde 404.
+// Quem entrega produto agora é `/mercadopago`, logo abaixo.
 
 
 /**

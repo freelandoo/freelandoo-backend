@@ -1,7 +1,6 @@
 const pool = require("../databases");
 const PaymentOpsStorage = require("../storages/PaymentOpsStorage");
 const PaymentIntentStorage = require("../storages/PaymentIntentStorage");
-const StripeService = require("./StripeService");
 const StripeWebhookService = require("./StripeWebhookService");
 const mp = require("../integrations/payments/mercadoPagoClient");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -76,8 +75,7 @@ class PaymentReconciliationService {
         seen.add(session_id);
         checked++;
         try {
-          // De quem é esta pendente? A intenção (mig 231) sabe. Não achar
-          // significa Stripe: é toda cobrança anterior ao gateway.
+          // De quem é esta pendente? A intenção (mig 231) sabe.
           const intent = await PaymentIntentStorage.getById(pool, session_id).catch(() => null);
 
           if (intent && intent.provider === "mercadopago") {
@@ -88,14 +86,18 @@ class PaymentReconciliationService {
             continue;
           }
 
-          const session = await StripeService.retrieveSession(session_id);
-          const paid =
-            session?.payment_status === "paid" ||
-            session?.payment_status === "no_payment_required";
-          if (!paid) continue;
-          await StripeWebhookService.fulfillCheckoutSession(session);
-          recovered++;
-          log.warn("reconcile.recovered", { session_id, flow, provider: "stripe" });
+          // ⚠️ PENDENTE SEM INTENÇÃO NÃO TEM COMO SER SOCORRIDA, e dizer isso
+          // em voz alta é melhor do que fingir. Aqui havia o caminho do Stripe,
+          // usado quando a intenção não existia (toda cobrança anterior ao
+          // gateway era dele). Ele saiu junto com o provedor — e a conta Stripe
+          // nunca cobrou nada, então não há pendente daquele mundo para salvar.
+          // Sem este log, a linha ficaria presa no painel de pendentes sem
+          // nunca dizer por quê.
+          log.warn("reconcile.unreconcilable", {
+            session_id,
+            flow,
+            reason: intent ? `provider_${intent.provider}` : "intent_not_found",
+          });
         } catch (err) {
           log.error("reconcile.session_fail", { session_id, flow, message: err.message });
         }
