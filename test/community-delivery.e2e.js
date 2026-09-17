@@ -27,6 +27,11 @@ const { Client } = require("pg");
 const BE = path.join(__dirname, "..");
 const MIG = path.join(BE, "src/databases/migrations/248_community_delivery.sql");
 const MIG249 = path.join(BE, "src/databases/migrations/249_community_listing_order.sql");
+// ⚠️ A 252 entra aqui porque a VITRINE passou a ser mensal: `Storage.list`
+// filtra por `paid_until`, e sem a coluna a leitura estoura dentro desta
+// transação. Não é defeito do delivery — é a suite precisando do mundo novo,
+// como a da 242 passou a aplicar a 243.
+const MIG252 = path.join(BE, "src/databases/migrations/252_listing_monthly.sql");
 const OrderStorage = require(path.join(BE, "src/storages/CommunityListingOrderStorage"));
 const { computeOrder, platformFeeFor, splitProcessorFee } = require(
   path.join(BE, "src/utils/listingOrder")
@@ -130,6 +135,8 @@ async function attempt(c, fn) {
     await c.query(sql);
     const sql249 = fs.readFileSync(MIG249, "utf8");
     await c.query(sql249);
+    const sql252 = fs.readFileSync(MIG252, "utf8");
+    await c.query(sql252);
     console.log("-- 1a aplicacao --");
 
     const tabelas = (
@@ -344,6 +351,21 @@ async function attempt(c, fn) {
       price_cents: 5000,
     });
     check("a vitrine aceita anuncio no BAIRRO (era so condominio)", !!anuncioBairro?.id_listing);
+
+    // ⚠️ A MIG 252 FEZ ESTA ASSERÇÃO ENVELHECER, e nao e regressao: o anuncio
+    // nasce RASCUNHO e so entra na vitrine quando a mensalidade e paga. A
+    // suite passou a pagar antes de exigir que ele apareca — o que ela prova
+    // (a vitrine serve o BAIRRO, nao so o condominio) continua igual, e de
+    // quebra ela passa a provar que a cobranca vale nas duas modalidades.
+    const rascunhoBairro = await CommunityListingStorage.list(c, bairro.id_profile, {
+      kind: "service",
+    });
+    check(
+      "no BAIRRO o anuncio tambem nasce fora da vitrine ate ser pago (mig 252)",
+      rascunhoBairro.every((l) => String(l.id_listing) !== String(anuncioBairro.id_listing))
+    );
+    await CommunityListingStorage.extendPaidUntil(c, anuncioBairro.id_listing, 1);
+
     const listadosBairro = await CommunityListingStorage.list(c, bairro.id_profile, {
       kind: "service",
     });

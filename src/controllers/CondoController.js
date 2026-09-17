@@ -126,14 +126,39 @@ class CondoController {
     return sendServiceResult(res, result);
   }
 
-  static async createSlotCheckout(req, res) {
-    const result = await CommunityListingService.createSlotCheckout(req.user, req.params, req.body || {});
+  // Mensalidade do anúncio (mig 252), no endereço legado `/condos/...` que o
+  // front em cache ainda chama. Mesmo service da porta genérica.
+  static async listingBillingCheckout(req, res) {
+    const result = await CommunityListingService.createListingCheckout(
+      req.user,
+      req.params,
+      req.body || {}
+    );
     return sendServiceResult(res, result, 201);
   }
 
-  static async purchaseSlotWithPolens(req, res) {
-    const result = await CommunityListingService.purchaseSlotWithPolens(req.user, req.params, req.body || {});
+  static async listingBillingPolens(req, res) {
+    const result = await CommunityListingService.payListingWithPolens(
+      req.user,
+      req.params,
+      req.body || {}
+    );
     return sendServiceResult(res, result, 201);
+  }
+
+  static async listingBillingCancel(req, res) {
+    const result = await CommunityListingService.cancelListingSubscription(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  // A venda de vaga avulsa acabou com a mig 252 — 410 em vez de 404, para o
+  // front antigo saber que a porta mudou de lugar e não que quebrou.
+  static async slotGone(req, res) {
+    return res.status(410).json({
+      error:
+        "A vitrine passou a cobrar mensalidade por anúncio. Pague o anúncio em " +
+        "/listings/:id_listing/billing/checkout.",
+    });
   }
 
   /* ------------------------------- enquetes ------------------------------ */

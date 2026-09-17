@@ -201,6 +201,11 @@ async function handleInvoicePaid(conn, invoice) {
   }
   const atendimentoIa = await AtendimentoIaService.handleInvoicePaid(invoice, subscriptionId);
   if (atendimentoIa && !atendimentoIa.ignored) return;
+  // Mensalidade de anúncio da vitrine territorial (mig 252): a renovação
+  // empurra o `paid_until` do anúncio, deduplicada pelo id da fatura.
+  const CommunityListingServiceInv = require("./CommunityListingService");
+  const listingPaid = await CommunityListingServiceInv.handleInvoicePaid(invoice, subscriptionId);
+  if (listingPaid && !listingPaid.ignored) return;
   const PlanService = require("./PlanService");
   const planSub = await PlanService.handleInvoicePaid(invoice, subscriptionId);
   if (planSub && !planSub.ignored) return;
@@ -363,6 +368,9 @@ async function handleInvoiceFailed(conn, invoice) {
   }
   const atendimentoIa = await AtendimentoIaService.handleInvoiceFailed(subscriptionId);
   if (atendimentoIa && !atendimentoIa.ignored) return;
+  const CommunityListingServiceFailed = require("./CommunityListingService");
+  const listingFailed = await CommunityListingServiceFailed.handleInvoiceFailed(subscriptionId);
+  if (listingFailed && !listingFailed.ignored) return;
   const PlanServiceFailed = require("./PlanService");
   const planFailed = await PlanServiceFailed.handleInvoiceFailed(subscriptionId);
   if (planFailed && !planFailed.ignored) return;
@@ -517,6 +525,11 @@ async function handleSubscriptionDeleted(conn, subscription) {
   }
   const atendimentoIa = await AtendimentoIaService.handleSubscriptionDeleted(subscription);
   if (atendimentoIa && !atendimentoIa.ignored) return;
+  // Assinatura de anúncio encerrada: solta o vínculo e deixa a vigência correr
+  // até vencer — o mês já pago é de quem pagou.
+  const CommunityListingServiceDel = require("./CommunityListingService");
+  const listingDeleted = await CommunityListingServiceDel.handleSubscriptionDeleted(subscription);
+  if (listingDeleted && !listingDeleted.ignored) return;
   const PlanServiceDeleted = require("./PlanService");
   const planDeleted = await PlanServiceDeleted.handleSubscriptionDeleted(subscription);
   if (planDeleted && !planDeleted.ignored) return;

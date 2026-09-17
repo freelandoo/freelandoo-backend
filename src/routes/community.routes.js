@@ -334,15 +334,38 @@ router.patch(
   authMiddleware,
   asyncHandler(CommunityListingController.setStatus)
 );
+// Mensalidade do anúncio (mig 252).
+//
+// ⚠️ SOB `/billing`, E NÃO EM `/listings/:id_listing/checkout`: aquele endereço
+// já é o VIZINHO COMPRANDO o produto anunciado (mig 249). São dois pagamentos
+// opostos sobre o mesmo anúncio — um paga o espaço, o outro paga a mercadoria.
+router.post(
+  "/:id_profile/listings/:id_listing/billing/checkout",
+  authMiddleware,
+  asyncHandler(CommunityListingController.billingCheckout)
+);
+router.post(
+  "/:id_profile/listings/:id_listing/billing/polens",
+  authMiddleware,
+  asyncHandler(CommunityListingController.billingPolens)
+);
+// Porta de SAÍDA: fica fora de qualquer gate, como manda a regra da casa —
+// quem pôde assinar tem que poder cancelar.
+router.delete(
+  "/:id_profile/listings/:id_listing/billing",
+  authMiddleware,
+  asyncHandler(CommunityListingController.billingCancel)
+);
+// A venda de vaga avulsa acabou — responde 410 para o front em cache.
 router.post(
   "/:id_profile/listing-slots/checkout",
   authMiddleware,
-  asyncHandler(CommunityListingController.slotCheckout)
+  asyncHandler(CommunityListingController.slotGone)
 );
 router.post(
   "/:id_profile/listing-slots/polens",
   authMiddleware,
-  asyncHandler(CommunityListingController.slotPolens)
+  asyncHandler(CommunityListingController.slotGone)
 );
 
 /* ------------------ delivery entre vizinhos (condo + bairro) --------------- */

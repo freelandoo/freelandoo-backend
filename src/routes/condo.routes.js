@@ -85,9 +85,25 @@ router.post("/:id_condo/listings", asyncHandler(CondoController.createListing));
 router.patch("/:id_condo/listings/:id_listing", asyncHandler(CondoController.updateListing));
 router.patch("/:id_condo/listings/:id_listing/status", asyncHandler(CondoController.setListingStatus));
 
-// Vagas de publicação: dinheiro (Stripe) ou Poléns.
-router.post("/:id_condo/listing-slots/checkout", asyncHandler(CondoController.createSlotCheckout));
-router.post("/:id_condo/listing-slots/polens", asyncHandler(CondoController.purchaseSlotWithPolens));
+// Mensalidade do anúncio (mig 252): cartão (assinatura), Pix (um mês) ou
+// Poléns. Sob `/billing` porque `/listings/:id/checkout` já é o vizinho
+// COMPRANDO o produto anunciado.
+router.post(
+  "/:id_condo/listings/:id_listing/billing/checkout",
+  asyncHandler(CondoController.listingBillingCheckout)
+);
+router.post(
+  "/:id_condo/listings/:id_listing/billing/polens",
+  asyncHandler(CondoController.listingBillingPolens)
+);
+router.delete(
+  "/:id_condo/listings/:id_listing/billing",
+  asyncHandler(CondoController.listingBillingCancel)
+);
+
+// Vaga avulsa: acabou na mig 252. Montadas para responder 410 ao front antigo.
+router.post("/:id_condo/listing-slots/checkout", asyncHandler(CondoController.slotGone));
+router.post("/:id_condo/listing-slots/polens", asyncHandler(CondoController.slotGone));
 
 /* -------------------------------- enquetes -------------------------------- */
 router.get("/:id_condo/polls", asyncHandler(CondoController.listPolls));

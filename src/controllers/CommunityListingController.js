@@ -39,8 +39,15 @@ class CommunityListingController {
     return sendServiceResult(res, result);
   }
 
-  static async slotCheckout(req, res) {
-    const result = await CommunityListingService.createSlotCheckout(
+  /* ------------------------------ mensalidade ---------------------------- */
+
+  //
+  // ⚠️ ESTE CHECKOUT É O DONO PAGANDO O ESPAÇO — não confundir com o
+  // `/listings/:id_listing/checkout` do `CommunityListingOrderController`, que
+  // é o VIZINHO COMPRANDO o produto anunciado. São dois pagamentos opostos
+  // sobre o mesmo anúncio, e por isso a mensalidade mora sob `/billing`.
+  static async billingCheckout(req, res) {
+    const result = await CommunityListingService.createListingCheckout(
       req.user,
       req.params,
       req.body || {}
@@ -48,13 +55,34 @@ class CommunityListingController {
     return sendServiceResult(res, result, 201);
   }
 
-  static async slotPolens(req, res) {
-    const result = await CommunityListingService.purchaseSlotWithPolens(
+  static async billingPolens(req, res) {
+    const result = await CommunityListingService.payListingWithPolens(
       req.user,
       req.params,
       req.body || {}
     );
     return sendServiceResult(res, result, 201);
+  }
+
+  static async billingCancel(req, res) {
+    const result = await CommunityListingService.cancelListingSubscription(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  //
+  // A venda de VAGA da mig 198 acabou com a mig 252: o que se paga agora é a
+  // mensalidade de um anúncio específico, e a vaga avulsa não tem mais o que
+  // significar.
+  //
+  // ⚠️ 410 E NÃO 404, e a rota continua montada: quem bate aqui é front antigo
+  // em cache ainda desenhando o botão "comprar vaga extra". "Esta porta não
+  // existe mais" é a única resposta que explica a tela — um 404 pareceria bug.
+  static async slotGone(req, res) {
+    return res.status(410).json({
+      error:
+        "A vitrine passou a cobrar mensalidade por anúncio. Pague o anúncio em " +
+        "/listings/:id_listing/billing/checkout.",
+    });
   }
 }
 
