@@ -48,7 +48,7 @@ Todos os perfis do usuário, com seguidores e XP por perfil.
 
 ### `GET /ext/v1/data/services`
 Serviços de todos os perfis.
-→ `{ services: [{ id_profile_service, id_profile, name, description, duration_minutes, price_amount, is_active, affiliates_allowed, created_at, updated_at }] }`
+→ `{ services: [{ id_profile_service, id_profile, name, description, duration_minutes, price_amount, price_on_request, is_active, affiliates_allowed, created_at, updated_at }] }`
 
 ### `GET /ext/v1/data/products`
 Produtos da loja.
@@ -68,6 +68,9 @@ Métricas agregadas + por perfil (seguidores, nível, XP).
 
 ## Valores monetários
 
+- ⚠️ `price_on_request: true` (serviços, mig 239) significa **sob orçamento**: ali
+  `price_amount` vale 0 e NÃO é preço. Apresentá-lo como R$ 0,00 anuncia de graça
+  o que ainda vai ser orçado.
 - `price_amount` (serviços e produtos) e `price_cents` (cursos) estão na menor
   unidade da moeda (centavos). Ex.: `price_amount: 5000` = R$ 50,00.
 

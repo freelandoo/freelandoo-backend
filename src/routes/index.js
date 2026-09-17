@@ -133,6 +133,8 @@ const vaquinhaRoutes = require("./vaquinha.routes");
 const vaquinhaAdminRoutes = require("./vaquinhaAdmin.routes");
 const atendimentoIaRoutes = require("./atendimentoIa.routes");
 const atendimentoIaAdminRoutes = require("./atendimentoIaAdmin.routes");
+const aiAdminRoutes = require("./aiAdmin.routes");
+const aiKnowledgeRoutes = require("./aiKnowledge.routes");
 const academyRoutes = require("./academy.routes");
 const fitnessRoutes = require("./fitness.routes");
 const workoutRoutes = require("./workout.routes");
@@ -315,6 +317,8 @@ module.exports = (app) => {
   app.use("/admin/vaquinha", vaquinhaAdminRoutes);
   app.use("/me/atendimento-ia", atendimentoIaRoutes);
   app.use("/admin/atendimento-ia", atendimentoIaAdminRoutes);
+  app.use("/admin/ai", aiAdminRoutes);
+  app.use("/me/atendimento-ai", aiKnowledgeRoutes);
   // Fitness & Academias (paths absolutos no próprio router: /academies + /me/*)
   app.use("/", academyRoutes);
   app.use("/fitness", fitnessRoutes);

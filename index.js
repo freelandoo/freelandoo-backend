@@ -38,6 +38,17 @@ const server = app.listen(PORT, () => {
   const AtendimentoIaProvisionService = require("./src/services/AtendimentoIaProvisionService");
   AtendimentoIaProvisionService.startSweeper();
 
+  // Atendimento com IA (mig 253): a fila de respostas. A mensagem que chega
+  // só ENFILEIRA um trabalho — é este worker, à parte, que pergunta ao
+  // provedor e responde pelo canal certo.
+  //
+  // ⚠️ É AQUI QUE O ATENDENTE GANHA VIDA. Sem esta linha nada quebra e nenhum
+  // teste fica vermelho: os trabalhos se acumulam em `pending` e os clientes
+  // simplesmente nunca são respondidos — a falha mais silenciosa possível
+  // deste subsistema, porque a tela do dono continua dizendo que está ligado.
+  const AiReplyWorker = require("./src/services/AiReplyWorker");
+  AiReplyWorker.start();
+
   // Fitness & Academias: sync pull das Gym Provider APIs (catraca+pagamentos,
   // ~10min, cursores em tb_academy). Idempotente por external_id; erro marca
   // sync_status da academia e nunca derruba o boot.

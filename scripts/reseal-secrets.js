@@ -30,6 +30,7 @@ const { seal, open, isSealedWithPreferredKey } = require("../src/utils/secretBox
 const ALVOS = [
   { tabela: "tb_academy", pk: "id_academy", coluna: "api_token_enc" },
   { tabela: "tb_whatsapp_instance", pk: "id_instance", coluna: "access_token_sealed" },
+  { tabela: "tb_ai_provider_key", pk: "provider", coluna: "api_key_sealed" },
 ];
 
 const APPLY = process.argv.includes("--apply");

@@ -48,7 +48,7 @@ class DataExportStorage {
     const { rows } = await conn.query(
       `SELECT
          id_profile_service, id_profile, name, description,
-         duration_minutes, price_amount, is_active,
+         duration_minutes, price_amount, price_on_request, is_active,
          affiliates_allowed, created_at, updated_at
        FROM public.tb_profile_service
        WHERE id_profile = ANY($1::uuid[]) AND deleted_at IS NULL

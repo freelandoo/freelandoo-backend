@@ -11,6 +11,16 @@ const {
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("ServiceRequestService");
+// ⚠️ SQL PURO, de propósito: enfileirar não é responder. Ver o cabeçalho do
+// `AiJobStorage` — nenhum módulo que ENVIA entra aqui por este caminho.
+const AiJobStorage = require("../storages/AiJobStorage");
+
+// Selos de origem aceitos em opts (nunca vêm do corpo HTTP).
+// "api" = software do dono pela API de Atendimento (mig 171).
+// "ai"  = o atendente da plataforma respondeu por ele (mig 253) — o selo é o
+//         que separa, na tela do dono, o que ELE escreveu do que foi escrito
+//         por ele. Sem ele a resposta automática se passa por mensagem digitada.
+const SENT_VIA = new Set(["api", "ai"]);
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -403,7 +413,7 @@ class ServiceRequestService {
         id_response,
         sender: ctx.side,
         content,
-        sent_via: opts.sent_via === "api" ? "api" : "app",
+        sent_via: SENT_VIA.has(opts.sent_via) ? opts.sent_via : "app",
       });
       await ServiceRequestStorage.markRead(pool, id_response, ctx.side);
 
@@ -442,6 +452,24 @@ class ServiceRequestService {
               message: msg,
               recipientUserId: whProProfile.id_user,
             }).catch(() => {});
+
+            // Atendimento com IA (mig 253): mesma condição, mesma consulta.
+            // Quem responde é o `AiReplyWorker`, à parte — aqui só se escreve
+            // uma linha na fila do vendedor.
+            //
+            // ⚠️ NÃO PRECISA DE GUARD DE `sent_via = "ai"` AQUI, e isso é
+            // estrutural: o atendente responde SEMPRE como vendedor (`PRO`),
+            // e este ramo só existe quando quem fala é o comprador (`USER`).
+            // A própria condição do canal já impede a IA de disparar a si
+            // mesma — diferente da conversa direta, onde os dois lados são
+            // simétricos e o selo é o que quebra o ping-pong.
+            AiJobStorage.enqueue(pool, {
+              id_user: whProProfile.id_user,
+              channel: "os",
+              ref_id: id_response,
+              trigger_message_id: String(msg.id_message),
+              trigger_text: content,
+            }).catch((err) => log.warn("ai.enqueue_fail", { error: err.message }));
           }
         }
       } catch {

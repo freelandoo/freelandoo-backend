@@ -18,6 +18,16 @@ const {
 } = require("../integrations/r2/uploadConversationAudio");
 
 const log = createLogger("ConversationService");
+// ⚠️ SQL PURO, de propósito: enfileirar não é responder. Ver o cabeçalho do
+// `AiJobStorage` — nenhum módulo que ENVIA entra aqui por este caminho.
+const AiJobStorage = require("../storages/AiJobStorage");
+
+// Selos de origem aceitos em opts (nunca vêm do corpo HTTP).
+// "api" = software do dono pela API de Atendimento (mig 171).
+// "ai"  = o atendente da plataforma respondeu por ele (mig 253) — o selo é o
+//         que separa, na tela do dono, o que ELE escreveu do que foi escrito
+//         por ele. Sem ele a resposta automática se passa por mensagem digitada.
+const SENT_VIA = new Set(["api", "ai"]);
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_MESSAGES = 30;
@@ -448,7 +458,7 @@ class ConversationService {
             sender_entity_id: actorRes.actor_id,
             sender_user_id: user.id_user,
             body,
-            sent_via: opts.sent_via === "api" ? "api" : "app",
+            sent_via: SENT_VIA.has(opts.sent_via) ? opts.sent_via : "app",
           });
 
           await ConversationStorage.updateLastMessage(client, {
@@ -518,6 +528,29 @@ class ConversationService {
                 id_conversation: conv.id_conversation,
                 content_preview: body,
               }).catch(() => {});
+
+              // Atendimento com IA (mig 253): a mensagem que CHEGA vira um
+              // trabalho na fila do DONO do perfil destinatário. Quem responde
+              // é o `AiReplyWorker`, à parte — aqui só se escreve uma linha.
+              //
+              // ⚠️ MENSAGEM ESCRITA POR IA NÃO ENFILEIRA OUTRA, e este guard é
+              // o que impede a conversa de dois atendentes automáticos virar
+              // ping-pong infinito: a resposta da IA sai com `sent_via = "ai"`,
+              // então ela não dispara o atendente do outro lado. Sem ele, duas
+              // contas com a IA ligada se responderiam para sempre, cobrando
+              // uma chamada de LLM por volta.
+              //
+              // ⚠️ O ALVO É O DESTINATÁRIO, nunca quem mandou: enfileirar pelo
+              // remetente faria o atendente responder ao próprio dono.
+              if (opts.sent_via !== "ai") {
+                AiJobStorage.enqueueForProfileOwner(pool, {
+                  id_profile: otherEntityId,
+                  channel: "dm",
+                  ref_id: conv.id_conversation,
+                  trigger_message_id: String(message.id_message),
+                  trigger_text: body,
+                }).catch((err) => log.warn("ai.enqueue_fail", { error: err.message }));
+              }
 
               // Espelho para o responsável quando o destinatário é menor.
               (async () => {

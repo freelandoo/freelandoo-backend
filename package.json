@@ -42,7 +42,9 @@
     "test:booking-fee": "node test/booking-fee.e2e.js",
     "test:community-delivery": "node test/community-delivery.e2e.js",
     "test:payments": "node test/payment-provider-truth.e2e.js",
-    "test:subscription-end": "node test/subscription-end.e2e.js"
+    "test:subscription-end": "node test/subscription-end.e2e.js",
+    "test:atendimento-ai": "node test/atendimento-ai.e2e.js",
+    "test:ai-context": "node test/ai-context.e2e.js"
   },
   "repository": {
     "type": "git",
@@ -72,6 +74,7 @@
     "leo-profanity": "^1.9.0",
     "livekit-server-sdk": "^2.15.4",
     "multer": "^2.0.2",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.20.0",
     "resend": "^6.7.0",
     "sharp": "^0.34.5",

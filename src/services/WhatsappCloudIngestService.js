@@ -5,16 +5,33 @@
 //
 // Este módulo NÃO importa `integrations/whatsappProvider` nem `WhatsappService`
 // — os lugares que sabem ENVIAR. Não existe caminho de código daqui até um
-// `sendText`, e é isso, e não uma regra escrita, que garante que ninguém é
-// respondido automaticamente pelo WhatsApp de um usuário da Freelandoo.
+// `sendText`, e isso continua sendo verdade depois da mig 253.
 //
-// E isso pesa mais do que pesava no provedor não-oficial: o número está no NOSSO Business
-// Portfolio. Uma resposta automática disparada por nós seria, perante a Meta,
-// a plataforma operando ferramenta de disparo — com o portfólio inteiro, e
-// portanto o número de todos os clientes, no mesmo risco.
+// ⚠️ MAS O QUE ELE GARANTE MUDOU, E ESTA PARTE PRECISA SER LIDA INTEIRA.
+//
+// Até a mig 253 o isolamento garantia que NINGUÉM era respondido
+// automaticamente: toda saída nascia de um clique do dono. Desde ela existe o
+// Atendimento com IA, e ele responde sozinho. O que o isolamento garante hoje é
+// mais estreito e continua sendo o que importa:
+//
+//   • daqui não sai mensagem. Este módulo só ENFILEIRA (`AiJobStorage`, SQL
+//     puro). Quem responde é o `AiReplyWorker`, que roda à parte;
+//   • e o worker envia SEMPRE por `WhatsappService.sendText`, que confere a
+//     JANELA DE 24H antes de falar com a Meta.
+//
+// Ou seja: a plataforma responde apenas DENTRO da janela e apenas a quem
+// escreveu primeiro. Ela nunca inicia conversa e nunca usa template — que é a
+// distinção entre atendimento e disparo.
+//
+// Isso continua pesando mais do que pesava no provedor não-oficial: o número
+// está no NOSSO Business Portfolio, então um envio fora dessa regra seria,
+// perante a Meta, a plataforma operando ferramenta de disparo — com o portfólio
+// inteiro, e portanto o número de todos os clientes, no mesmo risco.
 //
 // `test/unit/whatsappIngestIsolation.test.js` lê os `require` de verdade e
-// quebra se alguém acrescentar um import de passagem.
+// quebra se alguém acrescentar um import de passagem aqui.
+// `test/unit/aiReplyIsolation.test.js` faz o mesmo do outro lado: garante que o
+// worker não fale com o provider por baixo do Service, pulando a janela.
 //
 // ─── DE QUEM É ESTA MENSAGEM ────────────────────────────────────────────────
 //
@@ -34,6 +51,9 @@ const { readEnvelope, readMessage, namesOf } = require("../utils/whatsappCloudPa
 // "mensagem que chega" para "mensagem que sai".
 const { readQualityEvent } = require("../utils/whatsappCloudQuality");
 const NotificationService = require("./NotificationService");
+// ⚠️ SQL PURO. Este é o ÚNICO módulo do subsistema de IA que a ingestão pode
+// importar — ele não alcança nada que envie, e é isso que mantém o invariante.
+const AiJobStorage = require("../storages/AiJobStorage");
 const { redactPhone } = require("../utils/whatsappJid");
 const { createLogger } = require("../utils/logger");
 
@@ -101,6 +121,31 @@ class WhatsappCloudIngestService {
         inc_unread: true,
         service_window_expires_at: new Date(msg.sentAt.getTime() + SERVICE_WINDOW_MS),
       });
+
+      // ⚠️ ENFILEIRA A RESPOSTA — E ENFILEIRAR NÃO É ENVIAR.
+      //
+      // Este é o ponto mais delicado do módulo. O invariante continua inteiro:
+      // `AiJobStorage` é SQL puro e não alcança nenhum módulo de envio, então
+      // daqui continua não existindo caminho de `require` até quem fala com a
+      // Meta — é o que `whatsappIngestIsolation.test.js` confere, e ele segue
+      // passando sem afrouxar nada. Quem responde é o `AiReplyWorker`, que roda
+      // à parte e só sabe da fila.
+      //
+      // ⚠️ E A FILA NÃO É ENFEITE AQUI: a Meta re-entrega o que não recebe 2xx
+      // em 22 segundos, e uma chamada de LLM leva segundos. Responder DENTRO do
+      // webhook transformaria a lentidão do modelo em tempestade de re-entrega.
+      //
+      // Não decide NADA sobre responder ou não — flag, direito da conta, janela
+      // e "o dono já respondeu?" são do worker. Aqui só se registra que chegou
+      // mensagem. Falha ao enfileirar NÃO derruba a ingestão: a mensagem já
+      // está salva e a caixa do dono é o que importa.
+      AiJobStorage.enqueue(pool, {
+        id_user: instance.id_user,
+        channel: "whatsapp",
+        ref_id: conversation.id_conversation,
+        trigger_message_id: msg.waMessageId,
+        trigger_text: msg.body,
+      }).catch((err) => log.warn("ai.enqueue_fail", { error: err.message }));
 
       // O evento da caixa de entrada é UM só, e a
       // tela não deve precisar saber por qual provedor a mensagem entrou.
