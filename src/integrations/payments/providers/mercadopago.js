@@ -248,8 +248,36 @@ function refund({ provider_ref, payment_intent_id }) {
  * fim do ciclo" agenda a data (mig 251) e só chega aqui quando ela vence.
  * Fingir que o flag funciona faria o assinante perder na hora um mês pago.
  */
-function cancelSubscription(subscriptionId) {
-  return mp.cancelPreapproval(subscriptionId);
+async function cancelSubscription(subscriptionId) {
+  try {
+    return await mp.cancelPreapproval(subscriptionId);
+  } catch (err) {
+    // ⚠️ 404 = JÁ NÃO EXISTE LÁ, E ISSO É SUCESSO, NÃO FALHA. Cancelar é
+    // idempotente por natureza: se o Mercado Pago diz que a assinatura não
+    // existe, então NÃO HÁ CARTÃO SENDO DEBITADO — o objetivo de quem chamou
+    // está cumprido.
+    //
+    // Sem isto, a porta de SAÍDA fica trancada, e foi reproduzido contra a API
+    // real: uma linha antiga apontando para um id que o gateway não conhece
+    // (as assinaturas de teste do Stripe que sobraram no banco) faz
+    // `SubscriptionEndService` cair no ramo "não sei o ciclo, cancela agora" e
+    // estourar ali — 500 na cara de quem acabou de pedir para sair. Porta de
+    // saída trancada é a única que não pode existir (regra do WhatsApp 224 e
+    // da conta de jogo 220).
+    //
+    // ⚠️ SÓ O 404 É ENGOLIDO. Qualquer outro erro (401, 5xx, rede) significa
+    // "NÃO SEI" — e responder "cancelado" sem saber deixaria um cartão sendo
+    // debitado todo mês, que é o estrago que nunca aparece porque ninguém
+    // reclama de acesso que continuou funcionando.
+    //
+    // (O 404 já sai no log pelo `call.fail` do cliente — este adapter não tem
+    // logger próprio, e acrescentar um só para repetir a mesma linha seria uma
+    // segunda voz dizendo a mesma coisa.)
+    if (err && err.statusCode === 404) {
+      return { id: subscriptionId, status: "cancelled", already_gone: true };
+    }
+    throw err;
+  }
 }
 
 /** Quantos MESES dura um ciclo, por `frequency_type` do Mercado Pago. */

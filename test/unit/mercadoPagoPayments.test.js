@@ -476,3 +476,58 @@ test("o ambiente é derivado do TOKEN, e token estranho não é 'produção'", (
     else process.env.MERCADOPAGO_ACCESS_TOKEN = original;
   }
 });
+
+// ──────────────────── A PORTA DE SAÍDA ──────────────────────────────────────
+// Cancelar é a única porta que não pode estar trancada (regra do WhatsApp 224 e
+// da conta de jogo 220). O caso real: linhas antigas do banco apontam para um
+// `stripe_subscription_id` de teste que nenhum gateway conhece — e, com o
+// Stripe removido, elas passaram a ser roteadas para o Mercado Pago.
+
+async function withCancel(impl, fn) {
+  const original = mp.cancelPreapproval;
+  mp.cancelPreapproval = impl;
+  try {
+    return await fn();
+  } finally {
+    mp.cancelPreapproval = original;
+  }
+}
+
+test("⚠️ cancelar o que o gateway NÃO CONHECE é sucesso, não erro", async () => {
+  // Reproduzido contra a API real antes de existir: o 404 subia até
+  // `SubscriptionEndService`, que cai no ramo "não sei o ciclo, cancela agora"
+  // e estoura ali — 500 na cara de quem acabou de pedir para sair.
+  const err = new mp.MercadoPagoError("not found", 404);
+  const r = await withCancel(
+    () => Promise.reject(err),
+    () => provider.cancelSubscription("sub_orfao_do_stripe")
+  );
+  assert.strictEqual(r.status, "cancelled");
+  assert.strictEqual(r.already_gone, true);
+});
+
+test("⚠️ QUALQUER outro erro ainda ESTOURA — 'não sei' não pode virar 'cancelei'", async () => {
+  // Responder "cancelado" sem ter certeza deixaria um cartão sendo debitado
+  // todo mês. É o estrago que nunca aparece: ninguém reclama do acesso que
+  // continuou funcionando.
+  for (const code of [401, 429, 500]) {
+    const err = new mp.MercadoPagoError("falhou", code);
+    await assert.rejects(
+      () =>
+        withCancel(
+          () => Promise.reject(err),
+          () => provider.cancelSubscription("sub_qualquer")
+        ),
+      (e) => e.statusCode === code
+    );
+  }
+});
+
+test("cancelamento normal continua devolvendo o que o gateway respondeu", async () => {
+  const r = await withCancel(
+    (id) => Promise.resolve({ id, status: "cancelled" }),
+    () => provider.cancelSubscription("2c93808")
+  );
+  assert.strictEqual(r.id, "2c93808");
+  assert.strictEqual(r.already_gone, undefined);
+});
