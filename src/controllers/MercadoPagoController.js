@@ -80,10 +80,17 @@ class MercadoPagoController {
       // re-entregue para sempre, travando a fila dos eventos que importam.
       return res.json({ received: true, ...result });
     } catch (err) {
+      // ⚠️ O NOME e o CÓDIGO do erro vão junto da mensagem porque nem todo
+      // erro tem mensagem: o `AggregateError` que o pg lança quando o banco não
+      // responde nasce com `message` VAZIA. Só com a mensagem, uma queda de
+      // banco apareceria aqui como `{"message":""}` — um 500 no caminho que
+      // ENTREGA PRODUTO, sem nada que diga por onde começar a procurar.
       log.error("webhook.process_fail", {
         event_id: event.id || null,
         type: event.type || null,
-        message: err && err.message,
+        error: (err && (err.name || err.constructor?.name)) || null,
+        code: (err && (err.code || err.statusCode)) || null,
+        message: (err && err.message) || String(err),
       });
       // 500 de propósito: falha REAL de processamento precisa ser re-tentada,
       // senão o pagamento fica cobrado e sem entrega.

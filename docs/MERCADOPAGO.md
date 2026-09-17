@@ -171,13 +171,48 @@ provedor sai da intenção (mig 231), nunca do ambiente.
 
 ---
 
+## 5.9 O que já foi conferido contra a API real (2026-09-16)
+
+Sonda rodada com a credencial de **produção**, pelo NOSSO adapter (não curl na
+mão — o que se queria saber é se o NOSSO payload passa). **Nada foi cobrado:**
+preferência é só a página de pagamento, e o `preapproval` de teste nasceu
+`pending` (só cobra depois que o titular autoriza o cartão) e foi **cancelado**
+no fim da sonda.
+
+Conferido: a conta responde e é do site **MLB**; a preferência é criada e guarda
+o `external_reference` com o id da **intenção** (o único fio até o pedido); os
+dois itens saem em **linhas separadas** (produto + frete) com os valores certos
+em reais; o placeholder `{CHECKOUT_SESSION_ID}` é substituído antes de ir; o
+`auto_return` é aceito; a `notification_url` fica gravada **na própria
+preferência**; a busca por `external_reference` (o caminho da reconciliação, que
+socorre *"paguei e não recebi"*) é aceita; o `preapproval` é criado devolvendo o
+id **do gateway** em `subscription`; a janela do ciclo é derivada; e o cancelamento
+funciona.
+
+**A assinatura do webhook foi exercitada contra a ROTA REAL**, com o manifesto
+`id:<data.id>;request-id:<x-request-id>;ts:<ts>;` da doc oficial: assinatura
+válida passa; segredo errado, `data.id` trocado (replay em outra cobrança),
+`x-request-id` trocado, cabeçalho ausente e assinatura malformada **todos caem
+em 401**; o formato antigo (IPN `topic`/`id`) também passa; e **sem o segredo no
+ambiente a porta responde 503**, nunca aceita o corpo.
+
+> ⚠️ **O que a sonda NÃO prova, e não tem como provar sem dinheiro real:** o
+> corpo de um `payment` aprovado, o estorno, a tarifa apurada (`getChargeFee`) e
+> a fatura mensal da assinatura. Os quatro só existem depois que alguém paga.
+
+---
+
 ## 6. Pendências conhecidas
 
-1. **`GET /authorized_payments/{id}` não foi conferido contra a API.** É o único
-   caminho da integração não validado — ele resolve a *fatura mensal* da
-   assinatura. A falha dele é tratada como evento **ignorado** (log + 2xx), nunca
-   como erro, para não travar a fila de webhooks. Confirmar no primeiro ciclo de
-   assinatura em sandbox.
+1. **`GET /authorized_payments/{id}` — a ROTA foi conferida; a resposta de
+   SUCESSO não.** Conferido em 2026-09-16 contra a API de produção: o endpoint
+   existe, o nosso token tem escopo nele e o wrapper traduz a resposta em
+   `MercadoPagoError` com `statusCode` 404 para id inexistente — ou seja, ele
+   não é rota fantasma e não estoura de um jeito que o webhook não saiba tratar.
+   O que **continua sem prova** é o FORMATO do corpo quando existe uma fatura de
+   verdade, e isso exige um ciclo real (alguém autoriza o cartão e o mês vira).
+   A falha dele é tratada como evento **ignorado** (log + 2xx), nunca como erro,
+   para não travar a fila de webhooks.
 2. **A estimativa de tarifa continua calibrada para o Stripe.** É ela que a tela
    de quem entrega mostra **antes** do aceite. Com o Mercado Pago ela erra para
    baixo (promete menos do que cai) — direção segura, mas é tela sobre dinheiro.
