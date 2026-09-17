@@ -16,6 +16,7 @@ const AuthStorage = require("../storages/AuthStorage");
 const { PLATFORM_KINDS } = require("../utils/gamesScore");
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const Subject = require("../utils/subjectCommunities");
+const SpaceCaps = require("../utils/spaceCaps");
 const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
@@ -102,6 +103,17 @@ class CommunityService {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+
+          // ⚠️ UM CONDOMÍNIO POR PESSOA (decisão do Alex, 2026-09-17). O teto
+          // mora em `utils/spaceCaps` porque esta é UMA das três portas do
+          // condomínio — as outras são o menu da foto de perfil e a PLANTA, e
+          // um limite escrito só aqui deixaria as outras duas abertas.
+          // No-op para as modalidades sem teto (comum, academia).
+          const cap = await SpaceCaps.assertSingleSpace(client, { id_user, kind });
+          if (cap) {
+            await client.query("ROLLBACK");
+            return cap;
+          }
 
           // Condomínio não passa pelo gate de nível nem pelos tetos: não é
           // comunidade de enxame (não pontua XP nem ranking) — é utilidade do
@@ -1392,6 +1404,21 @@ class CommunityService {
               statusCode: 409,
               needs_claim: true,
             };
+          }
+
+          // ⚠️ MODALIDADES DE UM SÓ (utils/spaceCaps): carro e bairro passam
+          // por aqui. Este é o botão GENÉRICO de entrar — sem o teto nele, o
+          // limite valeria só nas portas próprias de cada modalidade e a pessoa
+          // juntaria um segundo bairro pelo caminho de trás, que é justamente o
+          // que o menu da foto de perfil mostraria. Re-entrar no que já é seu
+          // saiu acima, pela membresia existente.
+          const cap = await SpaceCaps.assertSingleSpace(client, {
+            id_user,
+            kind: community.kind,
+          });
+          if (cap) {
+            await client.query("ROLLBACK");
+            return cap;
           }
 
           const sub = await CommunityStorage.getHighestSubprofile(

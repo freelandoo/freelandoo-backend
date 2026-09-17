@@ -27,6 +27,7 @@ const AcademyStorage = require("../storages/AcademyStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const fipe = require("../integrations/fipe/catalog");
 const Subject = require("../utils/subjectCommunities");
+const SpaceCaps = require("../utils/spaceCaps");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("SubjectCommunityService");
@@ -257,7 +258,18 @@ class SubjectCommunityService {
         // Sem marca/modelo no corpo, a comunidade nasce VAZIA e o modelo é
         // escolhido no headcard (mig 211). É o caminho do menu da foto de
         // perfil: criar primeiro, perguntar depois, dentro da página.
+        //
+        // ⚠️ UM CARRO POR PESSOA (decisão do Alex, 2026-09-17): quem já tem
+        // não ganha um segundo espaço vazio — a porta vira "abre o que é seu".
+        // DEVOLVER em vez de recusar é de propósito: este caminho é o clique de
+        // "Meu carro", e responder erro a quem só queria abrir o próprio carro
+        // seria transformar a porta em parede.
         if (!payload?.brand_code && !payload?.model_code) {
+          const mine = await SubjectCommunityStorage.findMySpaceByKind(pool, id_user, "car");
+          if (mine) {
+            const community = await CommunityStorage.getById(pool, mine.id_profile);
+            return { community: community || mine, created: false, joined: false };
+          }
           return this._createEmptyCar(id_user, payload);
         }
 
@@ -288,6 +300,20 @@ class SubjectCommunityService {
             client,
             catalog.id_car_model
           );
+
+          // ⚠️ O TETO É CHECADO DEPOIS DE SABER QUAL COMUNIDADE O PEDIDO
+          // ABRIRIA: reabrir o carro que já é seu não é um segundo carro, e
+          // recusar ali trancaria a pessoa fora do próprio espaço.
+          const cap = await SpaceCaps.assertSingleSpace(client, {
+            id_user,
+            kind: "car",
+            allow_id_profile: existing?.id_profile || null,
+          });
+          if (cap) {
+            await client.query("ROLLBACK");
+            return cap;
+          }
+
           if (existing) {
             await client.query("ROLLBACK");
             const joined = await this._joinExisting(existing.id_profile, id_user);

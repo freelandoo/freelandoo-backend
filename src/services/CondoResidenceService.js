@@ -40,6 +40,7 @@ const ConversationStorage = require("../storages/ConversationStorage");
 const ProofStorage = require("../integrations/r2/residenceProofStorage");
 const ResidenceService = require("./ResidenceService");
 const NotificationService = require("./NotificationService");
+const SpaceCaps = require("../utils/spaceCaps");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CondoResidenceService");
@@ -521,6 +522,21 @@ class CondoResidenceService {
             needs_address: true,
           };
         }
+
+        // ⚠️ UM CONDOMÍNIO POR PESSOA (decisão do Alex, 2026-09-17), e esta é a
+        // porta que realmente coloca alguém dentro de um prédio: escolher o
+        // apartamento É a entrada. Capar só a CRIAÇÃO deixaria este caminho
+        // aberto, que é justamente o de quem só mora.
+        //
+        // O próprio condomínio entra como exceção: trocar de apartamento
+        // DENTRO do mesmo prédio não é um segundo condomínio, e sem essa folga
+        // o guard trancaria quem já está dentro.
+        const cap = await SpaceCaps.assertSingleSpace(pool, {
+          id_user: user.id_user,
+          kind: "condo",
+          allow_id_profile: params.id_condo,
+        });
+        if (cap) return cap;
 
         const id_unit = toInt(body?.id_unit);
         if (!id_unit) return { error: "Escolha um apartamento.", statusCode: 400 };

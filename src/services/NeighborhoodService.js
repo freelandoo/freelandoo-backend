@@ -15,6 +15,7 @@ const pool = require("../databases");
 const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
 const FeatureFlagService = require("./FeatureFlagService");
+const SpaceCaps = require("../utils/spaceCaps");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("NeighborhoodService");
@@ -68,6 +69,14 @@ class NeighborhoodService {
           id_profile: existing.id_profile,
         };
       }
+
+      // ⚠️ UMA RUA POR PESSOA (decisão do Alex, 2026-09-17), e POR ÚLTIMO de
+      // propósito: as duas recusas acima são mais específicas — "você não mora
+      // aqui" e "este bairro já tem comunidade" dizem o que fazer, e esta aqui
+      // só se aplica a quem é reconhecido em DOIS lugares. Recusa genérica que
+      // chega antes da específica manda a pessoa resolver o problema errado.
+      const cap = await SpaceCaps.assertSingleSpace(pool, { id_user, kind: "neighborhood" });
+      if (cap) return cap;
 
       const name =
         String(display_name || "").trim() ||
@@ -142,6 +151,21 @@ class NeighborhoodService {
             residence_status: status.status,
           };
         }
+
+        // ⚠️ UMA RUA POR PESSOA (decisão do Alex, 2026-09-17), e DEPOIS da
+        // residência de propósito: quem não mora aqui tem que ouvir "você não
+        // mora aqui", não "você já tem um bairro" — a recusa genérica chegando
+        // antes da específica manda a pessoa resolver o problema errado. Só
+        // sobra para quem é reconhecido em DOIS lugares.
+        //
+        // O próprio bairro entra como exceção: reentrar no que já é seu não é
+        // um segundo bairro.
+        const cap = await SpaceCaps.assertSingleSpace(pool, {
+          id_user,
+          kind: "neighborhood",
+          allow_id_profile: id_profile,
+        });
+        if (cap) return cap;
 
         await CommunityStorage.addMember(pool, id_profile, id_user, "member");
         return { joined: true };

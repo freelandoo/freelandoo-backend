@@ -323,7 +323,12 @@ async function main() {
     assert.strictEqual(code, "23505")
   );
 
-  const gol = await SubjectCommunityService.createOrJoinCar(outro, {
+  // ⚠️ USUÁRIO PRÓPRIO, e não o `outro`: desde 2026-09-17 vale UM CARRO POR
+  // PESSOA (utils/spaceCaps), e o `outro` já entrou no Civic logo acima. O que
+  // este caso mede é "outro MODELO funda comunidade própria" — reusar alguém
+  // que já tem carro faria ele medir o teto por acidente.
+  const terceiro = await makeUser("terceiro");
+  const gol = await SubjectCommunityService.createOrJoinCar(terceiro, {
     brand_code: "59",
     brand_label: "Volkswagen",
     model_code: "9001",
@@ -333,9 +338,42 @@ async function main() {
     assert.strictEqual(gol.created, true);
   });
 
+  // ─── O teto: um carro por pessoa ──────────────────────────────────────
+  const segundoCarro = await SubjectCommunityService.createOrJoinCar(terceiro, {
+    brand_code: "21",
+    brand_label: "Honda",
+    model_code: "4321",
+    model_label: "Civic LX 1.7",
+  });
+  check("quem já tem carro não entra num segundo", () => {
+    assert.strictEqual(segundoCarro.statusCode, 409);
+    assert.strictEqual(
+      String(segundoCarro.existing_community.id_profile),
+      String(gol.community.id_profile)
+    );
+  });
+
+  const reabrir = await SubjectCommunityService.createOrJoinCar(terceiro, {
+    brand_code: "59",
+    brand_label: "Volkswagen",
+    model_code: "9001",
+    model_label: "Gol 1.0",
+  });
+  check("reabrir o carro que já é seu continua valendo", () => {
+    assert.ok(!reabrir.error, reabrir.error);
+    assert.strictEqual(
+      String(reabrir.community.id_profile),
+      String(gol.community.id_profile)
+    );
+  });
+
   // FIPE fora do ar não pode travar o cadastro (mesma regra do ViaCEP).
   fipeOffline = true;
-  const offline = await SubjectCommunityService.createOrJoinCar(dono, {
+  // Usuário próprio pelo mesmo motivo do `terceiro`: o `dono` já fundou o
+  // Civic, e o teto de um carro por pessoa recusaria este cadastro antes de a
+  // FIPE sequer ser consultada — o caso deixaria de medir a FIPE.
+  const quarto = await makeUser("quarto");
+  const offline = await SubjectCommunityService.createOrJoinCar(quarto, {
     brand_code: "77",
     brand_label: "Marca Rara",
     model_code: "123",
@@ -393,14 +431,27 @@ async function main() {
     assert.strictEqual(kindErrado.statusCode, 400);
   });
 
-  const carroVazio = await SubjectCommunityService.createOrJoinCar(dono, {});
+  // O rascunho de carro precisa de alguém SEM carro: com o teto de um só, quem
+  // já tem recebe de volta o que é dele em vez de um rascunho novo — e é isso
+  // que o caso "carro nasce sem modelo" deixaria de medir.
+  const quinto = await makeUser("quinto");
+  const carroVazio = await SubjectCommunityService.createOrJoinCar(quinto, {});
   check("carro nasce sem modelo", () => {
     assert.ok(!carroVazio.error, carroVazio.error);
     assert.strictEqual(carroVazio.community.display_name, "Meu carro");
   });
 
+  const rascunhoDeNovo = await SubjectCommunityService.createOrJoinCar(quinto, {});
+  check("pedir carro de novo abre o que já existe, não cria um segundo", () => {
+    assert.strictEqual(rascunhoDeNovo.created, false);
+    assert.strictEqual(
+      String(rascunhoDeNovo.community.id_profile),
+      String(carroVazio.community.id_profile)
+    );
+  });
+
   const carroEditado = await SubjectCommunityService.updateSubject(
-    dono,
+    quinto,
     { id_profile: carroVazio.community.id_profile, kind: "car" },
     { brand_code: "21", brand_label: "Honda", model_code: "4322", model_label: "qualquer" }
   );
@@ -417,9 +468,12 @@ async function main() {
     assert.strictEqual(nomeCarro.rows[0].display_name, "Honda Fit LX 1.4")
   );
 
-  const carroRival = await SubjectCommunityService.createOrJoinCar(outro, {});
+  // Rival também precisa ser alguém sem carro — o que se mede aqui é o 409 do
+  // MODELO já tomado, não o teto de um carro por pessoa.
+  const sexto = await makeUser("sexto");
+  const carroRival = await SubjectCommunityService.createOrJoinCar(sexto, {});
   const rivalConflito = await SubjectCommunityService.updateSubject(
-    outro,
+    sexto,
     { id_profile: carroRival.community.id_profile, kind: "car" },
     { brand_code: "21", brand_label: "Honda", model_code: "4322", model_label: "Fit LX 1.4" }
   );
@@ -545,7 +599,8 @@ async function main() {
     assert.ok(!spaces.error, spaces.error);
     assert.strictEqual(spaces.spaces.pet.length, 5);
     assert.strictEqual(spaces.spaces.games.length, 3);
-    assert.strictEqual(spaces.spaces.car.length, 3);
+    // UM carro: o teto de 2026-09-17 é o que faz este número ser 1 e não 3.
+    assert.strictEqual(spaces.spaces.car.length, 1);
     assert.strictEqual(spaces.spaces.common.length, 0);
   });
   check("o rótulo do assunto vem junto (o menu mostra a raça)", () => {
@@ -578,7 +633,16 @@ async function main() {
   require("../src/services/FeatureFlagService").invalidate();
 
   // ── limpeza ────────────────────────────────────────────────────────────
-  const users = [dono.id_user, outro.id_user];
+  // ⚠️ USUÁRIO NOVO ENTRA NESTA LISTA, senão a limpeza deixa linha para trás e
+  // a próxima execução herda comunidade de carro do modelo já fundado.
+  const users = [
+    dono.id_user,
+    outro.id_user,
+    terceiro.id_user,
+    quarto.id_user,
+    quinto.id_user,
+    sexto.id_user,
+  ];
   await db.query(
     `DELETE FROM public.tb_community_member
       WHERE id_community_profile IN (SELECT id_profile FROM public.tb_profile WHERE id_user = ANY($1::uuid[]))`,

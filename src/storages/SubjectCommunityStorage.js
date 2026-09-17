@@ -286,6 +286,35 @@ class SubjectCommunityStorage {
     );
     return r.rows;
   }
+
+  /**
+   * O espaço mais antigo da pessoa naquela modalidade — ou `null`.
+   *
+   * ⚠️ ESPELHA `listMySpaces` DE PROPÓSITO (membresia + comunidade viva), só
+   * que recortado por `kind` e parando no primeiro. É ela que desenha o menu da
+   * foto de perfil, e é ela que o teto de "um só" (utils/spaceCaps) consulta:
+   * com duas definições de "meu condomínio", a pessoa levaria *"você já tem um"*
+   * olhando para uma lista vazia. Mexeu numa, mexe na outra.
+   */
+  static async findMySpaceByKind(conn, id_user, kind) {
+    const r = await conn.query(
+      `SELECT p.id_profile,
+              p.display_name,
+              p.community_kind AS kind,
+              m.role
+         FROM public.tb_community_member m
+         JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
+        WHERE m.id_user = $1
+          AND p.community_kind = $2
+          AND p.is_community = TRUE
+          AND p.deleted_at IS NULL
+        ORDER BY CASE m.role WHEN 'leader' THEN 0 WHEN 'vice' THEN 1 ELSE 2 END,
+                 m.joined_at ASC
+        LIMIT 1`,
+      [id_user, kind]
+    );
+    return r.rows[0] || null;
+  }
 }
 
 module.exports = SubjectCommunityStorage;
