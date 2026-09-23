@@ -116,6 +116,21 @@ test("site de verdade continua sendo site", () => {
   assert.equal(d.fields.instagram, "barbearia88");
 });
 
+/** O teto de `tb_company.osm_ref` (mig 257). */
+const OSM_REF_MAX = 64;
+
+test("a identidade CABE na coluna", () => {
+  // ⚠️ ESTE CASO EXISTE PORQUE O ERRO ACONTECEU. A coluna nasceu VARCHAR(32),
+  // folgada para `node/123456789`; o GERS id do Overture e um UUID, e
+  // `overture/` + 36 da 45 — o INSERT do primeiro lote morreu inteiro com
+  // "value too long for type character varying(32)". A mig 257 alargou para
+  // 64, e esta assercao e o que impede a proxima fonte de descobrir o teto
+  // em producao: se um prefixo novo estourar, quebra aqui.
+  const d = ov.toDraft(linha({ id: "1b43fcd8-9e09-4ccc-9599-06e32098c218" }));
+  assert.equal(d.osm_ref.length, 45);
+  assert.ok(d.osm_ref.length <= OSM_REF_MAX, "osm_ref passou de " + OSM_REF_MAX);
+});
+
 test("CNPJ fica NULO — o Overture nao o tem", () => {
   // Nulo e "nao sei". Vazio seria um VALOR, e um valor participa da disputa de
   // campo — poderia apagar o CNPJ que a Receita trouxer depois.

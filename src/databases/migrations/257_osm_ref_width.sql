@@ -1,0 +1,39 @@
+-- =============================================================================
+-- Migration 257: `tb_company.osm_ref` passa a caber uma identidade do Overture.
+--
+-- ─── POR QUE ─────────────────────────────────────────────────────────────────
+--
+-- A coluna nasceu com VARCHAR(32), que era folgado para o que ela guardava:
+-- `node/123456789` tem 14 caracteres e a forma mais longa do OSM não chega
+-- perto do teto.
+--
+-- O Overture identifica cada lugar por um GERS id, que é um UUID. Com o
+-- prefixo da fonte, `overture/1b43fcd8-9e09-4ccc-9599-06e32098c218` tem **45
+-- caracteres** — e o INSERT do primeiro lote morreu inteiro com
+-- "value too long for type character varying(32)".
+--
+-- ⚠️ ESTE ERRO É DE UMA FAMÍLIA JÁ CONHECIDA NESTA BASE, e a mig 250 registrou
+-- a lição com todas as letras ao alargar os CHECKs do gateway: "a largura da
+-- coluna foi conferida ANTES — um CHECK que passa com uma coluna que trunca dá
+-- o mesmo sintoma, só que tarde". Aqui a constraint (mig 256) passou e a
+-- COLUNA recusou. O lado bom é que ela recusou em voz alta: uma coluna que
+-- truncasse silenciosamente gravaria refs cortadas, o dedupe por identidade
+-- pararia de casar e cada reabastecimento duplicaria a base inteira — sem erro
+-- nenhum aparecer.
+--
+-- ⚠️ 64 E NÃO 45. O número não é o que cabe hoje, é o que cabe na próxima
+-- fonte: um id de diretório, um `ref` composto, um prefixo mais longo. Alargar
+-- de novo é barato, mas só se alguém perceber — e o modo de falhar aqui é um
+-- lote inteiro que não entra.
+--
+-- ⚠️ ALARGAR VARCHAR NÃO REESCREVE A TABELA. No Postgres, aumentar o limite de
+-- um `varchar` é mudança só de catálogo: não há varredura das linhas, não há
+-- lock longo. Diminuir seria outra história — e é por isso que esta migration
+-- só cresce.
+--
+-- Idempotente: reduzir para 64 o que já é 64 é no-op, e o `USING` não é
+-- preciso porque todo valor atual já cabe.
+-- =============================================================================
+
+ALTER TABLE tb_company
+  ALTER COLUMN osm_ref TYPE VARCHAR(64);
