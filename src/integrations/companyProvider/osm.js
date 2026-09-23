@@ -131,6 +131,43 @@ out center tags ${Math.max(1, Math.min(2000, Number(limit) || 400))};`;
 }
 
 /**
+ * A que rede pertence uma URL — ou `null` se ela é mesmo um site.
+ *
+ * ⚠️ NO BRASIL, MUITO COMÉRCIO **SÓ TEM INSTAGRAM**, e o mapeador põe o perfil
+ * na tag `website` porque é ali que cabe. Gravando isso como site, três coisas
+ * quebram de uma vez, todas em silêncio: a empresa some do filtro "com
+ * Instagram" (que é justamente por onde ela é abordável), entra no filtro "com
+ * site" prometendo um site que não existe, e o crawler é mandado ao
+ * instagram.com — que responde login/robots, gasta a vaga de páginas do teto e
+ * ainda volta marcado como bloqueado na ficha.
+ */
+const SOCIAL_HOSTS = [
+  ["instagram", "instagram.com"],
+  ["facebook", "facebook.com"],
+  ["facebook", "fb.com"],
+  ["linkedin", "linkedin.com"],
+  ["tiktok", "tiktok.com"],
+  ["youtube", "youtube.com"],
+  ["youtube", "youtu.be"],
+];
+
+function socialNetworkOf(url) {
+  const host = N.normalizeDomain(url);
+  if (!host) return null;
+  const hit = SOCIAL_HOSTS.find(([, h]) => host === h || host.endsWith(`.${h}`));
+  return hit ? hit[0] : null;
+}
+
+/** `wa.me/55...` e `api.whatsapp.com/send?phone=55...` são TELEFONE, não site. */
+function whatsappFromUrl(url) {
+  const host = N.normalizeDomain(url);
+  if (!host) return null;
+  if (!/(^|\.)(wa\.me|api\.whatsapp\.com|whatsapp\.com)$/.test(host)) return null;
+  const digits = String(url).replace(/^https?:\/\//i, "").replace(/\D/g, "");
+  return N.normalizePhone(digits);
+}
+
+/**
  * Um elemento cru do Overpass vira um `CompanyDraft`.
  *
  * ⚠️ SEM NOME NÃO VIRA EMPRESA. O OSM está cheio de pontos mapeados sem `name`
@@ -146,9 +183,14 @@ function toDraft(el) {
   const lat = el.lat ?? el.center?.lat ?? null;
   const lon = el.lon ?? el.center?.lon ?? null;
 
-  const website = N.normalizeWebsite(
+  const rawSite = N.normalizeWebsite(
     tags.website || tags["contact:website"] || tags.url || null
   );
+  // O que veio na tag `website` pode não ser um site: roteia para o campo que
+  // a coisa realmente é, em vez de gravar errado num campo que parece certo.
+  const siteNetwork = socialNetworkOf(rawSite);
+  const siteWhatsapp = whatsappFromUrl(rawSite);
+  const website = siteNetwork || siteWhatsapp ? null : rawSite;
   // O OSM tem DOIS lugares para telefone, e projetos diferentes usam um ou
   // outro. Ler só `phone` perderia metade dos contatos.
   const phone = N.normalizePhone(tags.phone || tags["contact:phone"] || null);
@@ -176,9 +218,27 @@ function toDraft(el) {
     // WhatsApp declarado vence a dedução; sem ele, um telefone que é celular
     // É um WhatsApp em potencial — e é assim que o filtro "com WhatsApp" fica
     // útil num país onde quase todo comércio atende por ele.
-    whatsapp: N.normalizePhone(whatsRaw) || (N.isMobilePhone(phone) ? phone : null),
-    instagram: N.normalizeSocialHandle(tags["contact:instagram"], "instagram"),
-    facebook: N.normalizeSocialHandle(tags["contact:facebook"], "facebook"),
+    whatsapp:
+      N.normalizePhone(whatsRaw) ||
+      siteWhatsapp ||
+      (N.isMobilePhone(phone) ? phone : null),
+    // A tag dedicada vence a URL achada em `website` — quem escreveu
+    // `contact:instagram` estava respondendo exatamente esta pergunta.
+    instagram:
+      N.normalizeSocialHandle(tags["contact:instagram"] || tags.instagram, "instagram") ||
+      (siteNetwork === "instagram" ? N.normalizeSocialHandle(rawSite, "instagram") : null),
+    facebook:
+      N.normalizeSocialHandle(tags["contact:facebook"] || tags.facebook, "facebook") ||
+      (siteNetwork === "facebook" ? N.normalizeSocialHandle(rawSite, "facebook") : null),
+    linkedin:
+      N.normalizeSocialHandle(tags["contact:linkedin"] || tags.linkedin, "linkedin") ||
+      (siteNetwork === "linkedin" ? N.normalizeSocialHandle(rawSite, "linkedin") : null),
+    tiktok:
+      N.normalizeSocialHandle(tags["contact:tiktok"] || tags.tiktok, "tiktok") ||
+      (siteNetwork === "tiktok" ? N.normalizeSocialHandle(rawSite, "tiktok") : null),
+    youtube:
+      N.normalizeSocialHandle(tags["contact:youtube"] || tags.youtube, "youtube") ||
+      (siteNetwork === "youtube" ? N.normalizeSocialHandle(rawSite, "youtube") : null),
     // ⚠️ O OSM GUARDA CNPJ EM `ref:vatin`, no formato "BR12345678000190".
     // Ele é raro, e é ouro quando existe: economiza a etapa inteira de
     // descobrir o CNPJ para enriquecer pela Receita.

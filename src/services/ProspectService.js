@@ -131,13 +131,29 @@ class ProspectService {
       // sem as duas não há o que varrer (a Overpass é consultada por área +
       // tag), e oferecer o botão assim mesmo daria um clique que sempre volta
       // "payload incompleto".
-      const thin = found.total < 12;
-      const suggest = !!(category && uf && q.city && thin);
+      //
+      // ⚠️ E ELA OLHA `base_total`, NUNCA O TOTAL FILTRADO. Eram duas
+      // perguntas diferentes tratadas como uma só: "esta cidade já foi
+      // varrida?" e "estes filtros acharam alguém?". Usando o total filtrado,
+      // uma cidade com centenas de empresas na base aparecia como cidade vazia
+      // assim que um filtro cortava tudo — e a tela mandava varrer de novo,
+      // que é a única ação que NÃO resolve. `base_total` desce junto para que
+      // a tela possa dizer a verdade: "há N aqui, mas nenhuma passa no filtro".
+      const placeScoped = !!(category && uf && q.city);
+      const base_total = placeScoped
+        ? await CompanyStorage.countPlace(pool, {
+            category_key: category,
+            uf,
+            city: q.city,
+          })
+        : found.total;
+      const suggest = placeScoped && base_total < 12;
 
       return {
         ...found,
         rows: found.rows.map((r) => ({ ...r, in_lists: inLists[r.id_company] || [] })),
         filters: { ...filters, category_key: category },
+        base_total,
         suggest_discovery: suggest,
       };
     });

@@ -516,6 +516,41 @@ class CompanyStorage {
   }
 
   /**
+   * Quantas empresas a base tem para (categoria, uf, cidade) — IGNORANDO os
+   * filtros de refino.
+   *
+   * ⚠️ ELA EXISTE PARA SEPARAR DUAS COISAS QUE A TELA CONFUNDIA, e a confusão
+   * mandava a pessoa fazer exatamente a coisa errada. Com `total = 0` a tela
+   * dizia "nada por aqui ainda, aperte Procurar mais" — mas esse total é o
+   * FILTRADO. Numa cidade já varrida, um filtro impossível (por exemplo "com
+   * WhatsApp" **e** "com Instagram" ao mesmo tempo, que na base fresca do OSM
+   * é interseção vazia) zerava o resultado e a tela mandava varrer de novo:
+   * gasta uma varredura do Overpass à toa, não muda nada, e esconde a causa
+   * real — que é o filtro, não a falta de dado.
+   *
+   * O recorte aqui é só o que a DESCOBERTA sabe responder (categoria + cidade),
+   * porque é exatamente essa a pergunta: "esta cidade já foi varrida para esta
+   * categoria?". Canal, CNPJ, capital e data de abertura são refino sobre o que
+   * já foi varrido, e por isso ficam de fora.
+   */
+  static async countPlace(conn, { category_key, uf, city }) {
+    const { rows } = await conn.query(
+      `SELECT COUNT(*)::int AS total
+         FROM public.tb_company c
+        WHERE c.is_active = TRUE AND c.suppressed_at IS NULL
+          AND ($1::text IS NULL OR c.category_key = $1::text)
+          AND ($2::text IS NULL OR c.uf = $2::text)
+          AND ($3::text IS NULL OR c.city_norm = $3::text)`,
+      [
+        category_key || null,
+        uf ? String(uf).toUpperCase().slice(0, 2) : null,
+        city ? N.normalizeCity(city) : null,
+      ]
+    );
+    return rows[0]?.total || 0;
+  }
+
+  /**
    * As cidades que a base já conhece para uma categoria — alimenta o seletor
    * da tela em vez de deixar a pessoa digitar uma cidade onde não há nada.
    */
