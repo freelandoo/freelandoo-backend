@@ -346,6 +346,64 @@ test("elemento do OSM vira rascunho normalizado", () => {
   assert.equal(d.fields.uf, "SP");
 });
 
+test("perfil de rede social na tag `website` NÃO vira site (defeito real, achado em produção)", () => {
+  // Caso literal de São Bernardo: o Folks Pub Sertanejo tem
+  // `website=https://www.instagram.com/folkssbc` no OSM. Gravado como site,
+  // ele sumia do filtro "com Instagram" (que é por onde ele é abordável),
+  // entrava no filtro "com site" prometendo um site que não existe, e mandava
+  // o crawler ao instagram.com — que responde login/robots.
+  const d = osm.toDraft({
+    type: "node",
+    id: 900,
+    lat: -23.7,
+    lon: -46.55,
+    tags: { name: "Folks Pub Sertanejo", amenity: "bar", website: "https://www.instagram.com/folkssbc" },
+  });
+  assert.equal(d.fields.instagram, "folkssbc");
+  assert.equal(d.fields.website, null);
+  assert.equal(d.fields.domain, null);
+});
+
+test("a tag dedicada vence a URL achada em `website`", () => {
+  const d = osm.toDraft({
+    type: "node",
+    id: 901,
+    lat: 0,
+    lon: 0,
+    tags: {
+      name: "Bar do Zé",
+      amenity: "bar",
+      "contact:instagram": "@bardoze",
+      website: "https://www.instagram.com/outroperfil",
+    },
+  });
+  assert.equal(d.fields.instagram, "bardoze");
+});
+
+test("link de wa.me na tag `website` é TELEFONE, não site", () => {
+  const d = osm.toDraft({
+    type: "node",
+    id: 902,
+    lat: 0,
+    lon: 0,
+    tags: { name: "Lanches da Praça", amenity: "fast_food", website: "https://wa.me/5511994330123" },
+  });
+  assert.equal(d.fields.whatsapp, "11994330123");
+  assert.equal(d.fields.website, null);
+});
+
+test("site de verdade continua sendo site", () => {
+  const d = osm.toDraft({
+    type: "node",
+    id: 903,
+    lat: 0,
+    lon: 0,
+    tags: { name: "Padaria Real", shop: "bakery", website: "www.padariareal.com.br" },
+  });
+  assert.equal(d.fields.domain, "padariareal.com.br");
+  assert.equal(d.fields.instagram, null);
+});
+
 test("elemento do OSM SEM nome não vira empresa", () => {
   // Ponto mapeado sem `name` é dado geográfico legítimo e lead nenhum: entraria
   // na tela como uma linha em branco que ninguém consegue abordar.
