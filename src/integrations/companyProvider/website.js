@@ -292,20 +292,68 @@ const SOCIAL_RE = {
   youtube: /(?:https?:\/\/)?(?:www\.)?youtube\.com\/(?:@|c\/|channel\/|user\/)([A-Za-z0-9._-]{2,60})/i,
 };
 
-/** Handles de rede que são NAVEGAÇÃO da própria plataforma, não a empresa. */
+/**
+ * Handles que são NAVEGAÇÃO da plataforma ou WIDGET, nunca a empresa.
+ *
+ * ⚠️ `whatsapp` ENTROU AQUI DEPOIS DE APARECER NUMA MEDIÇÃO REAL. Numa
+ * amostra de 30 sites de Diadema, 19 responderam e 10 expunham um link de
+ * Instagram — e DOIS deles eram `instagram.com/whatsapp`, o botão de
+ * "compartilhar no WhatsApp" que o plugin desenha ao lado dos outros. Eram
+ * 20% dos acertos. Publicado, o vendedor abre o perfil `@whatsapp` achando
+ * que é a barbearia: campo preenchido, com cara de certo, apontando para o
+ * vazio — o mesmo estrago do e-mail do Wix que a régua de confiança existe
+ * para evitar.
+ *
+ * ⚠️ NA DÚVIDA, BLOQUEAR. Perder o Instagram de uma empresa chamada
+ * "Explore" custa um campo vazio; publicar o handle errado custa a confiança
+ * na base inteira.
+ */
 const SOCIAL_BLOCKLIST = new Set([
+  // navegação e endpoints das próprias plataformas
   "sharer", "share", "intent", "plugins", "tr", "dialog", "profile.php",
   "watch", "results", "embed", "login", "policies", "help", "explore",
+  "accounts", "direct", "about", "privacy", "terms", "legal", "developers",
+  "p", "reel", "reels", "stories", "tv", "hashtag", "pages", "groups",
+  "events", "marketplace", "home", "search", "signup", "register",
+  // marcas que aparecem em widget de compartilhar, nunca como dono do site
+  "whatsapp", "instagram", "facebook", "twitter", "telegram", "messenger",
 ]);
 
+/**
+ * O handle de cada rede, escolhido entre TODAS as ocorrências do HTML.
+ *
+ * ⚠️ O PRIMEIRO MATCH ERA A ESCOLHA ERRADA, e é um erro que não aparece em
+ * teste com site bem-comportado: a primeira ocorrência costuma estar no
+ * CABEÇALHO, onde moram os botões de compartilhar; o perfil de verdade fica
+ * no RODAPÉ. Pegando o primeiro, o crawler preferia sistematicamente o
+ * widget.
+ *
+ * A regra aqui é FREQUÊNCIA, com empate desfeito pela ocorrência mais
+ * TARDIA. O perfil real quase sempre aparece mais de uma vez (menu, rodapé,
+ * botão flutuante), enquanto o widget aparece uma vez só — e, havendo
+ * empate, o rodapé vence o cabeçalho. É a leitura mais robusta que dá para
+ * fazer sem interpretar a árvore do documento.
+ */
 function pickSocials(html) {
   const out = {};
   for (const [net, re] of Object.entries(SOCIAL_RE)) {
-    const m = html.match(re);
-    if (!m) continue;
-    const handle = String(m[1] || "").toLowerCase();
-    if (SOCIAL_BLOCKLIST.has(handle)) continue;
-    out[net] = handle;
+    const global = new RegExp(re.source, "gi");
+    const vistos = new Map();
+    for (const m of html.matchAll(global)) {
+      const handle = String(m[1] || "").toLowerCase();
+      if (!handle || SOCIAL_BLOCKLIST.has(handle)) continue;
+      const at = vistos.get(handle) || { n: 0, last: -1 };
+      at.n += 1;
+      at.last = m.index ?? at.last;
+      vistos.set(handle, at);
+    }
+    let melhor = null;
+    for (const [handle, at] of vistos) {
+      if (!melhor || at.n > melhor.n || (at.n === melhor.n && at.last > melhor.last)) {
+        melhor = { handle, n: at.n, last: at.last };
+      }
+    }
+    if (melhor) out[net] = melhor.handle;
   }
   return out;
 }

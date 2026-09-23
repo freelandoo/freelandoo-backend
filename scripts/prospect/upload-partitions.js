@@ -20,7 +20,16 @@ const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const r2 = require("../../src/services/r2Client");
 const { currentPrefix } = require("../../src/integrations/companyProvider/r2Partition");
 
-const OUT = path.resolve(__dirname, "../../.prospect-out");
+/**
+ * A pasta do lote a subir.
+ *
+ * ⚠️ EXISTE MAIS DE UM GERADOR, e cada um escreve na sua: `build-partitions`
+ * (Overpass) em `.prospect-out`, `build-overture` em `.prospect-out-overture`.
+ * Com uma pasta unica, gerar um lote sem apagar o anterior subiria os dois
+ * misturados sob o mesmo prefixo — e o resultado seria uma base metade de
+ * cada fonte, sem nada na tela dizendo isso.
+ */
+const DEFAULT_OUT = ".prospect-out";
 
 function log(...a) {
   console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -35,9 +44,10 @@ async function main() {
   const onlyUf = (get("--uf") || "").toUpperCase();
   const dry = args.includes("--dry-run");
   const prefix = get("--prefix") || currentPrefix();
+  const OUT = path.resolve(__dirname, "../../", get("--out") || DEFAULT_OUT);
 
   if (!process.env.R2_BUCKET_NAME) throw new Error("R2_BUCKET_NAME ausente");
-  if (!fs.existsSync(OUT)) throw new Error("nada gerado ainda: rode build-partitions.js");
+  if (!fs.existsSync(OUT)) throw new Error("nada gerado em " + OUT + " — rode build-partitions.js ou build-overture.js");
 
   const files = [];
   for (const dir of fs.readdirSync(OUT)) {

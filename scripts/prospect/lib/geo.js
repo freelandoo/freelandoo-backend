@@ -122,6 +122,21 @@ async function loadUf(ufCode) {
   return {
     size: entries.length,
     /**
+     * A caixa que contem o estado inteiro.
+     *
+     * O gerador do Overture precisa dela para recortar o parquet ANTES de ler
+     * (a coluna `bbox` e o unico filtro que o formato consegue empurrar para
+     * baixo). Derivada da malha em vez de digitada: uma tabela de 27 caixas a
+     * mao envelheceria em silencio e o sintoma seria estado faltando pedaco.
+     */
+    bbox: entries.reduce(
+      (acc, e) => [
+        Math.min(acc[0], e.box[0]), Math.min(acc[1], e.box[1]),
+        Math.max(acc[2], e.box[2]), Math.max(acc[3], e.box[3]),
+      ],
+      [Infinity, Infinity, -Infinity, -Infinity]
+    ),
+    /**
      * ⚠️ O PRÉ-FILTRO POR BOUNDING BOX É O QUE TORNA ISTO VIÁVEL. Sem ele,
      * cada ponto testaria os 645 municípios de SP contra polígonos de milhares
      * de vértices — centenas de milhões de operações por categoria. Com ele,

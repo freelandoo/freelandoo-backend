@@ -54,6 +54,29 @@ function currentPrefix() {
 }
 
 /**
+ * Que FONTE gerou o lote que esta em uso.
+ *
+ * ⚠️ ELA SAI DO PREFIXO, NUNCA DE UM LITERAL NO SERVICE. Era `"osm"` cravado
+ * na chamada de `ingestPartition`, e com dois geradores isso vira uma mentira
+ * silenciosa: o lote do Overture entraria no banco carimbado como OSM, a
+ * regua de confianca o trataria com o peso errado (65 em vez de 70) e a
+ * pergunta "de onde veio esta linha?" passaria a ter a resposta errada
+ * GRAVADA — que e pior do que nao ter resposta.
+ *
+ * Como o prefixo ja e o interruptor do lote (PROSPECT_R2_PREFIX), trocar a
+ * plataforma inteira de fonte — e VOLTAR ATRAS — vira uma linha no Railway,
+ * sem deploy. Mesma disciplina do PAYMENT_PROVIDER no gateway.
+ *
+ * Prefixo que nao nomeia fonte conhecida cai em `osm`, que e o que todo lote
+ * anterior a esta mudanca e.
+ */
+function sourceOfPrefix(prefix = currentPrefix()) {
+  const pre = String(prefix || "").toLowerCase();
+  if (pre.includes("/overture")) return "overture";
+  return "osm";
+}
+
+/**
  * ⚠️ DESLIGÁVEL POR AMBIENTE (`PROSPECT_R2=off`), como as outras fontes. É a
  * válvula para o dia em que um lote subir errado: a base fria some do caminho e
  * a descoberta ao vivo volta a ser a única fonte, em vez de todo mundo receber
@@ -176,6 +199,7 @@ module.exports = {
   label: "Base fria (R2)",
   isConfigured,
   currentPrefix,
+  sourceOfPrefix,
   keyFor,
   fetchPartition,
   hasPartition,

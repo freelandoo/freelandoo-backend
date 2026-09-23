@@ -39,6 +39,13 @@ const SOURCE_CONFIDENCE = Object.freeze({
   manual: 100,
   cnpj: 95,
   website: 80,
+  // ⚠️ ACIMA DO OSM E ABAIXO DO SITE, e os dois lados têm motivo. Acima do
+  // OSM porque não é mapeamento voluntário: vem de operação comercial
+  // (Meta, Microsoft, PinMeTo, Foursquare), e onde o OSM tem 821 barbearias
+  // em SP ela tem 43.250, com telefone em 93% contra uma minoria. Abaixo do
+  // site porque continua sendo um terceiro falando sobre a empresa — quando
+  // a própria empresa escreve o contato no rodapé dela, é ela que manda.
+  overture: 70,
   osm: 65,
   social: 55,
   directory: 45,
@@ -68,16 +75,16 @@ function confidenceOf(source) {
  * aqui, porque a correção humana sempre chega depois.
  */
 const FIELD_BOOST = Object.freeze({
-  latitude: { osm: 35 },
-  longitude: { osm: 35 },
+  latitude: { osm: 35, overture: 30 },
+  longitude: { osm: 35, overture: 30 },
   // ⚠️ A CATEGORIA TEM COMPETIÇÃO DE VERDADE, e o OSM ganha de propósito. A
   // Receita declara a ATIVIDADE FISCAL ("comércio varejista de suplementos");
   // o OSM declara o que está na PLACA ("academia"). Quem procurou "academias"
   // quer a academia — deixar o CNAE vencer tiraria da busca exatamente as
   // empresas que ela existe para achar.
-  category_key: { osm: 35 },
+  category_key: { osm: 35, overture: 30 },
   // O site e as redes são do site, não do cadastro fiscal.
-  website: { website: 20, osm: 10 },
+  website: { website: 20, osm: 10, overture: 10 },
   instagram: { website: 20, social: 25 },
   facebook: { website: 20, social: 25 },
   linkedin: { website: 20, social: 25 },

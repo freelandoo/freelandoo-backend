@@ -182,7 +182,12 @@ class ProspectRefillService {
         // serve os 645 municípios de SP: quem pesquisar Santo André depois não
         // paga nada. Recortar aqui deixaria o Postgres menor e faria a próxima
         // cidade baixar o mesmo arquivo de novo.
-        const r = await CompanyIngestService.ingestPartition(drafts, "osm", { chunk: CHUNK });
+        // ⚠️ A FONTE SAI DO PREFIXO DO LOTE, nunca de um literal. Ver
+        // `r2Partition.sourceOfPrefix`: cravada, a particao do Overture
+        // entraria no banco carimbada como OSM e com o peso de confianca
+        // errado na disputa de campo.
+        const src = r2Partition.sourceOfPrefix();
+        const r = await CompanyIngestService.ingestPartition(drafts, src, { chunk: CHUNK });
         const duration_ms = Date.now() - t0;
 
         // ⚠️ A MARCA VEM DEPOIS DA INGESTÃO, nunca antes. Marcar primeiro
