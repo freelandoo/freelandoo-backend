@@ -37,6 +37,8 @@ const clanRoutes = require("./clan.routes");
 const clanPublicRoutes = require("./clanPublic.routes");
 const communityRoutes = require("./community.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
+const prospectRoutes = require("./prospect.routes");
+const prospectAdminRoutes = require("./prospectAdmin.routes");
 const condoRoutes = require("./condo.routes");
 const residenceRoutes = require("./residence.routes");
 const neighborhoodRoutes = require("./neighborhood.routes");
@@ -189,6 +191,11 @@ module.exports = (app) => {
   // Comunidades: auth ANTES da pública no mesmo base — /eligibility (auth GET)
   // não pode ser engolido por GET /:id_profile da pública.
   app.use("/communities", communityRoutes);
+  // Prospecção (mig 254): `/communities/:id_profile/leads/*`. Montada ANTES da
+  // pública porque `GET /:id_profile` de lá é o catch de um segmento — as
+  // rotas daqui têm três ou mais, mas ordem explícita custa menos que confiar
+  // na contagem de segmentos de outro arquivo.
+  app.use("/communities", prospectRoutes);
   app.use("/communities", communityPublicRoutes);
   // Condomínio (modalidade de comunidade, migs 196-199): área interna —
   // estrutura, reivindicações, avisos, anúncios e enquetes. Base própria para
@@ -313,6 +320,7 @@ module.exports = (app) => {
   app.use("/", paymentOpsRoutes);
   app.use("/feature-flags", featureFlagRoutes);
   app.use("/admin/feature-flags", featureFlagAdminRoutes);
+  app.use("/admin/prospeccao", prospectAdminRoutes);
   app.use("/", vaquinhaRoutes);
   app.use("/admin/vaquinha", vaquinhaAdminRoutes);
   app.use("/me/atendimento-ia", atendimentoIaRoutes);

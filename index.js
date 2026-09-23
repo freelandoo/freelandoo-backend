@@ -49,6 +49,17 @@ const server = app.listen(PORT, () => {
   const AiReplyWorker = require("./src/services/AiReplyWorker");
   AiReplyWorker.start();
 
+  // Prospecção (mig 254): a fila de descoberta e enriquecimento de empresas.
+  // A busca da tela lê SEMPRE a base local; quem fala com o OpenStreetMap, com
+  // a API de CNPJ e com o site do lead é este worker, à parte.
+  //
+  // ⚠️ SEM ESTA LINHA NADA QUEBRA E NENHUM TESTE FICA VERMELHO: os trabalhos
+  // se acumulam em `pending`, nenhuma empresa é descoberta e a tela fica
+  // eternamente dizendo "procurando". Mesma falha silenciosa que o
+  // `AiReplyWorker` acima documenta.
+  const CompanyWorker = require("./src/services/CompanyWorker");
+  CompanyWorker.start();
+
   // Fitness & Academias: sync pull das Gym Provider APIs (catraca+pagamentos,
   // ~10min, cursores em tb_academy). Idempotente por external_id; erro marca
   // sync_status da academia e nunca derruba o boot.
