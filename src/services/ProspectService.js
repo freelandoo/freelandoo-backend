@@ -13,6 +13,8 @@ const CommunityService = require("./CommunityService");
 const CompanyStorage = require("../storages/CompanyStorage");
 const CompanyJobStorage = require("../storages/CompanyJobStorage");
 const LeadListStorage = require("../storages/LeadListStorage");
+const ProspectRefillService = require("./ProspectRefillService");
+const r2Partition = require("../integrations/companyProvider/r2Partition");
 const providers = require("../integrations/companyProvider");
 const { listCategories, isCategory, guessCategory } = require("../utils/companyCategories");
 const N = require("../utils/companyNormalize");
@@ -118,6 +120,19 @@ class ProspectService {
         per_page: q.per_page,
       };
 
+      // ⚠️ A BASE FRIA É DISPARADA AQUI E NÃO ESPERADA — e a diferença entre as
+      // duas coisas é a tela travar ou não. Esperar parecia melhor (a primeira
+      // busca já viria completa), mas ingerir uma partição grande leva segundos
+      // mesmo com o banco ao lado: a busca de cada estado novo ficaria parada,
+      // segurando uma das 25 conexões do pool. Aqui a pessoa recebe o que a
+      // base tem agora, e a busca seguinte já vem cheia.
+      //
+      // ⚠️ E ELE NUNCA DERRUBA A BUSCA: o disparo tem `catch` próprio, então R2
+      // fora do ar ou partição inexistente não viram erro de tela.
+      if (category && uf) {
+        ProspectRefillService.fireAndForget({ uf, category, city: q.city || null });
+      }
+
       const found = await CompanyStorage.search(pool, filters);
 
       // Em quais listas DESTE negócio cada empresa já está — é o que deixa o
@@ -139,15 +154,28 @@ class ProspectService {
       // assim que um filtro cortava tudo — e a tela mandava varrer de novo,
       // que é a única ação que NÃO resolve. `base_total` desce junto para que
       // a tela possa dizer a verdade: "há N aqui, mas nenhuma passa no filtro".
-      const placeScoped = !!(category && uf && q.city);
+      // ⚠️ `base_total` NÃO PODE EXIGIR CIDADE, e exigir custou uma leitura
+      // errada da feature inteira. Com categoria + estado e SEM cidade, ele
+      // caía em `found.total` — o total JÁ FILTRADO — e a tela passava a
+      // afirmar que a base tinha exatamente o que o filtro deixou passar.
+      // Caso real: 163 bares em SP na base, o pill "com WhatsApp" deixando 6,
+      // e a tela dizendo "6 empresas" sem uma palavra sobre os outros 157. A
+      // conclusão natural de quem olha é que a base está vazia.
+      //
+      // São duas perguntas distintas e continuam separadas: `base_total`
+      // responde "o que existe aqui" e `total` responde "o que passou no
+      // filtro". A sugestão de varrer só faz sentido com cidade, porque é ela
+      // que a descoberta exige — sem cidade, oferecer o botão daria um clique
+      // que sempre volta "payload incompleto".
+      const placeScoped = !!(category && uf);
       const base_total = placeScoped
         ? await CompanyStorage.countPlace(pool, {
             category_key: category,
             uf,
-            city: q.city,
+            city: q.city || null,
           })
         : found.total;
-      const suggest = placeScoped && base_total < 12;
+      const suggest = placeScoped && !!q.city && base_total < 12;
 
       return {
         ...found,
@@ -202,6 +230,26 @@ class ProspectService {
       if (city.length < 2) return { error: "Informe a cidade.", statusCode: 400 };
       if (!providers.discoverProviders().length) {
         return { error: "A descoberta está indisponível no momento.", statusCode: 503 };
+      }
+
+      // ⚠️ A BASE FRIA VEM ANTES DA FILA, e é o que muda a natureza do botão.
+      // Enfileirar significa esperar o worker, que espera um slot da Overpass —
+      // minutos, com a tela dizendo "procurando agora". Se o lote do mês já tem
+      // esta (uf, categoria), a mesma pergunta se responde com um download.
+      //
+      // ⚠️ O TESTE É `hasPartition` (um HEAD), NÃO O REABASTECIMENTO INTEIRO.
+      // Esperar a ingestão aqui prenderia a requisição por segundos ou minutos,
+      // que é o que o `fireAndForget` existe para evitar. Este HEAD só responde
+      // "existe arquivo?" — o suficiente para escolher entre o R2 e a Overpass
+      // sem enfileirar às cegas um trabalho que já estava pronto ali.
+      //
+      // ⚠️ E ISTO NÃO CONSOME A COTA DIÁRIA. Aquele teto existe para proteger um
+      // serviço público de terceiro; ler um arquivo nosso não tem nada a
+      // proteger, e cobrar por ele faria a pessoa gastar as 20 fichas do dia em
+      // partições que já estavam prontas.
+      if (await r2Partition.hasPartition({ uf, category })) {
+        ProspectRefillService.fireAndForget({ uf, category, city });
+        return { ok: true, fresh: false, source: "r2", filling: true, job: null };
       }
 
       const settings = await CompanyStorage.getSettings(pool);

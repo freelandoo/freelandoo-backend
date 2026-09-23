@@ -290,6 +290,145 @@ class CompanyIngestService {
       }
     );
   }
+  /**
+   * Ingestão em LOTE de uma partição inteira (o caminho do R2).
+   *
+   * ⚠️ POR QUE UM SEGUNDO CAMINHO EM VEZ DE OTIMIZAR O PRIMEIRO. `ingestMany`
+   * resolve conflito de fonte campo a campo, e é isso que impede o crawler de
+   * apagar o telefone da Receita — não dá para acelerá-lo sem afrouxar a régua.
+   * Aqui a régua não tem o que decidir: a empresa **não existe**, então esta é
+   * a primeira e única fonte a falar sobre cada campo dela.
+   *
+   * ⚠️ QUEM JÁ EXISTE NÃO PASSA POR AQUI. Volta para `ingestMany`, campo a
+   * campo, porque ali sim há duas fontes disputando. Num reabastecimento novo
+   * isso costuma ser um punhado de linhas.
+   *
+   * Medido em SP/bar: 5.556 rascunhos que levariam ~110 mil idas ao banco
+   * passam a ~30.
+   */
+  static async ingestPartition(drafts, source, { chunk = 400 } = {}) {
+    return runWithLogs(
+      log,
+      "ingestPartition",
+      () => ({ source, count: drafts?.length || 0 }),
+      async () => {
+        const out = { created: 0, updated: 0, skipped: 0, reused: 0 };
+        const prepared = [];
+        for (const d of drafts || []) {
+          const n = this.normalizeDraft(d);
+          if (!n?.fields?.display_name || !n.fields.osm_ref) {
+            out.skipped += 1;
+            continue;
+          }
+          prepared.push(n);
+        }
+        if (!prepared.length) return out;
+
+        // ⚠️ DEDUPE DENTRO DO PRÓPRIO LOTE, ANTES DO BANCO. O mesmo `osm_ref`
+        // pode aparecer duas vezes num arquivo (o gerador varre node, way e
+        // relation, e um estabelecimento mapeado das duas formas aparece nos
+        // dois). Sem isto, o `ON CONFLICT DO NOTHING` engoliria a segunda e o
+        // relatório diria "criadas" um número maior do que a base recebeu.
+        const seen = new Set();
+        const unique = [];
+        for (const p of prepared) {
+          if (seen.has(p.fields.osm_ref)) continue;
+          seen.add(p.fields.osm_ref);
+          unique.push(p);
+        }
+
+        for (let i = 0; i < unique.length; i += chunk) {
+          const slice = unique.slice(i, i + chunk);
+          const conn = await pool.connect();
+          try {
+            await conn.query("BEGIN");
+
+            const existing = await CompanyStorage.findExistingOsmRefs(
+              conn,
+              slice.map((p) => p.fields.osm_ref)
+            );
+            const novos = slice.filter((p) => !existing.has(p.fields.osm_ref));
+            const antigos = slice.filter((p) => existing.has(p.fields.osm_ref));
+
+            if (novos.length) {
+              // Região para o lote inteiro, numa consulta.
+              const regions = await CompanyStorage.bulkResolveRegions(
+                conn,
+                novos
+                  .filter((p) => p.fields.uf && p.fields.city)
+                  .map((p) => ({
+                    uf: p.fields.uf,
+                    city_norm: N.normalizeCity(p.fields.city),
+                  }))
+              );
+              for (const p of novos) {
+                const key = `${p.fields.uf}|${N.normalizeCity(p.fields.city)}`;
+                if (regions.has(key)) p.fields.id_region = regions.get(key);
+              }
+
+              const inserted = await CompanyStorage.bulkInsert(
+                conn,
+                novos.map((p) => p.fields)
+              );
+              const idByRef = new Map(inserted.map((r) => [r.osm_ref, r.id_company]));
+              out.created += inserted.length;
+
+              const provenance = [];
+              const scores = [];
+              for (const p of novos) {
+                const id = idByRef.get(p.fields.osm_ref);
+                if (!id) continue; // perdeu a corrida do ON CONFLICT
+                const winning = {};
+                for (const [field, value] of Object.entries(p.fields)) {
+                  if (["name_norm", "city_norm"].includes(field)) continue;
+                  if (value === null || value === undefined || String(value).trim() === "") continue;
+                  if (!TRACKED_FIELDS.includes(field)) continue;
+                  provenance.push({
+                    id_company: id,
+                    field,
+                    value,
+                    source,
+                    source_url: p.source_url || null,
+                    confidence: fieldConfidence(field, source),
+                  });
+                  winning[field] = source;
+                }
+                // `scoreCompany` é pura: a nota sai em memória, sem reler a
+                // linha que acabamos de escrever.
+                scores.push({ id_company: id, confidence: scoreCompany(p.fields, winning) });
+              }
+
+              for (let j = 0; j < provenance.length; j += 1000) {
+                await CompanyStorage.bulkRecordSources(conn, provenance.slice(j, j + 1000));
+              }
+              for (let j = 0; j < scores.length; j += 1000) {
+                await CompanyStorage.bulkSetConfidence(conn, scores.slice(j, j + 1000));
+              }
+            }
+
+            // Quem já existe volta ao caminho campo a campo — é lá que a régua
+            // de precedência precisa rodar.
+            for (const p of antigos) {
+              const r = await this.ingest(conn, p, source);
+              if (r.skipped) out.skipped += 1;
+              else if (r.created) out.created += 1;
+              else out.updated += 1;
+              out.reused += 1;
+            }
+
+            await conn.query("COMMIT");
+          } catch (err) {
+            await conn.query("ROLLBACK").catch(() => {});
+            throw err;
+          } finally {
+            conn.release();
+          }
+        }
+
+        return out;
+      }
+    );
+  }
 }
 
 module.exports = CompanyIngestService;

@@ -607,6 +607,166 @@ class CompanyStorage {
     );
     return rows[0] || null;
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CAMINHO EM LOTE — só para EMPRESA NOVA
+  //
+  // ⚠️ POR QUE ELE EXISTE. O caminho normal (`CompanyIngestService.ingestMany`)
+  // gasta ~20 idas ao banco POR EMPRESA: procura duplicata, insere, lê as fontes
+  // vencedoras, resolve a região, atualiza, grava a proveniência campo a campo
+  // e recalcula a nota. Para as dezenas de empresas de uma varredura de bairro
+  // isso é irrelevante; para as **5.556 de um estado inteiro** vira mais de
+  // cem mil idas ao banco — medido: 3,4s por empresa através da internet, e
+  // ~40ms mesmo com o banco ao lado, o que ainda daria minutos por partição
+  // segurando uma das 25 conexões do pool.
+  //
+  // ⚠️ E ELE SÓ VALE PARA QUEM NÃO EXISTE AINDA, o que é a razão de ser seguro:
+  // quando não há linha anterior, NÃO HÁ CONFLITO DE FONTE A RESOLVER — a régua
+  // de precedência do `companyConfidence` não tem o que decidir, porque esta é
+  // a primeira fonte a falar sobre aquele campo. Empresa já existente continua
+  // pelo caminho campo a campo, e é lá que a régua precisa mesmo rodar.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** Quais destes `osm_ref` já estão na base. Uma consulta para o lote inteiro. */
+  static async findExistingOsmRefs(conn, refs = []) {
+    if (!refs.length) return new Set();
+    const { rows } = await conn.query(
+      `SELECT osm_ref FROM public.tb_company WHERE osm_ref = ANY($1::text[])`,
+      [refs]
+    );
+    return new Set(rows.map((r) => r.osm_ref));
+  }
+
+  /**
+   * Insere várias empresas numa instrução.
+   *
+   * ⚠️ O TETO DE 400 POR CHAMADA NÃO É ESTÉTICO. O protocolo do Postgres aceita
+   * no máximo **65.535 parâmetros** por instrução; são 37 colunas, então acima
+   * de ~1.770 linhas a query é recusada — e o erro fala de protocolo, não de
+   * tamanho de lote, o que manda quem for depurar para o lugar errado.
+   */
+  static async bulkInsert(conn, list = []) {
+    if (!list.length) return [];
+    const cols = [
+      "cnpj", "legal_name", "trade_name", "display_name", "name_norm", "description",
+      "category_key", "main_cnae", "company_size", "legal_nature",
+      "share_capital_cents", "reg_status", "is_headquarters",
+      "website", "domain", "email", "phone", "whatsapp",
+      "instagram", "facebook", "linkedin", "tiktok", "youtube",
+      "address", "address_number", "complement", "neighborhood",
+      "city", "city_norm", "uf", "zip_code", "id_region",
+      "latitude", "longitude", "osm_ref",
+    ];
+    const values = [];
+    const tuples = [];
+    let i = 1;
+    for (const f of list) {
+      const display = String(f.display_name || f.trade_name || "").trim().slice(0, 300);
+      if (!display) continue;
+      const row = [
+        N.normalizeCnpj(f.cnpj), f.legal_name || null, f.trade_name || null, display,
+        N.normalizeName(display), f.description || null,
+        f.category_key || null, f.main_cnae || null, f.company_size || null,
+        f.legal_nature || null, f.share_capital_cents ?? null, f.reg_status || null,
+        f.is_headquarters ?? null,
+        f.website || null, f.domain || null, f.email || null, f.phone || null,
+        f.whatsapp || null, f.instagram || null, f.facebook || null, f.linkedin || null,
+        f.tiktok || null, f.youtube || null,
+        f.address || null, f.address_number || null, f.complement || null,
+        f.neighborhood || null, f.city || null, N.normalizeCity(f.city) || null,
+        f.uf ? String(f.uf).toUpperCase().slice(0, 2) : null,
+        N.normalizeZip(f.zip_code), f.id_region ?? null,
+        f.latitude ?? null, f.longitude ?? null, f.osm_ref || null,
+      ];
+      tuples.push(`(${row.map(() => `$${i++}`).join(",")})`);
+      values.push(...row);
+    }
+    if (!tuples.length) return [];
+
+    // ⚠️ `ON CONFLICT DO NOTHING` E OBRIGATORIO: entre a leitura dos osm_ref
+    // existentes e este INSERT, outra requisição pode ter inserido a mesma
+    // empresa. Sem ele o lote inteiro morre por unicidade — e leva junto as
+    // centenas de linhas que não tinham problema nenhum.
+    const { rows } = await conn.query(
+      `INSERT INTO public.tb_company (${cols.join(", ")})
+       VALUES ${tuples.join(", ")}
+       ON CONFLICT DO NOTHING
+       RETURNING id_company, osm_ref, display_name`,
+      values
+    );
+    return rows;
+  }
+
+  /** Proveniência de várias empresas numa instrução. */
+  static async bulkRecordSources(conn, entries = []) {
+    if (!entries.length) return 0;
+    const values = [];
+    const tuples = [];
+    let i = 1;
+    for (const e of entries) {
+      const row = [
+        e.id_company,
+        String(e.field).slice(0, 32),
+        e.value === null || e.value === undefined ? null : String(e.value).slice(0, 2000),
+        e.source,
+        e.source_url ? String(e.source_url).slice(0, 500) : null,
+        Number(e.confidence) || 0,
+      ];
+      tuples.push(`($${i++},$${i++},$${i++},$${i++},$${i++},$${i++})`);
+      values.push(...row);
+    }
+    await conn.query(
+      `INSERT INTO public.tb_company_source
+         (id_company, field, value, source, source_url, confidence)
+       VALUES ${tuples.join(", ")}
+       ON CONFLICT (id_company, field, source) DO UPDATE
+         SET value = EXCLUDED.value,
+             source_url = EXCLUDED.source_url,
+             confidence = EXCLUDED.confidence,
+             last_seen_at = NOW()`,
+      values
+    );
+    return entries.length;
+  }
+
+  /** Grava a nota de várias empresas numa instrução. */
+  static async bulkSetConfidence(conn, pairs = []) {
+    if (!pairs.length) return 0;
+    await conn.query(
+      // ⚠️ NÃO TOCA `enrichment_status`. O CHECK aceita só
+      // ('none','queued','partial','done','failed'), e a descoberta — que é o
+      // que isto é — não enriquece nada: quem vai atrás de site e CNPJ é o
+      // worker, depois. Carimbar aqui faria a empresa nascer parecendo já
+      // trabalhada e sairia da fila de enriquecimento sem nunca ter entrado.
+      // (A primeira versão gravava 'ok', que nem existe na lista — o INSERT
+      // inteiro era recusado e a partição não entrava.)
+      `UPDATE public.tb_company c
+          SET confidence = v.confidence,
+              osm_checked_at = NOW(),
+              updated_at = NOW()
+         FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::int[]) AS confidence) v
+        WHERE c.id_company = v.id`,
+      [pairs.map((p) => p.id_company), pairs.map((p) => Math.round(p.confidence) || 0)]
+    );
+    return pairs.length;
+  }
+
+  /** (uf, cidade) → id_region, para o lote inteiro de uma vez. */
+  static async bulkResolveRegions(conn, pairs = []) {
+    if (!pairs.length) return new Map();
+    const { rows } = await conn.query(
+      `SELECT DISTINCT ON (rc.uf, rc.municipio_norm)
+              rc.uf, rc.municipio_norm AS city_norm, rc.id_region
+         FROM public.tb_region_city rc
+        WHERE (rc.uf, rc.municipio_norm) IN (
+          SELECT unnest($1::text[]), unnest($2::text[])
+        )`,
+      [pairs.map((p) => p.uf), pairs.map((p) => p.city_norm)]
+    );
+    const map = new Map();
+    for (const r of rows) map.set(`${r.uf}|${r.city_norm}`, r.id_region);
+    return map;
+  }
 }
 
 module.exports = CompanyStorage;
