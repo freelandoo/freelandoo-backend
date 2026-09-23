@@ -146,21 +146,36 @@ async function getHtml(rawUrl) {
 /**
  * robots.txt — só o que importa aqui: `Disallow: /` para o nosso UA ou para `*`.
  *
+ * Devolve `"ok"`, `"robots"` (o site proíbe), `"unreachable"` (não deu para
+ * chegar lá) ou `"unsafe"` (o destino é rede privada).
+ *
  * ⚠️ FALHA ABERTA DE PROPÓSITO. robots.txt que não responde (404, timeout, host
  * sem o arquivo) é o caso COMUM no comércio local, e tratá-lo como proibição
  * deixaria o enriquecimento mudo para quase todo mundo. Proibição só vale
  * quando ela foi de fato declarada.
+ *
+ * ⚠️ E "NÃO CONSEGUI CHEGAR" NÃO É "O SITE ME PROIBIU" — a sonda contra a API
+ * real pegou isto. Um domínio vindo do OSM sem registro A nem AAAA
+ * (`joaocaitano.com.br`: uma academia cujo site saiu do ar) voltava marcado
+ * como `blocked: "robots"`, e o dono do negócio leria na ficha que aquele lead
+ * BLOQUEIA a plataforma — quando a verdade é que o site dele não existe mais.
+ * Explicação errada num campo que a tela mostra é pior que explicação nenhuma:
+ * ela manda a pessoa resolver o problema errado.
+ *
+ * ⚠️ REDE PRIVADA CONTINUA SENDO RECUSA DURA, e é de outra natureza: ali não é
+ * "não consegui", é "não vou" — é a trava de SSRF, e ela não cede nunca.
  */
 async function isCrawlAllowed(origin) {
   try {
     const guard = await assertPublicUrl(`${origin}/robots.txt`);
-    if (guard.error) return false;
+    if (guard.error === "rede_privada" || guard.error === "protocolo") return "unsafe";
+    if (guard.error) return "unreachable";
     const res = await fetch(guard.url, {
       headers: { "User-Agent": UA },
       redirect: "manual",
       signal: AbortSignal.timeout(6000),
     });
-    if (!res.ok) return true;
+    if (!res.ok) return "ok";
     const txt = (await res.text()).slice(0, 50_000);
     const lines = txt.split(/\r?\n/).map((l) => l.trim());
     let applies = false;
@@ -176,9 +191,9 @@ async function isCrawlAllowed(origin) {
         disallowRoot = true;
       }
     }
-    return !disallowRoot;
+    return disallowRoot ? "robots" : "ok";
   } catch {
-    return true;
+    return "ok";
   }
 }
 
@@ -327,9 +342,14 @@ async function enrich(company, opts = {}) {
   const maxPages = Math.max(1, Math.min(10, Number(opts.maxPages) || 6));
   const origin = `https://${domain}`;
 
-  if (!(await isCrawlAllowed(origin))) {
-    log.info("website.robots_disallow", { domain });
-    return { fields: {}, source_url: origin, blocked: "robots" };
+  const permission = await isCrawlAllowed(origin);
+  if (permission !== "ok") {
+    log.info("website.skipped", { domain, reason: permission });
+    // ⚠️ O MOTIVO VAI CRU PARA QUEM CHAMOU. "robots" é o site dizendo não;
+    // "unreachable" é o site não existir mais; "unsafe" é a trava de SSRF. As
+    // três levam a conclusões diferentes para quem lê a ficha, e colapsá-las
+    // numa só foi o defeito que a sonda contra a API real pegou.
+    return { fields: {}, source_url: origin, blocked: permission };
   }
 
   const fields = {};
@@ -378,6 +398,7 @@ module.exports = {
   enrich,
   // Exportados para o teste: são funções puras sobre HTML, exercitáveis sem rede.
   assertPublicUrl,
+  isCrawlAllowed,
   pickEmail,
   pickWhatsapp,
   pickPhone,

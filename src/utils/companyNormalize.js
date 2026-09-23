@@ -91,6 +91,31 @@ function isValidCnpj(raw) {
 }
 
 /**
+ * Os DDDs que existem no Brasil.
+ *
+ * ⚠️ ELE NÃO É PRECIOSISMO — foi uma sonda contra um site real que o exigiu. O
+ * crawler extraiu `1064065382` do rodapé da Smart Fit (um "4004" colado a
+ * outro número na marcação), e o filtro de 10–11 dígitos aceitou: a tela teria
+ * mostrado **"(10) 6406-5382"** como telefone da empresa, e o vendedor teria
+ * ligado para o nada. DDD 10 não existe; a numeração brasileira salta de 19
+ * para 21, de 29 para 31, e assim por diante.
+ *
+ * Mesma classe de defeito da blocklist de e-mail do crawler: o regex acha
+ * qualquer coisa com a FORMA certa, e é a lista fechada que separa dado de lixo.
+ */
+const DDDS = new Set([
+  11, 12, 13, 14, 15, 16, 17, 18, 19,
+  21, 22, 24, 27, 28,
+  31, 32, 33, 34, 35, 37, 38,
+  41, 42, 43, 44, 45, 46, 47, 48, 49,
+  51, 53, 54, 55,
+  61, 62, 63, 64, 65, 66, 67, 68, 69,
+  71, 73, 74, 75, 77, 79,
+  81, 82, 83, 84, 85, 86, 87, 88, 89,
+  91, 92, 93, 94, 95, 96, 97, 98, 99,
+]);
+
+/**
  * Telefone brasileiro em dígitos, SEM o 55.
  *
  * ⚠️ O "55" É AMBÍGUO E ENGOLI-LO CEGAMENTE QUEBRA O MATCHING. `5511943301234`
@@ -103,6 +128,10 @@ function normalizePhone(raw) {
   if (!d) return null;
   if ((d.length === 13 || d.length === 12) && d.startsWith("55")) d = d.slice(2);
   if (d.length < 10 || d.length > 11) return null;
+  if (!DDDS.has(Number(d.slice(0, 2)))) return null;
+  // O 1º dígito do assinante não é 0 nem 1 em numeração válida — é o que
+  // descarta sequências decorativas coladas no HTML ("1000000000").
+  if (["0", "1"].includes(d[2])) return null;
   return d;
 }
 
@@ -320,6 +349,7 @@ function matchScore(a, b) {
 
 module.exports = {
   MATCH_THRESHOLD,
+  DDDS,
   stripAccents,
   normalizeName,
   normalizeCity,

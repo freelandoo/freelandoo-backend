@@ -36,6 +36,18 @@
 //  9. "a QL do Overpass leva TODAS as tags da categoria" — cobrir só a tag
 //     "certa" deixa invisível metade dos estabelecimentos, que foram mapeados
 //     com a outra.
+//
+// ─── OS DOIS QUE VIERAM DE SONDA CONTRA A API REAL ──────────────────────────
+//
+// Nenhum dos dois seria imaginado no papel — os dois apareceram ao rodar os
+// providers contra o Nominatim, o Overpass e sites de verdade:
+//
+// 11. "DDD inexistente não vira telefone" — o crawler extraiu `1064065382` do
+//     rodapé de um site real, e o filtro de 10–11 dígitos aceitou. A tela teria
+//     anunciado "(10) 6406-5382" como telefone da empresa.
+// 12. "'não consegui chegar' não é 'o site me proibiu'" — um domínio do OSM
+//     sem registro A nem AAAA voltava marcado como `blocked: "robots"`, e o
+//     dono leria na ficha que aquele lead BLOQUEIA a plataforma.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -69,6 +81,22 @@ test("normalizePhone: o '55' só cai quando é o país (defeito 2)", () => {
   // DDD 55 (Santa Maria/RS) com fixo: 10 dígitos, o "55" é o DDD e FICA.
   assert.equal(N.normalizePhone("5534991234"), "5534991234");
   assert.equal(N.normalizePhone("123"), null);
+});
+
+test("DDD inexistente NÃO vira telefone (defeito 11)", () => {
+  // ⚠️ ESTE CASO VEIO DE UMA SONDA CONTRA UM SITE REAL, não de imaginação: o
+  // crawler extraiu `1064065382` do rodapé da Smart Fit e o filtro de 10–11
+  // dígitos aceitou. A tela teria mostrado "(10) 6406-5382" como telefone da
+  // empresa — e o vendedor teria ligado para o nada.
+  assert.equal(N.normalizePhone("1064065382"), null)
+  assert.equal(N.normalizePhone("2043301234"), null) // DDD 20 não existe
+  assert.equal(N.normalizePhone("2343301234"), null) // DDD 23 não existe
+  // Sequência decorativa colada no HTML: 1º dígito do assinante é 0 ou 1.
+  assert.equal(N.normalizePhone("1100000000"), null)
+  // E os válidos continuam passando, inclusive o DDD 55 com fixo.
+  assert.equal(N.normalizePhone("1143301234"), "1143301234")
+  assert.equal(N.normalizePhone("5534991234"), "5534991234")
+  assert.equal(N.normalizePhone("98991380808"), "98991380808")
 });
 
 test("isMobilePhone: só 11 dígitos com nono dígito 6-9", () => {
@@ -409,6 +437,23 @@ test("a ordem das páginas do crawl começa pela home e pelo /contato", () => {
   // justamente onde o contato brasileiro costuma estar.
   assert.equal(website.CANDIDATE_PATHS[0], "/");
   assert.equal(website.CANDIDATE_PATHS[1], "/contato");
+});
+
+test("'não consegui chegar' NÃO é 'o site me proibiu' (defeito 12)", async () => {
+  // ⚠️ OUTRO ACHADO DA SONDA REAL. Um domínio vindo do OSM sem registro A nem
+  // AAAA (site que saiu do ar) voltava marcado como `blocked: "robots"` — e o
+  // dono do negócio leria na ficha que aquele lead BLOQUEIA a plataforma,
+  // quando a verdade é que o site dele não existe mais. Explicação errada num
+  // campo que a tela mostra manda a pessoa resolver o problema errado.
+  //
+  // Rede privada é OUTRA coisa e continua sendo recusa dura: ali não é "não
+  // consegui", é "não vou" — é a trava de SSRF.
+  assert.equal(await website.isCrawlAllowed("http://127.0.0.1"), "unsafe")
+  assert.equal(await website.isCrawlAllowed("http://169.254.169.254"), "unsafe")
+  assert.equal(await website.isCrawlAllowed("ftp://exemplo.com.br"), "unsafe")
+  // Host que não resolve: "unreachable", nunca "robots".
+  const morto = await website.isCrawlAllowed("https://este-dominio-nao-existe-xyzq.com.br")
+  assert.equal(morto, "unreachable")
 });
 
 test("anti-SSRF: destino privado e protocolo estranho são recusados", async () => {
