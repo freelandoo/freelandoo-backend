@@ -189,6 +189,11 @@ async function buildUf({ uf, cats, bin, rebuild }) {
     "  SELECT id, names.primary AS name, categories.primary AS category,",
     "         ST_Y(geometry) AS lat, ST_X(geometry) AS lon,",
     "         phones, websites, socials, emails,",
+    //   brand -> o sinal de REDE/FRANQUIA (ver overture.toDraft)
+    //   operating_status -> o lugar fechou
+    //   confidence -> o quanto a fonte confia no ponto
+    "         brand.names.primary AS brand_name, brand.wikidata AS brand_wikidata,",
+    "         operating_status, confidence,",
     "         addresses[1].freeform AS address, addresses[1].postcode AS zip",
     `  FROM read_parquet('${S3}', hive_partitioning=1)`,
     `  WHERE bbox.xmin BETWEEN ${xmin} AND ${xmax}`,

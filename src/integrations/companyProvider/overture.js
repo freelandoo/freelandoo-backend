@@ -175,6 +175,44 @@ function toDraft(row) {
     // "não tem" — e é a diferença que impede a régua de confiança de tratar a
     // ausência como um valor que pode vencer o da Receita.
     cnpj: null,
+
+    // ⚠️ O SINAL DE REDE/FRANQUIA. `brand` é o campo do Overture que diz que
+    // este ponto pertence a uma marca. MEDIDO em SP: 26,2% das farmácias o têm
+    // (e ele pega Drogaria São Paulo, Raia, Drogasil, Pague Menos, Farmais)
+    // contra 1,2% das barbearias, que quase não têm rede — ou seja, ele não é
+    // ruído: só acende onde rede existe.
+    //
+    // ⚠️ É MARCADO, NUNCA DESCARTADO. Quem decide se rede entra na lista é a
+    // TELA, não a ingestão: franqueado às vezes compra (a unidade costuma ter
+    // verba local), e apagar aqui exigiria REGERAR o lote inteiro para voltar
+    // atrás.
+    //
+    // ⚠️⚠️ TER MARCA NÃO É SER REDE, E CONFUNDIR OS DOIS ESCONDE LEAD BOM.
+    // Medido em SP (farmácia, barbearia, padaria, salão): das marcas
+    // distintas, 303 têm UMA LOJA SÓ — "Barbearia HeroBoy", "Padaria
+    // Delícia", "Farmácia Indiana". São independentes que preencheram o
+    // campo com o próprio nome. `brand IS NOT NULL` marcaria as 303 como
+    // rede e as tiraria da lista — o oposto do que a feature existe para
+    // fazer. Rede de verdade são as 39 marcas com 20+ lojas, que sozinhas
+    // respondem por 4.316 lugares.
+    //
+    // ⚠️ POR ISSO O RASCUNHO NÃO DECIDE — ele só CARREGA a marca. "É rede?"
+    // depende de CONTAR as lojas daquela marca no lote, e uma linha sozinha
+    // não tem como saber disso. A decisão mora onde o lote inteiro é
+    // visível (geração/ingestão), nunca aqui.
+    //
+    // ⚠️ E `brand` É INCOMPLETO pelo outro lado: a Farmelhor aparece dos DOIS
+    // (72 lojas com marca e 38 sem). Fechar essa fresta exige repetição de
+    // nome CRUZADA com domínio compartilhado; repetição sozinha NÃO serve,
+    // porque "Drogaria Central" ×38 são 38 independentes homônimas.
+    brand_name: String(row?.brand_name || "").trim() || null,
+    brand_wikidata: String(row?.brand_wikidata || "").trim() || null,
+
+    // Diz se o lugar fechou. Medido em SP: ZERO não-abertos nestas categorias
+    // hoje, então ele é inerte — existe para o dia em que a fonte preencher,
+    // e é mais barato carregá-lo agora do que regerar o lote depois.
+    operating_status: String(row?.operating_status || "").trim() || null,
+    confidence: Number.isFinite(Number(row?.confidence)) ? Number(row.confidence) : null,
   };
 
   return {
