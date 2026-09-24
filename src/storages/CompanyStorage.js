@@ -15,6 +15,13 @@
 //    entra uma vez, com o `::tipo` explícito quando houver a menor dúvida.
 
 const N = require("../utils/companyNormalize");
+// ⚠️ `tb_region_city` MORA NO BANCO QUENTE (é referência da plataforma, lida
+// por academia, perfil e ranking), e o catálogo de leads mora no FRIO. Não há
+// JOIN entre bancos: a região é resolvida SEMPRE no quente, nunca pela conexão
+// que chega como parâmetro — que aqui é a do frio. Foi exatamente o que quebrou
+// toda ingestão nova no dia da virada (24/09): "relation tb_region_city does
+// not exist". Sem DATABASE_URL_COLD os dois pools são o mesmo objeto.
+const hotPool = require("../databases");
 
 /**
  * As colunas que a tela e a exportação leem. Projeção EXPLÍCITA, nunca `*`.
@@ -275,10 +282,10 @@ class CompanyStorage {
   }
 
   /** Resolve a região pela MESMA régua do resto da plataforma (mig 121). */
-  static async resolveRegion(conn, uf, city) {
+  static async resolveRegion(_conn, uf, city) {
     const cityNorm = N.normalizeCity(city);
     if (!uf || !cityNorm) return null;
-    const { rows } = await conn.query(
+    const { rows } = await hotPool.query(
       `SELECT id_region FROM public.tb_region_city
         WHERE uf = $1 AND municipio_norm = $2 LIMIT 1`,
       [String(uf).toUpperCase().slice(0, 2), cityNorm]
@@ -757,9 +764,9 @@ class CompanyStorage {
   }
 
   /** (uf, cidade) → id_region, para o lote inteiro de uma vez. */
-  static async bulkResolveRegions(conn, pairs = []) {
+  static async bulkResolveRegions(_conn, pairs = []) {
     if (!pairs.length) return new Map();
-    const { rows } = await conn.query(
+    const { rows } = await hotPool.query(
       `SELECT DISTINCT ON (rc.uf, rc.municipio_norm)
               rc.uf, rc.municipio_norm AS city_norm, rc.id_region
          FROM public.tb_region_city rc
