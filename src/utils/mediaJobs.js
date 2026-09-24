@@ -1,9 +1,9 @@
 // src/utils/mediaJobs.js — F4.S1
 //
 // Cliente da fila de mídia: expõe as MESMAS funções de utils/mediaProcessing
-// (mesma assinatura, mesmo retorno), mas executa o trabalho pesado no worker
-// forkado (src/workers/media-worker.js) com concorrência 1 — encode de vídeo
-// não compete com a API e uploads paralelos enfileiram em vez de disputar CPU.
+// (mesma assinatura, mesmo retorno), mas executa o trabalho pesado num POOL
+// de workers forkados (src/workers/media-worker.js) — encode de vídeo não
+// compete com a API, e a fila tem prioridade (ver utils/mediaPool).
 //
 // Cada job ganha uma linha em media_jobs (status queued→processing→done|error)
 // pra observabilidade/histórico. Os bytes trafegam por arquivos em tmp (nunca
@@ -20,6 +20,7 @@ const pool = require("../databases");
 const mediaProcessing = require("./mediaProcessing");
 const processCourseVideoInline = require("../integrations/ffmpeg/processCourseVideo");
 const { createLogger } = require("./logger");
+const { containerCpus, poolSize, pickNext } = require("./mediaPool");
 
 const log = createLogger("media-jobs");
 
@@ -31,10 +32,6 @@ const RETENTION_DAYS = 30;
 
 const DISABLED = process.env.MEDIA_WORKER_DISABLED === "1";
 
-let worker = null;
-let workerAlive = false;
-let reforkAttempts = 0;
-const pending = new Map(); // jobId → { resolve, reject, timer, dir }
 
 // ─── (De)serialização: espelho exato do media-worker.js ────────────────────
 
@@ -98,61 +95,182 @@ async function dbUpdate(jobId, fields) {
   }
 }
 
-// ─── Worker lifecycle ───────────────────────────────────────────────────────
+// ─── Pool de processos ──────────────────────────────────────────────────────
+//
+// ⚠️ ERA UM PROCESSO, UM TRABALHO POR VEZ: 50 pessoas postando juntas faziam a
+// 50ª esperar as outras 49. Agora são até N processos (ver utils/mediaPool),
+// com a fila e a prioridade no PAI — o filho recebe um trabalho por vez.
+//
+// ⚠️ OS EXTRAS SÃO PREGUIÇOSOS, e isso é custo, não detalhe: cada processo Node
+// parado ocupa ~50 MB, e o Railway cobra memória por minuto. A vaga 0 fica
+// sempre de pé (como antes); as outras nascem quando há fila e morrem depois
+// de IDLE_MS sem trabalho. Parado, o pool custa o mesmo que o processo único.
 
-function spawnWorker() {
-  if (DISABLED) return;
+const CPUS = containerCpus();
+const { size: POOL_SIZE, threads: FFMPEG_THREADS } = poolSize(
+  CPUS,
+  process.env.MEDIA_WORKER_CONCURRENCY
+);
+const IDLE_MS = 5 * 60 * 1000;
+// Espera na fila tem teto próprio: sem ele a requisição ficaria pendurada até
+// o cliente desistir, sem ninguém dizer por quê.
+const QUEUE_WAIT_MS = 15 * 60 * 1000;
+
+const slots = []; // { id, proc, alive, job, idleTimer, reforkAttempts, retiring }
+const queue = []; // { jobId, fn, dir, seq, resolve, reject, waitTimer, timer }
+let seq = 0;
+
+function aliveSlots() {
+  return slots.filter((s) => s && s.alive && s.proc?.connected);
+}
+
+function spawnSlot(id) {
+  const slot = slots[id] || { id, reforkAttempts: 0 };
+  slots[id] = slot;
+  slot.job = null;
+  slot.retiring = false;
   try {
-    worker = fork(WORKER_PATH, [], { stdio: "inherit" });
+    slot.proc = fork(WORKER_PATH, [], {
+      stdio: "inherit",
+      // A fatia de CPU de cada ffmpeg (utils/mediaProcessing.ffmpegThreadArgs).
+      env: { ...process.env, MEDIA_FFMPEG_THREADS: String(FFMPEG_THREADS) },
+    });
   } catch (err) {
-    log.error("worker.fork_failed", { message: err?.message });
-    worker = null;
-    workerAlive = false;
+    log.error("worker.fork_failed", { slot: id, message: err?.message });
+    slot.alive = false;
     return;
   }
-  workerAlive = true;
+  slot.alive = true;
+  const proc = slot.proc;
 
-  worker.on("message", (msg) => {
-    if (!msg?.jobId) return;
-    const entry = pending.get(msg.jobId);
+  proc.on("message", (msg) => {
+    if (!msg?.jobId || !slot.job || slot.job.jobId !== msg.jobId) return;
     if (msg.type === "start") {
       void dbUpdate(msg.jobId, { status: "processing", started_at: new Date() });
       return;
     }
-    if (!entry) return; // timeout já resolveu/rejeitou — ignora
-    pending.delete(msg.jobId);
-    clearTimeout(entry.timer);
+    const job = slot.job;
+    finishSlotJob(slot);
     if (msg.type === "done") {
-      reforkAttempts = 0;
-      entry.resolve();
+      slot.reforkAttempts = 0;
+      job.resolve();
     } else if (msg.type === "error") {
       const err = new Error(msg.message || "Falha ao processar mídia");
       err.statusCode = msg.statusCode || 500;
-      entry.reject(err);
+      job.reject(err);
     }
+    pump();
   });
 
-  worker.on("exit", (code, signal) => {
-    workerAlive = false;
-    log.error("worker.exited", { code, signal, pending: pending.size });
-    // Requests em voo não têm mais quem processe — rejeita todas.
-    for (const [jobId, entry] of pending) {
-      clearTimeout(entry.timer);
+  proc.on("exit", (code, signal) => {
+    // Um processo antigo que morre depois de a vaga já ter sido reaberta não
+    // pode derrubar o trabalho do processo novo.
+    if (slot.proc !== proc) return;
+    slot.alive = false;
+    const retiring = slot.retiring;
+    // Só o trabalho DESTA vaga fica sem quem processe; as outras seguem.
+    if (slot.job) {
+      const job = slot.job;
+      finishSlotJob(slot);
       const err = new Error("Processamento de mídia interrompido. Tente novamente.");
       err.statusCode = 503;
-      entry.reject(err);
-      void dbUpdate(jobId, { status: "error", error: "worker exited", finished_at: new Date() });
+      job.reject(err);
+      void dbUpdate(job.jobId, { status: "error", error: "worker exited", finished_at: new Date() });
     }
-    pending.clear();
-    // Re-fork com backoff. Não desiste: o fallback inline cobre o intervalo.
-    const delay = Math.min(REFORK_BASE_DELAY_MS * 2 ** reforkAttempts, 60_000);
-    reforkAttempts += 1;
-    setTimeout(spawnWorker, delay).unref?.();
+    if (slot.idleTimer) clearTimeout(slot.idleTimer);
+    if (retiring) {
+      log.info("worker.retired", { slot: id });
+      pump();
+      return;
+    }
+    log.error("worker.exited", { slot: id, code, signal });
+    // A vaga 0 é a de sempre: volta com backoff. As extras renascem sob demanda.
+    if (id === 0) {
+      const delay = Math.min(REFORK_BASE_DELAY_MS * 2 ** slot.reforkAttempts, 60_000);
+      slot.reforkAttempts += 1;
+      setTimeout(() => {
+        // `pump` pode ter reaberto a vaga 0 no intervalo, sob demanda: abrir de
+        // novo deixaria um processo órfão vivo, fora do controle do pool.
+        if (!slots[0]?.alive) spawnSlot(0);
+        pump();
+      }, delay).unref?.();
+    }
+    pump();
   });
 }
 
+function finishSlotJob(slot) {
+  if (slot.job?.timer) clearTimeout(slot.job.timer);
+  slot.job = null;
+  armIdle(slot);
+}
+
+function armIdle(slot) {
+  if (slot.idleTimer) clearTimeout(slot.idleTimer);
+  slot.idleTimer = null;
+  if (slot.id === 0 || !slot.alive) return;
+  slot.idleTimer = setTimeout(() => {
+    if (slot.job || !slot.alive) return;
+    slot.retiring = true;
+    try {
+      slot.proc.kill();
+    } catch {
+      /* já saiu */
+    }
+  }, IDLE_MS);
+  slot.idleTimer.unref?.();
+}
+
+/** Despacha o que der: vaga livre + trabalho que a prioridade deixa rodar. */
+function pump() {
+  while (queue.length) {
+    const running = {};
+    for (const s of slots) if (s?.job) running[s.job.fn] = (running[s.job.fn] || 0) + 1;
+    const idx = pickNext(queue, running);
+    if (idx === -1) return;
+
+    let slot = aliveSlots().find((s) => !s.job);
+    if (!slot) {
+      // Todas ocupadas: abre uma vaga extra, se ainda couber no pool.
+      let free = -1;
+      for (let i = 0; i < POOL_SIZE; i++) {
+        if (!slots[i] || !slots[i].alive) {
+          free = i;
+          break;
+        }
+      }
+      if (free === -1) return;
+      spawnSlot(free);
+      slot = slots[free];
+      if (!slot?.alive) return;
+    }
+
+    const [job] = queue.splice(idx, 1);
+    clearTimeout(job.waitTimer);
+    if (slot.idleTimer) clearTimeout(slot.idleTimer);
+    // ⚠️ O prazo conta do DESPACHO, não da entrada na fila. Antes ele corria
+    // durante a espera, e um vídeo podia estourar sem nunca ter rodado.
+    job.timer = setTimeout(() => {
+      if (slot.job !== job) return;
+      void dbUpdate(job.jobId, { status: "error", error: "timeout", finished_at: new Date() });
+      const err = new Error("O processamento da mídia demorou demais. Tente um arquivo menor.");
+      err.statusCode = 408;
+      slot.job = null;
+      job.reject(err);
+      // O ffmpeg daquela vaga pode seguir preso: recicla o processo.
+      try {
+        slot.proc.kill("SIGKILL");
+      } catch {
+        /* já saiu */
+      }
+    }, JOB_TIMEOUT_MS);
+    slot.job = job;
+    slot.proc.send({ type: "job", jobId: job.jobId, fn: job.fn, dir: job.dir });
+  }
+}
+
 /**
- * Sobe o worker + marca como órfãos jobs de um boot anterior + agenda a
+ * Sobe a vaga 0 + marca como órfãos jobs de um boot anterior + agenda a
  * retenção. Chamar uma vez no boot do servidor (index.js).
  */
 function startMediaWorker() {
@@ -160,7 +278,8 @@ function startMediaWorker() {
     log.info("worker.disabled", { reason: "MEDIA_WORKER_DISABLED=1" });
     return;
   }
-  spawnWorker();
+  log.info("pool.configured", { cpus: CPUS, size: POOL_SIZE, ffmpegThreads: FFMPEG_THREADS });
+  spawnSlot(0);
 
   // Jobs queued/processing de antes do restart: ninguém mais espera por eles.
   void pool
@@ -199,15 +318,19 @@ async function runInWorker(fn, args, meta) {
     await dbInsert(jobId, fn, meta);
 
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pending.delete(jobId);
-        void dbUpdate(jobId, { status: "error", error: "timeout", finished_at: new Date() });
-        const err = new Error("O processamento da mídia demorou demais. Tente um arquivo menor.");
-        err.statusCode = 408;
+      const job = { jobId, fn, dir, seq: seq++, resolve, reject, timer: null };
+      job.waitTimer = setTimeout(() => {
+        const i = queue.indexOf(job);
+        if (i === -1) return;
+        queue.splice(i, 1);
+        void dbUpdate(jobId, { status: "error", error: "queue wait", finished_at: new Date() });
+        const err = new Error("Muitos envios agora. Tente de novo em alguns minutos.");
+        err.statusCode = 503;
         reject(err);
-      }, JOB_TIMEOUT_MS);
-      pending.set(jobId, { resolve, reject, timer, dir });
-      worker.send({ type: "job", jobId, fn, dir });
+      }, QUEUE_WAIT_MS);
+      job.waitTimer.unref?.();
+      queue.push(job);
+      pump();
     });
 
     const raw = JSON.parse(await fs.readFile(path.join(dir, "result.json"), "utf8"));
@@ -230,7 +353,7 @@ async function runInWorker(fn, args, meta) {
 }
 
 async function run(fn, args, meta, inlineImpl) {
-  if (DISABLED || !workerAlive || !worker?.connected) {
+  if (DISABLED || !aliveSlots().length) {
     if (!DISABLED) log.warn("fallback.inline", { fn });
     return inlineImpl();
   }

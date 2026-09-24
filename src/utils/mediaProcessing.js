@@ -5,6 +5,8 @@ const path = require("path");
 const { spawn } = require("child_process");
 const sharp = require("sharp");
 const ffmpegPath = require("ffmpeg-static");
+const { probeMedia } = require("./videoProbe");
+const { canStreamCopy, sizeCapBitrate } = require("./composePlan");
 const { buildCubeLut } = require("./composerLut");
 
 const MB = 1024 * 1024;
@@ -372,39 +374,12 @@ function runFfmpeg(args, timeoutMs = 180000) {
   });
 }
 
-// Le largura/altura do video a partir do stderr do ffmpeg — ffmpeg-static nao
-// traz ffprobe, entao e o mesmo truque do getVideoDuration. Sem saber o
-// enquadramento de origem so daria pra cortar todo video de post em 4:5 no
-// escuro, que era exatamente o problema.
+// Largura/altura VISTAS (rotação 90/270 já aplicada). Lê só o CABEÇALHO — a
+// versão antiga decodificava o vídeo inteiro (`-f null -`) para isto; ver
+// utils/videoProbe.js.
 async function probeVideoDimensions(filePath) {
-  return new Promise((resolve) => {
-    if (!ffmpegPath) { resolve(null); return; }
-    const child = spawn(ffmpegPath, ["-i", filePath, "-f", "null", "-"], { windowsHide: true });
-    let stderr = "";
-    child.stderr.on("data", (c) => {
-      stderr += c.toString();
-      if (stderr.length > 20000) stderr = stderr.slice(-20000);
-    });
-    child.on("error", () => resolve(null));
-    child.on("close", () => {
-      const line = stderr
-        .split(/\r?\n/)
-        .find((l) => /Stream #\d+:\d+.*Video:/.test(l));
-      if (!line) { resolve(null); return; }
-      // Exige 2+ digitos dos dois lados pra nao casar com codec tag tipo "0x1f".
-      const m = line.match(/(?:^|[\s,])(\d{2,5})x(\d{2,5})(?:[\s,\]]|$)/);
-      if (!m) { resolve(null); return; }
-      let width = Number(m[1]);
-      let height = Number(m[2]);
-      // Video de celular guarda a rotacao em side data e o ffmpeg ja a aplica
-      // no decode, entao em 90/270 o WxH do stream vem invertido.
-      const rot = stderr.match(/rotation of (-?\d+(?:\.\d+)?) degrees/);
-      if (rot && Math.abs(Number(rot[1])) % 180 === 90) {
-        const swap = width; width = height; height = swap;
-      }
-      resolve(width > 0 && height > 0 ? { width, height } : null);
-    });
-  });
+  const info = await probeMedia(filePath);
+  return info.width && info.height ? { width: info.width, height: info.height } : null;
 }
 
 async function extractVideoThumbnail(videoPath, tempDir) {
@@ -631,20 +606,13 @@ async function processPortfolioMedia(file, mediaType, options = {}) {
  * Lê a duração de um arquivo de vídeo (em segundos) usando ffmpeg.
  * Faz parse do stderr porque ffmpeg-static não vem com ffprobe.
  */
+// Também lê só o cabeçalho. Mesma semântica de antes: sem "Duration" legível
+// (webm do MediaRecorder traz N/A) a promessa REJEITA, e quem chama já trata.
 async function getVideoDuration(filePath) {
-  return new Promise((resolve, reject) => {
-    if (!ffmpegPath) { reject(httpError("ffmpeg nao disponivel.", 500)); return; }
-    const child = spawn(ffmpegPath, ["-i", filePath, "-f", "null", "-"], { windowsHide: true });
-    let stderr = "";
-    child.stderr.on("data", (c) => { stderr += c.toString(); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
-    child.on("error", reject);
-    child.on("close", () => {
-      const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-      if (!m) { reject(httpError("Nao foi possivel ler a duracao do video.")); return; }
-      const seconds = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
-      resolve(seconds);
-    });
-  });
+  if (!ffmpegPath) throw httpError("ffmpeg nao disponivel.", 500);
+  const info = await probeMedia(filePath);
+  if (info.duration == null) throw httpError("Nao foi possivel ler a duracao do video.");
+  return info.duration;
 }
 
 /**
@@ -969,6 +937,16 @@ function composeCropRect(srcW, srcH, aspect, zoom, panX, panY) {
   return { w, h, x, y };
 }
 
+/**
+ * Threads por ffmpeg quando vários rodam juntos. O pool de mídia (mediaJobs)
+ * divide a CPU do container entre os processos e passa a fatia por env; sem
+ * ela (processamento inline, testes) o ffmpeg escolhe sozinho, como sempre.
+ */
+function ffmpegThreadArgs() {
+  const n = Number.parseInt(process.env.MEDIA_FFMPEG_THREADS || "", 10);
+  return Number.isFinite(n) && n > 0 ? ["-threads", String(n)] : [];
+}
+
 /** Escapa um caminho para uso DENTRO de um argumento de filtro do ffmpeg. */
 function escapeFilterPath(p) {
   return String(p).replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
@@ -992,17 +970,14 @@ async function composeVideoFromFile(inputPath, params = {}) {
   const outputPath = path.join(tempDir, "output.mp4");
 
   try {
-    const probed = await probeVideoDimensions(inputPath);
-    if (!probed) {
+    // ⚠️ UMA leitura de cabeçalho só, sem decodificar. Eram DUAS passadas
+    // completas pelo arquivo (dimensões e duração) antes do encode.
+    const info = await probeMedia(inputPath);
+    if (!info.width || !info.height) {
       throw httpError("Nao foi possivel ler este video. Tente outro arquivo.");
     }
-
-    let duration = 0;
-    try {
-      duration = await getVideoDuration(inputPath);
-    } catch {
-      duration = 0;
-    }
+    const probed = { width: info.width, height: info.height };
+    const duration = info.duration ?? 0;
     // ⚠️ O TETO É POR SUPERFÍCIE, e não uma constante só. `tb_story` tem
     // `CHECK (duration_seconds <= 60)`: um story de 70s passaria por todo o
     // upload e todo o encode para só então bater na constraint do banco — a
@@ -1029,14 +1004,40 @@ async function composeVideoFromFile(inputPath, params = {}) {
     const outW = Math.max(2, evenDown(target.w * scale));
     const outH = Math.max(2, evenDown(target.h * scale));
 
+    // ─── cópia direta: quando nada muda, não recodifica ───────────────────
+    const cube = buildCubeLut(params.filter);
+    const grain = Math.max(0, Math.min(1, Number(params.filter?.grain) || 0));
+    let inputBytes = 0;
+    try {
+      inputBytes = (await fs.stat(inputPath)).size;
+    } catch {
+      inputBytes = 0;
+    }
+    const copyOk = canStreamCopy(info, {
+      crop,
+      outW,
+      outH,
+      hasLut: !!cube,
+      hasOverlay: !!params.overlayPath,
+      hasPip: !!params.pipPath,
+      grain,
+      maxSeconds: cap,
+      inputBytes,
+      maxBytes: MAX_VIDEO_OUTPUT_BYTES,
+    });
+
     // ─── grafo de filtros ──────────────────────────────────────────────────
-    const inputs = ["-i", inputPath];
+    // ⚠️ `-t` também na ENTRADA: sem ele o ffmpeg lê e decodifica o resto do
+    // arquivo depois do ponto de corte só para descartar.
+    const inputs = ["-t", String(seconds), "-i", inputPath];
+    // Índice da próxima entrada no grafo. Contado à parte, e não derivado de
+    // `inputs.length`: opções de entrada (o `-t` acima) mudam o tamanho da lista.
+    let nextInput = 1;
     const chain = [
       `crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`,
       `scale=${outW}:${outH}:flags=lanczos`,
     ];
 
-    const cube = buildCubeLut(params.filter);
     if (cube) {
       const lutPath = path.join(tempDir, "grade.cube");
       await fs.writeFile(lutPath, cube, "utf8");
@@ -1045,7 +1046,6 @@ async function composeVideoFromFile(inputPath, params = {}) {
 
     // Grão: precisa mudar a cada quadro — assado num PNG viraria sujeira parada
     // na lente. É o único item da cadeia de cor que não cabe na LUT.
-    const grain = Math.max(0, Math.min(1, Number(params.filter?.grain) || 0));
     if (grain > 0.001) {
       chain.push(`noise=alls=${Math.max(1, Math.round(grain * 100))}:allf=t+u`);
     }
@@ -1055,7 +1055,7 @@ async function composeVideoFromFile(inputPath, params = {}) {
 
     if (params.pipPath) {
       inputs.push("-i", params.pipPath);
-      const idx = inputs.length / 2 - 1;
+      const idx = nextInput++;
       const pip = params.pip || {};
       // ⚠️ `?? 0.5` NÃO pega NaN (só null/undefined), e `Number("abc")` é NaN:
       // sem `finiteOr`, um valor torto viraria `main_w*NaN` no grafo de
@@ -1077,7 +1077,7 @@ async function composeVideoFromFile(inputPath, params = {}) {
 
     if (params.overlayPath) {
       inputs.push("-i", params.overlayPath);
-      const idx = inputs.length / 2 - 1;
+      const idx = nextInput++;
       // O PNG é rasterizado no tamanho-alvo pelo cliente; se a saída encolheu
       // (fonte menor que 1080), a escala aqui o acompanha.
       parts.push(`[${idx}:v]scale=${outW}:${outH}[ov]`);
@@ -1112,6 +1112,13 @@ async function composeVideoFromFile(inputPath, params = {}) {
           "veryfast",
           "-crf",
           String(crf),
+          // Teto de bitrate calculado do orçamento de 50 MB: o CRF manda no caso
+          // comum, e o vídeo longo e agitado cabe NA PRIMEIRA passada em vez de
+          // disparar o segundo encode inteiro (ver utils/composePlan.js).
+          "-maxrate",
+          `${rateCap.maxrateK}k`,
+          "-bufsize",
+          `${rateCap.bufsizeK}k`,
           "-profile:v",
           "high",
           "-level",
@@ -1126,13 +1133,45 @@ async function composeVideoFromFile(inputPath, params = {}) {
           "48000",
           "-movflags",
           "+faststart",
+          ...ffmpegThreadArgs(),
           outPath,
         ],
         9 * 60 * 1000
       );
     }
 
-    await encode(outputPath, 23);
+    const rateCap = sizeCapBitrate(seconds, MAX_VIDEO_OUTPUT_BYTES);
+
+    // Cópia direta quando nada muda. Falhando (contêiner estranho, stream que
+    // o muxer de mp4 recusa), cai no encode de sempre — nunca é pior que hoje.
+    let copied = false;
+    if (copyOk) {
+      try {
+        await runFfmpeg(
+          [
+            "-y",
+            "-i",
+            inputPath,
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            "-c",
+            "copy",
+            "-map_metadata",
+            "-1",
+            "-movflags",
+            "+faststart",
+            outputPath,
+          ],
+          2 * 60 * 1000
+        );
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+    if (!copied) await encode(outputPath, 23);
     let finalPath = outputPath;
     let size = (await fs.stat(outputPath)).size;
 
@@ -1178,7 +1217,7 @@ async function composeVideoFromFile(inputPath, params = {}) {
         width: outW,
         height: outH,
         duration_seconds: Math.max(1, Math.round(seconds)),
-        composed_by: "server",
+        composed_by: copied ? "server_copy" : "server",
         ...(thumbnail
           ? { thumbnail_width: thumbnail.width, thumbnail_height: thumbnail.height }
           : {}),

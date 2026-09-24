@@ -184,6 +184,42 @@ async function main() {
   const meansSpread = Math.max(...stats.channels.slice(0, 3).map((c) => c.mean)) - Math.min(...stats.channels.slice(0, 3).map((c) => c.mean));
   check("filtro P&B chegou no vídeo (canais RGB convergem)", meansSpread < 6, `spread=${meansSpread.toFixed(2)}`);
 
+  // ── cópia direta ─────────────────────────────────────────────────────────
+  // ⚠️ Medido: vídeo de celular sem edição entrava com 8,3 MB e saía com 8,7 MB
+  // recodificado. Quando nada muda, a montagem copia em vez de recodificar.
+  console.log("\n[6] cópia direta (nada a mudar)");
+  const srcCel = path.join(dir, "src-cel.mp4");
+  await run([
+    "-y",
+    "-f", "lavfi", "-i", "testsrc2=size=1080x1920:rate=30:duration=4",
+    "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-shortest", srcCel,
+  ]);
+  const semEdicao = await composeVideoFromFile(srcCel, { aspect: 9 / 16, zoom: 1, panX: 0, panY: 0, filter: null });
+  check("sem edição: COPIA em vez de recodificar", semEdicao.mediaMetadata.composed_by === "server_copy",
+    semEdicao.mediaMetadata.composed_by);
+  await fsp.writeFile(path.join(dir, "copia.mp4"), semEdicao.buffer);
+  const infoCopia = await probe(path.join(dir, "copia.mp4"));
+  check("cópia sai 1080x1920 e tocável (h264 yuv420p)", /1080x1920/.test(infoCopia) && /h264/.test(infoCopia) && /yuv420p/.test(infoCopia));
+  check("cópia preserva o áudio", /Audio: aac/.test(infoCopia));
+  check("cópia gera thumbnail", !!semEdicao.thumbnail && semEdicao.thumbnail.buffer.length > 0);
+  check("cópia reporta a duração", semEdicao.mediaMetadata.duration_seconds === 4, `${semEdicao.mediaMetadata.duration_seconds}s`);
+
+  const comFiltro = await composeVideoFromFile(srcCel, { aspect: 9 / 16, zoom: 1, panX: 0, panY: 0, filter: { mono: 1, tint: [1, 1, 1], tintStrength: 0 } });
+  check("com filtro: RECODIFICA (a cor tem que mudar)", comFiltro.mediaMetadata.composed_by === "server");
+
+  const comOverlay = await composeVideoFromFile(srcCel, { aspect: 9 / 16, zoom: 1, panX: 0, panY: 0, filter: null, overlayPath });
+  check("com texto por cima: RECODIFICA", comOverlay.mediaMetadata.composed_by === "server");
+
+  const comZoom = await composeVideoFromFile(srcCel, { aspect: 9 / 16, zoom: 1.2, panX: 0, panY: 0, filter: null });
+  check("com zoom: RECODIFICA", comZoom.mediaMetadata.composed_by === "server");
+
+  const comCorte = await composeVideoFromFile(srcCel, { aspect: 9 / 16, zoom: 1, panX: 0, panY: 0, filter: null, maxSeconds: 2 });
+  check("maior que o teto do story: RECODIFICA e corta",
+    comCorte.mediaMetadata.composed_by === "server" && comCorte.mediaMetadata.duration_seconds === 2,
+    `${comCorte.mediaMetadata.composed_by} ${comCorte.mediaMetadata.duration_seconds}s`);
+
   // ── trim ──────────────────────────────────────────────────────────────────
   console.log("\n[5] duração");
   check("duração reportada bate com a fonte", out.mediaMetadata.duration_seconds === 6, `${out.mediaMetadata.duration_seconds}s`);
