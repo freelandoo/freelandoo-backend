@@ -51,7 +51,7 @@ router.post(
   "/cars",
   authMiddleware,
   requireFeature("carro"),
-  asyncHandler(SubjectCommunityController.createOrJoinCar)
+  asyncHandler(SubjectCommunityController.createCar)
 );
 
 // ─── Games (mig 232: PLATAFORMA, não o espaço de cada um) ─────────────────────

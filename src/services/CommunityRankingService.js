@@ -30,9 +30,9 @@ class CommunityRankingService {
             -- Pet e games ficam de fora junto do condomínio (mig 210): são
             -- modalidades PESSOAIS, uma por bicho/jogo de cada dono. Uma
             -- comunidade de 1 membro competindo com uma de 300 não mede nada.
-            -- Carro NÃO entra nesta lista: é uma por modelo no site inteiro,
-            -- coletiva de verdade.
-            AND community_kind NOT IN ('condo', 'pet', 'games')
+            -- O carro ENTROU na lista na mig 259: deixou de ser uma por modelo
+            -- no site inteiro e virou uma por carro do dono, pessoal como o pet.
+            AND community_kind NOT IN ('condo', 'pet', 'games', 'car')
          ON CONFLICT (season_number, id_community) DO UPDATE
            SET xp_total = EXCLUDED.xp_total,
                xp_level = EXCLUDED.xp_level,

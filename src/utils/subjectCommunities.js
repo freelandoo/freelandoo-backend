@@ -16,11 +16,16 @@ const SUBJECT_KINDS = Object.freeze(["pet", "car", "games"]);
 // (dois cachorros da mesma raça são duas comunidades). Elas ficam fora do
 // ranking de comunidades — uma comunidade de 1 membro competindo com uma de 300
 // não mede nada, só polui a tabela.
-const PERSONAL_KINDS = Object.freeze(["pet", "games"]);
+//
+// ⚠️ O CARRO ENTROU AQUI NA MIG 259 (2026-09-24): ele era COLETIVO (uma
+// comunidade por modelo no site inteiro) e virou "um por carro do dono", como
+// o pet. O que junta os donos do mesmo modelo agora é o FEED de carros, com o
+// filtro "mesmo carro que o meu" — não a membresia.
+const PERSONAL_KINDS = Object.freeze(["pet", "games", "car"]);
 
-// Modalidades COLETIVAS: o assunto é do mundo, não de alguém. Uma por assunto
-// no site inteiro, garantida por índice (ux_profile_car_model).
-const COLLECTIVE_KINDS = Object.freeze(["car"]);
+// Modalidades COLETIVAS: o assunto é do mundo, não de alguém. Vazia desde a
+// mig 259 — a lista fica porque é a pergunta certa para a próxima modalidade.
+const COLLECTIVE_KINDS = Object.freeze([]);
 
 // Cada modalidade tem kill-switch próprio: elas podem ser seguradas em momentos
 // diferentes (o carro depende da FIPE, o pet não depende de nada).

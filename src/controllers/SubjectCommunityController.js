@@ -49,10 +49,10 @@ class SubjectCommunityController {
     return sendServiceResult(res, result);
   }
 
-  // 200 e não 201: metade das vezes esta rota não cria nada — ela ENTRA na
-  // comunidade que já existia daquele modelo. O corpo diz qual foi o caso.
-  static async createOrJoinCar(req, res) {
-    const result = await SubjectCommunityService.createOrJoinCar(req.user, req.body || {});
+  // Cria SEMPRE a comunidade de um carro do dono (mig 259 — antes ela podia
+  // entrar na comunidade do modelo, e por isso responde 200 e não 201).
+  static async createCar(req, res) {
+    const result = await SubjectCommunityService.createCar(req.user, req.body || {});
     return sendServiceResult(res, result);
   }
 

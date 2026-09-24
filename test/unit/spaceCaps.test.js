@@ -1,8 +1,9 @@
 // test/unit/spaceCaps.test.js
 //
-// O teto de "um só" das modalidades territoriais e do carro (decisão do Alex,
+// O teto de "um só" das modalidades territoriais (decisão do Alex,
 // 2026-09-17): *"só pode uma de condomínio, e uma de rua, somente o pet pode
-// ter mais de uma"*.
+// ter mais de uma"*. O carro saiu do teto na mig 259 (2026-09-24): "um ou mais,
+// estilo o meu pet".
 //
 // É *unit* e não e2e de propósito: `assertSingleSpace` só precisa de um `conn`
 // com `query`, então a decisão inteira — inclusive a folga de re-entrada, que é
@@ -37,7 +38,7 @@ const condoRow = { id_profile: MEU_PREDIO, display_name: "Residencial", kind: "c
 test("a tabela de tetos declara o que o Alex pediu", () => {
   assert.strictEqual(SpaceCaps.limitFor("condo"), 1);
   assert.strictEqual(SpaceCaps.limitFor("neighborhood"), 1);
-  assert.strictEqual(SpaceCaps.limitFor("car"), 1);
+  assert.strictEqual(SpaceCaps.limitFor("car"), Infinity);
   assert.strictEqual(SpaceCaps.limitFor("pet"), Infinity);
   // Modalidade sem linha na tabela não ganha teto por aqui (a comunidade
   // temática já é limitada pelo ingresso vendido).
@@ -90,18 +91,18 @@ test("a folga da re-entrada NÃO vale para outro prédio", async () => {
   assert.strictEqual(cap.existing_community.id_profile, MEU_PREDIO);
 });
 
-test("bairro e carro obedecem ao mesmo teto", async () => {
+test("bairro obedece ao mesmo teto", async () => {
   const bairro = await SpaceCaps.assertSingleSpace(
     fakeConn({ neighborhood: { id_profile: "n1", display_name: "Centro" } }),
     { id_user: USER, kind: "neighborhood" }
   );
   assert.strictEqual(bairro.statusCode, 409);
+});
 
-  const carro = await SpaceCaps.assertSingleSpace(
-    fakeConn({ car: { id_profile: "c1", display_name: "Civic" } }),
-    { id_user: USER, kind: "car" }
-  );
-  assert.strictEqual(carro.statusCode, 409);
+test("carro pode ter mais de um (mig 259) — nem chega a perguntar ao banco", async () => {
+  const conn = fakeConn({ car: { id_profile: "c1", display_name: "Civic" } });
+  assert.strictEqual(await SpaceCaps.assertSingleSpace(conn, { id_user: USER, kind: "car" }), null);
+  assert.strictEqual(conn.calls.length, 0);
 });
 
 test("sem usuário o teto não decide nada — quem autentica é o chamador", async () => {
@@ -114,7 +115,8 @@ test("sem usuário o teto não decide nada — quem autentica é o chamador", as
 });
 
 test("o espelho do front é a mesma lista", () => {
-  const single = ["condo", "neighborhood", "car"].every((k) => SpaceCaps.isSingleSpaceKind(k));
+  const single = ["condo", "neighborhood"].every((k) => SpaceCaps.isSingleSpaceKind(k));
   assert.ok(single);
   assert.strictEqual(SpaceCaps.isSingleSpaceKind("pet"), false);
+  assert.strictEqual(SpaceCaps.isSingleSpaceKind("car"), false);
 });

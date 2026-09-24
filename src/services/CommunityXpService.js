@@ -83,9 +83,9 @@ class CommunityXpService {
           -- Pet e games ficam de fora junto do condomínio (mig 210): são
           -- modalidades PESSOAIS, uma por bicho/jogo de cada dono. Uma
           -- comunidade de 1 membro competindo com uma de 300 não mede nada.
-          -- Carro NÃO entra nesta lista: é uma por modelo no site inteiro,
-          -- coletiva de verdade.
-          AND c.community_kind NOT IN ('condo', 'pet', 'games')
+          -- O carro ENTROU na lista na mig 259: deixou de ser uma por modelo
+          -- no site inteiro e virou uma por carro do dono, pessoal como o pet.
+          AND c.community_kind NOT IN ('condo', 'pet', 'games', 'car')
        ON CONFLICT (id_community_profile) DO UPDATE
          SET accumulated_xp = public.tb_community_xp_accumulator.accumulated_xp +
                (SELECT COUNT(*) FROM public.tb_community_member m
@@ -106,9 +106,9 @@ class CommunityXpService {
           -- Pet e games ficam de fora junto do condomínio (mig 210): são
           -- modalidades PESSOAIS, uma por bicho/jogo de cada dono. Uma
           -- comunidade de 1 membro competindo com uma de 300 não mede nada.
-          -- Carro NÃO entra nesta lista: é uma por modelo no site inteiro,
-          -- coletiva de verdade.
-          AND community_kind NOT IN ('condo', 'pet', 'games')`
+          -- O carro ENTROU na lista na mig 259: deixou de ser uma por modelo
+          -- no site inteiro e virou uma por carro do dono, pessoal como o pet.
+          AND community_kind NOT IN ('condo', 'pet', 'games', 'car')`
     );
     for (const row of r.rows) {
       await this.recalc(db, row.id_profile);

@@ -253,7 +253,7 @@ async function main() {
   // ═══ 4. Carro ═════════════════════════════════════════════════════════
   console.log("\n━━━ 4. Carro ━━━");
 
-  const modeloInexistente = await SubjectCommunityService.createOrJoinCar(dono, {
+  const modeloInexistente = await SubjectCommunityService.createCar(dono, {
     brand_code: "21",
     brand_label: "Honda",
     model_code: "0000",
@@ -261,14 +261,14 @@ async function main() {
   });
   check("modelo fora da FIPE é recusado", () => assert.ok(modeloInexistente.error));
 
-  const civic = await SubjectCommunityService.createOrJoinCar(dono, {
+  const civic = await SubjectCommunityService.createCar(dono, {
     brand_code: "21",
     brand_label: "Honda",
     // Rótulo torto de propósito: o catálogo é quem manda.
     model_code: "4321",
     model_label: "civic velho",
   });
-  check("funda a comunidade do modelo", () => {
+  check("cria a comunidade do carro", () => {
     assert.ok(!civic.error, civic.error);
     assert.strictEqual(civic.created, true);
   });
@@ -276,104 +276,47 @@ async function main() {
     assert.strictEqual(civic.community.display_name, "Honda Civic LX 1.7");
   });
 
-  const civic2 = await SubjectCommunityService.createOrJoinCar(outro, {
+  // ─── Mig 259: um carro por DONO, não um por modelo ──────────────────────
+  const civic2 = await SubjectCommunityService.createCar(outro, {
     brand_code: "21",
     brand_label: "Honda",
     model_code: "4321",
     model_label: "Civic LX 1.7",
   });
-  check("o segundo NÃO cria: entra na comunidade do primeiro", () => {
+  check("o segundo dono do mesmo modelo cria a comunidade DELE", () => {
     assert.ok(!civic2.error, civic2.error);
-    assert.strictEqual(civic2.created, false);
-    assert.strictEqual(civic2.joined, true);
-    assert.strictEqual(
+    assert.strictEqual(civic2.created, true);
+    assert.notStrictEqual(
       String(civic2.community.id_profile),
       String(civic.community.id_profile)
     );
   });
 
-  const membros = await db.query(
-    `SELECT COUNT(*)::int AS n FROM public.tb_community_member WHERE id_community_profile = $1`,
-    [civic.community.id_profile]
-  );
-  check("os dois estão dentro da mesma comunidade", () =>
-    assert.strictEqual(membros.rows[0].n, 2)
-  );
-
-  // A garantia real é o índice — não o `if` do service.
-  const idModel = (
-    await db.query(
-      `SELECT id_car_model FROM public.tb_profile WHERE id_profile = $1`,
-      [civic.community.id_profile]
-    )
-  ).rows[0].id_car_model;
-  code = null;
-  try {
-    await db.query(
-      `INSERT INTO public.tb_profile
-              (id_user, display_name, sub_profile_slug, is_community, id_leader_user,
-               community_kind, id_car_model)
-            VALUES ($1, 'Civic pirata', $2, TRUE, $1, 'car', $3)`,
-      [outro.id_user, `civic-pirata-${stamp}`, idModel]
-    );
-  } catch (e) {
-    code = e.code;
-  }
-  check("índice único impede uma segunda comunidade do mesmo modelo", () =>
-    assert.strictEqual(code, "23505")
-  );
-
-  // ⚠️ USUÁRIO PRÓPRIO, e não o `outro`: desde 2026-09-17 vale UM CARRO POR
-  // PESSOA (utils/spaceCaps), e o `outro` já entrou no Civic logo acima. O que
-  // este caso mede é "outro MODELO funda comunidade própria" — reusar alguém
-  // que já tem carro faria ele medir o teto por acidente.
-  const terceiro = await makeUser("terceiro");
-  const gol = await SubjectCommunityService.createOrJoinCar(terceiro, {
+  const segundoCarro = await SubjectCommunityService.createCar(dono, {
     brand_code: "59",
     brand_label: "Volkswagen",
     model_code: "9001",
     model_label: "Gol 1.0",
   });
-  check("outro modelo funda comunidade própria", () => {
-    assert.strictEqual(gol.created, true);
+  check("a mesma pessoa pode ter mais de um carro, como o pet", () => {
+    assert.ok(!segundoCarro.error, segundoCarro.error);
+    assert.strictEqual(segundoCarro.created, true);
   });
 
-  // ─── O teto: um carro por pessoa ──────────────────────────────────────
-  const segundoCarro = await SubjectCommunityService.createOrJoinCar(terceiro, {
-    brand_code: "21",
-    brand_label: "Honda",
-    model_code: "4321",
-    model_label: "Civic LX 1.7",
+  // O que junta os donos do mesmo modelo é o FEED (listCarCommunityIds).
+  const mesmoModelo = await SubjectCommunityStorage.listCarCommunityIds(db, {
+    sameModelAsUser: outro.id_user,
   });
-  check("quem já tem carro não entra num segundo", () => {
-    assert.strictEqual(segundoCarro.statusCode, 409);
-    assert.strictEqual(
-      String(segundoCarro.existing_community.id_profile),
-      String(gol.community.id_profile)
-    );
-  });
-
-  const reabrir = await SubjectCommunityService.createOrJoinCar(terceiro, {
-    brand_code: "59",
-    brand_label: "Volkswagen",
-    model_code: "9001",
-    model_label: "Gol 1.0",
-  });
-  check("reabrir o carro que já é seu continua valendo", () => {
-    assert.ok(!reabrir.error, reabrir.error);
-    assert.strictEqual(
-      String(reabrir.community.id_profile),
-      String(gol.community.id_profile)
-    );
+  check("'mesmo carro que o meu' junta os dois Civics e deixa o Gol de fora", () => {
+    assert.ok(mesmoModelo.includes(civic.community.id_profile));
+    assert.ok(mesmoModelo.includes(civic2.community.id_profile));
+    assert.ok(!mesmoModelo.includes(segundoCarro.community.id_profile));
   });
 
   // FIPE fora do ar não pode travar o cadastro (mesma regra do ViaCEP).
   fipeOffline = true;
-  // Usuário próprio pelo mesmo motivo do `terceiro`: o `dono` já fundou o
-  // Civic, e o teto de um carro por pessoa recusaria este cadastro antes de a
-  // FIPE sequer ser consultada — o caso deixaria de medir a FIPE.
   const quarto = await makeUser("quarto");
-  const offline = await SubjectCommunityService.createOrJoinCar(quarto, {
+  const offline = await SubjectCommunityService.createCar(quarto, {
     brand_code: "77",
     brand_label: "Marca Rara",
     model_code: "123",
@@ -431,20 +374,17 @@ async function main() {
     assert.strictEqual(kindErrado.statusCode, 400);
   });
 
-  // O rascunho de carro precisa de alguém SEM carro: com o teto de um só, quem
-  // já tem recebe de volta o que é dele em vez de um rascunho novo — e é isso
-  // que o caso "carro nasce sem modelo" deixaria de medir.
   const quinto = await makeUser("quinto");
-  const carroVazio = await SubjectCommunityService.createOrJoinCar(quinto, {});
+  const carroVazio = await SubjectCommunityService.createCar(quinto, {});
   check("carro nasce sem modelo", () => {
     assert.ok(!carroVazio.error, carroVazio.error);
     assert.strictEqual(carroVazio.community.display_name, "Meu carro");
   });
 
-  const rascunhoDeNovo = await SubjectCommunityService.createOrJoinCar(quinto, {});
-  check("pedir carro de novo abre o que já existe, não cria um segundo", () => {
-    assert.strictEqual(rascunhoDeNovo.created, false);
-    assert.strictEqual(
+  const rascunhoDeNovo = await SubjectCommunityService.createCar(quinto, {});
+  check("pedir carro de novo cria um SEGUNDO rascunho (mig 259)", () => {
+    assert.strictEqual(rascunhoDeNovo.created, true);
+    assert.notStrictEqual(
       String(rascunhoDeNovo.community.id_profile),
       String(carroVazio.community.id_profile)
     );
@@ -468,21 +408,15 @@ async function main() {
     assert.strictEqual(nomeCarro.rows[0].display_name, "Honda Fit LX 1.4")
   );
 
-  // Rival também precisa ser alguém sem carro — o que se mede aqui é o 409 do
-  // MODELO já tomado, não o teto de um carro por pessoa.
   const sexto = await makeUser("sexto");
-  const carroRival = await SubjectCommunityService.createOrJoinCar(sexto, {});
-  const rivalConflito = await SubjectCommunityService.updateSubject(
+  const carroRival = await SubjectCommunityService.createCar(sexto, {});
+  const rivalMesmoModelo = await SubjectCommunityService.updateSubject(
     sexto,
     { id_profile: carroRival.community.id_profile, kind: "car" },
     { brand_code: "21", brand_label: "Honda", model_code: "4322", model_label: "Fit LX 1.4" }
   );
-  check("modelo já tomado devolve 409 apontando a comunidade existente", () => {
-    assert.strictEqual(rivalConflito.statusCode, 409);
-    assert.strictEqual(
-      String(rivalConflito.existing_community.id_profile),
-      String(carroVazio.community.id_profile)
-    );
+  check("escolher um modelo que outro dono já tem não colide (mig 259)", () => {
+    assert.ok(!rivalMesmoModelo.error, rivalMesmoModelo.error);
   });
 
   const gameVazio = await SubjectCommunityService.createGame(dono, {});
@@ -638,7 +572,6 @@ async function main() {
   const users = [
     dono.id_user,
     outro.id_user,
-    terceiro.id_user,
     quarto.id_user,
     quinto.id_user,
     sexto.id_user,

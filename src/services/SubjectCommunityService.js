@@ -4,8 +4,8 @@
 // As três criam o MESMO perfil-comunidade que a comunidade temática, o
 // condomínio e o bairro criam — o que muda é o que faz o assunto existir:
 //   • pet   → espécie + raça (ou vira-lata), uma por bicho;
-//   • car   → marca + modelo, UMA no site inteiro (o primeiro funda, o resto
-//             entra).
+//   • car   → marca + modelo, UM POR CARRO DO DONO (mig 259; era um por
+//             modelo no site inteiro até então).
 //
 // ⚠️ GAMES SAIU DESTA LISTA NA MIG 232: ele deixou de ser o espaço de cada
 // pessoa e virou PLATAFORMA do site inteiro, como o Financeiro. O que sobrou
@@ -27,13 +27,9 @@ const AcademyStorage = require("../storages/AcademyStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const fipe = require("../integrations/fipe/catalog");
 const Subject = require("../utils/subjectCommunities");
-const SpaceCaps = require("../utils/spaceCaps");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("SubjectCommunityService");
-
-// Violação do índice `ux_profile_car_model`: dois fundadores no mesmo segundo.
-const UNIQUE_VIOLATION = "23505";
 
 class SubjectCommunityService {
   static async _assertEnabled(kind) {
@@ -236,18 +232,21 @@ class SubjectCommunityService {
   }
 
   /**
-   * Achar-ou-criar a comunidade de um modelo.
+   * Cria a comunidade de UM carro da pessoa (mig 259).
    *
-   * "O primeiro que criar a comunidade daquele carro, ninguém cria mais"
-   * (decisão do Alex). A garantia é o índice único, não este `if`: entre a
-   * consulta e o INSERT cabe outro fundador. Por isso a violação 23505 é
-   * TRATADA como sucesso — o segundo simplesmente entra na comunidade do
-   * primeiro, que é o que ele queria de qualquer forma.
+   * Até a mig 259 esta porta era "achar-ou-criar": uma comunidade por modelo no
+   * site inteiro, e o segundo dono de um Civic entrava na do primeiro. Agora é
+   * como o pet — cada carro é uma comunidade do dono, quantas ele quiser — e o
+   * que junta os donos do mesmo modelo é o FEED de carros, com o filtro "mesmo
+   * carro que o meu" (`CommunityService.getFeedPosts`).
+   *
+   * Sem marca/modelo no corpo, nasce VAZIA e o modelo é escolhido no painel da
+   * página (mig 211) — é o caminho do menu da foto de perfil.
    */
-  static async createOrJoinCar(user, payload) {
+  static async createCar(user, payload) {
     return runWithLogs(
       log,
-      "createOrJoinCar",
+      "createCar",
       () => ({ id_user: user?.id_user, brand: payload?.brand_code, model: payload?.model_code }),
       async () => {
         const id_user = user?.id_user;
@@ -255,112 +254,44 @@ class SubjectCommunityService {
         const gate = await this._assertEnabled("car");
         if (gate) return gate;
 
-        // Sem marca/modelo no corpo, a comunidade nasce VAZIA e o modelo é
-        // escolhido no headcard (mig 211). É o caminho do menu da foto de
-        // perfil: criar primeiro, perguntar depois, dentro da página.
-        //
-        // ⚠️ UM CARRO POR PESSOA (decisão do Alex, 2026-09-17): quem já tem
-        // não ganha um segundo espaço vazio — a porta vira "abre o que é seu".
-        // DEVOLVER em vez de recusar é de propósito: este caminho é o clique de
-        // "Meu carro", e responder erro a quem só queria abrir o próprio carro
-        // seria transformar a porta em parede.
-        if (!payload?.brand_code && !payload?.model_code) {
-          const mine = await SubjectCommunityStorage.findMySpaceByKind(pool, id_user, "car");
-          if (mine) {
-            const community = await CommunityStorage.getById(pool, mine.id_profile);
-            return { community: community || mine, created: false, joined: false };
-          }
-          return this._createEmptyCar(id_user, payload);
+        let model = null;
+        if (payload?.brand_code || payload?.model_code) {
+          const resolved = await this._resolveCarModel(payload);
+          if (resolved.error) return resolved;
+          model = resolved.model;
         }
 
-        const car = Subject.validateCar(payload);
-        if (car.error) return { error: car.error, statusCode: 400 };
-
-        // A FIPE manda nos rótulos quando responde. Quando não responde, o
-        // cadastro continua com o que veio do cliente e a linha nasce
-        // 'manual' — travar o carro na disponibilidade de um terceiro seria
-        // pior do que aceitar um rótulo eventualmente torto.
-        const check = await fipe.verifyModel(car);
-        if (check.verified === false) {
-          return { error: "Modelo não encontrado na tabela FIPE.", statusCode: 400 };
-        }
-        const model = {
-          ...car,
-          brand_label: check.brand_label || car.brand_label,
-          model_label: check.model_label || car.model_label,
-          source: check.verified ? "fipe" : "manual",
-        };
-
+        const { display_name, bio } = Subject.normalizeCommon(payload);
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
-          const catalog = await SubjectCommunityStorage.getOrCreateCarModel(client, model);
-
-          const existing = await SubjectCommunityStorage.findCarCommunity(
-            client,
-            catalog.id_car_model
-          );
-
-          // ⚠️ O TETO É CHECADO DEPOIS DE SABER QUAL COMUNIDADE O PEDIDO
-          // ABRIRIA: reabrir o carro que já é seu não é um segundo carro, e
-          // recusar ali trancaria a pessoa fora do próprio espaço.
-          const cap = await SpaceCaps.assertSingleSpace(client, {
-            id_user,
-            kind: "car",
-            allow_id_profile: existing?.id_profile || null,
-          });
-          if (cap) {
-            await client.query("ROLLBACK");
-            return cap;
-          }
-
-          if (existing) {
-            await client.query("ROLLBACK");
-            const joined = await this._joinExisting(existing.id_profile, id_user);
-            if (joined.error) return joined;
-            return { community: existing, created: false, joined: true };
-          }
-
           const community = await this._createShell(client, {
             id_user,
             kind: "car",
-            display_name: Subject.carDisplayName(model),
-            bio: Subject.normalizeCommon(payload).bio,
+            display_name:
+              display_name || (model ? Subject.carDisplayName(model) : Subject.PLACEHOLDER_NAME.car),
+            bio,
             avatar_url: payload?.avatar_url,
           });
-          await SubjectCommunityStorage.attachCarModel(
-            client,
-            community.id_profile,
-            catalog.id_car_model
-          );
+          let catalog = null;
+          if (model) {
+            catalog = await SubjectCommunityStorage.getOrCreateCarModel(client, model);
+            await SubjectCommunityStorage.attachCarModel(
+              client,
+              community.id_profile,
+              catalog.id_car_model
+            );
+          }
           await client.query("COMMIT");
-          return {
-            community: { ...community, ...catalog },
-            created: true,
-            joined: false,
-          };
+          return { community: { ...community, ...(catalog || {}) }, created: true };
         } catch (err) {
           try {
             await client.query("ROLLBACK");
           } catch {
             /* noop */
           }
-          if (err.code === UNIQUE_VIOLATION) {
-            // Corrida perdida: outra pessoa fundou o mesmo modelo no meio do
-            // caminho. Entrar na dela é o desfecho certo.
-            const catalog = await SubjectCommunityStorage.getOrCreateCarModel(pool, model);
-            const winner = await SubjectCommunityStorage.findCarCommunity(
-              pool,
-              catalog.id_car_model
-            );
-            if (winner) {
-              const joined = await this._joinExisting(winner.id_profile, id_user);
-              if (joined.error) return joined;
-              return { community: winner, created: false, joined: true };
-            }
-          }
-          log.error("createOrJoinCar.fail", { id_user, error: err.message });
-          return { error: "Não foi possível abrir a comunidade desse carro." };
+          log.error("createCar.fail", { id_user, error: err.message });
+          return { error: "Não foi possível criar a comunidade do carro." };
         } finally {
           client.release();
         }
@@ -368,32 +299,27 @@ class SubjectCommunityService {
     );
   }
 
-  /** Comunidade de carro sem modelo ainda — o dono escolhe dentro da página. */
-  static async _createEmptyCar(id_user, payload) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const community = await this._createShell(client, {
-        id_user,
-        kind: "car",
-        display_name:
-          Subject.normalizeCommon(payload).display_name || Subject.PLACEHOLDER_NAME.car,
-        bio: Subject.normalizeCommon(payload).bio,
-        avatar_url: payload?.avatar_url,
-      });
-      await client.query("COMMIT");
-      return { community, created: true, joined: false };
-    } catch (err) {
-      try {
-        await client.query("ROLLBACK");
-      } catch {
-        /* noop */
-      }
-      log.error("createEmptyCar.fail", { id_user, error: err.message });
-      return { error: "Não foi possível abrir a comunidade do carro." };
-    } finally {
-      client.release();
+  /**
+   * Valida o par marca/modelo contra a FIPE. A FIPE manda nos rótulos quando
+   * responde; quando não responde, o cadastro segue com o que veio do cliente
+   * e a linha nasce 'manual' — travar o carro na disponibilidade de um
+   * terceiro seria pior do que aceitar um rótulo eventualmente torto.
+   */
+  static async _resolveCarModel(payload) {
+    const car = Subject.validateCar(payload);
+    if (car.error) return { error: car.error, statusCode: 400 };
+    const check = await fipe.verifyModel(car);
+    if (check.verified === false) {
+      return { error: "Modelo não encontrado na tabela FIPE.", statusCode: 400 };
     }
+    return {
+      model: {
+        ...car,
+        brand_label: check.brand_label || car.brand_label,
+        model_label: check.model_label || car.model_label,
+        source: check.verified ? "fipe" : "manual",
+      },
+    };
   }
 
   // ─── Edição do assunto (dentro da página, sem modal) ────────────────────────
@@ -404,10 +330,9 @@ class SubjectCommunityService {
    * quem o grava é `setCurrentGame`, sem gate de líder — porque o alvo da
    * escrita é quem está pedindo, e não o espaço de alguém.
    *
-   * O carro é o caso interessante: escolher o modelo é o momento em que a
-   * unicidade passa a valer (até então `id_car_model` é NULL, e NULLs não
-   * colidem). Se o modelo já tem dono, devolvemos 409 APONTANDO a comunidade
-   * existente — o front oferece entrar nela, que é o que a pessoa queria.
+   * Desde a mig 259 o modelo do carro NÃO é mais único no site: dois donos de
+   * Civic têm cada um a comunidade do seu, então escolher o modelo nunca
+   * colide com ninguém.
    */
   static async updateSubject(user, params, payload) {
     return runWithLogs(
@@ -441,59 +366,11 @@ class SubjectCommunityService {
 
 
         // Carro
-        const car = Subject.validateCar(payload);
-        if (car.error) return { error: car.error, statusCode: 400 };
-        const check = await fipe.verifyModel(car);
-        if (check.verified === false) {
-          return { error: "Modelo não encontrado na tabela FIPE.", statusCode: 400 };
-        }
-        const model = {
-          ...car,
-          brand_label: check.brand_label || car.brand_label,
-          model_label: check.model_label || car.model_label,
-          source: check.verified ? "fipe" : "manual",
-        };
+        const resolved = await this._resolveCarModel(payload);
+        if (resolved.error) return resolved;
+        const model = resolved.model;
         const catalog = await SubjectCommunityStorage.getOrCreateCarModel(pool, model);
-
-        const existing = await SubjectCommunityStorage.findCarCommunity(
-          pool,
-          catalog.id_car_model
-        );
-        if (existing && String(existing.id_profile) !== String(params.id_profile)) {
-          return {
-            error: "Esse modelo já tem comunidade.",
-            statusCode: 409,
-            existing_community: {
-              id_profile: existing.id_profile,
-              display_name: existing.display_name,
-            },
-          };
-        }
-
-        try {
-          await SubjectCommunityStorage.attachCarModel(
-            pool,
-            params.id_profile,
-            catalog.id_car_model
-          );
-        } catch (err) {
-          if (err.code === UNIQUE_VIOLATION) {
-            // Corrida perdida entre a consulta e o UPDATE: outra pessoa fincou
-            // o mesmo modelo. Quem manda é o índice.
-            const winner = await SubjectCommunityStorage.findCarCommunity(
-              pool,
-              catalog.id_car_model
-            );
-            return {
-              error: "Esse modelo já tem comunidade.",
-              statusCode: 409,
-              existing_community: winner
-                ? { id_profile: winner.id_profile, display_name: winner.display_name }
-                : null,
-            };
-          }
-          throw err;
-        }
+        await SubjectCommunityStorage.attachCarModel(pool, params.id_profile, catalog.id_car_model);
 
         await SubjectCommunityStorage.renameIfPlaceholder(
           pool,
@@ -504,19 +381,6 @@ class SubjectCommunityService {
         return { subject: { kind: "car", ...catalog } };
       }
     );
-  }
-
-  /**
-   * Entrada na comunidade do carro que já existe. Delega ao CommunityService
-   * de propósito: quem sabe as regras de entrada (privada, teto, perfil) é
-   * ele — duplicá-las aqui criaria uma segunda porta com regras próprias, que é
-   * exatamente como o condomínio ganhou membro sem apartamento.
-   */
-  static async _joinExisting(id_profile, id_user) {
-    const CommunityService = require("./CommunityService");
-    const res = await CommunityService.join({ id_user }, { id_profile });
-    if (res?.error) return res;
-    return { ok: true };
   }
 
   // ─── Meus espaços (o menu da foto de perfil) ────────────────────────────────

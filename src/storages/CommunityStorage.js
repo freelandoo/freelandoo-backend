@@ -693,6 +693,10 @@ class CommunityStorage {
    * 2026-09-09). Passando NULL, nada muda: é a MESMA consulta do mural.
    * Uma segunda consulta "só dos meus" daria dois lugares decidindo o que é
    * post daquele espaço.
+   *
+   * `id_community` aceita UM id ou uma LISTA (mig 259): o feed de carros junta
+   * os posts de todas as comunidades de carro — ou só as do mesmo modelo — na
+   * MESMA consulta do mural, em vez de uma segunda que divergiria dela.
    */
   static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key, author_id_user }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 24);
@@ -728,7 +732,15 @@ class CommunityStorage {
            SELECT 1 FROM user_bookmark_item ubi
            WHERE ubi.id_portfolio_item = ppi.id_portfolio_item AND ubi.id_user = $2::uuid
          ) THEN TRUE ELSE FALSE END                           AS viewer_has_bookmarked
-       FROM public.tb_community_feed_item cfi
+       -- ⚠️ DISTINCT ANTES DO LIMIT: com uma LISTA de comunidades (o feed de
+       -- carros), o mesmo post pode estar ligado a duas delas. Sem o DISTINCT
+       -- aqui ele viria duas vezes e gastaria duas vagas da página.
+       FROM (
+         SELECT DISTINCT id_portfolio_item
+           FROM public.tb_community_feed_item
+          WHERE id_community_profile = ANY($1::uuid[])
+            AND id_portfolio_item IS NOT NULL
+       ) cfi
        JOIN public.tb_profile_portfolio_item ppi ON ppi.id_portfolio_item = cfi.id_portfolio_item
        JOIN public.tb_profile pro ON pro.id_profile = ppi.id_profile
        JOIN public.tb_user tu     ON tu.id_user = pro.id_user
@@ -763,8 +775,7 @@ class CommunityStorage {
            AND psm.phone_number_normalized IS NOT NULL
          LIMIT 1
        ) wa ON TRUE
-       WHERE cfi.id_community_profile = $1
-         AND ppi.status = 'published'
+       WHERE ppi.status = 'published'
          AND ppi.is_active = TRUE
          AND ppi.is_banned = FALSE
          AND pro.deleted_at IS NULL
@@ -781,7 +792,7 @@ class CommunityStorage {
        ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC
        LIMIT $3`,
       [
-        id_community,
+        Array.isArray(id_community) ? id_community : [id_community],
         viewer_id_user || null,
         lim,
         before_ts || null,
@@ -869,13 +880,19 @@ class CommunityStorage {
        ) hp ON TRUE
        LEFT JOIN public.tb_category ca ON ca.id_category = hp.id_category
        LEFT JOIN public.tb_machine  m  ON m.id_machine = COALESCE(ca.id_machine, hp.id_machine)
-      WHERE cfi.id_community_profile = $1
+      WHERE cfi.id_community_profile = ANY($1::uuid[])
         AND cfi.kind = 'recado'
         AND ($2::timestamptz IS NULL OR (cfi.created_at, ('r' || cfi.id::text)) < ($2::timestamptz, $3::text))
         AND ($5::uuid IS NULL OR cfi.id_author_user = $5::uuid)
       ORDER BY cfi.created_at DESC, cfi.id DESC
       LIMIT $4`,
-      [id_community, before_ts || null, before_key || null, lim, author_id_user || null]
+      [
+        Array.isArray(id_community) ? id_community : [id_community],
+        before_ts || null,
+        before_key || null,
+        lim,
+        author_id_user || null,
+      ]
     );
     return r.rows;
   }

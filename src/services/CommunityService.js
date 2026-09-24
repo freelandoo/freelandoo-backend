@@ -740,15 +740,43 @@ class CommunityService {
               ? asked
               : null;
 
+        // ─── O FEED DE CARROS (mig 259) ───────────────────────────────────
+        // Cada carro é uma comunidade do dono, e o que junta os donos é ESTE
+        // feed: a página de qualquer carro mostra os posts de TODOS os carros
+        // do site ("todos"), ou só os de quem tem o mesmo modelo que um dos
+        // carros de quem olha ("same_model"). Mesma consulta do mural, com uma
+        // LISTA de comunidades no lugar de uma só.
+        let feedScope = params.id_profile;
+        let car_scope = null;
+        if (gate.community?.kind === "car") {
+          car_scope = query?.scope === "same_model" ? "same_model" : "all";
+          const sameModelAsUser = car_scope === "same_model" ? viewer?.id_user || null : null;
+          // "Mesmo carro que o meu" sem sessão não tem "meu": lista vazia, com
+          // o motivo, para a tela dizer o que fazer em vez de parecer vazia.
+          if (car_scope === "same_model" && !sameModelAsUser) {
+            return { items: [], next_cursor: null, has_more: false, car_scope, needs_car_model: true };
+          }
+          const ids = await SubjectCommunityStorage.listCarCommunityIds(pool, { sameModelAsUser });
+          if (car_scope === "all" && !ids.includes(params.id_profile)) {
+            // A comunidade da página entra sempre no "todos" — inclusive
+            // quando ela é privada e quem olha já passou pela trava acima.
+            ids.push(params.id_profile);
+          }
+          if (!ids.length) {
+            return { items: [], next_cursor: null, has_more: false, car_scope, needs_car_model: true };
+          }
+          feedScope = ids;
+        }
+
         const [postRows, recadoRows] = await Promise.all([
-          CommunityStorage.listCommunityFeedPosts(pool, params.id_profile, {
+          CommunityStorage.listCommunityFeedPosts(pool, feedScope, {
             viewer_id_user: viewer?.id_user || null,
             limit: limit + 1,
             before_ts,
             before_key,
             author_id_user,
           }),
-          CommunityStorage.listCommunityRecados(pool, params.id_profile, {
+          CommunityStorage.listCommunityRecados(pool, feedScope, {
             limit: limit + 1,
             before_ts,
             before_key,
@@ -771,13 +799,19 @@ class CommunityService {
           };
         };
 
+        // ⚠️ DEDUPE POR POST: no feed de carros o mesmo post pode estar ligado
+        // a dois carros do mesmo dono, e viria duas vezes. No mural de uma
+        // comunidade só isso nunca acontece, e o filtro não custa nada.
+        const seen = new Set();
         const merged = [
           ...postRows.map((r) => shape(r, false)),
           ...recadoRows.map((r) => shape(r, true)),
-        ].sort((a, b) => {
-          if (a._ts !== b._ts) return b._ts - a._ts;
-          return a._key < b._key ? 1 : a._key > b._key ? -1 : 0;
-        });
+        ]
+          .filter((x) => (seen.has(x._key) ? false : (seen.add(x._key), true)))
+          .sort((a, b) => {
+            if (a._ts !== b._ts) return b._ts - a._ts;
+            return a._key < b._key ? 1 : a._key > b._key ? -1 : 0;
+          });
 
         const hasMore = merged.length > limit;
         const page = hasMore ? merged.slice(0, limit) : merged;
@@ -787,7 +821,9 @@ class CommunityService {
           const last = page[page.length - 1];
           next_cursor = Buffer.from(`${last._iso}|${last._key}`, "utf8").toString("base64");
         }
-        return { items, next_cursor, has_more: hasMore };
+        return car_scope
+          ? { items, next_cursor, has_more: hasMore, car_scope }
+          : { items, next_cursor, has_more: hasMore };
       }
     );
   }

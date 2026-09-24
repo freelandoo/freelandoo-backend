@@ -24,9 +24,11 @@
 
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 
+// ⚠️ O CARRO SAIU DA TABELA NA MIG 259 (2026-09-24): "cadastrar o carro dela,
+// um ou mais, estilo o meu pet". Ficou sem teto, como o pet.
 const SPACE_LIMIT = Object.freeze({
   pet: Infinity,
-  car: 1,
+  car: Infinity,
   condo: 1,
   neighborhood: 1,
 });
@@ -34,7 +36,6 @@ const SPACE_LIMIT = Object.freeze({
 // A frase diz o que a pessoa JÁ TEM, nunca "não pode": o caminho a partir daqui
 // é abrir o que é dela, e é isso que o front oferece com `existing_community`.
 const CAP_MESSAGE = Object.freeze({
-  car: "Você já tem a comunidade de um carro.",
   condo: "Você já está em um condomínio.",
   neighborhood: "Você já está na comunidade de um bairro.",
 });

@@ -170,20 +170,41 @@ class SubjectCommunityStorage {
     return r.rows[0];
   }
 
-  /** A comunidade daquele modelo, se alguém já a fundou. */
-  static async findCarCommunity(conn, id_car_model) {
+  /**
+   * As comunidades de carro que alimentam o FEED de carros (mig 259).
+   *
+   * `sameModelAsUser` nulo → TODAS as de carro do site; preenchido → só as dos
+   * MODELOS dos carros dessa pessoa ("mesmo carro que o meu" — com dois carros,
+   * vale qualquer um dos dois). Quem não tem nenhum carro com modelo escolhido
+   * recebe lista vazia, e o service transforma isso em um aviso na tela.
+   *
+   * ⚠️ PRIVADA FICA FORA: o feed agregado é público, e o post de uma
+   * comunidade privada é exclusivo dela (mig 173) — puxá-lo para cá seria a
+   * porta dos fundos que a exclusividade existe para fechar.
+   */
+  static async listCarCommunityIds(conn, { sameModelAsUser = null } = {}) {
     const r = await conn.query(
-      `SELECT p.id_profile, p.display_name, p.avatar_url, p.id_leader_user,
-              cm.brand_label, cm.model_label
+      `SELECT p.id_profile
          FROM public.tb_profile p
-         JOIN public.tb_car_model cm ON cm.id_car_model = p.id_car_model
-        WHERE p.id_car_model = $1
-          AND p.community_kind = 'car'
+        WHERE p.community_kind = 'car'
           AND p.deleted_at IS NULL
-        LIMIT 1`,
-      [id_car_model]
+          AND COALESCE(p.community_privacy, 'public') <> 'private'
+          AND (
+            $1::uuid IS NULL
+            OR p.id_car_model IN (
+              SELECT mine.id_car_model
+                FROM public.tb_profile mine
+               -- "MEU carro" é o carro de que a pessoa é DONA — entrar de visita
+               -- na comunidade do carro de outro não faz dele o seu modelo.
+               WHERE mine.id_leader_user = $1::uuid
+                 AND mine.community_kind = 'car'
+                 AND mine.deleted_at IS NULL
+                 AND mine.id_car_model IS NOT NULL
+            )
+          )`,
+      [sameModelAsUser]
     );
-    return r.rowCount ? r.rows[0] : null;
+    return r.rows.map((row) => row.id_profile);
   }
 
   static async attachCarModel(conn, id_profile, id_car_model) {
