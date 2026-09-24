@@ -9,6 +9,12 @@
 // uma das duas mudasse, a outra continuaria abrindo a porta.
 
 const pool = require("../databases");
+// ⚠️ DOIS BANCOS AQUI. `pool` é o QUENTE (listas de leads, que pendem de
+// tb_profile/tb_user); `cold` é o FRIO (catálogo e fila de varredura). Não
+// existe transação entre eles: salvar um lead numa lista lê do frio e grava
+// no quente em dois passos, e é por isso que o item guarda SNAPSHOT em vez
+// de FK para tb_company.
+const cold = require("../databases/cold");
 const CommunityService = require("./CommunityService");
 const CompanyStorage = require("../storages/CompanyStorage");
 const CompanyJobStorage = require("../storages/CompanyJobStorage");
@@ -51,7 +57,7 @@ class ProspectService {
     return runWithLogs(log, "catalog", () => ({ id_profile }), async () => {
       const guard = await this._assertBusiness(user, id_profile);
       if (guard.error) return guard;
-      const settings = await CompanyStorage.getSettings(pool);
+      const settings = await CompanyStorage.getSettings(cold);
       return {
         categories: listCategories(),
         // ⚠️ A TELA LÊ O ESTADO DAS FONTES EM VEZ DE ADIVINHAR. Regra das migs
@@ -133,7 +139,7 @@ class ProspectService {
         ProspectRefillService.fireAndForget({ uf, category, city: q.city || null });
       }
 
-      const found = await CompanyStorage.search(pool, filters);
+      const found = await CompanyStorage.search(cold, filters);
 
       // Em quais listas DESTE negócio cada empresa já está — é o que deixa o
       // card dizer "já salvo" em vez de oferecer adicionar de novo.
@@ -169,7 +175,7 @@ class ProspectService {
       // que sempre volta "payload incompleto".
       const placeScoped = !!(category && uf);
       const base_total = placeScoped
-        ? await CompanyStorage.countPlace(pool, {
+        ? await CompanyStorage.countPlace(cold, {
             category_key: category,
             uf,
             city: q.city || null,
@@ -192,11 +198,11 @@ class ProspectService {
     return runWithLogs(log, "getCompany", () => ({ id_profile, id_company }), async () => {
       const guard = await this._assertBusiness(user, id_profile);
       if (guard.error) return guard;
-      const company = await CompanyStorage.getById(pool, id_company);
+      const company = await CompanyStorage.getById(cold, id_company);
       if (!company || company.suppressed_at) {
         return { error: "Empresa não encontrada.", statusCode: 404 };
       }
-      const sources = await CompanyStorage.listSources(pool, id_company);
+      const sources = await CompanyStorage.listSources(cold, id_company);
       const inLists = await LeadListStorage.listIdsForCompanies(pool, {
         id_profile,
         companyIds: [id_company],
@@ -252,8 +258,8 @@ class ProspectService {
         return { ok: true, fresh: false, source: "r2", filling: true, job: null };
       }
 
-      const settings = await CompanyStorage.getSettings(pool);
-      const used = await CompanyJobStorage.countToday(pool, {
+      const settings = await CompanyStorage.getSettings(cold);
+      const used = await CompanyJobStorage.countToday(cold, {
         requested_by: user.id_user,
         kinds: ["discover"],
       });
@@ -270,7 +276,7 @@ class ProspectService {
 
       // TTL: já varremos isto há pouco tempo?
       const ttlHours = settings?.discovery_ttl_hours ?? 168;
-      const { rows: recent } = await pool.query(
+      const { rows: recent } = await cold.query(
         `SELECT id_job, updated_at FROM public.tb_company_job
           WHERE dedupe_key = $1 AND status = 'done'
             AND updated_at > NOW() - ($2 || ' hours')::interval
@@ -281,7 +287,7 @@ class ProspectService {
         return { ok: true, fresh: true, last_run_at: recent[0].updated_at, job: null };
       }
 
-      const job = await CompanyJobStorage.enqueue(pool, {
+      const job = await CompanyJobStorage.enqueue(cold, {
         kind: "discover",
         dedupe_key,
         requested_by: user.id_user,
@@ -289,7 +295,7 @@ class ProspectService {
         payload: { category, uf, city },
       });
       // `null` = já existe um trabalho vivo. Não é erro: é "alguém já pediu".
-      const live = job || (await CompanyJobStorage.findLive(pool, dedupe_key));
+      const live = job || (await CompanyJobStorage.findLive(cold, dedupe_key));
       return { ok: true, fresh: false, queued: !!job, job: live };
     });
   }
@@ -304,7 +310,7 @@ class ProspectService {
         const guard = await this._assertBusiness(user, id_profile);
         if (guard.error) return guard;
 
-        const company = await CompanyStorage.getById(pool, id_company);
+        const company = await CompanyStorage.getById(cold, id_company);
         if (!company || company.suppressed_at) {
           return { error: "Empresa não encontrada.", statusCode: 404 };
         }
@@ -313,8 +319,8 @@ class ProspectService {
           ? body.kind
           : "enrich_all";
 
-        const settings = await CompanyStorage.getSettings(pool);
-        const used = await CompanyJobStorage.countToday(pool, {
+        const settings = await CompanyStorage.getSettings(cold);
+        const used = await CompanyJobStorage.countToday(cold, {
           requested_by: user.id_user,
           kinds: ["enrich_website", "enrich_cnpj", "enrich_all"],
         });
@@ -350,7 +356,7 @@ class ProspectService {
         }
 
         const dedupe_key = `${kind}:${id_company}`;
-        const job = await CompanyJobStorage.enqueue(pool, {
+        const job = await CompanyJobStorage.enqueue(cold, {
           kind,
           dedupe_key,
           id_company,
@@ -358,7 +364,7 @@ class ProspectService {
           id_profile,
           payload: {},
         });
-        const live = job || (await CompanyJobStorage.findLive(pool, dedupe_key));
+        const live = job || (await CompanyJobStorage.findLive(cold, dedupe_key));
         return { ok: true, fresh: false, queued: !!job, job: live };
       }
     );
@@ -369,7 +375,7 @@ class ProspectService {
     return runWithLogs(log, "jobs", () => ({ id_profile }), async () => {
       const guard = await this._assertBusiness(user, id_profile);
       if (guard.error) return guard;
-      return { jobs: await CompanyJobStorage.listRecent(pool, { id_profile, limit: 12 }) };
+      return { jobs: await CompanyJobStorage.listRecent(cold, { id_profile, limit: 12 }) };
     });
   }
 
@@ -457,14 +463,20 @@ class ProspectService {
         : [body.id_company].filter(Boolean);
       if (!ids.length) return { error: "Escolha ao menos uma empresa.", statusCode: 400 };
 
+      // ⚠️ DOIS BANCOS, DOIS PASSOS. A empresa é lida do FRIO e o item é
+      // gravado no QUENTE com um SNAPSHOT dela — não há FK nem JOIN entre
+      // bancos, e também não há transação: se cair no meio, o pior caso é um
+      // lead salvo sem foto (a tela degrada), nunca uma lista corrompida.
       let added = 0;
       for (const id_company of ids) {
+        const empresa = await CompanyStorage.getById(cold, id_company).catch(() => null);
         const r = await LeadListStorage.addCompany(pool, {
           id_list,
           id_profile,
           id_company,
           added_by: user.id_user,
           note: body.note || null,
+          snapshot: empresa || null,
         });
         if (r) added++;
       }
@@ -518,13 +530,27 @@ class ProspectService {
       if (kind === "domain") value = N.normalizeDomain(value);
       if (kind === "email") value = N.normalizeEmail(value);
       if (!value) return { error: "Valor inválido.", statusCode: 400 };
-      const r = await CompanyStorage.suppress(pool, {
+      const r = await CompanyStorage.suppress(cold, {
         kind,
         value,
         reason: body.reason ? String(body.reason).slice(0, 300) : null,
         created_by: user.id_user,
       });
-      return { ok: true, ...r };
+      // ⚠️ O PEDIDO DE SAÍDA ATRAVESSA OS DOIS BANCOS. Marcar só o catálogo
+      // deixaria a empresa suprimida visível na lista de quem já a salvou —
+      // e é exatamente para isso que o opt-out existe. Falhar aqui NÃO desfaz
+      // a supressão do catálogo: o pedido vale, e o que sobra é uma lista
+      // desatualizada, não um pedido ignorado.
+      let listas_limpas = 0;
+      try {
+        listas_limpas = await LeadListStorage.suppressCompanies(pool, r.ids || []);
+      } catch (err) {
+        log.error("suppress.fanout_falhou", {
+          message: err?.message,
+          empresas: (r.ids || []).length,
+        });
+      }
+      return { ok: true, suppressed: r.suppressed, listas_limpas };
     });
   }
 }

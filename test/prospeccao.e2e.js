@@ -45,6 +45,9 @@ const { Client } = require("pg");
 
 const BE = path.join(__dirname, "..");
 const MIG = path.join(BE, "src/databases/migrations/254_prospeccao.sql");
+// ⚠️ A 258 dá ao lead salvo o SNAPSHOT da empresa (o catálogo mudou de banco).
+// Sem ela `addCompany` estoura por falta da coluna dentro desta transação.
+const MIG_SNAPSHOT = path.join(BE, "src/databases/migrations/258_lead_item_snapshot.sql");
 const CompanyStorage = require(path.join(BE, "src/storages/CompanyStorage"));
 const CompanyJobStorage = require(path.join(BE, "src/storages/CompanyJobStorage"));
 const LeadListStorage = require(path.join(BE, "src/storages/LeadListStorage"));
@@ -111,13 +114,42 @@ const draft = (fields, extra = {}) => ({ fields, ...extra });
     ).rows[0].n;
     console.log("\n[producao, antes] tabelas do subsistema:", antesTabelas, "\n");
 
-    const sql = fs.readFileSync(MIG, "utf8");
-
     /* ───────────────────────── 1. a migration ───────────────────────────── */
-    await c.query(sql);
-    check("a migration aplica", true);
-    const segunda = await attempt(c, () => c.query(sql));
-    check("a migration e idempotente (2a aplicacao)", segunda.ok, segunda.error?.message);
+    // ⚠️ A 254 SÓ É REAPLICADA NUM BANCO QUE AINDA NÃO A TEM. Em produção ela já
+    // rodou e foi ALARGADA depois (a 256 abriu o CHECK de fonte para
+    // 'overture'); reaplicá-la sozinha recria o CHECK antigo, que recusa as
+    // linhas do Overture que já existem — a suíte acusaria o produto
+    // funcionando como defeito. A idempotência dela foi provada quando nasceu.
+    if (antesTabelas === 0) {
+      const sql = fs.readFileSync(MIG, "utf8");
+      await c.query(sql);
+      check("a migration aplica", true);
+      const segunda = await attempt(c, () => c.query(sql));
+      check("a migration e idempotente (2a aplicacao)", segunda.ok, segunda.error?.message);
+      for (const f of ["255_company_partition.sql", "256_overture_source.sql", "257_osm_ref_width.sql"]) {
+        await c.query(fs.readFileSync(path.join(BE, "src/databases/migrations", f), "utf8"));
+      }
+    } else {
+      console.log("  --  254..257 ja aplicadas neste banco; pulando a reaplicacao");
+    }
+
+    const sqlSnap = fs.readFileSync(MIG_SNAPSHOT, "utf8");
+    await c.query(sqlSnap);
+    const snapDeNovo = await attempt(c, () => c.query(sqlSnap));
+    check("a mig 258 (snapshot) e idempotente", snapDeNovo.ok, snapDeNovo.error?.message);
+    const fkCompany = (
+      await c.query(
+        `SELECT COUNT(*)::int n
+           FROM pg_constraint con
+           JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+          WHERE con.conrelid = 'public.tb_lead_list_item'::regclass
+            AND con.contype = 'f' AND att.attname = 'id_company'`
+      )
+    ).rows[0].n;
+    check(
+      "o lead salvo NAO tem mais FK para tb_company (o catalogo mora noutro banco)",
+      fkCompany === 0
+    );
 
     const tabs = (
       await c.query(
@@ -432,8 +464,11 @@ const draft = (fields, extra = {}) => ({ fields, ...extra });
       });
       check("nome repetido (ignorando caixa) nao cria segunda lista", repetida === null);
 
+      // O service lê a empresa do banco FRIO e grava a foto dela no QUENTE;
+      // aqui os dois são a mesma conexão, e o caminho é o mesmo.
+      const fotoA = await CompanyStorage.getById(c, idA);
       const add = await LeadListStorage.addCompany(c, {
-        id_list: lista.id_list, id_profile: meu, id_company: idA,
+        id_list: lista.id_list, id_profile: meu, id_company: idA, snapshot: fotoA,
       });
       check("a empresa entra na lista", !!add);
       const addDeNovo = await LeadListStorage.addCompany(c, {
@@ -464,6 +499,17 @@ const draft = (fields, extra = {}) => ({ fields, ...extra });
         JSON.stringify({ nome: minhas[0].display_name, tel: minhas[0].phone })
       );
 
+      // ⚠️ A LEITURA DA LISTA NÃO PODE DEPENDER DE tb_company: ela mora noutro
+      // banco. Mudar a empresa depois de salva NÃO muda o lead do vendedor.
+      await c.query(`UPDATE public.tb_company SET phone = '1100000000' WHERE id_company = $1`, [idA]);
+      const aposMudanca = await LeadListStorage.listCompanies(c, { id_list: lista.id_list, id_profile: meu });
+      check(
+        "o lead salvo NAO muda sob os pes do vendedor (snapshot, mig 258)",
+        aposMudanca[0]?.phone === "1143301234" && !!aposMudanca[0]?.snapshot_at,
+        JSON.stringify({ tel: aposMudanca[0]?.phone })
+      );
+      await c.query(`UPDATE public.tb_company SET phone = '1143301234' WHERE id_company = $1`, [idA]);
+
       const stage = await LeadListStorage.setStage(c, {
         id_list: lista.id_list, id_profile: meu, id_company: idA, stage: "contacted",
       });
@@ -489,6 +535,17 @@ const draft = (fields, extra = {}) => ({ fields, ...extra });
         kind: "domain", value: "corpoeacao.com.br", reason: "pedido do titular",
       });
       check("o opt-out marca a empresa que ja existe", sup.suppressed === 1);
+      check("o opt-out devolve os ids para o fan-out", Array.isArray(sup.ids) && sup.ids.includes(idA));
+
+      const antesDoFanout = await LeadListStorage.listCompanies(c, {
+        id_list: lista.id_list, id_profile: meu,
+      });
+      check(
+        "sem o fan-out a lista NAO sabe da supressao (prova que o JOIN saiu)",
+        antesDoFanout.length === 1
+      );
+      const limpas = await LeadListStorage.suppressCompanies(c, sup.ids);
+      check("o fan-out marca o lead salvo", limpas === 1);
 
       const aindaLa = await CompanyStorage.getById(c, idA);
       check("opt-out NAO apaga, SUPRIME (defeito 7)", !!aindaLa && !!aindaLa.suppressed_at);

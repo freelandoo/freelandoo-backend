@@ -9,7 +9,10 @@
 // do atendente (mig 253) e da caixa de WhatsApp (mig 223): o dono entra no
 // WHERE, não num `if` do service.
 
-const { COMPANY_COLUMNS } = require("./CompanyStorage");
+// ⚠️ NÃO IMPORTE `CompanyStorage` AQUI. Esta storage fala com o banco QUENTE;
+// o catálogo (`tb_company`) mora no FRIO, e não existe JOIN entre bancos. Os
+// dados da empresa chegam pelo SNAPSHOT gravado em `company_snapshot` (mig
+// 258). Um require de volta seria o caminho para alguém reintroduzir o JOIN.
 
 class LeadListStorage {
   static async listByProfile(conn, id_profile) {
@@ -78,15 +81,23 @@ class LeadListStorage {
    * `ON CONFLICT DO NOTHING` porque adicionar duas vezes é o clique duplo de
    * sempre, e não um erro a mostrar na cara de quem acabou de salvar um lead.
    */
-  static async addCompany(conn, { id_list, id_profile, id_company, added_by, note }) {
+  static async addCompany(conn, { id_list, id_profile, id_company, added_by, note, snapshot }) {
     const { rows } = await conn.query(
-      `INSERT INTO public.tb_lead_list_item (id_list, id_company, added_by, note)
-       SELECT l.id_list, $3, $4, $5
+      `INSERT INTO public.tb_lead_list_item
+         (id_list, id_company, added_by, note, company_snapshot, snapshot_at)
+       SELECT l.id_list, $3, $4, $5, $6::jsonb, CASE WHEN $6 IS NULL THEN NULL ELSE NOW() END
          FROM public.tb_lead_list l
         WHERE l.id_list = $1 AND l.id_profile = $2
        ON CONFLICT (id_list, id_company) DO NOTHING
        RETURNING id_list, id_company, stage, added_at`,
-      [id_list, id_profile, id_company, added_by || null, note || null]
+      [
+        id_list,
+        id_profile,
+        id_company,
+        added_by || null,
+        note || null,
+        snapshot ? JSON.stringify(snapshot) : null,
+      ]
     );
     return rows[0] || null;
   }
@@ -134,18 +145,50 @@ class LeadListStorage {
    */
   static async listCompanies(conn, { id_list, id_profile, limit = 500, offset = 0 }) {
     const { rows } = await conn.query(
-      `SELECT ${COMPANY_COLUMNS},
+      `SELECT i.id_company, i.company_snapshot, i.snapshot_at,
               i.stage, i.note AS lead_note, i.owner_user, i.added_at
          FROM public.tb_lead_list_item i
          JOIN public.tb_lead_list l ON l.id_list = i.id_list
-         JOIN public.tb_company   c ON c.id_company = i.id_company
         WHERE i.id_list = $1 AND l.id_profile = $2
-          AND c.suppressed_at IS NULL
+          AND i.suppressed_at IS NULL
         ORDER BY i.added_at DESC
         LIMIT $3 OFFSET $4`,
       [id_list, id_profile, Math.max(1, Math.min(2000, Number(limit) || 500)), Number(offset) || 0]
     );
-    return rows;
+    // A forma devolvida é a MESMA de antes (campos da empresa no nível de
+    // cima). Quem chama — a tela e o CSV — não muda uma linha.
+    return rows.map((r) => ({
+      ...(r.company_snapshot || {}),
+      id_company: r.id_company,
+      snapshot_at: r.snapshot_at,
+      stage: r.stage,
+      lead_note: r.lead_note,
+      owner_user: r.owner_user,
+      added_at: r.added_at,
+    }));
+  }
+
+  /**
+   * O FAN-OUT DA SUPRESSÃO (LGPD).
+   *
+   * ⚠️ Antes, a lista filtrava `c.suppressed_at IS NULL` no JOIN com o
+   * catálogo. Com o catálogo noutro banco esse JOIN não existe mais — e sem
+   * este método quem pediu para sair CONTINUARIA aparecendo na lista de quem
+   * já o tinha salvo, que é exatamente o que o opt-out existe para impedir.
+   *
+   * Escrita no momento do pedido (raro) em vez de leitura a cada abertura de
+   * lista (constante). `id_company` é global, então não sobe até `id_profile`
+   * de propósito: a supressão vale para TODO MUNDO, não para um negócio.
+   */
+  static async suppressCompanies(conn, ids) {
+    if (!Array.isArray(ids) || !ids.length) return 0;
+    const { rowCount } = await conn.query(
+      `UPDATE public.tb_lead_list_item
+          SET suppressed_at = NOW(), updated_at = NOW()
+        WHERE id_company = ANY($1::uuid[]) AND suppressed_at IS NULL`,
+      [ids]
+    );
+    return rowCount;
   }
 
   /**

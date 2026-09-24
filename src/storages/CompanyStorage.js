@@ -376,7 +376,11 @@ class CompanyStorage {
     );
     // Marca as linhas que já existem. As que ainda não existem são barradas na
     // criação pelo `isSuppressed` — as duas metades do mesmo pedido.
-    const { rowCount } = await conn.query(
+    // ⚠️ DEVOLVE OS IDs, e isso não é informação a mais: o catálogo mora no
+    // banco FRIO e as listas de leads no QUENTE. Sem os ids não há como propagar
+    // a supressão para quem já salvou a empresa — e ela continuaria aparecendo
+    // na lista dele, que é o oposto do que o opt-out promete.
+    const { rows } = await conn.query(
       `UPDATE public.tb_company
           SET suppressed_at = NOW(), suppressed_reason = $3, updated_at = NOW()
         WHERE suppressed_at IS NULL
@@ -384,10 +388,11 @@ class CompanyStorage {
                ($1 = 'cnpj'   AND cnpj   = $2::text)
             OR ($1 = 'domain' AND domain = $2::text)
             OR ($1 = 'email'  AND email  = $2::text)
-          )`,
+          )
+        RETURNING id_company`,
       [kind, String(value).toLowerCase().slice(0, 300), reason || null]
     );
-    return { suppressed: rowCount };
+    return { suppressed: rows.length, ids: rows.map((r) => r.id_company) };
   }
 
   // ─── BUSCA ─────────────────────────────────────────────────────────────────

@@ -16,13 +16,27 @@ const pool = require("../databases");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("migrations");
-const MIGRATIONS_DIR = path.join(
-  __dirname,
-  "..",
-  "databases",
-  "migrations"
-);
+const MIGRATIONS_DIR = path.join(__dirname, "..", "databases", "migrations");
 const LOCK_ID = 919282;
+
+// ⚠️ O BANCO FRIO TEM O PRÓPRIO CONJUNTO DE MIGRATIONS E O PRÓPRIO LOCK.
+// Ele guarda o catálogo de leads e NÃO compartilha `schema_migrations` com a
+// plataforma — cada banco registra o que ele mesmo aplicou. O lock precisa ser
+// um número DIFERENTE: `pg_advisory_lock` é por instância, e reusar o mesmo id
+// faria duas réplicas subindo ao mesmo tempo serializarem uma contra a outra à
+// toa (e, se um dia os dois bancos forem o mesmo, travarem de vez).
+const COLD_MIGRATIONS_DIR = path.join(__dirname, "..", "databases", "migrations-cold");
+const COLD_LOCK_ID = 919283;
+
+/** Padrão = exatamente o comportamento de sempre (banco quente). */
+function contexto(opts = {}) {
+  return {
+    pool: opts.pool || pool,
+    dir: opts.dir || MIGRATIONS_DIR,
+    lockId: opts.lockId || LOCK_ID,
+    label: opts.label || "quente",
+  };
+}
 
 function sha256(text) {
   return crypto.createHash("sha256").update(text).digest("hex");
@@ -50,21 +64,22 @@ async function getAppliedMap(client) {
   return map;
 }
 
-function listMigrationFiles() {
+function listMigrationFiles(dir) {
+  if (!fs.existsSync(dir)) return [];
   return fs
-    .readdirSync(MIGRATIONS_DIR)
+    .readdirSync(dir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
 }
 
-function readMigration(file) {
-  const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
+function readMigration(dir, file) {
+  const sql = fs.readFileSync(path.join(dir, file), "utf8");
   // Checksum sobre conteúdo com EOL normalizado: checkout Windows (CRLF) não
   // pode divergir do hash gravado pelos boots em produção (checkout LF).
   return { sql, checksum: sha256(sql.replace(/\r\n/g, "\n")) };
 }
 
-async function bootstrapBackfill(client, files) {
+async function bootstrapBackfill(dir, client, files) {
   log.warn("migrations.bootstrap", {
     msg:
       "schema_migrations vazia — marcando todas as migrations existentes " +
@@ -72,7 +87,7 @@ async function bootstrapBackfill(client, files) {
     count: files.length,
   });
   for (const file of files) {
-    const { checksum } = readMigration(file);
+    const { checksum } = readMigration(dir, file);
     await client.query(
       `INSERT INTO schema_migrations (filename, checksum, execution_time_ms, success)
        VALUES ($1, $2, 0, TRUE)
@@ -82,8 +97,8 @@ async function bootstrapBackfill(client, files) {
   }
 }
 
-async function applyMigration(client, file) {
-  const { sql, checksum } = readMigration(file);
+async function applyMigration(dir, client, file) {
+  const { sql, checksum } = readMigration(dir, file);
   const start = Date.now();
   try {
     await client.query("BEGIN");
@@ -136,19 +151,21 @@ async function applyMigration(client, file) {
   }
 }
 
-async function runMigrations() {
-  const client = await pool.connect();
+async function runMigrations(opts = {}) {
+  const ctx = contexto(opts);
+  const { pool: db, dir, lockId, label } = ctx;
+  const client = await db.connect();
   let acquired = false;
   try {
-    await client.query("SELECT pg_advisory_lock($1)", [LOCK_ID]);
+    await client.query("SELECT pg_advisory_lock($1)", [lockId]);
     acquired = true;
-    log.info("migrations.lock_acquired", { lockId: LOCK_ID });
+    log.info("migrations.lock_acquired", { lockId, banco: label });
 
     await ensureSchemaTable(client);
 
-    const files = listMigrationFiles();
+    const files = listMigrationFiles(dir);
     if (files.length === 0) {
-      log.warn("migrations.empty_dir");
+      log.warn("migrations.empty_dir", { banco: label, dir });
       return { total: 0, applied_now: 0, already_applied: 0 };
     }
 
@@ -163,7 +180,7 @@ async function runMigrations() {
         "SELECT to_regclass('public.tb_user') AS t"
       );
       if (rows[0]?.t) {
-        await bootstrapBackfill(client, files);
+        await bootstrapBackfill(dir, client, files);
         applied = await getAppliedMap(client);
       } else {
         log.warn("migrations.fresh_database", {
@@ -175,7 +192,7 @@ async function runMigrations() {
     const pending = [];
     const mismatches = [];
     for (const file of files) {
-      const { checksum } = readMigration(file);
+      const { checksum } = readMigration(dir, file);
       const existing = applied.get(file);
       if (!existing) {
         pending.push(file);
@@ -194,7 +211,7 @@ async function runMigrations() {
     }
 
     for (const file of pending) {
-      const { ok, error } = await applyMigration(client, file);
+      const { ok, error } = await applyMigration(dir, client, file);
       if (!ok) {
         throw error;
       }
@@ -210,7 +227,7 @@ async function runMigrations() {
   } finally {
     if (acquired) {
       try {
-        await client.query("SELECT pg_advisory_unlock($1)", [LOCK_ID]);
+        await client.query("SELECT pg_advisory_unlock($1)", [lockId]);
       } catch (err) {
         log.error("migrations.unlock_failed", { message: err.message });
       }
@@ -219,14 +236,15 @@ async function runMigrations() {
   }
 }
 
-async function listStatus() {
-  const client = await pool.connect();
+async function listStatus(opts = {}) {
+  const { pool: db, dir } = contexto(opts);
+  const client = await db.connect();
   try {
     await ensureSchemaTable(client);
     const applied = await getAppliedMap(client);
-    const files = listMigrationFiles();
+    const files = listMigrationFiles(dir);
     const status = files.map((file) => {
-      const { checksum } = readMigration(file);
+      const { checksum } = readMigration(dir, file);
       const existing = applied.get(file);
       if (!existing) return { file, state: "pending", checksum };
       if (existing !== checksum)
@@ -239,4 +257,11 @@ async function listStatus() {
   }
 }
 
-module.exports = { runMigrations, listStatus, LOCK_ID };
+module.exports = {
+  runMigrations,
+  listStatus,
+  LOCK_ID,
+  COLD_LOCK_ID,
+  MIGRATIONS_DIR,
+  COLD_MIGRATIONS_DIR,
+};

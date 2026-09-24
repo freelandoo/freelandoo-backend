@@ -17,7 +17,11 @@
 // academia), pula o opt-out (recriando quem pediu para sair) e pula a
 // resolução de conflito (deixando o rodapé do site apagar a Receita Federal).
 
-const pool = require("../databases");
+// ⚠️ ESTE SERVICE FALA SÓ COM O BANCO FRIO. Ele mexe apenas no catálogo
+// (tb_company*), que saiu do banco da plataforma para não disputar o cache
+// de 128 MB com tb_user/tb_profile/feed. Sem DATABASE_URL_COLD este require
+// devolve o MESMO pool de sempre, então nada muda até a variável existir.
+const pool = require("../databases/cold");
 const CompanyStorage = require("../storages/CompanyStorage");
 const N = require("../utils/companyNormalize");
 const { shouldReplace, fieldConfidence, scoreCompany } = require("../utils/companyConfidence");

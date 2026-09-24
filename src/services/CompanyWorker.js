@@ -14,7 +14,11 @@
 // da Vercel antes de terminar — e o trabalho seria perdido no meio, tendo já
 // gastado a chamada ao serviço de terceiro.
 
-const pool = require("../databases");
+// ⚠️ ESTE SERVICE FALA SÓ COM O BANCO FRIO. Ele mexe apenas no catálogo
+// (tb_company*), que saiu do banco da plataforma para não disputar o cache
+// de 128 MB com tb_user/tb_profile/feed. Sem DATABASE_URL_COLD este require
+// devolve o MESMO pool de sempre, então nada muda até a variável existir.
+const pool = require("../databases/cold");
 const CompanyJobStorage = require("../storages/CompanyJobStorage");
 const CompanyStorage = require("../storages/CompanyStorage");
 const CompanyIngestService = require("./CompanyIngestService");
