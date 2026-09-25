@@ -5,6 +5,7 @@ const ConversationStorage = require("../storages/ConversationStorage");
 const PaymentGateway = require("../integrations/payments");
 const NotificationService = require("./NotificationService");
 const { createLogger, runWithLogs } = require("../utils/logger");
+const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
 
 async function assertClanOwner(conn, id_clan_profile, id_user) {
   const r = await conn.query(
@@ -150,7 +151,7 @@ class ClanService {
             id_machine: Number(id_machine),
             display_name: String(display_name).trim(),
             bio: bioStr || null,
-            avatar_url: avatar_url || null,
+            avatar_url: sanitizeAvatarUrl(avatar_url),
             estado: estado || null,
             municipio: municipio || null,
           });

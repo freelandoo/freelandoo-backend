@@ -16,6 +16,7 @@ const NeighborhoodStorage = require("../storages/NeighborhoodStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const SpaceCaps = require("../utils/spaceCaps");
+const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("NeighborhoodService");
@@ -90,7 +91,7 @@ class NeighborhoodService {
           id_territory: territory.id_territory,
           display_name: name.slice(0, 120),
           bio: bio ? String(bio).trim().slice(0, 200) : null,
-          avatar_url,
+          avatar_url: sanitizeAvatarUrl(avatar_url),
         });
         await CommunityStorage.addMember(client, community.id_profile, id_user, "leader");
         await client.query("COMMIT");

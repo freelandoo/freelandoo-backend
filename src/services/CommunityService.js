@@ -8,6 +8,7 @@ const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
 const PolenStorage = require("../storages/PolenStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const CondoRules = require("../utils/condoRules");
+const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
 const CondoStorage = require("../storages/CondoStorage");
 const StoryStorage = require("../storages/StoryStorage");
 const TerritorialCommunity = require("../utils/territorialCommunity");
@@ -168,7 +169,7 @@ class CommunityService {
             id_machine: isDraft ? null : id_machine,
             display_name: isDraft ? DRAFT_NAME : String(display_name).trim(),
             bio: bioStr,
-            avatar_url: avatar_url ?? null,
+            avatar_url: sanitizeAvatarUrl(avatar_url),
             theme: theme ?? null,
             kind,
             address: kind === "condo" ? CondoRules.normalizeAddress(address) : null,
