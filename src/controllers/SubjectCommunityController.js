@@ -67,6 +67,11 @@ class SubjectCommunityController {
   }
 
   // ─── Menu da foto de perfil ─────────────────────────────────────────────────
+  static async publicSpaces(req, res) {
+    const result = await SubjectCommunityService.publicSpaces(req.params.handle);
+    return sendServiceResult(res, result);
+  }
+
   static async mySpaces(req, res) {
     const result = await SubjectCommunityService.mySpaces(req.user);
     return sendServiceResult(res, result);

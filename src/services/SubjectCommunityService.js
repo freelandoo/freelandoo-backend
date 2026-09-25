@@ -383,6 +383,26 @@ class SubjectCommunityService {
     );
   }
 
+  // ─── Os espaços que o visitante vê na foto de outra pessoa ─────────────────
+  /**
+   * Porta ANÔNIMA: devolve só o id e o nome de cada espaço (o que o pill
+   * precisa para existir e navegar). Quem decide o que o visitante enxerga lá
+   * dentro continua sendo a página da comunidade (privada tranca o feed).
+   */
+  static async publicSpaces(handle) {
+    return runWithLogs(log, "publicSpaces", () => ({ handle }), async () => {
+      const username = String(handle || "").trim().replace(/^@/, "");
+      if (!username || username.length > 40) return { error: "Usuário inválido" };
+      const rows = await SubjectCommunityStorage.listLeaderSpacesByUsername(pool, username);
+      const out = { business: null, pet: null, car: null };
+      for (const r of rows) {
+        const key = r.kind === "common" ? "business" : r.kind;
+        out[key] = { id_profile: r.id_profile, display_name: r.display_name };
+      }
+      return { spaces: out };
+    });
+  }
+
   // ─── Meus espaços (o menu da foto de perfil) ────────────────────────────────
   /**
    * Tudo o que o menu precisa numa requisição só: as comunidades da pessoa

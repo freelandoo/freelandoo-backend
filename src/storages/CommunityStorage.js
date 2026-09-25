@@ -267,6 +267,12 @@ class CommunityStorage {
               p.estado, p.municipio, p.id_region,
               p.xp_total, p.xp_level, p.created_at, p.updated_at,
               m.name AS enxame_name,
+              -- O ROSTO DO DONO (decisão do Alex, 2026-09-25): toda comunidade
+              -- mostra a foto de perfil de quem a lidera — a mesma do /account
+              -- (tb_user.avatar, fonte única da mig 215). NULL na plataforma de
+              -- games, que não tem líder.
+              (SELECT u.avatar FROM public.tb_user u
+                WHERE u.id_user = p.id_leader_user) AS leader_avatar,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
                 WHERE cm.id_community_profile = p.id_profile) AS member_count,
               -- "Meu Site" (mig 212): só a EXISTÊNCIA de um site publicado, para

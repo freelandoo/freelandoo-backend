@@ -317,6 +317,34 @@ class SubjectCommunityStorage {
    * com duas definições de "meu condomínio", a pessoa levaria *"você já tem um"*
    * olhando para uma lista vazia. Mexeu numa, mexe na outra.
    */
+  /**
+   * Os espaços que um VISITANTE vê pendurados na foto de outra pessoa: o
+   * negócio (comum), o pet e o carro que ELA LIDERA — decisão do Alex
+   * (2026-09-25): no perfil alheio aparecem Meu pet, Meu carro, Business e
+   * Games; o resto (Carteira, Fitness, condomínio, rua, filhos) é só do dono.
+   *
+   * ⚠️ SÓ LÍDER: a pessoa que apenas ENTROU no negócio de alguém não tem
+   * aquele negócio como "dela" — pendurado na foto, diria que é.
+   * Um por modalidade (o mais antigo), como o pill do próprio dono.
+   */
+  static async listLeaderSpacesByUsername(conn, username) {
+    const r = await conn.query(
+      `SELECT DISTINCT ON (p.community_kind)
+              p.community_kind AS kind, p.id_profile, p.display_name
+         FROM public.tb_user u
+         JOIN public.tb_community_member m
+           ON m.id_user = u.id_user AND m.role = 'leader'
+         JOIN public.tb_profile p ON p.id_profile = m.id_community_profile
+        WHERE lower(u.username) = lower($1::text)
+          AND p.is_community = TRUE
+          AND p.deleted_at IS NULL
+          AND p.community_kind IN ('common', 'pet', 'car')
+        ORDER BY p.community_kind, m.joined_at ASC`,
+      [username]
+    );
+    return r.rows;
+  }
+
   static async findMySpaceByKind(conn, id_user, kind) {
     const r = await conn.query(
       `SELECT p.id_profile,
