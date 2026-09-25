@@ -17,6 +17,12 @@ router.get(
   authMiddleware,
   asyncHandler(WalletFinanceController.receivedInTotal)
 );
+// Os negócios que a pessoa lidera (mig 261) — caminho fixo, antes do :id.
+router.get(
+  "/me/wallet/finance/businesses",
+  authMiddleware,
+  asyncHandler(WalletFinanceController.listBusinesses)
+);
 router.get("/me/wallet/finance", authMiddleware, asyncHandler(WalletFinanceController.getMonth));
 router.post("/me/wallet/finance", authMiddleware, asyncHandler(WalletFinanceController.createEntry));
 router.patch("/me/wallet/finance/:id", authMiddleware, asyncHandler(WalletFinanceController.updateEntry));

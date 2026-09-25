@@ -65,6 +65,13 @@ async function one(c, sql, params = []) {
 }
 
 (async () => {
+  // ⚠️ O ESTADO DE ANTES, e não "a tabela não pode existir": a mig 235 já foi
+  // para produção, e a asserção antiga passou a acusar o produto funcionando
+  // como defeito. O que se prova é que o teste não DEIXOU nada — voltar a isto.
+  const TABLE_SQL = `SELECT COUNT(*)::int AS n FROM information_schema.tables
+                      WHERE table_name = 'tb_community_site_event_daily'`;
+  const before = (await pool.query(TABLE_SQL)).rows[0].n;
+
   const c = await pool.connect();
   let service;
 
@@ -86,6 +93,16 @@ async function one(c, sql, params = []) {
     check("migration 235 aplica", true);
     await c.query(sql);
     check("migration 235 é idempotente (2ª aplicação não falha)", true);
+
+    // A mig 261 também: desde a reformulação (2026-09-25) o painel lê os
+    // lançamentos "do negócio" da Vida Financeira, e sem a coluna o service
+    // estoura dentro da transação.
+    await c.query(
+      fs.readFileSync(
+        path.join(__dirname, "../src/databases/migrations/261_finance_entry_business.sql"),
+        "utf8"
+      )
+    );
 
     const cols = await one(
       c,
@@ -428,14 +445,11 @@ async function one(c, sql, params = []) {
   }
 
   // ── 10. produção intocada ────────────────────────────────────────────────
-  const after = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM information_schema.tables
-      WHERE table_name = 'tb_community_site_event_daily'`
-  );
+  const after = (await pool.query(TABLE_SQL)).rows[0].n;
   check(
-    "depois do ROLLBACK a tabela do teste NÃO existe no banco",
-    after.rows[0].n === 0,
-    `encontradas=${after.rows[0].n}`
+    "depois do ROLLBACK o banco voltou ao estado de antes",
+    after === before,
+    `antes=${before} depois=${after}`
   );
 
   await pool.end();

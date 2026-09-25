@@ -19,6 +19,17 @@
 
 const TZ = "America/Sao_Paulo";
 
+/**
+ * O que conta como AGENDAMENTO de verdade (2026-09-25).
+ *
+ * `pending_payment` e `expired` são checkouts abertos e abandonados — a
+ * pessoa escolheu um horário e não pagou. Contá-los faria o painel anunciar
+ * agenda cheia num dia em que ninguém marcou nada. `confirmed` cobre o pago e o
+ * "pagar no balcão" (mig 244); `completed` e `no_show` já passaram pela agenda.
+ * O cancelado é contado à parte, porque também é informação.
+ */
+const VALID_BOOKING = `b.status IN ('confirmed', 'completed', 'no_show')`;
+
 /** O dia local, no formato que o resto da casa fala. */
 const LOCAL_DAY = `(NOW() AT TIME ZONE '${TZ}')::date`;
 /** Um `timestamptz` a partir do dia local — o corte sargable do WHERE. */
@@ -198,6 +209,7 @@ class BusinessIndicatorsStorage {
     const r = await conn.query(
       `SELECT ${DAY_OF("b.created_at")}::text AS day,
               COUNT(*)::int                   AS bookings,
+              COUNT(*) FILTER (WHERE ${VALID_BOOKING})::int AS valid,
               COUNT(*) FILTER (WHERE b.payment_status = 'paid')::int AS paid,
               COALESCE(SUM(b.deposit_amount)
                 FILTER (WHERE b.payment_status = 'paid'), 0)::bigint AS gross_cents,
@@ -233,6 +245,106 @@ class BusinessIndicatorsStorage {
           AND created_at >= ${DAY_START("$2")}
         GROUP BY 1
         ORDER BY 1`,
+      [id_profile, since_day]
+    );
+    return r.rows;
+  }
+
+  /**
+   * Os agendamentos da EQUIPE, por dia de criação — o total do negócio, e não
+   * só o que veio pelo site.
+   *
+   * A equipe é o líder mais quem ele promoveu (mig 221), e o agendamento é
+   * achado pelo DONO da agenda (`profile_owner_user_id`): a agenda é da conta
+   * (mig 190), então o cliente pode ter marcado por qualquer perfil da pessoa.
+   * O `OR id_origin_community` segura o que veio pelo site de alguém que já
+   * saiu da equipe — ele foi trazido por este negócio.
+   *
+   * ⚠️ Escopo "equipe", não "negócio": quem atende em dois negócios tem a mesma
+   * agenda nos dois, e a tela diz isso (como diz dos leads).
+   */
+  static async teamBookingsDaily(conn, userIds, id_profile, since_day) {
+    const r = await conn.query(
+      `SELECT ${DAY_OF("b.created_at")}::text AS day,
+              COUNT(*) FILTER (WHERE ${VALID_BOOKING})::int AS valid,
+              COUNT(*) FILTER (WHERE b.status = 'canceled')::int  AS canceled,
+              COUNT(*) FILTER (WHERE b.status = 'no_show')::int   AS no_show
+         FROM public.tb_profile_bookings b
+        WHERE (b.profile_owner_user_id = ANY($1::uuid[]) OR b.id_origin_community = $2)
+          AND b.created_at >= ${DAY_START("$3")}
+        GROUP BY 1
+        ORDER BY 1`,
+      [userIds, id_profile, since_day]
+    );
+    return r.rows;
+  }
+
+  /**
+   * O MAPA DOS HORÁRIOS: quantos agendamentos caem em cada (dia da semana,
+   * hora) — é daqui que saem os "melhores horários".
+   *
+   * Conta a hora MARCADA (`booking_date` + `start_time`), não a hora em que o
+   * cliente apertou o botão: a pergunta é "quando a cadeira enche", e o
+   * clique às 23h de um horário para terça 10h é um agendamento das 10h.
+   * O recorte é pela data marcada dentro da janela, até hoje.
+   *
+   * `ISODOW`: 1 = segunda … 7 = domingo.
+   */
+  static async teamBookingHeat(conn, userIds, id_profile, since_day, until_day) {
+    const r = await conn.query(
+      `SELECT EXTRACT(ISODOW FROM b.booking_date)::int AS dow,
+              EXTRACT(HOUR FROM b.start_time)::int     AS hour,
+              COUNT(*)::int                            AS bookings
+         FROM public.tb_profile_bookings b
+        WHERE (b.profile_owner_user_id = ANY($1::uuid[]) OR b.id_origin_community = $2)
+          AND ${VALID_BOOKING}
+          AND b.booking_date >= $3::date
+          AND b.booking_date <= $4::date
+        GROUP BY 1, 2`,
+      [userIds, id_profile, since_day, until_day]
+    );
+    return r.rows;
+  }
+
+  /**
+   * A COMUNIDADE: quantos membros, quantos chegaram, quantos estão vivos.
+   *
+   * "Ativo" é quem APARECEU na plataforma na janela (`tb_user.last_seen_at`,
+   * mig 228, batida de 5 min) — e "participou" é quem PUBLICOU no mural desta
+   * comunidade (post ou recado, mig 160/162). São duas perguntas: a primeira diz
+   * se o membro ainda existe, a segunda se esta comunidade o faz falar.
+   *
+   * `since` e `prev` na mesma consulta: os novos do período anterior são o
+   * que dá sentido à seta de "subiu/desceu".
+   */
+  static async members(conn, id_profile, since_day, prev_day) {
+    const r = await conn.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE m.joined_at >= ${DAY_START("$2")})::int AS new_now,
+              COUNT(*) FILTER (WHERE m.joined_at >= ${DAY_START("$3")}
+                                 AND m.joined_at <  ${DAY_START("$2")})::int AS new_prev,
+              COUNT(*) FILTER (WHERE u.last_seen_at >= ${DAY_START("$2")})::int AS active,
+              (SELECT COUNT(DISTINCT f.id_author_user)::int
+                 FROM public.tb_community_feed_item f
+                WHERE f.id_community_profile = $1
+                  AND f.id_author_user IS NOT NULL
+                  AND f.created_at >= ${DAY_START("$2")}) AS participants
+         FROM public.tb_community_member m
+         JOIN public.tb_user u ON u.id_user = m.id_user
+        WHERE m.id_community_profile = $1`,
+      [id_profile, since_day, prev_day]
+    );
+    return r.rows[0] || { total: 0, new_now: 0, new_prev: 0, active: 0, participants: 0 };
+  }
+
+  /** Quem entrou, por dia — a curva de crescimento da comunidade. */
+  static async memberJoinsDaily(conn, id_profile, since_day) {
+    const r = await conn.query(
+      `SELECT ${DAY_OF("joined_at")}::text AS day, COUNT(*)::int AS joins
+         FROM public.tb_community_member
+        WHERE id_community_profile = $1
+          AND joined_at >= ${DAY_START("$2")}
+        GROUP BY 1`,
       [id_profile, since_day]
     );
     return r.rows;

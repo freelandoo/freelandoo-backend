@@ -38,6 +38,29 @@ function cleanStr(v, max) {
   if (!s) return null;
   return s.slice(0, max);
 }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * "De qual negócio é este lançamento" (mig 261).
+ *
+ * Vazio = pessoal, que é o que todo lançamento era antes. Preenchido, TEM que
+ * ser um negócio que a pessoa LIDERA: sem essa conferência, qualquer um
+ * escreveria custo no painel de lucro de um negócio alheio só sabendo o id.
+ *
+ * Devolve `{ value }` ou `{ error }`.
+ */
+async function resolveBusiness(userId, raw) {
+  if (raw === null || raw === "" || raw === undefined) return { value: null };
+  if (typeof raw !== "string" || !UUID_RE.test(raw)) {
+    return { error: { error: "Negócio inválido", status: 400 } };
+  }
+  const led = await WalletFinanceStorage.listLedBusinesses(pool, userId);
+  if (!led.some((b) => String(b.id_profile) === raw)) {
+    return { error: { error: "Você só pode lançar em um negócio que você lidera.", status: 403 } };
+  }
+  return { value: raw };
+}
+
 function toCents(v) {
   const n = Math.round(Number(v));
   return Number.isFinite(n) && n >= 0 ? n : null;
@@ -109,7 +132,10 @@ class WalletFinanceService {
         if (!title) return { error: "Informe um título", status: 400 };
         if (amount_cents == null) return { error: "Valor inválido", status: 400 };
 
-        const entry = { direction, recurrence, title, category, amount_cents };
+        const biz = await resolveBusiness(user.id_user, body.id_business_profile);
+        if (biz.error) return biz.error;
+
+        const entry = { direction, recurrence, title, category, amount_cents, id_business_profile: biz.value };
 
         if (recurrence === "recurring") {
           let ym = parseInt(body.ym, 10);
@@ -160,6 +186,11 @@ class WalletFinanceService {
           if (Number.isInteger(d) && d >= 1 && d <= 31) patch.due_day = d;
         }
         if (typeof body.active === "boolean") patch.active = body.active;
+        if (body.id_business_profile !== undefined) {
+          const biz = await resolveBusiness(user.id_user, body.id_business_profile);
+          if (biz.error) return biz.error;
+          patch.id_business_profile = biz.value;
+        }
 
         const updated = await WalletFinanceStorage.updateEntry(pool, user.id_user, entryId, patch);
         if (!updated) return { error: "Lançamento não encontrado", status: 404 };
@@ -180,6 +211,20 @@ class WalletFinanceService {
         const ok = await WalletFinanceStorage.deleteEntry(pool, user.id_user, entryId);
         if (!ok) return { error: "Lançamento não encontrado", status: 404 };
         return { ok: true };
+      }
+    );
+  }
+
+  /** Os negócios que a pessoa lidera — o seletor do formulário de lançamento. */
+  static async listBusinesses(user) {
+    return runWithLogs(
+      log,
+      "listBusinesses",
+      () => ({ user_id: user?.id_user }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado", status: 401 };
+        const businesses = await WalletFinanceStorage.listLedBusinesses(pool, user.id_user);
+        return { businesses };
       }
     );
   }

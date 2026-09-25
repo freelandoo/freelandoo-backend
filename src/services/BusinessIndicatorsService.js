@@ -38,6 +38,8 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const BusinessIndicatorsStorage = require("../storages/BusinessIndicatorsStorage");
+const CommunityProfessionalStorage = require("../storages/CommunityProfessionalStorage");
+const WalletFinanceStorage = require("../storages/WalletFinanceStorage");
 const { isSiteEventKind } = require("../utils/siteEvents");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -100,6 +102,81 @@ function takeRollup(rows) {
 
 const int = (v) => Number(v || 0);
 
+const pad2 = (n) => String(n).padStart(2, "0");
+
+/**
+ * Os lançamentos DO NEGÓCIO (mig 261) espalhados pelos dias de [`from`, `to`].
+ *
+ * O avulso tem data própria. O recorrente é um valor POR MÊS a partir de
+ * `start_ym`, que cai no dia do vencimento — e o dia 31 num mês de 30 cai no
+ * último dia do mês, não some.
+ *
+ * Devolve o mapa por dia, o custo/entrada FIXO do mês (a soma dos recorrentes
+ * ativos, que é a conta que o dono faz de cabeça: "tenho R$ X de custo fixo")
+ * e a quebra dos custos por categoria.
+ */
+function expandFinance(rows, from, to) {
+  const byDay = new Map();
+  const occurrences = [];
+  const add = (day, entry) => {
+    if (day < from || day > to) return;
+    const cur = byDay.get(day) || { in: 0, out: 0 };
+    const cents = int(entry.amount_cents);
+    if (entry.direction === "in") cur.in += cents;
+    else cur.out += cents;
+    byDay.set(day, cur);
+    occurrences.push({ day, entry, cents });
+  };
+
+  const [fy, fm] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  let fixedOut = 0;
+  let fixedIn = 0;
+
+  for (const e of rows || []) {
+    if (e.recurrence === "oneoff") {
+      if (e.entry_date) add(String(e.entry_date).slice(0, 10), e);
+      continue;
+    }
+    if (e.direction === "out") fixedOut += int(e.amount_cents);
+    else fixedIn += int(e.amount_cents);
+    let y = fy;
+    let m = fm;
+    while (y < ty || (y === ty && m <= tm)) {
+      if (y * 100 + m >= int(e.start_ym)) {
+        const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        const d = Math.min(Math.max(int(e.due_day) || 1, 1), last);
+        add(`${y}-${pad2(m)}-${pad2(d)}`, e);
+      }
+      if (m === 12) {
+        y += 1;
+        m = 1;
+      } else {
+        m += 1;
+      }
+    }
+  }
+
+  return {
+    byDay,
+    fixedOut,
+    fixedIn,
+    /** Os custos da janela por categoria (ou título), maiores primeiro. */
+    topCosts(since, until) {
+      const acc = new Map();
+      for (const o of occurrences) {
+        if (o.entry.direction !== "out" || o.day < since || o.day > until) continue;
+        const label = o.entry.category || o.entry.title || "—";
+        acc.set(label, (acc.get(label) || 0) + o.cents);
+      }
+      return [...acc.entries()]
+        .map(([label, cents]) => ({ label, cents }))
+        .sort((a, b) => b.cents - a.cents)
+        .slice(0, 6);
+    },
+  };
+}
+
 /**
  * Quem vê os indicadores é o LÍDER, e só na comunidade de NEGÓCIO.
  *
@@ -158,7 +235,12 @@ module.exports = class BusinessIndicatorsService {
     );
   }
 
-  /** O painel inteiro: leads, site, agendamentos e faturamento. */
+  /**
+   * O painel inteiro (reformulado em 2026-09-25): o resultado (receita × custo ×
+   * lucro), o funil do site, a agenda da equipe com os melhores horários, a
+   * comunidade e os leads — cada bloco com o período ANTERIOR ao lado, que é o
+   * que transforma um número em "subiu" ou "caiu".
+   */
   static async getIndicators(user, id_profile, rawDays) {
     const guard = await assertBusinessLeader(user, id_profile);
     if (guard.error) return guard;
@@ -171,20 +253,45 @@ module.exports = class BusinessIndicatorsService {
       "indicators.get",
       () => ({ id_profile, id_user, days }),
       async () => {
-        const today = await BusinessIndicatorsStorage.today(pool);
+        const S = BusinessIndicatorsStorage;
+        const today = await S.today(pool);
         const since = shiftDay(today, days - 1);
+        // A janela anterior, do mesmo tamanho, encostada nesta.
+        const prevSince = shiftDay(today, 2 * days - 1);
+        const prevUntil = shiftDay(today, days);
+        const inPrev = (day) => day >= prevSince && day <= prevUntil;
+        const inNow = (day) => day >= since;
 
-        // As cinco fontes são independentes: em série, a tela esperaria a soma
-        // dos cinco tempos para mostrar um painel só.
-        const [siteRows, waRows, osRows, bookRows, memberRows, waStatus] =
-          await Promise.all([
-            BusinessIndicatorsStorage.siteEvents(pool, id_profile, since),
-            BusinessIndicatorsStorage.whatsappLeads(pool, id_user, since),
-            BusinessIndicatorsStorage.osLeads(pool, id_user, since),
-            BusinessIndicatorsStorage.bookingsByOrigin(pool, id_profile, since),
-            BusinessIndicatorsStorage.membershipRevenue(pool, id_profile, since),
-            BusinessIndicatorsStorage.whatsappStatus(pool, id_user),
-          ]);
+        // A equipe: o líder + quem ele promoveu (mig 221). Sem repetir.
+        const promoted = await CommunityProfessionalStorage.list(pool, id_profile);
+        const teamIds = [...new Set([String(id_user), ...promoted.map((p) => String(p.id_user))])];
+
+        // Tudo independente: em série a tela esperaria a soma dos tempos.
+        const [
+          siteRows,
+          waRows,
+          osRows,
+          bookRows,
+          memberRows,
+          waStatus,
+          teamRows,
+          heatRows,
+          members,
+          joinRows,
+          finRows,
+        ] = await Promise.all([
+          S.siteEvents(pool, id_profile, prevSince),
+          S.whatsappLeads(pool, id_user, since),
+          S.osLeads(pool, id_user, since),
+          S.bookingsByOrigin(pool, id_profile, prevSince),
+          S.membershipRevenue(pool, id_profile, prevSince),
+          S.whatsappStatus(pool, id_user),
+          S.teamBookingsDaily(pool, teamIds, id_profile, prevSince),
+          S.teamBookingHeat(pool, teamIds, id_profile, since, today),
+          S.members(pool, id_profile, since, prevSince),
+          S.memberJoinsDaily(pool, id_profile, since),
+          WalletFinanceStorage.businessEntries(pool, id_profile, { since: prevSince, until: today }),
+        ]);
 
         // O contador do site vem por (dia, tipo) — vira um objeto por dia.
         const site = new Map();
@@ -195,8 +302,7 @@ module.exports = class BusinessIndicatorsService {
         }
 
         // ⚠️ A LINHA DO ROLLUP (`day = null`) É O TOTAL DA JANELA, e ela sai
-        // da série antes de tudo: deixá-la lá viraria um ponto extra no
-        // gráfico, com o valor do período inteiro, ao lado dos dias.
+        // da série antes de tudo (ver `takeRollup`).
         const waTotal = takeRollup(waRows);
         const osTotal = takeRollup(osRows);
 
@@ -204,16 +310,21 @@ module.exports = class BusinessIndicatorsService {
         const os = byDay(osRows);
         const book = byDay(bookRows);
         const mem = byDay(memberRows);
+        const team = byDay(teamRows);
+        const joins = byDay(joinRows);
+        const fin = expandFinance(finRows, prevSince, today);
 
-        // ⚠️ A SÉRIE TEM TODOS OS DIAS, inclusive os vazios. Devolver só os
-        // dias com movimento faria o gráfico encostar as barras umas nas
-        // outras e desenhar uma semana cheia onde houve dois dias de procura.
-        const series = dayRange(today, days).map((day) => {
+        /** Um dia inteiro, de todas as fontes — serve às duas janelas. */
+        const dayPoint = (day) => {
           const s = site.get(day) || {};
           const w = wa.get(day) || {};
           const o = os.get(day) || {};
           const b = book.get(day) || {};
           const m = mem.get(day) || {};
+          const tb = team.get(day) || {};
+          const f = fin.byDay.get(day) || { in: 0, out: 0 };
+          const platform = int(b.net_cents) + int(m.net_cents);
+          const revenue = platform + f.in;
           return {
             day,
             views: int(s.view),
@@ -224,45 +335,154 @@ module.exports = class BusinessIndicatorsService {
             os_people: int(o.people),
             os_messages: int(o.messages),
             bookings: int(b.bookings),
-            revenue_cents: int(b.net_cents) + int(m.net_cents),
+            site_bookings: int(b.valid),
+            team_bookings: int(tb.valid),
+            new_members: int((joins.get(day) || {}).joins),
+            platform_revenue_cents: platform,
+            manual_in_cents: f.in,
+            revenue_cents: revenue,
+            cost_cents: f.out,
+            profit_cents: revenue - f.out,
           };
-        });
+        };
 
-        const sum = (key) => series.reduce((acc, d) => acc + d[key], 0);
+        // ⚠️ A SÉRIE TEM TODOS OS DIAS, inclusive os vazios — senão o gráfico
+        // encosta as barras e desenha uma semana cheia onde houve dois dias.
+        const series = dayRange(today, days).map(dayPoint);
+        const prevSeries = dayRange(prevUntil, days).map(dayPoint);
 
-        const bookingsTotal = bookRows.reduce((a, r) => a + int(r.bookings), 0);
-        const bookingsPaid = bookRows.reduce((a, r) => a + int(r.paid), 0);
-        const bookingGross = bookRows.reduce((a, r) => a + int(r.gross_cents), 0);
-        const bookingNet = bookRows.reduce((a, r) => a + int(r.net_cents), 0);
-        const memberGross = memberRows.reduce((a, r) => a + int(r.gross_cents), 0);
-        const memberNet = memberRows.reduce((a, r) => a + int(r.net_cents), 0);
-        const memberPayments = memberRows.reduce((a, r) => a + int(r.payments), 0);
+        const sum = (list, key) => list.reduce((acc, d) => acc + d[key], 0);
+
+        // Os totais que ficam fora da série por dia.
+        const nowRows = bookRows.filter((r) => inNow(String(r.day)));
+        const memNowRows = memberRows.filter((r) => inNow(String(r.day)));
+        const teamNow = teamRows.filter((r) => inNow(String(r.day)));
+
+        const bookingsTotal = nowRows.reduce((a, r) => a + int(r.bookings), 0);
+        const bookingsPaid = nowRows.reduce((a, r) => a + int(r.paid), 0);
+        const siteValid = nowRows.reduce((a, r) => a + int(r.valid), 0);
+        const bookingGross = nowRows.reduce((a, r) => a + int(r.gross_cents), 0);
+        const bookingNet = nowRows.reduce((a, r) => a + int(r.net_cents), 0);
+        const memberGross = memNowRows.reduce((a, r) => a + int(r.gross_cents), 0);
+        const memberNet = memNowRows.reduce((a, r) => a + int(r.net_cents), 0);
+        const memberPayments = memNowRows.reduce((a, r) => a + int(r.payments), 0);
 
         const waMessages = int(waTotal.messages);
         const osMessages = int(osTotal.messages);
         const waPeople = int(waTotal.people);
         const osPeople = int(osTotal.people);
-        const views = sum("views");
-        const bookingClicks = sum("booking_clicks");
-        const whatsappClicks = sum("whatsapp_clicks");
+
+        const revenueNow = sum(series, "revenue_cents");
+        const costNow = sum(series, "cost_cents");
+        const revenuePrev = sum(prevSeries, "revenue_cents");
+        const costPrev = sum(prevSeries, "cost_cents");
+        const profitNow = revenueNow - costNow;
+
+        // ── os horários ──
+        const heat = heatRows.map((r) => ({
+          dow: int(r.dow),
+          hour: int(r.hour),
+          bookings: int(r.bookings),
+        }));
+        const topSlots = [...heat]
+          .sort((a, b) => b.bookings - a.bookings || a.dow - b.dow || a.hour - b.hour)
+          .slice(0, 3);
+        const argmax = (key) => {
+          const acc = new Map();
+          for (const h of heat) acc.set(h[key], (acc.get(h[key]) || 0) + h.bookings);
+          let best = null;
+          for (const [k, v] of acc) if (!best || v > best.bookings) best = { [key]: k, bookings: v };
+          return best;
+        };
 
         return {
-          range: { days, since, until: today, windows: WINDOWS },
+          range: {
+            days,
+            since,
+            until: today,
+            prev_since: prevSince,
+            prev_until: prevUntil,
+            windows: WINDOWS,
+          },
+
+          // ─── O RESULTADO ─────────────────────────────────────────────────
+          // ⚠️ A receita é o que passou pela plataforma (líquido) MAIS o que o
+          // líder lançou como entrada DESTE negócio na Vida Financeira; o
+          // custo é só o que ele marcou como deste negócio (mig 261). Nada da
+          // vida pessoal entra aqui.
+          finance: {
+            revenue_cents: revenueNow,
+            platform_revenue_cents: sum(series, "platform_revenue_cents"),
+            manual_in_cents: sum(series, "manual_in_cents"),
+            cost_cents: costNow,
+            profit_cents: profitNow,
+            // Sem receita não existe margem — "-100%" num negócio que ainda não
+            // vendeu nada leria como desastre, quando é só começo.
+            margin_pct: revenueNow > 0 ? Math.round((profitNow / revenueNow) * 100) : null,
+            prev: {
+              revenue_cents: revenuePrev,
+              cost_cents: costPrev,
+              profit_cents: revenuePrev - costPrev,
+            },
+            fixed_monthly_cost_cents: fin.fixedOut,
+            fixed_monthly_income_cents: fin.fixedIn,
+            top_costs: fin.topCosts(since, today),
+            has_entries: finRows.length > 0,
+          },
+
+          // ─── O FUNIL DO SITE ─────────────────────────────────────────────
+          site: {
+            scope: "community",
+            views: sum(series, "views"),
+            booking_clicks: sum(series, "booking_clicks"),
+            whatsapp_clicks: sum(series, "whatsapp_clicks"),
+            bookings: siteValid,
+            paid: bookingsPaid,
+            prev: {
+              views: sum(prevSeries, "views"),
+              booking_clicks: sum(prevSeries, "booking_clicks"),
+              bookings: sum(prevSeries, "site_bookings"),
+            },
+          },
+
+          // ─── A AGENDA DA EQUIPE ──────────────────────────────────────────
+          bookings: {
+            // `total`/`paid` seguem sendo o que nasceu PELO site (compat).
+            scope: "community",
+            total: bookingsTotal,
+            paid: bookingsPaid,
+            team: {
+              // ⚠️ Escopo "equipe": quem atende em dois negócios tem a mesma
+              // agenda nos dois (a agenda é da conta, mig 190).
+              scope: "team",
+              people: teamIds.length,
+              valid: teamNow.reduce((a, r) => a + int(r.valid), 0),
+              canceled: teamNow.reduce((a, r) => a + int(r.canceled), 0),
+              no_show: teamNow.reduce((a, r) => a + int(r.no_show), 0),
+              prev_valid: teamRows
+                .filter((r) => inPrev(String(r.day)))
+                .reduce((a, r) => a + int(r.valid), 0),
+            },
+            heat,
+            top_slots: topSlots,
+            best_weekday: argmax("dow"),
+            best_hour: argmax("hour"),
+          },
+
+          // ─── A COMUNIDADE ────────────────────────────────────────────────
+          members: {
+            total: int(members.total),
+            new: int(members.new_now),
+            new_prev: int(members.new_prev),
+            active: int(members.active),
+            participants: int(members.participants),
+          },
 
           leads: {
             // ⚠️ `scope: "account"` é a etiqueta que impede a tela de mentir:
             // estes dois blocos são do TELEFONE e da CAIXA da pessoa, não desta
             // comunidade (ver o cabeçalho do arquivo).
             scope: "account",
-            // O NÚMERO GRANDE É GENTE, não mensagem: cinco mensagens de um
-            // cliente são um lead, e é `people` que responde "quantos me
-            // procuraram". As mensagens ficam ao lado, como volume de conversa.
-            //
-            // Os dois canais são somados sem cruzar: quem mandou zap E abriu
-            // uma O.S. conta duas vezes. Cruzá-los não é possível — a mensagem
-            // do WhatsApp chega de um telefone, não de uma conta daqui — e a
-            // tela mostra a quebra por canal justamente para que o total nunca
-            // precise ser lido como "pessoas diferentes".
             people: waPeople + osPeople,
             messages: waMessages + osMessages,
             whatsapp: {
@@ -274,26 +494,8 @@ module.exports = class BusinessIndicatorsService {
             os: { people: osPeople, messages: osMessages },
           },
 
-          site: {
-            scope: "community",
-            views,
-            booking_clicks: bookingClicks,
-            whatsapp_clicks: whatsappClicks,
-          },
-
-          bookings: {
-            scope: "community",
-            total: bookingsTotal,
-            paid: bookingsPaid,
-          },
-
           revenue: {
             scope: "community",
-            // O que a PLATAFORMA processou para este negócio. Não é o
-            // faturamento da empresa: o sinal do agendamento é uma parte do
-            // preço (o resto é pago no balcão) e a venda feita fora daqui não
-            // passa por nós. A tela diz isso — prometer "faturamento total"
-            // seria a mentira mais fácil deste painel.
             gross_cents: bookingGross + memberGross,
             net_cents: bookingNet + memberNet,
             sources: {

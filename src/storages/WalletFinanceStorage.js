@@ -42,7 +42,7 @@ module.exports = {
       `
       SELECT id, direction, recurrence, title, category,
              amount_cents::bigint AS amount_cents,
-             entry_date, due_day, start_ym, active, created_at
+             entry_date, due_day, start_ym, active, created_at, id_business_profile
         FROM public.tb_wallet_finance_entry
        WHERE user_id = $1
          AND (
@@ -122,10 +122,11 @@ module.exports = {
       `
       INSERT INTO public.tb_wallet_finance_entry
         (user_id, direction, recurrence, title, category, amount_cents,
-         entry_date, due_day, start_ym, active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+         entry_date, due_day, start_ym, active, id_business_profile)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10)
       RETURNING id, direction, recurrence, title, category,
-                amount_cents::bigint AS amount_cents, entry_date, due_day, start_ym, active, created_at
+                amount_cents::bigint AS amount_cents, entry_date, due_day, start_ym, active, created_at,
+                id_business_profile
       `,
       [
         userId,
@@ -137,6 +138,7 @@ module.exports = {
         e.entry_date ?? null,
         e.due_day ?? null,
         e.start_ym ?? null,
+        e.id_business_profile ?? null,
       ]
     );
     return rows[0];
@@ -151,10 +153,15 @@ module.exports = {
              amount_cents = COALESCE($5, amount_cents),
              due_day      = COALESCE($6, due_day),
              active       = COALESCE($7, active),
+             -- $8 diz se o negócio veio no PATCH: NULL em $9 é "tirar do
+             -- negócio", e um COALESCE não saberia distinguir de "não mexer".
+             id_business_profile = CASE WHEN $8::boolean THEN $9::uuid
+                                        ELSE id_business_profile END,
              updated_at   = NOW()
        WHERE id = $1 AND user_id = $2
       RETURNING id, direction, recurrence, title, category,
-                amount_cents::bigint AS amount_cents, entry_date, due_day, start_ym, active, created_at
+                amount_cents::bigint AS amount_cents, entry_date, due_day, start_ym, active, created_at,
+                id_business_profile
       `,
       [
         id,
@@ -164,6 +171,8 @@ module.exports = {
         patch.amount_cents ?? null,
         patch.due_day ?? null,
         typeof patch.active === "boolean" ? patch.active : null,
+        patch.id_business_profile !== undefined,
+        patch.id_business_profile ?? null,
       ]
     );
     return rows[0] || null;
@@ -175,6 +184,56 @@ module.exports = {
       [id, userId]
     );
     return rowCount > 0;
+  },
+
+  /**
+   * Os negócios que esta pessoa LIDERA — as opções de "de qual negócio é este
+   * lançamento" (mig 261). Só a comunidade de negócio (`common`): pet, carro e
+   * condomínio não têm custo de negócio a apurar.
+   */
+  async listLedBusinesses(db, userId) {
+    const { rows } = await db.query(
+      `
+      SELECT p.id_profile, p.display_name
+        FROM public.tb_profile p
+       WHERE p.is_community = TRUE
+         AND p.deleted_at IS NULL
+         AND p.community_kind = 'common'
+         AND p.id_leader_user = $1
+       ORDER BY p.created_at
+      `,
+      [userId]
+    );
+    return rows;
+  },
+
+  /**
+   * Os lançamentos de UM negócio que podem cair em [`since`, `until`] — o
+   * lado dos custos (e das receitas lançadas à mão) dos Indicadores.
+   *
+   * ⚠️ Não é escopado por `user_id`: quem pergunta é o service dos
+   * Indicadores, que já conferiu que quem olha é o líder. E só o líder consegue
+   * marcar um lançamento com o negócio (o service da Vida Financeira confere).
+   *
+   * O recorrente vem inteiro e quem o espalha pelos meses é o service: aqui ele
+   * é um valor POR MÊS a partir de `start_ym`, sem data própria.
+   */
+  async businessEntries(db, idBusiness, { since, until }) {
+    const { rows } = await db.query(
+      `
+      SELECT id, direction, recurrence, title, category,
+             amount_cents::bigint AS amount_cents,
+             entry_date::text AS entry_date, due_day, start_ym
+        FROM public.tb_wallet_finance_entry
+       WHERE id_business_profile = $1
+         AND (
+           (recurrence = 'oneoff' AND entry_date >= $2::date AND entry_date <= $3::date)
+           OR (recurrence = 'recurring' AND active = TRUE)
+         )
+      `,
+      [idBusiness, since, until]
+    );
+    return rows;
   },
 
   // Categorias usadas recentemente (chips de acesso rápido). Distinct por título.

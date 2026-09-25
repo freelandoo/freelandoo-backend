@@ -17,6 +17,9 @@ class WalletFinanceController {
   static async deleteEntry(req, res) {
     return sendServiceResult(res, await WalletFinanceService.deleteEntry(req.user, req.params.id));
   }
+  static async listBusinesses(req, res) {
+    return sendServiceResult(res, await WalletFinanceService.listBusinesses(req.user));
+  }
   static async listCategories(req, res) {
     return sendServiceResult(res, await WalletFinanceService.listCategories(req.user, req.query || {}));
   }
