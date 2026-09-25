@@ -704,7 +704,7 @@ class CommunityStorage {
    * os posts de todas as comunidades de carro — ou só as do mesmo modelo — na
    * MESMA consulta do mural, em vez de uma segunda que divergiria dela.
    */
-  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key, author_id_user }) {
+  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key, author_id_user, author_game_key = null }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 24);
     const r = await conn.query(
       `SELECT
@@ -795,6 +795,11 @@ class CommunityStorage {
          )
          AND ($4::timestamptz IS NULL OR (ppi.published_at, ppi.id_portfolio_item::text) < ($4::timestamptz, $5::text))
          AND ($6::uuid IS NULL OR pro.id_user = $6::uuid)
+         -- "Jogando o mesmo que eu" (mig 262): autor com o MESMO jogo atual.
+         AND ($7::text IS NULL OR EXISTS (
+           SELECT 1 FROM public.tb_user_current_game ucg
+            WHERE ucg.id_user = pro.id_user AND ucg.game_key = $7::text
+         ))
        ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC
        LIMIT $3`,
       [
@@ -804,6 +809,7 @@ class CommunityStorage {
         before_ts || null,
         before_key || null,
         author_id_user || null,
+        author_game_key || null,
       ]
     );
     return r.rows;
@@ -849,7 +855,7 @@ class CommunityStorage {
   // unificada com os posts via chave textual ('r' || id) na MESMA stream.
   // O mesmo recorte por autor do `listCommunityFeedPosts` — sem ele, a vitrine
   // "meus posts" traria os recados de todo mundo no meio dos posts do dono.
-  static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key, author_id_user }) {
+  static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key, author_id_user, author_game_key = null }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 25);
     const r = await conn.query(
       `SELECT
@@ -890,6 +896,10 @@ class CommunityStorage {
         AND cfi.kind = 'recado'
         AND ($2::timestamptz IS NULL OR (cfi.created_at, ('r' || cfi.id::text)) < ($2::timestamptz, $3::text))
         AND ($5::uuid IS NULL OR cfi.id_author_user = $5::uuid)
+        AND ($6::text IS NULL OR EXISTS (
+          SELECT 1 FROM public.tb_user_current_game ucg
+           WHERE ucg.id_user = cfi.id_author_user AND ucg.game_key = $6::text
+        ))
       ORDER BY cfi.created_at DESC, cfi.id DESC
       LIMIT $4`,
       [
@@ -898,6 +908,7 @@ class CommunityStorage {
         before_key || null,
         lim,
         author_id_user || null,
+        author_game_key || null,
       ]
     );
     return r.rows;

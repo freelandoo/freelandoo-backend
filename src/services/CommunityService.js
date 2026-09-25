@@ -741,32 +741,52 @@ class CommunityService {
               ? asked
               : null;
 
-        // ─── O FEED DE CARROS (mig 259) ───────────────────────────────────
-        // Cada carro é uma comunidade do dono, e o que junta os donos é ESTE
-        // feed: a página de qualquer carro mostra os posts de TODOS os carros
-        // do site ("todos"), ou só os de quem tem o mesmo modelo que um dos
-        // carros de quem olha ("same_model"). Mesma consulta do mural, com uma
-        // LISTA de comunidades no lugar de uma só.
+        // ─── O FEED DAS PLATAFORMAS DE ASSUNTO (migs 259 e 262) ───────────
+        // Carro e pet são UMA comunidade por carro/bicho do dono, e o que junta
+        // os donos é ESTE feed: a página de qualquer carro mostra os posts de
+        // TODOS os carros do site ("all"), ou só os dos donos do mesmo modelo
+        // ("same_model"); o pet, o mesmo com a raça ("same_breed"). Mesma
+        // consulta do mural, com uma LISTA de comunidades no lugar de uma só.
+        //
+        // Games é UMA linha para o site inteiro (mig 232): ali o recorte não é
+        // de comunidades, é de AUTORES — quem declarou o mesmo jogo atual.
+        //
+        // A resposta devolve o escopo valendo (`car_scope`/`pet_scope`/
+        // `game_scope`) e, quando o "meu" não existe, o motivo (`needs_*`) —
+        // para a tela dizer o que fazer em vez de parecer vazia.
         let feedScope = params.id_profile;
-        let car_scope = null;
-        if (gate.community?.kind === "car") {
-          car_scope = query?.scope === "same_model" ? "same_model" : "all";
-          const sameModelAsUser = car_scope === "same_model" ? viewer?.id_user || null : null;
-          // "Mesmo carro que o meu" sem sessão não tem "meu": lista vazia, com
-          // o motivo, para a tela dizer o que fazer em vez de parecer vazia.
-          if (car_scope === "same_model" && !sameModelAsUser) {
-            return { items: [], next_cursor: null, has_more: false, car_scope, needs_car_model: true };
-          }
-          const ids = await SubjectCommunityStorage.listCarCommunityIds(pool, { sameModelAsUser });
-          if (car_scope === "all" && !ids.includes(params.id_profile)) {
+        let author_game_key = null;
+        const scopeInfo = {};
+        const empty = (extra) => ({ items: [], next_cursor: null, has_more: false, ...scopeInfo, ...extra });
+        const kind = gate.community?.kind;
+        const SUBJECT_SCOPE = {
+          car: { key: "car_scope", same: "same_model", needs: "needs_car_model", list: "listCarCommunityIds", arg: "sameModelAsUser" },
+          pet: { key: "pet_scope", same: "same_breed", needs: "needs_pet_breed", list: "listPetCommunityIds", arg: "sameBreedAsUser" },
+        };
+        const subj = SUBJECT_SCOPE[kind];
+        if (subj) {
+          const scope = query?.scope === subj.same ? subj.same : "all";
+          scopeInfo[subj.key] = scope;
+          const mineOf = scope === subj.same ? viewer?.id_user || null : null;
+          // "O mesmo que o meu" sem sessão não tem "meu".
+          if (scope === subj.same && !mineOf) return empty({ [subj.needs]: true });
+          const ids = await SubjectCommunityStorage[subj.list](pool, { [subj.arg]: mineOf });
+          if (scope === "all" && !ids.includes(params.id_profile)) {
             // A comunidade da página entra sempre no "todos" — inclusive
             // quando ela é privada e quem olha já passou pela trava acima.
             ids.push(params.id_profile);
           }
-          if (!ids.length) {
-            return { items: [], next_cursor: null, has_more: false, car_scope, needs_car_model: true };
-          }
+          // Vazio no recorte = nenhum dos meus tem modelo/raça escolhido: o
+          // próprio pet/carro de quem olha casaria consigo mesmo se tivesse.
+          if (!ids.length) return empty({ [subj.needs]: true });
           feedScope = ids;
+        } else if (kind === "games") {
+          const scope = query?.scope === "same_game" ? "same_game" : "all";
+          scopeInfo.game_scope = scope;
+          if (scope === "same_game") {
+            author_game_key = await SubjectCommunityStorage.getCurrentGameKey(pool, viewer?.id_user || null);
+            if (!author_game_key) return empty({ needs_current_game: true });
+          }
         }
 
         const [postRows, recadoRows] = await Promise.all([
@@ -776,12 +796,14 @@ class CommunityService {
             before_ts,
             before_key,
             author_id_user,
+            author_game_key,
           }),
           CommunityStorage.listCommunityRecados(pool, feedScope, {
             limit: limit + 1,
             before_ts,
             before_key,
             author_id_user,
+            author_game_key,
           }),
         ]);
 
@@ -822,9 +844,7 @@ class CommunityService {
           const last = page[page.length - 1];
           next_cursor = Buffer.from(`${last._iso}|${last._key}`, "utf8").toString("base64");
         }
-        return car_scope
-          ? { items, next_cursor, has_more: hasMore, car_scope }
-          : { items, next_cursor, has_more: hasMore };
+        return { items, next_cursor, has_more: hasMore, ...scopeInfo };
       }
     );
   }
@@ -1440,6 +1460,23 @@ class CommunityService {
                 "Para entrar no condomínio, escolha seu apartamento na planta.",
               statusCode: 409,
               needs_claim: true,
+            };
+          }
+
+          // PLATAFORMA NÃO TEM MEMBRO (decisão do Alex, 2026-09-25). Pet,
+          // carro, games e Financeiro têm um feed público de todo mundo e uma
+          // aba "mesmo X"; ninguém entra, porque não há o que entrar. O dono do
+          // pet/carro tem a linha de líder desde a criação — ela é o marcador
+          // de POSSE (listMySpaces, spaceCaps), e quem já a tem saiu acima,
+          // pela membresia existente. Recusar aqui fecha o botão genérico de
+          // "Entrar", que era a porta pela qual um visitante viraria "membro"
+          // do cachorro de outra pessoa.
+          if (CommunityPolicy.SUBJECT_KINDS.has(community.kind)) {
+            await client.query("ROLLBACK");
+            return {
+              error: "Isto é uma plataforma: o feed é de todos e não tem membros.",
+              statusCode: 409,
+              is_platform: true,
             };
           }
 

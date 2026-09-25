@@ -207,6 +207,67 @@ class SubjectCommunityStorage {
     return r.rows.map((row) => row.id_profile);
   }
 
+  /**
+   * As comunidades de pet que alimentam o FEED de pets (mig 262) — o espelho de
+   * `listCarCommunityIds`.
+   *
+   * `sameBreedAsUser` nulo → TODOS os pets públicos; preenchido → só os que têm
+   * a MESMA RAÇA de algum pet de que essa pessoa é DONA (dois cachorros de
+   * raças diferentes = as duas raças valem, como os dois carros).
+   *
+   * "Mesma raça" tem duas formas, e são as duas únicas:
+   *   - raça do catálogo: `id_breed` igual. O catálogo tem uma linha por
+   *     (espécie, raça), então vira-lata de cachorro não casa com o de gato;
+   *   - "outra raça" digitada: mesma espécie + mesmo texto normalizado
+   *     (`fl_norm_key`, a mesma régua do jogo atual).
+   * Pet sem raça nenhuma não casa com nada — nem entre si: "não sei" não é raça.
+   *
+   * ⚠️ PRIVADA FICA FORA, pela mesma razão do carro (mig 173).
+   */
+  static async listPetCommunityIds(conn, { sameBreedAsUser = null } = {}) {
+    const r = await conn.query(
+      `SELECT p.id_profile
+         FROM public.tb_profile p
+         LEFT JOIN public.tb_community_pet cp ON cp.id_profile = p.id_profile
+        WHERE p.community_kind = 'pet'
+          AND p.deleted_at IS NULL
+          AND COALESCE(p.community_privacy, 'public') <> 'private'
+          AND (
+            $1::uuid IS NULL
+            OR EXISTS (
+              SELECT 1
+                FROM public.tb_profile mp
+                JOIN public.tb_community_pet mine ON mine.id_profile = mp.id_profile
+               -- "MEU pet" é o pet de que a pessoa é DONA.
+               WHERE mp.id_leader_user = $1::uuid
+                 AND mp.community_kind = 'pet'
+                 AND mp.deleted_at IS NULL
+                 AND (
+                   (mine.id_breed IS NOT NULL AND mine.id_breed = cp.id_breed)
+                   OR (
+                     mine.id_breed IS NULL AND cp.id_breed IS NULL
+                     AND mine.species = cp.species
+                     AND public.fl_norm_key(mine.breed_label) IS NOT NULL
+                     AND public.fl_norm_key(mine.breed_label) = public.fl_norm_key(cp.breed_label)
+                   )
+                 )
+            )
+          )`,
+      [sameBreedAsUser]
+    );
+    return r.rows.map((row) => row.id_profile);
+  }
+
+  /** A chave normalizada do jogo atual da pessoa (mig 262), ou null. */
+  static async getCurrentGameKey(conn, id_user) {
+    if (!id_user) return null;
+    const r = await conn.query(
+      `SELECT game_key FROM public.tb_user_current_game WHERE id_user = $1 LIMIT 1`,
+      [id_user]
+    );
+    return r.rowCount ? r.rows[0].game_key || null : null;
+  }
+
   static async attachCarModel(conn, id_profile, id_car_model) {
     await conn.query(
       `UPDATE public.tb_profile

@@ -46,7 +46,8 @@
     "test:atendimento-ai": "node test/atendimento-ai.e2e.js",
     "test:ai-context": "node test/ai-context.e2e.js",
     "test:prospeccao": "node test/prospeccao.e2e.js",
-    "test:business-results": "node test/business-results.e2e.js"
+    "test:business-results": "node test/business-results.e2e.js",
+    "test:subject-platforms": "node test/subject-platforms.e2e.js"
   },
   "repository": {
     "type": "git",
