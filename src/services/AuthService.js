@@ -13,6 +13,7 @@ const TourSettingsStorage = require("../storages/TourSettingsStorage");
 const ConsentStorage = require("../storages/ConsentStorage");
 const FraudService = require("./FraudService");
 const { SIGNUP_TERMS_VERSION, SIGNUP_ACTION_KEY } = require("../utils/terms");
+const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
 
 // Conta bloqueada no painel de fraude (mig 201) não entra. Checado no login —
 // e só nele: o authMiddleware é puro JWT (zero I/O) e colocar uma consulta lá
@@ -258,7 +259,7 @@ class AuthService {
                 id_category,
                 profileDisplayName,
                 (bio && String(bio).trim()) || null,
-                (avatar_url && String(avatar_url).trim()) || null,
+                sanitizeAvatarUrl(avatar_url),
                 estado,
                 municipio,
                 sub_profile_slug,

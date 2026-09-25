@@ -2,6 +2,7 @@ const pool = require("../databases");
 const ProfileStorage = require("../storages/ProfileStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { normalizeDocument } = require("../utils/documents");
+const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
 
 const log = createLogger("ProfileService");
 
@@ -59,7 +60,7 @@ class ProfileService {
             id_category,
             display_name,
             bio: bio || null,
-            avatar_url: avatar_url || null,
+            avatar_url: sanitizeAvatarUrl(avatar_url),
             estado: estado || null,
             municipio: municipio || null,
           });
@@ -273,6 +274,17 @@ class ProfileService {
           payload.origin_complement = raw === null || raw === ""
             ? null
             : String(raw).trim().slice(0, 120);
+        }
+
+        // Link que não é imagem (o Instagram colado no campo) é IGNORADO, e não
+        // gravado: apagar a foto atual por causa de um valor inválido seria pior.
+        if (Object.prototype.hasOwnProperty.call(payload, "avatar_url")) {
+          const raw = payload.avatar_url;
+          const empty = raw === null || String(raw).trim() === "";
+          const clean = sanitizeAvatarUrl(raw);
+          if (empty) payload.avatar_url = null;
+          else if (clean) payload.avatar_url = clean;
+          else delete payload.avatar_url;
         }
 
         const hasAnyField = [
