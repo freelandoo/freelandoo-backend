@@ -3,6 +3,8 @@ const ProfileStorage = require("../storages/ProfileStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { normalizeDocument } = require("../utils/documents");
 const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
+const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
+const SubscriptionEndService = require("./SubscriptionEndService");
 
 const log = createLogger("ProfileService");
 
@@ -477,6 +479,31 @@ class ProfileService {
           }
 
           await client.query("COMMIT");
+
+          // O perfil comprado tem assinatura: apagado, ela não pode continuar
+          // renovando. Mesmo caminho da exclusão de conta — fim do ciclo, nunca
+          // corte na hora (o mês pago é de quem pagou). Falha aqui não desfaz a
+          // exclusão: vira log, e o sweeper de assinaturas segue existindo.
+          try {
+            const subs = await ProfileSubscriptionStorage.listByUser(pool, user.id_user);
+            for (const sub of subs) {
+              if (
+                String(sub.id_profile) === String(id_profile) &&
+                sub.status === "active" &&
+                sub.stripe_subscription_id &&
+                !sub.canceled_at
+              ) {
+                await SubscriptionEndService.cancelAtPeriodEnd({
+                  subscriptionId: sub.stripe_subscription_id,
+                  id_user: user.id_user,
+                  reason: "perfil excluído",
+                });
+              }
+            }
+          } catch (err) {
+            log.warn("remove.subscription_cancel_fail", { id_profile, message: err?.message });
+          }
+
           return { message: "Perfil removido com sucesso" };
         } catch (err) {
           await client.query("ROLLBACK");

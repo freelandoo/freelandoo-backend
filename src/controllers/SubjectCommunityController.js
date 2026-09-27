@@ -66,6 +66,14 @@ class SubjectCommunityController {
     return sendServiceResult(res, result);
   }
 
+  static async deleteSubject(req, res) {
+    const result = await SubjectCommunityService.deleteSubject(req.user, {
+      id_profile: req.params.id_profile,
+      kind: req.subjectKind,
+    });
+    return sendServiceResult(res, result);
+  }
+
   // ─── Menu da foto de perfil ─────────────────────────────────────────────────
   static async publicSpaces(req, res) {
     const result = await SubjectCommunityService.publicSpaces(req.params.handle);

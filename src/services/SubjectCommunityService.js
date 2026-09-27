@@ -334,6 +334,85 @@ class SubjectCommunityService {
    * Civic têm cada um a comunidade do seu, então escolher o modelo nunca
    * colide com ninguém.
    */
+  /**
+   * Exclui o pet/carro (2026-09-27, pedido do Alex: lixeira no "Meus pets" /
+   * "Meus carros", com confirmação de que não tem volta).
+   *
+   * Só o LÍDER, e só na modalidade da rota — ninguém apaga o carro pela rota
+   * do pet. A exclusão é SOFT (deleted_at, como o perfil): `listMySpaces`,
+   * `getById` e o feed agregado já ignoram comunidade apagada, então ela some
+   * de todas as telas sem uma linha nova de filtro.
+   *
+   * Dois efeitos junto, na mesma transação:
+   *   • os posts que tinham ficado EXCLUSIVOS dela (comunidade privada, mig 173)
+   *     voltam a ser públicos — senão sumiriam do perfil do autor para sempre,
+   *     presos a um lugar que não existe mais;
+   *   • assinatura de membro VIVA recusa a exclusão: há gente pagando por ela,
+   *     e apagar deixaria a cobrança sem destino. O dono torna a comunidade
+   *     pública antes (isso já cancela as assinaturas no fim do ciclo).
+   */
+  static async deleteSubject(user, params) {
+    return runWithLogs(
+      log,
+      "deleteSubject",
+      () => ({ id_user: user?.id_user, id_profile: params?.id_profile, kind: params?.kind }),
+      async () => {
+        const id_user = user?.id_user;
+        if (!id_user) return { error: "Usuário não autenticado" };
+
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
+        if (community.kind !== params.kind) {
+          return { error: "Esta comunidade não é dessa modalidade.", statusCode: 400 };
+        }
+        if (String(community.id_leader_user) !== String(id_user)) {
+          return { error: "Só o dono pode excluir.", statusCode: 403 };
+        }
+
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const live = await client.query(
+            `SELECT 1 FROM public.tb_community_member_sub
+              WHERE id_community_profile = $1
+                AND status IN ('pending','active','past_due')
+              LIMIT 1`,
+            [params.id_profile]
+          );
+          if (live.rowCount) {
+            await client.query("ROLLBACK");
+            return {
+              error:
+                "Há pessoas pagando mensalidade aqui. Torne a comunidade pública antes de excluir.",
+              statusCode: 409,
+            };
+          }
+          await client.query(
+            `UPDATE public.tb_profile_portfolio_item
+                SET id_exclusive_community = NULL
+              WHERE id_exclusive_community = $1`,
+            [params.id_profile]
+          );
+          const del = await client.query(
+            `UPDATE public.tb_profile
+                SET deleted_at = NOW(), is_active = FALSE, is_visible = FALSE, updated_at = NOW()
+              WHERE id_profile = $1 AND is_community = TRUE AND deleted_at IS NULL
+              RETURNING id_profile`,
+            [params.id_profile]
+          );
+          await client.query("COMMIT");
+          if (!del.rowCount) return { error: "Comunidade não encontrada", statusCode: 404 };
+          return { ok: true, id_profile: params.id_profile };
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
+      }
+    );
+  }
+
   static async updateSubject(user, params, payload) {
     return runWithLogs(
       log,

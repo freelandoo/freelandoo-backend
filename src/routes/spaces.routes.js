@@ -110,6 +110,21 @@ router.patch(
   withKind("car"),
   asyncHandler(SubjectCommunityController.updateSubject)
 );
+// Excluir o pet/carro (2026-09-27). SEM requireFeature: é porta de SAÍDA —
+// desligar a flag para segurar a criação não pode prender quem quer apagar.
+router.delete(
+  "/pets/:id_profile",
+  authMiddleware,
+  withKind("pet"),
+  asyncHandler(SubjectCommunityController.deleteSubject)
+);
+router.delete(
+  "/cars/:id_profile",
+  authMiddleware,
+  withKind("car"),
+  asyncHandler(SubjectCommunityController.deleteSubject)
+);
+
 // ⚠️ APOSENTADA (mig 232). O jogo atual deixou de ser o assunto de um espaço
 // e virou coisa da pessoa; um cliente antigo que ainda mande PATCH aqui
 // estaria escrevendo no espaço de outro. 410 e não 404: a diferença entre
