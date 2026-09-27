@@ -268,9 +268,12 @@ class CommunityStorage {
               p.xp_total, p.xp_level, p.created_at, p.updated_at,
               m.name AS enxame_name,
               -- O ROSTO DO DONO (decisão do Alex, 2026-09-25): toda comunidade
-              -- mostra a foto de perfil de quem a lidera — a mesma do /account
+              -- herda a foto de perfil de quem a lidera — a mesma do /account
               -- (tb_user.avatar, fonte única da mig 215). NULL na plataforma de
               -- games, que não tem líder.
+              -- ⚠️ E p.avatar_url VIROU OVERRIDE (2026-09-27): quando o dono
+              -- troca a foto SÓ daquela comunidade, é ela que vale; NULL = herda
+              -- esta. Quem decide a precedência é a tela.
               (SELECT u.avatar FROM public.tb_user u
                 WHERE u.id_user = p.id_leader_user) AS leader_avatar,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm

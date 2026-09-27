@@ -110,11 +110,26 @@ class CommunityController {
     if (!req.file) {
       return res.status(400).json({ error: "Envie uma imagem de avatar." });
     }
+    // A permissão é conferida ANTES de mandar os bytes ao R2: subir primeiro e
+    // perguntar depois deixaria qualquer logado gravar no bucket com o id de
+    // uma comunidade alheia, com o 403 chegando tarde e o objeto já pago.
+    const guard = await CommunityService._assertCommunityAdmin(
+      req.user?.id_user,
+      req.params.id_profile
+    );
+    if (guard.error) return sendServiceResult(res, guard);
     const url = await uploadProfileAvatarToR2({
       id_profile: req.params.id_profile,
       file: req.file,
     });
     const result = await CommunityService.setAvatar(req.user, req.params, url);
+    return sendServiceResult(res, result);
+  }
+
+  // Volta a herdar a foto de perfil do dono: a foto própria da comunidade é
+  // um OVERRIDE, e NULL é "usa o rosto de quem lidera".
+  static async clearAvatar(req, res) {
+    const result = await CommunityService.setAvatar(req.user, req.params, null);
     return sendServiceResult(res, result);
   }
 

@@ -103,6 +103,12 @@ router.post(
   asyncHandler(CommunityController.uploadAvatar)
 );
 
+router.delete(
+  "/:id_profile/avatar",
+  authMiddleware,
+  asyncHandler(CommunityController.clearAvatar)
+);
+
 // Metas coletivas (só líder).
 router.put(
   "/:id_profile/goal",
