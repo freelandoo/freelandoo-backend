@@ -276,6 +276,17 @@ class CommunityStorage {
               -- esta. Quem decide a precedência é a tela.
               (SELECT u.avatar FROM public.tb_user u
                 WHERE u.id_user = p.id_leader_user) AS leader_avatar,
+              -- A LOJA DO DONO (2026-09-27): a aba Produtos da comunidade de
+              -- negócio mostra os produtos do PERFIL-CONTA do líder — o mesmo
+              -- catálogo que o site da comunidade já usa (loadStore). Um
+              -- segundo cadastro de produto "da comunidade" seria outra
+              -- verdade sobre estoque e preço.
+              (SELECT ap.id_profile FROM public.tb_profile ap
+                WHERE ap.id_user = p.id_leader_user
+                  AND ap.is_user_account = TRUE
+                  AND ap.deleted_at IS NULL
+                ORDER BY ap.created_at
+                LIMIT 1) AS leader_store_profile_id,
               (SELECT COUNT(*)::int FROM public.tb_community_member cm
                 WHERE cm.id_community_profile = p.id_profile) AS member_count,
               -- "Meu Site" (mig 212): só a EXISTÊNCIA de um site publicado, para
