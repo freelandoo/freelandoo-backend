@@ -122,7 +122,12 @@ class CommunityListingService {
           limit: query?.limit,
           offset: query?.offset,
         });
-        return { listings };
+        // O preço do mês vai junto porque a vitrine desenha os ESPAÇOS VAGOS
+        // ("R$ 3,50 · alugue por 1 mês") ao lado dos anúncios: o número tem
+        // que sair da mesma tabela que a cobrança lê, nunca de um literal do
+        // front.
+        const settings = await CommunityListingStorage.getEffectiveSettings(pool, communityIdOf(params));
+        return { listings, monthly_cents: settings.listing_monthly_cents };
       }
     );
   }
