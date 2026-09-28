@@ -28,10 +28,16 @@ const SiteSlug = require("../utils/communitySiteSlug");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
 const CommunityProfessionalStorage = require("../storages/CommunityProfessionalStorage");
 const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStorage");
+const ProfileProductStorage = require("../storages/ProfileProductStorage");
+const ProfileProductMediaStorage = require("../storages/ProfileProductMediaStorage");
+const StoreGovernanceService = require("./StoreGovernanceService");
 const BookingAvailabilityService = require("./BookingAvailabilityService");
 const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
-const { isManaged, managedRefusal, MANAGED_SITE_GATE } = require("../utils/managedSite");const SiteTemplates = require("../utils/siteTemplates");
+const { isManaged, managedRefusal, MANAGED_SITE_GATE, MANAGED_SITE_PLAN_SLUG } = require("../utils/managedSite");
+const PlanStorage = require("../storages/PlanStorage");
+const PaymentGateway = require("../integrations/payments");
+const SiteTemplates = require("../utils/siteTemplates");
 const ManagedSiteOfferStorage = require("../storages/ManagedSiteOfferStorage");
 const ManagedSiteRequestStorage = require("../storages/ManagedSiteRequestStorage");
 const AuthStorage = require("../storages/AuthStorage");
@@ -214,7 +220,7 @@ async function loadRoster(id_community, id_leader_user) {
  * tem de tirá-lo da vitrine, e ela precisa valer aqui também.
  */
 async function loadShowcase(id_community, id_leader_user) {
-  const empty = { services: [], professionals: [], provider_profile_id: null };
+  const empty = { services: [], products: [], professionals: [], provider_profile_id: null };
   if (!id_leader_user) return empty;
 
   const roster = await loadRoster(id_community, id_leader_user);
@@ -268,7 +274,52 @@ async function loadShowcase(id_community, id_leader_user) {
     }
   }
 
-  return { services, professionals, provider_profile_id: leader.id_profile };
+  const products = await loadStore(leader.id_profile);
+  return { services, products, professionals, provider_profile_id: leader.id_profile };
+}
+
+/**
+ * A LOJA DO PERFIL no site (mig 263) — os produtos da loja do LÍDER.
+ *
+ * Só do líder, e não da equipe: a loja é do perfil que vende, e o site é a
+ * vitrine do negócio dele. Mesma disciplina da vitrine de serviços acima:
+ * projeção ENXUTA, campo a campo (a linha carrega régua de comissão e dados de
+ * frete), e só produto ATIVO e aprovado pela moderação.
+ *
+ * O preço é o que o COMPRADOR paga (`display_price_cents`), e não o do
+ * vendedor: é o número que ele vai ver no checkout, e anunciar outro seria a
+ * vitrine prometendo um valor que a Loja não cobra.
+ */
+async function loadStore(id_profile) {
+  if (!id_profile) return [];
+  const rows = await ProfileProductStorage.list(pool, id_profile, { only_active: true });
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => Number(r.id_profile_product));
+  const mediaMap = await ProfileProductMediaStorage.listByProducts(pool, ids);
+  const out = [];
+  for (const r of rows.slice(0, 24)) {
+    const media = mediaMap.get(String(r.id_profile_product)) || [];
+    let display = Number(r.price_amount) || 0;
+    try {
+      const pricing = await StoreGovernanceService.computeFeesFor(r.price_amount, {
+        affiliatesAllowed: r.affiliates_allowed === true,
+        affiliatePercent: r.affiliate_percent,
+      });
+      if (Number(pricing?.display_price_cents) > 0) display = Number(pricing.display_price_cents);
+    } catch {
+      /* sem régua de taxa, mostra o preço cadastrado */
+    }
+    out.push({
+      id_profile_product: Number(r.id_profile_product),
+      name: r.name,
+      description: r.description || "",
+      price_cents: display,
+      in_stock: Number(r.stock_quantity) > 0,
+      image_url: media[0]?.media_url || null,
+      provider_profile_id: id_profile,
+    });
+  }
+  return out;
 }
 
 /**
@@ -714,6 +765,49 @@ class CommunitySiteService {
         }
 
         const note = String(body?.note || "").trim().slice(0, 2000);
+
+        // ─── O PEDIDO É PAGO (mig 263) ─────────────────────────────────────
+        //
+        // Decisão do Alex (2026-09-27): o site autoral custa R$299 de criação,
+        // e é AQUI que eles são cobrados — o trabalho dos agentes começa com o
+        // pedido, e cobrar só no aceite deixaria o site feito sem pagamento
+        // garantido. O valor sai do plano (`setup_fee_cents`), nunca de uma
+        // constante: o admin muda o preço sem deploy.
+        //
+        // Já existindo um pedido PAGO na fila, o segundo clique devolve ele —
+        // cobrar de novo quem já pagou seria o pior erro possível desta porta.
+        const pendingPaid = await ManagedSiteRequestStorage.getPending(pool, params.id_profile);
+        const plan = await PlanStorage.getPlanBySlug(pool, MANAGED_SITE_PLAN_SLUG);
+        const setupCents = Number(plan?.setup_fee_cents) || 0;
+        if (!pendingPaid && setupCents > 0) {
+          const awaiting = await ManagedSiteRequestStorage.openAwaitingPayment(pool, {
+            id_profile: params.id_profile,
+            requestedBy: loaded.id_user,
+            note,
+            setup_cents: setupCents,
+          });
+          if (!awaiting) return { error: "Não foi possível abrir o pedido. Tente de novo.", statusCode: 409 };
+
+          const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
+          const back = `${frontend}/comunidades/${params.id_profile}/site`;
+          const session = await PaymentGateway.createCheckout({
+            amount_cents: setupCents,
+            productName: "Site Autoral — criação",
+            customerEmail: user?.email || undefined,
+            clientReferenceId: String(loaded.id_user),
+            successUrl: `${back}?pedido=sucesso`,
+            cancelUrl: `${back}?pedido=cancelado`,
+            metadata: {
+              type: "managed_site_setup",
+              id_request: String(awaiting.id_request),
+              id_profile: String(params.id_profile),
+              user_id: String(loaded.id_user),
+            },
+          });
+          await ManagedSiteRequestStorage.setSession(pool, awaiting.id_request, session.id);
+          return { checkout_url: session.url, setup_cents: setupCents, created: false, request: null };
+        }
+
         const { request, created } = await ManagedSiteRequestStorage.open(pool, {
           id_profile: params.id_profile,
           requestedBy: loaded.id_user,
@@ -749,6 +843,70 @@ class CommunitySiteService {
         };
       }
     );
+  }
+
+  /**
+   * WEBHOOK — os R$299 da criação caíram (mig 263): o pedido entra na fila.
+   *
+   * Idempotente pelo session id: `markPaid` só move quem ainda está
+   * `awaiting_payment`, então a re-entrega do webhook não faz nada e não acorda
+   * a nossa tela de novo.
+   */
+  static async confirmSetupSession(session) {
+    const meta = session?.metadata || {};
+    if (meta.type !== "managed_site_setup") return { ignored: true };
+    const row = await ManagedSiteRequestStorage.getBySession(pool, session.id);
+    if (!row) return { error: "Pedido de site não encontrado" };
+    if (row.status !== "awaiting_payment") return { already: true };
+
+    const paymentRef =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id || null;
+
+    let paid;
+    try {
+      paid = await ManagedSiteRequestStorage.markPaid(pool, row.id_request, paymentRef);
+    } catch (e) {
+      // Já existe outro pedido PAGO desta comunidade (duas abas pagaram). O
+      // dinheiro entrou e não pode sumir: o pedido fica marcado e sai no painel
+      // de pendentes para estorno manual, em vez de derrubar o webhook.
+      log.error("confirmSetupSession: pedido duplicado", { id_request: row.id_request, erro: e.message });
+      return { error: "Pedido de site duplicado — estornar manualmente" };
+    }
+    if (!paid) return { already: true };
+
+    void (async () => {
+      try {
+        const community = await CommunityStorage.getById(pool, row.id_profile);
+        const admins = await AuthStorage.listAdminUserIds(pool);
+        for (const id_admin of admins) {
+          realtime.emitToUser(id_admin, "managed_site:request", {
+            id_profile: row.id_profile,
+            community_name: community?.display_name || null,
+          });
+        }
+      } catch (e) {
+        log.warn("confirmSetupSession: aviso aos admins falhou", { erro: e.message });
+      }
+    })();
+    return { ok: true, id_request: row.id_request };
+  }
+
+  /** Estorno TOTAL da criação: o pedido sai da fila. Parcial é tratado à mão. */
+  static async handleSetupRefunded(charge) {
+    const ref =
+      typeof charge?.payment_intent === "string"
+        ? charge.payment_intent
+        : charge?.payment_intent?.id || null;
+    if (!ref) return { ignored: true };
+    const row = await ManagedSiteRequestStorage.getByPaymentRef(pool, ref);
+    if (!row) return { ignored: true };
+    const { isFullRefund } = require("../utils/refunds");
+    if (!isFullRefund(charge)) return { handled: false, partial: true };
+    if (row.refunded_at) return { handled: true, duplicate: true };
+    await ManagedSiteRequestStorage.markRefunded(pool, row.id_request);
+    return { handled: true };
   }
 
   /**
@@ -797,6 +955,14 @@ class CommunitySiteService {
           request: request
             ? { id_request: request.id_request, created_at: request.created_at }
             : null,
+          // O preço do site autoral (mig 263), para o botão dizer quanto custa
+          // ANTES do clique. Sai do plano, a mesma fonte que o pedido cobra.
+          pricing: await (async () => {
+            const p = await PlanStorage.getPlanBySlug(pool, MANAGED_SITE_PLAN_SLUG);
+            return p && p.is_active
+              ? { setup_cents: Number(p.setup_fee_cents) || 0, monthly_cents: Number(p.price_cents) || 0 }
+              : null;
+          })(),
           offer: pending
             ? {
                 id_offer: pending.id_offer,

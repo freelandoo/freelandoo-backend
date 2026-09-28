@@ -228,7 +228,13 @@ class AtendimentoIaProvisionService {
   }
 
   // Agenda um provisionamento imediato (o sweeper pega no próximo tick).
+  //
+  // ⚠️ SEM O BOT EXTERNO CONFIGURADO, NÃO AGENDA NADA (mig 263). Quem responde
+  // pela assinatura agora é o atendente da PRÓPRIA plataforma (AiReplyWorker),
+  // e ele lê a assinatura direto do banco. Provisionar o bot externo ao mesmo
+  // tempo faria as duas IAs responderem a mesma mensagem.
   static async scheduleProvision(id_sub) {
+    if (!configured()) return;
     await AtendimentoIaStorage.setProvisioning(pool, id_sub, {
       status: "pending",
       attempts: null,

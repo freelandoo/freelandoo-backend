@@ -845,6 +845,11 @@ async function fulfillCheckoutSession(session) {
   } else if (meta.type === "condo_listing_slot") {
     const CommunityListingService = require("./CommunityListingService");
     result = await CommunityListingService.confirmStripeSession(session);
+  } else if (meta.type === "managed_site_setup") {
+    // Site autoral (mig 263): os R$299 da criação caíram e o pedido entra na
+    // fila dos agentes. Idempotente pelo session id.
+    const CommunitySiteService = require("./CommunitySiteService");
+    result = await CommunitySiteService.confirmSetupSession(session);
   } else if (meta.type === "community_delivery") {
     // Delivery entre vizinhos (mig 248): o pagamento do ACEITE caiu. O
     // confirmador é idempotente por session id e apura a tarifa real ANTES de
@@ -1112,6 +1117,9 @@ async function dispatchEvent(event) {
       if (membershipResult && !membershipResult.ignored) break;
       const atendimentoIaResult = await AtendimentoIaService.handleChargeRefunded(charge);
       if (atendimentoIaResult && !atendimentoIaResult.ignored) break;
+      const CommunitySiteService = require("./CommunitySiteService");
+      const siteSetupResult = await CommunitySiteService.handleSetupRefunded(charge);
+      if (siteSetupResult && !siteSetupResult.ignored) break;
       await handleChargeRefunded(pool, charge);
       break;
     }

@@ -203,6 +203,23 @@ class CommunityDomainService {
         const guard = await assertLeader(user?.id_user, params.id_profile);
         if (guard.error) return guard;
 
+        // ⚠️ O DOMÍNIO PRÓPRIO É DO PLANO SITE (mig 263), junto da publicação:
+        // "publicar e colocar o domínio" é o que os R$49/ano compram. A mesma
+        // chave do Publicar — são a mesma porta, e duas chaves deixariam uma
+        // aberta quando a outra fechasse. Remover e verificar ficam FORA do
+        // gate: porta de saída trancada é a única que não pode existir.
+        //
+        // `require` lazy: o PlanService puxa meio subsistema de pagamento, e
+        // este service é carregado pelo roteamento de domínio do site público.
+        const PlanService = require("./PlanService");
+        const { BUSINESS_GATES } = require("../utils/businessPlan");
+        if (!(await PlanService.hasFeature(user.id_user, BUSINESS_GATES.siteShare))) {
+          return await PlanService.planRefusal(
+            BUSINESS_GATES.siteShare,
+            "Ligar um domínio próprio faz parte da publicação do site."
+          );
+        }
+
         const verdict = Domain.validateDomain(body?.domain);
         if (!verdict.ok) {
           return { error: REASON[verdict.reason] || "Domínio inválido." };

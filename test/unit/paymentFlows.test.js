@@ -38,6 +38,11 @@ const INVENTARIO_STRIPE = [
   // `CommunityListingOrderService.confirmStripeSession`, montado nos TRÊS
   // pontos do webhook.
   "community_listing_order",
+  // Site autoral (mig 263). Confirmador:
+  // `CommunitySiteService.confirmSetupSession` no fulfill e
+  // `handleSetupRefunded` na cadeia de charge.refunded. Sem expire: o pedido
+  // aguardando pagamento é reaproveitado no próximo clique.
+  "managed_site_setup",
 ];
 
 test("todo metadata.type do Stripe está declarado", () => {

@@ -61,6 +61,9 @@ const PAYMENT_FLOWS = {
   // os dois em `utils/listingOrder.js`.
   community_listing_order: { recurring: false, label: "Venda na vitrine do vizinho" },
   donation:               { recurring: false, label: "Vaquinha — doação" },
+  // Site autoral (mig 263): os R$299 de criação, cobrados no PEDIDO. A
+  // manutenção mensal é o `plan_subscription` do plano `site-freelandoo`.
+  managed_site_setup:     { recurring: false, label: "Site autoral — criação" },
 
   // ── Recorrentes ───────────────────────────────────────────────────────────
   plan_subscription:      { recurring: true,  label: "Plano mensal" },

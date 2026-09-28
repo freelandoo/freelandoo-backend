@@ -897,6 +897,25 @@ class NotificationService {
   }
 
   /**
+   * ATENDENTE DE IA — a cota acabou (mig 263). Vai para o DONO, e o texto é
+   * montado na tela a partir de `tier`/`limit` (a plataforma fala 3 idiomas).
+   * Quem limita a um aviso por dia é o worker (`aiQuota.alreadyWarnedToday`).
+   */
+  static async notifyAiQuota({ recipient_user_id, tier, limit }) {
+    if (!recipient_user_id) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      type: "ai_quota_reached",
+      entity_type: "atendimento_ai",
+      entity_id: null,
+      payload: {
+        tier: tier === "paid" ? "paid" : "free",
+        limit: Number(limit) || 0,
+      },
+    });
+  }
+
+  /**
    * DELIVERY ENTRE VIZINHOS (mig 248) — os cinco momentos da corrida.
    *
    * ⚠️ UM MÉTODO PARA OS CINCO TIPOS, e não cinco métodos: o que muda entre

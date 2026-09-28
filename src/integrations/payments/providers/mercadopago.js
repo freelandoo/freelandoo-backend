@@ -180,7 +180,10 @@ async function createCheckout(req, { intentId, customerId } = {}) {
         back_url: successUrl,
         status: "pending",
         auto_recurring: {
-          frequency: 1,
+          // O ciclo vem do fluxo (mig 263): o Plano Site é ANUAL, e o resto
+          // continua mensal. `getSubscriptionPeriod` já deriva a janela a
+          // partir de `frequency`, então a renovação anual sai certa sozinha.
+          frequency: Math.max(1, Math.round(Number(req.billingIntervalMonths) || 1)),
           frequency_type: "months",
           transaction_amount: mp.centsToReais(req.amount_cents),
           currency_id: currency,

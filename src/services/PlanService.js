@@ -152,12 +152,11 @@ class PlanService {
    * Encerra a assinatura no nosso lado. Chamado pelo webhook
    * (`customer.subscription.deleted`) e pelo cancelamento a pedido.
    *
-   * ⚠️ O `require` do WhatsappService é LAZY, dentro da função, e não no topo
-   * do arquivo: o WhatsappService importa este módulo para gatear a conexão, e
-   * os dois no topo fariam um ciclo de require — que em Node não estoura, só
-   * entrega um objeto pela metade, num erro que aparece longe daqui.
+   * ⚠️ O `require` do AtendimentoIaService é LAZY, dentro da função: os dois
+   * no topo fariam um ciclo de require — que em Node não estoura, só entrega
+   * um objeto pela metade, num erro que aparece longe daqui.
    */
-  static async endSubscription(id_subscription, id_user) {
+  static async endSubscription(id_subscription, _id_user) {
     const row = await PlanStorage.setStatus(pool, id_subscription, "canceled");
 
     // O atendente de IA INCLUÍDO (mig 234) cai junto com o plano: ele é o
@@ -171,15 +170,9 @@ class PlanService {
       log.warn("endSubscription.ai_revoke_failed", { message: e && e.message });
     }
 
-    // A sessão do WhatsApp é o único recurso que continuaria CUSTANDO depois do
-    // fim do plano — uma sessão de pé consome memória todo dia, pagando ou não.
-    // O histórico fica; o que cai é a conexão.
-    try {
-      const WhatsappService = require("./WhatsappService");
-      await WhatsappService.disconnect(id_user || (row && row.id_user));
-    } catch (e) {
-      log.warn("endSubscription.whatsapp_disconnect_failed", { message: e && e.message });
-    }
+    // ⚠️ O WhatsApp NÃO cai mais aqui (mig 263). Ele era do Plano Negócio, que
+    // acabou: conectar o WhatsApp passou a ser grátis, e derrubar a sessão de
+    // quem só deixou de pagar o SITE tiraria dele um recurso que não é do plano.
     return row;
   }
 
@@ -215,9 +208,12 @@ class PlanService {
         };
       }
 
+      const months = Number(plan.billing_interval_months) || 1;
       const session = await PaymentGateway.createCheckout({
         amount_cents: plan.price_cents,
-        productName: `Plano ${plan.name}`,
+        productName: months === 12 ? `Plano ${plan.name} (anual)` : `Plano ${plan.name}`,
+        // Anual (mig 263): o Plano Site cobra uma vez por ano.
+        billingIntervalMonths: months,
         customerEmail: user.email || undefined,
         clientReferenceId: String(id_user),
         successUrl,
@@ -402,6 +398,7 @@ class PlanService {
       tagline: s.tagline,
       status: s.status,
       price_cents: s.price_cents,
+      billing_interval_months: Number(s.billing_interval_months) || 1,
       features: s.features || [],
       current_period_end: s.current_period_end,
       started_at: s.started_at,

@@ -40,7 +40,9 @@ const ServiceRequestService = require("./ServiceRequestService");
 const ServiceRequestStorage = require("../storages/ServiceRequestStorage");
 const ExtMessagingStorage = require("../storages/ExtMessagingStorage");
 const DataExportStorage = require("../storages/DataExportStorage");
+const NotificationService = require("./NotificationService");
 const { canUseAi } = require("../utils/aiAccess");
+const aiQuota = require("../utils/aiQuota");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("AiReplyWorker");
@@ -146,6 +148,20 @@ class AiReplyWorker {
       });
     }
 
+    // ⚠️ A COTA VEM ANTES DO MODELO (mig 263): a chamada de LLM é o que custa,
+    // e perguntar depois dela pagaria a resposta que não vai ser enviada.
+    const quota = await aiQuota.canReply(pool, job.id_user, canal, job.ref_id);
+    if (!quota.allowed) {
+      this._avisarCota(job.id_user, quota.status).catch(() => {});
+      return AiJobStorage.finish(pool, job.id_job, {
+        status: "skipped",
+        skip_reason:
+          quota.status.tier === "paid"
+            ? "cota de respostas do plano esgotada"
+            : "limite grátis de pessoas atendidas hoje",
+      });
+    }
+
     const ctx = await this._contexto(job);
     if (ctx.skip) {
       return AiJobStorage.finish(pool, job.id_job, { status: "skipped", skip_reason: ctx.skip });
@@ -194,6 +210,19 @@ class AiReplyWorker {
       tokens: out.input_tokens + out.output_tokens,
     });
     return AiJobStorage.finish(pool, job.id_job, { status: "done", answer: out.text });
+  }
+
+  /**
+   * Avisa o DONO — nunca o cliente dele — que o atendente parou. Uma vez por
+   * dia: sem o limite, cada mensagem recusada viraria uma notificação.
+   */
+  static async _avisarCota(id_user, status) {
+    if (await aiQuota.alreadyWarnedToday(pool, id_user)) return;
+    await NotificationService.notifyAiQuota({
+      recipient_user_id: id_user,
+      tier: status.tier,
+      limit: status.limit,
+    });
   }
 
   static async _falhar(job, mensagem, retentavel, answer) {

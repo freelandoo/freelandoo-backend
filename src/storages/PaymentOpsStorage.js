@@ -17,6 +17,8 @@ const SOURCES = [
   // exatamente o caso de alguém que foi cobrado e cujo entregador ficou sem
   // confirmação — e ninguém veria.
   { flow: "delivery",       table: "public.tb_community_delivery_request", session_col: "session_id",            pending: "payment_status = 'pending'" },
+  // Site autoral (mig 263): pedido cobrado e ainda aguardando o webhook.
+  { flow: "site_autoral",   table: "public.tb_managed_site_request",  session_col: "stripe_session_id",          pending: "status = 'awaiting_payment'" },
   { flow: "vitrine_venda",  table: "public.tb_community_listing_order",  session_col: "session_id",              pending: "status = 'pending'" },
   { flow: "premium",        table: "public.profile_premium",          session_col: "stripe_session_id",          pending: "status = 'pending'" },
   { flow: "ativacao",       table: "public.tb_profile_subscription",  session_col: "stripe_checkout_session_id", pending: "status = 'pending'" },

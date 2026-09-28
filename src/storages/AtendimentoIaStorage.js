@@ -24,12 +24,12 @@ class AtendimentoIaStorage {
     return rows[0] || null;
   }
 
-  static async createPlan(conn, { name, description, monthly_cents, token_limit_monthly, sort_order }) {
+  static async createPlan(conn, { name, description, monthly_cents, token_limit_monthly, reply_limit_monthly, sort_order }) {
     const { rows } = await conn.query(
       `INSERT INTO public.tb_atendimento_ia_plan
-         (name, description, monthly_cents, token_limit_monthly, sort_order)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [name, description || null, monthly_cents, token_limit_monthly, sort_order || 0]
+         (name, description, monthly_cents, token_limit_monthly, reply_limit_monthly, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [name, description || null, monthly_cents, token_limit_monthly, reply_limit_monthly || null, sort_order || 0]
     );
     return rows[0];
   }
@@ -38,7 +38,7 @@ class AtendimentoIaStorage {
     const sets = ["updated_at = NOW()"];
     const vals = [];
     let i = 1;
-    for (const key of ["name", "description", "monthly_cents", "token_limit_monthly", "sort_order", "is_active"]) {
+    for (const key of ["name", "description", "monthly_cents", "token_limit_monthly", "reply_limit_monthly", "sort_order", "is_active"]) {
       if (fields[key] !== undefined) {
         sets.push(`${key} = $${i++}`);
         vals.push(fields[key]);
@@ -54,12 +54,14 @@ class AtendimentoIaStorage {
   }
 
   // ─── Assinatura ──────────────────────────────────────────────────────────
-  static async createPendingSub(conn, { id_user, id_plan, monthly_cents, token_limit_monthly }) {
+  static async createPendingSub(conn, { id_user, id_plan, monthly_cents, token_limit_monthly, reply_limit_monthly = null }) {
+    // `reply_limit_monthly` é o SNAPSHOT da cota (mig 263): o admin reajusta o
+    // plano e quem já assinou continua com a cota que contratou.
     const { rows } = await conn.query(
       `INSERT INTO public.tb_atendimento_ia_sub
-         (id_user, id_plan, monthly_cents, token_limit_monthly)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [id_user, id_plan, monthly_cents, token_limit_monthly]
+         (id_user, id_plan, monthly_cents, token_limit_monthly, reply_limit_monthly)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [id_user, id_plan, monthly_cents, token_limit_monthly, reply_limit_monthly]
     );
     return rows[0];
   }

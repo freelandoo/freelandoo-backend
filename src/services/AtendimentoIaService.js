@@ -9,6 +9,7 @@ const AtendimentoIaProvisionService = require("./AtendimentoIaProvisionService")
 const PaymentGateway = require("../integrations/payments");
 const { isFullRefund } = require("../utils/refunds");
 const { INCLUDED_AI_PLAN_NAME } = require("../utils/businessPlan");
+const aiQuota = require("../utils/aiQuota");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("AtendimentoIaService");
@@ -22,6 +23,7 @@ function publicPlan(p) {
     description: p.description,
     monthly_cents: Number(p.monthly_cents),
     token_limit_monthly: Number(p.token_limit_monthly),
+    reply_limit_monthly: p.reply_limit_monthly == null ? null : Number(p.reply_limit_monthly),
     sort_order: Number(p.sort_order),
   };
 }
@@ -33,6 +35,7 @@ function publicSub(s) {
     id_plan: Number(s.id_plan),
     monthly_cents: Number(s.monthly_cents),
     token_limit_monthly: Number(s.token_limit_monthly),
+    reply_limit_monthly: s.reply_limit_monthly == null ? null : Number(s.reply_limit_monthly),
     status: s.status,
     provisioning_status: s.provisioning_status,
     current_period_end: s.current_period_end,
@@ -55,7 +58,12 @@ class AtendimentoIaService {
       if (sub && sub.status !== "pending" && sub.provisioning_status === "provisioned") {
         usage = await AtendimentoIaProvisionService.fetchUsage(user.id_user);
       }
-      return { plans: plans.map(publicPlan), sub: publicSub(sub), usage };
+      // A cota do atendente da plataforma (mig 263) — a MESMA régua que o
+      // worker usa para decidir. A lista de conversas não sai: é identificador
+      // interno, e a tela só precisa dos dois números.
+      const q = await aiQuota.getStatus(pool, user.id_user);
+      const quota = { tier: q.tier, plan_name: q.plan_name, limit: q.limit, used: q.used, period: q.period };
+      return { plans: plans.map(publicPlan), sub: publicSub(sub), usage, quota };
     });
   }
 
@@ -84,6 +92,7 @@ class AtendimentoIaService {
           id_plan: plan.id_plan,
           monthly_cents: Number(plan.monthly_cents),
           token_limit_monthly: Number(plan.token_limit_monthly),
+          reply_limit_monthly: plan.reply_limit_monthly == null ? null : Number(plan.reply_limit_monthly),
         });
       }
 
@@ -94,8 +103,9 @@ class AtendimentoIaService {
         productName: `Atendimento IA — ${plan.name}`,
         customerEmail: user?.email || undefined,
         clientReferenceId: user.id_user,
-        successUrl: `${frontend}/account/atendimento-ia?atendimento_ia=sucesso&session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${frontend}/account/atendimento-ia?atendimento_ia=cancelado`,
+        // A casa do atendente é a tela dele (mig 263): é lá que a cota aparece.
+        successUrl: `${frontend}/account/atendente?atendimento_ia=sucesso&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${frontend}/account/atendente?atendimento_ia=cancelado`,
         metadata: {
           type: "atendimento_ia",
           id_sub: String(sub.id_sub),
@@ -357,6 +367,13 @@ class AtendimentoIaService {
       const t = Math.round(Number(body.token_limit_monthly));
       if (!Number.isFinite(t) || t <= 0) return { error: "Limite de tokens inválido" };
       fields.token_limit_monthly = t;
+    }
+    // A cota que o cliente enxerga (mig 263). Vazia = sem limite próprio, e aí
+    // o plano não dá cota nenhuma — é recusada para não vender "ilimitado".
+    if (body.reply_limit_monthly !== undefined || !partial) {
+      const r = Math.round(Number(body.reply_limit_monthly));
+      if (!Number.isFinite(r) || r <= 0) return { error: "Cota de respostas inválida" };
+      fields.reply_limit_monthly = r;
     }
     if (body.sort_order !== undefined) fields.sort_order = Math.round(Number(body.sort_order)) || 0;
     if (body.is_active !== undefined) fields.is_active = body.is_active !== false;

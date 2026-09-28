@@ -115,6 +115,8 @@ const SIZES = {
 const SECTION_KINDS = [
   "hero",
   "services_catalog",
+  // A loja do perfil (mig 263): os produtos cadastrados, lidos a cada leitura.
+  "store_catalog",
   "about",
   "testimonials",
   "cta",
@@ -487,6 +489,12 @@ const SECTION_NORMALIZERS = {
   // chaves de `textStyles` que apontavam para esses itens ficam órfãs e a poda
   // que já existe as recolhe.
   services_catalog: (d) => ({
+    columns: [2, 3, 4].includes(Number(d.columns)) ? Number(d.columns) : 3,
+  }),
+
+  // Mesma regra da vitrine de serviços: o conteúdo são os produtos da Loja,
+  // buscados a cada leitura — aqui só mora o layout.
+  store_catalog: (d) => ({
     columns: [2, 3, 4].includes(Number(d.columns)) ? Number(d.columns) : 3,
   }),
 
@@ -880,6 +888,16 @@ function buildDefaultConfig(community) {
         // cadastrados na Freelandoo, buscados a cada leitura. Semear texto
         // falso aqui daria ao líder três "serviços" que ele não vende e que
         // sumiriam sozinhos no primeiro carregamento.
+        data: { columns: 3 },
+      },
+      {
+        id: crypto.randomUUID(),
+        kind: "store_catalog",
+        enabled: true,
+        title: "Nossa loja",
+        subtitle: "Produtos à venda, com entrega ou retirada.",
+        // Sem produto de exemplo, pelo mesmo motivo dos serviços: a seção lê a
+        // Loja de verdade, e some em leitura enquanto ela estiver vazia.
         data: { columns: 3 },
       },
       {

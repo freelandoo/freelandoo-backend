@@ -73,6 +73,107 @@ class ManagedSiteRequestStorage {
     return { request: existing, created: false };
   }
 
+  /* ─────────────── o pedido PAGO do site autoral (mig 263) ─────────────── */
+  //
+  // O pedido nasce `awaiting_payment` e só entra na fila (`pending`) quando os
+  // R$299 de criação caem. A fila lê só `pending` — pedido não pago nunca
+  // aparece para nós como venda esperando.
+
+  /**
+   * Abre (ou reaproveita) o pedido aguardando pagamento desta comunidade.
+   *
+   * Reaproveita em vez de empilhar: quem abandona o checkout e volta amanhã
+   * tem UM pedido, com a nota mais recente — aqui ninguém está lendo ainda, e
+   * atualizar o texto não troca nada debaixo dos olhos de ninguém.
+   */
+  static async openAwaitingPayment(conn, { id_profile, requestedBy, note, setup_cents }) {
+    const upd = await conn.query(
+      `UPDATE public.tb_managed_site_request
+          SET note = $2, requested_by_user = $3, setup_cents = $4,
+              stripe_session_id = NULL, updated_at = NOW()
+        WHERE id_profile = $1 AND status = 'awaiting_payment'
+        RETURNING ${COLS}`,
+      [id_profile, note || null, requestedBy || null, setup_cents]
+    );
+    if (upd.rows[0]) return upd.rows[0];
+    const ins = await conn.query(
+      `INSERT INTO public.tb_managed_site_request
+         (id_profile, requested_by_user, note, status, setup_cents)
+       VALUES ($1, $2, $3, 'awaiting_payment', $4)
+       ON CONFLICT DO NOTHING
+       RETURNING ${COLS}`,
+      [id_profile, requestedBy || null, note || null, setup_cents]
+    );
+    if (ins.rows[0]) return ins.rows[0];
+    // Corrida entre duas abas: a outra acabou de criar. Devolve a dela.
+    const r = await conn.query(
+      `SELECT ${COLS} FROM public.tb_managed_site_request
+        WHERE id_profile = $1 AND status = 'awaiting_payment' LIMIT 1`,
+      [id_profile]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async setSession(conn, id_request, session_id) {
+    await conn.query(
+      `UPDATE public.tb_managed_site_request
+          SET stripe_session_id = $2, updated_at = NOW()
+        WHERE id_request = $1`,
+      [id_request, session_id]
+    );
+  }
+
+  static async getBySession(conn, session_id) {
+    const r = await conn.query(
+      `SELECT ${COLS}, paid_at, refunded_at, payment_ref
+         FROM public.tb_managed_site_request
+        WHERE stripe_session_id = $1 LIMIT 1`,
+      [session_id]
+    );
+    return r.rows[0] || null;
+  }
+
+  /**
+   * O pagamento caiu: o pedido entra na fila. Só sai de `awaiting_payment` —
+   * a re-entrega do webhook encontra a linha já `pending` e não faz nada.
+   */
+  static async markPaid(conn, id_request, payment_ref) {
+    const r = await conn.query(
+      `UPDATE public.tb_managed_site_request
+          SET status = 'pending', paid_at = NOW(), payment_ref = $2, updated_at = NOW()
+        WHERE id_request = $1 AND status = 'awaiting_payment'
+        RETURNING ${COLS}`,
+      [id_request, payment_ref || null]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async getByPaymentRef(conn, payment_ref) {
+    const r = await conn.query(
+      `SELECT ${COLS}, paid_at, refunded_at, payment_ref
+         FROM public.tb_managed_site_request
+        WHERE payment_ref = $1 LIMIT 1`,
+      [payment_ref]
+    );
+    return r.rows[0] || null;
+  }
+
+  /**
+   * Estorno da criação. O pedido que ainda não virou site sai da fila; o que
+   * já foi atendido guarda o histórico e só ganha a marca do estorno.
+   */
+  static async markRefunded(conn, id_request) {
+    await conn.query(
+      `UPDATE public.tb_managed_site_request
+          SET refunded_at = NOW(),
+              decided_at = CASE WHEN status IN ('pending', 'awaiting_payment') THEN NOW() ELSE decided_at END,
+              status = CASE WHEN status IN ('pending', 'awaiting_payment') THEN 'dismissed' ELSE status END,
+              updated_at = NOW()
+        WHERE id_request = $1`,
+      [id_request]
+    );
+  }
+
   /**
    * A FILA — o que o painel da plataforma mostra.
    *

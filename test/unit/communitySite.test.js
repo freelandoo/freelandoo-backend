@@ -139,7 +139,8 @@ test("o site semeado traz a composição inteira e sobrevive a uma segunda norma
   });
   assert.deepStrictEqual(
     config.sections.map((s) => s.kind),
-    ["hero", "about", "services_catalog", "testimonials", "cta", "person", "contact"]
+    // A loja do perfil entra logo depois dos serviços (mig 263).
+    ["hero", "about", "services_catalog", "store_catalog", "testimonials", "cta", "person", "contact"]
   );
   // Depoimento semeado seria elogio inventado publicado como fala de outra
   // pessoa — a única semente que seria uma mentira sobre alguém.

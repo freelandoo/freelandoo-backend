@@ -24,7 +24,7 @@ class PlanStorage {
   static async listPlans(conn, { onlyActive = true } = {}) {
     const r = await conn.query(
       `SELECT p.id_plan, p.slug, p.name, p.tagline, p.description, p.price_cents,
-              p.is_active, p.sort_order,
+              p.is_active, p.sort_order, p.billing_interval_months, p.setup_fee_cents,
               COALESCE(
                 ARRAY(SELECT f.feature_key
                         FROM public.tb_plan_feature f
@@ -41,7 +41,8 @@ class PlanStorage {
 
   static async getPlanBySlug(conn, slug) {
     const r = await conn.query(
-      `SELECT id_plan, slug, name, tagline, description, price_cents, is_active
+      `SELECT id_plan, slug, name, tagline, description, price_cents, is_active,
+              billing_interval_months, setup_fee_cents
          FROM public.tb_plan
         WHERE slug = $1
         LIMIT 1`,
@@ -52,7 +53,8 @@ class PlanStorage {
 
   static async getPlanById(conn, id_plan) {
     const r = await conn.query(
-      `SELECT id_plan, slug, name, tagline, description, price_cents, is_active
+      `SELECT id_plan, slug, name, tagline, description, price_cents, is_active,
+              billing_interval_months, setup_fee_cents
          FROM public.tb_plan
         WHERE id_plan = $1
         LIMIT 1`,
@@ -86,7 +88,7 @@ class PlanStorage {
       `SELECT s.id_subscription, s.id_user, s.id_plan, s.status, s.price_cents,
               s.stripe_subscription_id, s.stripe_customer_id, s.current_period_end,
               s.started_at, s.canceled_at,
-              p.slug, p.name, p.tagline,
+              p.slug, p.name, p.tagline, p.billing_interval_months,
               COALESCE(
                 ARRAY(SELECT f.feature_key
                         FROM public.tb_plan_feature f
