@@ -842,6 +842,10 @@ async function fulfillCheckoutSession(session) {
   } else if (meta.type === "function_purchase") {
     const FunctionStoreService = require("./FunctionStoreService");
     result = await FunctionStoreService.confirmStripeSession(session);
+  } else if (meta.type === "space_slot") {
+    // Pet/carro adicional (mig 264): a vaga paga já cria o espaço vazio.
+    const SpaceSlotService = require("./SpaceSlotService");
+    result = await SpaceSlotService.confirmStripeSession(session);
   } else if (meta.type === "condo_listing_slot") {
     const CommunityListingService = require("./CommunityListingService");
     result = await CommunityListingService.confirmStripeSession(session);
@@ -933,6 +937,12 @@ async function expireCheckoutSession(session, reason) {
         const FunctionStoreService = require("./FunctionStoreService");
         const expired = await FunctionStoreService.expireBySession(session.id);
         if (expired) log.info("expire.function_purchase", { session_id: session.id, reason });
+        break;
+      }
+      case "space_slot": {
+        const SpaceSlotService = require("./SpaceSlotService");
+        const expired = await SpaceSlotService.expireBySession(session.id);
+        if (expired) log.info("expire.space_slot", { session_id: session.id, reason });
         break;
       }
       case "condo_listing_slot": {
@@ -1096,6 +1106,9 @@ async function dispatchEvent(event) {
       const FunctionStoreService = require("./FunctionStoreService");
       const functionStoreResult = await FunctionStoreService.handleChargeRefunded(charge);
       if (functionStoreResult && !functionStoreResult.ignored) break;
+      const SpaceSlotService = require("./SpaceSlotService");
+      const spaceSlotResult = await SpaceSlotService.handleChargeRefunded(charge);
+      if (spaceSlotResult && !spaceSlotResult.ignored) break;
       const CommunityListingService = require("./CommunityListingService");
       const condoSlotResult = await CommunityListingService.handleChargeRefunded(charge);
       if (condoSlotResult && !condoSlotResult.ignored) break;

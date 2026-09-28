@@ -148,10 +148,14 @@ class ProfileProductStorage {
               pr.origin_number AS profile_origin_number,
               pr.origin_complement AS profile_origin_complement,
               pr.is_clan AS profile_is_clan,
-              (SELECT TRUE FROM public.tb_profile_subscription psub
-                WHERE psub.id_profile = pp.id_profile
-                  AND psub.status = 'active'
-                LIMIT 1) AS profile_is_paid
+              -- "Loja liberada" pela MESMA régua do isProfilePaid (utils/
+              -- profilePaywall): o perfil-conta vende sem assinatura. Olhando só
+              -- a assinatura, o checkout recusaria justamente o vendedor comum.
+              (pr.is_user_account = TRUE OR EXISTS (
+                SELECT 1 FROM public.tb_profile_subscription psub
+                 WHERE psub.id_profile = pp.id_profile
+                   AND psub.status = 'active'
+              )) AS profile_is_paid
          FROM public.tb_profile_product pp
          JOIN public.tb_profile pr ON pr.id_profile = pp.id_profile
         WHERE pp.id_profile_product = $1

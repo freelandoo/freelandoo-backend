@@ -17,6 +17,11 @@ class ProfileProductOrderController {
     return sendServiceResult(res, result);
   }
 
+  static async markPickedUp(req, res) {
+    const result = await ProfileProductOrderService.markPickedUp(req.user, req.params.id_order);
+    return sendServiceResult(res, result);
+  }
+
   static async getLabel(req, res) {
     const result = await ProfileProductOrderService.getLabelForSeller(req.user, req.params.id_order);
     return sendServiceResult(res, result);

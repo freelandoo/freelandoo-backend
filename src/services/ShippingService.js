@@ -13,6 +13,12 @@ const MAX_SUM_CM = 200;
 const MAX_SIDE_CM = 105;
 const MAX_WEIGHT_G = 30000;
 
+// ⚠️ SÓ RETIRADA (mig 264). A Loja voltou sem frete: todo produto responde como
+// retirada combinada com o vendedor, e o Melhor Envio não é consultado. O
+// caminho de envio fica escrito abaixo para o dia em que voltar — é trocar
+// esta constante, sem reescrever a cotação.
+const PICKUP_ONLY = true;
+
 function checkShippingLimits({ height_cm, width_cm, length_cm, weight_grams }) {
   const h = Number(height_cm) || 0;
   const w = Number(width_cm) || 0;
@@ -64,7 +70,6 @@ class ShippingService {
   static async quote({ id_profile, id_profile_product, destination_zipcode, quantity = 1 }) {
     return runWithLogs(log, "quote", () => ({ id_profile_product, destination_zipcode }), async () => {
       const destCep = normalizeCep(destination_zipcode);
-      if (!destCep) return { error: "CEP de destino inválido (8 dígitos)" };
 
       const product = await ProfileProductStorage.getWithOwner(pool, Number(id_profile_product));
       if (!product || !product.is_active || product.deleted_at) {
@@ -78,15 +83,17 @@ class ShippingService {
 
       // Retirada no local — vendedor combina entrega direto. Não consulta
       // transportadora, frontend mostra contato do vendedor.
-      if (product.delivery_mode === "local_pickup") {
+      if (PICKUP_ONLY || product.delivery_mode === "local_pickup") {
         return {
           mode: "local_pickup",
           origin_zipcode: null,
           destination_zipcode: destCep,
-          destination_address: await lookupZipcode(destCep).catch(() => null),
+          destination_address: destCep ? await lookupZipcode(destCep).catch(() => null) : null,
           options: [],
         };
       }
+      // O CEP só é exigido quando existe frete para calcular.
+      if (!destCep) return { error: "CEP de destino inválido (8 dígitos)" };
 
       // Dimensões/peso fora dos limites das transportadoras — nem chama o
       // Melhor Envio (ia retornar erro em todos os carriers). Frontend mostra
@@ -155,4 +162,5 @@ class ShippingService {
   }
 }
 
+ShippingService.PICKUP_ONLY = PICKUP_ONLY;
 module.exports = ShippingService;

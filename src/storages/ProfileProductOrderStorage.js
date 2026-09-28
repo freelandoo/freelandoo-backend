@@ -8,7 +8,7 @@ class ProfileProductOrderStorage {
          shipping_service_id, shipping_service_name, shipping_carrier,
          destination_zipcode, destination_full_address,
          buyer_name, buyer_email, buyer_whatsapp, buyer_document,
-         stripe_session_id, status
+         stripe_session_id, status, delivery_mode
        ) VALUES (
          $1,$2,$3,$4,
          $5,$6,$7,$8,
@@ -16,7 +16,7 @@ class ProfileProductOrderStorage {
          $13,$14,$15,
          $16,$17,
          $18,$19,$20,$21,
-         $22,$23
+         $22,$23,$24
        ) RETURNING *`,
       [
         data.id_buyer_user, data.id_profile_product, data.id_seller_profile, data.id_seller_user,
@@ -26,9 +26,10 @@ class ProfileProductOrderStorage {
         data.processor_fee_cents || 0,
         data.processor_fee_source || "fallback",
         data.shipping_service_id || null, data.shipping_service_name || null, data.shipping_carrier || null,
-        data.destination_zipcode, data.destination_full_address ? JSON.stringify(data.destination_full_address) : null,
+        data.destination_zipcode || null, data.destination_full_address ? JSON.stringify(data.destination_full_address) : null,
         data.buyer_name || null, data.buyer_email || null, data.buyer_whatsapp || null, data.buyer_document || null,
         data.stripe_session_id, data.status || "pending",
+        data.delivery_mode === "local_pickup" ? "local_pickup" : "shipping",
       ]
     );
     return r.rows[0];
@@ -164,6 +165,8 @@ class ProfileProductOrderStorage {
       `SELECT id_order
          FROM public.tb_profile_product_order
         WHERE status = 'paid'
+          -- Retirada (mig 264) não tem etiqueta: fora da fila do Melhor Envio.
+          AND delivery_mode = 'shipping'
           AND label_purchased_at IS NULL
           AND label_purchase_attempts < 5
           AND (label_last_attempt_at IS NULL OR label_last_attempt_at < NOW() - INTERVAL '30 minutes')

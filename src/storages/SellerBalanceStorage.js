@@ -46,6 +46,7 @@ class SellerBalanceStorage {
       `SELECT b.*,
               o.total_cents AS order_total_cents,
               o.status AS order_status,
+              o.delivery_mode,
               o.buyer_name,
               o.created_at AS order_created_at,
               o.label_pdf_url,

@@ -43,15 +43,11 @@
 // canal falha sozinho e em silêncio — no log, nunca na cara do cliente.
 
 const pool = require("../databases");
-const ProfileStorage = require("../storages/ProfileStorage");
 const CommunityStorage = require("../storages/CommunityStorage");
 const CommunityProfessionalStorage = require("../storages/CommunityProfessionalStorage");
-const ConversationStorage = require("../storages/ConversationStorage");
-const MessageStorage = require("../storages/MessageStorage");
 const NotificationService = require("./NotificationService");
-const ConversationService = require("./ConversationService");
+const InboxDropService = require("./InboxDropService");
 const WhatsappService = require("./WhatsappService");
-const realtime = require("../realtime/socket");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("BookingAlertService");
@@ -255,74 +251,13 @@ class BookingAlertService {
    */
   static async _sendInbox(recipient_user_id, booking, text) {
     if (!booking.id_client_user) return null;
-
-    const senderProfile = await ProfileStorage.getUserAccountProfileId(
-      pool,
-      booking.id_client_user
-    );
-    const recipientProfile = await ProfileStorage.getUserAccountProfileId(pool, recipient_user_id);
-    if (!senderProfile || !recipientProfile) return null;
-    // O líder agendando com um profissional da própria equipe: não existe
-    // conversa de alguém consigo mesmo, e o sino dele já acendeu.
-    if (String(senderProfile) === String(recipientProfile)) return null;
-
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const { conversation } = await ConversationStorage.getOrCreate(
-        client,
-        senderProfile,
-        recipientProfile
-      );
-      const message = await MessageStorage.create(client, {
-        id_conversation: conversation.id_conversation,
-        sender_entity_id: senderProfile,
-        sender_user_id: booking.id_client_user,
-        body: text,
-      });
-      await ConversationStorage.updateLastMessage(client, {
-        id_conversation: conversation.id_conversation,
-        sender_entity_id: senderProfile,
-        body: text,
-        at: message.created_at,
-      });
-      // O destinatário ganha o não-lido; o remetente (o cliente) não deve ver
-      // badge de uma mensagem que ele não escreveu.
-      await ConversationStorage.incrementUnreadForOther(client, {
-        id_conversation: conversation.id_conversation,
-        sender_entity_id: senderProfile,
-      });
-      await ConversationStorage.markRead(client, {
-        id_conversation: conversation.id_conversation,
-        entity_id: senderProfile,
-      });
-      await client.query("COMMIT");
-
-      // Push, como qualquer mensagem: sem isto a caixa só mostraria a reserva na
-      // próxima vez que a pessoa recarregasse a página.
-      try {
-        realtime.emitToConversation(conversation.id_conversation, "conversation:message", {
-          id_conversation: conversation.id_conversation,
-          // A MESMA projeção do envio normal (`ConversationService.mapMessage`).
-          // Montar o objeto à mão aqui faria o card da conversa receber uma
-          // mensagem sem algum campo no dia em que a projeção ganhasse um.
-          message: ConversationService.mapMessage(message),
-        });
-        realtime.emitToUser(recipient_user_id, "nav-counts:changed", {
-          reason: "message_received",
-          id_conversation: conversation.id_conversation,
-        });
-      } catch {
-        /* realtime é best-effort */
-      }
-
-      return conversation.id_conversation;
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    // A escrita mora no InboxDropService desde a mig 264 (a Loja abre a
+    // conversa de retirada pelo MESMO caminho).
+    return InboxDropService.send({
+      from_user_id: booking.id_client_user,
+      to_user_id: recipient_user_id,
+      text,
+    });
   }
 }
 

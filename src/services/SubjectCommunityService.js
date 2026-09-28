@@ -27,6 +27,7 @@ const AcademyStorage = require("../storages/AcademyStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const fipe = require("../integrations/fipe/catalog");
 const Subject = require("../utils/subjectCommunities");
+const SpaceSlotService = require("./SpaceSlotService");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("SubjectCommunityService");
@@ -60,6 +61,30 @@ class SubjectCommunityService {
       address: null,
     });
     await CommunityStorage.addMember(client, community.id_profile, id_user, "leader");
+    return community;
+  }
+
+  /**
+   * Cria o espaço VAZIO (pet ou carro) dentro da transação de quem chamou —
+   * o mesmo que o menu da foto cria de graça. Quem chama é o confirmador da
+   * vaga paga (SpaceSlotService), que é por isso que NÃO passa pelo limite:
+   * o pagamento É a vaga.
+   */
+  static async createEmptySpace(client, { id_user, kind }) {
+    const community = await this._createShell(client, {
+      id_user,
+      kind,
+      display_name: Subject.PLACEHOLDER_NAME[kind],
+      bio: null,
+      avatar_url: null,
+    });
+    if (kind === "pet") {
+      await SubjectCommunityStorage.createPet(
+        client,
+        community.id_profile,
+        Subject.validatePet({}, null)
+      );
+    }
     return community;
   }
 
@@ -101,6 +126,13 @@ class SubjectCommunityService {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+          // Pet adicional é pago (mig 264): o primeiro é grátis. A recusa sai
+          // ANTES de criar qualquer coisa, com o preço para a tela oferecer.
+          const slot = await SpaceSlotService.assertCanCreate(client, id_user, "pet");
+          if (slot) {
+            await client.query("ROLLBACK");
+            return slot;
+          }
           const community = await this._createShell(client, {
             id_user,
             kind: "pet",
@@ -265,6 +297,12 @@ class SubjectCommunityService {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+          // Carro adicional é pago (mig 264): o primeiro é grátis.
+          const slot = await SpaceSlotService.assertCanCreate(client, id_user, "car");
+          if (slot) {
+            await client.query("ROLLBACK");
+            return slot;
+          }
           const community = await this._createShell(client, {
             id_user,
             kind: "car",

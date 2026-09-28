@@ -6,6 +6,21 @@
 const SubjectCommunityService = require("../services/SubjectCommunityService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
+// Pet/carro adicional (mig 264): a recusa carrega o preço e a modalidade, que o
+// `sendServiceResult` descartaria (ele devolve só `error`). É com eles que a
+// tela oferece o pagamento em vez de só dizer não.
+function sendSlotAware(res, result, successStatus) {
+  if (result && result.needs_slot) {
+    return res.status(402).json({
+      error: result.error,
+      needs_slot: true,
+      kind: result.kind,
+      price_cents: result.price_cents,
+    });
+  }
+  return sendServiceResult(res, result, successStatus);
+}
+
 class SubjectCommunityController {
   // ─── Pet ────────────────────────────────────────────────────────────────────
   static async listBreeds(req, res) {
@@ -15,7 +30,7 @@ class SubjectCommunityController {
 
   static async createPet(req, res) {
     const result = await SubjectCommunityService.createPet(req.user, req.body || {});
-    return sendServiceResult(res, result, 201);
+    return sendSlotAware(res, result, 201);
   }
 
   // ─── Games ──────────────────────────────────────────────────────────────────
@@ -53,7 +68,7 @@ class SubjectCommunityController {
   // entrar na comunidade do modelo, e por isso responde 200 e não 201).
   static async createCar(req, res) {
     const result = await SubjectCommunityService.createCar(req.user, req.body || {});
-    return sendServiceResult(res, result);
+    return sendSlotAware(res, result);
   }
 
   // ─── Edição do assunto dentro da página (sem modal) ─────────────────────────

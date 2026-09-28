@@ -11,6 +11,7 @@ const SOURCES = [
   { flow: "polens",         table: "public.polen_purchases",          session_col: "stripe_session_id",          pending: "status = 'pending'" },
   { flow: "xp_boost",       table: "public.xp_boost_purchases",       session_col: "stripe_session_id",          pending: "status = 'pending'" },
   { flow: "loja_funcoes",   table: "public.tb_user_function_purchase", session_col: "stripe_session_id",         pending: "status = 'pending'" },
+  { flow: "pet_carro",      table: "public.tb_space_slot_purchase",    session_col: "stripe_session_id",         pending: "status = 'pending'" },
   { flow: "condo_vagas",    table: "public.tb_condo_listing_slot",     session_col: "stripe_session_id",         pending: "status = 'pending'" },
   // Delivery entre vizinhos (mig 248). Sem esta linha o radar de "pagou e não
   // recebeu" ficaria CEGO para a feature: a corrida presa em `pending` é

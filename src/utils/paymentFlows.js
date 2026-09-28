@@ -45,6 +45,8 @@ const PAYMENT_FLOWS = {
   premium:                { recurring: false, label: "Perfil premium" },
   manifestation:          { recurring: false, label: "Manifestação" },
   function_purchase:      { recurring: false, label: "Loja de Funções" },
+  // Pet/carro adicional (mig 264): R$9,99 vitalício, e o pagamento já cria o espaço.
+  space_slot:             { recurring: false, label: "Pet/carro adicional" },
   course_purchase:        { recurring: false, label: "Compra de curso" },
   profile_product_order:  { recurring: false, label: "Loja de produtos" },
   casa_participant_order: { recurring: false, label: "Casa Views — conveniência" },

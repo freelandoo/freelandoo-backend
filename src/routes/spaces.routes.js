@@ -145,4 +145,34 @@ router.get(
   asyncHandler(SubjectCommunityController.mySpaces)
 );
 
+// ─── Pet e carro adicionais (mig 264) ────────────────────────────────────────
+// O primeiro de cada é grátis; do segundo em diante, R$9,99 vitalício. SEM
+// requireFeature na leitura por sessão: é a tela de RETORNO de um pagamento
+// já feito, e desligar a flag não pode deixar a pessoa sem saber onde está o
+// que ela comprou.
+const SpaceSlotService = require("../services/SpaceSlotService");
+const { sendServiceResult } = require("../utils/sendServiceResult");
+
+router.get(
+  "/me/space-slots/:kind",
+  authMiddleware,
+  asyncHandler(async (req, res) =>
+    sendServiceResult(res, await SpaceSlotService.status(req.user, req.params.kind))
+  )
+);
+router.post(
+  "/me/space-slots/checkout",
+  authMiddleware,
+  asyncHandler(async (req, res) =>
+    sendServiceResult(res, await SpaceSlotService.createCheckout(req.user, req.body || {}))
+  )
+);
+router.get(
+  "/me/space-slots/session/:session_id",
+  authMiddleware,
+  asyncHandler(async (req, res) =>
+    sendServiceResult(res, await SpaceSlotService.getBySession(req.user, req.params.session_id))
+  )
+);
+
 module.exports = router;

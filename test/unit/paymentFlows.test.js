@@ -26,6 +26,8 @@ const {
 const INVENTARIO_STRIPE = [
   "profile_activation", "polen_purchase", "xp_boost", "premium",
   "manifestation", "function_purchase", "course_purchase",
+  // Pet/carro adicional (mig 264).
+  "space_slot",
   "profile_product_order", "casa_participant_order", "booking_deposit",
   "clan_slot", "community_slot", "condo_listing_slot", "donation",
   "plan_subscription", "community_membership", "vaquinha_sponsorship",

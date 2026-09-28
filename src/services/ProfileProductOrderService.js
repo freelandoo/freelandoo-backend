@@ -2,7 +2,6 @@ const pool = require("../databases");
 const ProfileProductStorage = require("../storages/ProfileProductStorage");
 const ProfileProductOrderStorage = require("../storages/ProfileProductOrderStorage");
 const SellerBalanceStorage = require("../storages/SellerBalanceStorage");
-const ShippingService = require("./ShippingService");
 const PaymentGateway = require("../integrations/payments");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const NotificationService = require("./NotificationService");
@@ -15,12 +14,6 @@ const log = createLogger("ProfileProductOrderService");
 
 const HOLDBACK_DAYS = 8;
 
-function normalizeCep(z) {
-  if (z == null) return null;
-  const d = String(z).replace(/\D/g, "");
-  return d.length === 8 ? d : null;
-}
-
 function sanitizeText(v, max = 200) {
   if (v == null) return null;
   const s = String(v).trim();
@@ -29,7 +22,14 @@ function sanitizeText(v, max = 200) {
 
 class ProfileProductOrderService {
   /**
-   * Cria order pending e devolve URL do Stripe Checkout.
+   * Cria o pedido pendente e devolve a URL do pagamento.
+   *
+   * ⚠️ SÓ RETIRADA (mig 264): a Loja voltou sem frete. O comprador paga o
+   * produto na plataforma e combina a retirada com o vendedor na conversa que
+   * abre sozinha depois do pagamento (`_openPickupConversation`). Não há CEP,
+   * opção de frete, CPF de envio nem etiqueta — tudo isso existia para o
+   * Melhor Envio. O dinheiro continua passando pela plataforma, com o mesmo
+   * holdback de 8 dias: é o que protege quem paga antes de ver o produto.
    */
   static async createCheckout(user, body = {}) {
     return runWithLogs(log, "createCheckout", () => ({ id_user: user?.id_user, product_id: body?.id_profile_product }), async () => {
@@ -39,37 +39,22 @@ class ProfileProductOrderService {
       if (!id_profile_product) return { error: "Produto inválido" };
 
       const quantity = Math.max(1, Math.min(99, Number(body.quantity) || 1));
-      const destCep = normalizeCep(body.destination_zipcode);
-      if (!destCep) return { error: "CEP de destino inválido" };
 
-      const shippingServiceId = body.shipping_service_id != null ? String(body.shipping_service_id) : null;
-      if (!shippingServiceId) return { error: "Selecione uma opção de frete" };
-
-      // CPF/CNPJ do destinatário — obrigatório no checkout para que a etiqueta
-      // do Melhor Envio possa ser emitida em produção (valida dígito verificador).
-      const buyer_document = normalizeDocument(body.buyer_document);
-      if (!buyer_document) return { error: "Informe um CPF ou CNPJ válido para o envio" };
-
+      // Nome e e-mail: o que o comprador digitou, senão os da conta. Sem
+      // endereço de entrega, eles servem só para o recibo e para o vendedor
+      // saber com quem está falando.
+      const account = await pool.query(
+        `SELECT nome, email FROM public.tb_user WHERE id_user = $1 LIMIT 1`,
+        [user.id_user]
+      );
+      const acc = account.rows[0] || {};
       const buyer = {
-        buyer_name: sanitizeText(body.buyer_name, 160),
-        buyer_email: sanitizeText(body.buyer_email, 160),
+        buyer_name: sanitizeText(body.buyer_name, 160) || sanitizeText(acc.nome, 160),
+        buyer_email: sanitizeText(body.buyer_email, 160) || sanitizeText(acc.email, 160),
         buyer_whatsapp: sanitizeText(body.buyer_whatsapp, 40),
-        buyer_document,
+        buyer_document: body.buyer_document ? normalizeDocument(body.buyer_document) : null,
       };
-      if (!buyer.buyer_name) return { error: "Nome do comprador é obrigatório" };
       if (!buyer.buyer_email) return { error: "E-mail do comprador é obrigatório" };
-
-      const destination_full_address = body.destination_full_address && typeof body.destination_full_address === "object"
-        ? {
-            cep: destCep,
-            street: sanitizeText(body.destination_full_address.street, 160),
-            number: sanitizeText(body.destination_full_address.number, 20),
-            complement: sanitizeText(body.destination_full_address.complement, 120),
-            neighborhood: sanitizeText(body.destination_full_address.neighborhood, 120),
-            city: sanitizeText(body.destination_full_address.city, 120),
-            uf: sanitizeText(body.destination_full_address.uf, 2),
-          }
-        : null;
 
       const product = await ProfileProductStorage.getWithOwner(pool, id_profile_product);
       if (!product || !product.is_active || product.deleted_at) {
@@ -77,18 +62,10 @@ class ProfileProductOrderService {
       }
       if (product.profile_is_clan) return { error: "Produto não encontrado" };
       if (!product.profile_is_paid) return { error: "Loja indisponível" };
+      if (String(product.owner_id_user) === String(user.id_user)) {
+        return { error: "Você não pode comprar o seu próprio produto." };
+      }
       if (product.stock_quantity < quantity) return { error: "Estoque insuficiente" };
-
-      // Recotação para evitar tampering. Aceita a opção selecionada por id.
-      const quote = await ShippingService.quote({
-        id_profile: product.id_profile,
-        id_profile_product,
-        destination_zipcode: destCep,
-        quantity,
-      });
-      if (quote?.error) return { error: quote.error };
-      const option = (quote.options || []).find((o) => String(o.service_id) === shippingServiceId);
-      if (!option) return { error: "Opção de frete inválida ou expirada — recalcule" };
 
       const unit_seller = Number(product.price_amount) || 0;
       // Opt-in de afiliado por item (mig 090). Só quando ligado a comissão aditiva
@@ -99,13 +76,11 @@ class ProfileProductOrderService {
         affiliatePercent: product.affiliate_percent,
       });
       const unit_display = pricing.display_price_cents;
-      const shipping_cents = option.price_cents;
-      // Comprador paga: display_price (já inclui taxas) * qty + frete
-      const total_cents = unit_display * quantity + shipping_cents;
+      const shipping_cents = 0;
+      const total_cents = unit_display * quantity;
       const seller_amount_total = unit_seller * quantity;
       const service_fee_total = pricing.service_fee_cents * quantity;
       const processor_fee_total = pricing.processor_fee_cents * quantity;
-      // Comissão de afiliado embutida no display (sem frete) — total do pedido.
       const affiliate_commission_total = (pricing.affiliate_commission_cents || 0) * quantity;
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
@@ -113,10 +88,7 @@ class ProfileProductOrderService {
       const cancelUrl = `${frontend}/p/${product.id_profile}/produto/${id_profile_product}?status=cancel`;
 
       const session = await PaymentGateway.createCheckout({
-        lineItems: [
-          { name: product.name, amount_cents: unit_display, quantity },
-          { name: `Frete — ${option.carrier} ${option.service_name}`, amount_cents: shipping_cents, quantity: 1 },
-        ],
+        lineItems: [{ name: `${product.name} (retirada com o vendedor)`, amount_cents: unit_display, quantity }],
         currency: "BRL",
         customerEmail: buyer.buyer_email,
         clientReferenceId: user.id_user,
@@ -127,8 +99,6 @@ class ProfileProductOrderService {
           id_profile_product: String(id_profile_product),
           id_buyer_user: String(user.id_user),
           quantity: String(quantity),
-          // Comissão de afiliado SÓ quando o item tem opt-in: o cupom só gera
-          // conversão se houver comissão embutida (gate real do affiliates_allowed).
           ...(affiliatesAllowed && body.coupon_code && affiliate_commission_total > 0
             ? {
                 coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40),
@@ -151,11 +121,9 @@ class ProfileProductOrderService {
         service_fee_cents: service_fee_total,
         processor_fee_cents: processor_fee_total,
         processor_fee_source: "fallback",
-        shipping_service_id: shippingServiceId,
-        shipping_service_name: option.service_name,
-        shipping_carrier: option.carrier,
-        destination_zipcode: destCep,
-        destination_full_address,
+        delivery_mode: "local_pickup",
+        destination_zipcode: null,
+        destination_full_address: null,
         ...buyer,
         stripe_session_id: session.id,
         status: "pending",
@@ -312,13 +280,24 @@ class ProfileProductOrderService {
         amount_cents: net,
       }).catch(() => {});
 
-      // Fire-and-forget: compra etiqueta no Melhor Envio. Falhas não bloqueiam
-      // o webhook — vão pro job de retry.
-      setImmediate(() => {
-        ProfileProductOrderService.purchaseLabelForOrder(paid.id_order).catch((err) => {
-          log.warn("confirm.label_dispatch_fail", { id_order: paid.id_order, message: err.message });
+      if (paid.delivery_mode === "local_pickup") {
+        // Retirada (mig 264): a conversa comprador↔vendedor abre sozinha, é
+        // nela que os dois combinam onde e quando. Fire-and-forget: o pedido já
+        // está pago e nada aqui pode devolver erro ao webhook.
+        setImmediate(() => {
+          ProfileProductOrderService._openPickupConversation(paid).catch((err) => {
+            log.warn("confirm.pickup_chat_fail", { id_order: paid.id_order, message: err.message });
+          });
         });
-      });
+      } else {
+        // Pedido de ENVIO anterior à mig 264: compra a etiqueta no Melhor
+        // Envio. Falhas não bloqueiam o webhook — vão pro job de retry.
+        setImmediate(() => {
+          ProfileProductOrderService.purchaseLabelForOrder(paid.id_order).catch((err) => {
+            log.warn("confirm.label_dispatch_fail", { id_order: paid.id_order, message: err.message });
+          });
+        });
+      }
 
       return { order: paid };
     } catch (err) {
@@ -327,6 +306,28 @@ class ProfileProductOrderService {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Abre (ou reaproveita) a conversa entre quem comprou e quem vende, com a
+   * primeira mensagem assinada pelo COMPRADOR — é o que deixa o vendedor
+   * responder direto ("pode buscar amanhã às 10h?"). Mesmo caminho da
+   * mensagem de agendamento (`InboxDropService`).
+   */
+  static async _openPickupConversation(order) {
+    const InboxDropService = require("./InboxDropService");
+    const product = await ProfileProductStorage.getWithOwner(pool, order.id_profile_product);
+    const name = product?.name || "o produto";
+    const qty = Number(order.quantity) > 1 ? `${order.quantity}× ` : "";
+    const text =
+      `Olá! Acabei de comprar ${qty}${name} pela Freelandoo (pedido #${order.id_order}). ` +
+      `Quando e onde posso retirar?`;
+    return InboxDropService.send({
+      from_user_id: order.id_buyer_user,
+      to_user_id: order.id_seller_user,
+      to_profile_id: order.id_seller_profile,
+      text,
+    });
   }
 
   /**
@@ -413,6 +414,9 @@ class ProfileProductOrderService {
       if (!user?.id_user) return { error: "Não autenticado" };
       const order = await ProfileProductOrderStorage.getForSeller(pool, Number(id_order), user.id_user);
       if (!order) return { error: "Pedido não encontrado" };
+      if (order.delivery_mode === "local_pickup") {
+        return { error: "Pedido de retirada não tem etiqueta: combine a retirada na conversa." };
+      }
       if (order.label_purchased_at && order.label_pdf_url) {
         return {
           label_pdf_url: order.label_pdf_url,
@@ -431,6 +435,32 @@ class ProfileProductOrderService {
         melhor_envio_order_id: r.melhor_envio_order_id || r.order?.melhor_envio_order_id,
         tracking_code: r.tracking_code || r.order?.tracking_code,
       };
+    });
+  }
+
+  /**
+   * O vendedor marca que o comprador RETIROU (mig 264). Só vale para pedido de
+   * retirada já pago; é o equivalente do "entregue" do rastreio do envio. Não
+   * mexe no dinheiro: o repasse segue o holdback de sempre.
+   */
+  static async markPickedUp(user, id_order) {
+    return runWithLogs(log, "markPickedUp", () => ({ id_user: user?.id_user, id_order }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      const order = await ProfileProductOrderStorage.getForSeller(pool, Number(id_order), user.id_user);
+      if (!order) return { error: "Pedido não encontrado" };
+      if (order.delivery_mode !== "local_pickup") {
+        return { error: "Este pedido é de envio, não de retirada.", statusCode: 409 };
+      }
+      if (order.status === "delivered") return { order, already: true };
+      if (order.status !== "paid") return { error: "Pedido ainda não pago", statusCode: 409 };
+      const { rows } = await pool.query(
+        `UPDATE public.tb_profile_product_order
+            SET status = 'delivered', delivered_at = NOW(), updated_at = NOW()
+          WHERE id_order = $1 AND status = 'paid'
+          RETURNING *`,
+        [order.id_order]
+      );
+      return { order: rows[0] || order };
     });
   }
 

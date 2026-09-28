@@ -12,6 +12,9 @@ const router = Router();
 router.post("/orders/checkout", authMiddleware, requireFeature("store"), asyncHandler(ProfileProductOrderController.createCheckout));
 router.get("/orders", authMiddleware, asyncHandler(ProfileProductOrderController.listMyOrders));
 router.get("/orders/:id_order/label", authMiddleware, asyncHandler(ProfileProductOrderController.getLabel));
+// Retirada (mig 264): o vendedor marca que o comprador já buscou. Sem flag —
+// é o fechamento de um pedido já pago.
+router.post("/orders/:id_order/picked-up", authMiddleware, asyncHandler(ProfileProductOrderController.markPickedUp));
 router.get("/sales", authMiddleware, asyncHandler(ProfileProductOrderController.listMySales));
 
 module.exports = router;

@@ -77,6 +77,14 @@ function validateInput(payload, { partial = false } = {}) {
     out.stock_quantity = s;
   }
 
+  // Peso e medidas eram exigidos para o frete do Melhor Envio. Desde a mig 264
+  // toda venda é RETIRADA com o vendedor: continuam aceitos (o dado já existe
+  // e pode voltar a servir), mas faltando viram 0 em vez de travar o cadastro.
+  if (!partial && payload.weight_grams == null) payload = { ...payload, weight_grams: 0 };
+  for (const dim of ["height_cm", "width_cm", "length_cm"]) {
+    if (!partial && payload[dim] == null) payload = { ...payload, [dim]: 0 };
+  }
+
   if (!partial || Object.prototype.hasOwnProperty.call(payload, "weight_grams")) {
     const w = Number(payload.weight_grams);
     if (!Number.isInteger(w) || w < 0) {
@@ -151,12 +159,11 @@ function validateInput(payload, { partial = false } = {}) {
     }
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, "delivery_mode")) {
-    const m = String(payload.delivery_mode || "").toLowerCase();
-    if (m !== "shipping" && m !== "local_pickup") {
-      return { error: "delivery_mode inválido (shipping ou local_pickup)" };
-    }
-    out.delivery_mode = m;
+  // ⚠️ SÓ RETIRADA (mig 264): a Loja voltou sem frete — comprador e vendedor
+  // combinam a retirada na conversa. O campo que o cliente manda é IGNORADO;
+  // quem decide é esta linha, para que nenhum produto novo nasça com envio.
+  if (!partial || Object.prototype.hasOwnProperty.call(payload, "delivery_mode")) {
+    out.delivery_mode = "local_pickup";
   }
 
   const optInErr = parseAffiliateOptIn(payload, out);
