@@ -7,7 +7,12 @@
 // escrevia num lugar que ninguém lia.
 
 const pool = require("../databases");
-const { listDeliveryTypes, isDeliveryKind } = require("../utils/deliveryPricing");
+const {
+  listDeliveryTypes,
+  isDeliveryKind,
+  listWeightBands,
+  isWeightBand,
+} = require("../utils/deliveryPricing");
 const { getListingSettings } = require("../utils/listingOrder");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 const { createLogger } = require("../utils/logger");
@@ -18,11 +23,50 @@ class CommunityCommerceAdminController {
   static async getSettings(req, res) {
     // `onlyActive: false` de propósito: a tela de admin precisa VER o tipo
     // desligado para poder religá-lo. Só a tela do morador filtra.
-    const [types, listing] = await Promise.all([
+    const [types, listing, bands] = await Promise.all([
       listDeliveryTypes(pool, { onlyActive: false }),
       getListingSettings(pool),
+      listWeightBands(pool, { onlyActive: false }),
     ]);
-    return sendServiceResult(res, { delivery_types: types, listing_settings: listing });
+    return sendServiceResult(res, {
+      delivery_types: types,
+      listing_settings: listing,
+      // Mig 266: os pisos por faixa de peso.
+      weight_bands: bands,
+    });
+  }
+
+  /** O piso de uma faixa de peso (mig 266). Mesma régua de teto do tipo. */
+  static async updateWeightBand(req, res) {
+    const band = req.params?.band;
+    if (!isWeightBand(band)) {
+      return sendServiceResult(res, { error: "Faixa inválida.", statusCode: 400 });
+    }
+    const b = req.body || {};
+    const min =
+      b.min_cents === undefined ? null : Math.min(100000, Math.max(0, Math.round(Number(b.min_cents)) || 0));
+    const { rows } = await pool.query(
+      `UPDATE public.tb_community_delivery_weight_band
+          SET label      = COALESCE($2, label),
+              min_cents  = COALESCE($3, min_cents),
+              negotiable = COALESCE($4, negotiable),
+              is_active  = COALESCE($5, is_active),
+              updated_at = NOW(),
+              updated_by = $6
+        WHERE band = $1
+        RETURNING *`,
+      [
+        band,
+        b.label ? String(b.label).trim().slice(0, 60) : null,
+        min,
+        b.negotiable === undefined ? null : b.negotiable === true,
+        b.is_active === undefined ? null : b.is_active !== false,
+        req.user?.id_user || null,
+      ]
+    );
+    if (!rows[0]) return sendServiceResult(res, { error: "Faixa não encontrada.", statusCode: 404 });
+    log.info("weight_band.updated", { band, by: req.user?.id_user });
+    return sendServiceResult(res, { weight_band: rows[0] });
   }
 
   static async updateDeliveryType(req, res) {

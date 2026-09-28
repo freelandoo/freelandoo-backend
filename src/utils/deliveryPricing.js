@@ -197,6 +197,72 @@ function courierNetPreview(priceCents, governanceSettings) {
   };
 }
 
+/* ─── Faixas de peso (mig 266) ────────────────────────────────────────────── */
+
+/**
+ * As faixas de peso do delivery. Lista FECHADA aqui e no CHECK da mig 266 —
+ * faixa nova entra nos DOIS, mais uma linha no seed.
+ *
+ * O preço de um chamado por peso é o que quem pede OFERECE, nunca menor que o
+ * piso da faixa. Acima de 10 kg a faixa é negociada: o vizinho pode aceitar a
+ * oferta ou fazer uma contraproposta.
+ */
+const WEIGHT_BANDS = Object.freeze(["w1", "w3", "w6", "w10", "w10p"]);
+
+/**
+ * O que vale quando a tabela de faixas não responde. Os MESMOS números do seed
+ * da mig 266, pela regra do FALLBACK_PRICES acima: banco sem a linha não pode
+ * virar corrida de graça, nem inventar um terceiro preço.
+ */
+const FALLBACK_BANDS = Object.freeze([
+  { band: "w1", label: "Até 1 kg", min_cents: 300, negotiable: false, sort_order: 1, is_active: true },
+  { band: "w3", label: "De 1 a 3 kg", min_cents: 500, negotiable: false, sort_order: 2, is_active: true },
+  { band: "w6", label: "De 3 a 6 kg", min_cents: 1500, negotiable: false, sort_order: 3, is_active: true },
+  { band: "w10", label: "De 6 a 10 kg", min_cents: 2000, negotiable: false, sort_order: 4, is_active: true },
+  { band: "w10p", label: "Mais de 10 kg", min_cents: 2000, negotiable: true, sort_order: 5, is_active: true },
+]);
+
+/** As duas direções: quem pede ENVIA (o vizinho leva) ou RECEBE (o vizinho busca). */
+const DELIVERY_DIRECTIONS = Object.freeze(["send", "receive"]);
+
+function isWeightBand(band) {
+  return typeof band === "string" && WEIGHT_BANDS.includes(band);
+}
+
+function isDeliveryDirection(direction) {
+  return typeof direction === "string" && DELIVERY_DIRECTIONS.includes(direction);
+}
+
+/**
+ * Qual `kind` da mig 248 um chamado por peso usa. O `kind` continua
+ * governando a expiração e o prazo de confirmação (tabela por tipo); a faixa
+ * negociada é carga grande (mudança, móvel) e herda os prazos de `bulky`.
+ */
+function kindForBand(band) {
+  return band === "w10p" ? "bulky" : "parcel";
+}
+
+async function listWeightBands(conn, { onlyActive = true } = {}) {
+  try {
+    const { rows } = await conn.query(
+      `SELECT band, label, min_cents, negotiable, sort_order, is_active
+         FROM public.tb_community_delivery_weight_band
+        ${onlyActive ? "WHERE is_active = TRUE" : ""}
+        ORDER BY sort_order ASC, band ASC`
+    );
+    if (rows.length) return rows;
+  } catch (err) {
+    log.warn("delivery.bands.read.fail", { message: err?.message });
+  }
+  return FALLBACK_BANDS.map((b) => ({ ...b }));
+}
+
+async function getWeightBand(conn, band, { onlyActive = true } = {}) {
+  if (!isWeightBand(band)) return null;
+  const rows = await listWeightBands(conn, { onlyActive });
+  return rows.find((r) => r.band === band) || null;
+}
+
 module.exports = {
   DELIVERY_KINDS,
   FALLBACK_PRICES,
@@ -210,4 +276,12 @@ module.exports = {
   estimateProcessorFee,
   courierNet,
   courierNetPreview,
+  WEIGHT_BANDS,
+  FALLBACK_BANDS,
+  DELIVERY_DIRECTIONS,
+  isWeightBand,
+  isDeliveryDirection,
+  kindForBand,
+  listWeightBands,
+  getWeightBand,
 };

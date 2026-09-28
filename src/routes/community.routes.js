@@ -406,6 +406,28 @@ router.post(
   authMiddleware,
   asyncHandler(CommunityDeliveryController.accept)
 );
+// Mig 266: quem pediu sobe a oferta; acima de 10 kg o vizinho faz
+// contraproposta e quem pediu escolhe uma.
+router.post(
+  "/:id_profile/deliveries/:id_delivery/offer",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.raiseOffer)
+);
+router.post(
+  "/:id_profile/deliveries/:id_delivery/proposals",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.propose)
+);
+router.delete(
+  "/:id_profile/deliveries/:id_delivery/proposals/mine",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.withdrawProposal)
+);
+router.post(
+  "/:id_profile/deliveries/:id_delivery/proposals/:id_proposal/accept",
+  authMiddleware,
+  asyncHandler(CommunityDeliveryController.acceptProposal)
+);
 router.post(
   "/:id_profile/deliveries/:id_delivery/delivered",
   authMiddleware,

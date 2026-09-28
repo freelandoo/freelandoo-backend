@@ -31,6 +31,11 @@ router.put(
   asyncHandler(CommunityCommerceAdminController.updateDeliveryType)
 );
 router.put(
+  "/weight-bands/:band",
+  ...admin,
+  asyncHandler(CommunityCommerceAdminController.updateWeightBand)
+);
+router.put(
   "/listing-settings",
   ...admin,
   asyncHandler(CommunityCommerceAdminController.updateListingSettings)

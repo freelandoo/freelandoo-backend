@@ -41,6 +41,27 @@ class CommunityDeliveryController {
     return sendServiceResult(res, result);
   }
 
+  // ── mig 266: oferta e contraproposta ───────────────────────────────────────
+  static async raiseOffer(req, res) {
+    const result = await CommunityDeliveryService.raiseOffer(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result);
+  }
+
+  static async propose(req, res) {
+    const result = await CommunityDeliveryService.propose(req.user, req.params, req.body || {});
+    return sendServiceResult(res, result, 201);
+  }
+
+  static async withdrawProposal(req, res) {
+    const result = await CommunityDeliveryService.withdrawProposal(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
+  static async acceptProposal(req, res) {
+    const result = await CommunityDeliveryService.acceptProposal(req.user, req.params);
+    return sendServiceResult(res, result);
+  }
+
   static async setAvailability(req, res) {
     const result = await CommunityDeliveryService.setAvailability(
       req.user,

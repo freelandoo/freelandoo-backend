@@ -21,8 +21,8 @@ class CommunityDeliveryStorage {
     const r = await conn.query(
       `INSERT INTO public.tb_community_delivery_request
          (id_community, id_requester, kind, price_cents, note, pickup, dropoff,
-          expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          expires_at, direction, weight_band, min_price_cents, negotiable)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         data.id_community,
@@ -33,6 +33,11 @@ class CommunityDeliveryStorage {
         data.pickup ?? null,
         data.dropoff ?? null,
         data.expires_at,
+        // Mig 266. NULL = chamado pela tabela por tipo (o add-on da vitrine).
+        data.direction ?? null,
+        data.weight_band ?? null,
+        data.min_price_cents ?? null,
+        data.negotiable === true,
       ]
     );
     return r.rows[0];
@@ -111,19 +116,24 @@ class CommunityDeliveryStorage {
    * tempos: entre a expiração de fato e a varredura existe uma janela em que a
    * linha ainda diz `open`. Aceitar nela cobraria por um chamado morto.
    */
-  static async accept(conn, id_delivery, id_courier, { accepted_at }) {
+  static async accept(conn, id_delivery, id_courier, { accepted_at, price_cents = null }) {
+    // `price_cents` só vem quando o aceite é de uma CONTRAPROPOSTA (mig 266):
+    // o valor combinado entra na MESMA instrução que trava o chamado, senão
+    // haveria um instante em que a linha estaria aceita com o preço antigo — e
+    // é nele que a cobrança seria criada.
     const r = await conn.query(
       `UPDATE public.tb_community_delivery_request
           SET status = 'accepted',
               id_courier = $2,
               accepted_at = $3,
+              price_cents = COALESCE($4::int, price_cents),
               updated_at = NOW()
         WHERE id_delivery = $1
           AND status = 'open'
           AND id_courier IS NULL
           AND expires_at > NOW()
         RETURNING *`,
-      [id_delivery, id_courier, accepted_at]
+      [id_delivery, id_courier, accepted_at, price_cents]
     );
     return r.rows[0] || null;
   }
@@ -545,6 +555,133 @@ class CommunityDeliveryStorage {
       [id_community, exceptUserId]
     );
     return r.rows.map((x) => x.id_user);
+  }
+
+  /* ------------------------ oferta e contraproposta ---------------------- */
+  // Mig 266.
+
+  /**
+   * Quem pediu sobe a oferta. Só SOBE (`> price_cents`), só em chamado aberto e
+   * ainda sem ninguém: baixar depois de os vizinhos lerem um valor seria mudar
+   * a regra no meio, e mexer num chamado já aceito mudaria o preço de uma
+   * cobrança que já existe.
+   */
+  static async raiseOffer(conn, id_delivery, id_requester, price_cents) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_delivery_request
+          SET price_cents = $3::int,
+              updated_at = NOW()
+        WHERE id_delivery = $1
+          AND id_requester = $2
+          AND status = 'open'
+          AND id_courier IS NULL
+          AND expires_at > NOW()
+          AND price_cents < $3::int
+        RETURNING *`,
+      [id_delivery, id_requester, price_cents]
+    );
+    return r.rows[0] || null;
+  }
+
+  /** Propor de novo ATUALIZA o valor (uma proposta viva por vizinho). */
+  static async upsertProposal(conn, { id_delivery, id_courier, amount_cents, note }) {
+    const r = await conn.query(
+      `INSERT INTO public.tb_community_delivery_proposal
+         (id_delivery, id_courier, amount_cents, note)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id_delivery, id_courier) WHERE status = 'pending'
+       DO UPDATE SET amount_cents = EXCLUDED.amount_cents,
+                     note = EXCLUDED.note,
+                     updated_at = NOW()
+       RETURNING *`,
+      [id_delivery, id_courier, amount_cents, note ?? null]
+    );
+    return r.rows[0];
+  }
+
+  static async getProposal(conn, id_proposal) {
+    const r = await conn.query(
+      `SELECT * FROM public.tb_community_delivery_proposal WHERE id_proposal = $1 LIMIT 1`,
+      [id_proposal]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async withdrawProposal(conn, id_delivery, id_courier) {
+    const r = await conn.query(
+      `UPDATE public.tb_community_delivery_proposal
+          SET status = 'withdrawn', updated_at = NOW()
+        WHERE id_delivery = $1 AND id_courier = $2 AND status = 'pending'
+        RETURNING *`,
+      [id_delivery, id_courier]
+    );
+    return r.rows[0] || null;
+  }
+
+  /**
+   * Fecha a negociação: a escolhida vira `accepted` e as outras pendentes
+   * `declined`. Roda DEPOIS de o aceite travar o chamado — antes, uma falha
+   * no aceite deixaria as propostas recusadas com o chamado ainda aberto.
+   */
+  static async settleProposals(conn, id_delivery, id_proposal_accepted) {
+    await conn.query(
+      `UPDATE public.tb_community_delivery_proposal
+          SET status = CASE WHEN id_proposal = $2 THEN 'accepted' ELSE 'declined' END,
+              updated_at = NOW()
+        WHERE id_delivery = $1 AND status = 'pending'`,
+      [id_delivery, id_proposal_accepted]
+    );
+  }
+
+  /** Chamado que deixou de estar aberto não tem mais o que negociar. */
+  static async declinePendingProposals(conn, id_delivery) {
+    await conn.query(
+      `UPDATE public.tb_community_delivery_proposal
+          SET status = 'declined', updated_at = NOW()
+        WHERE id_delivery = $1 AND status = 'pending'`,
+      [id_delivery]
+    );
+  }
+
+  /** As propostas pendentes de um conjunto de chamados, com o rosto de quem propôs. */
+  static async listPendingProposals(conn, deliveryIds) {
+    if (!deliveryIds || deliveryIds.length === 0) return [];
+    const r = await conn.query(
+      `SELECT pr.id_proposal, pr.id_delivery, pr.id_courier, pr.amount_cents,
+              pr.note, pr.created_at, pr.updated_at,
+              u.username AS courier_username,
+              u.nome     AS courier_name,
+              u.avatar   AS courier_avatar
+         FROM public.tb_community_delivery_proposal pr
+         JOIN public.tb_user u ON u.id_user = pr.id_courier
+        WHERE pr.id_delivery = ANY($1::bigint[])
+          AND pr.status = 'pending'
+        ORDER BY pr.amount_cents ASC, pr.created_at ASC`,
+      [deliveryIds.map((x) => String(x))]
+    );
+    return r.rows;
+  }
+
+  /**
+   * Todos os membros da comunidade, menos quem abriu o chamado — é para quem
+   * sai o modal "fulano quer enviar/receber uma encomenda" (mig 266).
+   */
+  static async listMemberUserIds(conn, id_community, exceptUserId) {
+    const r = await conn.query(
+      `SELECT DISTINCT id_user FROM public.tb_community_member
+        WHERE id_community_profile = $1 AND id_user <> $2`,
+      [id_community, exceptUserId]
+    );
+    return r.rows.map((x) => x.id_user);
+  }
+
+  /** Nome e rosto de uma pessoa, para o modal do chamado. */
+  static async getUserCard(conn, id_user) {
+    const r = await conn.query(
+      `SELECT id_user, username, nome, avatar FROM public.tb_user WHERE id_user = $1 LIMIT 1`,
+      [id_user]
+    );
+    return r.rows[0] || null;
   }
 }
 

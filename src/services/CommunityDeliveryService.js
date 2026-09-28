@@ -49,6 +49,11 @@ const {
   STRIKE_LIMIT,
   STRIKE_WINDOW_DAYS,
   STRIKE_BLOCK_HOURS,
+  isWeightBand,
+  isDeliveryDirection,
+  kindForBand,
+  listWeightBands,
+  getWeightBand,
 } = require("../utils/deliveryPricing");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const realtime = require("../realtime/socket");
@@ -90,6 +95,33 @@ function push(userIds, payload) {
     /* realtime é best-effort */
   }
 }
+
+/**
+ * O MODAL DE TODOS OS MEMBROS (mig 266): "fulano quer enviar / receber uma
+ * encomenda — você pode levar / buscar?". Vai por socket para quem está com a
+ * Freelandoo aberta; o sino continua só para quem ligou "disponível agora",
+ * senão um bairro inteiro receberia uma notificação por corrida.
+ *
+ * ⚠️ `delivery:broadcast` PRECISA ESTAR NA LISTA `events` DE `lib/realtime.ts`.
+ */
+function broadcast(userIds, payload) {
+  try {
+    for (const id of new Set((userIds || []).filter(Boolean).map(String))) {
+      realtime.emitToUser(id, "delivery:broadcast", payload);
+    }
+  } catch {
+    /* realtime é best-effort */
+  }
+}
+
+/** Mensagem de erro em reais. O backend fala pt (a tela traduz os estados). */
+function brl(cents) {
+  return `R$ ${(Number(cents || 0) / 100).toFixed(2).replace(".", ",")}`;
+}
+
+const MAX_PROPOSAL_NOTE = 280;
+/** Teto de oferta/proposta: conferência de digitação (R$ 1.000), como no admin. */
+const MAX_OFFER_CENTS = 100000;
 
 class CommunityDeliveryService {
   /**
@@ -134,9 +166,10 @@ class CommunityDeliveryService {
         const ctx = await this._ctx(user?.id_user, params, { require: "resident" });
         if (ctx.error) return ctx;
 
-        const [types, governance] = await Promise.all([
+        const [types, governance, bands] = await Promise.all([
           listDeliveryTypes(pool),
           StoreGovernanceService.getSettings(),
+          listWeightBands(pool),
         ]);
 
         const status = query?.status || "open";
@@ -151,7 +184,24 @@ class CommunityDeliveryService {
           this._strikeBlock(user.id_user),
         ]);
 
+        // As contrapropostas (mig 266). Quem PEDIU vê todas as do seu chamado;
+        // o vizinho vê só a DELE — as outras propostas são assunto de quem
+        // escolhe, e mostrar o lance alheio viraria leilão entre vizinhos.
+        const openIds = items.filter((d) => d.status === "open" && d.negotiable).map((d) => d.id_delivery);
+        const proposals = await CommunityDeliveryStorage.listPendingProposals(pool, openIds);
+        const byDelivery = new Map();
+        for (const pr of proposals) {
+          const k = String(pr.id_delivery);
+          if (!byDelivery.has(k)) byDelivery.set(k, []);
+          byDelivery.get(k).push(pr);
+        }
+
         return {
+          // As faixas de peso com o LÍQUIDO do piso, pela mesma regra dos tipos.
+          bands: bands.map((b) => ({
+            ...b,
+            ...courierNetPreview(b.min_cents, governance),
+          })),
           // ⚠️ CADA TIPO SAI COM O LÍQUIDO JUNTO. A tela de quem entrega mostra
           // "você recebe R$X,XX", nunca o bruto: se o card anuncia R$3 e caem
           // R$1,01, o vizinho descobre na primeira corrida e não faz a segunda.
@@ -163,11 +213,21 @@ class CommunityDeliveryService {
           // checkout no nome de quem PEDIU; entregue a qualquer um que abre o
           // quadro, um vizinho curioso poderia pagar a corrida de outra pessoa
           // (ou, pior, ver o link sumir do próprio card por já estar pago).
-          deliveries: items.map((d) => ({
-            ...d,
-            checkout_url:
-              String(d.id_requester) === String(user.id_user) ? d.checkout_url : undefined,
-          })),
+          deliveries: items.map((d) => {
+            const isRequester = String(d.id_requester) === String(user.id_user);
+            const list = byDelivery.get(String(d.id_delivery)) || [];
+            return {
+              ...d,
+              checkout_url: isRequester ? d.checkout_url : undefined,
+              // O líquido de quem entrega pelo valor ATUAL (a oferta pode ter
+              // subido desde a abertura).
+              courier_preview: courierNetPreview(d.price_cents, governance),
+              proposals: isRequester ? list : undefined,
+              my_proposal: isRequester
+                ? undefined
+                : list.find((pr) => String(pr.id_courier) === String(user.id_user)) || null,
+            };
+          }),
           viewer: {
             id_user: user.id_user,
             is_available: available,
@@ -191,6 +251,11 @@ class CommunityDeliveryService {
       async () => {
         const ctx = await this._ctx(user?.id_user, params, { require: "resident" });
         if (ctx.error) return ctx;
+
+        // ── o chamado por PESO (mig 266) ──────────────────────────────────────
+        if (body?.weight_band !== undefined || body?.direction !== undefined) {
+          return this._openByWeight(ctx, user, body);
+        }
 
         if (!isDeliveryKind(body?.kind)) {
           return { error: "Tipo de chamado inválido.", statusCode: 400 };
@@ -266,95 +331,434 @@ class CommunityDeliveryService {
           };
         }
 
-        const locked = await CommunityDeliveryStorage.accept(pool, params.id_delivery, user.id_user, {
-          accepted_at: new Date(),
-        });
-        if (!locked) {
-          return { error: "Alguém já pegou este chamado.", statusCode: 409 };
-        }
-
-        // ⚠️ CHAMADO JÁ PAGO NÃO COBRA DE NOVO (mig 249). Quando a entrega veio
-        // como add-on de uma compra na vitrine ("+R$3"), o dinheiro entrou
-        // JUNTO com o do produto, numa cobrança só — e a linha já nasce
-        // `payment_status = 'paid'` com `id_listing_order` preenchido. Sem esta
-        // saída antecipada, o aceite criaria uma segunda cobrança e o vizinho
-        // pagaria a entrega DUAS VEZES.
-        //
-        // O `courier_cents` já veio calculado do pedido (com a tarifa do
-        // gateway rateada entre produto e entrega), então quem aceita recebe
-        // exatamente o que a tela prometeu.
-        if (locked.payment_status === "paid") {
-          this._notifyAccepted(ctx.community, locked, user).catch(() => {});
-          push([locked.id_requester, locked.id_courier], {
-            id_delivery: locked.id_delivery,
-            status: locked.status,
-          });
-          return { delivery: locked, prepaid: true };
-        }
-
-        // ── a cobrança ────────────────────────────────────────────────────────
-        // Daqui para baixo o chamado JÁ ESTÁ TRAVADO no nome de quem aceitou.
-        // Se a criação da cobrança falhar, ele é devolvido para `open` — senão
-        // ficaria preso em `accepted` sem pagamento, invisível para todo mundo.
-        try {
-          const governance = await StoreGovernanceService.getSettings();
-          const estimate = estimateProcessorFee(locked.price_cents, governance);
-          const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(
-            /\/$/,
-            ""
-          );
-          const back = `${frontend}/comunidades/${ctx.community.id_profile}/delivery`;
-
-          const session = await PaymentGateway.createCheckout({
-            amount_cents: Number(locked.price_cents),
-            currency: "BRL",
-            productName: `Entrega — ${ctx.community.display_name}`,
-            // ⚠️ QUEM PAGA É QUEM PEDIU, não quem aceitou. `clientReferenceId`
-            // e o e-mail têm que ser os dele: trocar os dois lados cobraria do
-            // entregador a corrida que ele foi fazer.
-            clientReferenceId: locked.id_requester,
-            successUrl: `${back}?entrega=success&session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${back}?entrega=cancel`,
-            metadata: {
-              type: "community_delivery",
-              user_id: locked.id_requester,
-              id_community: ctx.community.id_profile,
-              id_delivery: String(locked.id_delivery),
-            },
-          });
-
-          const charged = await CommunityDeliveryStorage.attachCharge(pool, locked.id_delivery, {
-            provider: providerOf(session),
-            session_id: session.id,
-            provider_ref: session.provider_ref || session.id,
-            checkout_url: session.url || null,
-            processor_fee_cents: estimate.cents,
-            processor_fee_source: estimate.source,
-            courier_cents: courierNet({
-              chargeAmountCents: locked.price_cents,
-              processorFeeCents: estimate.cents,
-            }),
-          });
-
-          this._notifyAccepted(ctx.community, charged, user).catch(() => {});
-          push([charged.id_requester, charged.id_courier], {
-            id_delivery: charged.id_delivery,
-            status: charged.status,
-          });
-
-          return { delivery: charged, checkout_url: session.url, session_id: session.id };
-        } catch (err) {
-          log.error("accept.charge.fail", {
-            id_delivery: locked.id_delivery,
-            message: err?.message,
-          });
-          await CommunityDeliveryStorage.releaseByCourier(pool, locked.id_delivery, user.id_user, {
-            expires_at: locked.expires_at,
-          });
-          return { error: "Não foi possível iniciar a cobrança. Tente de novo.", statusCode: 502 };
-        }
+        return this._lockAndCharge(ctx, delivery, user, {});
       }
     );
+  }
+
+  /**
+   * TRAVA → COBRA, em um lugar só. É o corpo do aceite direto e do aceite de
+   * uma contraproposta (mig 266): escrito duas vezes, uma das portas esqueceria
+   * o caso do chamado já pago ou a devolução para `open` quando a cobrança
+   * falha, e o vizinho pagaria duas vezes ou ficaria preso num aceite sem
+   * pagamento.
+   *
+   * `user` é QUEM ENTREGA (quem aceitou ou quem fez a proposta escolhida).
+   */
+  static async _lockAndCharge(ctx, delivery, user, { price_cents = null, id_proposal = null } = {}) {
+    const locked = await CommunityDeliveryStorage.accept(pool, delivery.id_delivery, user.id_user, {
+      accepted_at: new Date(),
+      price_cents: price_cents ?? null,
+    });
+    if (!locked) {
+      return { error: "Alguém já pegou este chamado.", statusCode: 409 };
+    }
+
+    // Chamado aceito não tem mais o que negociar: a proposta escolhida
+    // vira `accepted` e as outras `declined`, NUM passo só — dois passos
+    // soltos correriam um contra o outro e podiam recusar a escolhida.
+    try {
+      if (id_proposal) {
+        await CommunityDeliveryStorage.settleProposals(pool, locked.id_delivery, id_proposal);
+      } else {
+        await CommunityDeliveryStorage.declinePendingProposals(pool, locked.id_delivery);
+      }
+    } catch (err) {
+      log.warn("accept.settle_proposals.fail", { id_delivery: locked.id_delivery, message: err?.message });
+    }
+
+    // ⚠️ CHAMADO JÁ PAGO NÃO COBRA DE NOVO (mig 249). Quando a entrega veio
+    // como add-on de uma compra na vitrine ("+R$3"), o dinheiro entrou
+    // JUNTO com o do produto, numa cobrança só — e a linha já nasce
+    // `payment_status = 'paid'` com `id_listing_order` preenchido. Sem esta
+    // saída antecipada, o aceite criaria uma segunda cobrança e o vizinho
+    // pagaria a entrega DUAS VEZES.
+    //
+    // O `courier_cents` já veio calculado do pedido (com a tarifa do
+    // gateway rateada entre produto e entrega), então quem aceita recebe
+    // exatamente o que a tela prometeu.
+    if (locked.payment_status === "paid") {
+      this._notifyAccepted(ctx.community, locked, user).catch(() => {});
+      push([locked.id_requester, locked.id_courier], {
+        id_delivery: locked.id_delivery,
+        status: locked.status,
+      });
+      return { delivery: locked, prepaid: true };
+    }
+
+    // ── a cobrança ────────────────────────────────────────────────────────
+    // Daqui para baixo o chamado JÁ ESTÁ TRAVADO no nome de quem aceitou.
+    // Se a criação da cobrança falhar, ele é devolvido para `open` — senão
+    // ficaria preso em `accepted` sem pagamento, invisível para todo mundo.
+    try {
+      const governance = await StoreGovernanceService.getSettings();
+      const estimate = estimateProcessorFee(locked.price_cents, governance);
+      const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(
+        /\/$/,
+        ""
+      );
+      const back = `${frontend}/comunidades/${ctx.community.id_profile}/delivery`;
+
+      const session = await PaymentGateway.createCheckout({
+        amount_cents: Number(locked.price_cents),
+        currency: "BRL",
+        productName: `Entrega — ${ctx.community.display_name}`,
+        // ⚠️ QUEM PAGA É QUEM PEDIU, não quem aceitou. `clientReferenceId`
+        // e o e-mail têm que ser os dele: trocar os dois lados cobraria do
+        // entregador a corrida que ele foi fazer.
+        clientReferenceId: locked.id_requester,
+        successUrl: `${back}?entrega=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${back}?entrega=cancel`,
+        metadata: {
+          type: "community_delivery",
+          user_id: locked.id_requester,
+          id_community: ctx.community.id_profile,
+          id_delivery: String(locked.id_delivery),
+        },
+      });
+
+      const charged = await CommunityDeliveryStorage.attachCharge(pool, locked.id_delivery, {
+        provider: providerOf(session),
+        session_id: session.id,
+        provider_ref: session.provider_ref || session.id,
+        checkout_url: session.url || null,
+        processor_fee_cents: estimate.cents,
+        processor_fee_source: estimate.source,
+        courier_cents: courierNet({
+          chargeAmountCents: locked.price_cents,
+          processorFeeCents: estimate.cents,
+        }),
+      });
+
+      this._notifyAccepted(ctx.community, charged, user).catch(() => {});
+      push([charged.id_requester, charged.id_courier], {
+        id_delivery: charged.id_delivery,
+        status: charged.status,
+      });
+
+      return { delivery: charged, checkout_url: session.url, session_id: session.id };
+    } catch (err) {
+      log.error("accept.charge.fail", {
+        id_delivery: locked.id_delivery,
+        message: err?.message,
+      });
+      await CommunityDeliveryStorage.releaseByCourier(pool, locked.id_delivery, user.id_user, {
+        expires_at: locked.expires_at,
+      });
+      return { error: "Não foi possível iniciar a cobrança. Tente de novo.", statusCode: 502 };
+    }
+  }
+
+  /* ------------------------ delivery por peso (266) ------------------------ */
+
+  /**
+   * Abre um chamado por PESO: quem pede diz se ENVIA ou RECEBE, a faixa de
+   * peso e quanto oferece — nunca menos que o piso da faixa.
+   *
+   * ⚠️ O PISO É DO BACKEND E É CONGELADO NA LINHA. A tela mostra o mínimo, mas
+   * quem decide é aqui: um cliente que mandasse R$0,50 por uma mudança
+   * passaria pela tela e pararia nesta linha.
+   */
+  static async _openByWeight(ctx, user, body) {
+    if (!isDeliveryDirection(body?.direction)) {
+      return { error: "Diga se você quer enviar ou receber.", statusCode: 400 };
+    }
+    if (!isWeightBand(body?.weight_band)) {
+      return { error: "Escolha a faixa de peso.", statusCode: 400 };
+    }
+    const band = await getWeightBand(pool, body.weight_band);
+    if (!band) {
+      return { error: "Esta faixa de peso não está disponível agora.", statusCode: 400 };
+    }
+
+    const min = Number(band.min_cents) || 0;
+    const offered =
+      body?.price_cents === undefined || body?.price_cents === null
+        ? min
+        : Math.round(Number(body.price_cents));
+    if (!Number.isFinite(offered) || offered < min) {
+      return {
+        error: `O mínimo para esta faixa é ${brl(min)}.`,
+        statusCode: 400,
+        min_price_cents: min,
+      };
+    }
+    if (offered > MAX_OFFER_CENTS) {
+      return { error: "Valor alto demais para uma corrida.", statusCode: 400 };
+    }
+
+    // O `kind` da mig 248 continua mandando nos PRAZOS (expiração e
+    // confirmação): carga negociada herda os de `bulky`.
+    const kind = kindForBand(band.band);
+    const type = await getDeliveryType(pool, kind, { onlyActive: false });
+    const expiresMinutes = Number(type?.expires_minutes) || 1440;
+
+    const row = await CommunityDeliveryStorage.create(pool, {
+      id_community: ctx.community.id_profile,
+      id_requester: user.id_user,
+      kind,
+      price_cents: offered,
+      note: clean(body?.note, MAX_NOTE),
+      pickup: clean(body?.pickup, MAX_PLACE),
+      dropoff: clean(body?.dropoff, MAX_PLACE),
+      expires_at: new Date(Date.now() + expiresMinutes * 60 * 1000),
+      direction: body.direction,
+      weight_band: band.band,
+      min_price_cents: min,
+      negotiable: band.negotiable === true,
+    });
+
+    this._notifyOpened(ctx.community, row).catch(() => {});
+    this._broadcastOpened(ctx.community, row, band, "opened").catch(() => {});
+
+    return { delivery: row };
+  }
+
+  /**
+   * "Caso ninguém aceite, quem pediu pode oferecer mais." Só sobe, só em
+   * chamado aberto e sem ninguém. O modal volta a aparecer para os membros —
+   * uma oferta nova é, na prática, um chamado novo para quem recusou o antigo.
+   */
+  static async raiseOffer(user, params, body) {
+    return runWithLogs(
+      log,
+      "raiseOffer",
+      () => ({ id_user: user?.id_user, id_delivery: params?.id_delivery }),
+      async () => {
+        const ctx = await this._ctx(user?.id_user, params, { require: "resident" });
+        if (ctx.error) return ctx;
+
+        const delivery = await CommunityDeliveryStorage.getById(pool, params.id_delivery);
+        if (!delivery || String(delivery.id_community) !== String(ctx.community.id_profile)) {
+          return { error: "Chamado não encontrado.", statusCode: 404 };
+        }
+        if (String(delivery.id_requester) !== String(user.id_user)) {
+          return { error: "Só quem abriu o chamado pode mudar a oferta.", statusCode: 403 };
+        }
+
+        const price = Math.round(Number(body?.price_cents));
+        if (!Number.isFinite(price) || price <= Number(delivery.price_cents)) {
+          return { error: "A nova oferta precisa ser maior que a atual.", statusCode: 400 };
+        }
+        if (price > MAX_OFFER_CENTS) {
+          return { error: "Valor alto demais para uma corrida.", statusCode: 400 };
+        }
+
+        const updated = await CommunityDeliveryStorage.raiseOffer(
+          pool,
+          delivery.id_delivery,
+          user.id_user,
+          price
+        );
+        if (!updated) {
+          return { error: "Este chamado não está mais aberto.", statusCode: 409 };
+        }
+
+        const band = updated.weight_band
+          ? await getWeightBand(pool, updated.weight_band, { onlyActive: false })
+          : null;
+        this._broadcastOpened(ctx.community, updated, band, "raised").catch(() => {});
+        push([updated.id_requester], { id_delivery: updated.id_delivery, status: updated.status });
+        return { delivery: updated };
+      }
+    );
+  }
+
+  /**
+   * A CONTRAPROPOSTA: acima de 10 kg o vizinho pode dizer "levo por R$X" em
+   * vez de aceitar a oferta. Quem pediu escolhe depois.
+   */
+  static async propose(user, params, body) {
+    return runWithLogs(
+      log,
+      "propose",
+      () => ({ id_user: user?.id_user, id_delivery: params?.id_delivery }),
+      async () => {
+        const ctx = await this._ctx(user?.id_user, params, { require: "resident" });
+        if (ctx.error) return ctx;
+
+        const delivery = await CommunityDeliveryStorage.getById(pool, params.id_delivery);
+        if (!delivery || String(delivery.id_community) !== String(ctx.community.id_profile)) {
+          return { error: "Chamado não encontrado.", statusCode: 404 };
+        }
+        if (String(delivery.id_requester) === String(user.id_user)) {
+          return { error: "Você não pode propor no seu próprio chamado.", statusCode: 400 };
+        }
+        if (!delivery.negotiable) {
+          return { error: "Este chamado não aceita contraproposta.", statusCode: 400 };
+        }
+        if (
+          delivery.status !== "open" ||
+          delivery.id_courier ||
+          new Date(delivery.expires_at) <= new Date()
+        ) {
+          return { error: "Este chamado não está mais aberto.", statusCode: 409 };
+        }
+
+        const block = await this._strikeBlock(user.id_user);
+        if (block.blockedUntil) {
+          return {
+            error:
+              "Você cancelou corridas demais nos últimos dias. Espere um pouco para aceitar outra.",
+            statusCode: 429,
+            blocked_until: block.blockedUntil,
+          };
+        }
+
+        const amount = Math.round(Number(body?.amount_cents));
+        const min = Number(delivery.min_price_cents) || 0;
+        if (!Number.isFinite(amount) || amount <= 0 || amount < min) {
+          return {
+            error: `A proposta precisa ser de pelo menos ${brl(min)}.`,
+            statusCode: 400,
+          };
+        }
+        if (amount > MAX_OFFER_CENTS) {
+          return { error: "Valor alto demais para uma corrida.", statusCode: 400 };
+        }
+
+        const proposal = await CommunityDeliveryStorage.upsertProposal(pool, {
+          id_delivery: delivery.id_delivery,
+          id_courier: user.id_user,
+          amount_cents: amount,
+          note: clean(body?.note, MAX_PROPOSAL_NOTE),
+        });
+
+        Promise.resolve(
+          NotificationService.notifyDelivery({
+            recipient_user_id: delivery.id_requester,
+            actor_user_id: user.id_user,
+            type: "delivery_proposal",
+            id_community: ctx.community.id_profile,
+            id_delivery: delivery.id_delivery,
+            kind: delivery.kind,
+            price_cents: amount,
+            community_name: ctx.community.display_name,
+          })
+        ).catch(() => {});
+        push([delivery.id_requester, user.id_user], {
+          id_delivery: delivery.id_delivery,
+          status: delivery.status,
+          proposal: true,
+        });
+
+        return { proposal };
+      }
+    );
+  }
+
+  static async withdrawProposal(user, params) {
+    return runWithLogs(
+      log,
+      "withdrawProposal",
+      () => ({ id_user: user?.id_user, id_delivery: params?.id_delivery }),
+      async () => {
+        // Retirar a própria proposta é porta de saída: não passa pela flag.
+        const ctx = await this._ctx(user?.id_user, params, {
+          require: "resident",
+          checkFlag: false,
+        });
+        if (ctx.error) return ctx;
+        const row = await CommunityDeliveryStorage.withdrawProposal(
+          pool,
+          params.id_delivery,
+          user.id_user
+        );
+        if (!row) {
+          return { error: "Você não tem proposta aberta neste chamado.", statusCode: 404 };
+        }
+        const delivery = await CommunityDeliveryStorage.getById(pool, params.id_delivery);
+        if (delivery) {
+          push([delivery.id_requester, user.id_user], {
+            id_delivery: delivery.id_delivery,
+            proposal: true,
+          });
+        }
+        return { proposal: row };
+      }
+    );
+  }
+
+  /**
+   * Quem pediu escolhe uma contraproposta: vira o aceite daquele vizinho, pelo
+   * valor dele. Mesmo caminho do aceite direto (`_lockAndCharge`) — o preço
+   * novo entra na MESMA instrução que trava o chamado.
+   */
+  static async acceptProposal(user, params) {
+    return runWithLogs(
+      log,
+      "acceptProposal",
+      () => ({
+        id_user: user?.id_user,
+        id_delivery: params?.id_delivery,
+        id_proposal: params?.id_proposal,
+      }),
+      async () => {
+        const ctx = await this._ctx(user?.id_user, params, { require: "resident" });
+        if (ctx.error) return ctx;
+
+        const delivery = await CommunityDeliveryStorage.getById(pool, params.id_delivery);
+        if (!delivery || String(delivery.id_community) !== String(ctx.community.id_profile)) {
+          return { error: "Chamado não encontrado.", statusCode: 404 };
+        }
+        if (String(delivery.id_requester) !== String(user.id_user)) {
+          return { error: "Só quem abriu o chamado escolhe a proposta.", statusCode: 403 };
+        }
+
+        const proposal = await CommunityDeliveryStorage.getProposal(pool, params.id_proposal);
+        if (
+          !proposal ||
+          String(proposal.id_delivery) !== String(delivery.id_delivery) ||
+          proposal.status !== "pending"
+        ) {
+          return { error: "Esta proposta não está mais disponível.", statusCode: 409 };
+        }
+
+        // O freio vale para QUEM VAI ENTREGAR, não para quem escolhe.
+        const block = await this._strikeBlock(proposal.id_courier);
+        if (block.blockedUntil) {
+          return {
+            error: "Este vizinho está temporariamente impedido de aceitar corridas.",
+            statusCode: 429,
+          };
+        }
+
+        return this._lockAndCharge(
+          ctx,
+          delivery,
+          { id_user: proposal.id_courier },
+          { price_cents: Number(proposal.amount_cents), id_proposal: proposal.id_proposal }
+        );
+      }
+    );
+  }
+
+  /**
+   * O modal "fulano quer enviar/receber" para todos os membros. O NOME de quem
+   * pede vem do banco (a lista de membros traz o rosto), e não do token: o JWT
+   * só carrega id e e-mail.
+   */
+  static async _broadcastOpened(community, delivery, band, reason) {
+    const [ids, requester] = await Promise.all([
+      CommunityDeliveryStorage.listMemberUserIds(pool, community.id_profile, delivery.id_requester),
+      CommunityDeliveryStorage.getUserCard(pool, delivery.id_requester),
+    ]);
+    broadcast(ids, {
+      reason,
+      id_community: community.id_profile,
+      community_name: community.display_name,
+      id_delivery: delivery.id_delivery,
+      requester_name: requester?.nome || requester?.username || null,
+      requester_avatar: requester?.avatar || null,
+      direction: delivery.direction,
+      weight_band: delivery.weight_band,
+      band_label: band?.label || null,
+      price_cents: Number(delivery.price_cents),
+      negotiable: delivery.negotiable === true,
+      note: delivery.note || null,
+      pickup: delivery.pickup || null,
+      dropoff: delivery.dropoff || null,
+    });
   }
 
   /* ------------------------------- entrega -------------------------------- */
@@ -568,6 +972,8 @@ class CommunityDeliveryService {
             statusCode: 409,
           };
         }
+        // Chamado cancelado não tem mais o que negociar (mig 266).
+        CommunityDeliveryStorage.declinePendingProposals(pool, row.id_delivery).catch(() => {});
         push([row.id_requester], { id_delivery: row.id_delivery, status: row.status });
         return { delivery: row };
       }
