@@ -8,7 +8,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 
 const {
-  FALLBACK_PLATFORM_FEE_CENTS,
+  FALLBACK_PLATFORM_FEE_PERCENT,
   resolvePlatformFee,
   estimateProcessorFee,
   professionalNet,
@@ -39,18 +39,25 @@ test("com o percentual em zero vale só a parte fixa — que é o modelo da mig 
   assert.strictEqual(await resolvePlatformFee(conn, 100000), 100);
 });
 
+test("o modelo da mig 265: 3% do preço, sem parte fixa", async () => {
+  const conn = connWith({ service_fee_cents: 0, stripe_fee_percent: 3, is_active: true });
+  assert.strictEqual(await resolvePlatformFee(conn, 4000), 120);   // R$ 40,00 → R$ 1,20
+  assert.strictEqual(await resolvePlatformFee(conn, 500), 15);     // R$ 5,00 → R$ 0,15
+});
+
 test("`is_active = FALSE` é o kill-switch: a plataforma não cobra nada", async () => {
   const conn = connWith({ service_fee_cents: 100, stripe_fee_percent: 5, is_active: false });
   assert.strictEqual(await resolvePlatformFee(conn, 4000), 0);
 });
 
 test("sem a linha singleton o fallback NÃO é zero — configuração quebrada não vira doação", async () => {
-  assert.strictEqual(await resolvePlatformFee(connWith(null), 4000), FALLBACK_PLATFORM_FEE_CENTS);
-  assert.strictEqual(FALLBACK_PLATFORM_FEE_CENTS, 100);
+  // 3% de R$ 40,00 = R$ 1,20 — o mesmo que a mig 265 grava na tabela.
+  assert.strictEqual(FALLBACK_PLATFORM_FEE_PERCENT, 3);
+  assert.strictEqual(await resolvePlatformFee(connWith(null), 4000), 120);
 });
 
 test("falha de leitura não derruba um agendamento válido — cai no fallback", async () => {
-  assert.strictEqual(await resolvePlatformFee(connThatFails(), 4000), FALLBACK_PLATFORM_FEE_CENTS);
+  assert.strictEqual(await resolvePlatformFee(connThatFails(), 4000), 120);
 });
 
 test("valor torto na tabela não vira taxa negativa", async () => {

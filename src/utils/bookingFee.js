@@ -30,11 +30,10 @@ const log = createLogger("bookingFee");
  *
  * ⚠️ NÃO É ZERO, de propósito. Banco sem a linha é banco quebrado, e zero
  * significaria "a plataforma trabalha de graça" — um defeito de configuração
- * virando doação silenciosa. R$ 1,00 é o valor com que a mig 244 semeia a
- * tabela, então o fallback concorda com ela em vez de inventar um terceiro
- * número.
+ * virando doação silenciosa. 3% é o valor com que a mig 265 semeia a tabela,
+ * então o fallback concorda com ela em vez de inventar um terceiro número.
  */
-const FALLBACK_PLATFORM_FEE_CENTS = 100;
+const FALLBACK_PLATFORM_FEE_PERCENT = 3;
 
 /**
  * A taxa da plataforma para um agendamento, em centavos.
@@ -70,8 +69,8 @@ async function resolvePlatformFee(conn, servicePriceCents) {
   }
 
   if (!row) {
-    log.warn("bookingFee.settings.missing", { fallback_cents: FALLBACK_PLATFORM_FEE_CENTS });
-    return FALLBACK_PLATFORM_FEE_CENTS;
+    log.warn("bookingFee.settings.missing", { fallback_percent: FALLBACK_PLATFORM_FEE_PERCENT });
+    return Math.round((price * FALLBACK_PLATFORM_FEE_PERCENT) / 100);
   }
   if (row.is_active === false) return 0;
 
@@ -145,7 +144,7 @@ function professionalNet({
 }
 
 module.exports = {
-  FALLBACK_PLATFORM_FEE_CENTS,
+  FALLBACK_PLATFORM_FEE_PERCENT,
   resolvePlatformFee,
   estimateProcessorFee,
   professionalNet,
