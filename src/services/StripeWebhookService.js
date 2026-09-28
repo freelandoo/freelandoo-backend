@@ -206,6 +206,11 @@ async function handleInvoicePaid(conn, invoice) {
   const CommunityListingServiceInv = require("./CommunityListingService");
   const listingPaid = await CommunityListingServiceInv.handleInvoicePaid(invoice, subscriptionId);
   if (listingPaid && !listingPaid.ignored) return;
+  // Selo verificado (mig 268): a renovação empurra o selo um mês,
+  // deduplicada pelo id da fatura.
+  const VerificationServiceInv = require("./VerificationService");
+  const verifiedPaid = await VerificationServiceInv.handleInvoicePaid(invoice, subscriptionId);
+  if (verifiedPaid && !verifiedPaid.ignored) return;
   const PlanService = require("./PlanService");
   const planSub = await PlanService.handleInvoicePaid(invoice, subscriptionId);
   if (planSub && !planSub.ignored) return;
@@ -371,6 +376,9 @@ async function handleInvoiceFailed(conn, invoice) {
   const CommunityListingServiceFailed = require("./CommunityListingService");
   const listingFailed = await CommunityListingServiceFailed.handleInvoiceFailed(subscriptionId);
   if (listingFailed && !listingFailed.ignored) return;
+  const VerificationServiceFailed = require("./VerificationService");
+  const verifiedFailed = await VerificationServiceFailed.handleInvoiceFailed(subscriptionId);
+  if (verifiedFailed && !verifiedFailed.ignored) return;
   const PlanServiceFailed = require("./PlanService");
   const planFailed = await PlanServiceFailed.handleInvoiceFailed(subscriptionId);
   if (planFailed && !planFailed.ignored) return;
@@ -530,6 +538,9 @@ async function handleSubscriptionDeleted(conn, subscription) {
   const CommunityListingServiceDel = require("./CommunityListingService");
   const listingDeleted = await CommunityListingServiceDel.handleSubscriptionDeleted(subscription);
   if (listingDeleted && !listingDeleted.ignored) return;
+  const VerificationServiceDel = require("./VerificationService");
+  const verifiedDeleted = await VerificationServiceDel.handleSubscriptionDeleted(subscription);
+  if (verifiedDeleted && !verifiedDeleted.ignored) return;
   const PlanServiceDeleted = require("./PlanService");
   const planDeleted = await PlanServiceDeleted.handleSubscriptionDeleted(subscription);
   if (planDeleted && !planDeleted.ignored) return;
@@ -849,6 +860,10 @@ async function fulfillCheckoutSession(session) {
   } else if (meta.type === "condo_listing_slot") {
     const CommunityListingService = require("./CommunityListingService");
     result = await CommunityListingService.confirmStripeSession(session);
+  } else if (meta.type === "verified_badge") {
+    // Selo verificado (mig 268): o primeiro mês caiu. Idempotente pela sessão.
+    const VerificationService = require("./VerificationService");
+    result = await VerificationService.confirmStripeSession(session);
   } else if (meta.type === "managed_site_setup") {
     // Site autoral (mig 263): os R$299 da criação caíram e o pedido entra na
     // fila dos agentes. Idempotente pelo session id.
@@ -949,6 +964,12 @@ async function expireCheckoutSession(session, reason) {
         const CommunityListingService = require("./CommunityListingService");
         const expired = await CommunityListingService.expireBySession(session.id);
         if (expired) log.info("expire.condo_listing_slot", { session_id: session.id, reason });
+        break;
+      }
+      case "verified_badge": {
+        const VerificationService = require("./VerificationService");
+        const expired = await VerificationService.expireBySession(session.id);
+        if (expired) log.info("expire.verified_badge", { session_id: session.id, reason });
         break;
       }
       case "community_listing_order": {
@@ -1112,6 +1133,9 @@ async function dispatchEvent(event) {
       const CommunityListingService = require("./CommunityListingService");
       const condoSlotResult = await CommunityListingService.handleChargeRefunded(charge);
       if (condoSlotResult && !condoSlotResult.ignored) break;
+      const VerificationService = require("./VerificationService");
+      const verifiedResult = await VerificationService.handleChargeRefunded(charge);
+      if (verifiedResult && !verifiedResult.ignored) break;
       const CommunityDeliveryService = require("./CommunityDeliveryService");
       const deliveryResult = await CommunityDeliveryService.handleChargeRefunded(charge);
       if (deliveryResult && !deliveryResult.ignored) break;

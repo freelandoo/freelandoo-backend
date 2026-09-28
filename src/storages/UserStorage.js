@@ -1,4 +1,5 @@
 // src/storages/UserStorage.js
+const { verifiedUserSql } = require("../utils/verifiedBadge");
 module.exports = {
   async getUserWithSocialById(db, id_user) {
     const result = await db.query(
@@ -30,6 +31,8 @@ module.exports = {
         tu.is_minor,
         tu.responsible_user_id,
         tu.onboarding_tour_done,
+        -- Selo verificado (mig 268): pagou ou é admin.
+        ${verifiedUserSql("tu.id_user")} AS is_verified,
 
         -- Roles (nível do user)
         COALESCE(r.roles, '[]'::jsonb) AS roles,

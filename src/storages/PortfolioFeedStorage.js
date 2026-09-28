@@ -1,4 +1,5 @@
 const { normalizeFeedKind, feedKindMatchSql } = require("../utils/feedKind");
+const { verifiedUserSql } = require("../utils/verifiedBadge");
 
 // Constrói a query base de candidatos elegíveis para o feed.
 // `mode === "new"` adiciona o filtro de novidade/sub-exposição e ordena por
@@ -61,6 +62,8 @@ function buildCandidateQuery(mode) {
       pro.xp_level,
 
       tu.username,
+      -- Selo verificado do dono do perfil (mig 268): pagou ou é admin.
+      ${verifiedUserSql("tu.id_user")} AS is_verified,
 
       COALESCE(ca.id_machine, pro.id_machine)              AS id_machine,
       m.slug                                               AS machine_slug,

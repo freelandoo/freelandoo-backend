@@ -1,4 +1,5 @@
 const { slugify } = require("../utils/slug");
+const { verifiedUserSql } = require("../utils/verifiedBadge");
 
 class ProfileStorage {
   /**
@@ -198,6 +199,8 @@ class ProfileStorage {
       -- mig 200: perfil-conta que declarou enxame/profissao no onboarding tem
       -- taxonomia REAL (pode ir pro title/JSON-LD). FALSE = categoria fantasma.
       (p.taxonomy_declared_at IS NOT NULL) AS has_declared_taxonomy,
+      -- Selo verificado do dono (mig 268): pagou ou é admin.
+      ${verifiedUserSql("p.id_user")} AS is_verified,
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'
@@ -276,6 +279,8 @@ class ProfileStorage {
       -- mig 200: perfil-conta que declarou enxame/profissao no onboarding tem
       -- taxonomia REAL (pode ir pro title/JSON-LD). FALSE = categoria fantasma.
       (p.taxonomy_declared_at IS NOT NULL) AS has_declared_taxonomy,
+      -- Selo verificado do dono (mig 268): pagou ou é admin.
+      ${verifiedUserSql("p.id_user")} AS is_verified,
       EXISTS (
         SELECT 1 FROM public.tb_profile_subscription ps
          WHERE ps.id_profile = p.id_profile AND ps.status = 'active'

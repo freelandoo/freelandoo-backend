@@ -81,6 +81,7 @@ function shapeRow(row) {
     profile_name: row.display_name,
     avatar_url: row.avatar_url,
     username: row.username,
+    is_verified: !!row.is_verified,
     is_clan: row.is_clan,
     sub_profile_slug: row.sub_profile_slug,
     machine,

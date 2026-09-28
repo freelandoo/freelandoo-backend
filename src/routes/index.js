@@ -84,6 +84,7 @@ const onboardingRoutes = require("./onboarding.routes");
 const userAccountPortfolioRoutes = require("./userAccountPortfolio.routes");
 const userAccountSocialMediaRoutes = require("./userAccountSocialMedia.routes");
 const userFeaturePrefRoutes = require("./userFeaturePref.routes");
+const verificationRoutes = require("./verification.routes");
 const userQuickPillsRoutes = require("./userQuickPills.routes");
 const userPublicRoutes = require("./userPublic.routes");
 const portfolioCommentRoutes = require("./portfolioComment.routes");
@@ -172,6 +173,9 @@ module.exports = (app) => {
   app.use("/checkout", checkoutRoutes);
   app.use("/order", orderRoutes);
   app.use("/me/affiliate", affiliateRoutes);
+  // Selo verificado (mig 268). Antes do app.use("/me", ...) genérico.
+  app.use("/me/verification", verificationRoutes.me);
+  app.use("/admin/verification", verificationRoutes.admin);
   app.use("/admin/affiliate", affiliateAdminRoutes);
   app.use("/enxames", enxameRoutes);
   app.use("/admin", enxameAdminRoutes);

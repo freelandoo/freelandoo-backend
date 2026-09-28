@@ -1,3 +1,5 @@
+const { verifiedUserSql } = require("../utils/verifiedBadge");
+
 module.exports = {
   /**
    * Lista clans publicados (assinatura ativa, visível, não deletado), com
@@ -170,6 +172,8 @@ module.exports = {
         tu.id_user,
         tu.username,
         tu.nome AS user_nome,
+        -- Selo verificado (mig 268): pagou ou é admin.
+        ${verifiedUserSql("tu.id_user")} AS is_verified,
         tu.avatar AS user_avatar,
 
         -- STATUS DO PROFILE
@@ -333,6 +337,9 @@ module.exports = {
           owner_user.id_user,
           owner_user.username,
           owner_user.nome AS user_nome,
+          -- ⚠️ MESMA POSIÇÃO do ramo de perfis (é UNION): clan não mostra o
+          -- selo — ele diria que o GRUPO foi verificado.
+          FALSE AS is_verified,
           owner_user.avatar AS user_avatar,
           '[]'::jsonb AS profile_statuses,
           '[]'::jsonb AS redes_sociais,
