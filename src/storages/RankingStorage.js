@@ -1,6 +1,7 @@
 // src/storages/RankingStorage.js
 const pool = require("../databases");
 const XpStorage = require("./XpStorage");
+const { verifiedUserSql } = require("../utils/verifiedBadge");
 
 const RANKING_RECALCULATE_LOCK_KEY = 57289154;
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
@@ -749,6 +750,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            FALSE AS is_clan,
+           ${verifiedUserSql("u.id_user")} AS is_verified,
            NULL::int AS members_count
          FROM profile_ranking pr
          JOIN tb_profile pro ON pro.id_profile = pr.id_profile
@@ -783,6 +785,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            TRUE AS is_clan,
+           FALSE AS is_verified,
            (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
          FROM profile_ranking pr
          JOIN tb_profile clan ON clan.id_profile = pr.id_profile
@@ -840,6 +843,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            FALSE AS is_clan,
+           ${verifiedUserSql("u.id_user")} AS is_verified,
            NULL::int AS members_count
          FROM profile_ranking pr
          JOIN tb_profile pro ON pro.id_profile = pr.id_profile
@@ -873,6 +877,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            TRUE AS is_clan,
+           FALSE AS is_verified,
            (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
          FROM profile_ranking pr
          JOIN tb_profile clan ON clan.id_profile = pr.id_profile
@@ -929,6 +934,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            FALSE AS is_clan,
+           ${verifiedUserSql("u.id_user")} AS is_verified,
            NULL::int AS members_count
          FROM profile_ranking pr
          JOIN tb_profile pro ON pro.id_profile = pr.id_profile
@@ -962,6 +968,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            TRUE AS is_clan,
+           FALSE AS is_verified,
            (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
          FROM profile_ranking pr
          JOIN tb_profile clan ON clan.id_profile = pr.id_profile
@@ -1014,6 +1021,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            FALSE AS is_clan,
+           ${verifiedUserSql("u.id_user")} AS is_verified,
            NULL::int AS members_count
          FROM profile_ranking pr
          JOIN tb_profile pro ON pro.id_profile = pr.id_profile
@@ -1048,6 +1056,7 @@ module.exports = {
            pr.visits_count,
            pr.likes_count,
            TRUE AS is_clan,
+           FALSE AS is_verified,
            (SELECT COUNT(*)::int FROM tb_clan_member cm2 WHERE cm2.id_clan_profile = clan.id_profile) AS members_count
          FROM profile_ranking pr
          JOIN tb_profile clan ON clan.id_profile = pr.id_profile
@@ -1110,6 +1119,8 @@ module.exports = {
          pr.visits_count,
          pr.likes_count,
          pro.is_clan,
+         -- Selo verificado (mig 268) é da PESSOA; clan não carrega.
+         (NOT pro.is_clan AND ${verifiedUserSql("u.id_user")}) AS is_verified,
          (SELECT COUNT(*)::int FROM tb_clan_member cm WHERE cm.id_clan_profile = pro.id_profile) AS members_count,
          pr.position_general
        FROM profile_ranking pr
