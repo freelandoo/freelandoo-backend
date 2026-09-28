@@ -49,7 +49,8 @@
     "test:business-results": "node test/business-results.e2e.js",
     "test:subject-platforms": "node test/subject-platforms.e2e.js",
     "test:pricing": "node test/pricing-restructure.e2e.js",
-    "test:verified": "node test/verified-badge.e2e.js"
+    "test:verified": "node test/verified-badge.e2e.js",
+    "test:market-report": "node test/market-report.e2e.js"
   },
   "repository": {
     "type": "git",

@@ -129,6 +129,7 @@ const blogRoutes = require("./blog.routes");
 const blogAdminRoutes = require("./blogAdmin.routes");
 const architectureAdminRoutes = require("./architectureAdmin.routes");
 const marketRoutes = require("./market.routes");
+const marketReportRoutes = require("./marketReport.routes");
 const walletFinanceRoutes = require("./walletFinance.routes");
 const paymentOpsRoutes = require("./paymentOps.routes");
 const featureFlagRoutes = require("./featureFlag.routes");
@@ -173,6 +174,8 @@ module.exports = (app) => {
   app.use("/checkout", checkoutRoutes);
   app.use("/order", orderRoutes);
   app.use("/me/affiliate", affiliateRoutes);
+  // Relatório de mercado local (mig 269). Base própria: ver o cabeçalho da rota.
+  app.use("/local-market", marketReportRoutes);
   // Selo verificado (mig 268). Antes do app.use("/me", ...) genérico.
   app.use("/me/verification", verificationRoutes.me);
   app.use("/admin/verification", verificationRoutes.admin);
