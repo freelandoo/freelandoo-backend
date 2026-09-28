@@ -20,8 +20,9 @@ class CommunityListingOrderStorage {
           listing_title, listing_kind, price_cents,
           delivery_cents, delivery_kind,
           amount_cents, platform_fee_cents, processor_fee_cents,
-          processor_fee_source, seller_cents, courier_cents, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+          processor_fee_source, seller_cents, courier_cents, note,
+          delivery_platform_fee_cents)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING *`,
       [
         data.id_listing ?? null,
@@ -40,6 +41,7 @@ class CommunityListingOrderStorage {
         data.seller_cents || 0,
         data.courier_cents || 0,
         data.note ?? null,
+        data.delivery_platform_fee_cents || 0,
       ]
     );
     return r.rows[0];

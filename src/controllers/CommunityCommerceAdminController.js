@@ -119,6 +119,7 @@ class CommunityCommerceAdminController {
               holdback_days        = COALESCE($3, holdback_days),
               confirm_days         = COALESCE($4, confirm_days),
               is_active            = COALESCE($5, is_active),
+              delivery_fee_percent = COALESCE($7, delivery_fee_percent),
               updated_at           = NOW(),
               updated_by           = $6
         WHERE id = 1
@@ -142,6 +143,12 @@ class CommunityCommerceAdminController {
           : Math.min(60, Math.max(1, Math.round(Number(b.confirm_days) || 7))),
         b.is_active === undefined ? null : b.is_active !== false,
         req.user?.id_user || null,
+        // A parte da Freelandoo em cada entrega (mig 267). Teto de 50: acima
+        // disso o entregador trabalharia para a plataforma, e é dedo
+        // escorregado, não decisão.
+        b.delivery_fee_percent === undefined
+          ? null
+          : Math.min(50, Math.max(0, Number(b.delivery_fee_percent) || 0)),
       ]
     );
     log.info("listing_settings.updated", { by: req.user?.id_user });

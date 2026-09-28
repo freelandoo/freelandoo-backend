@@ -145,7 +145,7 @@ class CommunityDeliveryStorage {
    * cobrança nasce quando o ENTREGADOR aceita, e quem paga é quem PEDIU. Sem
    * guardar, o link existiria só na resposta do clique de outra pessoa.
    */
-  static async attachCharge(conn, id_delivery, { provider, session_id, provider_ref, checkout_url, processor_fee_cents, processor_fee_source, courier_cents }) {
+  static async attachCharge(conn, id_delivery, { provider, session_id, provider_ref, checkout_url, processor_fee_cents, processor_fee_source, courier_cents, platform_fee_cents = 0 }) {
     const r = await conn.query(
       `UPDATE public.tb_community_delivery_request
           SET payment_provider = $2,
@@ -156,6 +156,7 @@ class CommunityDeliveryStorage {
               processor_fee_cents = $6,
               processor_fee_source = $7,
               courier_cents = $8,
+              platform_fee_cents = $9,
               updated_at = NOW()
         WHERE id_delivery = $1
         RETURNING *`,
@@ -168,6 +169,7 @@ class CommunityDeliveryStorage {
         processor_fee_cents,
         processor_fee_source,
         courier_cents,
+        Math.max(0, Math.round(Number(platform_fee_cents) || 0)),
       ]
     );
     return r.rows[0] || null;
@@ -222,7 +224,9 @@ class CommunityDeliveryStorage {
       `UPDATE public.tb_community_delivery_request
           SET processor_fee_cents = $2,
               processor_fee_source = 'gateway',
-              courier_cents = GREATEST(0, price_cents - $2),
+              -- ⚠️ A taxa da plataforma (mig 267) continua descontada: a tarifa
+              -- real troca só a parte do gateway.
+              courier_cents = GREATEST(0, price_cents - $2 - platform_fee_cents),
               updated_at = NOW()
         WHERE id_delivery = $1
         RETURNING *`,
@@ -292,6 +296,7 @@ class CommunityDeliveryStorage {
               processor_fee_cents = 0,
               processor_fee_source = 'none',
               courier_cents = 0,
+              platform_fee_cents = 0,
               expires_at = $3,
               cancel_reason = 'courier',
               updated_at = NOW()
@@ -423,8 +428,9 @@ class CommunityDeliveryStorage {
     const r = await conn.query(
       `INSERT INTO public.tb_community_delivery_payout
          (id_delivery, id_community, id_courier, kind, charge_cents,
-          processor_fee_cents, net_cents, status, available_at, approved_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'aprovado', NOW(), NOW())
+          processor_fee_cents, net_cents, platform_fee_cents,
+          status, available_at, approved_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'aprovado', NOW(), NOW())
        ON CONFLICT (id_delivery) DO NOTHING
        RETURNING *`,
       [
@@ -435,6 +441,7 @@ class CommunityDeliveryStorage {
         data.charge_cents,
         data.processor_fee_cents,
         data.net_cents,
+        Math.max(0, Math.round(Number(data.platform_fee_cents) || 0)),
       ]
     );
     return r.rows[0] || null;

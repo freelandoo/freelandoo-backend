@@ -53,6 +53,7 @@ const {
   estimateProcessorFee,
   getDeliveryType,
   isDeliveryKind,
+  deliveryPlatformFee: deliveryPlatformFeeFor,
 } = require("../utils/deliveryPricing");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const realtime = require("../realtime/socket");
@@ -165,12 +166,14 @@ class CommunityListingOrderService {
           StoreGovernanceService.getSettings(),
         ]);
         const platformFee = platformFeeFor(price, settings);
+        const deliveryPlatformFee = deliveryPlatformFeeFor(deliveryCents, settings);
         const estimate = estimateProcessorFee(price + deliveryCents, governance);
         const money = computeOrder({
           priceCents: price,
           deliveryCents,
           platformFeeCents: platformFee,
           processorFeeCents: estimate.cents,
+          deliveryPlatformFeeCents: deliveryPlatformFee,
         });
         if (money.shortfall_cents > 0) {
           // Não impede a compra: é sinal de preço mal calibrado para a tarifa
@@ -196,6 +199,7 @@ class CommunityListingOrderService {
           delivery_kind: deliveryKind,
           amount_cents: money.amount_cents,
           platform_fee_cents: money.platform_fee_cents,
+          delivery_platform_fee_cents: money.delivery_platform_fee_cents,
           processor_fee_cents: money.processor_fee_cents,
           processor_fee_source: estimate.source,
           seller_cents: money.seller_cents,
@@ -525,6 +529,7 @@ class CommunityListingOrderService {
           deliveryCents: row.delivery_cents,
           platformFeeCents: row.platform_fee_cents,
           processorFeeCents: Math.max(0, Math.round(cents)),
+          deliveryPlatformFeeCents: row.delivery_platform_fee_cents,
         });
         const updated = await CommunityListingOrderStorage.applyProcessorFee(pool, row.id_order, {
           fee_cents: money.processor_fee_cents,
@@ -680,6 +685,7 @@ class CommunityListingOrderService {
               processor_fee_cents = $5,
               processor_fee_source = $6,
               courier_cents = $7,
+              platform_fee_cents = $8,
               updated_at = NOW()
         WHERE id_delivery = $1`,
       [
@@ -690,6 +696,7 @@ class CommunityListingOrderService {
         Math.max(0, Number(order.processor_fee_cents) || 0),
         order.processor_fee_source || "fallback",
         Math.max(0, Number(order.courier_cents) || 0),
+        Math.max(0, Number(order.delivery_platform_fee_cents) || 0),
       ]
     );
     await CommunityListingOrderStorage.attachDelivery(pool, order.id_order, delivery.id_delivery);

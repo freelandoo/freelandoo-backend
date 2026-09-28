@@ -172,10 +172,40 @@ function estimateProcessorFee(chargeAmountCents, governanceSettings) {
  * ANTES de ele aceitar (ver `courierNetPreview`), então ele nunca descobre na
  * corrida seguinte.
  */
-function courierNet({ chargeAmountCents, processorFeeCents }) {
+function courierNet({ chargeAmountCents, processorFeeCents, platformFeeCents = 0 }) {
   const charge = Math.max(0, Math.round(Number(chargeAmountCents) || 0));
   const processor = Math.max(0, Math.round(Number(processorFeeCents) || 0));
-  return Math.max(0, charge - processor);
+  const platform = Math.max(0, Math.round(Number(platformFeeCents) || 0));
+  return Math.max(0, charge - processor - platform);
+}
+
+/** A taxa que o delivery deixa para a plataforma se ninguém configurou (mig 267). */
+const FALLBACK_DELIVERY_FEE_PERCENT = 3;
+
+/**
+ * A parte da Freelandoo numa corrida (mig 267, decisão do Alex: 3%).
+ *
+ * ⚠️ SAI DE QUEM ENTREGA, como a tarifa do gateway — quem pede continua
+ * pagando o preço publicado. A régua é `delivery_fee_percent` da MESMA linha
+ * que governa a venda na vitrine (`getListingSettings`), e `is_active = FALSE`
+ * naquela linha zera as duas taxas juntas: é um kill-switch só.
+ *
+ * ⚠️ Sem configuração a taxa é 3%, não zero: banco sem a linha é banco
+ * quebrado, e zero seria a decisão virando doação silenciosa.
+ *
+ * Nunca maior que a própria corrida — no limite o entregador fica com zero,
+ * nunca com dívida.
+ */
+function deliveryPlatformFee(priceCents, settings) {
+  const price = Math.max(0, Math.round(Number(priceCents) || 0));
+  if (!price) return 0;
+  if (settings && settings.is_active === false) return 0;
+  const raw = settings?.delivery_fee_percent;
+  const pct =
+    raw === undefined || raw === null || !Number.isFinite(Number(raw))
+      ? FALLBACK_DELIVERY_FEE_PERCENT
+      : Math.max(0, Number(raw));
+  return Math.min(price, Math.round((price * pct) / 100));
 }
 
 /**
@@ -188,12 +218,18 @@ function courierNet({ chargeAmountCents, processorFeeCents }) {
  * tarifa estimada e a apurada — que é pequena e sempre a favor de quem entrega
  * ou contra, mas nunca uma surpresa de ordem de grandeza.
  */
-function courierNetPreview(priceCents, governanceSettings) {
+function courierNetPreview(priceCents, governanceSettings, listingSettings) {
   const fee = estimateProcessorFee(priceCents, governanceSettings);
+  const platform = deliveryPlatformFee(priceCents, listingSettings);
   return {
     gross_cents: Math.max(0, Math.round(Number(priceCents) || 0)),
     estimated_fee_cents: fee.cents,
-    net_cents: courierNet({ chargeAmountCents: priceCents, processorFeeCents: fee.cents }),
+    platform_fee_cents: platform,
+    net_cents: courierNet({
+      chargeAmountCents: priceCents,
+      processorFeeCents: fee.cents,
+      platformFeeCents: platform,
+    }),
   };
 }
 
@@ -276,6 +312,8 @@ module.exports = {
   estimateProcessorFee,
   courierNet,
   courierNetPreview,
+  deliveryPlatformFee,
+  FALLBACK_DELIVERY_FEE_PERCENT,
   WEIGHT_BANDS,
   FALLBACK_BANDS,
   DELIVERY_DIRECTIONS,

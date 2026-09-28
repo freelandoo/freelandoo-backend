@@ -46,6 +46,7 @@ const {
   estimateProcessorFee,
   courierNet,
   courierNetPreview,
+  deliveryPlatformFee,
   STRIKE_LIMIT,
   STRIKE_WINDOW_DAYS,
   STRIKE_BLOCK_HOURS,
@@ -55,6 +56,7 @@ const {
   listWeightBands,
   getWeightBand,
 } = require("../utils/deliveryPricing");
+const { getListingSettings } = require("../utils/listingOrder");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const realtime = require("../realtime/socket");
 
@@ -166,10 +168,11 @@ class CommunityDeliveryService {
         const ctx = await this._ctx(user?.id_user, params, { require: "resident" });
         if (ctx.error) return ctx;
 
-        const [types, governance, bands] = await Promise.all([
+        const [types, governance, bands, listingSettings] = await Promise.all([
           listDeliveryTypes(pool),
           StoreGovernanceService.getSettings(),
           listWeightBands(pool),
+          getListingSettings(pool),
         ]);
 
         const status = query?.status || "open";
@@ -200,14 +203,14 @@ class CommunityDeliveryService {
           // As faixas de peso com o LÍQUIDO do piso, pela mesma regra dos tipos.
           bands: bands.map((b) => ({
             ...b,
-            ...courierNetPreview(b.min_cents, governance),
+            ...courierNetPreview(b.min_cents, governance, listingSettings),
           })),
           // ⚠️ CADA TIPO SAI COM O LÍQUIDO JUNTO. A tela de quem entrega mostra
           // "você recebe R$X,XX", nunca o bruto: se o card anuncia R$3 e caem
           // R$1,01, o vizinho descobre na primeira corrida e não faz a segunda.
           types: types.map((t) => ({
             ...t,
-            ...courierNetPreview(t.price_cents, governance),
+            ...courierNetPreview(t.price_cents, governance, listingSettings),
           })),
           // ⚠️ O LINK DE PAGAMENTO SAI SÓ PARA QUEM PAGA. Ele é uma sessão de
           // checkout no nome de quem PEDIU; entregue a qualquer um que abre o
@@ -221,7 +224,7 @@ class CommunityDeliveryService {
               checkout_url: isRequester ? d.checkout_url : undefined,
               // O líquido de quem entrega pelo valor ATUAL (a oferta pode ter
               // subido desde a abertura).
-              courier_preview: courierNetPreview(d.price_cents, governance),
+              courier_preview: courierNetPreview(d.price_cents, governance, listingSettings),
               proposals: isRequester ? list : undefined,
               my_proposal: isRequester
                 ? undefined
@@ -391,8 +394,14 @@ class CommunityDeliveryService {
     // Se a criação da cobrança falhar, ele é devolvido para `open` — senão
     // ficaria preso em `accepted` sem pagamento, invisível para todo mundo.
     try {
-      const governance = await StoreGovernanceService.getSettings();
+      const [governance, listingSettings] = await Promise.all([
+        StoreGovernanceService.getSettings(),
+        getListingSettings(pool),
+      ]);
       const estimate = estimateProcessorFee(locked.price_cents, governance);
+      // Os 3% da Freelandoo (mig 267), congelados NO ACEITE: é o número que a
+      // tela mostrou a quem entrega antes de ele apertar o botão.
+      const platformFee = deliveryPlatformFee(locked.price_cents, listingSettings);
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(
         /\/$/,
         ""
@@ -424,9 +433,11 @@ class CommunityDeliveryService {
         checkout_url: session.url || null,
         processor_fee_cents: estimate.cents,
         processor_fee_source: estimate.source,
+        platform_fee_cents: platformFee,
         courier_cents: courierNet({
           chargeAmountCents: locked.price_cents,
           processorFeeCents: estimate.cents,
+          platformFeeCents: platformFee,
         }),
       });
 
@@ -1227,6 +1238,7 @@ class CommunityDeliveryService {
       kind: delivery.kind,
       charge_cents: Number(delivery.price_cents) || 0,
       processor_fee_cents: Number(delivery.processor_fee_cents) || 0,
+      platform_fee_cents: Number(delivery.platform_fee_cents) || 0,
       net_cents: net,
     });
   }

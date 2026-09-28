@@ -56,6 +56,8 @@ const FALLBACK_SETTINGS = Object.freeze({
   platform_fee_percent: 0,
   holdback_days: 8,
   confirm_days: 7,
+  // A parte da Freelandoo em cada entrega (mig 267). 3 é o seed da migration.
+  delivery_fee_percent: 3,
   is_active: true,
 });
 
@@ -69,7 +71,7 @@ async function getListingSettings(conn) {
   try {
     const { rows } = await conn.query(
       `SELECT platform_fee_cents, platform_fee_percent, holdback_days,
-              confirm_days, is_active
+              confirm_days, is_active, delivery_fee_percent
          FROM public.tb_community_listing_settings
         WHERE id = 1
         LIMIT 1`
@@ -80,6 +82,9 @@ async function getListingSettings(conn) {
         platform_fee_percent: Math.max(0, Number(rows[0].platform_fee_percent) || 0),
         holdback_days: Math.max(0, Math.round(Number(rows[0].holdback_days) || 0)),
         confirm_days: Math.max(1, Math.round(Number(rows[0].confirm_days) || 7)),
+        delivery_fee_percent: Number.isFinite(Number(rows[0].delivery_fee_percent))
+          ? Math.max(0, Number(rows[0].delivery_fee_percent))
+          : FALLBACK_SETTINGS.delivery_fee_percent,
         is_active: rows[0].is_active !== false,
       };
     }
@@ -139,8 +144,9 @@ function splitProcessorFee({ processorFeeCents, priceCents, deliveryCents }) {
 /**
  * A conta inteira do pedido — a função que o service e o teste compartilham.
  *
- * ⚠️ AS QUATRO PARTES FECHAM O QUE O COMPRADOR PAGOU:
- *   plataforma + gateway + vendedor + entregador === amount_cents
+ * ⚠️ AS PARTES FECHAM O QUE O COMPRADOR PAGOU:
+ *   plataforma (preço) + plataforma (entrega) + gateway + vendedor + entregador
+ *     === amount_cents
  * É esta identidade que o teste verifica, e é ela que faz um erro de conta
  * aparecer como número em vez de sumir na diferença.
  *
@@ -148,12 +154,24 @@ function splitProcessorFee({ processorFeeCents, priceCents, deliveryCents }) {
  * chegaria a -99 centavos na subtração crua — e um número negativo aqui viraria
  * DÉBITO na carteira de quem entregou a mercadoria.
  */
-function computeOrder({ priceCents, deliveryCents = 0, platformFeeCents = 0, processorFeeCents = 0 }) {
+function computeOrder({
+  priceCents,
+  deliveryCents = 0,
+  platformFeeCents = 0,
+  processorFeeCents = 0,
+  deliveryPlatformFeeCents = 0,
+}) {
   const price = Math.max(0, Math.round(Number(priceCents) || 0));
   const delivery = Math.max(0, Math.round(Number(deliveryCents) || 0));
   const amount = price + delivery;
   const platform = Math.min(price, Math.max(0, Math.round(Number(platformFeeCents) || 0)));
   const fee = Math.min(amount, Math.max(0, Math.round(Number(processorFeeCents) || 0)));
+  // Os 3% da Freelandoo sobre a ENTREGA (mig 267): saem do entregador, nunca
+  // do vendedor — são duas taxas diferentes sobre dois dinheiros diferentes.
+  const deliveryPlatform = Math.min(
+    delivery,
+    Math.max(0, Math.round(Number(deliveryPlatformFeeCents) || 0))
+  );
 
   const { price_fee_cents, delivery_fee_cents } = splitProcessorFee({
     processorFeeCents: fee,
@@ -162,7 +180,7 @@ function computeOrder({ priceCents, deliveryCents = 0, platformFeeCents = 0, pro
   });
 
   const sellerRaw = price - platform - price_fee_cents;
-  const courierRaw = delivery - delivery_fee_cents;
+  const courierRaw = delivery - delivery_fee_cents - deliveryPlatform;
   const seller = Math.max(0, sellerRaw);
   const courier = Math.max(0, courierRaw);
 
@@ -171,6 +189,7 @@ function computeOrder({ priceCents, deliveryCents = 0, platformFeeCents = 0, pro
     price_cents: price,
     delivery_cents: delivery,
     platform_fee_cents: platform,
+    delivery_platform_fee_cents: deliveryPlatform,
     processor_fee_cents: fee,
     price_fee_cents,
     delivery_fee_cents,

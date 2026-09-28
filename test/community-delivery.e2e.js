@@ -32,6 +32,9 @@ const MIG249 = path.join(BE, "src/databases/migrations/249_community_listing_ord
 // transação. Não é defeito do delivery — é a suite precisando do mundo novo,
 // como a da 242 passou a aplicar a 243.
 const MIG252 = path.join(BE, "src/databases/migrations/252_listing_monthly.sql");
+// Mig 267: os 3% da Freelandoo no delivery. `OrderStorage.create` passou a
+// gravar `delivery_platform_fee_cents`, então a suite precisa da coluna.
+const MIG267 = path.join(BE, "src/databases/migrations/267_delivery_platform_fee.sql");
 const OrderStorage = require(path.join(BE, "src/storages/CommunityListingOrderStorage"));
 const { computeOrder, platformFeeFor, splitProcessorFee } = require(
   path.join(BE, "src/utils/listingOrder")
@@ -137,6 +140,9 @@ async function attempt(c, fn) {
     await c.query(sql249);
     const sql252 = fs.readFileSync(MIG252, "utf8");
     await c.query(sql252);
+    const sql267 = fs.readFileSync(MIG267, "utf8");
+    await c.query(sql267);
+    await c.query(sql267); // idempotente: a 2a passada nao pode falhar
     console.log("-- 1a aplicacao --");
 
     const tabelas = (
@@ -146,9 +152,10 @@ async function attempt(c, fn) {
           ORDER BY table_name`
       )
     ).rows.map((r) => r.table_name);
+    // 5 da mig 248 + faixa de peso e contraproposta da mig 266.
     check(
-      "as 5 tabelas do delivery existem",
-      tabelas.length === 5,
+      "as 7 tabelas do delivery existem (248 + 266)",
+      tabelas.length === 7,
       tabelas.join(",")
     );
 
@@ -432,9 +439,18 @@ async function attempt(c, fn) {
     };
     const prevStripe = courierNetPreview(300, govStripe);
     check(
-      "a conta do liquido e preco - tarifa (regua do Stripe)",
-      prevStripe.net_cents === 300 - prevStripe.estimated_fee_cents,
+      "a conta do liquido e preco - tarifa - 3% da plataforma (mig 267)",
+      prevStripe.platform_fee_cents === 9 &&
+        prevStripe.net_cents === 300 - prevStripe.estimated_fee_cents - prevStripe.platform_fee_cents,
       JSON.stringify(prevStripe)
+    );
+    const regua267 = (
+      await c.query("SELECT delivery_fee_percent FROM public.tb_community_listing_settings WHERE id = 1")
+    ).rows[0];
+    check(
+      "mig 267: a regua do comercio nasce com 3% no delivery",
+      Number(regua267?.delivery_fee_percent) === 3,
+      JSON.stringify(regua267)
     );
     check(
       "e a tela mostra o LIQUIDO junto do bruto",
@@ -553,6 +569,38 @@ async function attempt(c, fn) {
       "repasse NAO duplica (os dois caminhos de conclusao podem correr juntos)",
       duplicado === null
     );
+
+    // ── mig 267: a parte da Freelandoo congelada no aceite e mantida na apuração
+    const comTaxa = await Storage.attachCharge(c, chamado.id_delivery, {
+      provider: "stripe",
+      session_id: "cs_test_delivery_fee_" + agora,
+      provider_ref: "cs_test_delivery_fee_" + agora,
+      processor_fee_cents: 50,
+      processor_fee_source: "fallback",
+      platform_fee_cents: 9,
+      courier_cents: courierNet({ chargeAmountCents: 300, processorFeeCents: 50, platformFeeCents: 9 }),
+    });
+    check("mig 267: o aceite grava a taxa da plataforma", Number(comTaxa.platform_fee_cents) === 9);
+    const apuradoComTaxa = await Storage.applyProcessorFee(c, chamado.id_delivery, 51);
+    check(
+      "mig 267: a tarifa real recalcula o liquido SEM perder a taxa (300 - 51 - 9 = 240)",
+      Number(apuradoComTaxa.courier_cents) === 240,
+      String(apuradoComTaxa.courier_cents)
+    );
+    // ⚠️ O REPASSE DESTA CORRIDA JÁ EXISTE (criado acima com 249) e não é
+    // reescrito aqui: a conferência é sobre a LINHA do chamado.
+    const ex = apuradoComTaxa;
+    check(
+      "mig 267: a conta fecha — cobrado = plataforma + gateway + liquido",
+      Number(ex.price_cents) ===
+        Number(ex.platform_fee_cents) + Number(ex.processor_fee_cents) + Number(ex.courier_cents),
+      JSON.stringify({ price: ex.price_cents, plat: ex.platform_fee_cents, fee: ex.processor_fee_cents, net: ex.courier_cents })
+    );
+    const colPayout = await c.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tb_community_delivery_payout' AND column_name = 'platform_fee_cents'`
+    );
+    check("mig 267: o repasse ganhou a coluna da taxa da plataforma", colPayout.rowCount === 1);
 
     const resumo = await Storage.summaryForCourier(c, entregador.id_user);
     check("o resumo da carteira ve a corrida", Number(resumo.aprovado_cents) >= 249);

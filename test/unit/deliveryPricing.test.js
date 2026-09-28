@@ -20,6 +20,7 @@ const {
   estimateProcessorFee,
   courierNet,
   courierNetPreview,
+  deliveryPlatformFee,
   STRIKE_LIMIT,
   STRIKE_WINDOW_DAYS,
   STRIKE_BLOCK_HOURS,
@@ -84,7 +85,9 @@ test("a tela de quem entrega recebe o LÍQUIDO junto do bruto", () => {
   const p = courierNetPreview(5000, STRIPE_CARTAO);
   assert.strictEqual(p.gross_cents, 5000);
   assert.ok(p.estimated_fee_cents > 0);
-  assert.strictEqual(p.net_cents, p.gross_cents - p.estimated_fee_cents);
+  // Mig 267: a Freelandoo fica com 3% da corrida, descontados de quem entrega.
+  assert.strictEqual(p.platform_fee_cents, 150);
+  assert.strictEqual(p.net_cents, p.gross_cents - p.estimated_fee_cents - p.platform_fee_cents);
   // Se o card anuncia o bruto e cai o líquido, o vizinho descobre na primeira
   // corrida e não faz a segunda — por isso os dois números viajam juntos.
   assert.ok(p.net_cents < p.gross_cents);
@@ -100,7 +103,37 @@ test("corrida de graça não produz tarifa nem líquido negativo", () => {
 test("régua ausente não inventa tarifa (estimativa zero, nunca NaN)", () => {
   const p = courierNetPreview(300, undefined);
   assert.strictEqual(p.estimated_fee_cents, 0);
-  assert.strictEqual(p.net_cents, 300);
+  // Sem régua de gateway sobra só a taxa da plataforma (3% de R$3 = 9 centavos).
+  assert.strictEqual(p.platform_fee_cents, 9);
+  assert.strictEqual(p.net_cents, 291);
+});
+
+test("a taxa da plataforma no delivery: 3% por padrão, régua manda, kill-switch zera", () => {
+  // Sem configuração vale 3%, nunca zero (banco sem a linha é banco quebrado).
+  assert.strictEqual(deliveryPlatformFee(1000, undefined), 30);
+  assert.strictEqual(deliveryPlatformFee(1000, {}), 30);
+  // A régua do admin vence o padrão — inclusive quando ela é ZERO.
+  assert.strictEqual(deliveryPlatformFee(1000, { delivery_fee_percent: 5 }), 50);
+  assert.strictEqual(deliveryPlatformFee(1000, { delivery_fee_percent: 0 }), 0);
+  // is_active = FALSE na régua do comércio desliga as duas taxas juntas.
+  assert.strictEqual(deliveryPlatformFee(1000, { is_active: false, delivery_fee_percent: 3 }), 0);
+  // Nunca maior que a corrida, nunca negativa.
+  assert.strictEqual(deliveryPlatformFee(100, { delivery_fee_percent: 500 }), 100);
+  assert.strictEqual(deliveryPlatformFee(0, { delivery_fee_percent: 3 }), 0);
+  assert.strictEqual(deliveryPlatformFee(-50, { delivery_fee_percent: 3 }), 0);
+});
+
+test("o líquido desconta gateway E plataforma, sem nunca ficar negativo", () => {
+  assert.strictEqual(
+    courierNet({ chargeAmountCents: 300, processorFeeCents: 50, platformFeeCents: 9 }),
+    241
+  );
+  assert.strictEqual(
+    courierNet({ chargeAmountCents: 300, processorFeeCents: 295, platformFeeCents: 9 }),
+    0
+  );
+  // Chamador antigo (sem a parcela da plataforma) segue funcionando.
+  assert.strictEqual(courierNet({ chargeAmountCents: 300, processorFeeCents: 50 }), 250);
 });
 
 test("o freio do cancelamento está calibrado onde o brief o deixou", () => {

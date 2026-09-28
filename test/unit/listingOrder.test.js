@@ -21,7 +21,11 @@ const {
 /** As quatro partes têm que somar exatamente o que o comprador pagou. */
 function fecha(c) {
   return (
-    c.platform_fee_cents + c.processor_fee_cents + c.seller_cents + c.courier_cents ===
+    c.platform_fee_cents +
+      (c.delivery_platform_fee_cents || 0) +
+      c.processor_fee_cents +
+      c.seller_cents +
+      c.courier_cents ===
     c.amount_cents
   );
 }
@@ -132,6 +136,38 @@ test("a taxa da plataforma NÃO incide sobre a entrega", () => {
   // 10% de 5000 = 500, e não 10% de 5300 = 530.
   assert.strictEqual(c.platform_fee_cents, 500);
   assert.strictEqual(c.courier_cents, 300);
+});
+
+test("mig 267: os 3% da Freelandoo sobre a ENTREGA saem do entregador, não do vendedor", () => {
+  const c = computeOrder({
+    priceCents: 5000,
+    deliveryCents: 300,
+    platformFeeCents: 0,
+    processorFeeCents: 0,
+    deliveryPlatformFeeCents: 9,
+  });
+  assert.strictEqual(c.delivery_platform_fee_cents, 9);
+  assert.strictEqual(c.courier_cents, 291);
+  assert.strictEqual(c.seller_cents, 5000);
+  assert.ok(fecha(c));
+  // Com tarifa rateada junto, a conta continua fechando no centavo.
+  for (const processorFeeCents of [0, 7, 199, 250, 1036]) {
+    const d = computeOrder({
+      priceCents: 20000,
+      deliveryCents: 5000,
+      platformFeeCents: 500,
+      processorFeeCents,
+      deliveryPlatformFeeCents: 150,
+    });
+    assert.ok(fecha(d), `não fechou com tarifa ${processorFeeCents}`);
+  }
+  // Nunca maior que a própria entrega.
+  const e = computeOrder({ priceCents: 1000, deliveryCents: 100, deliveryPlatformFeeCents: 999 });
+  assert.strictEqual(e.delivery_platform_fee_cents, 100);
+  assert.strictEqual(e.courier_cents, 0);
+  assert.ok(fecha(e));
+  // A régua nasce com 3% na entrega.
+  assert.strictEqual(FALLBACK_SETTINGS.delivery_fee_percent, 3);
 });
 
 test("entrada torta não vira número negativo nem NaN", () => {
