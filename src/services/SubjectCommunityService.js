@@ -24,6 +24,7 @@ const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const PlatformStorage = require("../storages/PlatformStorage");
 const PlatformAvatarService = require("./PlatformAvatarService");
 const AcademyStorage = require("../storages/AcademyStorage");
+const { resolvePublicPills } = require("../utils/quickPills");
 const FeatureFlagService = require("./FeatureFlagService");
 const fipe = require("../integrations/fipe/catalog");
 const Subject = require("../utils/subjectCommunities");
@@ -510,11 +511,33 @@ class SubjectCommunityService {
     return runWithLogs(log, "publicSpaces", () => ({ handle }), async () => {
       const username = String(handle || "").trim().replace(/^@/, "");
       if (!username || username.length > 40) return { error: "Usuário inválido" };
+      const owner = await SubjectCommunityStorage.findPublicPillsByUsername(pool, username);
+      const out = { business: null, pet: null, car: null, games: false, fitness: null };
+      if (!owner) return { spaces: out };
+
+      // O OLHO (mig 270) é aplicado AQUI, não no front: o espaço escondido não
+      // sai na resposta, e o visitante não descobre nem que ele existe.
+      const visible = new Set(resolvePublicPills(owner.public_pills));
       const rows = await SubjectCommunityStorage.listLeaderSpacesByUsername(pool, username);
-      const out = { business: null, pet: null, car: null };
       for (const r of rows) {
         const key = r.kind === "common" ? "business" : r.kind;
+        if (!visible.has(key)) continue;
         out[key] = { id_profile: r.id_profile, display_name: r.display_name };
+      }
+      out.games = visible.has("games");
+      if (visible.has("fitness")) {
+        // A página pública do fitness de alguém é a ACADEMIA dele: a que ele é
+        // dono, senão a que frequenta. Sem academia, não há o que abrir.
+        const [owned, memberships] = await Promise.all([
+          AcademyStorage.listByOwner(pool, owner.id_user),
+          AcademyStorage.listMembershipsByUser(pool, owner.id_user),
+        ]);
+        const a = owned[0]
+          ? { slug: owned[0].slug, display_name: owned[0].nome }
+          : memberships[0]
+            ? { slug: memberships[0].academy_slug, display_name: memberships[0].academy_nome }
+            : null;
+        if (a?.slug) out.fitness = a;
       }
       return { spaces: out };
     });

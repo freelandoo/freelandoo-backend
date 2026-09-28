@@ -406,6 +406,18 @@ class SubjectCommunityStorage {
     return r.rows;
   }
 
+  /** Dono do @ e o olho dele (mig 270) — a porta anônima dos pills. */
+  static async findPublicPillsByUsername(conn, username) {
+    const r = await conn.query(
+      `SELECT id_user, public_pills
+         FROM public.tb_user
+        WHERE lower(username) = lower($1::text)
+        LIMIT 1`,
+      [username]
+    );
+    return r.rows[0] || null;
+  }
+
   static async findMySpaceByKind(conn, id_user, kind) {
     const r = await conn.query(
       `SELECT p.id_profile,

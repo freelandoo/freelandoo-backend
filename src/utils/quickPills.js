@@ -35,4 +35,38 @@ function normalizeQuickPills(input) {
   return out;
 }
 
-module.exports = { QUICK_PILL_KEYS, QUICK_PILL_MAX, normalizeQuickPills };
+/**
+ * O OLHO (mig 270): quais pills o VISITANTE vê. Só as modalidades que têm uma
+ * página para abrir do lado de quem visita — carteira, condomínio, bairro e
+ * filhos são da própria pessoa e nunca aparecem para o público.
+ */
+const PUBLIC_PILL_KEYS = ["business", "games", "pet", "car", "fitness"];
+
+/** Quem nunca mexeu no olho: só o negócio é público. */
+const DEFAULT_PUBLIC_PILLS = ["business"];
+
+/** Filtra e tira repetidos. `null` = entrada inválida (não é lista). */
+function normalizePublicPills(input) {
+  if (!Array.isArray(input)) return null;
+  const out = [];
+  for (const raw of input) {
+    const key = String(raw || "").trim();
+    if (PUBLIC_PILL_KEYS.includes(key) && !out.includes(key)) out.push(key);
+  }
+  return out;
+}
+
+/** O que vale de fato: a escolha gravada, ou o padrão se nunca escolheu. */
+function resolvePublicPills(stored) {
+  return Array.isArray(stored) ? normalizePublicPills(stored) : [...DEFAULT_PUBLIC_PILLS];
+}
+
+module.exports = {
+  QUICK_PILL_KEYS,
+  QUICK_PILL_MAX,
+  normalizeQuickPills,
+  PUBLIC_PILL_KEYS,
+  DEFAULT_PUBLIC_PILLS,
+  normalizePublicPills,
+  resolvePublicPills,
+};
