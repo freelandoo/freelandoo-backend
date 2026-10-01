@@ -48,6 +48,15 @@ class SellerBalanceStorage {
               o.status AS order_status,
               o.delivery_mode,
               o.buyer_name,
+              -- Retirada sem conta (carrinho, mig 271): a compradora convidada
+              -- não tem caixa de mensagens, então o contato dela e o recado do
+              -- pedido (os tamanhos) chegam por aqui. Só nesta lista, que é
+              -- a da PRÓPRIA vendedora.
+              o.buyer_whatsapp,
+              o.buyer_email,
+              o.id_cart,
+              sc.note AS cart_note,
+              (o.id_buyer_user IS NULL) AS buyer_is_guest,
               o.created_at AS order_created_at,
               o.label_pdf_url,
               o.label_purchased_at,
@@ -63,6 +72,7 @@ class SellerBalanceStorage {
          JOIN public.tb_profile_product_order o ON o.id_order = b.id_order
          JOIN public.tb_profile_product pp ON pp.id_profile_product = o.id_profile_product
          JOIN public.tb_profile pr ON pr.id_profile = b.id_seller_profile
+         LEFT JOIN public.tb_store_cart sc ON sc.id_cart = o.id_cart
          ${where}
          ORDER BY b.created_at DESC
          LIMIT $${params.length - 1} OFFSET $${params.length}`,

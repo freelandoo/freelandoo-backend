@@ -182,6 +182,7 @@ async function one(c, sql, params = []) {
     const buyer = { name: "Ana Convidada", email: "ana@convidada.test", whatsapp: "11988887777" };
     const res = await StoreCartService.createCheckout(null, {
       buyer,
+      note: "Cherry — tamanho M",
       items: [
         { id_profile_product: pA.id_profile_product, quantity: 2, unit_price_cents: 1 },
         { id_profile_product: pB.id_profile_product, quantity: 1 },
@@ -237,6 +238,10 @@ async function one(c, sql, params = []) {
     const bal = (await c.query(`SELECT * FROM public.tb_seller_balance WHERE id_order = ANY($1::bigint[])`, [paidOrders.map((o) => o.id_order)])).rows;
     check("saldo da vendedora com holdback, um por pedido", bal.length === 2 && bal.every((b) => b.status === "aguardando" && new Date(b.available_at) > new Date(Date.now() + 7 * 86400000)));
     check("o líquido é o preço da vendedora", bal.reduce((s, b) => s + Number(b.net_cents), 0) === 16000 + 10000);
+    const SellerBalanceStorage = require("../src/storages/SellerBalanceStorage");
+    const sales = await SellerBalanceStorage.listForSeller(c, seller.id_user);
+    const sale = sales.find((s) => String(s.id_cart) === String(res.id_cart));
+    check("a vendedora vê o contato da convidada e o recado do pedido", !!sale && sale.buyer_whatsapp === "11988887777" && sale.cart_note === "Cherry — tamanho M" && sale.buyer_is_guest === true);
     const again = await StoreCartService.confirmStripeSession(session);
     check("reentrega do webhook não confirma duas vezes", again.already === true);
     const stockA2 = await one(c, `SELECT stock_quantity FROM public.tb_profile_product WHERE id_profile_product=$1`, [pA.id_profile_product]);
