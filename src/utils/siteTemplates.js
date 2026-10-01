@@ -622,6 +622,74 @@ function summarizeEcoluz() {
   };
 }
 
+/**
+ * `pinkoracats` também não tem documento: tema autoral de UM cliente — a
+ * Pinkoracats Nail Art (Taiz Herrera, São Bernardo do Campo/SP). O catálogo
+ * mora no código do tema, no front (`content/products.mock.ts`).
+ *
+ * ⚠️ O CATÁLOGO AINDA É PRÉVIA: nomes, preços e estoque são provisórios até
+ * as fotos e valores definitivos chegarem. Nada aqui grava preço.
+ */
+function normalizePinkoracats() {
+  return {};
+}
+
+/**
+ * O resumo do modal. ⚠️ ESPELHO DO `pages.ts` DO TEMA: 12 produtos, 6
+ * coleções, a loja e "sobre", mais a home = 21 páginas. Mesma ordem do
+ * roteador do tema (produto → coleção → fixa).
+ */
+function summarizePinkoracats() {
+  const products = [
+    ["cherry-static", "Cherry Static"],
+    ["chrome-kitten", "Chrome Kitten"],
+    ["black-mirror-tip", "Black Mirror Tip"],
+    ["pink-voltage", "Pink Voltage"],
+    ["liquid-pearl", "Liquid Pearl"],
+    ["holo-claw", "Holo Claw"],
+    ["midnight-cat-eye", "Midnight Cat Eye"],
+    ["sugar-glass", "Sugar Glass"],
+    ["silver-whisker", "Silver Whisker"],
+    ["rose-circuit", "Rose Circuit"],
+    ["velvet-noir", "Velvet Noir"],
+    ["custom-set", "Custom Set"],
+  ];
+  const collections = [
+    ["new-drop", "New Drop"],
+    ["pink", "Pink"],
+    ["dark", "Dark"],
+    ["chrome", "Chrome"],
+    ["charms", "Charms"],
+    ["custom", "Custom"],
+  ];
+  const fixed = [
+    ["loja", "Loja"],
+    ["sobre", "Sobre"],
+  ];
+  return {
+    business: "Pinkoracats Nail Art",
+    city: "São Bernardo do Campo",
+    state: "SP",
+    phone: "",
+    whatsapp: false,
+    // Sem foto ainda: o site é feito de placeholders desenhados, à espera das
+    // fotos dos produtos. `true` aqui prometeria imagem que não existe.
+    hasPhoto: false,
+    counts: {
+      services: products.length,
+      cities: 0,
+      faq: 0,
+      reviews: 0,
+      pages: 1 + products.length + collections.length + fixed.length,
+    },
+    pages: [
+      ...products.map(([slug, label]) => ({ slug, label, kind: "service" })),
+      ...collections.map(([slug, label]) => ({ slug, label, kind: "page" })),
+      ...fixed.map(([slug, label]) => ({ slug, label, kind: "page" })),
+    ],
+  };
+}
+
 // ─── O registro ─────────────────────────────────────────────────────────────
 
 const TEMPLATES = Object.freeze({
@@ -644,6 +712,11 @@ const TEMPLATES = Object.freeze({
     label: "EcoLuz — energia solar, São Luís/MA (autoral)",
     normalize: normalizeEcoluz,
     summarize: summarizeEcoluz,
+  },
+  pinkoracats: {
+    label: "Pinkoracats — nail art, São Bernardo do Campo (autoral)",
+    normalize: normalizePinkoracats,
+    summarize: summarizePinkoracats,
   },
 });
 
