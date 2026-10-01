@@ -335,14 +335,23 @@ async function loadStore(id_profile) {
  * dados de frete, e esta porta é anônima e cacheada. O preço é o do
  * COMPRADOR (`display_price_cents`) — o mesmo que o carrinho recalcula e
  * cobra. Anunciar outro seria o site prometendo um valor que a Loja não cobra.
+ *
+ * ⚠️ SEM NENHUM PRODUTO ATIVO, VÊM OS RASCUNHOS, marcados `draft: true`
+ * (2026-10-01, pedido do Alex): a dona troca foto, nome e preço na Loja e
+ * quer ver no site antes de ligar o produto. O tema desenha os rascunhos como
+ * PRÉVIA (faixa, sem checkout, JSON-LD sem preço) — rascunho nunca é
+ * comprável, porque o carrinho só aceita produto ativo. Com o primeiro
+ * produto ligado, os rascunhos saem e fica só o que está à venda.
  */
 async function loadCatalog(id_profile) {
   const empty = { store_profile_id: id_profile || null, collections: [], products: [] };
   if (!id_profile) return empty;
-  const [rows, cols] = await Promise.all([
+  const [active, cols] = await Promise.all([
     ProfileProductStorage.list(pool, id_profile, { only_active: true }),
     ProductCollectionStorage.listByProfile(pool, id_profile),
   ]);
+  const draft = active.length === 0;
+  const rows = draft ? await ProfileProductStorage.list(pool, id_profile) : active;
   const ids = rows.map((r) => Number(r.id_profile_product));
   const mediaMap = await ProfileProductMediaStorage.listByProducts(pool, ids);
   const products = [];
@@ -374,6 +383,7 @@ async function loadCatalog(id_profile) {
   }
   return {
     store_profile_id: id_profile,
+    draft,
     collections: cols.map((c) => ({
       id_collection: Number(c.id_collection),
       name: c.name,
