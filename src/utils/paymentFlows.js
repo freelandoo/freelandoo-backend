@@ -62,6 +62,9 @@ const PAYMENT_FLOWS = {
   // add-on de entrega ("+R$3") — por isso a tarifa do gateway é rateada entre
   // os dois em `utils/listingOrder.js`.
   community_listing_order: { recurring: false, label: "Venda na vitrine do vizinho" },
+  // Carrinho da Loja (mig 271): N produtos do mesmo vendedor, um pagamento,
+  // comprador sem conta. Nasceu no site da Pinkoracats.
+  store_cart:             { recurring: false, label: "Loja — carrinho" },
   donation:               { recurring: false, label: "Vaquinha — doação" },
   // Site autoral (mig 263): os R$299 de criação, cobrados no PEDIDO. A
   // manutenção mensal é o `plan_subscription` do plano `site-freelandoo`.

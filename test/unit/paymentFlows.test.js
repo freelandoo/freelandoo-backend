@@ -45,6 +45,10 @@ const INVENTARIO_STRIPE = [
   // `handleSetupRefunded` na cadeia de charge.refunded. Sem expire: o pedido
   // aguardando pagamento é reaproveitado no próximo clique.
   "managed_site_setup",
+  // Carrinho da Loja (mig 271). Confirmador:
+  // `StoreCartService.confirmStripeSession`, montado nos TRÊS pontos do
+  // webhook — e na cadeia de charge.refunded ele vem ANTES da Loja avulsa.
+  "store_cart",
 ];
 
 test("todo metadata.type do Stripe está declarado", () => {

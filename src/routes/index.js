@@ -31,6 +31,8 @@ const profileServicePublicRoutes = require("./profileServicePublic.routes");
 const profileProductRoutes = require("./profileProduct.routes");
 const profileProductPublicRoutes = require("./profileProductPublic.routes");
 const profileProductOrderRoutes = require("./profileProductOrder.routes");
+const productCollectionRoutes = require("./productCollection.routes");
+const storeCartRoutes = require("./storeCart.routes");
 const rankingRoutes = require("./ranking.routes");
 const adminRankingRoutes = require("./adminRanking.routes");
 const clanRoutes = require("./clan.routes");
@@ -187,6 +189,9 @@ module.exports = (app) => {
   app.use("/profile", bookingRoutes);
   app.use("/profile/:id_profile/services", profileServiceRoutes);
   app.use("/profile/:id_profile/products", profileProductRoutes);
+  // Coleções da Loja + carrinho de convidado (mig 271).
+  app.use("/profile/:id_profile/product-collections", productCollectionRoutes);
+  app.use("/store-carts", storeCartRoutes);
   app.use("/me", profileProductOrderRoutes);
   app.use("/public/profile", bookingPublicRoutes);
   app.use("/public/profile", profileServicePublicRoutes);

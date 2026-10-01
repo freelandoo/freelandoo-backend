@@ -300,14 +300,22 @@ class NotificationService {
     product_title,
   }) {
     if (!seller_user_id || !id_order) return null;
+    // ⚠️ `entity_id` é UUID e o pedido da Loja é BIGSERIAL: mandar o número
+    // ali estourava "invalid input syntax for type uuid", o `safeNotify`
+    // engolia o erro e a vendedora NUNCA recebia o aviso de venda — sem erro
+    // nenhum aparecer (achado pela suíte do carrinho, mig 271). O número vai no
+    // payload; o campo de entidade só recebe o que é UUID de verdade (o id do
+    // carrinho). O sino leva a `/pagamentos` de qualquer forma.
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id_order));
     return safeNotify({
       id_recipient_user: seller_user_id,
       id_recipient_profile: seller_profile_id || null,
       type: "product_sale",
       id_actor_user: buyer_user_id || null,
-      entity_type: "product_order",
-      entity_id: id_order,
+      entity_type: isUuid ? "store_cart" : "product_order",
+      entity_id: isUuid ? id_order : null,
       payload: {
+        id_order: String(id_order),
         amount_cents: Number.isFinite(amount_cents) ? amount_cents : null,
         preview: typeof product_title === "string" ? product_title.slice(0, 140) : null,
       },

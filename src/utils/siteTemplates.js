@@ -717,6 +717,10 @@ const TEMPLATES = Object.freeze({
     label: "Pinkoracats — nail art, São Bernardo do Campo (autoral)",
     normalize: normalizePinkoracats,
     summarize: summarizePinkoracats,
+    // A Loja da dona, AO VIVO (mig 271): coleções e produtos entram no `data`
+    // na hora da leitura, nunca gravados no documento — copiados para dentro
+    // dele, o site viraria uma segunda verdade sobre preço.
+    liveCatalog: true,
   },
 });
 
@@ -765,7 +769,13 @@ function summarizeTemplateData(template, data) {
   return typeof fn === "function" ? { label: TEMPLATES[template].label, ...fn(data) } : null;
 }
 
+/** O tema recebe a Loja do dono ao vivo dentro do `data`? (mig 271) */
+function wantsLiveCatalog(template) {
+  return isTemplate(template) && TEMPLATES[template].liveCatalog === true;
+}
+
 module.exports = {
+  wantsLiveCatalog,
   LIMITS,
   TEMPLATES,
   TEMPLATE_SLUGS,

@@ -57,14 +57,17 @@ class ProfileProductStorage {
     affiliate_percent = null,
     delivery_mode = "shipping",
     attributes = {},
+    id_collection = null,
+    is_featured = false,
   }) {
     const r = await conn.query(
       `INSERT INTO public.tb_profile_product
         (id_profile, name, description, price_amount, stock_quantity,
          weight_grams, height_cm, width_cm, length_cm,
          origin_zipcode_override, is_active, id_product_category,
-         affiliates_allowed, affiliate_percent, delivery_mode, attributes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         affiliates_allowed, affiliate_percent, delivery_mode, attributes,
+         id_collection, is_featured)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING *`,
       [
         id_profile, name, description || null,
@@ -77,6 +80,8 @@ class ProfileProductStorage {
         affiliate_percent ?? null,
         delivery_mode === "local_pickup" ? "local_pickup" : "shipping",
         JSON.stringify(attributes && typeof attributes === "object" ? attributes : {}),
+        id_collection || null,
+        is_featured === true,
       ]
     );
     return r.rows[0];
@@ -88,6 +93,7 @@ class ProfileProductStorage {
       "weight_grams", "height_cm", "width_cm", "length_cm",
       "origin_zipcode_override", "is_active", "id_product_category",
       "affiliates_allowed", "affiliate_percent", "delivery_mode", "attributes",
+      "id_collection", "is_featured",
     ];
     const sets = [];
     const values = [];

@@ -13,6 +13,7 @@ const { hasUpload } = require("../utils/mediaProcessing");
 const { parseAffiliateOptIn } = require("../utils/affiliateOptIn");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { isProfilePaid } = require("../utils/profilePaywall");
+const ProductCollectionService = require("./ProductCollectionService");
 
 const log = createLogger("ProfileProductService");
 
@@ -166,6 +167,23 @@ function validateInput(payload, { partial = false } = {}) {
     out.delivery_mode = "local_pickup";
   }
 
+  // Coleção (mig 271): `null` solta o produto de qualquer coleção. Que ela
+  // exista e seja DESTE perfil é conferido no create/update, que têm o perfil.
+  if (Object.prototype.hasOwnProperty.call(payload, "id_collection")) {
+    const c = payload.id_collection;
+    if (c === null || c === "" || c === undefined) {
+      out.id_collection = null;
+    } else {
+      const n = Number(c);
+      if (!Number.isInteger(n) || n <= 0) return { error: "Coleção inválida" };
+      out.id_collection = n;
+    }
+  }
+  // Destaque da vitrine (mig 271): o que a home do site põe na frente.
+  if (Object.prototype.hasOwnProperty.call(payload, "is_featured")) {
+    out.is_featured = payload.is_featured === true || payload.is_featured === "true";
+  }
+
   const optInErr = parseAffiliateOptIn(payload, out);
   if (optInErr) return { error: optInErr };
 
@@ -220,6 +238,12 @@ class ProfileProductService {
         if (!cat || cat.status !== "active") {
           await client.query("ROLLBACK");
           return { error: "Categoria inválida ou inativa" };
+        }
+
+        if (v.data.id_collection != null &&
+            !(await ProductCollectionService.belongsTo(client, id_profile, v.data.id_collection))) {
+          await client.query("ROLLBACK");
+          return { error: "Coleção não encontrada" };
         }
 
         const wantsActive = v.data.is_active !== false; // default TRUE
@@ -302,6 +326,12 @@ class ProfileProductService {
             await client.query("ROLLBACK");
             return { error: "Categoria inválida ou inativa" };
           }
+        }
+
+        if (v.data.id_collection != null &&
+            !(await ProductCollectionService.belongsTo(client, id_profile, v.data.id_collection))) {
+          await client.query("ROLLBACK");
+          return { error: "Coleção não encontrada" };
         }
 
         // Se está reativando (ou criando ativo) e o sub não é mais pago, bloqueia.

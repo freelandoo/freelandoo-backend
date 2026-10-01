@@ -888,6 +888,11 @@ async function fulfillCheckoutSession(session) {
     result = await CoursesService.confirmStripeSession(session);
   } else if (meta.type === "profile_product_order") {
     result = await ProfileProductOrderService.confirmStripeSession(session);
+  } else if (meta.type === "store_cart") {
+    // Carrinho da Loja (mig 271): baixa o estoque de todos os itens (tudo ou
+    // nada), reparte a tarifa real e escreve o saldo de cada pedido-filho.
+    const StoreCartService = require("./StoreCartService");
+    result = await StoreCartService.confirmStripeSession(session);
   } else if (meta.type === "casa_participant_order") {
     result = await CasaParticipantService.confirmStripeSession(session);
   } else if (meta.type === "donation") {
@@ -993,6 +998,12 @@ async function expireCheckoutSession(session, reason) {
           await PremiumStorage.markFailed(pool, pending.id);
           log.info("expire.premium", { session_id: session.id, reason });
         }
+        break;
+      }
+      case "store_cart": {
+        const StoreCartService = require("./StoreCartService");
+        const expired = await StoreCartService.expireBySession(session.id);
+        if (expired) log.info("expire.store_cart", { session_id: session.id, reason });
         break;
       }
       case "profile_product_order": {
@@ -1113,6 +1124,12 @@ async function dispatchEvent(event) {
       break;
     case "charge.refunded": {
       const charge = event.data.object;
+      // ⚠️ O CARRINHO VEM ANTES DA LOJA AVULSA (mig 271): os pedidos-filhos não
+      // carregam a referência de pagamento, mas se algum dia carregarem, a
+      // Loja avulsa trataria UM filho e deixaria os outros pagos.
+      const StoreCartService = require("./StoreCartService");
+      const storeCartResult = await StoreCartService.handleChargeRefunded(charge);
+      if (storeCartResult && !storeCartResult.ignored) break;
       const productOrderResult = await ProfileProductOrderService.handleChargeRefunded(charge);
       if (productOrderResult && !productOrderResult.ignored) break;
       const casaResult = await CasaParticipantService.handleChargeRefunded(charge);

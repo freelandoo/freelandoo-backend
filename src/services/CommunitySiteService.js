@@ -30,6 +30,7 @@ const CommunityProfessionalStorage = require("../storages/CommunityProfessionalS
 const ProfileServiceMediaStorage = require("../storages/ProfileServiceMediaStorage");
 const ProfileProductStorage = require("../storages/ProfileProductStorage");
 const ProfileProductMediaStorage = require("../storages/ProfileProductMediaStorage");
+const ProductCollectionStorage = require("../storages/ProductCollectionStorage");
 const StoreGovernanceService = require("./StoreGovernanceService");
 const BookingAvailabilityService = require("./BookingAvailabilityService");
 const PlanService = require("./PlanService");
@@ -323,6 +324,87 @@ async function loadStore(id_profile) {
 }
 
 /**
+ * O CATÁLOGO COMPLETO da Loja do dono, para os temas que vendem (mig 271).
+ *
+ * Diferente de `loadStore` (24 produtos, uma foto, para a seção de vitrine do
+ * construtor): aqui vêm TODOS os produtos ativos, TODAS as fotos, a coleção
+ * de cada um, o destaque e o estoque — é o que a página de produto, o
+ * carrinho e as coleções precisam.
+ *
+ * Mesma disciplina de projeção ENXUTA: a linha carrega régua de comissão e
+ * dados de frete, e esta porta é anônima e cacheada. O preço é o do
+ * COMPRADOR (`display_price_cents`) — o mesmo que o carrinho recalcula e
+ * cobra. Anunciar outro seria o site prometendo um valor que a Loja não cobra.
+ */
+async function loadCatalog(id_profile) {
+  const empty = { store_profile_id: id_profile || null, collections: [], products: [] };
+  if (!id_profile) return empty;
+  const [rows, cols] = await Promise.all([
+    ProfileProductStorage.list(pool, id_profile, { only_active: true }),
+    ProductCollectionStorage.listByProfile(pool, id_profile),
+  ]);
+  const ids = rows.map((r) => Number(r.id_profile_product));
+  const mediaMap = await ProfileProductMediaStorage.listByProducts(pool, ids);
+  const products = [];
+  for (const r of rows.slice(0, 200)) {
+    const media = (mediaMap.get(String(r.id_profile_product)) || []).filter(
+      (m) => m.media_type === "image" && m.media_url
+    );
+    let display = Number(r.price_amount) || 0;
+    try {
+      const pricing = await StoreGovernanceService.computeFeesFor(r.price_amount, {
+        affiliatesAllowed: r.affiliates_allowed === true,
+        affiliatePercent: r.affiliate_percent,
+      });
+      if (Number(pricing?.display_price_cents) > 0) display = Number(pricing.display_price_cents);
+    } catch {
+      /* sem régua de taxa, mostra o preço cadastrado */
+    }
+    products.push({
+      id_profile_product: Number(r.id_profile_product),
+      id_collection: r.id_collection == null ? null : Number(r.id_collection),
+      name: r.name,
+      description: r.description || "",
+      price_cents: display,
+      stock: Math.max(0, Number(r.stock_quantity) || 0),
+      is_featured: r.is_featured === true,
+      images: media.map((m) => m.media_url),
+      created_at: r.created_at,
+    });
+  }
+  return {
+    store_profile_id: id_profile,
+    collections: cols.map((c) => ({
+      id_collection: Number(c.id_collection),
+      name: c.name,
+      slug: c.slug,
+      kicker: c.kicker || "",
+      description: c.description || "",
+      cover_url: c.cover_url || null,
+      sort_order: Number(c.sort_order) || 0,
+    })),
+    products,
+  };
+}
+
+/**
+ * O tema, com a Loja ao vivo quando ele pede (`liveCatalog` no registro).
+ * Para os outros temas é exatamente `toTemplate`.
+ */
+async function liveTemplate(row, showcase) {
+  const t = toTemplate(row);
+  if (!t || !SiteTemplates.wantsLiveCatalog(t.slug)) return t;
+  try {
+    const catalog = await loadCatalog(showcase?.provider_profile_id || null);
+    return { ...t, data: { ...t.data, catalog } };
+  } catch (err) {
+    // Sem catálogo o tema cai na prévia dele — melhor que derrubar o site.
+    log.warn("live_catalog.fail", { template: t.slug, message: err?.message });
+    return t;
+  }
+}
+
+/**
  * O viewer pode LER o que é interno desta comunidade?
  * Espelha `CommunityService.listBees` de propósito: são a mesma pergunta, e
  * responder diferente aqui abriria um vazamento por uma porta nova.
@@ -443,7 +525,7 @@ class CommunitySiteService {
             // edição (a aba, o item do menu "+" e o globo do dock) e põe no
             // lugar o painel de quem tem site feito por nós.
             managed: isManaged(row),
-            template: toTemplate(row),
+            template: await liveTemplate(row, showcase),
             grace_until: row?.grace_until || null,
             // ⚠️ TEM UM SITE PRONTO ESPERANDO (mig 242)? É por este booleano que
             // o botão "Site pronto" acende a bolinha — sem ele, a oferta ficaria
@@ -483,7 +565,7 @@ class CommunitySiteService {
           updated_at: row.updated_at,
           slug,
           managed: isManaged(row),
-          template: toTemplate(row),
+          template: await liveTemplate(row, showcase),
           config: toConfig(row),
           ...showcase,
         };
@@ -1187,7 +1269,7 @@ class CommunitySiteService {
           // nesta projeção a página abriria pelo canvas de seções — que num
           // site de tema está vazio —, e o resultado seria uma página em
           // branco no domínio do cliente, sem um único erro em lugar nenhum.
-          template: toTemplate(row),
+          template: await liveTemplate(row, showcase),
           config: toConfig(row),
           ...showcase,
         };
