@@ -305,8 +305,11 @@ async function processAvatarImage(file) {
   assertUsableDimensions(metadata, "foto de perfil");
 
   const optimized = await compressSharpToMax(file.buffer, {
+    // 2:3 = o card da foto no headcard (aspect-[2/3]). Era 800x800, e a foto
+    // recortada em retrato no front voltava quadrada daqui — o card cortava de
+    // novo. Espelho: AVATAR_IMAGE_OUTPUT em lib/media/media-validation.ts.
     outputWidth: 800,
-    outputHeight: 800,
+    outputHeight: 1200,
     resizeFit: "cover",
     maxSizeBytes: AVATAR_IMAGE_MAX_BYTES,
     errorMessage: "A foto de perfil precisa ter no maximo 2MB.",
