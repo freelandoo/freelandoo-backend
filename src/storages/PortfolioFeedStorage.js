@@ -102,7 +102,12 @@ function buildCandidateQuery(mode) {
       acad.academy_id,
       acad.academy_name,
       acad.academy_slug,
-      acad.academy_avatar
+      acad.academy_avatar,
+
+      -- Post publicado pela página da vaquinha (mig 272): o card mostra no
+      -- header o botão que leva até ela.
+      vaq.vaquinha_slug,
+      vaq.vaquinha_title
 
     FROM tb_profile_portfolio_item ppi
     JOIN tb_profile pro       ON pro.id_profile  = ppi.id_profile
@@ -189,6 +194,16 @@ function buildCandidateQuery(mode) {
       ORDER BY afi.created_at DESC
       LIMIT 1
     ) acad ON TRUE
+
+    LEFT JOIN LATERAL (
+      SELECT v.slug  AS vaquinha_slug,
+             v.title AS vaquinha_title
+      FROM tb_vaquinha_post vp
+      JOIN tb_vaquinha v ON v.id_vaquinha = vp.id_vaquinha
+      WHERE vp.id_portfolio_item = ppi.id_portfolio_item
+        AND vp.deleted_at IS NULL
+      LIMIT 1
+    ) vaq ON TRUE
 
     WHERE ppi.status   = 'published'
       AND ppi.is_active = TRUE

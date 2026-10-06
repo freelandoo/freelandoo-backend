@@ -145,6 +145,11 @@ function shapeRow(row) {
           avatar_url: row.academy_avatar || null,
         }
       : null,
+    // Vaquinha de onde o post saiu (mig 272) — alimenta o botão "Ver vaquinha"
+    // no header do card. Null se o post não nasceu numa vaquinha.
+    vaquinha: row.vaquinha_slug
+      ? { slug: row.vaquinha_slug, title: row.vaquinha_title || null }
+      : null,
   };
 }
 

@@ -3,6 +3,8 @@
 // (holdback 8 dias, espelha BookingPayout) menos a taxa da plataforma.
 const pool = require("../databases");
 const VaquinhaStorage = require("../storages/VaquinhaStorage");
+const PortfolioStorage = require("../storages/PortfolioStorage");
+const ProfileStorage = require("../storages/ProfileStorage");
 const PaymentGateway = require("../integrations/payments");
 const { processPortfolioMedia } = require("../utils/mediaJobs");
 const { ensureFileBuffer, hasUpload } = require("../utils/mediaProcessing");
@@ -625,7 +627,7 @@ class VaquinhaService {
     });
   }
 
-  // ─── Posts (só na página da vaquinha) ─────────────────────────────────────
+  // ─── Posts (página da vaquinha + feed geral, mig 272) ──────────────────────
   static async createPost(user, id, body = {}, file = null) {
     return runWithLogs(log, "createPost", () => ({ id_user: user?.id_user, id }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
@@ -639,6 +641,7 @@ class VaquinhaService {
       let media_url = null;
       let thumbnail_url = null;
       let media_type = null;
+      let mediaMetadata = {};
       if (kind !== "text" && hasUpload(file)) {
         const mimetype = String(file.mimetype || "").toLowerCase();
         media_type = mimetype.startsWith("image/") ? "image" : mimetype.startsWith("video/") ? "video" : null;
@@ -650,18 +653,64 @@ class VaquinhaService {
         const r2 = await uploadVaquinhaMediaToR2({ id_vaquinha: id, file: processed });
         media_url = r2.url;
         thumbnail_url = r2.thumbnail_url;
+        mediaMetadata = processed?.mediaMetadata || {};
       }
 
-      const post = await VaquinhaStorage.createPost(pool, {
-        id_vaquinha: id,
-        id_user: user.id_user,
-        kind,
-        caption,
-        media_url,
-        thumbnail_url,
-        media_type,
-      });
-      return { post };
+      // O QUE SE PUBLICA AQUI TAMBÉM VAI PARA O FEED GERAL (mig 272): nasce um
+      // post de verdade no perfil-conta do dono (o perfil que é a PESSOA, e que
+      // publica de graça — o paywall de publicar não morde nele), ligado à
+      // vaquinha. O card do feed usa a ligação para mostrar o botão que leva
+      // até aqui. Os três passos vão numa transação: um post na página sem o
+      // item no feed (ou o contrário) seria a divergência que a coluna existe
+      // para evitar.
+      const FEED_KIND = { text: "recado", post: "feed", bee: "bees" };
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        let id_portfolio_item = null;
+        const id_profile = await ProfileStorage.getUserAccountProfileId(client, user.id_user);
+        if (id_profile) {
+          const item = await PortfolioStorage.createItem(client, {
+            id_profile,
+            title: String(v.title || "Vaquinha").slice(0, 200),
+            description: caption.trim() ? caption : null,
+            project_url: null,
+            is_featured: false,
+            sort_order: 0,
+            created_by: user.id_user,
+            feed_kind: FEED_KIND[kind],
+          });
+          id_portfolio_item = item.id_portfolio_item;
+          if (media_url) {
+            await PortfolioStorage.addMedia(client, {
+              id_portfolio_item,
+              media_url,
+              media_type,
+              thumbnail_url,
+              sort_order: 0,
+              created_by: user.id_user,
+              metadata: mediaMetadata,
+            });
+          }
+        }
+        const post = await VaquinhaStorage.createPost(client, {
+          id_vaquinha: id,
+          id_user: user.id_user,
+          kind,
+          caption,
+          media_url,
+          thumbnail_url,
+          media_type,
+          id_portfolio_item,
+        });
+        await client.query("COMMIT");
+        return { post };
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
     });
   }
 
@@ -683,7 +732,15 @@ class VaquinhaService {
       if (!user?.id_user) return { error: "Não autenticado" };
       const post = await VaquinhaStorage.getPost(pool, postId);
       if (!post || post.id_user !== user.id_user) return { error: "Post não encontrado", statusCode: 404 };
+      // Apagar aqui tira também o post do feed (mig 272) — publicação que some
+      // da vaquinha e continua no feed apontando para ela seria porta pintada.
       await VaquinhaStorage.softDeletePost(pool, postId);
+      if (post.id_portfolio_item) {
+        await pool.query(
+          `UPDATE public.tb_profile_portfolio_item SET is_active = FALSE, updated_at = NOW() WHERE id_portfolio_item = $1`,
+          [post.id_portfolio_item]
+        );
+      }
       return { ok: true };
     });
   }

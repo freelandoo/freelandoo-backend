@@ -173,13 +173,13 @@ module.exports = {
     return r.rows[0] || null;
   },
 
-  // ─── Posts (só da vaquinha) ───────────────────────────────────────────────
+  // ─── Posts da vaquinha (espelhados no feed geral, mig 272) ────────────────
   async createPost(db, p) {
     const r = await db.query(
       `INSERT INTO public.tb_vaquinha_post
-        (id_vaquinha, id_user, kind, caption, media_url, thumbnail_url, media_type)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [p.id_vaquinha, p.id_user, p.kind, p.caption || null, p.media_url || null, p.thumbnail_url || null, p.media_type || null]
+        (id_vaquinha, id_user, kind, caption, media_url, thumbnail_url, media_type, id_portfolio_item)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [p.id_vaquinha, p.id_user, p.kind, p.caption || null, p.media_url || null, p.thumbnail_url || null, p.media_type || null, p.id_portfolio_item || null]
     );
     return r.rows[0];
   },
