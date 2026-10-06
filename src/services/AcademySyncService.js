@@ -11,6 +11,8 @@ const gymProvider = require("../integrations/gymProvider");
 const secretBox = require("../utils/secretBox");
 const { createLogger } = require("../utils/logger");
 
+const PAYMENT_STATUSES = ["pending", "paid", "overdue", "canceled", "refunded"];
+
 const log = createLogger("academy-sync");
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const PAGE_LIMIT = 200;
@@ -74,7 +76,8 @@ class AcademySyncService {
       for (const p of payments) {
         const id_member = cpfMap[String(p.cpf || "").replace(/\D/g, "")];
         if (!id_member || !p.id) continue;
-        const status = ["pending", "paid", "overdue"].includes(p.status) ? p.status : "pending";
+        // canceled/refunded entraram no contrato na mig 273 (Coliseu cancela e estorna pelo Asaas).
+        const status = PAYMENT_STATUSES.includes(p.status) ? p.status : "pending";
         rows.push({
           id_member,
           external_id: String(p.id),

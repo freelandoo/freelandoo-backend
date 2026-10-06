@@ -92,7 +92,9 @@ status (ex.: `pending` → `paid`) deve reaparecer no feed (a Freelandoo faz ups
 }
 ```
 
-- `status`: `pending` | `paid` | `overdue`.
+- `status`: `pending` | `paid` | `overdue` | `canceled` | `refunded`.
+  `canceled` = cobrança cancelada antes de ser paga; `refunded` = estornada ou contestada
+  (chargeback). Ambos desde 2026-10-06 (mig 273); status desconhecido vira `pending`.
 - `paid_at: null` quando não pago.
 
 ## Teste de conexão
