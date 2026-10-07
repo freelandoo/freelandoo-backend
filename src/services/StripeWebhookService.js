@@ -895,6 +895,10 @@ async function fulfillCheckoutSession(session) {
     result = await StoreCartService.confirmStripeSession(session);
   } else if (meta.type === "casa_participant_order") {
     result = await CasaParticipantService.confirmStripeSession(session);
+  } else if (meta.type === "casa_hologram") {
+    // Holograma da aba RA (mig 274): a compra vira `paid` e entra na vitrine.
+    const CasaHologramService = require("./CasaHologramService");
+    result = await CasaHologramService.confirmStripeSession(session);
   } else if (meta.type === "donation") {
     const VaquinhaService = require("./VaquinhaService");
     result = await VaquinhaService.confirmStripeSession(session);
@@ -1019,6 +1023,12 @@ async function expireCheckoutSession(session, reason) {
         log.info("expire.casa", { session_id: session.id, reason });
         break;
       }
+      case "casa_hologram": {
+        const CasaHologramService = require("./CasaHologramService");
+        const expired = await CasaHologramService.expireBySession(session.id);
+        if (expired) log.info("expire.casa_hologram", { session_id: session.id, reason });
+        break;
+      }
       case "manifestation":
       case "clan_slot":
         // Sem linha pendente persistida (o registro só nasce na confirmação).
@@ -1134,6 +1144,9 @@ async function dispatchEvent(event) {
       if (productOrderResult && !productOrderResult.ignored) break;
       const casaResult = await CasaParticipantService.handleChargeRefunded(charge);
       if (casaResult && !casaResult.ignored) break;
+      const CasaHologramService = require("./CasaHologramService");
+      const hologramResult = await CasaHologramService.handleChargeRefunded(charge);
+      if (hologramResult && !hologramResult.ignored) break;
       const BookingPayoutService = require("./BookingPayoutService");
       const bookingResult = await BookingPayoutService.handleChargeRefunded(charge);
       if (bookingResult && !bookingResult.ignored) break;

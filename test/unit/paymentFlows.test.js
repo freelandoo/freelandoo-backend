@@ -40,6 +40,9 @@ const INVENTARIO_STRIPE = [
   // `CommunityListingOrderService.confirmStripeSession`, montado nos TRÊS
   // pontos do webhook.
   "community_listing_order",
+  // Holograma da aba RA da Casa Views (mig 274). Confirmador:
+  // `CasaHologramService.confirmStripeSession`, montado nos TRÊS pontos.
+  "casa_hologram",
   // Site autoral (mig 263). Confirmador:
   // `CommunitySiteService.confirmSetupSession` no fulfill e
   // `handleSetupRefunded` na cadeia de charge.refunded. Sem expire: o pedido

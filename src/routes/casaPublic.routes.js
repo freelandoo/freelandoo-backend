@@ -2,7 +2,9 @@ const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const CasaParticipantController = require("../controllers/CasaParticipantController");
 const CasaStoreController = require("../controllers/CasaStoreController");
+const CasaHologramService = require("../services/CasaHologramService");
 const asyncHandler = require("../utils/asyncHandler");
+const { sendServiceResult } = require("../utils/sendServiceResult");
 
 const router = Router();
 
@@ -42,5 +44,13 @@ router.delete(
 // Conveniencia Views: compra exige login (identidade Freelandoo).
 router.post("/checkout", authMiddleware, asyncHandler(CasaParticipantController.createProductCheckout));
 router.get("/orders", authMiddleware, asyncHandler(CasaParticipantController.listMyOrders));
+
+// Hologramas da aba RA (mig 274): vitrine da pessoa, cobrança e retorno do pagamento.
+router.get("/holograms", authMiddleware, asyncHandler(async (req, res) =>
+  sendServiceResult(res, await CasaHologramService.listMine(req.user))));
+router.post("/holograms/checkout", authMiddleware, asyncHandler(async (req, res) =>
+  sendServiceResult(res, await CasaHologramService.createCheckout(req.user, req.body || {}))));
+router.get("/holograms/session/:session_id", authMiddleware, asyncHandler(async (req, res) =>
+  sendServiceResult(res, await CasaHologramService.getBySession(req.user, req.params.session_id))));
 
 module.exports = router;

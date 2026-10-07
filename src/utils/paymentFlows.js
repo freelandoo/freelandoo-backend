@@ -50,6 +50,8 @@ const PAYMENT_FLOWS = {
   course_purchase:        { recurring: false, label: "Compra de curso" },
   profile_product_order:  { recurring: false, label: "Loja de produtos" },
   casa_participant_order: { recurring: false, label: "Casa Views — conveniência" },
+  // Holograma colecionável da aba RA (mig 274): R$1,99, entra na vitrine.
+  casa_hologram:          { recurring: false, label: "Casa Views — holograma" },
   booking_deposit:        { recurring: false, label: "Sinal de agendamento" },
   clan_slot:              { recurring: false, label: "Vaga de clan" },
   community_slot:         { recurring: false, label: "Vaga de comunidade" },
