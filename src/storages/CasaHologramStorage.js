@@ -27,6 +27,31 @@ class CasaHologramStorage {
     return rows.length > 0;
   }
 
+  /** Administrador (papel `Administrator`, a mesma régua do selo verificado). */
+  static async isAdmin(conn, id_user) {
+    const { rows } = await conn.query(
+      `SELECT 1 FROM public.tb_user_role ur
+         JOIN public.tb_role r ON r.id_role = ur.id_role
+        WHERE ur.id_user = $1 AND ur.is_active = TRUE AND r.is_active = TRUE
+          AND r.desc_role = 'Administrator'
+        LIMIT 1`,
+      [id_user]
+    );
+    return rows.length > 0;
+  }
+
+  /** Coleta de cortesia (admin): nasce paga, a R$0, sem passar pelo gateway. */
+  static async createFreePurchase(conn, { id_user, hologram_key, session_ref }) {
+    const { rows } = await conn.query(
+      `INSERT INTO public.tb_casa_hologram_purchase
+         (id_user, hologram_key, amount_cents, status, stripe_session_id, paid_at)
+       VALUES ($1, $2, 0, 'paid', $3, NOW())
+       RETURNING *`,
+      [id_user, hologram_key, session_ref]
+    );
+    return rows[0];
+  }
+
   static async createPurchase(conn, { id_user, hologram_key, amount_cents, stripe_session_id }) {
     const { rows } = await conn.query(
       `INSERT INTO public.tb_casa_hologram_purchase

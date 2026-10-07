@@ -12,7 +12,15 @@
 // O preço é lido DAQUI, nunca do cliente. Personagem novo = uma linha aqui +
 // modelo 3D e alvo de rastreamento no front (`features/acasaviews/ra/catalog.ts`),
 // com a MESMA chave.
+//
+// ─── ADMIN COLECIONA DE GRAÇA ───────────────────────────────────────────────
+//
+// Pedido do Alex (2026-10-07). Administrador (papel `Administrator`) não passa
+// pelo Mercado Pago: a compra nasce `paid` a R$0 com uma referência própria
+// (`admin-<uuid>`) no lugar do session id — a página de retorno lê do mesmo
+// jeito e materializa na hora.
 
+const crypto = require("crypto");
 const pool = require("../databases");
 const PaymentGateway = require("../integrations/payments");
 const CasaHologramStorage = require("../storages/CasaHologramStorage");
@@ -36,9 +44,13 @@ class CasaHologramService {
   static async listMine(user) {
     return runWithLogs(log, "listMine", () => ({ id_user: user?.id_user }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
-      const owned = await CasaHologramStorage.listOwned(pool, user.id_user);
+      const [owned, isAdmin] = await Promise.all([
+        CasaHologramStorage.listOwned(pool, user.id_user),
+        CasaHologramStorage.isAdmin(pool, user.id_user),
+      ]);
       return {
-        holograms: CATALOG,
+        holograms: isAdmin ? CATALOG.map((h) => ({ ...h, price_cents: 0 })) : CATALOG,
+        is_admin: isAdmin,
         owned: owned.filter((o) => byKey(o.hologram_key)).map((o) => ({ key: o.hologram_key, collected_at: o.collected_at })),
       };
     });
@@ -52,6 +64,16 @@ class CasaHologramService {
       if (await CasaHologramStorage.isOwned(pool, user.id_user, item.key)) {
         // Cobrar de novo o que já está na vitrine seria vender o que já é dela.
         return { error: "Este holograma já está na sua vitrine.", statusCode: 409, owned: true };
+      }
+
+      if (await CasaHologramStorage.isAdmin(pool, user.id_user)) {
+        const purchase = await CasaHologramStorage.createFreePurchase(pool, {
+          id_user: user.id_user,
+          hologram_key: item.key,
+          session_ref: `admin-${crypto.randomUUID()}`,
+        });
+        log.info("hologram.admin_free", { id_user: user.id_user, key: item.key });
+        return { free: true, session_id: purchase.stripe_session_id };
       }
 
       const frontend = String(process.env.FRONTEND_URL || "https://www.freelandoo.com.br").replace(/\/$/, "");
