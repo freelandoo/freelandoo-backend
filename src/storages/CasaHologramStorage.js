@@ -107,6 +107,18 @@ class CasaHologramStorage {
     return rowCount > 0;
   }
 
+  /** Admin tira da própria vitrine (mig 275): as compras pagas daquele personagem viram `removed`. */
+  static async markRemoved(conn, id_user, hologram_key) {
+    const { rowCount } = await conn.query(
+      `UPDATE public.tb_casa_hologram_purchase
+          SET status = 'removed', updated_at = NOW()
+        WHERE id_user = $1 AND hologram_key = $2
+          AND status = 'paid' AND refunded_at IS NULL`,
+      [id_user, hologram_key]
+    );
+    return rowCount;
+  }
+
   static async markRefunded(conn, id) {
     await conn.query(
       `UPDATE public.tb_casa_hologram_purchase

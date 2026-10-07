@@ -99,6 +99,24 @@ class CasaHologramService {
     });
   }
 
+  /**
+   * Só ADMIN (mig 275): tira o holograma da própria vitrine para colecionar de
+   * novo e repetir o fluxo da RA. Nunca toca na vitrine de outra pessoa.
+   */
+  static async removeMine(user, key) {
+    return runWithLogs(log, "removeMine", () => ({ id_user: user?.id_user, key }), async () => {
+      if (!user?.id_user) return { error: "Não autenticado" };
+      if (!(await CasaHologramStorage.isAdmin(pool, user.id_user))) {
+        return { error: "Só administradores podem remover da vitrine.", statusCode: 403 };
+      }
+      const item = byKey(String(key || ""));
+      if (!item) return { error: "Holograma não encontrado", statusCode: 404 };
+      const removed = await CasaHologramStorage.markRemoved(pool, user.id_user, item.key);
+      log.info("hologram.admin_removed", { id_user: user.id_user, key: item.key, removed });
+      return { removed };
+    });
+  }
+
   /** A página de retorno pergunta: o pagamento já caiu? */
   static async getBySession(user, session_id) {
     return runWithLogs(log, "getBySession", () => ({ id_user: user?.id_user }), async () => {

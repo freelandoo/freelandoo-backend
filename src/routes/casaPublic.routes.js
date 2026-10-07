@@ -50,6 +50,8 @@ router.get("/holograms", authMiddleware, asyncHandler(async (req, res) =>
   sendServiceResult(res, await CasaHologramService.listMine(req.user))));
 router.post("/holograms/checkout", authMiddleware, asyncHandler(async (req, res) =>
   sendServiceResult(res, await CasaHologramService.createCheckout(req.user, req.body || {}))));
+router.delete("/holograms/:key", authMiddleware, asyncHandler(async (req, res) =>
+  sendServiceResult(res, await CasaHologramService.removeMine(req.user, req.params.key))));
 router.get("/holograms/session/:session_id", authMiddleware, asyncHandler(async (req, res) =>
   sendServiceResult(res, await CasaHologramService.getBySession(req.user, req.params.session_id))));
 
