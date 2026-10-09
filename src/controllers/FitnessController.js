@@ -4,6 +4,11 @@ const FitnessProposalService = require("../services/FitnessProposalService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 module.exports = {
+  async platform(req, res) {
+    const result = await FitnessService.getPlatform();
+    return sendServiceResult(res, result);
+  },
+
   async summary(req, res) {
     const result = await FitnessService.summary(req.user.id_user, req.query.date);
     return sendServiceResult(res, result);

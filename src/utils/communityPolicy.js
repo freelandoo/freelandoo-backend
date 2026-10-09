@@ -89,7 +89,8 @@ const TERRITORIAL_KINDS = new Set(["condo", "neighborhood"]);
 // mundo publica. Caindo no default territorial, o feed exigiria membresia — e
 // como não existe membresia ali, a tela ficaria vazia para todo mundo, para
 // sempre, sem erro nenhum aparecer.
-const SUBJECT_KINDS = new Set(["pet", "car", "games", "finance"]);
+// `fitness` (mig 276) idem: plataforma do site inteiro, feed de todo mundo.
+const SUBJECT_KINDS = new Set(["pet", "car", "games", "finance", "fitness"]);
 
 /**
  * Política da comunidade. Modalidade desconhecida cai na MAIS RESTRITIVA de

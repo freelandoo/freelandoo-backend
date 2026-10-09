@@ -90,7 +90,7 @@ const DAILY_CAP_SECONDS = 6 * 3600;
  * Serve games (mig 226) e o Financeiro (mig 229). Plataforma nova = acrescentar
  * a modalidade em PLATFORM_KINDS; a conta, os pesos e o resto vêm de graça.
  */
-const PLATFORM_KINDS = Object.freeze(["games", "finance"]);
+const PLATFORM_KINDS = Object.freeze(["games", "finance", "fitness"]);
 
 /**
  * A trava da lista fechada, sozinha.

@@ -7,6 +7,7 @@
 const pool = require("../databases");
 const FitnessStorage = require("../storages/FitnessStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
+const PlatformStorage = require("../storages/PlatformStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("fitness-service");
@@ -23,6 +24,20 @@ function today() {
 }
 
 class FitnessService {
+  /**
+   * A PLATAFORMA FITNESS (mig 276): qual é a comunidade cujo feed é a raiz do
+   * /fitness. Feed, publicação, curtida e comentário seguem sendo
+   * `/communities/:id_profile/...` — a plataforma É uma comunidade, só que uma
+   * para o site inteiro e sem membros (mesma forma do FinanceService).
+   */
+  static async getPlatform() {
+    return runWithLogs(log, "getPlatform", () => ({}), async () => {
+      const platform = await PlatformStorage.getOrCreatePlatform(pool, PlatformStorage.FITNESS_KIND);
+      if (!platform) return { error: "Plataforma fitness indisponível.", statusCode: 503 };
+      return { platform };
+    });
+  }
+
   // ─── Resumo do dia ─────────────────────────────────────────────────────────
   static async summary(id_user, dateRaw) {
     return runWithLogs(log, "summary", () => ({ id_user }), async () => {

@@ -2,7 +2,7 @@
 //
 // AS PLATAFORMAS DA FREELANDOO — uma linha por ambiente, do site inteiro.
 //
-// Hoje são duas: o FINANCEIRO (mig 229) e o GAMES (mig 232). Elas não são
+// Hoje são três: o FINANCEIRO (mig 229), o GAMES (mig 232) e o FITNESS (mig 276). Elas não são
 // comunidades de ninguém: ninguém entra, ninguém é promovido, ninguém lidera —
 // todo mundo lê e todo mundo publica, e quem edita nome, foto e cores é o admin
 // da plataforma.
@@ -26,6 +26,7 @@ const log = createLogger("PlatformStorage");
 
 const FINANCE_KIND = "finance";
 const GAMES_KIND = "games";
+const FITNESS_KIND = "fitness";
 
 /**
  * O que uma plataforma é quando ela ainda não existe.
@@ -44,6 +45,11 @@ const PLATFORM_SEED = Object.freeze({
     slug: "games",
     name: "Games",
     bio: "A plataforma de games da Freelandoo. Todo mundo lê, todo mundo publica.",
+  },
+  [FITNESS_KIND]: {
+    slug: "fitness",
+    name: "Fitness",
+    bio: "A plataforma fitness da Freelandoo. Todo mundo lê, todo mundo publica.",
   },
 });
 
@@ -64,6 +70,7 @@ const SELECT_PLATFORM = `
 module.exports = {
   FINANCE_KIND,
   GAMES_KIND,
+  FITNESS_KIND,
   PLATFORM_SEED,
 
   /** A plataforma daquele ambiente, ou null se ela ainda não existe. */

@@ -15,6 +15,8 @@ const router = Router();
 router.use(requireFeature("fitness_academias"));
 router.use(authMiddleware);
 
+// A plataforma (mig 276): a comunidade cujo feed é a raiz do /fitness.
+router.get("/platform", asyncHandler(FitnessController.platform));
 router.get("/summary", asyncHandler(FitnessController.summary));
 router.get("/indicators", asyncHandler(FitnessController.indicators));
 router.get("/history", asyncHandler(FitnessController.history));
