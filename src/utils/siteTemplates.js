@@ -549,7 +549,7 @@ function summarizeEnzoCortes() {
  * `ecoluz` também não tem documento.
  *
  * ⚠️ MESMA NATUREZA DOS DOIS ACIMA: tema autoral escrito para UM cliente — a
- * EcoLuz Energia Solar, de São Luís/MA. Todo o texto dele mora no código do
+ * Eco Luz Energia Solar, de São Luís/MA. Todo o texto dele mora no código do
  * tema, no front.
  *
  * ⚠️ E ESTE SITE NÃO PUBLICA PREÇO EM LUGAR NENHUM, de propósito. Preço de
@@ -568,11 +568,11 @@ function normalizeEcoluz() {
  * ⚠️ ESTA LISTA É ESPELHO DO `pages.ts` DO TEMA. Ela é o que o cliente vê
  * antes de decidir; uma página a mais lá e a menos aqui faz o modal prometer
  * um site diferente do que vai ao ar. As 14 são: a home, 5 serviços, 4
- * municípios atendidos, o índice de serviços, "onde atendemos", "a EcoLuz" e
+ * municípios atendidos, o índice de serviços, "onde atendemos", "a Eco Luz" e
  * contato.
  *
  * ⚠️ `hasPhoto` É `false` E ISSO É VERDADE, não campo esquecido: não existe
- * nenhuma foto de obra da EcoLuz, e o site é tipográfico por isso. Pôr `true`
+ * nenhuma foto de obra da Eco Luz, e o site é tipográfico por isso. Pôr `true`
  * aqui faria o modal prometer uma imagem que a página não tem.
  */
 function summarizeEcoluz() {
@@ -595,11 +595,11 @@ function summarizeEcoluz() {
   const fixed = [
     ["servicos", "Serviços"],
     ["areas-atendidas", "Onde atendemos"],
-    ["sobre", "A EcoLuz"],
+    ["sobre", "A Eco Luz"],
     ["contato", "Contato"],
   ];
   return {
-    business: "EcoLuz Energia Solar",
+    business: "Eco Luz Energia Solar",
     city: "São Luís",
     state: "MA",
     phone: "(98) 99138-0808",
@@ -709,7 +709,7 @@ const TEMPLATES = Object.freeze({
     summarize: summarizeEnzoCortes,
   },
   ecoluz: {
-    label: "EcoLuz — energia solar, São Luís/MA (autoral)",
+    label: "Eco Luz — energia solar, São Luís/MA (autoral)",
     normalize: normalizeEcoluz,
     summarize: summarizeEcoluz,
   },
