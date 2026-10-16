@@ -87,13 +87,4 @@ const checkout = makeLimiter({
   max: 30,
 });
 
-// 10 trocas a cada 15 min por IP: a porta que troca o CODIGO de vinculo do
-// app (mig 278) pela sessao. Quem digita certo precisa de 1; o teto existe
-// para que adivinhar um codigo de 8 caracteres nao seja viavel.
-const appLinkExchange = makeLimiter({
-  name: "appLinkExchange",
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-});
-
-module.exports = { auth, lookup, upload, chat, checkout, appLinkExchange };
+module.exports = { auth, lookup, upload, chat, checkout };
