@@ -133,10 +133,22 @@ function init(httpServer) {
 
     log.info("socket.connected", { id_user, sid: socket.id });
 
-    socket.on("conversation:subscribe", (payload) => {
+    // Só participante escuta a conversa. Antes qualquer logado entrava na sala
+    // com o id na mão e recebia as mensagens dos outros em tempo real.
+    socket.on("conversation:subscribe", async (payload) => {
       const id = payload?.id_conversation;
-      if (typeof id === "string" && id.length > 0) {
+      if (typeof id !== "string" || !UUID_RE.test(id)) return;
+      try {
+        const pool = require("../databases");
+        const ConversationStorage = require("../storages/ConversationStorage");
+        const allowed = await ConversationStorage.userCanAccessConversation(pool, {
+          id_conversation: id,
+          id_user,
+        });
+        if (!allowed) return;
         socket.join(conversationRoom(id));
+      } catch (err) {
+        log.warn("conversation.subscribe_fail", { id_conversation: id, message: err?.message });
       }
     });
 
@@ -150,9 +162,12 @@ function init(httpServer) {
     socket.on("chat:subscribe", async (payload) => {
       const id = payload?.id_chat_room;
       if (typeof id !== "string" || !UUID_RE.test(id)) return;
-      socket.join(chatRoom(id));
-      socket.data.chatRooms.add(id);
       try {
+        // A mesma régua do REST: sala ativa e, para menor, liberada.
+        const ChatService = require("../services/ChatService");
+        if (!(await ChatService.canSubscribe(id_user, id))) return;
+        socket.join(chatRoom(id));
+        socket.data.chatRooms.add(id);
         const online = await touchChatPresence(id, id_user);
         io.to(chatRoom(id)).emit("chat:presence", { id_chat_room: id, current_users: online });
       } catch (err) {

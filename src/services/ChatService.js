@@ -97,6 +97,23 @@ function mapMessage(row) {
   };
 }
 
+// Quem pode LER uma sala: ela existe e está ativa, e um menor só entra se o
+// responsável liberou o tipo de chat (e o enxame, na sala de enxame). Antes a
+// supervisão só era conferida no joinRoom, então ler mensagens pelo REST ou
+// escutar a sala pelo socket com o id na mão pulava o portão.
+async function assertRoomReadable(user, room) {
+  if (!room) return { error: "Sala não encontrada", statusCode: 404 };
+  if (room.status !== "active") return { error: "Sala não está ativa", statusCode: 403 };
+  const permKey = room.type === "global" ? "can_use_global_chat" : "can_use_machine_chat";
+  const minorBlock = await assertMinorPermission(user.id_user, permKey);
+  if (minorBlock) return minorBlock;
+  if (room.type === "machine" && room.id_machine) {
+    const machineBlock = await assertMachineAllowed(user.id_user, room.id_machine);
+    if (machineBlock) return machineBlock;
+  }
+  return null;
+}
+
 class ChatService {
   // ------------------------------------------------------------------
   // Entrada automática em sala (Global ou Máquina)
@@ -196,6 +213,13 @@ class ChatService {
   // Listar máquinas do user (para o seletor quando ambíguo / fallback)
   // ------------------------------------------------------------------
 
+  // Portão do chat:subscribe do socket (sem logs: roda a cada inscrição).
+  static async canSubscribe(id_user, id_chat_room) {
+    if (!id_user || !id_chat_room || !UUID_RE.test(id_chat_room)) return false;
+    const room = await ChatStorage.getRoomById(pool, id_chat_room);
+    return !(await assertRoomReadable({ id_user }, room));
+  }
+
   static async listUserMachines(user) {
     return runWithLogs(
       log,
@@ -234,7 +258,8 @@ class ChatService {
           return { error: "id_chat_room inválido" };
         }
         const room = await ChatStorage.getRoomById(pool, id_chat_room);
-        if (!room) return { error: "Sala não encontrada" };
+        const blocked = await assertRoomReadable(user, room);
+        if (blocked) return blocked;
         await ChatStorage.upsertPresence(pool, {
           id_chat_room,
           id_user: user.id_user,
@@ -281,7 +306,8 @@ class ChatService {
           return { error: "id_chat_room inválido" };
         }
         const room = await ChatStorage.getRoomById(pool, id_chat_room);
-        if (!room) return { error: "Sala não encontrada" };
+        const blocked = await assertRoomReadable(user, room);
+        if (blocked) return blocked;
 
         const limit = Math.min(Math.max(parseInt(query?.limit, 10) || MESSAGES_PAGE_DEFAULT, 1), 100);
         const before = query?.before || null;
@@ -329,8 +355,8 @@ class ChatService {
         }
 
         const room = await ChatStorage.getRoomById(pool, id_chat_room);
-        if (!room) return { error: "Sala não encontrada" };
-        if (room.status !== "active") return { error: "Sala não está ativa" };
+        const blocked = await assertRoomReadable(user, room);
+        if (blocked) return blocked;
 
         const sanitized = sanitizeContent(body?.content);
         if (!sanitized) return { error: "Mensagem vazia" };

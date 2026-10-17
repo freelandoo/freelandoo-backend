@@ -294,6 +294,42 @@ class ConversationStorage {
     return rows[0]?.total || 0;
   }
 
+  // Quem pode ESCUTAR uma conversa: a pessoa que atua por uma das entidades
+  // participantes (perfis dela ou clan do qual é dona). É a mesma régua de
+  // "quem eu sou aqui dentro" da soma de não-lidos logo abaixo — usada pelo
+  // conversation:subscribe do socket, que antes aceitava qualquer id.
+  static async userCanAccessConversation(conn, { id_conversation, id_user }) {
+    if (!id_conversation || !id_user) return false;
+    const { rows } = await conn.query(
+      `
+      WITH actor_entities AS (
+        SELECT p.id_profile AS entity_id
+          FROM public.tb_profile p
+         WHERE p.id_user = $2
+           AND p.deleted_at IS NULL
+        UNION
+        SELECT cm.id_clan_profile AS entity_id
+          FROM public.tb_clan_member cm
+          JOIN public.tb_profile member_profile
+            ON member_profile.id_profile = cm.id_member_profile
+           AND member_profile.id_user = $2
+         WHERE cm.role = 'owner'
+      )
+      SELECT 1
+        FROM public.tb_conversation c
+        JOIN public.tb_conversation_participant cp
+          ON cp.id_conversation = c.id_conversation
+         AND cp.deleted_at IS NULL
+        JOIN actor_entities ae ON ae.entity_id = cp.entity_id
+       WHERE c.id_conversation = $1
+         AND c.deleted_at IS NULL
+       LIMIT 1
+      `,
+      [id_conversation, id_user]
+    );
+    return rows.length > 0;
+  }
+
   static async unreadTotalForUser(conn, id_user) {
     // Soma unread de TODAS as entidades que o usuário pode atuar:
     // 1) Perfis dele (tb_profile.id_user = id_user)
