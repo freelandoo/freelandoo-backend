@@ -16,6 +16,7 @@ process.env.DATABASE_URL = DB_URL;
 process.env.DATABASE_URL_COLD = "";
 
 const { Client } = require("pg");
+const { syncAvatars } = require("../src/services/ArenaAvatarSync");
 const bcrypt = require("bcrypt");
 const AuthStorage = require("../src/storages/AuthStorage");
 const { syncCatalog } = require("../src/services/ArenaCatalogSync");
@@ -29,6 +30,9 @@ async function main() {
     if (cmd === "seed") {
       const out = await syncCatalog(db, catalog, { apply: true });
       if (!out.ok) throw new Error(out.errors.join("; "));
+      // Avatares (M10): o mesmo seed que o build da Arena exporta.
+      const av = await syncAvatars(db, require("../src/databases/seeds/arena-avatars.json"), { apply: true });
+      if (!av.ok) throw new Error(av.errors.join("; "));
       for (const [cat, team, label] of [
         ["futebol", "teste-azul", "Time sintético Azul"],
         ["futebol", "teste-verde", "Time sintético Verde"],

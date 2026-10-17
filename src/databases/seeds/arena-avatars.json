@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "generatedFrom": "freelandoo-arena/scripts/export-avatars.mjs",
+  "models": [
+    {
+      "modelId": "gothic-noble",
+      "labels": {
+        "pt-BR": "Nobre gótico",
+        "en": "Gothic noble",
+        "es": "Noble gótico"
+      },
+      "order": 0,
+      "status": "ready",
+      "defaultGrant": true,
+      "saleStatus": "rights_unconfirmed",
+      "assetVersion": "90728db844cd9b58",
+      "variants": [
+        {
+          "skinId": "original",
+          "hairId": "original",
+          "ready": true
+        },
+        {
+          "skinId": "tone-1",
+          "hairId": "black",
+          "ready": true
+        },
+        {
+          "skinId": "tone-1",
+          "hairId": "blonde",
+          "ready": true
+        },
+        {
+          "skinId": "tone-3",
+          "hairId": "black",
+          "ready": true
+        },
+        {
+          "skinId": "tone-3",
+          "hairId": "blonde",
+          "ready": true
+        },
+        {
+          "skinId": "tone-5",
+          "hairId": "black",
+          "ready": true
+        },
+        {
+          "skinId": "tone-5",
+          "hairId": "blonde",
+          "ready": true
+        }
+      ]
+    }
+  ]
+}

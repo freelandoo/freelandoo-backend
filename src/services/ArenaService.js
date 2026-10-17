@@ -118,11 +118,15 @@ async function startSession(ctx, { db = pool } = {}) {
     await ensurePlayer(client, ctx.id_user);
     const player = await ArenaStorage.getPlayer(client, ctx.id_user);
     const state = await loadState(client, ctx.id_user);
+    // require tardio: o serviço de avatar usa withLockedPlayer daqui.
+    const appearance = await require("./ArenaAvatarService").publicAppearance(client, ctx.id_user);
     return okRes({
       player: {
         playerId: player.player_id,
         displayName: rules.publicDisplayName(ctx.username),
-        avatarRef: null,
+        // Aparência PÚBLICA resolvida pelo servidor (M10). null = não há
+        // modelo pronto; o cliente mostra o substituto explícito.
+        appearance,
       },
       account: { username: ctx.username },
       restrictions: { minor: ctx.is_minor, sensitiveAllowed: !ctx.is_minor },
@@ -346,6 +350,8 @@ async function deleteAllForUser(id_user, { db = pool } = {}) {
 
 module.exports = {
   startSession,
+  ensurePlayer,
+  withLockedPlayer,
   getPreferences,
   getCatalog,
   savePreference,

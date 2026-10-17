@@ -180,7 +180,7 @@ async function main() {
     eq(r.status, 200, "status");
     playerA = r.body.player.playerId;
     ok(/^pl_[A-Za-z0-9]{10,32}$/.test(playerA), "formato do playerId");
-    eq(Object.keys(r.body.player).sort(), ["avatarRef", "displayName", "playerId"], "DTO público mínimo");
+    eq(Object.keys(r.body.player).sort(), ["appearance", "displayName", "playerId"], "DTO público mínimo (M10: aparência no lugar de avatarRef)");
     ok(!JSON.stringify(r.body).includes(A), "id_user não pode sair na resposta");
     ok(!JSON.stringify(r.body).includes("@teste.invalid"), "e-mail não pode sair");
     saveFixture("session", r.body);

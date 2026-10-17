@@ -8,6 +8,9 @@
 //   PUT    /arena/me/active                     guard  { categoryId | null, expectedRevision }
 //   PUT    /arena/me/consents/:categoryId       guard  { policyVersion }
 //   DELETE /arena/me/consents/:categoryId       guard
+//   GET    /arena/avatars/catalog               público (cache curto) — M10
+//   GET    /arena/me/avatar                     guard → equipada, aparência pública, posse PRIVADA
+//   PUT    /arena/me/avatar                     guard  { modelId, skinId, hairId, expectedRevision }
 //
 // Canal INTERNO (servidor de jogo → backend, M06/M07). Exige assinatura do
 // serviço (arenaServiceAuth) — o navegador não tem o segredo:
@@ -29,6 +32,7 @@ const ArenaTerritoryService = require("../services/ArenaTerritoryService");
 const ArenaSocialService = require("../services/ArenaSocialService");
 const ArenaStatsService = require("../services/ArenaStatsService");
 const ArenaPresenceService = require("../services/ArenaPresenceService");
+const ArenaAvatarService = require("../services/ArenaAvatarService");
 
 const router = express.Router();
 const arenaAuth = createArenaAuth({ pool });
@@ -54,6 +58,18 @@ router.get(
     return send(res, await ArenaService.getCatalog());
   })
 );
+
+router.get(
+  "/avatars/catalog",
+  arenaRead,
+  asyncHandler(async (req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=60");
+    return send(res, await ArenaAvatarService.getCatalog());
+  })
+);
+
+router.get("/me/avatar", arenaRead, arenaAuth, asyncHandler(async (req, res) => send(res, await ArenaAvatarService.getMine(req.arena))));
+router.put("/me/avatar", arenaWrite, smallBody, arenaAuth, asyncHandler(async (req, res) => send(res, await ArenaAvatarService.equip(req.arena, req.body))));
 
 router.post("/session", arenaRead, arenaAuth, asyncHandler(async (req, res) => send(res, await ArenaService.startSession(req.arena))));
 
