@@ -127,6 +127,7 @@ async function startSession(ctx, { db = pool } = {}) {
       account: { username: ctx.username },
       restrictions: { minor: ctx.is_minor, sensitiveAllowed: !ctx.is_minor },
       preferences: state,
+      credential: { expiresAt: ctx.credential_expires_at || null },
     });
   } finally {
     client.release();
@@ -337,6 +338,9 @@ async function revokeConsent(ctx, category_id, { db = pool } = {}) {
 
 /** Chamado pelo DeleteMeService: preferência (inclusive sensível) não sobrevive à conta. */
 async function deleteAllForUser(id_user, { db = pool } = {}) {
+  // Checkpoints aceitos (mig 282) NÃO são apagados — o placar já apurado
+  // depende deles —, mas perdem o vínculo com a conta: o fato fica anônimo.
+  await ArenaStorage.anonymizeCheckpoints(db, id_user);
   return ArenaStorage.deletePlayer(db, id_user);
 }
 

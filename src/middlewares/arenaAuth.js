@@ -75,6 +75,9 @@ function createArenaAuth({ storage = ArenaStorage, pool, secret = () => process.
       id_user: account.id_user,
       username: account.username || null,
       is_minor: !!account.is_minor,
+      // Prazo da credencial já conferida (M06): o servidor de jogo não mantém
+      // a conexão autorizada além dele.
+      credential_expires_at: Number.isInteger(decoded.exp) ? new Date(decoded.exp * 1000).toISOString() : null,
     };
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Vary", "Authorization");

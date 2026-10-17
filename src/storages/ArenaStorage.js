@@ -228,7 +228,19 @@ class ArenaStorage {
       [id_user]
     );
     const consents = await this.listConsents(conn, id_user);
-    return { player: player.rows[0], preferences: prefs.rows, sensitive_consents: consents };
+    // Participações em postes (mig 282): o titular vê as próprias.
+    const checkpoints = await conn.query(
+      `SELECT environment_id, post_id, category_id, team_id, window_start, accepted_at
+         FROM public.tb_arena_checkpoint WHERE id_user = $1 ORDER BY accepted_at`,
+      [id_user]
+    );
+    return { player: player.rows[0], preferences: prefs.rows, sensitive_consents: consents, checkpoints: checkpoints.rows };
+  }
+
+  /** Exclusão da conta: o fato aceito fica, sem o vínculo com a pessoa. */
+  static async anonymizeCheckpoints(conn, id_user) {
+    const r = await conn.query(`UPDATE public.tb_arena_checkpoint SET id_user = NULL WHERE id_user = $1`, [id_user]);
+    return r.rowCount;
   }
 }
 

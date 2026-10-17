@@ -74,6 +74,12 @@ const server = app.listen(PORT, () => {
   const ResidenceService = require("./src/services/ResidenceService");
   ResidenceService.startSweeper();
 
+  // Freelandoo Arena (mig 282): apuração horária dos postes. Fecha as janelas
+  // UTC encerradas a partir dos FATOS; idempotente (uma linha por disputa) e
+  // coordenada com os checkpoints pela trava da disputa.
+  const ArenaTerritoryService = require("./src/services/ArenaTerritoryService");
+  ArenaTerritoryService.startSweeper();
+
   // "Cancelar no fim do ciclo" (mig 251) — a capacidade que só o Stripe tem
   // nativamente. Fora dele, cancelar é IMEDIATO, então a data do ciclo pago é
   // agendada e executada aqui.
