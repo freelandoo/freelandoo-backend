@@ -1,0 +1,57 @@
+{
+  "_comment": "Catálogo de PRODUÇÃO da Freelandoo Arena (categorias e equipes de disputa). Aplicar com `node scripts/arena-catalog.js` (simulação) e `--apply` (grava). Fixtures de teste NUNCA entram aqui: elas são criadas pelos testes com is_synthetic = true. Política sem consent_policy_version = coleta desligada até a política ser aprovada. Futebol, anime e séries sem equipes de propósito: nomes de clubes e obras são decisão do proprietário (direitos de marca/IP).",
+  "version": 1,
+  "categories": [
+    {
+      "categoryId": "politica",
+      "sensitive": true,
+      "active": true,
+      "order": 10,
+      "consentPolicyVersion": null,
+      "labels": { "pt-BR": "Política", "en": "Politics", "es": "Política" },
+      "teams": []
+    },
+    {
+      "categoryId": "anime",
+      "sensitive": false,
+      "active": true,
+      "order": 20,
+      "labels": { "pt-BR": "Anime", "en": "Anime", "es": "Anime" },
+      "teams": []
+    },
+    {
+      "categoryId": "futebol",
+      "sensitive": false,
+      "active": true,
+      "order": 30,
+      "labels": { "pt-BR": "Futebol", "en": "Football", "es": "Fútbol" },
+      "teams": []
+    },
+    {
+      "categoryId": "musica",
+      "sensitive": false,
+      "active": true,
+      "order": 40,
+      "labels": { "pt-BR": "Música", "en": "Music", "es": "Música" },
+      "teams": [
+        { "teamId": "rock", "order": 10, "color": "#C2410C", "labels": { "pt-BR": "Rock", "en": "Rock", "es": "Rock" } },
+        { "teamId": "samba-pagode", "order": 20, "color": "#15803D", "labels": { "pt-BR": "Samba e pagode", "en": "Samba and pagode", "es": "Samba y pagode" } },
+        { "teamId": "sertanejo", "order": 30, "color": "#A16207", "labels": { "pt-BR": "Sertanejo", "en": "Sertanejo", "es": "Sertanejo" } },
+        { "teamId": "funk", "order": 40, "color": "#BE185D", "labels": { "pt-BR": "Funk", "en": "Funk carioca", "es": "Funk carioca" } },
+        { "teamId": "pop", "order": 50, "color": "#7C3AED", "labels": { "pt-BR": "Pop", "en": "Pop", "es": "Pop" } },
+        { "teamId": "mpb", "order": 60, "color": "#0E7490", "labels": { "pt-BR": "MPB", "en": "MPB (Brazilian popular music)", "es": "MPB (música popular brasileña)" } },
+        { "teamId": "rap-hip-hop", "order": 70, "color": "#1D4ED8", "labels": { "pt-BR": "Rap e hip-hop", "en": "Rap and hip-hop", "es": "Rap y hip-hop" } },
+        { "teamId": "eletronica", "order": 80, "color": "#0891B2", "labels": { "pt-BR": "Eletrônica", "en": "Electronic", "es": "Electrónica" } },
+        { "teamId": "forro", "order": 90, "color": "#B45309", "labels": { "pt-BR": "Forró", "en": "Forró", "es": "Forró" } }
+      ]
+    },
+    {
+      "categoryId": "series",
+      "sensitive": false,
+      "active": true,
+      "order": 50,
+      "labels": { "pt-BR": "Séries", "en": "TV series", "es": "Series" },
+      "teams": []
+    }
+  ]
+}

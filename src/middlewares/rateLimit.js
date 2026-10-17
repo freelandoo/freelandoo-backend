@@ -87,4 +87,20 @@ const checkout = makeLimiter({
   max: 30,
 });
 
-module.exports = { auth, lookup, upload, chat, checkout };
+// 90 escritas/min por IP — Freelandoo Arena (preferências e seleção ativa).
+// Folgado para quem alterna equipes num celular atrás de NAT, apertado para
+// não virar martelo. A leitura (sessão/estado) usa `arenaRead`, mais larga,
+// porque o retorno à aba revalida a sessão.
+const arenaWrite = makeLimiter({
+  name: "arena_write",
+  windowMs: 60 * 1000,
+  max: 90,
+});
+
+const arenaRead = makeLimiter({
+  name: "arena_read",
+  windowMs: 60 * 1000,
+  max: 240,
+});
+
+module.exports = { auth, lookup, upload, chat, checkout, arenaWrite, arenaRead };

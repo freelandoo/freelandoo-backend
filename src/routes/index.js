@@ -38,6 +38,7 @@ const adminRankingRoutes = require("./adminRanking.routes");
 const clanRoutes = require("./clan.routes");
 const clanPublicRoutes = require("./clanPublic.routes");
 const communityRoutes = require("./community.routes");
+const arenaRoutes = require("./arena.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
 const prospectRoutes = require("./prospect.routes");
 const prospectAdminRoutes = require("./prospectAdmin.routes");
@@ -161,6 +162,11 @@ module.exports = (app) => {
   app.use("/users/me/features", userFeaturePrefRoutes);
   app.use("/users/me/quick-pills", userQuickPillsRoutes);
   app.use("/users", usersRoutes);
+  // Freelandoo Arena (mig 281): jogador, catálogo de comunidades e preferências.
+  // ⚠️ CEDO de propósito: roteadores montados em "/" mais abaixo (ex.: academias)
+  // fazem `router.use(requireFeature(...))`, que intercepta QUALQUER caminho
+  // que chegue até eles — com a flag deles desligada, /arena responderia 403.
+  app.use("/arena", arenaRoutes);
   app.use("/stripe", stripeRoutes);
   app.use("/admin/annual-fee", annualFeeAdminRoutes);
   app.use("/public", publicPricingRoutes);
