@@ -4,6 +4,9 @@ const ConversationController = require("../controllers/ConversationController");
 const GroupConversationController = require("../controllers/GroupConversationController");
 const uploadConversationAudio = require("../middlewares/uploadConversationAudio");
 const asyncHandler = require("../utils/asyncHandler");
+const rateLimit = require("../middlewares/rateLimit");
+const { sendServiceResult } = require("../utils/sendServiceResult");
+const SocialSafetyService = require("../services/SocialSafetyService");
 
 const router = Router();
 
@@ -73,6 +76,24 @@ router.post(
   authMiddleware,
   uploadConversationAudio.single("audio"),
   asyncHandler(ConversationController.sendAudioMessage)
+);
+
+// Denúncia de mensagem direta (mig 283) — só participante, nunca a própria.
+router.post(
+  "/messages/:id_message/report",
+  authMiddleware,
+  rateLimit.lookup,
+  asyncHandler(async (req, res) =>
+    sendServiceResult(
+      res,
+      await SocialSafetyService.reportMessage(req.user, {
+        id_message: req.params.id_message,
+        reason_category: req.body?.reason_category,
+        reason: req.body?.reason,
+      }),
+      201
+    )
+  )
 );
 
 // Apagar mensagem (autor) — limpa R2 best-effort se for áudio.

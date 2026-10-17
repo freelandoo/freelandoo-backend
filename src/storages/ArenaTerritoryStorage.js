@@ -148,9 +148,17 @@ class ArenaTerritoryStorage {
 
   static async insertTally(conn, key, { status, leader_team_id, total, counts, rule_version }) {
     const r = await conn.query(
+      // Geometria da hora (mig 284): a posição do poste só é gravada se ela
+      // já valia NO INÍCIO da janela (valid_from <= window_start). Poste que
+      // mudou depois = geometria daquela hora desconhecida (NULL), nunca a
+      // posição de hoje fingindo ser a de ontem.
       `INSERT INTO public.tb_arena_territory_tally
-         (environment_id, post_id, category_id, window_start, status, leader_team_id, total, counts, rule_version)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+         (environment_id, post_id, category_id, window_start, status, leader_team_id, total, counts, rule_version,
+          post_x, post_y, map_version)
+       SELECT $1::varchar, $2::varchar, $3::varchar, $4::timestamptz, $5::varchar, $6::varchar, $7::int, $8::jsonb, $9::int, g.x, g.y, g.map_version
+         FROM (SELECT 1) one
+         LEFT JOIN public.tb_arena_post g
+           ON g.environment_id = $1::varchar AND g.post_id = $2::varchar AND g.valid_from <= $4::timestamptz
        ON CONFLICT DO NOTHING
        RETURNING closed_at`,
       [key.environment_id, key.post_id, key.category_id, key.window_start, status, leader_team_id, total, JSON.stringify(counts), rule_version]

@@ -219,6 +219,8 @@ class GroupConversationService {
           `,
           [id_conversation, user.id_user]
         );
+        // Quem saiu para de receber os eventos da sala na hora.
+        require("../realtime/socket").revalidateConversation(id_conversation).catch(() => {});
         return { data: { left: rowCount } };
       }
     );

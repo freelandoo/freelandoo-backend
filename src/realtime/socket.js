@@ -14,6 +14,30 @@ const clusterRoom = (id_live_cluster) => `cluster:${id_live_cluster}`;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// ─── Endurecimento do socket social (Módulo 09 da Arena) ─────────────────────
+// Origem: CORS não protege WebSocket, então a ORIGEM do upgrade é conferida
+// aqui. Navegador sempre manda Origin; cliente sem Origin (servidor, teste) é
+// aceito porque ele ainda precisa de um token válido. Lista = domínios da
+// Freelandoo + localhost de desenvolvimento + REALTIME_ALLOWED_ORIGINS (vírgula).
+const ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)*freelandoo\.com\.br$/i;
+const DEV_ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+function extraOrigins() {
+  return String(process.env.REALTIME_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+function originAllowed(origin) {
+  if (!origin) return true;
+  if (ORIGIN_RE.test(origin)) return true;
+  if (process.env.NODE_ENV !== "production" && DEV_ORIGIN_RE.test(origin)) return true;
+  return extraOrigins().includes(origin);
+}
+// Revalidação proporcional ao risco: a cada 5 min, conta bloqueada/inativa é
+// desconectada e salas que deixaram de ser permitidas são deixadas.
+const REVALIDATE_MS = 5 * 60_000;
+let revalidateTimer = null;
+
 // Presença do chat ao vivo derivada da conexão WebSocket: enquanto houver
 // socket inscrito na sala, renovamos tb_chat_presence server-side — o front
 // não precisa mais do POST /heartbeat de 60s (era 60 requests/h por user).
@@ -98,10 +122,11 @@ function init(httpServer) {
   io = new Server(httpServer, {
     path: "/realtime",
     cors: {
-      origin: (origin, callback) => callback(null, true),
+      origin: (origin, callback) => callback(null, originAllowed(origin)),
       methods: ["GET", "POST"],
       credentials: true,
     },
+    allowRequest: (req, callback) => callback(null, originAllowed(req.headers.origin)),
     pingInterval: 25_000,
     pingTimeout: 60_000,
     maxHttpBufferSize: 1e6,
@@ -109,18 +134,28 @@ function init(httpServer) {
   });
 
   io.use((socket, next) => {
+    // Token só no `auth` do handshake (ou cabeçalho, para cliente de
+    // servidor) — NUNCA na URL: querystring vai parar em log de proxy.
     const token =
       socket.handshake.auth?.token ||
-      socket.handshake.query?.token ||
       (socket.handshake.headers?.authorization || "").split(" ")[1];
-    if (!token) return next(new Error("missing_token"));
+    if (!token || typeof token !== "string") return next(new Error("missing_token"));
+    let decoded;
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = { id_user: decoded.id_user, email: decoded.email };
-      return next();
+      decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return next(new Error("invalid_token"));
     }
+    if (!decoded?.id_user) return next(new Error("invalid_token"));
+    // Conta sancionada ou desativada não abre socket (o JWT sozinho não sabe).
+    accountUsable(decoded.id_user)
+      .then((usable) => {
+        if (!usable) return next(new Error("account_unavailable"));
+        socket.user = { id_user: decoded.id_user, email: decoded.email };
+        socket.data.tokenExp = Number.isInteger(decoded.exp) ? decoded.exp * 1000 : null;
+        return next();
+      })
+      .catch(() => next(new Error("identity_unavailable")));
   });
 
   io.on("connection", (socket) => {
@@ -130,6 +165,14 @@ function init(httpServer) {
     socket.data.id_user = id_user;
     socket.data.chatRooms = new Set();
     socket.data.clusterRooms = new Set();
+    socket.data.convRooms = new Set();
+    // A conexão não vive além da credencial que a autorizou.
+    if (socket.data.tokenExp) {
+      const left = socket.data.tokenExp - Date.now();
+      const timer = setTimeout(() => socket.disconnect(true), Math.max(0, Math.min(left, 2 ** 31 - 1)));
+      timer.unref?.();
+      socket.data.expTimer = timer;
+    }
 
     log.info("socket.connected", { id_user, sid: socket.id });
 
@@ -147,6 +190,7 @@ function init(httpServer) {
         });
         if (!allowed) return;
         socket.join(conversationRoom(id));
+        socket.data.convRooms.add(id);
       } catch (err) {
         log.warn("conversation.subscribe_fail", { id_conversation: id, message: err?.message });
       }
@@ -156,6 +200,7 @@ function init(httpServer) {
       const id = payload?.id_conversation;
       if (typeof id === "string" && id.length > 0) {
         socket.leave(conversationRoom(id));
+        socket.data.convRooms?.delete(id);
       }
     });
 
@@ -217,6 +262,7 @@ function init(httpServer) {
     });
 
     socket.on("disconnect", (reason) => {
+      if (socket.data.expTimer) clearTimeout(socket.data.expTimer);
       log.info("socket.disconnected", { id_user, sid: socket.id, reason });
       // Fechou aba/navegou: some da presença das salas de chat (as rooms do
       // socket.io o adapter já limpa sozinho).
@@ -237,9 +283,87 @@ function init(httpServer) {
     presenceSweepTimer = setInterval(sweepChatPresence, PRESENCE_SWEEP_MS);
     presenceSweepTimer.unref?.();
   }
+  if (!revalidateTimer) {
+    revalidateTimer = setInterval(() => {
+      revalidateAll().catch((err) => log.warn("revalidate.fail", { message: err?.message }));
+    }, REVALIDATE_MS);
+    revalidateTimer.unref?.();
+  }
 
   log.info("realtime.initialized", { path: "/realtime" });
   return io;
+}
+
+async function accountUsable(id_user) {
+  const pool = require("../databases");
+  const r = await pool.query(`SELECT ativo, blocked_at FROM public.tb_user WHERE id_user = $1`, [id_user]);
+  const row = r.rows[0];
+  return !!(row && row.ativo && !row.blocked_at);
+}
+
+/** Uma passada: conta ainda usável? salas ainda permitidas? */
+async function revalidateSocket(socket) {
+  const id_user = socket.data?.id_user;
+  if (!id_user) return;
+  if (!(await accountUsable(id_user))) {
+    socket.disconnect(true);
+    return;
+  }
+  const pool = require("../databases");
+  const ConversationStorage = require("../storages/ConversationStorage");
+  for (const id of [...(socket.data.convRooms || [])]) {
+    const ok = await ConversationStorage.userCanAccessConversation(pool, { id_conversation: id, id_user });
+    if (!ok) {
+      socket.leave(conversationRoom(id));
+      socket.data.convRooms.delete(id);
+    }
+  }
+  const ChatService = require("../services/ChatService");
+  for (const id of [...(socket.data.chatRooms || [])]) {
+    if (!(await ChatService.canSubscribe(id_user, id))) {
+      socket.leave(chatRoom(id));
+      socket.data.chatRooms.delete(id);
+    }
+  }
+}
+
+async function revalidateAll() {
+  if (!io) return;
+  const sockets = await io.fetchSockets();
+  for (const s of sockets) {
+    // fetchSockets devolve uma visão remota; o socket local tem os dados.
+    const local = io.sockets.sockets.get(s.id);
+    if (local) await revalidateSocket(local).catch(() => {});
+  }
+}
+
+/**
+ * Permissão de uma conversa mudou (saiu do grupo, conversa apagada): quem
+ * ainda está na sala é reconferido NA HORA, sem esperar a passada periódica.
+ */
+async function revalidateConversation(id_conversation) {
+  if (!io || !id_conversation) return;
+  const pool = require("../databases");
+  const ConversationStorage = require("../storages/ConversationStorage");
+  const sockets = await io.in(conversationRoom(id_conversation)).fetchSockets();
+  for (const s of sockets) {
+    const local = io.sockets.sockets.get(s.id);
+    if (!local) continue;
+    const ok = await ConversationStorage.userCanAccessConversation(pool, {
+      id_conversation,
+      id_user: local.data?.id_user,
+    });
+    if (!ok) {
+      local.leave(conversationRoom(id_conversation));
+      local.data.convRooms?.delete(id_conversation);
+    }
+  }
+}
+
+/** Conta sancionada agora: derruba todos os sockets dela. */
+function disconnectUser(id_user) {
+  if (!io || !id_user) return;
+  io.in(userRoom(id_user)).disconnectSockets(true);
 }
 
 function emitToUser(id_user, event, payload) {
@@ -295,6 +419,10 @@ function getIo() {
 
 module.exports = {
   init,
+  originAllowed,
+  revalidateConversation,
+  revalidateAll,
+  disconnectUser,
   emitToUser,
   emitToConversation,
   emitToChatRoom,

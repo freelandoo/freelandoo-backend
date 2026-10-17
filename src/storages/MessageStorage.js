@@ -39,7 +39,7 @@ class MessageStorage {
     return listLimit(value);
   }
 
-  static async create(conn, { id_conversation, sender_entity_id, sender_user_id, body, sent_via = "app" }) {
+  static async create(conn, { id_conversation, sender_entity_id, sender_user_id, body, sent_via = "app", client_message_id = null }) {
     const { rows } = await conn.query(
       `
       INSERT INTO public.tb_message (
@@ -48,12 +48,24 @@ class MessageStorage {
         sender_user_id,
         body,
         kind,
-        sent_via
+        sent_via,
+        client_message_id
       )
-      VALUES ($1, 'profile', $2, $3, $4, 'text', $5)
+      VALUES ($1, 'profile', $2, $3, $4, 'text', $5, $6)
       RETURNING *
       `,
-      [id_conversation, sender_entity_id, sender_user_id, body, sent_via]
+      [id_conversation, sender_entity_id, sender_user_id, body, sent_via, client_message_id]
+    );
+    return rows[0] || null;
+  }
+
+  /** Mensagem já gravada com este id do cliente (idempotência, mig 283). */
+  static async findByClientId(conn, { id_conversation, sender_entity_id, client_message_id }) {
+    const { rows } = await conn.query(
+      `SELECT * FROM public.tb_message
+        WHERE id_conversation = $1 AND sender_entity_id = $2 AND client_message_id = $3
+        LIMIT 1`,
+      [id_conversation, sender_entity_id, client_message_id]
     );
     return rows[0] || null;
   }

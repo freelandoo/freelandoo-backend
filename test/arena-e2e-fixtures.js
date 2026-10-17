@@ -17,6 +17,7 @@ process.env.DATABASE_URL_COLD = "";
 
 const { Client } = require("pg");
 const bcrypt = require("bcrypt");
+const AuthStorage = require("../src/storages/AuthStorage");
 const { syncCatalog } = require("../src/services/ArenaCatalogSync");
 const catalog = require("../src/databases/seeds/arena-catalog.json");
 
@@ -59,6 +60,9 @@ async function main() {
            ON CONFLICT DO NOTHING`,
           [r.rows[0].id_user]
         );
+        // Perfil-conta, como o cadastro real cria: é ele que o personagem
+        // representa no social da Arena (M09) — sem ele o cartão diz "indisponível".
+        await AuthStorage.ensureUserAccountProfile(db, r.rows[0].id_user, `Conta sintética ${tag.toUpperCase()}`);
         accounts.push({ email, username: `arena_e2e_${tag}_${stamp}`.slice(0, 30) });
       }
       console.log(JSON.stringify({ password, accounts }));

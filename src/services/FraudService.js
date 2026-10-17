@@ -215,6 +215,15 @@ class FraudService {
             by_user: admin?.id_user || null,
           });
           await client.query("COMMIT");
+          // Conta bloqueada agora: o socket social cai na hora (o JWT sozinho
+          // seguiria valendo até expirar).
+          if (status === "blocked") {
+            try {
+              require("../realtime/socket").disconnectUser(review.id_user);
+            } catch {
+              /* best-effort; a revalidação periódica cobre */
+            }
+          }
           return { ok: true, review: decided };
         } catch (err) {
           await client.query("ROLLBACK");

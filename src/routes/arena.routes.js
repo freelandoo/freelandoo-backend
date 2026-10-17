@@ -26,6 +26,9 @@ const { arenaRead, arenaWrite, arenaInternal } = require("../middlewares/rateLim
 const { createArenaServiceAuth } = require("../middlewares/arenaServiceAuth");
 const ArenaService = require("../services/ArenaService");
 const ArenaTerritoryService = require("../services/ArenaTerritoryService");
+const ArenaSocialService = require("../services/ArenaSocialService");
+const ArenaStatsService = require("../services/ArenaStatsService");
+const ArenaPresenceService = require("../services/ArenaPresenceService");
 
 const router = express.Router();
 const arenaAuth = createArenaAuth({ pool });
@@ -90,6 +93,74 @@ router.delete(
   asyncHandler(async (req, res) => send(res, await ArenaService.revokeConsent(req.arena, req.params.categoryId)))
 );
 
+// ─── Social (Módulo 09) ─────────────────────────────────────────────────────
+// Fachada sobre a MESMA mensageria da Freelandoo (ArenaSocialService). Corpo
+// de mensagem chega a 4000 caracteres: limite próprio, ainda pequeno.
+const MAX_SOCIAL_BODY = 16 * 1024;
+function socialBody(req, res, next) {
+  const len = Number(req.headers["content-length"] || 0);
+  if (len > MAX_SOCIAL_BODY) return res.status(413).json({ error: "Corpo grande demais", code: "payload_too_large" });
+  return next();
+}
+const social = (fn) => asyncHandler(async (req, res) => send(res, await fn(req)));
+
+router.get("/social/actors", arenaRead, arenaAuth, social((req) => ArenaSocialService.actors(req.arena)));
+router.get("/social/conversations", arenaRead, arenaAuth, social((req) => ArenaSocialService.conversations(req.arena, req.query)));
+router.get(
+  "/social/conversations/:id/messages",
+  arenaRead,
+  arenaAuth,
+  social((req) => ArenaSocialService.messages(req.arena, req.params.id, req.query))
+);
+router.post(
+  "/social/conversations/:id/messages",
+  arenaWrite,
+  socialBody,
+  arenaAuth,
+  social((req) => ArenaSocialService.send(req.arena, req.params.id, req.body))
+);
+router.post(
+  "/social/conversations/:id/read",
+  arenaWrite,
+  smallBody,
+  arenaAuth,
+  social((req) => ArenaSocialService.read(req.arena, req.params.id, req.body))
+);
+router.get("/social/players/:playerId", arenaRead, arenaAuth, social((req) => ArenaSocialService.player(req.arena, req.params.playerId)));
+router.post(
+  "/social/players/:playerId/conversation",
+  arenaWrite,
+  smallBody,
+  arenaAuth,
+  social((req) => ArenaSocialService.openWithPlayer(req.arena, req.params.playerId, req.body))
+);
+router.put("/social/players/:playerId/block", arenaWrite, arenaAuth, social((req) => ArenaSocialService.block(req.arena, req.params.playerId, true)));
+router.delete("/social/players/:playerId/block", arenaWrite, arenaAuth, social((req) => ArenaSocialService.block(req.arena, req.params.playerId, false)));
+router.put("/social/players/:playerId/follow", arenaWrite, arenaAuth, social((req) => ArenaSocialService.follow(req.arena, req.params.playerId, true)));
+router.delete("/social/players/:playerId/follow", arenaWrite, arenaAuth, social((req) => ArenaSocialService.follow(req.arena, req.params.playerId, false)));
+router.post(
+  "/social/messages/:id/report",
+  arenaWrite,
+  smallBody,
+  arenaAuth,
+  social((req) => ArenaSocialService.report(req.arena, req.params.id, req.body))
+);
+
+// ─── Estatísticas (Módulo 08) — públicas e agregadas ────────────────────────
+// Sem identidade em nenhuma resposta; cache curto na borda e no processo.
+const stats = (fn) =>
+  asyncHandler(async (req, res) => {
+    const out = await fn(req.query);
+    res.setHeader("Cache-Control", out.status === 200 ? "public, max-age=60" : "no-store");
+    return send(res, out);
+  });
+router.get("/stats/meta", arenaRead, stats(() => ArenaStatsService.meta()));
+router.get("/stats/series", arenaRead, stats((q) => ArenaStatsService.series(q)));
+router.get("/stats/ranking", arenaRead, stats((q) => ArenaStatsService.ranking(q)));
+router.get("/stats/environments", arenaRead, stats((q) => ArenaStatsService.environments(q)));
+router.get("/stats/heatmap", arenaRead, stats((q) => ArenaStatsService.heatmap(q)));
+router.get("/stats/preferences", arenaRead, stats((q) => ArenaStatsService.preferences(q)));
+
 // ─── Canal interno (servidor de jogo) ────────────────────────────────────────
 // Ordem: limite do serviço → assinatura do serviço → corpo pequeno → guard do
 // usuário (identidade e elegibilidade ATUAIS do titular).
@@ -109,6 +180,21 @@ router.post(
   smallBody,
   arenaAuth,
   asyncHandler(async (req, res) => send(res, await ArenaTerritoryService.checkpoint(req.arena, req.body)))
+);
+
+// Presença (M08): o servidor de jogo manda, fora do tick, uma batida por minuto.
+// Corpo maior que o resto do canal (até 10 mil jogadores), ainda limitado.
+const MAX_PRESENCE_BODY = 1024 * 1024;
+router.post(
+  "/internal/presence",
+  arenaInternal,
+  (req, res, next) => {
+    const len = Number(req.headers["content-length"] || 0);
+    if (len > MAX_PRESENCE_BODY) return res.status(413).json({ error: "Corpo grande demais", code: "payload_too_large" });
+    return next();
+  },
+  arenaService,
+  asyncHandler(async (req, res) => send(res, await ArenaPresenceService.ingest(req.body)))
 );
 
 router.get(

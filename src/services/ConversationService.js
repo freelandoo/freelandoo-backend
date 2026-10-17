@@ -10,6 +10,7 @@ const {
 } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const ProfileStorage = require("../storages/ProfileStorage");
+const { assertDirectAllowed, assertSenderEligible } = require("../utils/socialPolicy");
 const WebhookDispatchService = require("./WebhookDispatchService");
 const { processConversationAudio } = require("../utils/mediaJobs");
 const {
@@ -33,6 +34,15 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_MESSAGES = 30;
 const RATE_LIMIT_MAX_AUDIO = 8;
 const MAX_BODY_LENGTH = 4000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// O que vai para a SALA da conversa (todos os participantes). sent_via é
+// privado do remetente (selo "via atendimento"), igual à listagem.
+function mapMessageForRoom(row) {
+  const m = mapMessage(row);
+  if (m) delete m.sent_via;
+  return m;
+}
 
 function normalizeActorType(value) {
   const t = String(value || "").trim().toLowerCase();
@@ -263,6 +273,16 @@ class ConversationService {
             await client.query("ROLLBACK");
             return { error: "Não é possível abrir conversa consigo mesmo" };
           }
+          // Régua atual (mig 283): contas elegíveis, menor que aceita e sem
+          // bloqueio entre as duas contas.
+          const denied = await assertDirectAllowed(client, {
+            senderUserId: user.id_user,
+            targetEntityId: targetRes.target_id,
+          });
+          if (denied) {
+            await client.query("ROLLBACK");
+            return denied;
+          }
 
           const { conversation, created } = await ConversationStorage.getOrCreate(
             client,
@@ -382,6 +402,13 @@ class ConversationService {
         if (body.length > MAX_BODY_LENGTH) {
           return { error: `Mensagem inválida (máximo ${MAX_BODY_LENGTH} caracteres)` };
         }
+        // Idempotência (mig 283): o mesmo id do cliente, do mesmo remetente,
+        // na mesma conversa, é UMA mensagem — clique repetido, retry e
+        // resposta perdida não duplicam.
+        const clientMessageId = payload?.client_message_id ?? null;
+        if (clientMessageId !== null && (typeof clientMessageId !== "string" || !UUID_RE.test(clientMessageId))) {
+          return { error: "client_message_id inválido", statusCode: 400 };
+        }
 
         // Supervisão: menor com can_message=FALSE não pode enviar.
         const minorSendBlock = await assertMinorPermission(user?.id_user, "can_message");
@@ -420,6 +447,44 @@ class ConversationService {
               await client.query("ROLLBACK");
               return { error: "Sem permissão para esta conversa" };
             }
+            // Repetição do mesmo envio: devolve a mensagem original, sem
+            // gravar nem notificar de novo.
+            if (clientMessageId) {
+              const prior = await MessageStorage.findByClientId(client, {
+                id_conversation: conv.id_conversation,
+                sender_entity_id: actorRes.actor_id,
+                client_message_id: clientMessageId,
+              });
+              if (prior) {
+                await client.query("ROLLBACK");
+                return {
+                  message: mapMessage(prior),
+                  duplicate: true,
+                  conversation: {
+                    id_conversation: conv.id_conversation,
+                    other_entity_id: await ConversationStorage.otherEntityId(conv, actorRes.actor_id),
+                  },
+                };
+              }
+            }
+            // Conversa existente também passa pela régua ATUAL: antes, só a
+            // conversa nova conferia o destinatário.
+            if ((conv.kind || "direct") === "direct") {
+              const otherId = await ConversationStorage.otherEntityId(conv, actorRes.actor_id);
+              const denied = otherId
+                ? await assertDirectAllowed(client, { senderUserId: user.id_user, targetEntityId: otherId })
+                : null;
+              if (denied) {
+                await client.query("ROLLBACK");
+                return denied;
+              }
+            } else {
+              const denied = await assertSenderEligible(client, user.id_user);
+              if (denied) {
+                await client.query("ROLLBACK");
+                return denied;
+              }
+            }
           } else {
             const targetRes = await resolveTarget(client, payload);
             if (targetRes.error) {
@@ -430,18 +495,14 @@ class ConversationService {
               await client.query("ROLLBACK");
               return { error: "Não é possível enviar mensagem para si mesmo" };
             }
-            // Supervisão: bloqueia envio para menor com can_receive_messages=FALSE.
-            const targetProfile = await ProfileStorage.getProfileById(client, targetRes.target_id);
-            if (targetProfile?.id_user && !targetProfile.is_clan) {
-              const recvBlock = await assertMinorPermission(
-                targetProfile.id_user,
-                "can_receive_messages",
-                client
-              );
-              if (recvBlock) {
-                await client.query("ROLLBACK");
-                return { error: "Destinatário não está aceitando mensagens", status: 403 };
-              }
+            // Régua atual: menor que aceita, contas elegíveis, sem bloqueio.
+            const denied = await assertDirectAllowed(client, {
+              senderUserId: user.id_user,
+              targetEntityId: targetRes.target_id,
+            });
+            if (denied) {
+              await client.query("ROLLBACK");
+              return denied;
             }
             const created = await ConversationStorage.getOrCreate(
               client,
@@ -453,13 +514,36 @@ class ConversationService {
 
           // opts NUNCA vem do body HTTP — só o ExtMessagingService passa
           // { sent_via: "api" } (selo "via atendimento" do dono).
-          const message = await MessageStorage.create(client, {
-            id_conversation: conv.id_conversation,
-            sender_entity_id: actorRes.actor_id,
-            sender_user_id: user.id_user,
-            body,
-            sent_via: SENT_VIA.has(opts.sent_via) ? opts.sent_via : "app",
-          });
+          let message;
+          try {
+            message = await MessageStorage.create(client, {
+              id_conversation: conv.id_conversation,
+              sender_entity_id: actorRes.actor_id,
+              sender_user_id: user.id_user,
+              body,
+              sent_via: SENT_VIA.has(opts.sent_via) ? opts.sent_via : "app",
+              client_message_id: clientMessageId,
+            });
+          } catch (err) {
+            // Dois envios simultâneos do mesmo id: o segundo perde a corrida
+            // no índice único e devolve a mensagem do primeiro.
+            if (err?.code === "23505" && clientMessageId) {
+              await client.query("ROLLBACK");
+              const prior = await MessageStorage.findByClientId(pool, {
+                id_conversation: conv.id_conversation,
+                sender_entity_id: actorRes.actor_id,
+                client_message_id: clientMessageId,
+              });
+              if (prior) {
+                return {
+                  message: mapMessage(prior),
+                  duplicate: true,
+                  conversation: { id_conversation: conv.id_conversation, other_entity_id: null },
+                };
+              }
+            }
+            throw err;
+          }
 
           await ConversationStorage.updateLastMessage(client, {
             id_conversation: conv.id_conversation,
@@ -485,7 +569,7 @@ class ConversationService {
           // recebe sem precisar pollar) e dispara nav-counts:changed para os
           // dois lados atualizarem o badge.
           try {
-            const mapped = mapMessage(message);
+            const mapped = mapMessageForRoom(message);
             realtime.emitToConversation(conv.id_conversation, "conversation:message", {
               id_conversation: conv.id_conversation,
               message: mapped,
@@ -708,6 +792,16 @@ class ConversationService {
             actorRes.actor_id
           );
           if (otherEntityIdInTx) {
+            const deniedAudio = await assertDirectAllowed(client, {
+              senderUserId: user.id_user,
+              targetEntityId: otherEntityIdInTx,
+            });
+            if (deniedAudio) {
+              await client.query("ROLLBACK");
+              return deniedAudio;
+            }
+          }
+          if (otherEntityIdInTx) {
             const otherProfile = await ProfileStorage.getProfileById(client, otherEntityIdInTx);
             if (otherProfile?.id_user && !otherProfile.is_clan) {
               const recvBlock = await assertMinorPermission(
@@ -907,10 +1001,25 @@ class ConversationService {
         });
         if (!part) return { error: "Sem permissão para esta conversa" };
 
-        const updated = await ConversationStorage.markRead(pool, {
-          id_conversation: payload.id_conversation,
-          entity_id: actorRes.actor_id,
-        });
+        // Leitura PRECISA (mig 283 / M09): com `up_to_message_id`, a leitura
+        // avança só até a mensagem efetivamente apresentada — mensagem que
+        // chegou depois continua não lida. Sem ele, o comportamento antigo
+        // (zera a conversa), que é o que a tela de /mensagens já faz.
+        const upTo = payload?.up_to_message_id ?? null;
+        if (upTo !== null && (typeof upTo !== "string" || !UUID_RE.test(upTo))) {
+          return { error: "up_to_message_id inválido", statusCode: 400 };
+        }
+        const updated = upTo
+          ? await ConversationStorage.markReadUpTo(pool, {
+              id_conversation: payload.id_conversation,
+              entity_id: actorRes.actor_id,
+              id_message: upTo,
+            })
+          : await ConversationStorage.markRead(pool, {
+              id_conversation: payload.id_conversation,
+              entity_id: actorRes.actor_id,
+            });
+        if (!updated) return { error: "Mensagem não pertence à conversa", statusCode: 404 };
 
         return {
           unread_count: updated?.unread_count || 0,
@@ -1043,6 +1152,7 @@ class ConversationService {
         if (!owned[0]) return { error: "Sem permissão para apagar esta conversa" };
 
         const deleted = await ConversationStorage.softDelete(pool, id_conversation);
+        realtime.revalidateConversation(id_conversation).catch(() => {});
         if (!deleted) return { error: "Conversa já estava apagada" };
 
         return { deleted: true, id_conversation };

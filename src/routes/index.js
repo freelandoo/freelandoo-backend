@@ -39,6 +39,7 @@ const clanRoutes = require("./clan.routes");
 const clanPublicRoutes = require("./clanPublic.routes");
 const communityRoutes = require("./community.routes");
 const arenaRoutes = require("./arena.routes");
+const socialSafetyRoutes = require("./socialSafety.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
 const prospectRoutes = require("./prospect.routes");
 const prospectAdminRoutes = require("./prospectAdmin.routes");
@@ -167,6 +168,10 @@ module.exports = (app) => {
   // fazem `router.use(requireFeature(...))`, que intercepta QUALQUER caminho
   // que chegue até eles — com a flag deles desligada, /arena responderia 403.
   app.use("/arena", arenaRoutes);
+  // Bloqueio entre usuários + revisão de denúncia de DM (mig 283). Cedo pelo
+  // mesmo motivo da Arena: roteadores de raiz com requireFeature interceptam.
+  app.use("/me/blocks", socialSafetyRoutes.blocks);
+  app.use("/admin/message-reports", socialSafetyRoutes.adminReports);
   app.use("/stripe", stripeRoutes);
   app.use("/admin/annual-fee", annualFeeAdminRoutes);
   app.use("/public", publicPricingRoutes);

@@ -80,6 +80,12 @@ const server = app.listen(PORT, () => {
   const ArenaTerritoryService = require("./src/services/ArenaTerritoryService");
   ArenaTerritoryService.startSweeper();
 
+  // Arena (M08, mig 284): consolida os únicos de presença das horas/dias UTC
+  // encerrados e apaga os membros transitórios depois de 48 h. Idempotente.
+  // Sem ele a série "ativos no período" fica sem dado e a tabela de membros
+  // (identificadores transitórios) cresce sem prazo.
+  require("./src/services/ArenaPresenceService").startSweeper();
+
   // "Cancelar no fim do ciclo" (mig 251) — a capacidade que só o Stripe tem
   // nativamente. Fora dele, cancelar é IMEDIATO, então a data do ciclo pago é
   // agendada e executada aqui.

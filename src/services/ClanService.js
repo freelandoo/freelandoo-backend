@@ -1305,6 +1305,7 @@ class ClanService {
       id_conversation: group.id_conversation,
       profile_id,
     });
+    require("../realtime/socket").revalidateConversation(group.id_conversation).catch(() => {});
     return group;
   }
 }

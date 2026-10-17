@@ -115,11 +115,18 @@ class ConversationStorage {
         entity_b_type, entity_b_id
       )
       VALUES ($1, 'profile', $2, 'profile', $3)
+      ON CONFLICT (conversation_key) WHERE deleted_at IS NULL DO NOTHING
       RETURNING *
       `,
       [key, pair.entity_a_id, pair.entity_b_id]
     );
     const conversation = convRows[0];
+    // Dois cliques simultâneos: o índice único parcial do par decide, e quem
+    // perde a corrida lê a conversa do vencedor em vez de estourar 23505.
+    if (!conversation) {
+      const winner = await this.findActiveByPair(conn, idA, idB);
+      return { conversation: winner, created: false };
+    }
 
     await conn.query(
       `
@@ -183,6 +190,39 @@ class ConversationStorage {
        RETURNING *
       `,
       [id_conversation, entity_id]
+    );
+    return rows[0] || null;
+  }
+
+  /**
+   * Leitura até UMA mensagem (a última apresentada). O não-lido passa a ser o
+   * que os OUTROS mandaram depois dela; a leitura nunca anda para trás.
+   * Devolve null se a mensagem não é desta conversa.
+   */
+  static async markReadUpTo(conn, { id_conversation, entity_id, id_message }) {
+    const { rows } = await conn.query(
+      `
+      WITH ref AS (
+        SELECT created_at FROM public.tb_message
+         WHERE id_message = $3 AND id_conversation = $1
+      )
+      UPDATE public.tb_conversation_participant cp
+         SET last_read_at = GREATEST(COALESCE(cp.last_read_at, 'epoch'::timestamptz), ref.created_at),
+             unread_count = (
+               SELECT COUNT(*)::int FROM public.tb_message m
+                WHERE m.id_conversation = $1
+                  AND m.deleted_at IS NULL
+                  AND m.sender_entity_id <> $2
+                  AND m.created_at > GREATEST(COALESCE(cp.last_read_at, 'epoch'::timestamptz), ref.created_at)
+             ),
+             updated_at = NOW()
+        FROM ref
+       WHERE cp.id_conversation = $1
+         AND cp.entity_id = $2
+         AND cp.deleted_at IS NULL
+       RETURNING cp.*
+      `,
+      [id_conversation, entity_id, id_message]
     );
     return rows[0] || null;
   }
