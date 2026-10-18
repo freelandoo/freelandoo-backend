@@ -1,6 +1,6 @@
 // Fixtures SINTÉTICAS para o teste de navegador da Arena (Módulos 04/05).
 //
-//   node test/arena-e2e-fixtures.js seed            → cria 2 contas + catálogo, imprime JSON
+//   node test/arena-e2e-fixtures.js seed [n]        → cria n contas (padrão 2, máx 8) + catálogo, imprime JSON
 //   node test/arena-e2e-fixtures.js block <email>   → bloqueia a conta (blocked_at = agora)
 //   node test/arena-e2e-fixtures.js state <email>   → imprime jogador/preferências do banco
 //
@@ -50,7 +50,8 @@ async function main() {
       const password = `Teste-${stamp}-senha`;
       const hash = await bcrypt.hash(password, 6);
       const accounts = [];
-      for (const tag of ["a", "b"]) {
+      const count = Math.max(2, Math.min(8, Number(arg) || 2));
+      for (const tag of "abcdefgh".slice(0, count).split("")) {
         const email = `arena.e2e.${tag}.${stamp}@teste.invalid`;
         const r = await db.query(
           `INSERT INTO public.tb_user (nome, username, email, senha, ativo, onboarding_tour_done)

@@ -18,6 +18,13 @@
 //   POST   /arena/internal/checkpoints          serviço + guard → checkpoint (posição atestada)
 //   GET    /arena/internal/territory            serviço → feed agregado por revisão
 //   POST   /arena/internal/visits               serviço + guard → visita a poste (M12)
+//   POST   /arena/internal/workers/register     serviço → registro do processo de jogo (época nova)
+//   POST   /arena/internal/workers/heartbeat    serviço → vida, salas, contas; resposta: largar/revogar
+//   POST   /arena/internal/admissions/consume   serviço + guard → confere o ticket (uso único)
+//
+// Diretório de salas (mig 288 — só com mais de um servidor de jogo):
+//   POST   /arena/rooms/admission               guard  { environmentId, shard?, strict?, protocolVersion }
+//   GET    /arena/rooms?environmentId           público → salas, ocupação, vagas (sem identidade)
 //
 // Outdoors (M11) e missões (M12):
 //   GET    /arena/ads/placements?environmentId  público → o que cada espaço mostra AGORA
@@ -46,6 +53,7 @@ const ArenaPresenceService = require("../services/ArenaPresenceService");
 const ArenaAvatarService = require("../services/ArenaAvatarService");
 const ArenaAdService = require("../services/ArenaAdService");
 const ArenaMissionService = require("../services/ArenaMissionService");
+const ArenaDirectoryService = require("../services/ArenaDirectoryService");
 
 const router = express.Router();
 const arenaAuth = createArenaAuth({ pool });
@@ -292,6 +300,59 @@ router.get(
   asyncHandler(async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     return send(res, await ArenaTerritoryService.feed(req.query));
+  })
+);
+
+// ─── Diretório de salas (mig 288) ───────────────────────────────────────────
+
+router.post(
+  "/internal/workers/register",
+  arenaInternal,
+  arenaService,
+  smallBody,
+  asyncHandler(async (req, res) => send(res, await ArenaDirectoryService.registerWorker(req.body)))
+);
+
+// Batida: lista de salas e contas do processo — maior que o resto do canal.
+const MAX_HEARTBEAT_BODY = 2 * 1024 * 1024;
+router.post(
+  "/internal/workers/heartbeat",
+  arenaInternal,
+  (req, res, next) => {
+    const len = Number(req.headers["content-length"] || 0);
+    if (len > MAX_HEARTBEAT_BODY) return res.status(413).json({ error: "Corpo grande demais", code: "payload_too_large" });
+    return next();
+  },
+  arenaService,
+  asyncHandler(async (req, res) => send(res, await ArenaDirectoryService.heartbeat(req.body)))
+);
+
+router.post(
+  "/internal/admissions/consume",
+  arenaInternal,
+  arenaService,
+  smallBody,
+  arenaAuth,
+  asyncHandler(async (req, res) => send(res, await ArenaDirectoryService.consumeAdmission(req.arena, req.body)))
+);
+
+router.post(
+  "/rooms/admission",
+  arenaWrite,
+  smallBody,
+  arenaAuth,
+  asyncHandler(async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    return send(res, await ArenaDirectoryService.admit(req.arena, req.body));
+  })
+);
+
+router.get(
+  "/rooms",
+  arenaRead,
+  asyncHandler(async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    return send(res, await ArenaDirectoryService.listRooms(req.query));
   })
 );
 

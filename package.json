@@ -57,7 +57,8 @@
     "test:arena-social": "node test/arena-social.e2e.js",
     "test:arena-stats": "node test/arena-stats.e2e.js",
     "test:arena-avatars": "node test/arena-avatars.e2e.js",
-    "test:arena-ads": "node test/arena-ads-missions.e2e.js"
+    "test:arena-ads": "node test/arena-ads-missions.e2e.js",
+    "test:arena-directory": "node test/arena-directory.e2e.js"
   },
   "repository": {
     "type": "git",
