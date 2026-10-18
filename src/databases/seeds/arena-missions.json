@@ -3,7 +3,18 @@
   "ruleVersion": 1,
   "levels": {
     "version": 1,
-    "thresholds": [0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200],
+    "thresholds": [
+      0,
+      100,
+      250,
+      450,
+      700,
+      1000,
+      1400,
+      1900,
+      2500,
+      3200
+    ],
     "stepAfter": 800
   },
   "boost": {
@@ -55,6 +66,20 @@
       "requirement": "video_campaign",
       "voluntary": true,
       "order": 3
+    },
+    {
+      "missionKey": "race-daily",
+      "version": 1,
+      "status": "active",
+      "factType": "race_finished",
+      "objective": "count",
+      "target": 1,
+      "cycle": "daily_utc",
+      "rewardXp": 50,
+      "x2Eligible": true,
+      "requirement": "game_server",
+      "voluntary": false,
+      "order": 4
     }
   ]
 }

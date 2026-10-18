@@ -5,7 +5,7 @@
 // Poléns e nunca toca XP global, de perfil, de clã ou de comunidade.
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const FACT_TYPES = ["checkpoint_accepted", "post_visited", "video_completed"];
+const FACT_TYPES = ["checkpoint_accepted", "post_visited", "video_completed", "race_finished"];
 const OBJECTIVES = ["count", "distinct"];
 const CYCLES = ["daily_utc"];
 const REQUIREMENTS = ["none", "game_server", "competitive_posts", "video_campaign"];

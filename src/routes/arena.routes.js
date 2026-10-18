@@ -54,6 +54,7 @@ const ArenaAvatarService = require("../services/ArenaAvatarService");
 const ArenaAdService = require("../services/ArenaAdService");
 const ArenaMissionService = require("../services/ArenaMissionService");
 const ArenaDirectoryService = require("../services/ArenaDirectoryService");
+const ArenaMinigameService = require("../services/ArenaMinigameService");
 
 const router = express.Router();
 const arenaAuth = createArenaAuth({ pool });
@@ -301,6 +302,16 @@ router.get(
     res.setHeader("Cache-Control", "no-store");
     return send(res, await ArenaTerritoryService.feed(req.query));
   })
+);
+
+// Resultado de minigame (M14, mig 289): a autoridade é o servidor de jogo; sem
+// guard de usuário (o resultado é de até 4 contas, resolvidas pelo playerId).
+router.post(
+  "/internal/minigames/results",
+  arenaInternal,
+  arenaService,
+  smallBody,
+  asyncHandler(async (req, res) => send(res, await ArenaMinigameService.recordResult(req.body)))
 );
 
 // ─── Diretório de salas (mig 288) ───────────────────────────────────────────
