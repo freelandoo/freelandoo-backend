@@ -369,7 +369,10 @@ async function admit(ctx, body, { db = pool } = {}) {
     // Reservas vivas por processo: entram no teto de jogadores dele.
     const takenRows = (await client.query(WORKER_TAKEN, [ctx.id_user])).rows;
     const takenOf = new Map(takenRows.map((r) => [r.worker_id, r.n]));
-    const workerHasSpace = (w) => !!w && Math.max(w.players, takenOf.get(w.worker_id) ?? 0) < w.max_players;
+    const loadOf = (w) => Math.max(w.players, takenOf.get(w.worker_id) ?? 0);
+    const workerHasSpace = (w) => !!w && loadOf(w) < w.max_players;
+    // Menos carregado pela carga EFETIVA (a reportada atrasa até a próxima batida).
+    const leastLoaded = () => candidates.filter((x) => workerHasSpace(x) && x.rooms < x.max_rooms).sort((p, q) => loadOf(p) - loadOf(q) || p.worker_id.localeCompare(q.worker_id))[0];
 
     let room = null;
     let moved = false;
@@ -387,7 +390,7 @@ async function admit(ctx, body, { db = pool } = {}) {
         if (asked) return fail(409, "room_full", "Esta sala está cheia");
       }
       if (!room && want.strict && !asked) {
-        const w = candidates.filter((x) => workerHasSpace(x) && x.rooms < x.max_rooms).sort((p, q) => p.players - q.players)[0];
+        const w = leastLoaded();
         if (!w) return fail(503, "server_full", "Todas as salas estão cheias agora", { retryAfterMs: 10_000 });
         room = await createRoom(client, b.environmentId, want.shard, w);
       }
@@ -397,7 +400,7 @@ async function admit(ctx, body, { db = pool } = {}) {
       room = rooms.find((r) => hasRoom(r) && onCandidate(r) && workerHasSpace(byId.get(r.worker_id))) ?? null;
     }
     if (!room) {
-      const w = candidates.filter((x) => workerHasSpace(x) && x.rooms < x.max_rooms).sort((p, q) => p.players - q.players)[0];
+      const w = leastLoaded();
       if (!w) {
         if (leaseWorker && workers.length > 1) {
           await client.query(`UPDATE public.tb_arena_account_lease SET revoke_requested_at = clock_timestamp() WHERE id_user = $1`, [ctx.id_user]);
