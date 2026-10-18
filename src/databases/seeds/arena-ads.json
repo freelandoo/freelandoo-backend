@@ -3,8 +3,8 @@
   "campaigns": [
     {
       "code": "demo-arena",
-      "sponsorLabel": "Demonstração Freelandoo Arena",
-      "responsible": "Equipe Freelandoo Arena (demonstração interna)",
+      "sponsorLabel": "Demonstração Meu Mundo",
+      "responsible": "Equipe Meu Mundo (demonstração interna)",
       "isDemo": true,
       "startsAt": "2026-10-18T00:00:00Z",
       "endsAt": "2027-10-18T00:00:00Z",
@@ -12,8 +12,8 @@
     },
     {
       "code": "demo-arena-b",
-      "sponsorLabel": "Demonstração Freelandoo Arena",
-      "responsible": "Equipe Freelandoo Arena (demonstração interna)",
+      "sponsorLabel": "Demonstração Meu Mundo",
+      "responsible": "Equipe Meu Mundo (demonstração interna)",
       "isDemo": true,
       "startsAt": "2026-10-18T00:00:00Z",
       "endsAt": "2027-10-18T00:00:00Z",
@@ -61,11 +61,11 @@
         }
       },
       "alt": "FREELANDOO ARENA — Campanha de demonstração",
-      "headline": "Campanha de demonstração da Freelandoo Arena",
+      "headline": "Campanha de demonstração do Meu Mundo",
       "body": "Este espaço mostra uma campanha própria de teste. Não há anunciante nem contrato comercial.",
       "ctaLabel": "Conhecer a Freelandoo",
       "ctaUrl": "https://www.freelandoo.com.br/",
-      "approvedBy": "Equipe Freelandoo Arena (criativo próprio de demonstração)"
+      "approvedBy": "Equipe Meu Mundo (criativo próprio de demonstração)"
     },
     {
       "campaignCode": "demo-arena-b",
@@ -94,7 +94,7 @@
       "body": "Conteúdo próprio de teste para validar dois outdoors iguais com campanhas diferentes.",
       "ctaLabel": null,
       "ctaUrl": null,
-      "approvedBy": "Equipe Freelandoo Arena (criativo próprio de demonstração)"
+      "approvedBy": "Equipe Meu Mundo (criativo próprio de demonstração)"
     }
   ]
 }

@@ -204,7 +204,7 @@ function parseRange(query, granularity) {
   if (to <= from) return { error: "to <= from" };
   const buckets = (to - from) / lim.stepMs;
   if (buckets > lim.maxBuckets) return { error: `período maior que ${lim.maxBuckets} buckets` };
-  if (from < Date.parse("2026-01-01T00:00:00Z")) return { error: "from antes do início da Arena" };
+  if (from < Date.parse("2026-01-01T00:00:00Z")) return { error: "from antes do início do Meu Mundo" };
   return { from: new Date(from), to: new Date(to), buckets, stepMs: lim.stepMs };
 }
 
