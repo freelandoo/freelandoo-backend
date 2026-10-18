@@ -86,6 +86,13 @@ const server = app.listen(PORT, () => {
   // (identificadores transitórios) cresce sem prazo.
   require("./src/services/ArenaPresenceService").startSweeper();
 
+  // Arena (M11/M12, migs 286/287): sessões de vídeo vencidas expiram e a
+  // retenção de 90 dias dos sinais é aplicada; os FATOS pendentes (outbox) são
+  // processados — é o que recupera missão e XP depois de um reinício ou de uma
+  // falha entre o commit do fato e a concessão.
+  require("./src/services/ArenaAdService").startSweeper();
+  require("./src/services/ArenaMissionService").startSweeper();
+
   // "Cancelar no fim do ciclo" (mig 251) — a capacidade que só o Stripe tem
   // nativamente. Fora dele, cancelar é IMEDIATO, então a data do ciclo pago é
   // agendada e executada aqui.

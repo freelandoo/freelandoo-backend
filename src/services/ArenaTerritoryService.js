@@ -29,6 +29,7 @@ const crypto = require("node:crypto");
 const pool = require("../databases");
 const ArenaStorage = require("../storages/ArenaStorage");
 const Territory = require("../storages/ArenaTerritoryStorage");
+const Missions = require("../storages/ArenaMissionStorage");
 const rules = require("../utils/arenaRules");
 const { createLogger } = require("../utils/logger");
 
@@ -234,8 +235,20 @@ async function checkpoint(ctx, body, { db = pool } = {}) {
     const counts = await Territory.getCounts(client, key);
     const d = decide(counts);
     const updated = await Territory.updateState(client, key, d);
+    // Fato para as missões (M12), NA MESMA transação do checkpoint aceito: não
+    // se perde entre o commit e o processamento. Sem categoria nem equipe —
+    // a missão não precisa da preferência (dado sensível) para contar.
+    await Missions.insertFact(client, {
+      id_user: ctx.id_user,
+      fact_type: "checkpoint_accepted",
+      source_ref: inserted.id_checkpoint,
+      environment_id: key.environment_id,
+      occurred_at: inserted.accepted_at,
+      payload: { postId: key.post_id, windowStart: iso(key.window_start) },
+    });
     await client.query("COMMIT");
     log.info("checkpoint.accepted", { environmentId: key.environment_id, postId: key.post_id, categoryId: key.category_id });
+    void require("./ArenaMissionService").kick(ctx.id_user, { db });
     return okRes({
       result: "accepted",
       requestId: b.requestId,

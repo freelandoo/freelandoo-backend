@@ -17,6 +17,17 @@
 //   POST   /arena/internal/session              serviço + guard → mesma resposta de /session
 //   POST   /arena/internal/checkpoints          serviço + guard → checkpoint (posição atestada)
 //   GET    /arena/internal/territory            serviço → feed agregado por revisão
+//   POST   /arena/internal/visits               serviço + guard → visita a poste (M12)
+//
+// Outdoors (M11) e missões (M12):
+//   GET    /arena/ads/placements?environmentId  público → o que cada espaço mostra AGORA
+//   GET    /arena/ads/placements/:placementId   público → conteúdo do modal
+//   POST   /arena/ads/signals                   guard  { events[] } (renderizado/exposição/modal/CTA)
+//   POST   /arena/ads/video-sessions            guard  { placementId, requestId }
+//   POST   /arena/ads/video-sessions/:id/signals guard { seq, nonce, playing, visible, rate, mediaMs, flags }
+//   POST   /arena/ads/video-sessions/:id/close  guard  { nonce }
+//   GET    /arena/me/missions                   guard → missões, XP da Arena, bônus
+//   GET    /arena/me/xp/grants                  guard → histórico de concessões
 //
 // A identidade SEMPRE vem do token (req.arena.id_user). Nenhuma rota aceita
 // id_user, playerId ou e-mail no corpo ou na querystring.
@@ -33,6 +44,8 @@ const ArenaSocialService = require("../services/ArenaSocialService");
 const ArenaStatsService = require("../services/ArenaStatsService");
 const ArenaPresenceService = require("../services/ArenaPresenceService");
 const ArenaAvatarService = require("../services/ArenaAvatarService");
+const ArenaAdService = require("../services/ArenaAdService");
+const ArenaMissionService = require("../services/ArenaMissionService");
 
 const router = express.Router();
 const arenaAuth = createArenaAuth({ pool });
@@ -177,7 +190,66 @@ router.get("/stats/environments", arenaRead, stats((q) => ArenaStatsService.envi
 router.get("/stats/heatmap", arenaRead, stats((q) => ArenaStatsService.heatmap(q)));
 router.get("/stats/preferences", arenaRead, stats((q) => ArenaStatsService.preferences(q)));
 
+// ─── Outdoors e mídia (Módulo 11) ───────────────────────────────────────────
+// Entrega PÚBLICA (sem dado pessoal; só o que é aprovado e está no ar agora).
+router.get(
+  "/ads/placements",
+  arenaRead,
+  asyncHandler(async (req, res) => {
+    const out = await ArenaAdService.listPlacements(req.query);
+    res.setHeader("Cache-Control", out.status === 200 ? "public, max-age=30" : "no-store");
+    return send(res, out);
+  })
+);
+router.get(
+  "/ads/placements/:placementId",
+  arenaRead,
+  asyncHandler(async (req, res) => {
+    const out = await ArenaAdService.getPlacement(req.params.placementId);
+    res.setHeader("Cache-Control", out.status === 200 ? "public, max-age=30" : "no-store");
+    return send(res, out);
+  })
+);
+// Pessoal: sinais do cliente (lote de até 20, ~4 KB) e a sessão de vídeo voluntária.
+const MAX_SIGNAL_BODY = 8 * 1024;
+function signalBody(req, res, next) {
+  const len = Number(req.headers["content-length"] || 0);
+  if (len > MAX_SIGNAL_BODY) return res.status(413).json({ error: "Corpo grande demais", code: "payload_too_large" });
+  return next();
+}
+router.post("/ads/signals", arenaWrite, signalBody, arenaAuth, asyncHandler(async (req, res) => send(res, await ArenaAdService.ingestSignals(req.arena, req.body))));
+router.post("/ads/video-sessions", arenaWrite, smallBody, arenaAuth, asyncHandler(async (req, res) => send(res, await ArenaAdService.createVideoSession(req.arena, req.body))));
+router.post(
+  "/ads/video-sessions/:id/signals",
+  arenaWrite,
+  smallBody,
+  arenaAuth,
+  asyncHandler(async (req, res) => send(res, await ArenaAdService.videoSignal(req.arena, req.params.id, req.body)))
+);
+router.post(
+  "/ads/video-sessions/:id/close",
+  arenaWrite,
+  smallBody,
+  arenaAuth,
+  asyncHandler(async (req, res) => send(res, await ArenaAdService.closeVideoSession(req.arena, req.params.id, req.body)))
+);
+
+// ─── Missões e XP da Arena (Módulo 12) — pessoal ────────────────────────────
+router.get("/me/missions", arenaRead, arenaAuth, asyncHandler(async (req, res) => send(res, await ArenaMissionService.getMine(req.arena))));
+router.get("/me/xp/grants", arenaRead, arenaAuth, asyncHandler(async (req, res) => send(res, await ArenaMissionService.history(req.arena, req.query))));
+
 // ─── Canal interno (servidor de jogo) ────────────────────────────────────────
+
+// Visita a poste (M12): posição AUTORITATIVA do servidor de jogo, conferida
+// contra o registro canônico. Não é checkpoint e não toca território.
+router.post(
+  "/internal/visits",
+  arenaInternal,
+  arenaService,
+  smallBody,
+  arenaAuth,
+  asyncHandler(async (req, res) => send(res, await ArenaMissionService.recordVisit(req.arena, req.body)))
+);
 // Ordem: limite do serviço → assinatura do serviço → corpo pequeno → guard do
 // usuário (identidade e elegibilidade ATUAIS do titular).
 
