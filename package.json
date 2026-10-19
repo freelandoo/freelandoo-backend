@@ -51,7 +51,8 @@
     "test:pricing": "node test/pricing-restructure.e2e.js",
     "test:verified": "node test/verified-badge.e2e.js",
     "test:market-report": "node test/market-report.e2e.js",
-    "test:store-cart": "node test/store-cart.e2e.js"
+    "test:store-cart": "node test/store-cart.e2e.js",
+    "test:meu-mundo": "node test/meu-mundo.e2e.js"
   },
   "repository": {
     "type": "git",
@@ -68,6 +69,9 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.972.0",
     "@aws-sdk/s3-request-presigner": "^3.1057.0",
+    "@colyseus/core": "0.18.19",
+    "@colyseus/schema": "5.0.41",
+    "@colyseus/ws-transport": "0.18.4",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
@@ -90,6 +94,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@colyseus/sdk": "0.18.5",
     "@eslint/js": "^9.15.0",
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^9.1.0",

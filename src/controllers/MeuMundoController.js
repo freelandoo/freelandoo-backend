@@ -1,10 +1,22 @@
-const { buildDemoNeighborhood } = require("../utils/meuMundoDemo");
+const MeuMundoService = require("../services/MeuMundoService");
 
-// Bairro demonstrativo da área administrativa. Sem banco nesta etapa: a
-// definição é montada em memória e nada é gravado.
-async function adminNeighborhood(_req, res) {
+// Bairro persistente do usuário (mig 291) + reserva na sala online.
+async function adminNeighborhood(req, res) {
   res.set("Cache-Control", "no-store");
-  return res.json(buildDemoNeighborhood());
+  return res.json(await MeuMundoService.enter(req.user.id_user));
 }
 
-module.exports = { adminNeighborhood };
+// Reconexão: revalida acesso e residência e devolve uma reserva nova.
+async function adminSession(req, res) {
+  res.set("Cache-Control", "no-store");
+  const out = await MeuMundoService.reconnect(req.user.id_user);
+  if (out.error) return res.status(out.statusCode || 400).json({ error: out.error });
+  return res.json(out);
+}
+
+async function adminStatus(_req, res) {
+  res.set("Cache-Control", "no-store");
+  return res.json(await MeuMundoService.status());
+}
+
+module.exports = { adminNeighborhood, adminSession, adminStatus };

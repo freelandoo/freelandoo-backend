@@ -1,0 +1,260 @@
+// test/meu-mundo.e2e.js — MEU MUNDO 3D: bairro persistente + multiplayer (mig 291)
+//
+// Roda: TEST_DATABASE_URL=postgres://...localhost.../mm npm run test:meu-mundo
+//
+// ⚠️ NÃO APONTA PARA PRODUÇÃO, e recusa qualquer host que não seja local: a
+// suíte COMITA de verdade (é o único jeito de provar concorrência entre
+// conexões diferentes e o "reinício do servidor"). Ela cria, num banco
+// descartável, um esqueleto mínimo de tb_user/tb_role/tb_user_role, aplica a
+// mig 291 e usa usuários SIMULADOS (username "mmtest_*").
+//
+// Prova: residência persistente e idempotente, concorrência pela mesma vaga,
+// limite de 20, criação de outro bairro, as restrições do banco, reinício
+// sem redistribuir, e — com clientes WebSocket reais do @colyseus/sdk — dois
+// moradores se vendo, isolamento entre bairros, bloqueio de quem não é admin
+// ou não mora ali, segunda sessão substituindo a primeira, troca de corpo
+// sincronizada, movimento validado no servidor e saída/reentrada sem duplicar.
+
+const url = process.env.TEST_DATABASE_URL;
+if (!url || !/@(localhost|127\.0\.0\.1)[:/]/.test(url)) {
+  console.error("TEST_DATABASE_URL precisa apontar para um Postgres LOCAL e descartável.");
+  process.exit(2);
+}
+process.env.DATABASE_URL = url;
+process.env.DATABASE_SSL = "false";
+
+const fs = require("fs");
+const path = require("path");
+const http = require("http");
+const crypto = require("crypto");
+
+let PASS = 0;
+let FAIL = 0;
+function check(label, cond, extra = "") {
+  if (cond && typeof cond.then === "function") throw new Error(`await antes: ${label}`);
+  if (cond) {
+    PASS++;
+    console.log(`✓ ${label}`);
+  } else {
+    FAIL++;
+    console.log(`✗ ${label}${extra ? " — " + extra : ""}`);
+  }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, ms = 4000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (fn()) return true;
+    await sleep(25);
+  }
+  return false;
+}
+
+async function bootstrap(pool) {
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+                    tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
+  await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
+  await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
+  const sql = fs.readFileSync(
+    path.join(__dirname, "../src/databases/migrations/291_meu_mundo_bairros.sql"),
+    "utf8"
+  );
+  await pool.query(sql);
+  await pool.query(sql); // idempotente
+}
+
+async function mkUser(pool, admin = true, tag = "") {
+  const id = crypto.randomUUID();
+  await pool.query(`INSERT INTO tb_user VALUES ($1, $2, $3)`, [
+    id,
+    `mmtest_${tag || id.slice(0, 6)}`,
+    `${id}@mm.test`,
+  ]);
+  if (admin) await pool.query(`INSERT INTO tb_user_role (id_user, id_role) VALUES ($1, 1)`, [id]);
+  return id;
+}
+
+async function expectViolation(pool, sql, params, label) {
+  try {
+    await pool.query(sql, params);
+    check(label, false, "o banco aceitou");
+  } catch (e) {
+    check(label, ["23505", "23514"].includes(e.code), e.code + " " + e.message);
+  }
+}
+
+(async () => {
+  const pool = require("../src/databases");
+  await bootstrap(pool);
+  const Storage = require("../src/storages/MeuMundoStorage");
+
+  // ── Persistência, idempotência e limite ──────────────────────────────────
+  const a = await mkUser(pool, true, "a");
+  const r1 = await Storage.ensureResidence(pool, a);
+  const r2 = await Storage.ensureResidence(pool, a);
+  check("primeira entrada cria a residência", r1.created === true);
+  check("repetir devolve a MESMA casa", r1.residence.id_house === r2.residence.id_house && !r2.created);
+
+  const same = await mkUser(pool, true, "same");
+  const burst = await Promise.all(Array.from({ length: 8 }, () => Storage.ensureResidence(pool, same)));
+  check(
+    "8 pedidos simultâneos do mesmo usuário → uma residência",
+    new Set(burst.map((b) => b.residence.id_house)).size === 1
+  );
+  const cnt = await pool.query(`SELECT COUNT(*)::int n FROM tb_mm_residence WHERE id_user=$1`, [same]);
+  check("…e uma linha só no banco", cnt.rows[0].n === 1);
+
+  const many = [];
+  for (let i = 0; i < 28; i++) many.push(await mkUser(pool, true, `m${i}`));
+  const res = await Promise.all(many.map((u) => Storage.ensureResidence(pool, u)));
+  const houses = res.map((r) => r.residence.id_house);
+  check("28 alocações concorrentes: nenhuma casa repetida", new Set(houses).size === 28);
+  const nbs = await pool.query(`SELECT seq FROM tb_mm_neighborhood ORDER BY seq`);
+  check("30 moradores = exatamente 2 bairros (sem bairro extra)", nbs.rows.length === 2, JSON.stringify(nbs.rows));
+  const per = await pool.query(`
+    SELECT n.seq, COUNT(r.*)::int n FROM tb_mm_neighborhood n
+      JOIN tb_mm_lot l ON l.id_neighborhood=n.id_neighborhood
+      JOIN tb_mm_house h ON h.id_lot=l.id_lot
+      LEFT JOIN tb_mm_residence r ON r.id_house=h.id_house AND r.status='active'
+     GROUP BY n.seq ORDER BY n.seq`);
+  check("bairro 01 lotado com 20, bairro 02 com 10", per.rows[0].n === 20 && per.rows[1].n === 10, JSON.stringify(per.rows));
+  const lots = await pool.query(`SELECT COUNT(*)::int n FROM tb_mm_lot`);
+  check("cada bairro tem 20 lotes", lots.rows[0].n === 40);
+
+  // ── Restrições do banco ──────────────────────────────────────────────────
+  const anyNb = (await pool.query(`SELECT id_neighborhood FROM tb_mm_neighborhood WHERE seq=1`)).rows[0].id_neighborhood;
+  const takenHouse = r1.residence.id_house;
+  const otherHouse = res[0].residence.id_house;
+  await expectViolation(pool, `INSERT INTO tb_mm_residence (id_user,id_house) VALUES ($1,$2)`, [a, otherHouse], "banco recusa 2ª residência ativa do mesmo usuário");
+  const b = await mkUser(pool, true, "b");
+  await expectViolation(pool, `INSERT INTO tb_mm_residence (id_user,id_house) VALUES ($1,$2)`, [b, takenHouse], "banco recusa 2º titular na mesma casa");
+  await expectViolation(pool, `INSERT INTO tb_mm_lot (id_neighborhood,lot_number) VALUES ($1,21)`, [anyNb], "banco recusa lote 21 (capacidade 20)");
+  await expectViolation(pool, `INSERT INTO tb_mm_lot (id_neighborhood,lot_number) VALUES ($1,5)`, [anyNb], "banco recusa lote duplicado no bairro");
+  await expectViolation(pool, `UPDATE tb_mm_neighborhood SET capacity=21 WHERE seq=1`, [], "banco recusa bairro com capacidade ≠ 20");
+
+  // ── "Reinício": pool novo, nada muda ─────────────────────────────────────
+  const { Pool } = require("pg");
+  const fresh = new Pool({ connectionString: url });
+  const before = (await Storage.getActiveResidence(pool, a)).id_house;
+  const after = (await Storage.getActiveResidence(fresh, a)).id_house;
+  check("reinício não redistribui moradores", before === after);
+  await fresh.end();
+
+  // ── Multiplayer real (Colyseus + WebSocket) ──────────────────────────────
+  const express = require("express");
+  const realtime = require("../src/realtime/meuMundo");
+  const Service = require("../src/services/MeuMundoService");
+  const server = http.createServer(express());
+  await new Promise((r) => server.listen(0, r));
+  realtime.init(server);
+  const port = server.address().port;
+  const { Client } = await import("@colyseus/sdk");
+  const client = new Client(`ws://127.0.0.1:${port}/mm-ws`);
+
+  // Moradores do bairro 01 (a, many[0]) e um do bairro 02.
+  const nb2user = res.find((r) => r.residence.seq === 2).residence.id_user;
+  const nb1user = many.find((u, i) => res[i].residence.seq === 1 && u !== a);
+  const join = async (u) => {
+    const out = await Service.enter(u);
+    return { out, room: await client.consumeSeatReservation(out.multiplayer.reservation) };
+  };
+  const A = await join(a);
+  const B = await join(nb1user);
+  const C = await join(nb2user);
+  check("entrada devolve bairro sem e-mail nem id de usuário", !JSON.stringify(A.out.neighborhood).match(/@mm\.test|[0-9a-f]{8}-[0-9a-f]{4}-/));
+  check("payload marca a própria casa", A.out.neighborhood.houses.filter((h) => h.isMine).length === 1);
+  check("payload separa moradores (titulares) de online", A.out.neighborhood.residents === 20);
+  check("mesmo bairro → mesma sala", A.room.roomId === B.room.roomId);
+  check("bairros diferentes → salas isoladas", A.room.roomId !== C.room.roomId);
+  await until(() => A.room.state.players.size === 2);
+  check("A vê B (dois jogadores no bairro)", A.room.state.players.size === 2);
+  await until(() => C.room.state.players.size === 1);
+  check("o bairro 02 não vê ninguém do 01", C.room.state.players.size === 1);
+  const pB = () => A.room.state.players.get(B.room.sessionId);
+  const keysB = Object.keys(pB().toJSON ? pB().toJSON() : pB());
+  check("estado só traz campos públicos", keysB.sort().join() === "body,facing,house,move,name,x,z", keysB.join());
+
+  // Movimento validado no servidor: intenção absurda não vira teleporte.
+  const x0 = pB().x;
+  const z0 = pB().z;
+  const t0 = Date.now();
+  for (let i = 0; i < 10; i++) {
+    B.room.send("in", { x: 999, z: 0, r: true });
+    await sleep(100);
+  }
+  B.room.send("in", { x: 0, z: 0 });
+  await until(() => pB().move === 0, 3000);
+  const dist = Math.hypot(pB().x - x0, pB().z - z0);
+  const secs = (Date.now() - t0) / 1000 + 0.5;
+  check("A vê B se mover", dist > 0.5, `dist=${dist}`);
+  check("velocidade limitada pelo servidor", dist <= 3.5 * secs + 0.5, `dist=${dist} em ${secs}s`);
+
+  // Troca de corpo sincronizada; corpo fora da lista é ignorado.
+  B.room.send("body", { body: "strong" });
+  await until(() => pB().body === "strong");
+  check("troca de corpo chega ao outro jogador", pB().body === "strong");
+  await sleep(900);
+  B.room.send("body", { body: "https://evil/x.glb" });
+  await sleep(400);
+  check("corpo fora da lista permitida é recusado", pB().body === "strong");
+  check("preferência de corpo persistida", (await Storage.getBody(pool, nb1user)) === "strong");
+
+  // Segunda sessão do mesmo usuário substitui a primeira, sem duplicar.
+  let replaced = false;
+  B.room.onMessage("replaced", () => (replaced = true));
+  const B2 = await join(nb1user);
+  await until(() => replaced && A.room.state.players.size === 2);
+  check("segunda sessão: a primeira recebe aviso", replaced);
+  check("segunda sessão: sem presença duplicada", A.room.state.players.size === 2);
+
+  // Não-admin, ou reserva para bairro alheio, não entra.
+  const plain = await mkUser(pool, false, "plain");
+  await Storage.ensureResidence(pool, plain);
+  const plainRes = await Storage.getActiveResidence(pool, plain);
+  let denied = false;
+  try {
+    const seat = await realtime.reserveSeat({ neighborhoodId: plainRes.id_neighborhood, userId: plain, name: "x", body: "normal" });
+    await client.consumeSeatReservation(seat);
+  } catch {
+    denied = true;
+  }
+  check("usuário sem papel Administrator é recusado na sala", denied);
+  denied = false;
+  try {
+    const seat = await realtime.reserveSeat({ neighborhoodId: A.out.neighborhood && (await Storage.getActiveResidence(pool, a)).id_neighborhood, userId: nb2user, name: "x", body: "normal" });
+    await client.consumeSeatReservation(seat);
+  } catch {
+    denied = true;
+  }
+  check("morador do bairro 02 não entra na sala do bairro 01", denied);
+
+  // Sair e voltar: presença some, casa fica, reentrada não duplica.
+  await B2.room.leave();
+  await until(() => A.room.state.players.size === 1);
+  check("sair remove a presença online", A.room.state.players.size === 1);
+  check("sair não remove a residência", !!(await Storage.getActiveResidence(pool, nb1user)));
+  const B3 = await join(nb1user);
+  await until(() => A.room.state.players.size === 2);
+  check("reentrada sem duplicar", A.room.state.players.size === 2);
+
+  // Sala vazia é descartada; o bairro continua e a nova sala é do mesmo bairro.
+  await B3.room.leave();
+  await A.room.leave();
+  await sleep(300);
+  const st = await realtime.status();
+  check("sala vazia é descartada (só sobra a do bairro 02)", st.rooms === 1, JSON.stringify(st));
+  const A2 = await join(a);
+  check("recriar a sala recupera a mesma casa", A2.out.me.house === A.out.me.house);
+  await A2.room.leave();
+  await C.room.leave();
+
+  console.log(`\n${PASS} ok, ${FAIL} falhas`);
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+                    tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
+  process.exit(FAIL ? 1 : 0);
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

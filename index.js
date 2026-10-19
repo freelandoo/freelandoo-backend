@@ -20,6 +20,10 @@ const server = app.listen(PORT, () => {
   // nav-counts:changed. Frontend conecta via wss://<railway-host>/realtime.
   realtime.init(server);
 
+  // Meu Mundo 3D (mm3d-02): multiplayer do bairro (Colyseus) no MESMO servidor
+  // HTTP, só em /mm-ws/. Processo único (ver src/realtime/meuMundo.js).
+  require("./src/realtime/meuMundo").init(server);
+
   // F4.S1 — worker de mídia (fork): todo ffmpeg/sharp pesado roda fora deste
   // processo, com fila (concorrência 1) + status em media_jobs. Se o worker
   // cair, re-forka com backoff e os uploads caem pro processamento inline.
