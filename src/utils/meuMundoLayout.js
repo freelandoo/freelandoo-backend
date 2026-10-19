@@ -17,11 +17,11 @@
 //    para validar o movimento — uma lista só, sem segunda verdade.
 //  - spawn, saída e o ponto de chegada na frente de cada casa.
 
-const MEU_MUNDO_RELEASE = "mm3d-03";
+const MEU_MUNDO_RELEASE = "mm3d-05";
 
 // Versão do DESENHO do bairro. Posição guardada num desenho anterior não vale
 // neste (o que era calçada pode ter virado quintal): quem a lê confere a versão.
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
 const LOTS_PER_NEIGHBORHOOD = 20;
 
 // ═══ O LOTE ═══ — coordenadas LOCAIS, em metros, origem no centro do terreno
@@ -29,10 +29,12 @@ const LOTS_PER_NEIGHBORHOOD = 20;
 // leva frente, fundos e laterais junto.
 //
 // mm3d-02 era 9 × 12 m, com a casa a 4,4 m da frente, 1,8 m de cada lado e
-// 2,8 m do fundo. O mm3d-03 dobra largura e profundidade (18 × 24) e distribui
-// o espaço novo nos três lados: frente 7 m, laterais 6,3 m, fundo 12,2 m.
+// 2,8 m do fundo. O mm3d-03 dobrou largura e profundidade (18 × 24): frente
+// 7 m, laterais 6,3 m, fundo 12,2 m. O mm3d-05 alarga para 22 m (laterais
+// 8,3 m) para cada quadra ir de esquina a esquina do anel, sem vão ao lado da
+// primeira e da última casa.
 const LOT_PLAN = Object.freeze({
-  width: 18,
+  width: 22,
   depth: 24,
   // Recuos a partir das divisas. O que fica dentro deles é a ÁREA EDIFICÁVEL:
   // o espaço máximo para as casas dos níveis 02–10 (ainda não modeladas).
@@ -106,14 +108,19 @@ function lotMetrics(plan = LOT_PLAN, house = HOUSE_L1) {
 
 // ═══ O BAIRRO ═══ — anel de ruas, praça no meio, quatro quadras de cinco
 // lotes por fora, cerca viva e portão do Centro na rua do canto nordeste.
-// Larguras de rua (6 m) e calçada (2 m) são as do mm3d-02; o que cresceu foi o
-// raio do anel, para caber cinco lotes de 18 m por quadra (90 m de frente).
+// Larguras de rua (6 m) e calçada (2 m) são as do mm3d-02; o raio do anel é o
+// do mm3d-03. Cada quadra tem a frente do tamanho da calçada externa do seu
+// lado (110 m): as quadras se encostam nos cantos.
 const ROAD_HALF = 3;
 const SIDEWALK = 2;
-const HALF_SPAN = (5 * LOT_PLAN.width) / 2; // 45
-// A quadra leste termina antes da calçada da rua de saída (canto nordeste).
-const RING = HALF_SPAN + ROAD_HALF + SIDEWALK; // 50
+const RING = 50;
 const LOT_FRONT = RING + ROAD_HALF + SIDEWALK; // 55
+if (Math.abs(5 * LOT_PLAN.width - 2 * LOT_FRONT) > 1e-9) {
+  throw new Error("meuMundoLayout: 5 lotes precisam cobrir a calçada externa inteira");
+}
+// A quadra leste para na calçada da rua de saída (z = 45) e por isso desce
+// 10 m: o último lote dela fica no canto sudeste, ao lado da quadra sul.
+const EAST_SHIFT = RING - ROAD_HALF - SIDEWALK - LOT_FRONT; // −10
 const LOT_CENTER = LOT_FRONT + LOT_PLAN.depth / 2; // 67
 const HEDGE = LOT_FRONT + LOT_PLAN.depth + 4; // 83 — 4 m atrás dos fundos, como antes
 const GATE_X = HEDGE + 1; // 84
@@ -162,6 +169,7 @@ function lawnPositions() {
 }
 
 const DIMS = Object.freeze({
+  // (cornerTrees é filtrado logo abaixo, depois que os lotes existem)
   ring: RING,
   roadHalf: ROAD_HALF,
   sidewalk: SIDEWALK,
@@ -177,7 +185,7 @@ const DIMS = Object.freeze({
 const SLOTS = [-2, -1, 0, 1, 2].map((i) => i * LOT_PLAN.width);
 const GROUPS = [
   { side: "north", rotationY: 0, at: (s) => ({ x: s, z: LOT_CENTER }) },
-  { side: "east", rotationY: Math.PI / 2, at: (s) => ({ x: LOT_CENTER, z: -s }) },
+  { side: "east", rotationY: Math.PI / 2, at: (s) => ({ x: LOT_CENTER, z: -s + EAST_SHIFT }) },
   { side: "south", rotationY: Math.PI, at: (s) => ({ x: -s, z: -LOT_CENTER }) },
   { side: "west", rotationY: -Math.PI / 2, at: (s) => ({ x: -LOT_CENTER, z: s }) },
 ];
@@ -213,6 +221,27 @@ function lotGeometry() {
 }
 
 const LOTS = lotGeometry();
+
+/** Retângulo do lote no mundo (os lotes só giram de 90 em 90 graus). */
+function lotRect(lot, margin = 0) {
+  const turned = Math.abs(Math.sin(lot.rotationY)) > 0.5;
+  const hx = (turned ? LOT_PLAN.depth : LOT_PLAN.width) / 2 + margin;
+  const hz = (turned ? LOT_PLAN.width : LOT_PLAN.depth) / 2 + margin;
+  return { x0: lot.position.x - hx, x1: lot.position.x + hx, z0: lot.position.z - hz, z1: lot.position.z + hz };
+}
+
+// Árvore de canto que caiu dentro de um lote (as quadras agora chegam aos
+// cantos) sai: a decoração não ocupa terreno de ninguém.
+{
+  const inLot = ([x, z, s]) =>
+    LOTS.some((l) => {
+      const r = lotRect(l, 1.1 * s);
+      return x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+    });
+  const keep = DIMS.cornerTrees.filter((t) => !inLot(t));
+  DIMS.cornerTrees.length = 0;
+  DIMS.cornerTrees.push(...keep);
+}
 
 /** Ponto local do lote → mundo. */
 function lotToWorld(lot, lx, lz) {
@@ -378,6 +407,7 @@ module.exports = {
   lotObstacles,
   lotToWorld,
   isSafeSpot,
+  lotRect,
   houseVariant,
   frontOfHouse,
   rotY,

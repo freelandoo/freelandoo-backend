@@ -205,9 +205,33 @@ test("posição fora do bairro ou dentro de obstáculo não é lugar seguro", ()
 test("payload leva a configuração do lote e as medidas do bairro", () => {
   const n = nb();
   assert.equal(n.layoutVersion, L.LAYOUT_VERSION);
-  assert.equal(n.lots[0].width, 18);
+  assert.equal(n.lots[0].width, 22);
   assert.equal(n.lots[0].depth, 24);
   assert.deepEqual(n.lotPlan.buildable, L.buildableArea());
   assert.equal(n.dims.ring, 50);
   assert.ok(n.limit > n.dims.hedge);
+});
+
+test("quadras vão de esquina a esquina (sem vão ao lado da 1ª e da última casa)", () => {
+  const D = L.DIMS;
+  const front = D.ring + D.roadHalf + D.sidewalk;
+  const span = (side) => {
+    const rs = L.LOTS.filter((l) => l.side === side).map((l) => L.lotRect(l));
+    const along = side === "north" || side === "south" ? ["x0", "x1"] : ["z0", "z1"];
+    return [Math.min(...rs.map((r) => r[along[0]])), Math.max(...rs.map((r) => r[along[1]]))];
+  };
+  assert.deepEqual(span("north"), [-front, front]);
+  assert.deepEqual(span("south"), [-front, front]);
+  assert.deepEqual(span("west"), [-front, front]);
+  // Leste: para na calçada da rua de saída.
+  assert.equal(span("east")[1], D.exitZ - D.roadHalf - D.sidewalk);
+});
+
+test("árvores de canto não ficam dentro de lote", () => {
+  for (const [x, z] of L.DIMS.cornerTrees) {
+    for (const lot of L.LOTS) {
+      const r = L.lotRect(lot);
+      assert.ok(!(x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1), `árvore ${x},${z} no lote ${lot.number}`);
+    }
+  }
 });
