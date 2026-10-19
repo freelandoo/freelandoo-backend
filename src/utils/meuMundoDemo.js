@@ -87,7 +87,9 @@ function buildDemoNeighborhood() {
       lots,
       houses,
       spawn: { x: 0, z: -15, rotationY: 0 },
-      exit: { id: "exit-centro", x: 52, z: RING, label: "Centro da cidade" },
+      // Ponto de interação NA FRENTE do portão (que fica em x=48, com a
+      // barreira fechada logo atrás): é até aqui que o jogador consegue ir.
+      exit: { id: "exit-centro", x: 45, z: RING, label: "Centro da cidade" },
     },
   };
 }
