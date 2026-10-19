@@ -67,6 +67,7 @@ const xpRoutes = require("./xp.routes");
 const engagementRoutes = require("./engagement.routes");
 const polenRoutes = require("./polen.routes");
 const adminPolenRoutes = require("./adminPolen.routes");
+const meuMundoAdminRoutes = require("./meuMundoAdmin.routes");
 const adminWhatsappRoutes = require("./adminWhatsapp.routes");
 const manifestationRoutes = require("./manifestation.routes");
 const manifestationAdminRoutes = require("./manifestationAdmin.routes");
@@ -271,6 +272,7 @@ module.exports = (app) => {
   app.use("/subprofiles", xpRoutes);
   app.use("/polens", polenRoutes);
   app.use("/admin/polens", adminPolenRoutes);
+  app.use("/meu-mundo/admin", meuMundoAdminRoutes);
   app.use("/admin/whatsapp", adminWhatsappRoutes);
   app.use("/manifestations", manifestationRoutes);
   app.use("/admin/manifestations", manifestationAdminRoutes);
