@@ -28,8 +28,8 @@ const { schema, t } = require("@colyseus/schema");
 const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
-const { OBSTACLES, LIMIT, frontOfHouse } = require("../utils/meuMundoLayout");
-const { sanitizeIntent, step } = require("../utils/meuMundoMotion");
+const { OBSTACLES, LIMIT, LAYOUT_VERSION, frontOfHouse, isSafeSpot } = require("../utils/meuMundoLayout");
+const { MOTION, sanitizeIntent, step, resolveCircle } = require("../utils/meuMundoMotion");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.realtime");
@@ -65,7 +65,7 @@ const State = schema({ players: t.map(Player), residents: t.uint8() }, "MMBairro
 const lastPos = new Map();
 
 function rememberPos(userId, b) {
-  lastPos.set(userId, { x: b.x, z: b.z, facing: b.facing, at: Date.now() });
+  lastPos.set(userId, { x: b.x, z: b.z, facing: b.facing, at: Date.now(), layout: LAYOUT_VERSION });
   if (lastPos.size > 500) {
     const cut = Date.now() - LAST_POS_TTL;
     for (const [k, v] of lastPos) if (v.at < cut) lastPos.delete(k);
@@ -119,7 +119,14 @@ class BairroRoom extends Room {
     }
     if (!start) {
       const mem = lastPos.get(userId);
-      if (mem && Date.now() - mem.at < LAST_POS_TTL) start = mem;
+      // Posição de outro desenho do bairro não vale neste.
+      if (mem && mem.layout === LAYOUT_VERSION && Date.now() - mem.at < LAST_POS_TTL) start = mem;
+    }
+    // Qualquer partida (sessão antiga, memória) precisa ser um lugar livre
+    // dentro do bairro; senão a pessoa volta para a frente da própria casa.
+    if (start && !isSafeSpot(start.x, start.z, resolveCircle, MOTION.RADIUS)) {
+      log.warn("join.unsafe_start", { roomId: this.roomId });
+      start = null;
     }
     if (!start) {
       const home = frontOfHouse(residence.lot_number);
