@@ -74,25 +74,6 @@ const server = app.listen(PORT, () => {
   const ResidenceService = require("./src/services/ResidenceService");
   ResidenceService.startSweeper();
 
-  // Freelandoo Arena (mig 282): apuração horária dos postes. Fecha as janelas
-  // UTC encerradas a partir dos FATOS; idempotente (uma linha por disputa) e
-  // coordenada com os checkpoints pela trava da disputa.
-  const ArenaTerritoryService = require("./src/services/ArenaTerritoryService");
-  ArenaTerritoryService.startSweeper();
-
-  // Arena (M08, mig 284): consolida os únicos de presença das horas/dias UTC
-  // encerrados e apaga os membros transitórios depois de 48 h. Idempotente.
-  // Sem ele a série "ativos no período" fica sem dado e a tabela de membros
-  // (identificadores transitórios) cresce sem prazo.
-  require("./src/services/ArenaPresenceService").startSweeper();
-
-  // Arena (M11/M12, migs 286/287): sessões de vídeo vencidas expiram e a
-  // retenção de 90 dias dos sinais é aplicada; os FATOS pendentes (outbox) são
-  // processados — é o que recupera missão e XP depois de um reinício ou de uma
-  // falha entre o commit do fato e a concessão.
-  require("./src/services/ArenaAdService").startSweeper();
-  require("./src/services/ArenaMissionService").startSweeper();
-
   // "Cancelar no fim do ciclo" (mig 251) — a capacidade que só o Stripe tem
   // nativamente. Fora dele, cancelar é IMEDIATO, então a data do ciclo pago é
   // agendada e executada aqui.

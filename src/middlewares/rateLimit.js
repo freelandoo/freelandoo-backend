@@ -87,32 +87,4 @@ const checkout = makeLimiter({
   max: 30,
 });
 
-// 90 escritas/min por IP — Freelandoo Arena (preferências e seleção ativa).
-// Folgado para quem alterna equipes num celular atrás de NAT, apertado para
-// não virar martelo. A leitura (sessão/estado) usa `arenaRead`, mais larga,
-// porque o retorno à aba revalida a sessão.
-const arenaWrite = makeLimiter({
-  name: "arena_write",
-  windowMs: 60 * 1000,
-  max: 90,
-});
-
-const arenaRead = makeLimiter({
-  name: "arena_read",
-  windowMs: 60 * 1000,
-  max: 240,
-});
-
-// Canal INTERNO da Arena (M06/M07): o servidor de jogo revalida a sessão de
-// TODOS os jogadores a partir de UM IP. Com o limite por IP das rotas do
-// navegador (240/min), 120 jogadores conectados já estourariam. Aqui o limite é
-// do serviço (já autenticado por assinatura), folgado o bastante para a
-// revalidação de 30 s de alguns milhares de conexões, e ainda um teto contra
-// um servidor de jogo com defeito martelando o backend.
-const arenaInternal = makeLimiter({
-  name: "arena_internal",
-  windowMs: 60 * 1000,
-  max: 12_000,
-});
-
-module.exports = { auth, lookup, upload, chat, checkout, arenaWrite, arenaRead, arenaInternal };
+module.exports = { auth, lookup, upload, chat, checkout };

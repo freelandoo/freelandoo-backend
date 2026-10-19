@@ -1,5 +1,4 @@
 const SubscriptionEndService = require("../SubscriptionEndService");
-const ArenaService = require("../ArenaService");
 const ProfileSubscriptionStorage = require("../../storages/ProfileSubscriptionStorage");
 const { createLogger } = require("../../utils/logger");
 
@@ -32,11 +31,6 @@ async function execute({ db, id_user }) {
     `UPDATE public.tb_user SET ativo = FALSE, updated_at = NOW() WHERE id_user = $1`,
     [id_user]
   );
-
-  // Freelandoo Arena (mig 281): jogador, preferências — inclusive a política,
-  // que é dado sensível — e autorizações saem junto com a conta. A conta só é
-  // desativada (ativo = FALSE), mas a escolha não tem por que sobreviver a ela.
-  await ArenaService.deleteAllForUser(id_user, { db });
 
   log.info("user.deactivated", { id_user });
   return { ok: true };

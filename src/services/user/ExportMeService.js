@@ -1,4 +1,3 @@
-const ArenaStorage = require("../../storages/ArenaStorage");
 
 async function execute({ db, id_user }) {
   const [userRes, profilesRes, subscriptionsRes, couponsRes] = await Promise.all([
@@ -26,16 +25,12 @@ async function execute({ db, id_user }) {
     ),
   ]);
 
-  // Freelandoo Arena (mig 281): o titular leva as próprias escolhas.
-  const arena = await ArenaStorage.exportForUser(db, id_user);
-
   return {
     exported_at: new Date().toISOString(),
     user: userRes.rows[0] || null,
     profiles: profilesRes.rows,
     subscriptions: subscriptionsRes.rows,
     coupons: couponsRes.rows,
-    arena,
   };
 }
 

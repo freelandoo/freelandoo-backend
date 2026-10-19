@@ -38,7 +38,6 @@ const adminRankingRoutes = require("./adminRanking.routes");
 const clanRoutes = require("./clan.routes");
 const clanPublicRoutes = require("./clanPublic.routes");
 const communityRoutes = require("./community.routes");
-const arenaRoutes = require("./arena.routes");
 const socialSafetyRoutes = require("./socialSafety.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
 const prospectRoutes = require("./prospect.routes");
@@ -68,7 +67,6 @@ const xpRoutes = require("./xp.routes");
 const engagementRoutes = require("./engagement.routes");
 const polenRoutes = require("./polen.routes");
 const adminPolenRoutes = require("./adminPolen.routes");
-const adminArenaAdsRoutes = require("./adminArenaAds.routes");
 const adminWhatsappRoutes = require("./adminWhatsapp.routes");
 const manifestationRoutes = require("./manifestation.routes");
 const manifestationAdminRoutes = require("./manifestationAdmin.routes");
@@ -164,13 +162,10 @@ module.exports = (app) => {
   app.use("/users/me/features", userFeaturePrefRoutes);
   app.use("/users/me/quick-pills", userQuickPillsRoutes);
   app.use("/users", usersRoutes);
-  // Freelandoo Arena (mig 281): jogador, catálogo de comunidades e preferências.
-  // ⚠️ CEDO de propósito: roteadores montados em "/" mais abaixo (ex.: academias)
-  // fazem `router.use(requireFeature(...))`, que intercepta QUALQUER caminho
-  // que chegue até eles — com a flag deles desligada, /arena responderia 403.
-  app.use("/arena", arenaRoutes);
-  // Bloqueio entre usuários + revisão de denúncia de DM (mig 283). Cedo pelo
-  // mesmo motivo da Arena: roteadores de raiz com requireFeature interceptam.
+  // Bloqueio entre usuários + revisão de denúncia de DM (mig 283). CEDO de
+  // propósito: roteadores montados em "/" mais abaixo (ex.: academias) fazem
+  // `router.use(requireFeature(...))`, que intercepta QUALQUER caminho que
+  // chegue até eles — com a flag deles desligada, estas rotas dariam 403.
   app.use("/me/blocks", socialSafetyRoutes.blocks);
   app.use("/admin/message-reports", socialSafetyRoutes.adminReports);
   app.use("/stripe", stripeRoutes);
@@ -276,7 +271,6 @@ module.exports = (app) => {
   app.use("/subprofiles", xpRoutes);
   app.use("/polens", polenRoutes);
   app.use("/admin/polens", adminPolenRoutes);
-  app.use("/admin/arena", adminArenaAdsRoutes);
   app.use("/admin/whatsapp", adminWhatsappRoutes);
   app.use("/manifestations", manifestationRoutes);
   app.use("/admin/manifestations", manifestationAdminRoutes);
