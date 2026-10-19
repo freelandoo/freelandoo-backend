@@ -28,7 +28,15 @@ const { schema, t } = require("@colyseus/schema");
 const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
-const { OBSTACLES, LIMIT, LAYOUT_VERSION, frontOfHouse, isSafeSpot } = require("../utils/meuMundoLayout");
+const {
+  LIMIT,
+  LAYOUT_VERSION,
+  frontOfHouse,
+  isSafeSpot,
+  buildObstacles,
+  houseBoxes,
+  levelDef,
+} = require("../utils/meuMundoLayout");
 const { MOTION, sanitizeIntent, step, resolveCircle } = require("../utils/meuMundoMotion");
 const { createLogger } = require("../utils/logger");
 
@@ -57,8 +65,19 @@ const Player = schema(
   },
   "MMPlayer"
 );
-// residents = titulares do bairro (permanentes); players = quem está online agora.
-const State = schema({ players: t.map(Player), residents: t.uint8() }, "MMBairro");
+// Nível da casa: só o NÚMERO e a revisão trafegam — o modelo 3D nunca passa
+// pelo WebSocket (o cliente resolve o número no catálogo que veio no payload).
+const HouseLevel = schema({ level: t.uint8(), rev: t.uint32() }, "MMHouseLevel");
+// residents = titulares do bairro (permanentes); players = quem está online agora;
+// houses = nível confirmado de cada casa (chave = número do lote).
+const State = schema(
+  { players: t.map(Player), residents: t.uint8(), houses: t.map(HouseLevel) },
+  "MMBairro"
+);
+
+// Sala viva de cada bairro (processo único — ver o topo do arquivo). É por
+// aqui que o endpoint de troca de nível alcança quem está online.
+const roomsByNeighborhood = new Map();
 
 // Última posição por usuário (memória do processo): quem cai e volta em até
 // 10 min retorna onde estava; depois disso, à frente da própria casa.
@@ -73,7 +92,7 @@ function rememberPos(userId, b) {
 }
 
 class BairroRoom extends Room {
-  onCreate(options) {
+  async onCreate(options) {
     this.neighborhoodId = String(options.neighborhoodId || "");
     this.maxClients = 40;
     this.patchRate = PATCH_MS;
@@ -81,6 +100,21 @@ class BairroRoom extends Room {
     this.setState(new State());
     /** sessionId → dados que NÃO vão para a rede */
     this.sim = new Map();
+    // Colisão DESTA sala: depende do nível de cada casa do bairro. O join só
+    // acontece depois que o onCreate termina, então ninguém anda sem ela.
+    // Registrada ANTES da leitura: uma troca que chegue enquanto o banco
+    // responde entra no estado, e a leitura não a sobrescreve (revisão).
+    this.obstacles = buildObstacles();
+    roomsByNeighborhood.set(this.neighborhoodId, this);
+    for (const row of await MeuMundoStorage.listHouseLevels(pool, this.neighborhoodId)) {
+      const key = String(row.number);
+      const cur = this.state.houses.get(key);
+      if (cur && cur.rev >= (row.rev || 0)) continue;
+      this.state.houses.set(key, new HouseLevel({ level: levelDef(row.level).level, rev: row.rev || 0 }));
+    }
+    const levels = new Map();
+    this.state.houses.forEach((h, key) => levels.set(Number(key), h.level));
+    this.obstacles = buildObstacles(levels);
 
     this.onMessage("in", (client, msg) => this.onIntent(client, msg));
     this.onMessage("body", (client, msg) => this.onBody(client, msg));
@@ -124,7 +158,7 @@ class BairroRoom extends Room {
     }
     // Qualquer partida (sessão antiga, memória) precisa ser um lugar livre
     // dentro do bairro; senão a pessoa volta para a frente da própria casa.
-    if (start && !isSafeSpot(start.x, start.z, resolveCircle, MOTION.RADIUS)) {
+    if (start && !isSafeSpot(start.x, start.z, resolveCircle, MOTION.RADIUS, this.obstacles)) {
       log.warn("join.unsafe_start", { roomId: this.roomId });
       start = null;
     }
@@ -137,7 +171,7 @@ class BairroRoom extends Room {
     const b = { x: start.x, z: start.z, vx: 0, vz: 0, facing: start.facing };
     // Posição de partida também passa pela colisão (memória antiga num lugar
     // que virou obstáculo não pode prender ninguém).
-    step(b, { x: 0, z: 0, run: false }, 0, OBSTACLES, LIMIT);
+    step(b, { x: 0, z: 0, run: false }, 0, this.obstacles, LIMIT);
     this.sim.set(client.sessionId, {
       userId,
       body: b,
@@ -174,6 +208,7 @@ class BairroRoom extends Room {
   }
 
   onDispose() {
+    if (roomsByNeighborhood.get(this.neighborhoodId) === this) roomsByNeighborhood.delete(this.neighborhoodId);
     for (const s of this.sim.values()) rememberPos(s.userId, s.body);
     log.info("room.dispose", { roomId: this.roomId });
   }
@@ -220,10 +255,50 @@ class BairroRoom extends Room {
     );
   }
 
+  /**
+   * Nível confirmado no banco → sala. Só revisão MAIOR que a atual vale (dois
+   * pedidos cruzados: vence o último confirmado). Troca as caixas daquela casa
+   * e tira de dentro dela quem a casa nova passou a ocupar — só esses, para a
+   * frente do lote — avisando o cliente para não ficar preso na parede.
+   */
+  applyHouseLevel(lotNumber, level, rev) {
+    const key = String(lotNumber);
+    const cur = this.state.houses.get(key);
+    if (cur && rev <= cur.rev) return false;
+    const lvl = levelDef(level).level;
+    if (cur) {
+      cur.level = lvl;
+      cur.rev = rev;
+    } else {
+      this.state.houses.set(key, new HouseLevel({ level: lvl, rev }));
+    }
+    this.obstacles = this.obstacles.filter((b) => b.lot !== lotNumber).concat(houseBoxes(lotNumber, lvl));
+    let moved = 0;
+    for (const [sid, s] of this.sim) {
+      if (isSafeSpot(s.body.x, s.body.z, resolveCircle, MOTION.RADIUS, this.obstacles)) continue;
+      const home = frontOfHouse(lotNumber);
+      Object.assign(s.body, { x: home.x, z: home.z, vx: 0, vz: 0, facing: home.rotationY });
+      step(s.body, { x: 0, z: 0, run: false }, 0, this.obstacles, LIMIT);
+      s.intent = { x: 0, z: 0, run: false };
+      const p = this.state.players.get(sid);
+      if (p) {
+        p.x = s.body.x;
+        p.z = s.body.z;
+        p.facing = s.body.facing;
+        p.move = 0;
+      }
+      const c = this.clients.find((cl) => cl.sessionId === sid);
+      if (c) c.send("moved", { x: s.body.x, z: s.body.z, facing: s.body.facing });
+      moved += 1;
+    }
+    log.info("house_level", { roomId: this.roomId, lot: lotNumber, level: lvl, rev, moved });
+    return true;
+  }
+
   tick(dtMs) {
     const dt = Math.min(dtMs / 1000, 0.25);
     for (const [sid, s] of this.sim) {
-      const move = step(s.body, s.intent, dt, OBSTACLES, LIMIT);
+      const move = step(s.body, s.intent, dt, this.obstacles, LIMIT);
       const p = this.state.players.get(sid);
       if (!p) continue;
       p.x = s.body.x;
@@ -265,6 +340,12 @@ async function reserveSeat({ neighborhoodId, userId, name, body }) {
   return matchMaker.joinOrCreate(ROOM_NAME, { neighborhoodId, userId, name, body });
 }
 
+/** Leva a troca de nível à sala viva do bairro (se houver alguém online). */
+function applyHouseLevel(neighborhoodId, lotNumber, level, rev) {
+  const room = roomsByNeighborhood.get(neighborhoodId);
+  return room ? room.applyHouseLevel(lotNumber, level, rev) : false;
+}
+
 async function status() {
   if (!ready) return { available: false };
   await ready;
@@ -277,4 +358,7 @@ async function status() {
   };
 }
 
-module.exports = { init, reserveSeat, status, WS_PREFIX, BairroRoom, CLOSE };
+// Só para a suíte e2e (test/meu-mundo.e2e.js): alcança a sala viva.
+const _roomFor = (neighborhoodId) => roomsByNeighborhood.get(neighborhoodId) || null;
+
+module.exports = { init, reserveSeat, status, applyHouseLevel, WS_PREFIX, BairroRoom, CLOSE, _roomFor };

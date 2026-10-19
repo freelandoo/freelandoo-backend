@@ -16,7 +16,7 @@ const ALLOC_LOCK = "meu_mundo:alocacao";
 
 const RESIDENCE_SELECT = `
   SELECT r.id_residence, r.id_user, r.started_at,
-         h.id_house, h.variant, l.lot_number,
+         h.id_house, h.variant, h.level, h.level_rev, l.lot_number,
          n.id_neighborhood, n.seq, n.name, n.layout
     FROM tb_mm_residence r
     JOIN tb_mm_house h ON h.id_house = r.id_house
@@ -114,7 +114,7 @@ class MeuMundoStorage {
   /** Casas do bairro com o nome público do titular (nunca e-mail ou id). */
   static async listHouses(db, idNeighborhood, viewerId) {
     const r = await db.query(
-      `SELECT l.lot_number AS number, h.variant,
+      `SELECT l.lot_number AS number, h.variant, h.level, h.level_rev,
               u.username AS owner_name,
               (r.id_residence IS NOT NULL) AS taken,
               (r.id_user = $2) AS is_mine
@@ -129,9 +129,38 @@ class MeuMundoStorage {
     return r.rows.map((row) => ({
       number: row.number,
       variant: row.variant,
+      level: row.level,
+      levelRev: row.level_rev,
       ownerName: row.taken ? (row.owner_name || "morador").slice(0, 24) : null,
       isMine: row.is_mine === true,
     }));
+  }
+
+  /** Nível e revisão de cada casa do bairro (estado inicial da sala). */
+  static async listHouseLevels(db, idNeighborhood) {
+    const r = await db.query(
+      `SELECT l.lot_number AS number, h.level, h.level_rev AS rev
+         FROM tb_mm_lot l JOIN tb_mm_house h ON h.id_lot = l.id_lot
+        WHERE l.id_neighborhood = $1`,
+      [idNeighborhood]
+    );
+    return r.rows;
+  }
+
+  /**
+   * Grava o nível da casa e incrementa a revisão na MESMA instrução (a
+   * revisão é a ordem das escolhas confirmadas). Quem chama já conferiu que a
+   * casa é do usuário e que o nível existe no catálogo.
+   */
+  static async setHouseLevel(db, idHouse, level) {
+    const r = await db.query(
+      `UPDATE tb_mm_house
+          SET level = $2, level_rev = level_rev + 1, level_updated_at = NOW()
+        WHERE id_house = $1
+        RETURNING level, level_rev`,
+      [idHouse, level]
+    );
+    return r.rows[0] || null;
   }
 
   static async countResidents(db, idNeighborhood) {

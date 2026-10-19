@@ -63,6 +63,12 @@ async function bootstrap(pool) {
   );
   await pool.query(sql);
   await pool.query(sql); // idempotente
+  const sql292 = fs.readFileSync(
+    path.join(__dirname, "../src/databases/migrations/292_meu_mundo_house_levels.sql"),
+    "utf8"
+  );
+  await pool.query(sql292);
+  await pool.query(sql292); // idempotente
 }
 
 async function mkUser(pool, admin = true, tag = "") {
@@ -200,6 +206,65 @@ async function expectViolation(pool, sql, params, label) {
   await sleep(400);
   check("corpo fora da lista permitida é recusado", pB().body === "strong");
   check("preferência de corpo persistida", (await Storage.getBody(pool, nb1user)) === "strong");
+
+  // ── Nível da casa (mig 292): seletor de teste 01–10 ─────────────────────
+  const L = require("../src/utils/meuMundoLayout");
+  const { resolveCircle, MOTION } = require("../src/utils/meuMundoMotion");
+  const resA = await Storage.getActiveResidence(pool, a);
+  const lotA = resA.lot_number;
+  const room = realtime._roomFor(resA.id_neighborhood);
+  check("catálogo tem 10 níveis, 01 é a casa embutida", L.HOUSE_CATALOG.length === 10 && L.HOUSE_CATALOG[0].kind === "builtin");
+  check("nível 10 sem modelo fica indisponível", L.HOUSE_CATALOG[9].available === false);
+  check("payload leva o catálogo e o nível de cada casa", A.out.neighborhood.houseCatalog?.levels?.length === 10 && A.out.neighborhood.houses.every((h) => h.level === 1));
+  check("payload não traz URL absoluta de modelo", !JSON.stringify(A.out.neighborhood.houseCatalog).match(/https?:/));
+  for (const bad of [0, 11, "abc", "https://evil/x.glb", 2.5, null]) {
+    const r = await Service.setHouseLevel(a, bad);
+    check(`nível inválido recusado (${JSON.stringify(bad)})`, r.statusCode === 400, JSON.stringify(r));
+  }
+  const r10 = await Service.setHouseLevel(a, 10);
+  check("nível 10 (sem modelo) recusado", r10.statusCode === 409, JSON.stringify(r10));
+  const noRes = await mkUser(pool, true, "nores");
+  check("sem residência não troca nada", (await Service.setHouseLevel(noRes, 3)).statusCode === 409);
+
+  // Um ponto do jardim de A: livre com a casa 01, dentro da casa 09.
+  const inside = L.lotToWorld(L.LOTS[lotA - 1], 7, 0);
+  check("ponto livre com o nível 01", L.isSafeSpot(inside.x, inside.z, resolveCircle, MOTION.RADIUS, room.obstacles));
+  const simB = room.sim.get(B.room.sessionId);
+  Object.assign(simB.body, { x: inside.x, z: inside.z, vx: 0, vz: 0 });
+  simB.intent = { x: 0, z: 0, run: false };
+  let movedMsg = null;
+  B.room.onMessage("moved", (m) => (movedMsg = m));
+  const lv9 = await Service.setHouseLevel(a, 9);
+  check("troca confirmada devolve nível e revisão", lv9.level === 9 && lv9.rev === 1 && lv9.house === lotA, JSON.stringify(lv9));
+  const dbLv = await pool.query(`SELECT level, level_rev FROM tb_mm_house WHERE id_house=$1`, [resA.id_house]);
+  check("nível persistido no banco", dbLv.rows[0].level === 9 && dbLv.rows[0].level_rev === 1);
+  const hsKey = String(lotA);
+  await until(() => B.room.state.houses?.get(hsKey)?.level === 9);
+  check("o outro jogador recebe o nível pela sala", B.room.state.houses.get(hsKey)?.level === 9);
+  check("colisores da casa trocados na sala", room.obstacles.filter((o) => o.lot === lotA).length === L.levelDef(9).colliders.length);
+  await until(() => !!movedMsg);
+  check("quem ficou dentro da casa nova é avisado", !!movedMsg);
+  check("…e levado para um lugar livre", L.isSafeSpot(simB.body.x, simB.body.z, resolveCircle, MOTION.RADIUS, room.obstacles));
+  check("revisão antiga não sobrescreve a nova", realtime.applyHouseLevel(resA.id_neighborhood, lotA, 2, 1) === false && room.state.houses.get(hsKey).level === 9);
+  const B1lot = (await Storage.getActiveResidence(pool, nb1user)).lot_number;
+  const bLv = await Service.setHouseLevel(nb1user, 4);
+  check("cada um troca só a PRÓPRIA casa", bLv.house === B1lot && room.state.houses.get(hsKey).level === 9);
+  const quick = await Promise.all([3, 5, 7].map((n) => Service.setHouseLevel(a, n)));
+  const last = quick.reduce((m, q) => (q.rev > m.rev ? q : m));
+  await until(() => room.state.houses.get(hsKey).rev === last.rev);
+  const dbQuick = await pool.query(`SELECT level FROM tb_mm_house WHERE id_house=$1`, [resA.id_house]);
+  check("trocas rápidas: vence a última confirmada (banco = sala)", room.state.houses.get(hsKey).level === dbQuick.rows[0].level && dbQuick.rows[0].level === last.level);
+  const back = await Service.setHouseLevel(a, 1);
+  await until(() => room.state.houses.get(hsKey).level === 1);
+  check("volta ao nível 01", room.state.houses.get(hsKey).level === 1 && room.obstacles.filter((o) => o.lot === lotA).length === 1 && back.level === 1);
+  await Service.setHouseLevel(a, 6);
+  const lateUser = many.find((u, i) => res[i].residence.seq === 1 && u !== a && u !== nb1user);
+  const late = await Service.enter(lateUser);
+  check("quem entra depois recebe o nível persistido", late.neighborhood.houses[lotA - 1].level === 6);
+  check("…e os colisores dele no payload", late.neighborhood.obstacles.filter((o) => o.lot === lotA).length === L.levelDef(6).colliders.length);
+  await client.consumeSeatReservation(late.multiplayer.reservation).then((r) => r.leave()).catch(() => {});
+  await Service.setHouseLevel(a, 1);
+  await Service.setHouseLevel(nb1user, 1);
 
   // Segunda sessão do mesmo usuário substitui a primeira, sem duplicar.
   let replaced = false;

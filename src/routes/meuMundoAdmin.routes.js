@@ -21,6 +21,8 @@ const admin = [authMiddleware, roleMiddleware("Administrator")];
 
 router.get("/neighborhood", ...admin, asyncHandler(MeuMundoController.adminNeighborhood));
 router.post("/session", ...admin, asyncHandler(MeuMundoController.adminSession));
+// Troca o nível da PRÓPRIA casa (teste). Dono = residência ativa do token.
+router.post("/house/level", ...admin, asyncHandler(MeuMundoController.adminHouseLevel));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;

@@ -17,7 +17,7 @@
 //    para validar o movimento — uma lista só, sem segunda verdade.
 //  - spawn, saída e o ponto de chegada na frente de cada casa.
 
-const MEU_MUNDO_RELEASE = "mm3d-05";
+const MEU_MUNDO_RELEASE = "mm3d-06";
 
 // Versão do DESENHO do bairro. Posição guardada num desenho anterior não vale
 // neste (o que era calçada pode ter virado quintal): quem a lê confere a versão.
@@ -66,6 +66,8 @@ function round(v) {
   return Math.round(v * 1000) / 1000;
 }
 
+const { buildCatalog, MAX_LEVEL, ASSET_VERSION: HOUSE_ASSET_VERSION } = require("./meuMundoHouses");
+
 /** Área edificável do lote (coordenadas locais). */
 function buildableArea(plan = LOT_PLAN) {
   const s = plan.setbacks;
@@ -75,6 +77,22 @@ function buildableArea(plan = LOT_PLAN) {
     minZ: -plan.depth / 2 + s.front,
     maxZ: plan.depth / 2 - s.back,
   };
+}
+
+// Catálogo dos níveis 01–10 (src/utils/meuMundoHouses.js). Montado a partir
+// do MESMO plano do lote — a implantação não tem segunda cópia.
+const HOUSE_CATALOG = buildCatalog(LOT_PLAN, HOUSE_L1, buildableArea());
+const LEVELS = new Map(HOUSE_CATALOG.map((l) => [l.level, l]));
+
+/** O nível pode ser escolhido? (existe e tem modelo) */
+function isSelectableLevel(level) {
+  return Number.isInteger(level) && LEVELS.get(level)?.available === true;
+}
+
+/** Definição do nível; nível sem modelo (ou inválido no banco) cai no 01. */
+function levelDef(level) {
+  const l = LEVELS.get(Number(level));
+  return l && l.available ? l : LEVELS.get(1);
 }
 
 /**
@@ -261,14 +279,20 @@ function frontOfHouse(lotNumber) {
  * Caixas de colisão de UM lote em coordenadas locais:
  * [lx, lz, hx, hz, altura, gira-com-o-lote].
  */
-function lotObstacles(variant, plan = LOT_PLAN, house = HOUSE_L1) {
+function lotObstacles(variant, plan = LOT_PLAN, house = HOUSE_L1, level = 1) {
   const t = plan.hedge.thickness;
   const zStart = -plan.depth / 2 + plan.hedge.frontGap;
   const zEnd = plan.depth / 2 - t;
   const sideX = plan.width / 2 - t / 2;
   const hc = plan.houseFront.z + house.depth / 2;
+  // A casa: com o plano/casa padrão, os colisores do NÍVEL (catálogo); com um
+  // plano de outra versão (conferência mm3d-02), a caixa da casa 01 dele.
+  const houseBoxes =
+    plan === LOT_PLAN
+      ? levelDef(level).colliders.map(([x, z, hx, hz, h]) => [x, z, hx, hz, h, true, "house"])
+      : [[plan.houseFront.x, hc, house.width / 2, house.depth / 2, house.height, true, "house"]];
   const out = [
-    [plan.houseFront.x, hc, house.width / 2, house.depth / 2, house.height, true],
+    ...houseBoxes,
     [-sideX, (zStart + zEnd) / 2, t / 2, (zEnd - zStart) / 2, plan.hedge.height, true],
     [sideX, (zStart + zEnd) / 2, t / 2, (zEnd - zStart) / 2, plan.hedge.height, true],
     [0, plan.depth / 2 - t / 2, plan.width / 2, t / 2, plan.hedge.height, true],
@@ -282,15 +306,33 @@ function lotObstacles(variant, plan = LOT_PLAN, house = HOUSE_L1) {
   return out;
 }
 
-function buildObstacles() {
+/**
+ * Colisores da CASA de um lote no mundo, para o nível dado. Marcados com
+ * `lot`: é por essa marca que a sala (e o cliente) troca só as caixas daquela
+ * casa quando o nível muda, sem reconstruir o resto do bairro.
+ */
+function houseBoxes(lotNumber, level) {
+  const lot = LOTS[lotNumber - 1];
+  return levelDef(level).colliders.map(([lx, lz, hx, hz, h]) => {
+    const p = lotToWorld(lot, lx, lz);
+    return { x: round(p.x), z: round(p.z), hx: round(hx), hz: round(hz), rot: round(lot.rotationY), h: round(h), lot: lotNumber };
+  });
+}
+
+/** levels: Map/objeto número do lote → nível (ausente = 01). */
+function buildObstacles(levels = null) {
   const boxes = [];
   const push = (x, z, hx, hz, rot, h) =>
     boxes.push({ x: round(x), z: round(z), hx: round(hx), hz: round(hz), rot: round(rot), h: round(h) });
   const tree = (x, z, s = 1) => push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
+  const levelOf = (n) => (levels ? (levels instanceof Map ? levels.get(n) : levels[n]) || 1 : 1);
 
-  // Lotes: casa, cercas laterais e do fundo, placa e (às vezes) a árvore.
+  // Lotes: casa (colisores do nível), cercas laterais e do fundo, placa e
+  // (às vezes) a árvore.
   for (const lot of LOTS) {
-    for (const [lx, lz, hx, hz, h, turns] of lotObstacles(houseVariant(lot.number))) {
+    boxes.push(...houseBoxes(lot.number, levelOf(lot.number)));
+    for (const [lx, lz, hx, hz, h, turns, tag] of lotObstacles(houseVariant(lot.number))) {
+      if (tag === "house") continue;
       const p = lotToWorld(lot, lx, lz);
       push(p.x, p.z, hx, hz, turns ? lot.rotationY : 0, h);
     }
@@ -334,12 +376,12 @@ const OBSTACLES = buildObstacles();
  * portão) e fora de qualquer obstáculo. `resolveCircle` vem da regra de
  * movimento, para não haver duas contas de colisão.
  */
-function isSafeSpot(x, z, resolveCircle, radius) {
+function isSafeSpot(x, z, resolveCircle, radius, obstacles = OBSTACLES) {
   if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
   const inside = Math.abs(x) < HEDGE - 0.5 - radius && Math.abs(z) < HEDGE - 0.5 - radius;
   const onExit = x > 0 && x < GATE_X && Math.abs(z - EXIT_Z) < ROAD_HALF + SIDEWALK;
   if (!inside && !onExit) return false;
-  const r = resolveCircle(x, z, radius, OBSTACLES);
+  const r = resolveCircle(x, z, radius, obstacles);
   return Math.hypot(r.x - x, r.z - z) < 1e-3;
 }
 
@@ -350,6 +392,7 @@ function isSafeSpot(x, z, resolveCircle, radius) {
  */
 function buildNeighborhoodPayload({ code, name, houses, residents }) {
   const byNumber = new Map(houses.map((h) => [h.number, h]));
+  const levels = new Map(houses.map((h) => [h.number, levelDef(h.level).level]));
   const lots = [];
   const out = [];
   for (const lot of LOTS) {
@@ -368,7 +411,8 @@ function buildNeighborhoodPayload({ code, name, houses, residents }) {
     out.push({
       id: `house-${num}`,
       lotId: `lot-${num}`,
-      level: 1,
+      level: levelDef(h.level).level,
+      levelRev: Number(h.levelRev) || 0,
       variant: h.variant,
       ownerName: h.ownerName || null,
       isMine: !!h.isMine,
@@ -387,7 +431,8 @@ function buildNeighborhoodPayload({ code, name, houses, residents }) {
     dims: DIMS,
     spawn: { x: 0, z: -15, rotationY: 0 },
     exit: { id: "exit-centro", x: GATE_X - 3, z: EXIT_Z, label: "Centro da cidade" },
-    obstacles: OBSTACLES,
+    obstacles: buildObstacles(levels),
+    houseCatalog: { assetVersion: HOUSE_ASSET_VERSION, basePath: "/meu-mundo/casas/", levels: HOUSE_CATALOG },
     limit: LIMIT,
   };
 }
@@ -412,4 +457,10 @@ module.exports = {
   frontOfHouse,
   rotY,
   buildNeighborhoodPayload,
+  buildObstacles,
+  houseBoxes,
+  HOUSE_CATALOG,
+  MAX_LEVEL,
+  isSelectableLevel,
+  levelDef,
 };
