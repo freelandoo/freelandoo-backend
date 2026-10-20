@@ -101,7 +101,7 @@ function sanitizeIntent(m) {
  * Um passo de simulação. `body` = { x, z, vx, vz, facing }, mutado no lugar.
  * Devolve o estado de movimento para a animação: 0 parado, 1 andando, 2 correndo.
  * `profile` (opcional) troca velocidades, aceleração e raio — é como o carro
- * (meuMundoCars.CAR_PROFILE) usa a MESMA regra. Sem ele, a pé.
+ * (desde o mm3d-12 o carro tem física própria, meuMundoVehicle.js). Sem ele, a pé.
  */
 function step(body, intent, dt, boxes, limit, profile = null) {
   const walk = profile ? profile.walk : MOTION.WALK_SPEED;

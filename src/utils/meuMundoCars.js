@@ -1,30 +1,29 @@
 // src/utils/meuMundoCars.js
 //
-// MEU MUNDO 3D — carros (mm3d-11). Um carro por casa com titular, estacionado
-// na rua junto ao meio-fio, em frente ao lote. Só o titular dirige o dele.
+// MEU MUNDO 3D — carros. Um carro por casa com titular, estacionado na rua
+// junto ao meio-fio, em frente ao lote. Só o titular dirige o dele.
 //
-// O carro é um CORPO a mais na mesma regra de deslocamento
-// (meuMundoMotion.step) com outro perfil: mais rápido, aceleração mais lenta e
-// círculo de colisão maior. O cliente roda a MESMA conta na predição
-// (features/meu-mundo/engine/motion.ts, CAR): mexeu num lado, mexe no outro.
+// mm3d-12: o carro deixou de ser "um boneco mais rápido" (mm3d-11 usava a
+// regra de deslocamento a pé com outro perfil). A física agora é a de
+// meuMundoVehicle.js — rodas, inércia, aderência, freio de mão — e este
+// arquivo guarda só o que é do BAIRRO: vaga, caixa, onde descer, regras de
+// sair/recuperar. O cliente espelha as constantes em engine/motion.ts (CAR).
 //
 // Estado do carro (posição, quem dirige) vive SÓ na sala — não vai ao banco.
 // Sala que reabre põe cada carro de volta na vaga da casa.
 
 const { LOTS, LOT_PLAN, lotToWorld } = require("./meuMundoLayout");
+const { VEHICLE } = require("./meuMundoVehicle");
+const { resolveCircle } = require("./meuMundoMotion");
 
 const CAR = Object.freeze({
-  SPEED: 9, // m/s dirigindo normal (a corrida a pé é 3,5)
-  TURBO: 13, // m/s com "correr" ligado
-  ACCEL: 2.4, // 1/s — o carro ganha e perde velocidade devagar
-  RADIUS: 1.4, // círculo de colisão (o modelo tem 4,0 × 2,4 m)
-  HX: 1.15, // meia-largura da caixa que bloqueia quem está a pé
-  HZ: 1.95, // meio-comprimento
+  HX: VEHICLE.HX, // meia-largura da caixa que bloqueia quem está a pé
+  HZ: VEHICLE.HZ, // meio-comprimento
   ENTER_RADIUS: 3.4, // distância do centro do carro para "Entrar no carro"
+  EXIT_MAX_SPEED: 1.5, // m/s — só desce com o carro (quase) parado
+  RECOVER_MAX_SPEED: 2, // m/s — recuperar só parado ou quase
+  RECOVER_COOLDOWN_MS: 15000,
 });
-
-/** Perfil do carro para meuMundoMotion.step. */
-const CAR_PROFILE = Object.freeze({ walk: CAR.SPEED, run: CAR.TURBO, accel: CAR.ACCEL, radius: CAR.RADIUS });
 
 // Vaga: na rua, faixa junto ao meio-fio do lote (a calçada vai de -12 a -14
 // na coordenada local do lote; o carro fica com o centro a 1,3 m do meio-fio),
@@ -48,7 +47,23 @@ function parkingSpot(lotNumber) {
 
 /** Caixa de colisão do carro (mesmo formato dos obstáculos do bairro). */
 function carBox(car) {
-  return { x: car.x, z: car.z, hx: CAR.HX, hz: CAR.HZ, rot: car.facing, h: 1.4 };
+  return { x: car.x, z: car.z, hx: CAR.HX, hz: CAR.HZ, rot: car.facing, h: 1.3 };
+}
+
+/**
+ * O carro cabe aqui sem encostar em nada? Confere os três círculos de
+ * colisão da física (frente, meio, traseira) — é a mesma forma que bate.
+ */
+function carFits(x, z, facing, boxes) {
+  const fx = Math.sin(facing);
+  const fz = Math.cos(facing);
+  for (const off of [VEHICLE.COL_OFFSET, 0, -VEHICLE.COL_OFFSET]) {
+    const cx = x + fx * off;
+    const cz = z + fz * off;
+    const p = resolveCircle(cx, cz, VEHICLE.COL_RADIUS, boxes, 1);
+    if (Math.hypot(p.x - cx, p.z - cz) > 1e-4) return false;
+  }
+  return true;
 }
 
 /**
@@ -68,4 +83,4 @@ function exitSpots(car, walkerRadius) {
   ].map((p) => ({ x: round(p.x), z: round(p.z), facing: car.facing }));
 }
 
-module.exports = { CAR, CAR_PROFILE, parkingSpot, carBox, exitSpots };
+module.exports = { CAR, parkingSpot, carBox, carFits, exitSpots };

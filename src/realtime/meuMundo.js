@@ -48,7 +48,15 @@ const {
   levelDef,
 } = require("../utils/meuMundoLayout");
 const { MOTION, sanitizeIntent, step, resolveCircle } = require("../utils/meuMundoMotion");
-const { CAR, CAR_PROFILE, parkingSpot, carBox, exitSpots } = require("../utils/meuMundoCars");
+const { CAR, parkingSpot, carBox, carFits, exitSpots } = require("../utils/meuMundoCars");
+const {
+  IDLE: IDLE_DRIVE,
+  tuned,
+  sanitizeDrive,
+  sanitizeTuning,
+  createVehicle,
+  advanceVehicle,
+} = require("../utils/meuMundoVehicle");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.realtime");
@@ -84,9 +92,22 @@ const Player = schema(
   "MMPlayer"
 );
 // Carro de uma casa (chave = número do lote). driver = sessionId de quem
-// dirige ("" = estacionado).
+// dirige ("" = estacionado). mm3d-12: sp = velocidade longitudinal (m/s, <0
+// = ré), st = esterçamento das rodas (rad), hb = freio de mão puxado,
+// sl = 0..1 quanto a traseira escorrega — o que os OUTROS precisam para
+// animar rodas, curva e derrapagem sem rodar outra física.
 const Car = schema(
-  { lot: t.uint8(), x: t.float32(), z: t.float32(), facing: t.float32(), driver: t.string() },
+  {
+    lot: t.uint8(),
+    x: t.float32(),
+    z: t.float32(),
+    facing: t.float32(),
+    driver: t.string(),
+    sp: t.float32(),
+    st: t.float32(),
+    hb: t.boolean(),
+    sl: t.float32(),
+  },
   "MMCar"
 );
 // Nível da casa: só o NÚMERO e a revisão trafegam — o modelo 3D nunca passa
@@ -189,6 +210,8 @@ class BairroRoom extends Room {
 
     this.onMessage("in", (client, msg) => this.onIntent(client, msg));
     this.onMessage("car", (client, msg) => this.onCar(client, msg));
+    this.onMessage("drive", (client, msg) => this.onDrive(client, msg));
+    this.onMessage("tune", (client, msg) => this.onTune(client, msg));
     this.onMessage("body", (client, msg) => this.onBody(client, msg));
     this.onMessage("*", (client) => this.countMessage(client));
     this.setSimulationInterval((dt) => this.tick(dt), SIM_MS);
@@ -268,6 +291,11 @@ class BairroRoom extends Room {
       ...freshBucket(),
       lastBodyAt: 0,
       car: 0,
+      // Dirigindo (mm3d-12): física do carro, entrada e ajustes do painel.
+      veh: null,
+      drive: IDLE_DRIVE,
+      tune: null,
+      lastRecoverAt: 0,
     });
     this.state.players.set(
       client.sessionId,
@@ -341,8 +369,32 @@ class BairroRoom extends Room {
   parkCar(sessionId, s) {
     if (!s.car) return;
     const c = this.state.cars.get(String(s.car));
-    if (c && c.driver === sessionId) c.driver = "";
+    if (c && c.driver === sessionId) Object.assign(c, { driver: "", sp: 0, st: 0, hb: false, sl: 0 });
     s.car = 0;
+    s.veh = null;
+    s.drive = IDLE_DRIVE;
+  }
+
+  /** Entrada de direção do motorista (acelerador, freio/ré, volante, freio de mão). */
+  onDrive(client, msg) {
+    if (!this.countMessage(client)) return;
+    const s = this.sim.get(client.sessionId);
+    const d = sanitizeDrive(msg);
+    if (s && s.car && d) s.drive = d;
+  }
+
+  /**
+   * Ajuste de dirigibilidade do painel do administrador (a sala do bairro só
+   * aceita administradores). Vale para o carro DESTA sessão; fora da faixa é
+   * fixado na borda. O cliente usa os mesmos números na previsão.
+   */
+  onTune(client, msg) {
+    if (!this.countMessage(client)) return;
+    const s = this.sim.get(client.sessionId);
+    if (!s) return;
+    const tu = msg && msg.reset ? null : sanitizeTuning(msg);
+    s.tune = tu && Object.keys(tu).length ? tu : null;
+    client.send("tuned", s.tune || {});
   }
 
   onCar(client, msg) {
@@ -361,23 +413,48 @@ class BairroRoom extends Room {
       if (Math.hypot(c.x - s.body.x, c.z - s.body.z) > CAR.ENTER_RADIUS) return deny("far");
       c.driver = client.sessionId;
       s.car = c.lot;
+      s.veh = createVehicle(c.x, c.z, c.facing);
+      s.drive = IDLE_DRIVE;
       Object.assign(s.body, { x: c.x, z: c.z, vx: 0, vz: 0, facing: c.facing });
       s.intent = { x: 0, z: 0, run: false };
       Object.assign(p, { car: c.lot, x: c.x, z: c.z, facing: c.facing, move: 0 });
       client.send("moved", { x: c.x, z: c.z, facing: c.facing, car: c.lot });
       return;
     }
+    if (msg.a === "recover") {
+      // Carro preso (encaixado entre obstáculos): volta para a vaga da casa,
+      // só parado, com espera entre um uso e outro e só se a vaga estiver livre.
+      if (!s.car || !s.veh) return;
+      const c = this.state.cars.get(String(s.car));
+      if (!c) return;
+      const now = Date.now();
+      if (now - s.lastRecoverAt < CAR.RECOVER_COOLDOWN_MS) return deny("cooldown");
+      if (Math.hypot(s.veh.vx, s.veh.vz) > CAR.RECOVER_MAX_SPEED) return deny("moving");
+      const spot = parkingSpot(c.lot);
+      if (!carFits(spot.x, spot.z, spot.facing, this.obstacles.concat(this.carBoxes(client.sessionId)))) return deny("spot_busy");
+      s.lastRecoverAt = now;
+      s.veh = createVehicle(spot.x, spot.z, spot.facing);
+      Object.assign(s.body, { x: spot.x, z: spot.z, vx: 0, vz: 0, facing: spot.facing });
+      Object.assign(c, { x: spot.x, z: spot.z, facing: spot.facing, sp: 0, st: 0, hb: false, sl: 0 });
+      Object.assign(p, { x: spot.x, z: spot.z, facing: spot.facing });
+      client.send("moved", { x: spot.x, z: spot.z, facing: spot.facing, car: c.lot });
+      return;
+    }
     if (msg.a === "exit") {
       if (!s.car) return;
       const c = this.state.cars.get(String(s.car));
       if (!c) return;
+      // Só desce com o carro parado (ou quase).
+      if (s.veh && Math.hypot(s.veh.vx, s.veh.vz) > CAR.EXIT_MAX_SPEED) return deny("moving");
       // O carro para onde está; a pessoa desce num ponto LIVRE ao lado.
       Object.assign(c, { x: s.body.x, z: s.body.z, facing: s.body.facing });
       const blockers = this.obstacles.concat(this.carBoxes(client.sessionId), [carBox(c)]);
       const spot = exitSpots(c, MOTION.RADIUS).find((e) => isSafeSpot(e.x, e.z, resolveCircle, MOTION.RADIUS, blockers));
       if (!spot) return deny("blocked");
-      c.driver = "";
+      Object.assign(c, { driver: "", sp: 0, st: 0, hb: false, sl: 0 });
       s.car = 0;
+      s.veh = null;
+      s.drive = IDLE_DRIVE;
       Object.assign(s.body, { x: spot.x, z: spot.z, vx: 0, vz: 0, facing: spot.facing });
       s.intent = { x: 0, z: 0, run: false };
       Object.assign(p, { car: 0, x: spot.x, z: spot.z, facing: spot.facing, move: 0 });
@@ -468,17 +545,23 @@ class BairroRoom extends Room {
     const hasCars = this.state.cars.size > 0;
     for (const [sid, s] of this.sim) {
       const boxes = hasCars ? this.obstacles.concat(this.carBoxes(sid)) : this.obstacles;
-      const move = step(s.body, s.intent, dt, boxes, LIMIT, s.car ? CAR_PROFILE : null);
       const p = this.state.players.get(sid);
+      if (s.car && s.veh) {
+        // Dirigindo: a física do carro (passo fixo com acumulador).
+        const v = s.veh;
+        advanceVehicle(v, s.drive, dt, boxes, LIMIT, tuned(s.tune));
+        Object.assign(s.body, { x: v.x, z: v.z, vx: v.vx, vz: v.vz, facing: v.yaw });
+        const c = this.state.cars.get(String(s.car));
+        if (c) Object.assign(c, { x: v.x, z: v.z, facing: v.yaw, sp: v.u, st: v.steer, hb: v.hb > 0.3, sl: v.slip });
+        if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: 0 });
+        continue;
+      }
+      const move = step(s.body, s.intent, dt, boxes, LIMIT);
       if (!p) continue;
       p.x = s.body.x;
       p.z = s.body.z;
       p.facing = s.body.facing;
       p.move = move;
-      if (s.car) {
-        const c = this.state.cars.get(String(s.car));
-        if (c) Object.assign(c, { x: s.body.x, z: s.body.z, facing: s.body.facing });
-      }
     }
   }
 }

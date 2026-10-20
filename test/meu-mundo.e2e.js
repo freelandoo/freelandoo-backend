@@ -277,20 +277,27 @@ async function expectViolation(pool, sql, params, label) {
     const inCar = await Service.enterHouse(nb1user, lotB);
     check("dirigindo, não entra em casa", inCar.statusCode === 409 && /carro/.test(inCar.error || ""), JSON.stringify(inCar));
 
-    // Dirigindo: bem mais rápido que a corrida, mas limitado pelo servidor.
+    // Dirigindo (mm3d-12): a física do carro na sala, com a entrada "drive".
+    const V = require("../src/utils/meuMundoVehicle");
     const c0 = { x: carOf(lotB).x, z: carOf(lotB).z, f: carOf(lotB).facing };
-    const dir = { x: Math.sin(c0.f), z: Math.cos(c0.f) };
     const t1 = Date.now();
-    for (let i = 0; i < 25; i++) {
-      B.room.send("in", { x: dir.x, z: dir.z, r: true });
+    for (let i = 0; i < 15; i++) {
+      B.room.send("drive", { t: 1, b: 0, s: 0.3, h: 0 });
       await sleep(100);
     }
-    B.room.send("in", { x: 0, z: 0 });
     const secs = (Date.now() - t1) / 1000;
-    await sleep(150);
+    const movingSp = carOf(lotB).sp;
+    // Andando, a sala recusa a saída.
+    B.room.send("car", { a: "exit" });
+    await sleep(300);
+    check("andando, não sai do carro", denied.includes("moving") && pB().car === lotB, denied.join());
+    B.room.send("drive", { t: 0, b: 1, s: 0, h: 0 });
+    await until(() => Math.abs(carOf(lotB).sp) < 0.3, 6000);
+    B.room.send("drive", { t: 0, b: 0, s: 0, h: 0 });
+    await sleep(200);
     const driven = Math.hypot(carOf(lotB).x - c0.x, carOf(lotB).z - c0.z);
-    check("carro anda mais que a corrida a pé", driven > 3.5 * secs + 1, `dist=${driven.toFixed(1)} em ${secs.toFixed(1)}s`);
-    check("…e não passa do limite do carro", driven <= Cars.CAR.TURBO * (secs + 0.3), `dist=${driven.toFixed(1)}`);
+    check("carro anda com a física (velocidade e esterço na sala)", driven > 1 && movingSp > 1, `dist=${driven.toFixed(1)} sp=${movingSp.toFixed(1)}`);
+    check("…e não passa da velocidade máxima", driven <= V.VEHICLE.MAX_SPEED * (secs + 0.6), `dist=${driven.toFixed(1)}`);
     check("o jogador acompanha o carro", Math.hypot(pB().x - carOf(lotB).x, pB().z - carOf(lotB).z) < 0.5);
     await until(() => pB().move === 0, 6000);
 
