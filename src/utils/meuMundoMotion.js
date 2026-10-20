@@ -100,10 +100,15 @@ function sanitizeIntent(m) {
 /**
  * Um passo de simulação. `body` = { x, z, vx, vz, facing }, mutado no lugar.
  * Devolve o estado de movimento para a animação: 0 parado, 1 andando, 2 correndo.
+ * `profile` (opcional) troca velocidades, aceleração e raio — é como o carro
+ * (meuMundoCars.CAR_PROFILE) usa a MESMA regra. Sem ele, a pé.
  */
-function step(body, intent, dt, boxes, limit) {
-  const speedMax = intent.run ? MOTION.RUN_SPEED : MOTION.WALK_SPEED;
-  const k = 1 - Math.exp(-MOTION.ACCEL * dt);
+function step(body, intent, dt, boxes, limit, profile = null) {
+  const walk = profile ? profile.walk : MOTION.WALK_SPEED;
+  const run = profile ? profile.run : MOTION.RUN_SPEED;
+  const radius = profile ? profile.radius : MOTION.RADIUS;
+  const speedMax = intent.run ? run : walk;
+  const k = 1 - Math.exp(-(profile ? profile.accel : MOTION.ACCEL) * dt);
   body.vx += (intent.x * speedMax - body.vx) * k;
   body.vz += (intent.z * speedMax - body.vz) * k;
   let speed = Math.hypot(body.vx, body.vz);
@@ -115,13 +120,13 @@ function step(body, intent, dt, boxes, limit) {
   const steps = Math.max(1, Math.ceil(dt / MOTION.SUBSTEP));
   const h = dt / steps;
   for (let i = 0; i < steps; i++) {
-    const next = resolveCircle(body.x + body.vx * h, body.z + body.vz * h, MOTION.RADIUS, boxes);
+    const next = resolveCircle(body.x + body.vx * h, body.z + body.vz * h, radius, boxes);
     body.x = Math.max(-limit, Math.min(limit, next.x));
     body.z = Math.max(-limit, Math.min(limit, next.z));
   }
   if (speed > 0.25) body.facing = Math.atan2(body.vx, body.vz);
   if (speed < 0.25) return 0;
-  return intent.run && speed > (MOTION.WALK_SPEED + MOTION.RUN_SPEED) / 2 - 0.4 ? 2 : 1;
+  return intent.run && speed > (walk + run) / 2 - 0.4 ? 2 : 1;
 }
 
 module.exports = { MOTION, resolveCircle, sanitizeIntent, step };

@@ -240,6 +240,7 @@ class MeuMundoService {
       if (!visit || visit.id_house !== house.id_house) return { error: "Esta casa precisa de convite do morador", statusCode: 403 };
     }
     const pos = realtime.positionIn("nb", here.id, idUser);
+    if (pos && pos.driving) return { error: "Saia do carro antes de entrar em casa", statusCode: 409 };
     const door = doorPoint(lot, house.level);
     const sign = signPoint(lot);
     const nearDoor = pos && Math.hypot(pos.x - door.x, pos.z - door.z) <= VISIT_RULES.enterRadius;

@@ -192,7 +192,7 @@ async function expectViolation(pool, sql, params, label) {
   check("o bairro 02 não vê ninguém do 01", C.room.state.players.size === 1);
   const pB = () => A.room.state.players.get(B.room.sessionId);
   const keysB = Object.keys(pB().toJSON ? pB().toJSON() : pB());
-  check("estado só traz campos públicos", keysB.sort().join() === "body,facing,house,move,name,x,z", keysB.join());
+  check("estado só traz campos públicos", keysB.sort().join() === "body,car,facing,house,move,name,x,z", keysB.join());
 
   // Movimento validado no servidor: intenção absurda não vira teleporte.
   const x0 = pB().x;
@@ -225,6 +225,115 @@ async function expectViolation(pool, sql, params, label) {
   check("corpo sergio chega ao outro jogador", pB().body === "sergio");
   await sleep(300);
   check("corpo sergio persistido (CHECK da mig 294)", (await Storage.getBody(pool, nb1user)) === "sergio");
+
+  // ── Carros (mm3d-11) ─────────────────────────────────────────────────────
+  {
+    const Cars = require("../src/utils/meuMundoCars");
+    const Lx = require("../src/utils/meuMundoLayout");
+    const M = require("../src/utils/meuMundoMotion");
+    const resB = await Storage.getActiveResidence(pool, nb1user);
+    const rm = realtime._roomFor(resB.id_neighborhood);
+    const lotB = resB.lot_number;
+    const carOf = (n) => A.room.state.cars.get(String(n));
+    await until(() => !!carOf(lotB));
+    check("um carro por casa com titular (20 no bairro cheio)", A.room.state.cars.size === 20, String(A.room.state.cars.size));
+    const park = Cars.parkingSpot(lotB);
+    check("carro nasce na vaga da casa", Math.abs(carOf(lotB).x - park.x) < 0.01 && Math.abs(carOf(lotB).z - park.z) < 0.01);
+    const simOf = (u) => [...rm.sim.values()].find((x) => x.userId === u);
+    const place = (u, x, z) => Object.assign(simOf(u).body, { x, z, vx: 0, vz: 0 });
+    const denied = [];
+    B.room.onMessage("car_denied", (m) => denied.push(m.reason));
+    B.room.onMessage("moved", () => {});
+
+    // Longe do carro: recusado.
+    const fr = Lx.frontOfHouse(lotB);
+    place(nb1user, fr.x, fr.z);
+    const farD = Math.hypot(fr.x - park.x, fr.z - park.z);
+    if (farD > Cars.CAR.ENTER_RADIUS) {
+      B.room.send("car", { a: "enter" });
+      await until(() => denied.includes("far"));
+      check("longe do carro: entrar é recusado", denied.includes("far") && pB().car === 0);
+    }
+    // Perto: entra, o carro passa a ser dirigido por ele.
+    const ex = Cars.exitSpots(park, M.MOTION.RADIUS)[0];
+    place(nb1user, ex.x, ex.z);
+    await sleep(120);
+    B.room.send("car", { a: "enter" });
+    await until(() => pB().car === lotB);
+    check("perto do próprio carro: entra", pB().car === lotB && carOf(lotB).driver === B.room.sessionId);
+    // A (outro morador) não entra no carro de B: o servidor só oferece o da casa dele.
+    // A (outro morador) perto do carro de B: o servidor só oferece o da casa de A.
+    const deniedA = [];
+    A.room.onMessage("car_denied", (m) => deniedA.push(m.reason));
+    A.room.onMessage("moved", () => {});
+    const resA2 = await Storage.getActiveResidence(pool, a);
+    const parkA = Cars.parkingSpot(resA2.lot_number);
+    const exB = Cars.exitSpots(carOf(lotB), M.MOTION.RADIUS)[1];
+    place(a, exB.x, exB.z);
+    const farFromOwn = Math.hypot(exB.x - parkA.x, exB.z - parkA.z) > Cars.CAR.ENTER_RADIUS;
+    A.room.send("car", { a: "enter" });
+    await until(() => deniedA.length > 0);
+    check("perto do carro dos outros não entra (só o da própria casa)", farFromOwn && deniedA.includes("far") && carOf(lotB).driver === B.room.sessionId, deniedA.join());
+    const inCar = await Service.enterHouse(nb1user, lotB);
+    check("dirigindo, não entra em casa", inCar.statusCode === 409 && /carro/.test(inCar.error || ""), JSON.stringify(inCar));
+
+    // Dirigindo: bem mais rápido que a corrida, mas limitado pelo servidor.
+    const c0 = { x: carOf(lotB).x, z: carOf(lotB).z, f: carOf(lotB).facing };
+    const dir = { x: Math.sin(c0.f), z: Math.cos(c0.f) };
+    const t1 = Date.now();
+    for (let i = 0; i < 25; i++) {
+      B.room.send("in", { x: dir.x, z: dir.z, r: true });
+      await sleep(100);
+    }
+    B.room.send("in", { x: 0, z: 0 });
+    const secs = (Date.now() - t1) / 1000;
+    await sleep(150);
+    const driven = Math.hypot(carOf(lotB).x - c0.x, carOf(lotB).z - c0.z);
+    check("carro anda mais que a corrida a pé", driven > 3.5 * secs + 1, `dist=${driven.toFixed(1)} em ${secs.toFixed(1)}s`);
+    check("…e não passa do limite do carro", driven <= Cars.CAR.TURBO * (secs + 0.3), `dist=${driven.toFixed(1)}`);
+    check("o jogador acompanha o carro", Math.hypot(pB().x - carOf(lotB).x, pB().z - carOf(lotB).z) < 0.5);
+    await until(() => pB().move === 0, 6000);
+
+    // Sair: desce num ponto livre ao lado, o carro fica onde parou.
+    const before = { x: carOf(lotB).x, z: carOf(lotB).z };
+    B.room.send("car", { a: "exit" });
+    await until(() => pB().car === 0);
+    const box = Cars.carBox(carOf(lotB));
+    const free = Lx.isSafeSpot(pB().x, pB().z, M.resolveCircle, M.MOTION.RADIUS, rm.obstacles.concat([box]));
+    check("ao sair, a pessoa desce num lugar livre", pB().car === 0 && free);
+    check("o carro fica onde parou", Math.hypot(carOf(lotB).x - before.x, carOf(lotB).z - before.z) < 0.05 && carOf(lotB).driver === "");
+
+    // A pé, o carro parado é obstáculo.
+    const c = carOf(lotB);
+    const f = { x: Math.sin(c.facing), z: Math.cos(c.facing) };
+    const r = { x: f.z, z: -f.x };
+    const side = Cars.CAR.HX + M.MOTION.RADIUS + 1.2;
+    place(nb1user, c.x - r.x * side, c.z - r.z * side);
+    await sleep(120);
+    for (let i = 0; i < 15; i++) {
+      B.room.send("in", { x: r.x, z: r.z });
+      await sleep(100);
+    }
+    B.room.send("in", { x: 0, z: 0 });
+    await sleep(200);
+    const lat = Math.abs((pB().x - c.x) * r.x + (pB().z - c.z) * r.z);
+    check("a pé não atravessa o carro estacionado", lat >= Cars.CAR.HX + M.MOTION.RADIUS - 0.08, `lat=${lat.toFixed(2)}`);
+
+    // Cair dirigindo: o carro fica estacionado onde estava.
+    const ex2 = Cars.exitSpots(carOf(lotB), M.MOTION.RADIUS).find((e) => Lx.isSafeSpot(e.x, e.z, M.resolveCircle, M.MOTION.RADIUS, rm.obstacles.concat([Cars.carBox(carOf(lotB))])));
+    place(nb1user, ex2.x, ex2.z);
+    await sleep(120);
+    B.room.send("car", { a: "enter" });
+    await until(() => pB().car === lotB);
+    const sidB = B.room.sessionId;
+    rm.dropSession(sidB);
+    await until(() => carOf(lotB).driver === "");
+    check("quem cai dirigindo larga o carro", carOf(lotB).driver === "");
+    // Volta para a sala de verdade (o resto da suíte usa B).
+    await B.room.leave().catch(() => {});
+    B.room = (await join(nb1user)).room;
+    await until(() => A.room.state.players.size === 2, 5000);
+  }
 
   // ── Nível da casa (mig 292): seletor de teste 01–10 ─────────────────────
   const L = require("../src/utils/meuMundoLayout");
