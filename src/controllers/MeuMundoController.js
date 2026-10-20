@@ -1,4 +1,5 @@
 const MeuMundoService = require("../services/MeuMundoService");
+const MeuMundoLifeService = require("../services/MeuMundoLifeService");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -53,6 +54,23 @@ const decline = withVisit((u, id) => MeuMundoService.decline(u, id));
 const cancel = withVisit((u, id) => MeuMundoService.cancel(u, id));
 const endVisit = withVisit((u, id) => MeuMundoService.endVisit(u, id));
 
+// Vida do hóspede (mm3d-13). Deitar/dormir vão pela sala da casa (cama).
+async function life(req, res) {
+  return reply(res, await MeuMundoLifeService.get(req.user.id_user));
+}
+
+async function lifeActivity(req, res) {
+  return reply(res, await MeuMundoLifeService.setActivity(req.user.id_user, req.body?.activity, req.body?.hours));
+}
+
+async function lifeConsume(req, res) {
+  return reply(res, await MeuMundoLifeService.consume(req.user.id_user, req.body?.item));
+}
+
+async function lifeNewcomer(req, res) {
+  return reply(res, await MeuMundoLifeService.newcomer(req.user.id_user));
+}
+
 async function adminStatus(_req, res) {
   return reply(res, await MeuMundoService.status());
 }
@@ -71,4 +89,8 @@ module.exports = {
   decline,
   cancel,
   endVisit,
+  life,
+  lifeActivity,
+  lifeConsume,
+  lifeNewcomer,
 };

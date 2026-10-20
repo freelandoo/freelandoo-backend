@@ -24,7 +24,10 @@
 //
 // ═══ O QUE TRAFEGA ═══
 // Só nome público, posição, andar, orientação, estado de movimento, assento,
-// corpo e número da casa. Nada de id de usuário, e-mail, token ou permissão.
+// cama, ritmo, corpo e número da casa. Nada de id de usuário, e-mail, token
+// ou permissão. A VIDA do hóspede (mm3d-13) não trafega aqui: a sala só
+// recebe o ritmo de caminhada (`pace`) e se ele está numa cama — o resto o
+// dono lê em GET /meu-mundo/admin/life.
 // Modelos e animações nunca passam pelo WebSocket.
 
 const { Server, Room, ServerError, matchMaker } = require("@colyseus/core");
@@ -36,7 +39,8 @@ const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const MeuMundoVisitStorage = require("../storages/MeuMundoVisitStorage");
 const presence = require("./meuMundoPresence");
 const { interiorFor } = require("../utils/meuMundoInteriors");
-const { SEAT_REACH } = require("../utils/meuMundoInteriorKit");
+const { SEAT_REACH, BED_REACH } = require("../utils/meuMundoInteriorKit");
+const MeuMundoLifeService = require("../services/MeuMundoLifeService");
 const { stepInterior, isFreeSpot } = require("../utils/meuMundoInteriorMotion");
 const {
   LIMIT,
@@ -47,7 +51,7 @@ const {
   houseBoxes,
   levelDef,
 } = require("../utils/meuMundoLayout");
-const { MOTION, sanitizeIntent, step, resolveCircle } = require("../utils/meuMundoMotion");
+const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds } = require("../utils/meuMundoMotion");
 const { CAR, parkingSpot, carBox, carFits, exitSpots } = require("../utils/meuMundoCars");
 const {
   IDLE: IDLE_DRIVE,
@@ -71,6 +75,19 @@ const ABUSE_DROPS = 200; // mensagens descartadas em 10 s → desconecta
 const LAST_POS_TTL = 10 * 60 * 1000;
 const BODY_COOLDOWN_MS = 800;
 const MAX_VISITORS = 20; // um visitante por titular (20 casas)
+const LIFE_REFRESH_MS = 60 * 1000; // ritmo e cama acompanham a vida simulada
+
+/** Perfil de `step` a pé com o ritmo do corpo (null = velocidades normais). */
+function paceProfile(pace) {
+  if (!(pace < 1)) return null;
+  const sp = paceSpeeds(pace);
+  return { walk: sp.walk, run: sp.run, accel: MOTION.ACCEL, radius: MOTION.RADIUS };
+}
+
+/** Traz a vida do usuário até agora; o serviço devolve o resultado à sala dele (applyLife). */
+function refreshLife(userId) {
+  MeuMundoLifeService.peek(userId).catch((err) => log.warn("life.refresh_fail", { message: err.message }));
+}
 
 // MOVED: o servidor levou a pessoa para outro ambiente (visita encerrada,
 // por exemplo) — o cliente pede o destino novo ao backend.
@@ -88,6 +105,9 @@ const Player = schema(
     // Lote do carro que a pessoa está dirigindo (0 = a pé). Dirigindo, x/z
     // são os do carro e o boneco não aparece.
     car: t.uint8(),
+    // Ritmo de caminhada pelo corpo (mm3d-13): 1 normal, 0,7 cansado, 0,42
+    // exausto. O cliente usa na predição (paceSpeeds) e na pose cansada.
+    pace: t.float32(),
   },
   "MMPlayer"
 );
@@ -120,7 +140,8 @@ const State = schema(
   "MMBairro"
 );
 
-// Dentro da casa: andar, altura e assento. move 3 = sentado.
+// Dentro da casa: andar, altura, assento e cama. move 3 = sentado, 4 =
+// deitado, 5 = dormindo (mm3d-13).
 const HousePlayer = schema(
   {
     name: t.string(),
@@ -133,6 +154,8 @@ const HousePlayer = schema(
     facing: t.float32(),
     move: t.uint8(),
     seat: t.string(),
+    bed: t.string(),
+    pace: t.float32(),
   },
   "MMCasaPlayer"
 );
@@ -215,6 +238,9 @@ class BairroRoom extends Room {
     this.onMessage("body", (client, msg) => this.onBody(client, msg));
     this.onMessage("*", (client) => this.countMessage(client));
     this.setSimulationInterval((dt) => this.tick(dt), SIM_MS);
+    this.clock.setInterval(() => {
+      for (const s of this.sim.values()) refreshLife(s.userId);
+    }, LIFE_REFRESH_MS);
     log.info("room.create", { roomId: this.roomId, neighborhood: this.neighborhoodId });
   }
 
@@ -296,6 +322,7 @@ class BairroRoom extends Room {
       drive: IDLE_DRIVE,
       tune: null,
       lastRecoverAt: 0,
+      pace: 1,
     });
     this.state.players.set(
       client.sessionId,
@@ -308,6 +335,7 @@ class BairroRoom extends Room {
         facing: b.facing,
         move: 0,
         car: 0,
+        pace: 1,
       })
     );
     if (resident) this.ensureCar(residence.lot_number);
@@ -316,7 +344,17 @@ class BairroRoom extends Room {
     presence.claim(userId, this, client.sessionId, "nb", this.neighborhoodId);
     presence.setPlacement(userId, { scene: "nb", nbId: this.neighborhoodId });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: residence.lot_number, visitor });
+    refreshLife(userId);
     log.info("join", { roomId: this.roomId, online: this.state.players.size, visitor });
+  }
+
+  /** Vida recalculada (MeuMundoLifeService → applyLife): na rua, só o ritmo. */
+  applyLife(sid, life) {
+    const s = this.sim.get(sid);
+    const p = this.state.players.get(sid);
+    if (!s || !p) return;
+    s.pace = life.pace;
+    p.pace = life.pace;
   }
 
   onLeave(client) {
@@ -556,7 +594,7 @@ class BairroRoom extends Room {
         if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: 0 });
         continue;
       }
-      const move = step(s.body, s.intent, dt, boxes, LIMIT);
+      const move = step(s.body, s.intent, dt, boxes, LIMIT, paceProfile(s.pace));
       if (!p) continue;
       p.x = s.body.x;
       p.z = s.body.z;
@@ -587,8 +625,12 @@ class CasaRoom extends Room {
     this.onMessage("body", (client, msg) => this.onBody(client, msg));
     this.onMessage("sit", (client, msg) => this.onSit(client, msg));
     this.onMessage("stand", (client) => this.onStand(client));
+    this.onMessage("bed", (client, msg) => this.onBed(client, msg));
     this.onMessage("*", (client) => this.countMessage(client));
     this.setSimulationInterval((dt) => this.tick(dt), SIM_MS);
+    this.clock.setInterval(() => {
+      for (const s of this.sim.values()) refreshLife(s.userId);
+    }, LIFE_REFRESH_MS);
     log.info("house_room.create", { roomId: this.roomId, level: this.level });
   }
 
@@ -634,6 +676,10 @@ class CasaRoom extends Room {
       host: isOwner,
       body: b,
       seat: null,
+      bed: null,
+      restKind: null,
+      bedPending: false,
+      pace: 1,
       intent: { x: 0, z: 0, run: false },
       ...freshBucket(),
       lastBodyAt: 0,
@@ -651,11 +697,16 @@ class CasaRoom extends Room {
         facing: b.facing,
         move: 0,
         seat: "",
+        bed: "",
+        pace: 1,
       })
     );
     presence.claim(userId, this, client.sessionId, "house", this.houseId);
     presence.setPlacement(userId, { scene: "house", houseId: this.houseId, nbId: house.id_neighborhood, lot: house.lot_number });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, floor: b.floor, host: isOwner });
+    // Quem saiu do jogo deitado/dormindo numa cama desta casa volta para ela
+    // quando a vida chegar (applyLife).
+    refreshLife(userId);
     log.info("house_join", { roomId: this.roomId, online: this.state.players.size, host: isOwner });
   }
 
@@ -727,6 +778,7 @@ class CasaRoom extends Room {
     const deny = (reason) => client.send("seat", { ok: false, seat: id, reason });
     if (!s || !seat) return deny("seat");
     if (s.seat) return deny("seated");
+    if (s.bed || s.bedPending) return deny("in_bed");
     if (seat.floor !== s.body.floor || Math.hypot(seat.x - s.body.x, seat.z - s.body.z) > SEAT_REACH) return deny("far");
     for (const o of this.sim.values()) if (o.seat === seat.id) return deny("taken");
     s.seat = seat.id;
@@ -746,8 +798,112 @@ class CasaRoom extends Room {
   onStand(client) {
     if (!this.countMessage(client)) return;
     const s = this.sim.get(client.sessionId);
-    if (!s || !s.seat) return;
+    if (!s) return;
+    if (s.bed) {
+      if (s.bedPending) return;
+      this.leaveBed(client.sessionId, s);
+      MeuMundoLifeService.getUp(s.userId).catch((err) => log.warn("life.getup_fail", { message: err.message }));
+      return;
+    }
+    if (!s.seat) return;
     this.standUp(client.sessionId, s);
+  }
+
+  /**
+   * Deitar ou dormir (mm3d-13): `{ bed, a: "lie" | "sleep", hours }`. Fora
+   * da cama: a cama existe neste layout, está no mesmo andar, perto e livre.
+   * Já deitado: troca deitado ↔ dormindo na mesma cama. A cama é RESERVADA
+   * antes de gravar a vida (duas pessoas pedindo a mesma: a primeira mensagem
+   * ganha); se a vida recusar (estimulante, internado…), quem acabou de
+   * deitar levanta e quem já estava deitado continua.
+   */
+  async onBed(client, msg) {
+    if (!this.countMessage(client)) return;
+    const sid = client.sessionId;
+    const s = this.sim.get(sid);
+    const kind = msg && msg.a === "sleep" ? "sleeping" : "lying";
+    const want = s && s.bed ? s.bed : msg && typeof msg.bed === "string" ? msg.bed : "";
+    const bed = this.def.beds.find((x) => x.id === want);
+    const deny = (reason) => client.send("bed", { ok: false, bed: want, reason });
+    if (!s || !bed) return deny("bed");
+    if (s.bedPending) return deny("busy");
+    if (s.seat) return deny("seated");
+    const wasIn = !!s.bed;
+    if (!wasIn) {
+      if (bed.floor !== s.body.floor || Math.hypot(bed.x - s.body.x, bed.z - s.body.z) > BED_REACH) return deny("far");
+      for (const o of this.sim.values()) if (o.bed === bed.id) return deny("taken");
+      this.putInBed(sid, s, bed, "lying");
+    }
+    const hours = kind === "sleeping" ? Number(msg && msg.hours) || 8 : null;
+    s.bedPending = true;
+    let out;
+    try {
+      out = await MeuMundoLifeService.rest(s.userId, kind, hours, { houseId: this.houseId, bedId: bed.id });
+    } catch (err) {
+      log.error("life.rest_fail", { message: err.message });
+      out = { error: "falha", code: "error" };
+    }
+    s.bedPending = false;
+    if (!this.sim.has(sid)) return;
+    if (out && out.error) {
+      if (!wasIn && s.bed === bed.id) this.leaveBed(sid, s);
+      return deny(out.code || "life");
+    }
+    if (s.bed === bed.id) this.putInBed(sid, s, bed, kind);
+    client.send("bed", { ok: true, bed: bed.id, a: kind === "sleeping" ? "sleep" : "lie" });
+  }
+
+  putInBed(sid, s, bed, kind) {
+    s.bed = bed.id;
+    s.restKind = kind;
+    s.intent = { x: 0, z: 0, run: false };
+    Object.assign(s.body, { x: bed.x, z: bed.z, vx: 0, vz: 0, facing: bed.facing, floor: bed.floor });
+    const p = this.state.players.get(sid);
+    if (p) Object.assign(p, { bed: bed.id, x: bed.x, z: bed.z, facing: bed.facing, floor: bed.floor, move: kind === "sleeping" ? 5 : 4 });
+  }
+
+  leaveBed(sid, s) {
+    const bed = this.def.beds.find((x) => x.id === s.bed);
+    s.bed = null;
+    s.restKind = null;
+    // Uma leitura da vida que chegue antes de "levantou" ser gravado não o
+    // devolve à cama.
+    s.leftBedAt = Date.now();
+    if (bed) {
+      Object.assign(s.body, { x: bed.stand.x, z: bed.stand.z, vx: 0, vz: 0, floor: bed.floor });
+      stepInterior(s.body, { x: 0, z: 0, run: false }, 0, this.def);
+    }
+    const p = this.state.players.get(sid);
+    if (p) Object.assign(p, { bed: "", move: 0, x: s.body.x, z: s.body.z, y: s.body.y, floor: s.body.floor });
+    const c = this.clients.find((cl) => cl.sessionId === sid);
+    if (c) c.send("stood", { x: s.body.x, z: s.body.z, floor: s.body.floor, facing: s.body.facing });
+  }
+
+  /**
+   * Vida recalculada (MeuMundoLifeService → applyLife): ritmo; volta para a
+   * cama desta casa quem está deitado/dormindo nela; levanta quem a vida
+   * tirou da cama (o sono acabou, internação, morte).
+   */
+  applyLife(sid, life) {
+    const s = this.sim.get(sid);
+    const p = this.state.players.get(sid);
+    if (!s || !p) return;
+    s.pace = life.pace;
+    p.pace = life.pace;
+    if (s.bedPending) return;
+    const resting = life.status === "alive" && (life.activity === "lying" || life.activity === "sleeping");
+    const here = resting && life.bed && life.bed.houseId === this.houseId ? this.def.beds.find((b) => b.id === life.bed.bedId) : null;
+    if (s.bed && (!here || here.id !== s.bed)) return this.leaveBed(sid, s);
+    if (!here) return;
+    if (s.bed) {
+      if (s.restKind !== life.activity) this.putInBed(sid, s, here, life.activity);
+      return;
+    }
+    if (s.seat || Date.now() - (s.leftBedAt || 0) < 5000) return;
+    for (const [osid, o] of this.sim) if (osid !== sid && o.bed === here.id) return;
+    this.putInBed(sid, s, here, life.activity);
+    const c = this.clients.find((cl) => cl.sessionId === sid);
+    if (c) c.send("bed", { ok: true, bed: here.id, a: life.activity === "sleeping" ? "sleep" : "lie", restored: true });
   }
 
   standUp(sid, s) {
@@ -776,8 +932,8 @@ class CasaRoom extends Room {
   tick(dtMs) {
     const dt = Math.min(dtMs / 1000, 0.25);
     for (const [sid, s] of this.sim) {
-      if (s.seat) continue;
-      const move = stepInterior(s.body, s.intent, dt, this.def);
+      if (s.seat || s.bed) continue;
+      const move = stepInterior(s.body, s.intent, dt, this.def, paceSpeeds(s.pace));
       const p = this.state.players.get(sid);
       if (!p) continue;
       p.x = s.body.x;
@@ -867,6 +1023,15 @@ function dropFromHouse(houseId, userId) {
   }
 }
 
+/** A vida do usuário mudou (MeuMundoLifeService): leva à sala em que ele está e avisa o cliente. */
+function applyLife(userId, life) {
+  const p = presence.get(userId);
+  if (!p || !p.room.applyLife) return false;
+  p.room.applyLife(p.sessionId, life);
+  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity });
+  return true;
+}
+
 /** Posição do usuário segundo a sala em que ele está (null = não está). */
 function positionIn(scene, id, userId) {
   const room = scene === "nb" ? roomsByNeighborhood.get(id) : roomsByHouse.get(id);
@@ -901,6 +1066,7 @@ module.exports = {
   houseOccupants,
   dropFromHouse,
   positionIn,
+  applyLife,
   isFreeSpot,
   WS_PREFIX,
   BairroRoom,

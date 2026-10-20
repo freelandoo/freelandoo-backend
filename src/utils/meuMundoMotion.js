@@ -19,7 +19,20 @@ const MOTION = Object.freeze({
   RADIUS: 0.42,
   SUBSTEP: 0.025, // s — não atravessa a cerca viva fina (0,3 m)
   STOP_EPS: 0.02,
+  // mm3d-13: abaixo deste ritmo (exausto) não se corre — "correr" anda.
+  PACE_RUN_MIN: 0.6,
 });
+
+/**
+ * Velocidades a pé pelo RITMO do corpo (mm3d-13, meuMundoLife.pace): 1 =
+ * normal, 0,7 = cansado, 0,42 = exausto. Espelho: paceSpeeds em
+ * features/meu-mundo/engine/motion.ts.
+ */
+function paceSpeeds(pace = 1) {
+  const p = Number.isFinite(pace) && pace > 0 ? Math.min(1, pace) : 1;
+  const walk = MOTION.WALK_SPEED * p;
+  return { walk, run: p >= MOTION.PACE_RUN_MIN ? MOTION.RUN_SPEED * p : walk };
+}
 
 function toLocal(b, px, pz) {
   const dx = px - b.x;
@@ -126,7 +139,7 @@ function step(body, intent, dt, boxes, limit, profile = null) {
   }
   if (speed > 0.25) body.facing = Math.atan2(body.vx, body.vz);
   if (speed < 0.25) return 0;
-  return intent.run && speed > (walk + run) / 2 - 0.4 ? 2 : 1;
+  return intent.run && run > walk && speed > (walk + run) / 2 - 0.4 ? 2 : 1;
 }
 
-module.exports = { MOTION, resolveCircle, sanitizeIntent, step };
+module.exports = { MOTION, resolveCircle, sanitizeIntent, step, paceSpeeds };

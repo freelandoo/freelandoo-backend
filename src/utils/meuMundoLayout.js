@@ -17,7 +17,7 @@
 //    para validar o movimento — uma lista só, sem segunda verdade.
 //  - spawn, saída e o ponto de chegada na frente de cada casa.
 
-const MEU_MUNDO_RELEASE = "mm3d-12";
+const MEU_MUNDO_RELEASE = "mm3d-13";
 
 // Versão do DESENHO do bairro. Posição guardada num desenho anterior não vale
 // neste (o que era calçada pode ter virado quintal): quem a lê confere a versão.

@@ -32,6 +32,11 @@ const SEAT_TOP = 0.38;
 // Distância máxima entre o personagem e o assento para sentar (a sala da casa
 // confere). O ponto de levantar fica DENTRO dela, senão levantar seria um salto.
 const SEAT_REACH = 1.6; // altura do assento: medida na pose "Sit" (pipeline/build_sit.py)
+// Cama (mm3d-13): é longa — deitar vale a esta distância do ponto de deitar.
+const BED_REACH = 1.9;
+// Altura do colchão: a pose "Lie"/"Sleep" (pipeline/build_rest.py) já traz o
+// corpo nela; o servidor põe o personagem no chão, no ponto de deitar.
+const BED_TOP = 0.48;
 const EPS = 1e-6;
 
 // ═══ MÓVEIS ═══ — w × d × h (m), frente no −Z local. `seats`: pontos onde o
@@ -47,8 +52,10 @@ const FURNITURE = Object.freeze({
   table4: { w: 1.3, d: 0.85, h: 0.75 },
   table6: { w: 1.9, d: 0.95, h: 0.75 },
   tv: { w: 1.4, d: 0.42, h: 0.55 },
-  bed1: { w: 1.0, d: 2.0, h: 0.5 },
-  bed2: { w: 1.6, d: 2.1, h: 0.5 },
+  // `beds` (mm3d-13): onde o personagem deita — o quadril no meio do
+  // colchão, a cabeça para o travesseiro (+Z local), os pés para a frente.
+  bed1: { w: 1.0, d: 2.0, h: 0.5, beds: [[0, 0]] },
+  bed2: { w: 1.6, d: 2.1, h: 0.5, beds: [[-0.4, 0], [0.4, 0]] },
   nightstand: { w: 0.45, d: 0.42, h: 0.5 },
   wardrobe: { w: 1.4, d: 0.6, h: 2.0 },
   desk: { w: 1.2, d: 0.6, h: 0.75 },
@@ -361,6 +368,22 @@ function buildInterior(plan) {
   const reachable = (fi, c) => walk.cells.some((w) => w.floor === fi && Math.hypot(w.x - c.x, w.z - c.z) <= 0.2);
   const seats = [];
   const problems = [];
+  // Ponto de levantar: o primeiro candidato (coordenadas locais do móvel)
+  // livre, alcançável, no MESMO cômodo do móvel (livre do outro lado de uma
+  // parede seria atravessá-la) e a menos de `reach` − 0,25 do ponto onde o
+  // personagem fica.
+  const standPoint = (fl, fi, it, at, cands, reach) => {
+    const rot = it.r * DEG;
+    const room = fl.rooms.find((r) => it.x >= r.x0 && it.x <= r.x1 && it.z >= r.z0 && it.z <= r.z1);
+    const inRoom = (c) => room && c.x > room.x0 && c.x < room.x1 && c.z > room.z0 && c.z < room.z1;
+    for (const [lx, lz] of cands) {
+      const q = rotY(lx, lz, rot);
+      const c = { x: round(it.x + q.x), z: round(it.z + q.z) };
+      const close = Math.hypot(c.x - at.x, c.z - at.z) <= reach - 0.25;
+      if (close && inRoom(c) && isFreeSpot(def, fi, c.x, c.z) && reachable(fi, c)) return c;
+    }
+    return null;
+  };
   floors.forEach((fl, fi) => {
     fl.furniture.forEach((it) => {
       const kind = FURNITURE[it.t];
@@ -384,19 +407,7 @@ function buildInterior(plan) {
         ];
         // O ponto de levantar fica no MESMO cômodo do móvel: livre do outro
         // lado de uma parede não serve (seria atravessá-la).
-        const room = fl.rooms.find((r) => it.x >= r.x0 && it.x <= r.x1 && it.z >= r.z0 && it.z <= r.z1);
-        const inRoom = (c) => room && c.x > room.x0 && c.x < room.x1 && c.z > room.z0 && c.z < room.z1;
-        let stand = null;
-        for (const [lx, lz] of cands) {
-          const q = rotY(lx, lz, rot);
-          const c = { x: round(it.x + q.x), z: round(it.z + q.z) };
-          const seatAt = { x: it.x + p.x, z: it.z + p.z };
-          const close = Math.hypot(c.x - seatAt.x, c.z - seatAt.z) <= SEAT_REACH - 0.25;
-          if (close && inRoom(c) && isFreeSpot(def, fi, c.x, c.z) && reachable(fi, c)) {
-            stand = c;
-            break;
-          }
-        }
+        const stand = standPoint(fl, fi, it, { x: it.x + p.x, z: it.z + p.z }, cands, SEAT_REACH);
         if (!stand) problems.push(`assento sem lugar para levantar (${it.t} em ${it.x},${it.z}, piso ${fi})`);
         if (stand) seats.push({
           id: `s${String(seats.length + 1).padStart(2, "0")}`,
@@ -412,6 +423,49 @@ function buildInterior(plan) {
   });
   def.seats = seats;
   def.seatTop = SEAT_TOP;
+
+  // Camas (mm3d-13): o mesmo esquema dos assentos. Levanta pelo lado do
+  // colchão em que deitou, depois o outro lado, depois os pés.
+  const beds = [];
+  floors.forEach((fl, fi) => {
+    fl.furniture.forEach((it) => {
+      const kind = FURNITURE[it.t];
+      if (!kind.beds) return;
+      const s = furnitureSize(it);
+      const rot = it.r * DEG;
+      const fwd = rotY(0, -1, rot);
+      const facing = Math.atan2(fwd.x, fwd.z);
+      const reach = MOTION.RADIUS + 0.12;
+      for (const [bx, bz] of kind.beds) {
+        const p = rotY(bx, bz, rot);
+        const at = { x: it.x + p.x, z: it.z + p.z };
+        const side = bx > 0 ? 1 : -1;
+        const cands = [
+          [side * (s.w / 2 + reach), bz],
+          [side * (s.w / 2 + reach), bz - 0.5],
+          [-side * (s.w / 2 + reach), bz],
+          [-side * (s.w / 2 + reach), bz - 0.5],
+          [bx, -(s.d / 2 + reach)],
+        ];
+        const stand = standPoint(fl, fi, it, at, cands, BED_REACH);
+        if (!stand) {
+          problems.push(`cama sem lugar para levantar (${it.t} em ${it.x},${it.z}, piso ${fi})`);
+          continue;
+        }
+        beds.push({
+          id: `b${String(beds.length + 1).padStart(2, "0")}`,
+          floor: fi,
+          x: round(at.x),
+          z: round(at.z),
+          facing: round(facing),
+          stand,
+          kind: it.t,
+        });
+      }
+    });
+  });
+  def.beds = beds;
+  def.bedTop = BED_TOP;
   // Medidas-padrão de cada móvel: o cliente desenha com estas (não guarda cópia).
   def.furnitureTypes = Object.fromEntries(Object.entries(FURNITURE).map(([k, v]) => [k, { w: v.w, d: v.d, h: v.h }]));
 
@@ -424,4 +478,4 @@ function buildInterior(plan) {
   return def;
 }
 
-module.exports = { FURNITURE, FLOOR_H, WALL_T, WALL_H, RAIL_H, SEAT_TOP, SEAT_REACH, buildInterior, furnitureBox, rotY };
+module.exports = { FURNITURE, FLOOR_H, WALL_T, WALL_H, RAIL_H, SEAT_TOP, SEAT_REACH, BED_TOP, BED_REACH, buildInterior, furnitureBox, rotY };

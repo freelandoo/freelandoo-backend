@@ -36,9 +36,22 @@ const {
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { VISIT_RULES } = require("../utils/meuMundoVisits");
 const { MOTION } = require("../utils/meuMundoMotion");
+const MeuMundoLifeService = require("./MeuMundoLifeService");
+const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.service");
+
+/** Vida do hóspede para o payload de entrada; falhar aqui não impede entrar. */
+async function lifeFor(idUser) {
+  try {
+    const out = await MeuMundoLifeService.peek(idUser);
+    return { now: out.now, character: out.character, wallet: out.wallet };
+  } catch (err) {
+    log.error("life.peek_fail", { message: err.message });
+    return null;
+  }
+}
 
 const VISIT_LOCK = "meu_mundo:visitas";
 
@@ -97,6 +110,15 @@ class MeuMundoService {
         house && (house.owner_id === idUser || (visit && visit.id_house === house.id_house && visit.id_host === house.owner_id));
       if (allowed && interiorFor(levelDef(house.level).level)) return { scene: "house", house };
     }
+    // 1b. Deitado/dormindo numa cama (mm3d-13): o hóspede continua lá mesmo
+    // com o jogo fechado — quem volta entra na casa, onde ele está.
+    const bed = await MeuMundoLifeStorage.restingBed(pool, idUser);
+    if (bed) {
+      const house = await MeuMundoStorage.getHouse(pool, bed.houseId);
+      const allowed =
+        house && (house.owner_id === idUser || (visit && visit.id_house === house.id_house && visit.id_host === house.owner_id));
+      if (allowed && interiorFor(levelDef(house.level).level)) return { scene: "house", house };
+    }
     // 2/3. Rua: do bairro visitado (visita ativa) ou do próprio.
     const nbId = visit ? visit.id_neighborhood : residence.id_neighborhood;
     const arrivalLot = pl && pl.scene === "nb" && pl.nbId === nbId && pl.arrivalLot ? pl.arrivalLot : null;
@@ -151,6 +173,7 @@ class MeuMundoService {
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer,
       visits: await MeuMundoService.visitState(idUser),
+      life: await lifeFor(idUser),
     };
   }
 
@@ -183,6 +206,7 @@ class MeuMundoService {
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer,
       visits: await MeuMundoService.visitState(idUser),
+      life: await lifeFor(idUser),
     };
   }
 

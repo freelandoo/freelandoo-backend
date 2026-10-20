@@ -87,3 +87,19 @@ test("assentos: ids únicos e ponto de levantar livre", () => {
     for (const s of d.seats) assert.ok(isFreeSpot(d, s.floor, s.stand.x, s.stand.z));
   }
 });
+
+test("camas (mm3d-13): toda casa tem onde dormir; casal = 2 lugares; levantar livre e perto", () => {
+  const { FURNITURE, BED_REACH } = require("../../src/utils/meuMundoInteriorKit");
+  for (const l of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+    const d = interiorFor(l);
+    assert.ok(d.beds.length >= 1, `nível ${l} sem cama`);
+    assert.strictEqual(new Set(d.beds.map((b) => b.id)).size, d.beds.length);
+    const furniture = d.floors.flatMap((f) => f.furniture).filter((it) => FURNITURE[it.t].beds);
+    const expected = furniture.reduce((n, it) => n + FURNITURE[it.t].beds.length, 0);
+    assert.strictEqual(d.beds.length, expected, `nível ${l}: ${d.beds.length} de ${expected} lugares`);
+    for (const b of d.beds) {
+      assert.ok(isFreeSpot(d, b.floor, b.stand.x, b.stand.z), `nível ${l} ${b.id}: levantar bloqueado`);
+      assert.ok(Math.hypot(b.stand.x - b.x, b.stand.z - b.z) <= BED_REACH, `nível ${l} ${b.id}: levantar longe`);
+    }
+  }
+});

@@ -36,6 +36,11 @@ router.post("/visits/:id/accept", ...admin, asyncHandler(MeuMundoController.acce
 router.post("/visits/:id/decline", ...admin, asyncHandler(MeuMundoController.decline));
 router.post("/visits/:id/cancel", ...admin, asyncHandler(MeuMundoController.cancel));
 router.post("/visits/:id/end", ...admin, asyncHandler(MeuMundoController.endVisit));
+// Vida do hóspede (mig 295): estado, atividade com horas, comer/tomar, novo hóspede.
+router.get("/life", ...admin, asyncHandler(MeuMundoController.life));
+router.post("/life/activity", ...admin, asyncHandler(MeuMundoController.lifeActivity));
+router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsume));
+router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewcomer));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;
