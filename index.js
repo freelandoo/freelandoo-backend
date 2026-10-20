@@ -23,6 +23,9 @@ const server = app.listen(PORT, () => {
   // Meu Mundo 3D (mm3d-02): multiplayer do bairro (Colyseus) no MESMO servidor
   // HTTP, só em /mm-ws/. Processo único (ver src/realtime/meuMundo.js).
   require("./src/realtime/meuMundo").init(server);
+  // mm3d-09: convites pendentes expiram e visitas com alguém fora além da
+  // tolerância terminam (parâmetros em src/utils/meuMundoVisits.js).
+  require("./src/services/MeuMundoService").startSweeper();
 
   // F4.S1 — worker de mídia (fork): todo ffmpeg/sharp pesado roda fora deste
   // processo, com fila (concorrência 1) + status em media_jobs. Se o worker

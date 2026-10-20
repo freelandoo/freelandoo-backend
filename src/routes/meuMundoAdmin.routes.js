@@ -8,7 +8,9 @@
 // (a antiga saiu com o jogo anterior), e o acesso público segue fechado.
 //
 // mm3d-02: o bairro é PERSISTENTE (mig 291) e a resposta traz a reserva da
-// sala multiplayer do bairro do usuário (src/realtime/meuMundo.js).
+// sala multiplayer. mm3d-09: o ambiente pode ser a RUA ou o INTERIOR de uma
+// casa; entrar, sair e visitar passam por aqui (o servidor confere posição,
+// propriedade e convite — o navegador nunca escolhe a sala).
 
 const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
@@ -23,6 +25,17 @@ router.get("/neighborhood", ...admin, asyncHandler(MeuMundoController.adminNeigh
 router.post("/session", ...admin, asyncHandler(MeuMundoController.adminSession));
 // Troca o nível da PRÓPRIA casa (teste). Dono = residência ativa do token.
 router.post("/house/level", ...admin, asyncHandler(MeuMundoController.adminHouseLevel));
+// Entrar (lote no bairro em que você está) e sair pela porta.
+router.post("/house/enter", ...admin, asyncHandler(MeuMundoController.houseEnter));
+router.post("/house/exit", ...admin, asyncHandler(MeuMundoController.houseExit));
+// Convites e visitas (mig 293).
+router.get("/visits", ...admin, asyncHandler(MeuMundoController.visits));
+router.get("/visits/candidates", ...admin, asyncHandler(MeuMundoController.candidates));
+router.post("/visits", ...admin, asyncHandler(MeuMundoController.invite));
+router.post("/visits/:id/accept", ...admin, asyncHandler(MeuMundoController.accept));
+router.post("/visits/:id/decline", ...admin, asyncHandler(MeuMundoController.decline));
+router.post("/visits/:id/cancel", ...admin, asyncHandler(MeuMundoController.cancel));
+router.post("/visits/:id/end", ...admin, asyncHandler(MeuMundoController.endVisit));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;

@@ -189,6 +189,41 @@ class MeuMundoStorage {
     );
   }
 
+  /**
+   * Uma casa com o lote, o bairro e o TITULAR ativo (id interno só para o
+   * servidor conferir permissão — nunca vai para a rede).
+   */
+  static async getHouse(db, idHouse) {
+    const r = await db.query(
+      `SELECT h.id_house, h.level, h.level_rev, h.variant, l.lot_number,
+              n.id_neighborhood, n.seq, n.name AS neighborhood_name,
+              r.id_user AS owner_id, u.username AS owner_name
+         FROM tb_mm_house h
+         JOIN tb_mm_lot l ON l.id_lot = h.id_lot
+         JOIN tb_mm_neighborhood n ON n.id_neighborhood = l.id_neighborhood
+         LEFT JOIN tb_mm_residence r ON r.id_house = h.id_house AND r.status = 'active'
+         LEFT JOIN tb_user u ON u.id_user = r.id_user
+        WHERE h.id_house = $1`,
+      [idHouse]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async getHouseByLot(db, idNeighborhood, lotNumber) {
+    const r = await db.query(
+      `SELECT h.id_house FROM tb_mm_house h JOIN tb_mm_lot l ON l.id_lot = h.id_lot
+        WHERE l.id_neighborhood = $1 AND l.lot_number = $2`,
+      [idNeighborhood, lotNumber]
+    );
+    return r.rows[0] ? MeuMundoStorage.getHouse(db, r.rows[0].id_house) : null;
+  }
+
+  /** Usuário pelo nome público exato (convite). Só o id, para o servidor. */
+  static async findUserByUsername(db, username) {
+    const r = await db.query(`SELECT id_user, username FROM tb_user WHERE username = $1 LIMIT 1`, [username]);
+    return r.rows[0] || null;
+  }
+
   static async getPublicName(db, idUser) {
     const r = await db.query(`SELECT username FROM tb_user WHERE id_user = $1`, [idUser]);
     return (r.rows[0]?.username || "morador").slice(0, 24);
