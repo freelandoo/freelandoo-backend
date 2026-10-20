@@ -49,7 +49,7 @@ async function bootstrap(pool) {
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
-  for (const f of ["291_meu_mundo_bairros.sql", "292_meu_mundo_house_levels.sql", "293_meu_mundo_visits.sql"]) {
+  for (const f of ["291_meu_mundo_bairros.sql", "292_meu_mundo_house_levels.sql", "293_meu_mundo_visits.sql", "294_meu_mundo_body_sergio.sql"]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
     await pool.query(sql); // idempotente

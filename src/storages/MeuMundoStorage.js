@@ -5,7 +5,7 @@
 
 const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout");
 
-const BODIES = ["normal", "slim", "fat", "strong"];
+const BODIES = ["normal", "slim", "fat", "strong", "sergio"];
 
 // Uma chave só para TODA alocação de residência. É ela que impede dois
 // pedidos simultâneos de pegarem a mesma casa e — o caso mais sutil — de cada

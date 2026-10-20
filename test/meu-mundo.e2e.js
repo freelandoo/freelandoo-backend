@@ -75,6 +75,12 @@ async function bootstrap(pool) {
   );
   await pool.query(sql293);
   await pool.query(sql293); // idempotente
+  const sql294 = fs.readFileSync(
+    path.join(__dirname, "../src/databases/migrations/294_meu_mundo_body_sergio.sql"),
+    "utf8"
+  );
+  await pool.query(sql294);
+  await pool.query(sql294); // idempotente
 }
 
 async function mkUser(pool, admin = true, tag = "") {
@@ -212,6 +218,13 @@ async function expectViolation(pool, sql, params, label) {
   await sleep(400);
   check("corpo fora da lista permitida é recusado", pB().body === "strong");
   check("preferência de corpo persistida", (await Storage.getBody(pool, nb1user)) === "strong");
+  // Sergio (mig 294): o corpo novo passa pela sala e pelo CHECK do banco.
+  await sleep(900);
+  B.room.send("body", { body: "sergio" });
+  await until(() => pB().body === "sergio");
+  check("corpo sergio chega ao outro jogador", pB().body === "sergio");
+  await sleep(300);
+  check("corpo sergio persistido (CHECK da mig 294)", (await Storage.getBody(pool, nb1user)) === "sergio");
 
   // ── Nível da casa (mig 292): seletor de teste 01–10 ─────────────────────
   const L = require("../src/utils/meuMundoLayout");
