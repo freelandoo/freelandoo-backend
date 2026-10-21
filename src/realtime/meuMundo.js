@@ -52,10 +52,10 @@ const {
   levelDef,
 } = require("../utils/meuMundoLayout");
 const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds } = require("../utils/meuMundoMotion");
-const { CAR, parkingSpot, carBox, carFits, exitSpots } = require("../utils/meuMundoCars");
+const { CAR, RIDE_KINDS, KIND_NAMES, vehicleId, spotFor, carBox, blocks, carFits, exitSpots } = require("../utils/meuMundoCars");
 const {
   IDLE: IDLE_DRIVE,
-  tuned,
+  paramsFor,
   sanitizeDrive,
   sanitizeTuning,
   createVehicle,
@@ -102,8 +102,9 @@ const Player = schema(
     z: t.float32(),
     facing: t.float32(),
     move: t.uint8(),
-    // Lote do carro que a pessoa está dirigindo (0 = a pé). Dirigindo, x/z
-    // são os do carro e o boneco não aparece.
+    // Id do veículo em uso (0 = a pé; 1–20 carro, 21–40 bike, 41–60 skate,
+    // 61–80 patins — mm3d-14). Em uso, x/z são os do veículo; no carro o
+    // boneco não aparece, nos outros aparece montado (move 6/7/8).
     car: t.uint8(),
     // Ritmo de caminhada pelo corpo (mm3d-13): 1 normal, 0,7 cansado, 0,42
     // exausto. O cliente usa na predição (paceSpeeds) e na pose cansada.
@@ -121,6 +122,8 @@ const Player = schema(
 const Car = schema(
   {
     lot: t.uint8(),
+    // mm3d-14: "car" | "bike" | "skate" | "skates" (a chave do mapa é o id).
+    kind: t.string(),
     x: t.float32(),
     z: t.float32(),
     facing: t.float32(),
@@ -231,9 +234,9 @@ class BairroRoom extends Room {
     const levels = new Map();
     this.state.houses.forEach((h, key) => levels.set(Number(key), h.level));
     this.obstacles = buildObstacles(levels);
-    // Um carro por casa com titular, na vaga da casa.
+    // Cada casa com titular: carro na rua; bike, skate e patins na calçada.
     for (const h of await MeuMundoStorage.listHouses(pool, this.neighborhoodId, null)) {
-      if (h.ownerName) this.ensureCar(h.number);
+      if (h.ownerName) this.ensureVehicles(h.number);
     }
 
     this.onMessage("in", (client, msg) => this.onIntent(client, msg));
@@ -343,7 +346,7 @@ class BairroRoom extends Room {
         pace: 1,
       })
     );
-    if (resident) this.ensureCar(residence.lot_number);
+    if (resident) this.ensureVehicles(residence.lot_number);
     // Titulares podem ter mudado (alguém acabou de ganhar uma casa aqui).
     this.state.residents = await MeuMundoStorage.countResidents(pool, this.neighborhoodId);
     presence.claim(userId, this, client.sessionId, "nb", this.neighborhoodId);
@@ -390,19 +393,22 @@ class BairroRoom extends Room {
     return null;
   }
 
-  // ── Carros (mm3d-11) ──────────────────────────────────────────────────────
-  ensureCar(lotNumber) {
-    const key = String(lotNumber);
-    if (this.state.cars.has(key)) return;
-    const p = parkingSpot(lotNumber);
-    this.state.cars.set(key, new Car({ lot: lotNumber, x: p.x, z: p.z, facing: p.facing, driver: "" }));
+  // ── Veículos (mm3d-11 carro; mm3d-14 bike, skate e patins) ───────────────
+  ensureVehicles(lotNumber) {
+    for (const kind of KIND_NAMES) {
+      const key = String(vehicleId(kind, lotNumber));
+      if (this.state.cars.has(key)) continue;
+      const p = spotFor(kind, lotNumber);
+      this.state.cars.set(key, new Car({ lot: lotNumber, kind, x: p.x, z: p.z, facing: p.facing, driver: "" }));
+    }
   }
 
-  /** Caixas dos carros que bloqueiam `sessionId` (todos menos o que ele dirige). */
+  /** Caixas dos veículos que bloqueiam `sessionId` (menos o dele e os que não bloqueiam parados). */
   carBoxes(sessionId) {
     const out = [];
     this.state.cars.forEach((c) => {
       if (c.driver && c.driver === sessionId) return;
+      if (!blocks(c)) return;
       out.push(carBox(c));
     });
     return out;
@@ -448,20 +454,23 @@ class BairroRoom extends Room {
     const deny = (reason) => client.send("car_denied", { reason });
     if (msg.a === "enter") {
       if (s.car) return;
-      // Só o titular dirige o carro da própria casa; visitante anda a pé.
-      if (s.visitor || !p.house) return deny("not_owner");
-      const c = this.state.cars.get(String(p.house));
+      // "Usar" (mm3d-14): o id diz qual; sem id, o carro da própria casa.
+      const id = Number(msg.id) || p.house;
+      const c = id ? this.state.cars.get(String(id)) : null;
       if (!c) return deny("no_car");
+      const kind = RIDE_KINDS[c.kind] ? c.kind : "car";
+      // O carro é só do titular da casa; bike, skate e patins, de quem chegar.
+      if (RIDE_KINDS[kind].ownerOnly && (s.visitor || !p.house || p.house !== c.lot)) return deny("not_owner");
       if (c.driver) return deny("busy");
-      if (Math.hypot(c.x - s.body.x, c.z - s.body.z) > CAR.ENTER_RADIUS) return deny("far");
+      if (Math.hypot(c.x - s.body.x, c.z - s.body.z) > RIDE_KINDS[kind].enter) return deny("far");
       c.driver = client.sessionId;
-      s.car = c.lot;
+      s.car = id;
       s.veh = createVehicle(c.x, c.z, c.facing);
       s.drive = IDLE_DRIVE;
       Object.assign(s.body, { x: c.x, z: c.z, vx: 0, vz: 0, facing: c.facing });
       s.intent = { x: 0, z: 0, run: false };
-      Object.assign(p, { car: c.lot, x: c.x, z: c.z, facing: c.facing, move: 0 });
-      client.send("moved", { x: c.x, z: c.z, facing: c.facing, car: c.lot });
+      Object.assign(p, { car: id, x: c.x, z: c.z, facing: c.facing, move: RIDE_KINDS[kind].move });
+      client.send("moved", { x: c.x, z: c.z, facing: c.facing, car: id });
       return;
     }
     if (msg.a === "recover") {
@@ -473,14 +482,15 @@ class BairroRoom extends Room {
       const now = Date.now();
       if (now - s.lastRecoverAt < CAR.RECOVER_COOLDOWN_MS) return deny("cooldown");
       if (Math.hypot(s.veh.vx, s.veh.vz) > CAR.RECOVER_MAX_SPEED) return deny("moving");
-      const spot = parkingSpot(c.lot);
-      if (!carFits(spot.x, spot.z, spot.facing, this.obstacles.concat(this.carBoxes(client.sessionId)))) return deny("spot_busy");
+      const kind = RIDE_KINDS[c.kind] ? c.kind : "car";
+      const spot = spotFor(kind, c.lot);
+      if (!carFits(spot.x, spot.z, spot.facing, this.obstacles.concat(this.carBoxes(client.sessionId)), kind)) return deny("spot_busy");
       s.lastRecoverAt = now;
       s.veh = createVehicle(spot.x, spot.z, spot.facing);
       Object.assign(s.body, { x: spot.x, z: spot.z, vx: 0, vz: 0, facing: spot.facing });
       Object.assign(c, { x: spot.x, z: spot.z, facing: spot.facing, sp: 0, st: 0, hb: false, sl: 0, vx: 0, vz: 0, w: 0 });
       Object.assign(p, { x: spot.x, z: spot.z, facing: spot.facing });
-      client.send("moved", { x: spot.x, z: spot.z, facing: spot.facing, car: c.lot });
+      client.send("moved", { x: spot.x, z: spot.z, facing: spot.facing, car: s.car });
       return;
     }
     if (msg.a === "exit") {
@@ -592,11 +602,12 @@ class BairroRoom extends Room {
       if (s.car && s.veh) {
         // Dirigindo: a física do carro (passo fixo com acumulador).
         const v = s.veh;
-        advanceVehicle(v, s.drive, dt, boxes, LIMIT, tuned(s.tune));
-        Object.assign(s.body, { x: v.x, z: v.z, vx: v.vx, vz: v.vz, facing: v.yaw });
         const c = this.state.cars.get(String(s.car));
+        const kind = c && RIDE_KINDS[c.kind] ? c.kind : "car";
+        advanceVehicle(v, s.drive, dt, boxes, LIMIT, paramsFor(kind, s.tune));
+        Object.assign(s.body, { x: v.x, z: v.z, vx: v.vx, vz: v.vz, facing: v.yaw });
         if (c) Object.assign(c, { x: v.x, z: v.z, facing: v.yaw, sp: v.u, st: v.steer, hb: v.hb > 0.3, sl: v.slip, vx: v.vx, vz: v.vz, w: v.w });
-        if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: 0 });
+        if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: RIDE_KINDS[kind].move });
         continue;
       }
       const move = step(s.body, s.intent, dt, boxes, LIMIT, paceProfile(s.pace));

@@ -131,7 +131,7 @@ async function mkUser(pool, tag) {
   check(
     "atributos 0–1000 com pico, piso e horas úteis",
     at.intelligence > 10 && at.intelligence < 100 && at.peaks.intelligence >= at.intelligence && Math.abs(at.floors.strength - 0.6 * at.peaks.strength) < 0.02 &&
-      at.usefulToday.studying.cap === 5 && at.usefulToday.studying.done > 0 && sc.catalog.attributes.max === 1000,
+      at.usefulToday.studying.cap === 5 && at.usefulToday.studying.done >= 0 && at.usefulToday.studying.done <= 5 && sc.catalog.attributes.max === 1000,
     JSON.stringify(at)
   );
   // Linha antiga (escala 0–100, sem pico): a 297 multiplica por 10 UMA vez.

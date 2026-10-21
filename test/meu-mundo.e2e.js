@@ -236,7 +236,9 @@ async function expectViolation(pool, sql, params, label) {
     const lotB = resB.lot_number;
     const carOf = (n) => A.room.state.cars.get(String(n));
     await until(() => !!carOf(lotB));
-    check("um carro por casa com titular (20 no bairro cheio)", A.room.state.cars.size === 20, String(A.room.state.cars.size));
+    const kinds = {};
+    A.room.state.cars.forEach((c) => (kinds[c.kind] = (kinds[c.kind] || 0) + 1));
+    check("quatro veículos por casa com titular (20 de cada no bairro cheio)", A.room.state.cars.size === 80 && kinds.car === 20 && kinds.bike === 20 && kinds.skate === 20 && kinds.skates === 20, JSON.stringify(kinds));
     const park = Cars.parkingSpot(lotB);
     check("carro nasce na vaga da casa", Math.abs(carOf(lotB).x - park.x) < 0.01 && Math.abs(carOf(lotB).z - park.z) < 0.01);
     const simOf = (u) => [...rm.sim.values()].find((x) => x.userId === u);
@@ -340,6 +342,55 @@ async function expectViolation(pool, sql, params, label) {
     await B.room.leave().catch(() => {});
     B.room = (await join(nb1user)).room;
     await until(() => A.room.state.players.size === 2, 5000);
+    B.room.onMessage("car_denied", (m) => denied.push(m.reason));
+    B.room.onMessage("moved", () => {});
+
+    // ── mm3d-14: bike, skate e patins (de qualquer casa) ──
+    const resA = await Storage.getActiveResidence(pool, a);
+    const lotA = resA.lot_number;
+    const bikeA = Cars.vehicleId("bike", lotA);
+    const sp = Cars.spotFor("bike", lotA);
+    check("a bike nasce na calçada da casa", Math.abs(carOf(bikeA).x - sp.x) < 0.01 && carOf(bikeA).kind === "bike");
+    // B (de outra casa) usa a bike de A.
+    const exb = Cars.exitSpots(carOf(bikeA), M.MOTION.RADIUS).find((e) => Lx.isSafeSpot(e.x, e.z, M.resolveCircle, M.MOTION.RADIUS, rm.obstacles));
+    place(nb1user, exb.x, exb.z);
+    await sleep(150);
+    B.room.send("car", { a: "enter", id: bikeA });
+    await until(() => pB().car === bikeA);
+    check("qualquer morador usa a bike de outra casa", pB().car === bikeA && carOf(bikeA).driver === B.room.sessionId);
+    check("montado na bike: move 6 (o boneco aparece pedalando)", pB().move === 6, String(pB().move));
+    const b0 = { x: carOf(bikeA).x, z: carOf(bikeA).z };
+    for (let i = 0; i < 12; i++) {
+      B.room.send("drive", { t: 1, b: 0, s: 0, h: 0 });
+      await sleep(100);
+    }
+    B.room.send("drive", { t: 0, b: 1, s: 0, h: 0 });
+    await until(() => Math.abs(carOf(bikeA).sp) < 0.2, 6000);
+    B.room.send("drive", { t: 0, b: 0, s: 0, h: 0 });
+    check("a bike anda com a física (igual ao carro)", Math.hypot(carOf(bikeA).x - b0.x, carOf(bikeA).z - b0.z) > 1);
+    B.room.send("car", { a: "exit" });
+    await until(() => pB().car === 0);
+    check("desce da bike", pB().car === 0 && carOf(bikeA).driver === "" && pB().move !== 6);
+    // O carro de A continua só de A.
+    const carA = carOf(lotA);
+    const exc = Cars.exitSpots(carA, M.MOTION.RADIUS).find((e) => Lx.isSafeSpot(e.x, e.z, M.resolveCircle, M.MOTION.RADIUS, rm.obstacles.concat(rm.carBoxes(""))));
+    place(nb1user, exc.x, exc.z);
+    await sleep(150);
+    denied.length = 0;
+    B.room.send("car", { a: "enter", id: lotA });
+    await until(() => denied.length > 0);
+    check("o carro de outra casa continua recusado (só o titular)", denied.includes("not_owner") && pB().car === 0, denied.join());
+    // Skate estacionado não bloqueia quem anda; patins: move 8.
+    const skA = carOf(Cars.vehicleId("skate", lotA));
+    check("skate estacionado não é obstáculo", !rm.carBoxes("").some((b) => Math.abs(b.x - skA.x) < 1e-6 && Math.abs(b.z - skA.z) < 1e-6));
+    const ptA = Cars.vehicleId("skates", lotA);
+    place(nb1user, carOf(ptA).x + 0.6, carOf(ptA).z);
+    await sleep(150);
+    B.room.send("car", { a: "enter", id: ptA });
+    await until(() => pB().car === ptA);
+    check("patins: move 8", pB().move === 8 && carOf(ptA).kind === "skates");
+    B.room.send("car", { a: "exit" });
+    await until(() => pB().car === 0);
   }
 
   // ── Nível da casa (mig 292): seletor de teste 01–10 ─────────────────────

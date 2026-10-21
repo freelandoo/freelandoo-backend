@@ -195,4 +195,25 @@ test("constantes da física iguais no cliente", (t) => {
     assert.ok(new RegExp(`${k}:\\s*\\[${lo},\\s*${hi}\\]`).test(src), `faixa ${k}`);
   }
   assert.ok(/STEP\s*=\s*1\s*\/\s*60/.test(src) && /MAX_STEPS\s*=\s*8/.test(src), "passo fixo");
+  // Modalidades (mm3d-14): mesma forma de colisão no cliente.
+  const ks = src.slice(src.indexOf("export const KINDS"), src.indexOf("} as const", src.indexOf("export const KINDS")));
+  for (const [kind, ov] of Object.entries(V.KINDS)) {
+    const line = ks.split("\n").find((l) => l.trim().startsWith(`${kind}:`));
+    assert.ok(line, `KINDS.${kind} ausente no cliente`);
+    for (const [k, v] of Object.entries(ov)) assert.ok(new RegExp(`${k}:\\s*${v}\\b`).test(line), `KINDS.${kind}.${k}`);
+  }
+});
+
+test("bike, skate e patins andam como o carro: mesma velocidade, forma menor", () => {
+  const out = {};
+  for (const kind of Object.keys(V.KINDS)) {
+    const c = V.createVehicle(0, 0, 0);
+    const P = V.paramsFor(kind, null);
+    for (let i = 0; i < 6 * 60; i++) V.stepVehicle(c, { t: 1, b: 0, s: 0, h: false }, [], 1e9, P);
+    out[kind] = c.u;
+  }
+  for (const kind of Object.keys(out)) assert.ok(Math.abs(out[kind] - out.car) < 1e-9, `${kind} ${out[kind]} × carro ${out.car}`);
+  assert.ok(V.paramsFor("bike").COL_RADIUS < V.VEHICLE.COL_RADIUS);
+  assert.equal(V.paramsFor("car"), V.VEHICLE);
+  assert.equal(V.paramsFor("bike", { MAX_SPEED: 10 }).MAX_SPEED, 10);
 });

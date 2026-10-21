@@ -102,10 +102,29 @@ const TUNING_RANGES = Object.freeze({
   STIFF: [5000, 25000],
 });
 
+/**
+ * Modalidades (mm3d-14). A mobilidade é a MESMA do carro (pedido do Alex:
+ * "todos é igual o carro a mobilidade deles"); muda só a FORMA que bate —
+ * três círculos menores ao longo do veículo — e a caixa que bloqueia os outros.
+ */
+const KINDS = Object.freeze({
+  car: Object.freeze({}),
+  bike: Object.freeze({ COL_OFFSET: 0.42, COL_RADIUS: 0.36, HX: 0.32, HZ: 0.72 }),
+  skate: Object.freeze({ COL_OFFSET: 0.2, COL_RADIUS: 0.34, HX: 0.3, HZ: 0.42 }),
+  skates: Object.freeze({ COL_OFFSET: 0.0, COL_RADIUS: 0.36, HX: 0.3, HZ: 0.3 }),
+});
+
 /** Junta ajustes (já validados) aos parâmetros padrão. */
 function tuned(overrides) {
   if (!overrides) return VEHICLE;
   return Object.freeze({ ...VEHICLE, ...overrides });
+}
+
+/** Parâmetros de uma modalidade com os ajustes do painel por cima. */
+function paramsFor(kind, overrides) {
+  const k = KINDS[kind] || KINDS.car;
+  if (!overrides && k === KINDS.car) return VEHICLE;
+  return Object.freeze({ ...VEHICLE, ...k, ...(overrides || {}) });
 }
 
 /** Valida um pacote de ajustes vindo da rede. Fora da faixa é fixado na borda. */
@@ -410,9 +429,11 @@ module.exports = {
   STEP,
   MAX_STEPS,
   VEHICLE,
+  KINDS,
   TUNING_RANGES,
   IDLE,
   tuned,
+  paramsFor,
   sanitizeTuning,
   sanitizeDrive,
   createVehicle,
