@@ -94,6 +94,9 @@ async function mkUser(pool, tag) {
   const n = (await pool.query(`SELECT COUNT(*)::int AS n FROM tb_mm_character WHERE id_user = $1`, [host])).rows[0].n;
   check("5 leituras simultâneas fazem nascer UM hóspede", n === 1, `nasceram ${n}`);
   check("todas leem o mesmo hóspede", outs.every((o) => o.character.generation === 1));
+  // Tipo físico (2026-10-21): nasce muito magro e a leitura grava o corpo do avatar.
+  check("nasce muito magro", outs[0].character.body.bodyHint === "slim" && outs[0].character.body.fatPct < 11, JSON.stringify(outs[0].character.body));
+  check("ler a vida grava o tipo físico do avatar", (await Storage.getBody(pool, host)) === "slim");
   const g = await Life.get(host);
   check("GET: geração 1 viva, carteira 500, catálogo e relógio", g.character.status === "alive" && g.wallet.coins === 500 && g.catalog.items.length >= 30 && g.catalog.clock.meals.join() === "10,14,18,22");
   check("GET: diário de hoje e evento de nascimento", g.days.length === 1 && g.days[0].closed === false && g.events.some((e) => e.kind === "born"));

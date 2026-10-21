@@ -184,7 +184,8 @@ class MeuMundoStorage {
     if (!BODIES.includes(body)) throw new Error("corpo inválido");
     await db.query(
       `INSERT INTO tb_mm_avatar_pref (id_user, body) VALUES ($1, $2)
-       ON CONFLICT (id_user) DO UPDATE SET body = EXCLUDED.body, updated_at = NOW()`,
+       ON CONFLICT (id_user) DO UPDATE SET body = EXCLUDED.body, updated_at = NOW()
+       WHERE tb_mm_avatar_pref.body IS DISTINCT FROM EXCLUDED.body`,
       [idUser, body]
     );
   }

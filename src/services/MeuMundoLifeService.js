@@ -17,6 +17,7 @@
 const crypto = require("crypto");
 const pool = require("../databases");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
+const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const { rowToState } = require("../storages/MeuMundoLifeStorage");
 const Life = require("../utils/meuMundoLife");
 const { createLogger } = require("../utils/logger");
@@ -95,6 +96,9 @@ class MeuMundoLifeService {
       await MeuMundoLifeStorage.insertEvents(c, row.id_character, events);
       if (ctx.newEvents) await MeuMundoLifeStorage.insertEvents(c, idCharacter, ctx.newEvents);
       await MeuMundoLifeStorage.setCoins(c, idUser, Math.max(0, ctx.coins));
+      // O tipo físico do avatar É o corpo da vida (não se escolhe desde
+      // 2026-10-21): gravado só quando muda — é o que as entradas leem.
+      await MeuMundoStorage.setBody(c, idUser, Life.bodyHint(state));
       await c.query("COMMIT");
       const cur = ctx.newRow || row;
       const snap = {
@@ -113,7 +117,7 @@ class MeuMundoLifeService {
         out.days = await MeuMundoLifeStorage.recentDays(pool, idCharacter);
         out.events = await MeuMundoLifeStorage.recentEvents(pool, idCharacter);
       }
-      notifyRoom(idUser, { pace: snap.pace, status: snap.status, activity: snap.activity.kind, bed: state.activity.bed });
+      notifyRoom(idUser, { pace: snap.pace, status: snap.status, activity: snap.activity.kind, bed: state.activity.bed, body: snap.body.bodyHint });
       return out;
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});

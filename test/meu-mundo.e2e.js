@@ -209,21 +209,20 @@ async function expectViolation(pool, sql, params, label) {
   check("A vê B se mover", dist > 0.5, `dist=${dist}`);
   check("velocidade limitada pelo servidor", dist <= 3.5 * secs + 0.5, `dist=${dist} em ${secs}s`);
 
-  // Troca de corpo sincronizada; corpo fora da lista é ignorado.
+  // Tipo físico (2026-10-21): não se escolhe — a mensagem "body" é ignorada
+  // e o corpo vem da VIDA (applyLife), que chega ao outro jogador.
+  const body0 = pB().body;
   B.room.send("body", { body: "strong" });
-  await until(() => pB().body === "strong");
-  check("troca de corpo chega ao outro jogador", pB().body === "strong");
-  await sleep(900);
-  B.room.send("body", { body: "https://evil/x.glb" });
+  await sleep(500);
+  check("escolher corpo pela sala é ignorado", pB().body === body0, pB().body);
+  realtime.applyLife(nb1user, { pace: 1, status: "alive", activity: "idle", body: "fat" });
+  await until(() => pB().body === "fat");
+  check("corpo vindo da vida chega ao outro jogador", pB().body === "fat");
+  realtime.applyLife(nb1user, { pace: 1, status: "alive", activity: "idle", body: "https://evil/x.glb" });
   await sleep(400);
-  check("corpo fora da lista permitida é recusado", pB().body === "strong");
-  check("preferência de corpo persistida", (await Storage.getBody(pool, nb1user)) === "strong");
-  // Sergio (mig 294): o corpo novo passa pela sala e pelo CHECK do banco.
-  await sleep(900);
-  B.room.send("body", { body: "sergio" });
-  await until(() => pB().body === "sergio");
-  check("corpo sergio chega ao outro jogador", pB().body === "sergio");
-  await sleep(300);
+  check("corpo fora da lista permitida é recusado", pB().body === "fat");
+  // Sergio (mig 294): a preferência gravada continua passando pelo CHECK do banco.
+  await Storage.setBody(pool, nb1user, "sergio");
   check("corpo sergio persistido (CHECK da mig 294)", (await Storage.getBody(pool, nb1user)) === "sergio");
 
   // ── Carros (mm3d-11) ─────────────────────────────────────────────────────

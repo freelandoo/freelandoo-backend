@@ -26,8 +26,9 @@
 // Só nome público, posição, andar, orientação, estado de movimento, assento,
 // cama, ritmo, corpo e número da casa. Nada de id de usuário, e-mail, token
 // ou permissão. A VIDA do hóspede (mm3d-13) não trafega aqui: a sala só
-// recebe o ritmo de caminhada (`pace`) e se ele está numa cama — o resto o
-// dono lê em GET /meu-mundo/admin/life.
+// recebe o ritmo de caminhada (`pace`), se ele está numa cama e o tipo
+// físico (`body`, que desde 2026-10-21 sai da alimentação e do treino — não
+// se escolhe) — o resto o dono lê em GET /meu-mundo/admin/life.
 // Modelos e animações nunca passam pelo WebSocket.
 
 const { Server, Room, ServerError, matchMaker } = require("@colyseus/core");
@@ -73,7 +74,6 @@ const PATCH_MS = 100; // 10 Hz de estado para os clientes
 const MAX_MSG_PER_SEC = 30;
 const ABUSE_DROPS = 200; // mensagens descartadas em 10 s → desconecta
 const LAST_POS_TTL = 10 * 60 * 1000;
-const BODY_COOLDOWN_MS = 800;
 const MAX_VISITORS = 20; // um visitante por titular (20 casas)
 const LIFE_REFRESH_MS = 60 * 1000; // ritmo e cama acompanham a vida simulada
 
@@ -243,7 +243,7 @@ class BairroRoom extends Room {
     this.onMessage("car", (client, msg) => this.onCar(client, msg));
     this.onMessage("drive", (client, msg) => this.onDrive(client, msg));
     this.onMessage("tune", (client, msg) => this.onTune(client, msg));
-    this.onMessage("body", (client, msg) => this.onBody(client, msg));
+    // Sem mensagem "body" desde 2026-10-21: o tipo físico vem da vida (applyLife).
     this.onMessage("*", (client) => this.countMessage(client));
     this.setSimulationInterval((dt) => this.tick(dt), SIM_MS);
     this.clock.setInterval(() => {
@@ -323,7 +323,6 @@ class BairroRoom extends Room {
       body: b,
       intent: { x: 0, z: 0, run: false },
       ...freshBucket(),
-      lastBodyAt: 0,
       car: 0,
       // Dirigindo (mm3d-12): física do carro, entrada e ajustes do painel.
       veh: null,
@@ -356,13 +355,14 @@ class BairroRoom extends Room {
     log.info("join", { roomId: this.roomId, online: this.state.players.size, visitor });
   }
 
-  /** Vida recalculada (MeuMundoLifeService → applyLife): na rua, só o ritmo. */
+  /** Vida recalculada (MeuMundoLifeService → applyLife): na rua, o ritmo e o tipo físico. */
   applyLife(sid, life) {
     const s = this.sim.get(sid);
     const p = this.state.players.get(sid);
     if (!s || !p) return;
     s.pace = life.pace;
     p.pace = life.pace;
+    if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
   }
 
   onLeave(client) {
@@ -536,21 +536,6 @@ class BairroRoom extends Room {
     if (s && intent) s.intent = intent;
   }
 
-  onBody(client, msg) {
-    if (!this.countMessage(client)) return;
-    const s = this.sim.get(client.sessionId);
-    const body = msg && msg.body;
-    if (!s || !MeuMundoStorage.BODIES.includes(body)) return;
-    const now = Date.now();
-    if (now - s.lastBodyAt < BODY_COOLDOWN_MS) return;
-    s.lastBodyAt = now;
-    const p = this.state.players.get(client.sessionId);
-    if (p) p.body = body;
-    MeuMundoStorage.setBody(pool, s.userId, body).catch((err) =>
-      log.error("body.persist_fail", { message: err.message })
-    );
-  }
-
   /**
    * Nível confirmado no banco → sala. Só revisão MAIOR que a atual vale (dois
    * pedidos cruzados: vence o último confirmado). Troca as caixas daquela casa
@@ -638,7 +623,6 @@ class CasaRoom extends Room {
     this.sim = new Map();
     roomsByHouse.set(this.houseId, this);
     this.onMessage("in", (client, msg) => this.onIntent(client, msg));
-    this.onMessage("body", (client, msg) => this.onBody(client, msg));
     this.onMessage("sit", (client, msg) => this.onSit(client, msg));
     this.onMessage("stand", (client) => this.onStand(client));
     this.onMessage("bed", (client, msg) => this.onBed(client, msg));
@@ -698,7 +682,6 @@ class CasaRoom extends Room {
       pace: 1,
       intent: { x: 0, z: 0, run: false },
       ...freshBucket(),
-      lastBodyAt: 0,
     });
     this.state.players.set(
       client.sessionId,
@@ -765,19 +748,6 @@ class CasaRoom extends Room {
     const s = this.sim.get(client.sessionId);
     const intent = sanitizeIntent(msg);
     if (s && intent) s.intent = intent;
-  }
-
-  onBody(client, msg) {
-    if (!this.countMessage(client)) return;
-    const s = this.sim.get(client.sessionId);
-    const body = msg && msg.body;
-    if (!s || !MeuMundoStorage.BODIES.includes(body)) return;
-    const now = Date.now();
-    if (now - s.lastBodyAt < BODY_COOLDOWN_MS) return;
-    s.lastBodyAt = now;
-    const p = this.state.players.get(client.sessionId);
-    if (p) p.body = body;
-    MeuMundoStorage.setBody(pool, s.userId, body).catch((err) => log.error("body.persist_fail", { message: err.message }));
   }
 
   /**
@@ -906,6 +876,7 @@ class CasaRoom extends Room {
     if (!s || !p) return;
     s.pace = life.pace;
     p.pace = life.pace;
+    if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
     if (s.bedPending) return;
     const resting = life.status === "alive" && (life.activity === "lying" || life.activity === "sleeping");
     const here = resting && life.bed && life.bed.houseId === this.houseId ? this.def.beds.find((b) => b.id === life.bed.bedId) : null;
@@ -1044,7 +1015,7 @@ function applyLife(userId, life) {
   const p = presence.get(userId);
   if (!p || !p.room.applyLife) return false;
   p.room.applyLife(p.sessionId, life);
-  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity });
+  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, body: life.body });
   return true;
 }
 

@@ -369,3 +369,46 @@ test("snapshot não vaza a semente nem campos internos", () => {
   assert.equal(snap.meals.length, 4);
   assert.equal(snap.meals[0].state, "upcoming");
 });
+
+// ═══ Corpo pela alimentação (2026-10-21): o tipo físico não se escolhe ═══
+test("todo hóspede nasce muito magro", () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const snap = L.snapshot(fresh(seed), T0);
+    assert.equal(snap.body.bodyHint, "slim", `semente ${seed}: ${snap.body.fatPct}%`);
+    assert.ok(snap.body.fatPct < 11, `semente ${seed}: ${snap.body.fatPct}%`);
+  }
+});
+
+test("comer sem atividade física só engorda: magro → normal → gordo, sem ganhar músculo", () => {
+  const s = fresh(5);
+  const lean0 = s.leanKg;
+  const seen = [];
+  for (let t = T0; t < T0 + 45 * 24 * H; t += H) {
+    L.simulate(s, t);
+    if (L.mealWindowAt(t) >= 0 && s.satiety <= 92) L.consume(s, "prato_feito", t);
+    if (Math.round(L.localParts(t).hour) === 23 && s.activity.kind === "idle") L.startActivity(s, "sleeping", 8, t, BED);
+    const hint = L.bodyHint(s);
+    if (seen[seen.length - 1] !== hint) seen.push(hint);
+  }
+  assert.deepEqual(seen, ["slim", "normal", "fat"]);
+  assert.ok(s.leanKg <= lean0 + 1e-9, `massa magra ${lean0} → ${s.leanKg}`);
+});
+
+test("gordo: os danos à saúde pesam 1,2×", () => {
+  const thin = fresh(9);
+  const fat = fresh(9);
+  fat.fatKg = fat.leanKg; // 50% de gordura
+  assert.equal(L.bodyHint(fat), "fat");
+  for (const s of [thin, fat]) {
+    s.satiety = 0; // fome: dano contínuo
+    s.health = 80;
+    s.diabetesRisk = 0;
+    s.bpRisk = 0;
+  }
+  L.simulate(thin, T0 + H);
+  L.simulate(fat, T0 + H);
+  const lostThin = 80 - thin.health;
+  const lostFat = 80 - fat.health;
+  assert.ok(lostThin > 0, "fome machuca");
+  assert.ok(Math.abs(lostFat / lostThin - L.RULES.FAT_HEALTH_MUL) < 0.02, `perda ${lostThin} × ${lostFat}`);
+});

@@ -72,6 +72,21 @@ const RULES = Object.freeze({
   START_COINS: 500,
   WORK_COINS_H: 14,
   MEAL_MISSED: { mood: -6, stress: 4 },
+  // Gordo (BODY.FAT_AT): todo dano à saúde pesa 1,2× (pedido do Alex, 2026-10-21).
+  FAT_HEALTH_MUL: 1.2,
+});
+
+// ═══ CORPO ═══ — desde 2026-10-21 o tipo físico NÃO se escolhe: sai daqui.
+// Todo hóspede nasce MUITO magro (~8–10% de gordura); a comida soma gordura
+// (kcal), o gasto do dia tira, e só o TREINO soma massa magra. Comer sem
+// atividade física só engorda. O avatar da sala e os retratos seguem
+// `bodyHint` (a sala recebe pela vida — applyLife).
+const BODY = Object.freeze({
+  SLIM_BELOW: 13, // % de gordura
+  FAT_AT: 25,
+  STRONG_MAX_FAT: 20,
+  STRONG_FFMI: 20, // massa magra / altura² (nasce ~16,5)
+  STRONG_STRENGTH: 600,
 });
 
 // ═══ ATRIBUTOS (0–1000) ═══ — progressão longa (pedido do Alex, 2026-10-20):
@@ -245,8 +260,9 @@ function birth(seed, t) {
     metabolism: r2(r()),
   };
   const heightM = r2(1.68 + r() * 0.18);
-  const leanKg = r2(22 * heightM * heightM * (0.8 + r() * 0.08)); // ~50–60 kg
-  const fatKg = r2(leanKg * (0.17 + r() * 0.1));
+  // Nasce muito magro (BODY): ~47–58 kg de massa magra e 8–10% de gordura.
+  const leanKg = r2(22 * heightM * heightM * (0.74 + r() * 0.04));
+  const fatKg = r2(leanKg * (0.085 + r() * 0.025));
   const s = {
     seed,
     personality: p,
@@ -464,8 +480,9 @@ function stepState(s, t, dt, events, out) {
   }
   if (s.toxicity > 40) dmg.overdose = (s.toxicity - 40) * 0.06 + (s.toxicity > 100 ? (s.toxicity - 100) * 0.25 + 4 : 0);
   let total = 0;
+  const fatMul = fp >= BODY.FAT_AT ? RULES.FAT_HEALTH_MUL : 1;
   for (const k of Object.keys(dmg)) {
-    dmg[k] *= dmgMul;
+    dmg[k] *= dmgMul * fatMul;
     total += dmg[k];
   }
   const ok = s.satiety > 25 && s.energy > 25 && s.stress < 70 && s.toxicity < 30;
@@ -508,7 +525,7 @@ function stepState(s, t, dt, events, out) {
   // Transições (na ordem: infarto, morte, internação, alta, desmaio)
   const end = t + dt * HOUR;
   if (s.cardiac >= 100) {
-    s.health = clamp(s.health - RULES.INFARCT_DAMAGE * dmgMul);
+    s.health = clamp(s.health - RULES.INFARCT_DAMAGE * dmgMul * fatMul);
     s.vitality = clamp(s.vitality - RULES.INFARCT_SEQUEL);
     s.cardiac = 40;
     events.push({ at: end, kind: "heart_attack", data: {} });
@@ -753,12 +770,13 @@ function pace(s) {
   return PACE.NORMAL;
 }
 
-/** Corpo do seletor que mais combina com o corpo atual (os cards e, depois, o avatar). */
+/** Tipo físico do corpo atual (ver BODY) — é o avatar da sala e o retrato dos cards. */
 function bodyHint(s) {
   const fp = fatPct(s);
-  if (fp >= 30) return "fat";
-  if (s.strength >= 600 && fp < 22) return "strong";
-  if (fp < 13) return "slim";
+  if (fp >= BODY.FAT_AT) return "fat";
+  const ffmi = s.leanKg / (s.heightM * s.heightM);
+  if (fp < BODY.STRONG_MAX_FAT && (ffmi >= BODY.STRONG_FFMI || s.strength >= BODY.STRONG_STRENGTH)) return "strong";
+  if (fp < BODY.SLIM_BELOW) return "slim";
   return "normal";
 }
 
@@ -862,6 +880,7 @@ module.exports = {
   ACTIVITY_HOURS,
   RATES,
   RULES,
+  BODY,
   ATTR,
   ROUTINE,
   PACE,

@@ -125,7 +125,7 @@ class MeuMundoService {
     return { scene: "nb", nbId, visit, arrivalLot };
   }
 
-  static async neighborhoodPayload(idUser, residence, target, body, name) {
+  static async neighborhoodPayload(idUser, residence, target, body, name, life) {
     const nbRow = await pool.query(`SELECT id_neighborhood, seq, name FROM tb_mm_neighborhood WHERE id_neighborhood = $1`, [
       target.nbId,
     ]);
@@ -173,11 +173,11 @@ class MeuMundoService {
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer,
       visits: await MeuMundoService.visitState(idUser),
-      life: await lifeFor(idUser),
+      life: life !== undefined ? life : await lifeFor(idUser),
     };
   }
 
-  static async housePayload(idUser, house, body, name) {
+  static async housePayload(idUser, house, body, name, life) {
     const level = levelDef(house.level).level;
     const def = interiorFor(level);
     let multiplayer = null;
@@ -206,18 +206,21 @@ class MeuMundoService {
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer,
       visits: await MeuMundoService.visitState(idUser),
-      life: await lifeFor(idUser),
+      life: life !== undefined ? life : await lifeFor(idUser),
     };
   }
 
   static async enter(idUser) {
     const { residence, created } = await MeuMundoStorage.ensureResidence(pool, idUser);
+    // A vida vem ANTES do corpo: ler a vida grava o tipo físico atual (ele
+    // não se escolhe — sai da alimentação e do treino).
+    const life = await lifeFor(idUser);
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
     const target = await MeuMundoService.resolveScene(idUser, residence);
     const out =
       target.scene === "house"
-        ? await MeuMundoService.housePayload(idUser, target.house, body, name)
-        : await MeuMundoService.neighborhoodPayload(idUser, residence, target, body, name);
+        ? await MeuMundoService.housePayload(idUser, target.house, body, name, life)
+        : await MeuMundoService.neighborhoodPayload(idUser, residence, target, body, name, life);
     if (out.me) out.me.newResidence = created;
     return out;
   }
