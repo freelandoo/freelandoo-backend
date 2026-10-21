@@ -16,8 +16,12 @@ function fresh(seed = 7, t = T0) {
 }
 
 function inRange(s) {
-  for (const k of ["energy", "satiety", "mood", "stress", "health", "vitality", "intelligence", "strength", "speed", "fertility"]) {
+  for (const k of ["energy", "satiety", "mood", "stress", "health", "vitality", "fertility"]) {
     assert.ok(s[k] >= 0 && s[k] <= 100, `${k} fora de 0–100: ${s[k]}`);
+  }
+  for (const k of ["intelligence", "strength", "speed"]) {
+    assert.ok(s[k] >= 0 && s[k] <= L.ATTR.MAX, `${k} fora de 0–1000: ${s[k]}`);
+    assert.ok(s[k] >= L.ATTR.FLOOR[k] * s.peaks[k] - 1e-9, `${k} abaixo do piso`);
   }
 }
 
@@ -47,14 +51,14 @@ test("nascimento é determinístico pela semente e começa saudável", () => {
   assert.equal(snap.pace, 1);
 });
 
-test("8 h estudando: inteligência sobe, energia cai, a atividade termina sozinha", () => {
+test("5 h estudando: inteligência sobe, energia cai, a atividade termina sozinha", () => {
   const s = fresh();
   s.energy = 100;
   const int0 = s.intelligence;
-  assert.ok(L.startActivity(s, "studying", 8, T0).ok);
-  const { events } = L.simulate(s, T0 + 8 * H);
+  assert.ok(L.startActivity(s, "studying", 5, T0).ok);
+  const { events } = L.simulate(s, T0 + 5 * H);
   assert.ok(s.intelligence > int0 + 2, `inteligência ${int0} → ${s.intelligence}`);
-  assert.ok(s.energy < 50, `energia ${s.energy}`);
+  assert.ok(s.energy < 70, `energia ${s.energy}`);
   assert.equal(s.activity.kind, "idle");
   assert.ok(events.some((e) => e.kind === "activity_end"));
   inRange(s);
@@ -139,25 +143,118 @@ test("diabetes sem remédio machuca; com metformina, não", () => {
   assert.ok(a.health < b.health - 1.5, `sem ${a.health} × com ${b.health}`);
 });
 
-test("72 h estudando sem comer: desmaia, volta a estudar e acaba no hospital", () => {
+test("rotina sem moedas: dorme e descansa sozinho (sem desmaio), mas sem comer passa fome", () => {
   const s = fresh(5);
   assert.ok(L.startActivity(s, "studying", 72, T0).ok);
-  const { events } = L.simulate(s, T0 + 72 * H);
+  const { events } = L.simulate(s, T0 + 72 * H, { coins: 0 });
   const kinds = events.map((e) => e.kind);
-  assert.ok(kinds.includes("collapse"), "desmaiou");
-  assert.ok(kinds.includes("hospital_in"), `internado: ${kinds.join(",")}`);
+  assert.ok(!kinds.includes("collapse"), "não desmaia na rotina");
+  assert.ok(kinds.includes("routine_pause"), "pausou");
+  assert.ok(!kinds.includes("routine_meal"), "sem moedas não compra");
+  assert.ok(kinds.includes("meal_missed"), "perdeu refeições");
   inRange(s);
 });
 
-test("depois do desmaio ele volta a fazer a mesma coisa", () => {
+test("rotina: sem energia ele dorme e volta à mesma tarefa", () => {
   const s = fresh(5);
   s.energy = 5;
   s.satiety = 90;
   assert.ok(L.startActivity(s, "studying", 40, T0).ok);
-  const { events } = L.simulate(s, T0 + 16 * H);
-  const collapse = events.find((e) => e.kind === "collapse");
-  assert.ok(collapse, "desmaiou");
+  const { events } = L.simulate(s, T0 + 9 * H, { coins: 500 });
+  const p = events.find((e) => e.kind === "routine_pause");
+  assert.ok(p && p.data.pause === "sleeping" && p.data.reason === "energy", JSON.stringify(p));
   assert.equal(s.activity.kind, "studying", `atividade ${s.activity.kind}`);
+});
+
+test("à toa e sem energia ainda desmaia", () => {
+  const s = fresh(5);
+  s.energy = 0;
+  s.satiety = 90;
+  const { events } = L.simulate(s, T0 + 8 * H);
+  assert.ok(events.some((e) => e.kind === "collapse"), "desmaiou");
+});
+
+test("rotina come na janela com as moedas da carteira (a pedaços dá o mesmo)", () => {
+  const a = fresh(8);
+  const b = fresh(8);
+  const wa = { coins: 300 };
+  const wb = { coins: 300 };
+  L.startActivity(a, "training", 72, T0);
+  L.startActivity(b, "training", 72, T0);
+  const ra = L.simulate(a, T0 + 72 * H, wa);
+  let net = 0;
+  for (let h = 1; h <= 72; h++) net += L.simulate(b, T0 + h * H, wb).coins;
+  assert.deepEqual(a, b);
+  assert.equal(wa.coins, wb.coins);
+  assert.ok(Math.abs(ra.coins - net) < 1e-6);
+  const meals = ra.events.filter((e) => e.kind === "routine_meal");
+  assert.ok(meals.length >= 8, `refeições da rotina: ${meals.length}`);
+  assert.ok(Math.abs(300 + ra.coins - wa.coins) < 1e-6 && wa.coins >= 0, `carteira ${wa.coins}`);
+  assert.ok(!ra.events.some((e) => e.kind === "hospital_in" || e.kind === "collapse"));
+});
+
+test("só as primeiras horas do dia rendem: 10 h de treino ≈ 4 h", () => {
+  const four = fresh(31);
+  const ten = fresh(31);
+  for (const s of [four, ten]) {
+    s.energy = 100;
+    s.satiety = 90;
+    s.stress = 10;
+  }
+  const s0 = four.strength;
+  L.startActivity(four, "training", 4, T0);
+  L.startActivity(ten, "training", 10, T0);
+  L.simulate(four, T0 + 4 * H);
+  L.simulate(ten, T0 + 4 * H);
+  const g4 = four.strength - s0;
+  L.simulate(ten, T0 + 10 * H);
+  const g10 = ten.strength - s0;
+  assert.ok(g4 > 3, `4 h rende ${g4}`);
+  assert.ok(g10 < g4 * 1.1, `10 h ${g10} × 4 h ${g4}`);
+  assert.ok(L.snapshot(ten, T0 + 10 * H).attributes.usefulToday.training.done === 4);
+});
+
+test("escala longa: 72 h de treino dão ~+13; um ano de rotina passa de 600 sem chegar a 1000", () => {
+  const s = fresh(42);
+  const w = { coins: 1e6 };
+  const s0 = s.strength;
+  L.startActivity(s, "training", 72, T0);
+  L.simulate(s, T0 + 72 * H, w);
+  assert.ok(s.strength - s0 > 6 && s.strength - s0 < 25, `72 h: ${s0} → ${s.strength}`);
+  for (let t = T0 + 72 * H; t < T0 + 365 * 24 * H; t += 72 * H) {
+    L.startActivity(s, "training", 72, t);
+    L.simulate(s, t + 72 * H, w);
+  }
+  assert.equal(s.status, "alive");
+  assert.ok(s.strength > 600 && s.strength < 900, `1 ano: ${s.strength}`);
+  inRange(s);
+});
+
+test("permanência: força e velocidade param em 60% do pico; inteligência em 90%; voltar é mais rápido", () => {
+  const s = fresh(4);
+  s.strength = 800;
+  s.speed = 500;
+  s.intelligence = 700;
+  s.peaks = { intelligence: 700, strength: 800, speed: 500 };
+  s.satiety = 90;
+  const end = T0 + 2 * 365 * 24 * H;
+  for (let t = T0; t < end; t += 24 * H) {
+    L.simulate(s, t, { coins: 1e6 });
+    s.satiety = 90; // o teste alimenta: aqui só importa o tempo sem treinar
+    s.health = 100;
+  }
+  assert.ok(Math.abs(s.strength - 480) < 1, `força ${s.strength}`);
+  assert.ok(Math.abs(s.speed - 300) < 1, `velocidade ${s.speed}`);
+  assert.ok(Math.abs(s.intelligence - 630) < 1, `inteligência ${s.intelligence}`);
+  const back = fresh(4);
+  Object.assign(back, { strength: 480, peaks: { ...s.peaks }, energy: 100, satiety: 90, stress: 10, simAt: T0 });
+  const novice = fresh(4);
+  Object.assign(novice, { strength: 480, peaks: { intelligence: novice.intelligence, strength: 480, speed: novice.speed }, energy: 100, satiety: 90, stress: 10 });
+  L.startActivity(back, "training", 4, T0);
+  L.startActivity(novice, "training", 4, T0);
+  L.simulate(back, T0 + 4 * H);
+  L.simulate(novice, T0 + 4 * H);
+  assert.ok(back.strength - 480 > 1.8 * (novice.strength - 480), `memória ${back.strength} × ${novice.strength}`);
 });
 
 test("estimulantes em série: overdose mata", () => {

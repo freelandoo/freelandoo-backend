@@ -34,6 +34,8 @@ function rowToState(r) {
     strength: r.strength,
     speed: r.speed,
     fertility: r.fertility,
+    // mig 297: maior valor já alcançado (o piso que não se perde sai dele)
+    peaks: r.attr_peaks || { intelligence: r.intelligence, strength: r.strength, speed: r.speed },
     activity: {
       kind: r.activity,
       startedAt: ms(r.activity_started_at),
@@ -55,7 +57,7 @@ function rowToState(r) {
 const COLS = [
   "energy", "satiety", "mood", "stress", "health", "vitality", "fat_kg", "lean_kg",
   "diabetes_risk", "has_diabetes", "bp_risk", "has_hypertension", "toxicity", "cardiac",
-  "awake_h", "zero_energy_h", "diet", "intelligence", "strength", "speed", "fertility",
+  "awake_h", "zero_energy_h", "diet", "intelligence", "strength", "speed", "fertility", "attr_peaks",
   "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
 ];
@@ -65,7 +67,7 @@ function values(s) {
   return [
     s.energy, s.satiety, s.mood, s.stress, s.health, s.vitality, s.fatKg, s.leanKg,
     s.diabetesRisk, s.hasDiabetes, s.bpRisk, s.hasHypertension, s.toxicity, s.cardiac,
-    s.awakeH, s.zeroEnergyH, s.diet, s.intelligence, s.strength, s.speed, s.fertility,
+    s.awakeH, s.zeroEnergyH, s.diet, s.intelligence, s.strength, s.speed, s.fertility, JSON.stringify(s.peaks),
     a.kind, iso(a.startedAt), iso(a.until),
     a.bed ? JSON.stringify(a.bed) : null,
     a.resume ? JSON.stringify(a.resume) : null,

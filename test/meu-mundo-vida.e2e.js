@@ -54,6 +54,7 @@ async function bootstrap(pool) {
     "293_meu_mundo_visits.sql",
     "294_meu_mundo_body_sergio.sql",
     "295_meu_mundo_vida.sql",
+    "297_meu_mundo_atributos_1000.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -122,6 +123,23 @@ async function mkUser(pool, tag) {
   const back = await Life.get(host);
   check("9 h depois: estudou, ficou mais inteligente, voltou a ficar à toa", back.character.activity.kind === "idle" && back.character.attributes.intelligence > int0 + 2, `${int0} → ${back.character.attributes.intelligence}`);
   check("linha do tempo registra o fim da atividade", back.events.some((e) => e.kind === "activity_end"));
+
+  // Escala 0–1000 (mig 297): GET traz pisos, picos e as horas úteis do dia.
+  const sc = await Life.get(host);
+  const at = sc.character.attributes;
+  check(
+    "atributos 0–1000 com pico, piso e horas úteis",
+    at.intelligence > 100 && at.peaks.intelligence >= at.intelligence && Math.abs(at.floors.strength - 0.6 * at.peaks.strength) < 0.02 &&
+      at.usefulToday.studying.cap === 5 && at.usefulToday.studying.done > 0 && sc.catalog.attributes.max === 1000,
+    JSON.stringify(at)
+  );
+  // Linha antiga (escala 0–100, sem pico): a 297 multiplica por 10 UMA vez.
+  await pool.query(`UPDATE tb_mm_character SET intelligence = 25, strength = 30, speed = 20, attr_peaks = NULL WHERE id_user = $1 AND status = 'alive'`, [host]);
+  const mig297 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/297_meu_mundo_atributos_1000.sql"), "utf8");
+  await pool.query(mig297);
+  await pool.query(mig297);
+  const conv = await char();
+  check("mig 297: ×10 uma vez só e pico preenchido", conv.intelligence === 250 && conv.strength === 300 && conv.speed === 200 && conv.attr_peaks?.strength === 300, JSON.stringify([conv.intelligence, conv.strength, conv.attr_peaks]));
 
   // ── Hospital ────────────────────────────────────────────────────────────────
   await pool.query(`UPDATE tb_mm_character SET health = 10 WHERE id_user = $1`, [host]);

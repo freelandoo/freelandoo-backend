@@ -18,7 +18,7 @@
 // Refeições: janelas de 2 h que abrem às 10, 14, 18 e 22 h.
 //
 // ═══ UNIDADES ═══
-// Vitais e atributos 0–100. Taxas "por hora". Tempo em ms (epoch) nas
+// Vitais e fertilidade 0–100; inteligência, força e velocidade 0–1000 (ATTR). Taxas "por hora". Tempo em ms (epoch) nas
 // fronteiras e em horas (dt) dentro do passo. Massa em kg, energia da comida
 // em kcal. As regras por extenso estão no plano
 // (MEU MUNDO 3D/planos/2026-10-20-mm3d-13-vida-do-hospede.md) e no REGISTRO.
@@ -72,6 +72,42 @@ const RULES = Object.freeze({
   START_COINS: 500,
   WORK_COINS_H: 14,
   MEAL_MISSED: { mood: -6, stress: 4 },
+});
+
+// ═══ ATRIBUTOS (0–1000) ═══ — progressão longa (pedido do Alex, 2026-10-20):
+// com o ritmo máximo de todo dia, 800 leva ~1 ano e 900 ~2 anos.
+//  • Ganho por hora ÚTIL = base × (1 − v/CURVE_AT)² × multiplicadores.
+//  • Só as primeiras USEFUL_H horas do dia rendem (o músculo/a cabeça precisa
+//    recuperar); passando disso, OVER_FACTOR.
+//  • Permanência: cada atributo guarda o maior valor já alcançado (`peaks`) e
+//    nunca cai abaixo de FLOOR × pico; abaixo do pico ganha REGAIN× (memória).
+const ATTR = Object.freeze({
+  MAX: 1000,
+  CURVE_AT: 1100,
+  GAIN_H: { studyInt: 1.6, trainStr: 2.0, trainSpd: 1.4, workInt: 0.2 },
+  USEFUL_H: { studying: 5, training: 4 },
+  OVER_FACTOR: 0.05,
+  REGAIN: 2,
+  FLOOR: { intelligence: 0.9, strength: 0.6, speed: 0.6 },
+  DECAY_DAY: { intelligence: 0.3, strength: 1, speed: 1 },
+});
+const TRAINED = Object.freeze(["intelligence", "strength", "speed"]);
+
+// ═══ ROTINA ═══ — estudar/treinar/trabalhar por horas não é maratona: o
+// hóspede dorme quando a energia acaba, descansa quando o estresse estoura e
+// come nas janelas (comprando com as moedas do jogo), depois volta à tarefa.
+const ROUTINE = Object.freeze({
+  KINDS: ["studying", "training", "working"],
+  SLEEP_AT_ENERGY: 12,
+  SLEEP_H: 8,
+  REST_AT_STRESS: 80,
+  REST_H: 3,
+  MIN_LEFT_H: 1, // com menos que isso sobrando, ele só termina
+  // Bateu as horas úteis do dia (estudo/treino): descansa deitado até a hora
+  // de dormir, dorme e retoma de manhã.
+  BED_AT: 23,
+  WAKE_AT: 7,
+  MEALS: ["prato_integral", "prato_feito", "miojo"], // o melhor que a carteira paga
 });
 
 // Ritmo de caminhada pelo estado do corpo (a sala aplica; o cliente espelha
@@ -210,7 +246,7 @@ function birth(seed, t) {
   const heightM = r2(1.68 + r() * 0.18);
   const leanKg = r2(22 * heightM * heightM * (0.8 + r() * 0.08)); // ~50–60 kg
   const fatKg = r2(leanKg * (0.17 + r() * 0.1));
-  return {
+  const s = {
     seed,
     personality: p,
     heightM,
@@ -231,12 +267,13 @@ function birth(seed, t) {
     awakeH: 2,
     zeroEnergyH: 0,
     diet: 0,
-    intelligence: r2(15 + r() * 15),
-    strength: r2(15 + r() * 15),
-    speed: r2(20 + r() * 15),
+    intelligence: r2(150 + r() * 150),
+    strength: r2(150 + r() * 150),
+    speed: r2(200 + r() * 150),
     fertility: r2(70 + r() * 20),
     activity: { kind: "idle", startedAt: t, until: null, bed: null, resume: null },
     effects: [],
+    peaks: null, // preenchido logo abaixo (maior valor já alcançado)
     meals: { day: localParts(t).day, eaten: [false, false, false, false] },
     dayAcc: emptyDay(localParts(t).day),
     status: "alive",
@@ -244,6 +281,36 @@ function birth(seed, t) {
     diedAt: null,
     simAt: t,
   };
+  s.peaks = { intelligence: s.intelligence, strength: s.strength, speed: s.speed };
+  return s;
+}
+
+// ═══ ATRIBUTOS ═══
+const attrFloor = (s, k) => ATTR.FLOOR[k] * s.peaks[k];
+
+/** Horas do passo que ainda rendem hoje (as primeiras USEFUL_H do dia). */
+function usefulHours(s, kind, dt) {
+  const cap = ATTR.USEFUL_H[kind];
+  if (!cap) return dt;
+  const done = s.dayAcc.hours[kind] || 0;
+  const full = Math.max(0, Math.min(dt, cap - done));
+  return full + (dt - full) * ATTR.OVER_FACTOR;
+}
+
+/** Soma `base` pontos já escalados pela curva; abaixo do pico, REGAIN×. */
+function gain(s, k, base) {
+  if (base <= 0) return;
+  const v = s[k];
+  const curve = Math.pow(Math.max(0, 1 - v / ATTR.CURVE_AT), 2);
+  const regain = v < s.peaks[k] - 0.5 ? ATTR.REGAIN : 1;
+  s[k] = clamp(v + base * curve * regain, 0, ATTR.MAX);
+  if (s[k] > s.peaks[k]) s.peaks[k] = s[k];
+}
+
+function decay(s, k, dt) {
+  const floor = attrFloor(s, k);
+  if (s[k] <= floor) return;
+  s[k] = Math.max(floor, s[k] - (ATTR.DECAY_DAY[k] / 24) * dt);
 }
 
 // ═══ UM PASSO ═══
@@ -306,25 +373,30 @@ function stepState(s, t, dt, events, out) {
   if (s.satiety <= 0) s.leanKg -= 0.002 * dt;
   s.leanKg = clamp(s.leanKg, 38, 95);
 
-  // Atributos
+  // Atributos (0–1000; ver ATTR)
   const focus = (s.energy < 20 ? 0.4 : 1) * (s.stress > 70 ? 0.6 : 1);
   const disc = 0.7 + 0.6 * p.discipline;
-  if (kind === "studying") s.intelligence += 0.5 * dt * disc * focus * (stim ? 1.15 : 1) * (1 - s.intelligence / 120);
+  const useful = usefulHours(s, kind, dt);
+  if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * (stim ? 1.15 : 1));
   if (kind === "training") {
-    const pre = effectOn(s, "preworkout", t) ? 1.25 : 1;
+    const pre = effectOn(s, "preworkout", t) ? 1.15 : 1;
     const creat = effectOn(s, "creatine", t) ? 1.1 : 1;
-    s.strength += 0.45 * dt * disc * focus * protein * pre * creat * (anab ? 2.2 : 1) * (1 - s.strength / 110);
-    s.speed += 0.3 * dt * disc * focus * pre * (1 - s.speed / 110);
+    const prot = protein === 1.4 ? 1.25 : protein === 1.25 ? 1.15 : 1;
+    gain(s, "strength", ATTR.GAIN_H.trainStr * useful * disc * focus * prot * pre * creat * (anab ? 2 : 1));
+    gain(s, "speed", ATTR.GAIN_H.trainSpd * useful * disc * focus * pre);
   }
   if (kind === "working") {
-    s.intelligence += 0.05 * dt;
-    const coins = RULES.WORK_COINS_H * dt * (0.6 + s.intelligence / 100) * focus;
+    gain(s, "intelligence", ATTR.GAIN_H.workInt * dt * focus);
+    const coins = RULES.WORK_COINS_H * dt * (0.6 + s.intelligence / ATTR.MAX) * focus;
     out.coins += coins;
     s.dayAcc.coins += coins;
   }
-  s.strength = clamp(s.strength - 0.006 * dt);
-  s.speed = clamp(s.speed - 0.006 * dt);
-  s.intelligence = clamp(s.intelligence - 0.003 * dt);
+  // Sem praticar, cai devagar — nunca abaixo do piso (fração do pico).
+  if (kind !== "studying" && kind !== "working") decay(s, "intelligence", dt);
+  if (kind !== "training") {
+    decay(s, "strength", dt);
+    decay(s, "speed", dt);
+  }
 
   // Estresse
   let ds = rate.stress;
@@ -503,7 +575,7 @@ function atBoundary(s, t, events, out) {
   if (s.status !== "alive") return;
   const a = s.activity;
   if (a.until && a.until <= t) {
-    if (a.kind === "sleeping" && a.resume && a.resume.until > t) {
+    if ((a.kind === "sleeping" || a.kind === "lying") && a.resume && a.resume.until > t) {
       s.activity = { kind: a.resume.kind, startedAt: t, until: a.resume.until, bed: null, resume: null };
     } else {
       s.activity = { kind: "idle", startedAt: t, until: null, bed: null, resume: null };
@@ -524,21 +596,74 @@ function atBoundary(s, t, events, out) {
     s.dayAcc = emptyDay(day);
     s.meals = { day, eaten: [false, false, false, false] };
   }
+  routine(s, t, events, out);
+}
+
+/**
+ * A ROTINA (ver ROUTINE): durante estudar/treinar/trabalhar, ele mesmo dorme
+ * quando a energia acaba, descansa quando o estresse estoura e come na janela
+ * de refeição — e volta à tarefa (`resume`), até fechar as horas pedidas.
+ */
+function routine(s, t, events, out) {
+  if (s.status !== "alive") return;
+  const a = s.activity;
+  const working = ROUTINE.KINDS.includes(a.kind) && a.until;
+  const pausedAwake = a.kind === "lying" && a.resume && ROUTINE.KINDS.includes(a.resume.kind);
+  if (!working && !pausedAwake) return;
+  // Comer: só na janela aberta, se ainda não comeu nela e se a carteira paga
+  // (também no descanso da rotina — dormindo, não).
+  const w = mealWindowAt(t);
+  if (w >= 0 && !s.meals.eaten[w] && s.satiety <= RULES.FULL_SATIETY && out.wallet) {
+    const buy = ROUTINE.MEALS.map((id) => ITEM_BY_ID.get(id)).find((it) => it.price <= out.wallet.coins);
+    if (buy) {
+      const r = consume(s, buy.id, t);
+      if (r.ok) {
+        out.wallet.coins -= buy.price;
+        out.coins -= buy.price;
+        events.push(...r.events, { at: t, kind: "routine_meal", data: { item: buy.id, price: buy.price } });
+      }
+    }
+  }
+  if (!working) return;
+  const leftH = (a.until - t) / HOUR;
+  if (leftH < ROUTINE.MIN_LEFT_H) return;
+  const pause = (kind, h, reason) => {
+    const until = t + Math.min(h, leftH) * HOUR;
+    s.activity = { kind, startedAt: t, until, bed: null, resume: { kind: a.kind, until: a.until } };
+    if (kind === "sleeping") s.zeroEnergyH = 0;
+    events.push({ at: t, kind: "routine_pause", data: { during: a.kind, pause: kind, reason, hours: r2(Math.min(h, leftH)) } });
+  };
+  if (s.energy <= ROUTINE.SLEEP_AT_ENERGY && !effectOn(s, "stim", t)) return pause("sleeping", ROUTINE.SLEEP_H, "energy");
+  if (s.stress >= ROUTINE.REST_AT_STRESS) return pause("lying", ROUTINE.REST_H, "stress");
+  const cap = ATTR.USEFUL_H[a.kind];
+  if (cap && (s.dayAcc.hours[a.kind] || 0) >= cap - 1e-9) {
+    const { hour } = localParts(t);
+    if (hour >= ROUTINE.BED_AT || hour < ROUTINE.WAKE_AT) {
+      const wake = atLocalHour(hour >= ROUTINE.BED_AT ? t + 24 * HOUR : t, ROUTINE.WAKE_AT);
+      return pause("sleeping", (wake - t) / HOUR, "night");
+    }
+    return pause("lying", ROUTINE.BED_AT - hour, "daily_cap");
+  }
 }
 
 /**
  * Avança a vida até `to` (ms). Muta `s`. Devolve os eventos, os dias
- * fechados e as moedas ganhas trabalhando.
+ * fechados e o saldo de moedas do período (ganho trabalhando − gasto pela
+ * rotina comendo). `wallet` ({ coins }) é a carteira do jogo: a rotina só
+ * compra o que ela paga, e ela é atualizada aqui (quem simula aos pedaços
+ * passa a mesma carteira — o resultado é o mesmo).
  */
-function simulate(s, to) {
+function simulate(s, to, wallet = null) {
   const events = [];
-  const out = { days: [], coins: 0 };
+  const out = { days: [], coins: 0, wallet };
   if (to <= s.simAt) return { events, days: out.days, coins: 0 };
   let t = s.simAt;
   const stop = Math.min(to, t + MAX_CATCHUP_MS);
   while (t < stop && s.status === "alive") {
     const next = Math.min(nextBoundary(s, t, stop), stop);
+    const before = out.coins;
     stepState(s, t, (next - t) / HOUR, events, out);
+    if (wallet) wallet.coins += out.coins - before;
     t = next;
     atBoundary(s, t, events, out);
   }
@@ -630,7 +755,7 @@ function pace(s) {
 function bodyHint(s) {
   const fp = fatPct(s);
   if (fp >= 30) return "fat";
-  if (s.strength >= 60 && fp < 22) return "strong";
+  if (s.strength >= 600 && fp < 22) return "strong";
   if (fp < 13) return "slim";
   return "normal";
 }
@@ -678,6 +803,13 @@ function snapshot(s, t) {
       strength: r2(s.strength),
       speed: r2(s.speed),
       fertility: r2(s.fertility),
+      // 0–1000: maior valor já alcançado e o piso que não se perde mais.
+      peaks: Object.fromEntries(TRAINED.map((k) => [k, r2(s.peaks[k])])),
+      floors: Object.fromEntries(TRAINED.map((k) => [k, r2(attrFloor(s, k))])),
+      // Horas que ainda rendem hoje (estudo e treino têm teto por dia).
+      usefulToday: Object.fromEntries(
+        Object.entries(ATTR.USEFUL_H).map(([k, cap]) => [k, { done: r2(Math.min(cap, s.dayAcc.hours[k] || 0)), cap }])
+      ),
     },
     health: {
       diabetes: s.hasDiabetes ? (diabetesOpen ? "uncontrolled" : "controlled") : "none",
@@ -715,6 +847,8 @@ function publicCatalog() {
   return {
     items: ITEMS.map((it) => ({ ...it, effect: it.effect ? { id: it.effect[0], hours: it.effect[1] } : null })),
     activityHours: ACTIVITY_HOURS,
+    attributes: { max: ATTR.MAX, usefulH: ATTR.USEFUL_H, floor: ATTR.FLOOR },
+    routine: { meals: ROUTINE.MEALS, sleepAtEnergy: ROUTINE.SLEEP_AT_ENERGY, restAtStress: ROUTINE.REST_AT_STRESS },
     clock: { offsetMin: CLOCK.OFFSET_MIN, meals: CLOCK.MEALS, mealWindowH: CLOCK.MEAL_WINDOW_H },
   };
 }
@@ -726,6 +860,8 @@ module.exports = {
   ACTIVITY_HOURS,
   RATES,
   RULES,
+  ATTR,
+  ROUTINE,
   PACE,
   ITEMS,
   ITEM_BY_ID,

@@ -73,9 +73,11 @@ class MeuMundoLifeService {
         events.push({ at: now, kind: "born", data: { generation: 1 } });
       }
       const s = rowToState(row);
-      const sim = Life.simulate(s, now);
+      // A carteira entra na simulação: o trabalho rende e a rotina compra comida.
+      const wallet = { coins };
+      const sim = Life.simulate(s, now, wallet);
       events.push(...sim.events);
-      coins += sim.coins;
+      coins = wallet.coins;
       const ctx = { now, row, coins, events, client: c };
       const extra = act ? await act(s, ctx) : {};
       if (extra && extra.error) {
