@@ -520,6 +520,32 @@ async function mkUser(pool, tag, admin = true) {
     check("na rua, chega em cima da bike, na frente da casa", !!carOf(bikeId) && carOf(bikeId).driver === rooms.get(host).sessionId && me().car === bikeId && Math.hypot(carOf(bikeId).x - L.frontOfHouse(lot).x, carOf(bikeId).z - L.frontOfHouse(lot).z) < 0.5);
     const row3 = await VS.get(pool, R.host.id_neighborhood, bikeId);
     check("a bike volta a ser gravada na rua", row3 && row3.houseId === null);
+    // De PATINS também (o Alex testou com patins).
+    rooms.get(host).send("car", { a: "exit" });
+    await until(() => !carOf(bikeId).driver);
+    const skId = Cars.vehicleId("skates", lot);
+    teleportStreet(host, { x: carOf(skId).x + 0.5, z: carOf(skId).z });
+    await sleep(120);
+    rooms.get(host).send("car", { a: "enter", id: skId });
+    await until(() => carOf(skId).driver === rooms.get(host).sessionId);
+    check("calça os patins na rua", me().car === skId && me().move === 8);
+    streetSim().veh = Veh.createVehicle(door.x, door.z, streetSim().veh.yaw);
+    await sleep(150);
+    const inSk = await Service.enterHouse(host, lot);
+    check("de patins, entra em casa", inSk.scene === "house", inSk.error);
+    await consume(host, inSk);
+    H = houseSim(host);
+    check("dentro de casa continua de patins (move 8)", H.s.ride === skId && hp().move === 8);
+    toExit(H);
+    await sleep(80);
+    const outSk = await Service.exitHouse(host);
+    await consume(host, outSk);
+    await until(() => !!carOf(skId) && carOf(skId).driver === rooms.get(host).sessionId, 3000);
+    check("sai de casa de patins", !!carOf(skId) && me().car === skId);
+    rooms.get(host).send("car", { a: "exit" });
+    await until(() => !carOf(skId).driver);
+    rooms.get(host).send("car", { a: "enter", id: bikeId });
+    await until(() => carOf(bikeId).driver === rooms.get(host).sessionId, 1500);
     // O carro não entra.
     rooms.get(host).send("car", { a: "exit" });
     await until(() => !carOf(bikeId).driver);
