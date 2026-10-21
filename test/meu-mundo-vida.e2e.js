@@ -55,6 +55,7 @@ async function bootstrap(pool) {
     "294_meu_mundo_body_sergio.sql",
     "295_meu_mundo_vida.sql",
     "297_meu_mundo_atributos_1000.sql",
+    "298_meu_mundo_atributos_inicio_baixo.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -129,7 +130,7 @@ async function mkUser(pool, tag) {
   const at = sc.character.attributes;
   check(
     "atributos 0–1000 com pico, piso e horas úteis",
-    at.intelligence > 100 && at.peaks.intelligence >= at.intelligence && Math.abs(at.floors.strength - 0.6 * at.peaks.strength) < 0.02 &&
+    at.intelligence > 10 && at.intelligence < 100 && at.peaks.intelligence >= at.intelligence && Math.abs(at.floors.strength - 0.6 * at.peaks.strength) < 0.02 &&
       at.usefulToday.studying.cap === 5 && at.usefulToday.studying.done > 0 && sc.catalog.attributes.max === 1000,
     JSON.stringify(at)
   );
@@ -140,6 +141,15 @@ async function mkUser(pool, tag) {
   await pool.query(mig297);
   const conv = await char();
   check("mig 297: ×10 uma vez só e pico preenchido", conv.intelligence === 250 && conv.strength === 300 && conv.speed === 200 && conv.attr_peaks?.strength === 300, JSON.stringify([conv.intelligence, conv.strength, conv.attr_peaks]));
+  // A 298 desfaz o ×10 (o hóspede começa nas dezenas), uma vez só.
+  const mig298 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/298_meu_mundo_atributos_inicio_baixo.sql"), "utf8");
+  await pool.query(mig298);
+  await pool.query(mig298);
+  const low = await char();
+  check("mig 298: ÷10 uma vez só, picos juntos e marca gravada", low.intelligence === 25 && low.strength === 30 && low.speed === 20 && low.attr_peaks?.strength === 30 && low.attr_peaks?.start_low === true, JSON.stringify([low.intelligence, low.strength, low.attr_peaks]));
+  // Simular e gravar de novo não perde a marca (o serviço salva os picos inteiros).
+  await Life.peek(host);
+  check("a marca da 298 sobrevive ao salvar", (await char()).attr_peaks?.start_low === true);
 
   // ── Hospital ────────────────────────────────────────────────────────────────
   await pool.query(`UPDATE tb_mm_character SET health = 10 WHERE id_user = $1`, [host]);

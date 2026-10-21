@@ -81,6 +81,7 @@ const RULES = Object.freeze({
 //    recuperar); passando disso, OVER_FACTOR.
 //  • Permanência: cada atributo guarda o maior valor já alcançado (`peaks`) e
 //    nunca cai abaixo de FLOOR × pico; abaixo do pico ganha REGAIN× (memória).
+//  • O hóspede nasce na casa das dezenas (15–35) — mig 298.
 const ATTR = Object.freeze({
   MAX: 1000,
   CURVE_AT: 1100,
@@ -267,9 +268,10 @@ function birth(seed, t) {
     awakeH: 2,
     zeroEnergyH: 0,
     diet: 0,
-    intelligence: r2(150 + r() * 150),
-    strength: r2(150 + r() * 150),
-    speed: r2(200 + r() * 150),
+    // Começa fraco na escala 0–1000 (decisão do Alex): o caminho é que é longo.
+    intelligence: r2(15 + r() * 15),
+    strength: r2(15 + r() * 15),
+    speed: r2(20 + r() * 15),
     fertility: r2(70 + r() * 20),
     activity: { kind: "idle", startedAt: t, until: null, bed: null, resume: null },
     effects: [],

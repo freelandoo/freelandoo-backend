@@ -214,13 +214,15 @@ test("só as primeiras horas do dia rendem: 10 h de treino ≈ 4 h", () => {
   assert.ok(L.snapshot(ten, T0 + 10 * H).attributes.usefulToday.training.done === 4);
 });
 
-test("escala longa: 72 h de treino dão ~+13; um ano de rotina passa de 600 sem chegar a 1000", () => {
+test("nasce fraco (dezenas) e a escala é longa: 72 h de treino dão ~+20; um ano de rotina passa de 600 sem chegar a 1000", () => {
   const s = fresh(42);
+  for (const k of ["intelligence", "strength"]) assert.ok(s[k] >= 15 && s[k] <= 30, `${k} inicial ${s[k]}`);
+  assert.ok(s.speed >= 20 && s.speed <= 35, `velocidade inicial ${s.speed}`);
   const w = { coins: 1e6 };
   const s0 = s.strength;
   L.startActivity(s, "training", 72, T0);
   L.simulate(s, T0 + 72 * H, w);
-  assert.ok(s.strength - s0 > 6 && s.strength - s0 < 25, `72 h: ${s0} → ${s.strength}`);
+  assert.ok(s.strength - s0 > 8 && s.strength - s0 < 35, `72 h: ${s0} → ${s.strength}`);
   for (let t = T0 + 72 * H; t < T0 + 365 * 24 * H; t += 72 * H) {
     L.startActivity(s, "training", 72, t);
     L.simulate(s, t + 72 * H, w);
