@@ -115,7 +115,9 @@ const Player = schema(
 // dirige ("" = estacionado). mm3d-12: sp = velocidade longitudinal (m/s, <0
 // = ré), st = esterçamento das rodas (rad), hb = freio de mão puxado,
 // sl = 0..1 quanto a traseira escorrega — o que os OUTROS precisam para
-// animar rodas, curva e derrapagem sem rodar outra física.
+// animar rodas, curva e derrapagem sem rodar outra física. vx/vz (m/s) e w
+// (rad/s): velocidade e giro, para o MOTORISTA reconciliar a previsão inteira
+// (rumo e velocidade, não só a posição — engine/car-sync.ts).
 const Car = schema(
   {
     lot: t.uint8(),
@@ -127,6 +129,9 @@ const Car = schema(
     st: t.float32(),
     hb: t.boolean(),
     sl: t.float32(),
+    vx: t.float32(),
+    vz: t.float32(),
+    w: t.float32(),
   },
   "MMCar"
 );
@@ -407,7 +412,7 @@ class BairroRoom extends Room {
   parkCar(sessionId, s) {
     if (!s.car) return;
     const c = this.state.cars.get(String(s.car));
-    if (c && c.driver === sessionId) Object.assign(c, { driver: "", sp: 0, st: 0, hb: false, sl: 0 });
+    if (c && c.driver === sessionId) Object.assign(c, { driver: "", sp: 0, st: 0, hb: false, sl: 0, vx: 0, vz: 0, w: 0 });
     s.car = 0;
     s.veh = null;
     s.drive = IDLE_DRIVE;
@@ -473,7 +478,7 @@ class BairroRoom extends Room {
       s.lastRecoverAt = now;
       s.veh = createVehicle(spot.x, spot.z, spot.facing);
       Object.assign(s.body, { x: spot.x, z: spot.z, vx: 0, vz: 0, facing: spot.facing });
-      Object.assign(c, { x: spot.x, z: spot.z, facing: spot.facing, sp: 0, st: 0, hb: false, sl: 0 });
+      Object.assign(c, { x: spot.x, z: spot.z, facing: spot.facing, sp: 0, st: 0, hb: false, sl: 0, vx: 0, vz: 0, w: 0 });
       Object.assign(p, { x: spot.x, z: spot.z, facing: spot.facing });
       client.send("moved", { x: spot.x, z: spot.z, facing: spot.facing, car: c.lot });
       return;
@@ -489,7 +494,7 @@ class BairroRoom extends Room {
       const blockers = this.obstacles.concat(this.carBoxes(client.sessionId), [carBox(c)]);
       const spot = exitSpots(c, MOTION.RADIUS).find((e) => isSafeSpot(e.x, e.z, resolveCircle, MOTION.RADIUS, blockers));
       if (!spot) return deny("blocked");
-      Object.assign(c, { driver: "", sp: 0, st: 0, hb: false, sl: 0 });
+      Object.assign(c, { driver: "", sp: 0, st: 0, hb: false, sl: 0, vx: 0, vz: 0, w: 0 });
       s.car = 0;
       s.veh = null;
       s.drive = IDLE_DRIVE;
@@ -590,7 +595,7 @@ class BairroRoom extends Room {
         advanceVehicle(v, s.drive, dt, boxes, LIMIT, tuned(s.tune));
         Object.assign(s.body, { x: v.x, z: v.z, vx: v.vx, vz: v.vz, facing: v.yaw });
         const c = this.state.cars.get(String(s.car));
-        if (c) Object.assign(c, { x: v.x, z: v.z, facing: v.yaw, sp: v.u, st: v.steer, hb: v.hb > 0.3, sl: v.slip });
+        if (c) Object.assign(c, { x: v.x, z: v.z, facing: v.yaw, sp: v.u, st: v.steer, hb: v.hb > 0.3, sl: v.slip, vx: v.vx, vz: v.vz, w: v.w });
         if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: 0 });
         continue;
       }
