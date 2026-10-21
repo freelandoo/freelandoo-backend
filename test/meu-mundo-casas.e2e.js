@@ -43,13 +43,13 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
-  for (const f of ["291_meu_mundo_bairros.sql", "292_meu_mundo_house_levels.sql", "293_meu_mundo_visits.sql", "294_meu_mundo_body_sergio.sql"]) {
+  for (const f of ["291_meu_mundo_bairros.sql", "292_meu_mundo_house_levels.sql", "293_meu_mundo_visits.sql", "294_meu_mundo_body_sergio.sql", "299_meu_mundo_vehicles.sql"]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
     await pool.query(sql); // idempotente
@@ -430,10 +430,118 @@ async function mkUser(pool, tag, admin = true) {
   const st2 = await realtime.status();
   check("status mostra salas de casa", st2.houseRooms >= 1, JSON.stringify(st2));
 
+  // ── mm3d-15: bike, skate e patins entram em casa com a pessoa (o carro, não) ──
+  {
+    const Cars = require("../src/utils/meuMundoCars");
+    const Veh = require("../src/utils/meuMundoVehicle");
+    const VS = require("../src/storages/MeuMundoVehicleStorage");
+    const d4 = interiorFor(4);
+    const toExit = (H) => {
+      Object.assign(H.s.body, { x: d4.exit.x, z: d4.exit.z, floor: d4.exit.floor, vx: 0, vz: 0 });
+      H.s.body.y = d4.floors[d4.exit.floor].y;
+    };
+    toExit(hs4);
+    await sleep(80);
+    await consume(host, await Service.exitHouse(host));
+    const street = () => realtime._roomFor(R.host.id_neighborhood);
+    const bikeId = Cars.vehicleId("bike", lot);
+    const carOf = (id) => street().state.cars.get(String(id));
+    const streetSim = () => [...street().sim.values()].find((s) => s.userId === host);
+    const me = () => street().state.players.get(rooms.get(host).sessionId);
+    teleportStreet(host, { x: carOf(bikeId).x + 0.6, z: carOf(bikeId).z });
+    await sleep(120);
+    rooms.get(host).send("car", { a: "enter", id: bikeId });
+    await until(() => !!carOf(bikeId).driver);
+    check("monta na bike na rua", !!carOf(bikeId).driver && me().car === bikeId);
+    // Pedala até a porta (a posição que conta é a do servidor).
+    const door = doorOf(lot, 4);
+    streetSim().veh = Veh.createVehicle(door.x, door.z, streetSim().veh.yaw);
+    await sleep(150);
+    const inRide = await Service.enterHouse(host, lot);
+    check("de bike, entra em casa", inRide.scene === "house", inRide.error);
+    check("a bike sai da rua junto", !street().state.cars.has(String(bikeId)) && street().indoors.has(bikeId));
+    const row1 = await VS.get(pool, R.host.id_neighborhood, bikeId);
+    check("a bike fica gravada dentro da casa", !!row1 && row1.houseId === R.host.id_house, JSON.stringify(row1));
+    await consume(host, inRide);
+    let H = houseSim(host);
+    const hp = () => H.room.state.players.get(rooms.get(host).sessionId);
+    check("dentro de casa continua montado (move 6)", H.s.ride === bikeId && hp().ride === bikeId && hp().move === 6, JSON.stringify({ ride: H.s.ride, move: hp() && hp().move }));
+    const rd = H.room.state.rides.get(String(bikeId));
+    rooms.get(host).send("in", { x: 0, z: 1 });
+    await sleep(500);
+    rooms.get(host).send("in", { x: 0, z: 0 });
+    await sleep(200);
+    check("a bike acompanha quem pedala dentro de casa", rd.rider === rooms.get(host).sessionId && Math.hypot(rd.x - H.s.body.x, rd.z - H.s.body.z) < 0.01 && Math.hypot(rd.x - d4.entry.x, rd.z - d4.entry.z) > 0.3);
+    const seat4 = d4.seats.find((x) => x.floor === H.s.body.floor);
+    if (seat4) {
+      Object.assign(H.s.body, { x: seat4.stand.x, z: seat4.stand.z });
+      await sleep(80);
+      rooms.get(host).send("sit", { seat: seat4.id });
+      await sleep(250);
+      check("montado não senta", !H.s.seat);
+    }
+    rooms.get(host).send("ride", { a: "off" });
+    await until(() => H.s.ride === 0);
+    check("desce dentro de casa; a bike fica parada lá", H.s.ride === 0 && rd.rider === "" && hp().move !== 6);
+    await sleep(200);
+    const row2 = await VS.get(pool, R.host.id_neighborhood, bikeId);
+    check("onde desceu dentro de casa fica gravado", row2.houseId === R.host.id_house && Math.abs(row2.x - rd.x) < 0.01 && Math.abs(row2.z - rd.z) < 0.01, JSON.stringify(row2));
+    // Sai a pé: a bike fica em casa.
+    toExit(H);
+    await sleep(80);
+    await consume(host, await Service.exitHouse(host));
+    check("saindo a pé, a bike fica em casa (não volta à rua)", !street().state.cars.has(String(bikeId)));
+    // Volta (sala nova da casa, lida do banco), monta e sai montado.
+    teleportStreet(host, door);
+    await sleep(120);
+    await consume(host, await Service.enterHouse(host, lot));
+    H = houseSim(host);
+    const rd2 = H.room.state.rides.get(String(bikeId));
+    check("ao voltar, a bike está onde ficou dentro de casa", !!rd2 && Math.abs(rd2.x - row2.x) < 0.01 && Math.abs(rd2.z - row2.z) < 0.01);
+    check("entrando a pé, continua a pé", H.s.ride === 0 && hp().ride === 0);
+    Object.assign(H.s.body, { x: rd2.x + 2.5, z: rd2.z, floor: rd2.floor });
+    await sleep(80);
+    const deniedRide = [];
+    rooms.get(host).onMessage("ride", (m) => deniedRide.push(m));
+    rooms.get(host).send("ride", { a: "on", id: bikeId });
+    await sleep(250);
+    check("longe da bike, usar é recusado", H.s.ride === 0 && deniedRide.some((m) => m.ok === false && m.reason === "far"), JSON.stringify(deniedRide));
+    Object.assign(H.s.body, { x: rd2.x + 0.5, z: rd2.z, floor: rd2.floor });
+    await sleep(80);
+    rooms.get(host).send("ride", { a: "on", id: bikeId });
+    await until(() => H.s.ride === bikeId);
+    check("usa a bike dentro de casa", H.s.ride === bikeId && rd2.rider !== "");
+    toExit(H);
+    await sleep(80);
+    const out2 = await Service.exitHouse(host);
+    check("sai pela porta montado", out2.scene === "neighborhood", out2.error);
+    await consume(host, out2);
+    await until(() => !!carOf(bikeId) && !!carOf(bikeId).driver, 3000);
+    check("na rua, chega em cima da bike, na frente da casa", !!carOf(bikeId) && carOf(bikeId).driver === rooms.get(host).sessionId && me().car === bikeId && Math.hypot(carOf(bikeId).x - L.frontOfHouse(lot).x, carOf(bikeId).z - L.frontOfHouse(lot).z) < 0.5);
+    const row3 = await VS.get(pool, R.host.id_neighborhood, bikeId);
+    check("a bike volta a ser gravada na rua", row3 && row3.houseId === null);
+    // O carro não entra.
+    rooms.get(host).send("car", { a: "exit" });
+    await until(() => !carOf(bikeId).driver);
+    const car = carOf(lot);
+    const ex = Cars.exitSpots(car, 0.35)[0];
+    teleportStreet(host, ex);
+    await sleep(120);
+    rooms.get(host).send("car", { a: "enter", id: lot });
+    await until(() => carOf(lot).driver === rooms.get(host).sessionId);
+    streetSim().veh = Veh.createVehicle(door.x, door.z, streetSim().veh.yaw);
+    await sleep(150);
+    const inCar = await Service.enterHouse(host, lot);
+    check("de carro, não entra em casa", inCar.statusCode === 409 && /carro/.test(inCar.error || ""), JSON.stringify(inCar));
+    check("…e o carro continua na rua", street().state.cars.has(String(lot)));
+    rooms.get(host).send("car", { a: "exit" });
+    await until(() => !carOf(lot).driver);
+  }
+
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   for (const r of rooms.values()) await bye(r);
   Service.stopSweeper();
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   process.exit(FAIL ? 1 : 0);
 })().catch((e) => {

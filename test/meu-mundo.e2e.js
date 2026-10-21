@@ -51,7 +51,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
@@ -81,6 +81,9 @@ async function bootstrap(pool) {
   );
   await pool.query(sql294);
   await pool.query(sql294); // idempotente
+  const sql299 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/299_meu_mundo_vehicles.sql"), "utf8");
+  await pool.query(sql299);
+  await pool.query(sql299); // idempotente
 }
 
 async function mkUser(pool, admin = true, tag = "") {
@@ -390,6 +393,38 @@ async function expectViolation(pool, sql, params, label) {
     check("patins: move 8", pB().move === 8 && carOf(ptA).kind === "skates");
     B.room.send("car", { a: "exit" });
     await until(() => pB().car === 0);
+
+    // ── mm3d-15: onde o veículo fica, continua (mig 299) ──
+    const VS = require("../src/storages/MeuMundoVehicleStorage");
+    const nbB = resB.id_neighborhood;
+    let rowBike = null;
+    await sleep(300);
+    rowBike = await VS.get(pool, nbB, bikeA);
+    check("a bike largada fica gravada onde parou", !!rowBike && !rowBike.houseId && Math.abs(rowBike.x - carOf(bikeA).x) < 0.01 && Math.abs(rowBike.z - carOf(bikeA).z) < 0.01, JSON.stringify(rowBike));
+    const rowCar = await VS.get(pool, nbB, lotB);
+    check("o carro largado também", !!rowCar && Math.abs(rowCar.x - carOf(lotB).x) < 0.01, JSON.stringify(rowCar));
+    // A sala reabre (reinício do servidor): a bike volta para onde ficou, não para a vaga.
+    const srv = (n) => rm.state.cars.get(String(n)); // estado da SALA (o do cliente chega no próximo patch)
+    rm.state.cars.delete(String(bikeA));
+    rm.saved.set(bikeA, rowBike);
+    rm.ensureVehicles(lotA);
+    check("sala que reabre põe a bike onde ela ficou", Math.abs(srv(bikeA).x - rowBike.x) < 0.01 && Math.abs(srv(bikeA).z - rowBike.z) < 0.01 && Math.hypot(srv(bikeA).x - sp.x, srv(bikeA).z - sp.z) > 0.5);
+    // Posição de outro desenho do bairro, ou num lugar que virou obstáculo: volta à vaga.
+    rm.state.cars.delete(String(bikeA));
+    const blocked = rm.obstacles.find((b) => b.hx > 1 && b.hz > 1);
+    rm.saved.set(bikeA, { ...rowBike, x: blocked.x, z: blocked.z });
+    rm.ensureVehicles(lotA);
+    check("…a não ser que o lugar não sirva mais (volta à vaga)", Math.abs(srv(bikeA).x - sp.x) < 0.01 && Math.abs(srv(bikeA).z - sp.z) < 0.01);
+    // Guardado em casa não aparece na rua.
+    rm.state.cars.delete(String(ptA));
+    rm.indoors.add(ptA);
+    rm.ensureVehicles(lotA);
+    check("veículo guardado em casa não aparece na rua", !rm.state.cars.has(String(ptA)));
+    rm.releaseRide(ptA, Cars.spotFor("skates", lotA));
+    check("…até sair de lá", rm.state.cars.has(String(ptA)) && !rm.indoors.has(ptA));
+    await expectViolation(pool, `INSERT INTO tb_mm_vehicle (id_neighborhood, vehicle_id, x, z, facing, id_house, layout)
+       SELECT $1, 5, 0, 0, 0, id_house, 3 FROM tb_mm_house LIMIT 1`, [nbB], "o banco recusa carro guardado dentro de casa");
+    await expectViolation(pool, `INSERT INTO tb_mm_vehicle (id_neighborhood, vehicle_id, x, z, facing, layout) VALUES ($1, 81, 0, 0, 0, 3)`, [nbB], "o banco recusa id de veículo fora de 1–80");
   }
 
   // ── Nível da casa (mig 292): seletor de teste 01–10 ─────────────────────
@@ -501,7 +536,7 @@ async function expectViolation(pool, sql, params, label) {
   await C.room.leave();
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   process.exit(FAIL ? 1 : 0);
 })().catch((e) => {

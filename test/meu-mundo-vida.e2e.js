@@ -56,6 +56,7 @@ async function bootstrap(pool) {
     "295_meu_mundo_vida.sql",
     "297_meu_mundo_atributos_1000.sql",
     "298_meu_mundo_atributos_inicio_baixo.sql",
+    "299_meu_mundo_vehicles.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);

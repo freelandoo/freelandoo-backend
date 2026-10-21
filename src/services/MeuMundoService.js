@@ -19,6 +19,7 @@
 const pool = require("../databases");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const MeuMundoVisitStorage = require("../storages/MeuMundoVisitStorage");
+const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const AuthStorage = require("../storages/AuthStorage");
 const realtime = require("../realtime/meuMundo");
 const presence = require("../realtime/meuMundoPresence");
@@ -27,6 +28,7 @@ const {
   buildNeighborhoodPayload,
   frontOfHouse,
   isSelectableLevel,
+  LAYOUT_VERSION,
   levelDef,
   lotToWorld,
   LOTS,
@@ -36,6 +38,7 @@ const {
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { VISIT_RULES } = require("../utils/meuMundoVisits");
 const { MOTION } = require("../utils/meuMundoMotion");
+const { kindOfId } = require("../utils/meuMundoCars");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const { createLogger } = require("../utils/logger");
@@ -122,7 +125,9 @@ class MeuMundoService {
     // 2/3. Rua: do bairro visitado (visita ativa) ou do próprio.
     const nbId = visit ? visit.id_neighborhood : residence.id_neighborhood;
     const arrivalLot = pl && pl.scene === "nb" && pl.nbId === nbId && pl.arrivalLot ? pl.arrivalLot : null;
-    return { scene: "nb", nbId, visit, arrivalLot };
+    // Saiu de casa montado (mm3d-15): chega em cima do veículo.
+    const ride = arrivalLot && pl.ride ? pl.ride : 0;
+    return { scene: "nb", nbId, visit, arrivalLot, ride };
   }
 
   static async neighborhoodPayload(idUser, residence, target, body, name, life) {
@@ -143,6 +148,7 @@ class MeuMundoService {
         name,
         body,
         arrivalLot: target.arrivalLot,
+        ride: target.ride || 0,
       });
       multiplayer = { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation };
       // A chegada vale UMA vez (a próxima entrada volta à regra normal).
@@ -177,12 +183,12 @@ class MeuMundoService {
     };
   }
 
-  static async housePayload(idUser, house, body, name, life) {
+  static async housePayload(idUser, house, body, name, life, ride = 0) {
     const level = levelDef(house.level).level;
     const def = interiorFor(level);
     let multiplayer = null;
     try {
-      const reservation = await realtime.reserveHouseSeat({ houseId: house.id_house, userId: idUser, name, body });
+      const reservation = await realtime.reserveHouseSeat({ houseId: house.id_house, userId: idUser, name, body, ride });
       multiplayer = { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation };
     } catch (err) {
       multiplayer = { error: err.message };
@@ -241,7 +247,14 @@ class MeuMundoService {
         const reservation = await realtime.reserveHouseSeat({ houseId: target.house.id_house, userId: idUser, name, body });
         return { sceneKey: `house:${target.house.id_house}`, multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
       }
-      const reservation = await realtime.reserveSeat({ neighborhoodId: target.nbId, userId: idUser, name, body, arrivalLot: target.arrivalLot });
+      const reservation = await realtime.reserveSeat({
+        neighborhoodId: target.nbId,
+        userId: idUser,
+        name,
+        body,
+        arrivalLot: target.arrivalLot,
+        ride: target.ride || 0,
+      });
       return { sceneKey: `nb:${target.nbId}`, multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
     } catch (err) {
       return { error: err.message, statusCode: 503 };
@@ -267,7 +280,9 @@ class MeuMundoService {
       if (!visit || visit.id_house !== house.id_house) return { error: "Esta casa precisa de convite do morador", statusCode: 403 };
     }
     const pos = realtime.positionIn("nb", here.id, idUser);
-    if (pos && pos.driving) return { error: "Saia do carro antes de entrar em casa", statusCode: 409 };
+    // Bike, skate e patins entram em casa com a pessoa (mm3d-15); o carro, não.
+    const rideKind = pos && pos.car ? kindOfId(pos.car) : null;
+    if (pos && pos.driving && (!rideKind || rideKind === "car")) return { error: "Saia do carro antes de entrar em casa", statusCode: 409 };
     const door = doorPoint(lot, house.level);
     const sign = signPoint(lot);
     const nearDoor = pos && Math.hypot(pos.x - door.x, pos.z - door.z) <= VISIT_RULES.enterRadius;
@@ -275,10 +290,23 @@ class MeuMundoService {
     if (!nearDoor && !nearSign) {
       return { error: "Chegue mais perto da porta", statusCode: 409 };
     }
-    if (!interiorFor(levelDef(house.level).level)) return { error: "Este nível ainda não tem interior", statusCode: 409 };
+    const def = interiorFor(levelDef(house.level).level);
+    if (!def) return { error: "Este nível ainda não tem interior", statusCode: 409 };
+    let ride = 0;
+    if (rideKind) {
+      const st = realtime.stowRide(here.id, idUser);
+      if (st.error === "moving") return { error: "Pare antes de entrar em casa", statusCode: 409 };
+      if (st.error) return { error: "Não foi possível entrar com o veículo", statusCode: 409 };
+      ride = st.id;
+      // Guardado na entrada da casa; a pessoa entra em cima dele.
+      const e = def.entry;
+      const at = { x: e.x, z: e.z, facing: e.facing, floor: e.floor };
+      await MeuMundoVehicleStorage.save(pool, here.id, ride, { ...at, houseId: house.id_house, layout: LAYOUT_VERSION });
+      realtime.addRideToHouse(house.id_house, ride, at);
+    }
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
-    log.info("house.enter", { lot, owner: isOwner });
-    return MeuMundoService.housePayload(idUser, house, body, name);
+    log.info("house.enter", { lot, owner: isOwner, ride: rideKind || "" });
+    return MeuMundoService.housePayload(idUser, house, body, name, undefined, ride);
   }
 
   /** Sair pela porta: volta à frente da casa, no bairro dela. */
@@ -296,9 +324,17 @@ class MeuMundoService {
         return { error: "Vá até a porta para sair", statusCode: 409 };
       }
     }
+    // Montado (mm3d-15): o veículo sai junto e fica na frente da casa.
+    const ride = realtime.takeRideOut(houseId, idUser);
+    if (ride) {
+      const front = frontOfHouse(house.lot_number);
+      const at = { x: front.x, z: front.z, facing: front.rotationY };
+      await MeuMundoVehicleStorage.save(pool, house.id_neighborhood, ride, { ...at, houseId: null, layout: LAYOUT_VERSION });
+      realtime.releaseRide(house.id_neighborhood, ride, at);
+    }
     realtime.dropFromHouse(houseId, idUser);
-    presence.setPlacement(idUser, { scene: "nb", nbId: house.id_neighborhood, arrivalLot: house.lot_number });
-    log.info("house.exit", { lot: house.lot_number });
+    presence.setPlacement(idUser, { scene: "nb", nbId: house.id_neighborhood, arrivalLot: house.lot_number, ride });
+    log.info("house.exit", { lot: house.lot_number, ride });
     return MeuMundoService.enter(idUser);
   }
 
