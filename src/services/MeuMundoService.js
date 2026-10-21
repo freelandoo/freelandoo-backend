@@ -282,7 +282,7 @@ class MeuMundoService {
     const pos = realtime.positionIn("nb", here.id, idUser);
     // Bike, skate e patins entram em casa com a pessoa (mm3d-15); o carro, não.
     const rideKind = pos && pos.car ? kindOfId(pos.car) : null;
-    if (pos && pos.driving && (!rideKind || rideKind === "car")) return { error: "Saia do carro antes de entrar em casa", statusCode: 409 };
+    if (pos && pos.driving && (!rideKind || rideKind === "car")) return { error: "De carro não dá para entrar em casa — desça dele primeiro", statusCode: 409 };
     const door = doorPoint(lot, house.level);
     const sign = signPoint(lot);
     const nearDoor = pos && Math.hypot(pos.x - door.x, pos.z - door.z) <= VISIT_RULES.enterRadius;

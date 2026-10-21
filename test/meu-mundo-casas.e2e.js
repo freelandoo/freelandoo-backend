@@ -532,7 +532,7 @@ async function mkUser(pool, tag, admin = true) {
     streetSim().veh = Veh.createVehicle(door.x, door.z, streetSim().veh.yaw);
     await sleep(150);
     const inCar = await Service.enterHouse(host, lot);
-    check("de carro, não entra em casa", inCar.statusCode === 409 && /carro/.test(inCar.error || ""), JSON.stringify(inCar));
+    check("de carro, não entra em casa", inCar.statusCode === 409 && /De carro/.test(inCar.error || ""), JSON.stringify(inCar));
     check("…e o carro continua na rua", street().state.cars.has(String(lot)));
     rooms.get(host).send("car", { a: "exit" });
     await until(() => !carOf(lot).driver);
