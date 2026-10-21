@@ -1,4 +1,5 @@
 const { verifiedUserSql } = require("../utils/verifiedBadge");
+const { notPendingAcademyUserSql } = require("../utils/academyOnboarding");
 
 module.exports = {
   /**
@@ -240,6 +241,8 @@ module.exports = {
       WHERE
         tu.ativo = true
         AND tu.is_minor = FALSE
+        -- Conta vinda de academia aguardando aceite fica fora (mig 296).
+        AND ${notPendingAcademyUserSql("tu")}
         AND pro.is_active = true
         -- Perfil-conta entra na vitrine (paridade user≡perfil, 2026-07-19);
         -- ele pode ter is_visible FALSE por padrão (mesma regra do feed).

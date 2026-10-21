@@ -12,7 +12,8 @@ module.exports = class GetCreatorService {
       () => ({ id_user }),
       async () => {
         const user = await UserStorage.getUserWithSocialById(db, id_user);
-        if (!user) {
+        // Conta vinda de academia aguardando aceite não tem perfil público (mig 296).
+        if (!user || user.academy_onboarding_state === "aguardando_aceite") {
           const err = new Error("Usuário não encontrado");
           err.statusCode = 404;
           throw err;

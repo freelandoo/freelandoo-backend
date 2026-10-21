@@ -54,7 +54,8 @@
     "test:store-cart": "node test/store-cart.e2e.js",
     "test:meu-mundo": "node test/meu-mundo.e2e.js",
     "test:meu-mundo-casas": "node test/meu-mundo-casas.e2e.js",
-    "test:meu-mundo-vida": "node test/meu-mundo-vida.e2e.js"
+    "test:meu-mundo-vida": "node test/meu-mundo-vida.e2e.js",
+    "test:academy-partner": "node test/academy-partner.e2e.js"
   },
   "repository": {
     "type": "git",

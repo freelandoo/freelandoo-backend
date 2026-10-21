@@ -13,6 +13,7 @@ const AcademyService = require("./AcademyService");
 const FitnessService = require("./FitnessService");
 const realtime = require("../realtime/socket");
 const { sanitizeExercises } = require("../utils/workoutSanitize");
+const { parseValidadeDias, VALIDADE_PADRAO } = require("../utils/workoutValidity");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("fitness-proposal-service");
@@ -67,9 +68,14 @@ async function buildPayload(kind, raw, member) {
     const nome = raw?.nome === undefined ? undefined : String(raw.nome || "").trim().slice(0, 60);
     if (kind === "plan_create" && !nome) return { error: "Nome da ficha é obrigatório (ex.: Treino A)" };
     if (kind === "plan_update" && nome === "") return { error: "Nome da ficha é obrigatório (ex.: Treino A)" };
+    // Validade da ficha (mig 296): criar sem informar = 60; editar sem
+    // informar = não mexer.
+    const validade = parseValidadeDias(raw?.validade_dias, kind === "plan_create" ? VALIDADE_PADRAO : undefined);
+    if (validade.error) return { error: validade.error };
     const payload = {
       nome: nome === undefined ? undefined : nome,
       notes: raw?.notes === undefined ? undefined : raw.notes ? String(raw.notes).slice(0, 2000) : null,
+      validade_dias: validade.value,
     };
     if (kind === "plan_update") {
       payload.id_plan = id_plan;
@@ -115,6 +121,8 @@ async function applyProposal(proposal) {
       created_by: proposal.id_professor_user,
       nome: payload.nome,
       notes: payload.notes || null,
+      // Proposta antiga (antes da mig 296) não tem validade → padrão 60.
+      validade_dias: payload.validade_dias || null,
     });
     await WorkoutStorage.replacePlanExercises(pool, plan.id_plan, payload.exercises || []);
     return { ok: true };
@@ -128,6 +136,7 @@ async function applyProposal(proposal) {
       nome: payload.nome,
       notes: payload.notes,
       is_active: payload.is_active,
+      validade_dias: payload.validade_dias,
     });
     if (Array.isArray(payload.exercises)) {
       await WorkoutStorage.replacePlanExercises(pool, plan.id_plan, payload.exercises);

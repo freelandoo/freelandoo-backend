@@ -146,6 +146,8 @@ const atendimentoIaAdminRoutes = require("./atendimentoIaAdmin.routes");
 const aiAdminRoutes = require("./aiAdmin.routes");
 const aiKnowledgeRoutes = require("./aiKnowledge.routes");
 const academyRoutes = require("./academy.routes");
+const partnerRoutes = require("./partner.routes");
+const academyOnboardingRoutes = require("./academyOnboarding.routes");
 const fitnessRoutes = require("./fitness.routes");
 const workoutRoutes = require("./workout.routes");
 const functionStoreRoutes = require("./functionStore.routes");
@@ -168,6 +170,12 @@ module.exports = (app) => {
   // `router.use(requireFeature(...))`, que intercepta QUALQUER caminho que
   // chegue até eles — com a flag deles desligada, estas rotas dariam 403.
   app.use("/me/blocks", socialSafetyRoutes.blocks);
+  // API de parceiro de academia + modal de aceite da conta vinda de academia
+  // (mig 296). CEDO pelo mesmo motivo das rotas acima: o academyRoutes, em
+  // "/", intercepta tudo com a flag fitness_academias — e estas duas portas
+  // não dependem dela (ver middlewares/partnerAuth.js).
+  app.use("/partner/v1", partnerRoutes);
+  app.use("/academy-onboarding", academyOnboardingRoutes);
   app.use("/admin/message-reports", socialSafetyRoutes.adminReports);
   app.use("/stripe", stripeRoutes);
   app.use("/admin/annual-fee", annualFeeAdminRoutes);

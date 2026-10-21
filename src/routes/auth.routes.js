@@ -66,6 +66,23 @@ router.post(
   validate({ body: authSchemas.forgotPasswordBody }),
   asyncHandler(AuthController.forgotPassword)
 );
+// Primeiro acesso da conta criada pela academia (API de parceiro, mig 296):
+// o link do WhatsApp abre a página da academia, que lê o cabeçalho (GET) e
+// cria a senha (POST) — a resposta do POST é a mesma sessão do signin.
+const academyOnboardingSchemas = require("../schemas/academyOnboardingSchemas");
+const AcademyOnboardingController = require("../controllers/AcademyOnboardingController");
+router.get(
+  "/primeiro-acesso/:token",
+  rateLimit.lookup,
+  validate({ params: academyOnboardingSchemas.firstAccessParams }),
+  asyncHandler(AcademyOnboardingController.firstAccessInfo)
+);
+router.post(
+  "/primeiro-acesso",
+  rateLimit.auth,
+  validate({ body: academyOnboardingSchemas.firstAccessBody }),
+  asyncHandler(AcademyOnboardingController.completeFirstAccess)
+);
 router.post(
   "/reset-password",
   rateLimit.auth,

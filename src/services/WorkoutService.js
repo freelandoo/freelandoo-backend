@@ -15,7 +15,7 @@ const AcademyStorage = require("../storages/AcademyStorage");
 const FitnessProposalStorage = require("../storages/FitnessProposalStorage");
 const AcademyService = require("./AcademyService");
 const { sanitizeExercises } = require("../utils/workoutSanitize");
-const { PLAN_EXPIRY_DAYS } = require("../utils/workoutExpiry");
+const { parseValidadeDias, venceEm, diasRestantes, VALIDADE_PADRAO } = require("../utils/workoutValidity");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("workout-service");
@@ -48,6 +48,10 @@ async function hydratePlan(plan, date) {
     by_student: plan.created_by === plan.id_user,
     academy_nome: plan.academy_nome || null,
     days_on_plan: daysBetween(plan.created_at),
+    // Validade por ficha (mig 296): 30/60/90; vence_em = created_at + validade.
+    validade_dias: plan.validade_dias,
+    vence_em: venceEm(plan.created_at, plan.validade_dias),
+    dias_restantes: diasRestantes(plan.created_at, plan.validade_dias),
     completed_at: session ? session.completed_at : null,
     exercises: exercises.map((ex) => ({
       id_plan_exercise: ex.id_plan_exercise,
@@ -134,6 +138,8 @@ class WorkoutService {
       if (!nome) return { error: "Nome da ficha é obrigatório (ex.: Treino A)" };
       const check = sanitizeExercises(body?.exercises);
       if (check.error) return check;
+      const validade = parseValidadeDias(body?.validade_dias, VALIDADE_PADRAO);
+      if (validade.error) return { error: validade.error };
 
       const plan = await WorkoutStorage.createPlan(pool, {
         id_user,
@@ -142,6 +148,7 @@ class WorkoutService {
         created_by: id_user,
         nome,
         notes: body?.notes ? String(body.notes).slice(0, 2000) : null,
+        validade_dias: validade.value,
       });
       await WorkoutStorage.replacePlanExercises(pool, plan.id_plan, check.exercises);
       return { plan: await hydratePlan({ ...plan, academy_nome: null }, today()) };
@@ -156,6 +163,9 @@ class WorkoutService {
 
       const nome = body?.nome === undefined ? undefined : String(body.nome || "").trim().slice(0, 60);
       if (nome === "") return { error: "Nome da ficha é obrigatório (ex.: Treino A)" };
+      // Edição: ausente = não mexer na validade.
+      const validade = parseValidadeDias(body?.validade_dias);
+      if (validade.error) return { error: validade.error };
       let exercises;
       if (body?.exercises !== undefined) {
         const check = sanitizeExercises(body.exercises);
@@ -167,6 +177,7 @@ class WorkoutService {
         nome,
         notes: body?.notes === undefined ? plan.notes : body.notes ? String(body.notes).slice(0, 2000) : null,
         is_active: body?.is_active === undefined ? undefined : Boolean(body.is_active),
+        validade_dias: validade.value,
       });
       if (exercises) await WorkoutStorage.replacePlanExercises(pool, id_plan, exercises);
 
@@ -248,6 +259,10 @@ class WorkoutService {
           active_plan_nome: r.active_plan_nome,
           active_plan_by_student: r.active_plan_by_student === true,
           days_on_plan: r.active_plan_since ? daysBetween(r.active_plan_since) : null,
+          active_plan_validade_dias: r.active_plan_validade_dias ?? null,
+          active_plan_vence_em: r.active_plan_since
+            ? venceEm(r.active_plan_since, r.active_plan_validade_dias)
+            : null,
           frequency_days_30d: r.frequency_days_30d,
           sessions_done_7d: r.sessions_done_7d,
         })),
@@ -256,24 +271,23 @@ class WorkoutService {
   }
 
   /**
-   * Alunos com a ficha vencida — quem está com a MESMA ficha ativa há
-   * PLAN_EXPIRY_DAYS dias ou mais.
+   * Alunos com a ficha vencida — a ficha ativa passou de created_at +
+   * validade_dias (a validade é DA FICHA desde a mig 296: 30/60/90).
    *
    * É a mesma pergunta em três lugares: a bolinha vermelha do botão "Membros"
    * da academia, o modal que recebe o professor e a marca na linha da grade de
    * treinos por data. Uma resposta só, calculada aqui, é o que impede as três
    * de discordarem.
    *
-   * `days` VOLTA na resposta de propósito: é o que deixa o front escrever "há
-   * 90 dias" sem guardar o número dele próprio.
+   * Cada aluno volta com `validade_dias` e `vence_em` da ficha dele: o front
+   * escreve "venceu em …" sem guardar número nenhum.
    */
   static async expiredPlans(id_user, id_academy) {
     return runWithLogs(log, "expired-plans", () => ({ id_academy }), async () => {
       const guard = await AcademyService.assertStaff(id_academy, id_user);
       if (guard.error) return guard;
-      const rows = await WorkoutStorage.expiredPlans(pool, id_academy, PLAN_EXPIRY_DAYS);
+      const rows = await WorkoutStorage.expiredPlans(pool, id_academy);
       return {
-        days: PLAN_EXPIRY_DAYS,
         count: rows.length,
         members: rows.map((r) => ({
           id_member: r.id_member,
@@ -283,6 +297,8 @@ class WorkoutService {
           active_plan_nome: r.active_plan_nome,
           active_plan_by_student: r.active_plan_by_student === true,
           days_on_plan: daysBetween(r.active_plan_since),
+          validade_dias: r.active_plan_validade_dias,
+          vence_em: venceEm(r.active_plan_since, r.active_plan_validade_dias),
         })),
       };
     });

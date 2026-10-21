@@ -1,7 +1,11 @@
+const { notPendingAcademyUserSql } = require("../utils/academyOnboarding");
+
 class UserPublicSummaryStorage {
   static async findUserIdByUsername(conn, username) {
     const r = await conn.query(
-      `SELECT id_user FROM public.tb_user WHERE lower(username) = lower($1) LIMIT 1`,
+      // Conta vinda de academia aguardando aceite não tem página pública (mig 296).
+      `SELECT u.id_user FROM public.tb_user u
+        WHERE lower(u.username) = lower($1) AND ${notPendingAcademyUserSql("u")} LIMIT 1`,
       [username]
     );
     return r.rowCount ? r.rows[0].id_user : null;

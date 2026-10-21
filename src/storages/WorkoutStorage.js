@@ -15,7 +15,7 @@
  */
 const ACTIVE_PLAN_LATERAL = `
   LEFT JOIN LATERAL (
-    SELECT nome, created_at, (created_by = m.id_user) AS by_student
+    SELECT nome, created_at, validade_dias, (created_by = m.id_user) AS by_student
       FROM public.tb_workout_plan p
      WHERE p.id_user = m.id_user AND p.is_active = TRUE
      ORDER BY created_at ASC LIMIT 1
@@ -44,11 +44,12 @@ module.exports = {
   },
 
   // ─── Fichas ────────────────────────────────────────────────────────────────
-  async createPlan(db, { id_user, id_academy, id_member, created_by, nome, notes }) {
+  // validade_dias (mig 296): 30/60/90 — ausente cai no padrão 60.
+  async createPlan(db, { id_user, id_academy, id_member, created_by, nome, notes, validade_dias }) {
     const r = await db.query(
-      `INSERT INTO public.tb_workout_plan (id_user, id_academy, id_member, created_by, nome, notes)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [id_user, id_academy || null, id_member || null, created_by, nome, notes || null]
+      `INSERT INTO public.tb_workout_plan (id_user, id_academy, id_member, created_by, nome, notes, validade_dias)
+       VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7::smallint, 60)) RETURNING *`,
+      [id_user, id_academy || null, id_member || null, created_by, nome, notes || null, validade_dias || null]
     );
     return r.rows[0];
   },
@@ -58,15 +59,22 @@ module.exports = {
     return r.rows[0] || null;
   },
 
-  async updatePlan(db, id_plan, { nome, notes, is_active }) {
+  async updatePlan(db, id_plan, { nome, notes, is_active, validade_dias }) {
     const r = await db.query(
       `UPDATE public.tb_workout_plan
           SET nome = COALESCE($2, nome),
               notes = $3,
               is_active = COALESCE($4, is_active),
+              validade_dias = COALESCE($5::smallint, validade_dias),
               updated_at = NOW()
         WHERE id_plan = $1 RETURNING *`,
-      [id_plan, nome || null, notes === undefined ? null : notes, is_active === undefined ? null : is_active]
+      [
+        id_plan,
+        nome || null,
+        notes === undefined ? null : notes,
+        is_active === undefined ? null : is_active,
+        validade_dias === undefined ? null : validade_dias,
+      ]
     );
     return r.rows[0] || null;
   },
@@ -187,6 +195,7 @@ module.exports = {
               COALESCE(water.total_ml, 0)::int AS water_ml_day,
               plan.nome AS active_plan_nome,
               plan.created_at AS active_plan_since,
+              plan.validade_dias AS active_plan_validade_dias,
               plan.by_student AS active_plan_by_student,
               COALESCE(freq.days, 0)::int AS frequency_days_30d,
               COALESCE(sess.done, 0)::int AS sessions_done_7d
@@ -226,7 +235,8 @@ module.exports = {
   },
 
   // ─── Fichas vencidas ───────────────────────────────────────────────────────
-  // Quem está com a MESMA ficha ativa há `days` dias ou mais.
+  // Quem está com a ficha ativa VENCIDA: created_at + validade_dias da PRÓPRIA
+  // ficha já passou (mig 296 — antes era um número fixo para todas).
   //
   // O corte é feito no BANCO (`created_at <= NOW() - INTERVAL`) e não em JS
   // sobre a grade inteira: a resposta é lida a cada visita de professor à
@@ -236,12 +246,13 @@ module.exports = {
   // Matrícula CANCELADA fica de fora: a ficha dela nunca vai ser renovada, e um
   // aviso que não some é um aviso que se aprende a ignorar. Atrasada/vencida
   // continua entrando — ali o aluno ainda treina.
-  async expiredPlans(db, id_academy, days) {
+  async expiredPlans(db, id_academy) {
     const r = await db.query(
       `SELECT m.id_member, m.id_user, m.member_name, m.membership_status,
               u.username, u.nome AS user_nome,
               plan.nome AS active_plan_nome,
               plan.created_at AS active_plan_since,
+              plan.validade_dias AS active_plan_validade_dias,
               plan.by_student AS active_plan_by_student
          FROM public.tb_academy_member m
          JOIN public.tb_user u ON u.id_user = m.id_user
@@ -249,9 +260,9 @@ module.exports = {
         WHERE m.id_academy = $1
           AND m.membership_status <> 'canceled'
           AND plan.created_at IS NOT NULL
-          AND plan.created_at <= (NOW() - ($2::int * INTERVAL '1 day'))
+          AND plan.created_at + (plan.validade_dias * INTERVAL '1 day') <= NOW()
         ORDER BY plan.created_at ASC`,
-      [id_academy, days]
+      [id_academy]
     );
     return r.rows;
   },

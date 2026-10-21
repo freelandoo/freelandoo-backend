@@ -2,6 +2,7 @@
 const pool = require("../databases");
 const XpStorage = require("./XpStorage");
 const { verifiedUserSql } = require("../utils/verifiedBadge");
+const { notPendingAcademyUserSql } = require("../utils/academyOnboarding");
 
 const RANKING_RECALCULATE_LOCK_KEY = 57289154;
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
@@ -463,6 +464,8 @@ module.exports = {
 
        WHERE (pro.is_visible = TRUE OR pro.is_user_account = TRUE)
          AND pro.deleted_at IS NULL AND tu.ativo = TRUE
+         -- Conta vinda de academia aguardando aceite não entra (mig 296).
+         AND ${notPendingAcademyUserSql("tu")}
          AND pro.is_clan = FALSE
          AND pro.ranking_visible = TRUE
          -- Perfil-conta entra no ranking (paridade user≡perfil, 2026-07-19);
@@ -1130,6 +1133,7 @@ module.exports = {
        LEFT JOIN tb_machine m ON m.id_machine = COALESCE(ca.id_machine, pro.id_machine)
        WHERE pro.deleted_at IS NULL
          AND u.is_minor = FALSE
+         AND ${notPendingAcademyUserSql("u")}
          AND (
            pro.is_clan = FALSE
            OR NOT EXISTS (

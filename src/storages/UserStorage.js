@@ -31,6 +31,9 @@ module.exports = {
         tu.is_minor,
         tu.responsible_user_id,
         tu.onboarding_tour_done,
+        -- Conta vinda de academia (mig 296): 'aguardando_aceite' abre o modal
+        -- de termos da academia no front; NULL = conta comum.
+        tu.academy_onboarding_state,
         -- Selo verificado (mig 268): pagou ou é admin.
         ${verifiedUserSql("tu.id_user")} AS is_verified,
 

@@ -1,5 +1,7 @@
 // src/storages/AcademySocialStorage.js
 // Persistência do social da academia (mig 179): posts, metas e ranking mensal.
+const { notPendingAcademyUserSql } = require("../utils/academyOnboarding");
+
 module.exports = {
   // ─── Posts ─────────────────────────────────────────────────────────────────
   async createPost(db, p) {
@@ -266,6 +268,8 @@ module.exports = {
               AND afi.created_at >= $2::date AND afi.created_at < $3::date
          ) shares ON TRUE
         WHERE m.id_academy = $1
+          -- Ranking da academia é porta pública: conta aguardando aceite fica fora (mig 296).
+          AND ${notPendingAcademyUserSql("u")}
         ORDER BY freq_days DESC, posts_count DESC, u.nome ASC NULLS LAST`,
       [id_academy, windowStart, windowEnd]
     );

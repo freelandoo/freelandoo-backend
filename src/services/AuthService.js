@@ -366,7 +366,9 @@ class AuthService {
           return { error: "Email ou senha inválidos" };
         }
 
-        const senhaValida = await bcrypt.compare(senha, user.senha);
+        // Conta sem senha (só Google, ou criada pela academia antes do primeiro
+        // acesso, mig 296): bcrypt.compare com hash nulo lança — vira 500.
+        const senhaValida = user.senha ? await bcrypt.compare(senha, user.senha) : false;
         if (!senhaValida) {
           return { error: "Email ou senha inválidos" };
         }
@@ -400,12 +402,15 @@ class AuthService {
             .catch(() => {});
         }
 
-        const needs_terms = await computeNeedsTerms(pool, user.id_user);
+        // Conta vinda de academia aguardando aceite (mig 296): o aceite dos
+        // termos é o modal da academia, e o tour espera por ele.
+        const academyPending = user.academy_onboarding_state === "aguardando_aceite";
+        const needs_terms = academyPending ? false : await computeNeedsTerms(pool, user.id_user);
         const isAdmin = await AuthStorage.isAdmin(pool, user.id_user);
         const tourSettings = await TourSettingsStorage.getSettings(pool);
-        const show_tour = TourSettingsStorage.shouldShow(
-          tourSettings, isAdmin, !!user.onboarding_tour_done
-        );
+        const show_tour = academyPending
+          ? false
+          : TourSettingsStorage.shouldShow(tourSettings, isAdmin, !!user.onboarding_tour_done);
 
         return {
           message: "Login realizado com sucesso",
@@ -423,6 +428,7 @@ class AuthService {
             responsible_user_id: user.responsible_user_id || null,
             onboarding_tour_done: !!user.onboarding_tour_done,
             is_admin: isAdmin,
+            academy_onboarding_state: user.academy_onboarding_state || null,
           },
         };
       }
@@ -552,7 +558,8 @@ class AuthService {
           // O login com Google NÃO grava aceite: o usuário ainda não viu os Termos
           // nesse fluxo. needs_terms vem true para conta nova (e para qualquer conta
           // sem aceite da versão atual) → frontend leva à tela /aceitar-termos.
-          const needs_terms = await computeNeedsTerms(client, user.id_user);
+          const academyPending = user.academy_onboarding_state === "aguardando_aceite";
+          const needs_terms = academyPending ? false : await computeNeedsTerms(client, user.id_user);
           const onboarding_tour_done = isNew
             ? false
             : await AuthStorage.getOnboardingTourDone(client, user.id_user);
@@ -579,6 +586,7 @@ class AuthService {
               responsible_user_id: user.responsible_user_id || null,
               onboarding_tour_done,
               is_admin: isAdmin,
+              academy_onboarding_state: user.academy_onboarding_state || null,
             },
           };
         } finally {

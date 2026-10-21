@@ -1,5 +1,6 @@
 const { slugify } = require("../utils/slug");
 const { verifiedUserSql } = require("../utils/verifiedBadge");
+const { notPendingAcademyUserSql } = require("../utils/academyOnboarding");
 
 class ProfileStorage {
   /**
@@ -315,6 +316,8 @@ class ProfileStorage {
     WHERE lower(u.username) = lower($1)
       AND lower(c.profession_slug) = lower($2)
       AND p.deleted_at IS NULL
+      -- Conta vinda de academia aguardando aceite não tem página pública (mig 296).
+      AND ${notPendingAcademyUserSql("u")}
       AND ($3::text IS NULL OR lower(p.sub_profile_slug) = lower($3))
     ORDER BY p.created_at DESC
     LIMIT 1
@@ -352,6 +355,7 @@ class ProfileStorage {
       ON c.id_category = p.id_category
     WHERE lower(u.username) = lower($1)
       AND p.deleted_at IS NULL
+      AND ${notPendingAcademyUserSql("u")}
     ORDER BY p.created_at DESC
     `,
       [handle]

@@ -27,6 +27,10 @@ router.post("/academies", authMiddleware, asyncHandler(AcademyController.create)
 router.patch("/academies/:id", authMiddleware, asyncHandler(AcademyController.update));
 router.post("/academies/:id/test-connection", authMiddleware, asyncHandler(AcademyController.testConnection));
 router.post("/academies/:id/sync", authMiddleware, asyncHandler(AcademyController.syncNow));
+// Chave de parceiro (mig 296): o dono gera/rotaciona; a chave crua sai uma vez.
+const PartnerController = require("../controllers/PartnerController");
+router.get("/academies/:id/partner-key", authMiddleware, asyncHandler(PartnerController.keyStatus));
+router.post("/academies/:id/partner-key", authMiddleware, asyncHandler(PartnerController.generateKey));
 
 // Vínculo por CPF — rate-limited (consulta provider externo).
 router.post("/academies/:id/link", authMiddleware, authLimiter, asyncHandler(AcademyController.link));

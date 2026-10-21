@@ -6,6 +6,10 @@ conectar a academia à Freelandoo. A Freelandoo **puxa** os dados (pull/polling,
 
 A primeira implementação de referência é o **Coliseu** (rotas `/api/freelandoo/*`).
 
+> O sentido contrário — o software da academia **criando/vinculando a conta do aluno**
+> na Freelandoo e lendo foto, situação e treino — é a API de parceiro
+> (`/partner/v1`, chave `flnd_parc_`): ver [API_PARTNER.md](API_PARTNER.md).
+
 ## Cadastro na Freelandoo
 
 O dono da academia cadastra em `freelandoo.com/academias`:
