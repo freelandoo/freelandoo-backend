@@ -199,8 +199,8 @@ class MeuMundoLifeService {
   // a mudança de condição física.
 
   static async wardrobeOf(db, idUser) {
-    const w = await MeuMundoStorage.getWardrobe(db, idUser);
-    return { condition: w.condition, skins: Skins.publicCatalog(w.owned, w.equipped) };
+    const [w, admin] = await Promise.all([MeuMundoStorage.getWardrobe(db, idUser), MeuMundoStorage.isAdmin(db, idUser)]);
+    return { condition: w.condition, admin, skins: Skins.publicCatalog(w.owned, w.equipped, admin) };
   }
 
   /** GET /skins — catálogo com posse e o que está vestido + moedas. */
@@ -210,7 +210,7 @@ class MeuMundoLifeService {
     }));
   }
 
-  /** Comprar uma skin com as moedas do jogo (já tinha = não cobra de novo). */
+  /** Adquirir uma skin: moedas do jogo, de graça para administrador (já tinha = não cobra de novo). */
   static async buySkin(idUser, rawSkin) {
     const skin = Skins.skinById(rawSkin);
     if (!skin || skin.kind !== "skin") return fail("skin");
@@ -218,11 +218,12 @@ class MeuMundoLifeService {
       const w = await MeuMundoStorage.getWardrobe(ctx.client, idUser);
       let bought = false;
       if (!w.owned.includes(skin.id)) {
-        if (ctx.coins < skin.price) return fail("coins");
-        bought = await MeuMundoStorage.addSkin(ctx.client, idUser, skin.id, skin.price);
+        const cost = Skins.costFor(skin, await MeuMundoStorage.isAdmin(ctx.client, idUser));
+        if (ctx.coins < cost) return fail("coins");
+        bought = await MeuMundoStorage.addSkin(ctx.client, idUser, skin.id, cost);
         if (bought) {
-          ctx.coins -= skin.price;
-          ctx.events.push({ at: ctx.now, kind: "skin_bought", data: { skin: skin.id, price: skin.price } });
+          ctx.coins -= cost;
+          ctx.events.push({ at: ctx.now, kind: "skin_bought", data: { skin: skin.id, price: cost } });
         }
       }
       return { bought, wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };

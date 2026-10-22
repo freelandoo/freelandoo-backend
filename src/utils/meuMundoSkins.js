@@ -31,17 +31,21 @@ function avatarBody(condition, skin) {
   return (s && s.body) || condition || "normal";
 }
 
-/** Catálogo para a rede, com o que a pessoa tem e o que está vestido. */
-function publicCatalog(owned, equipped) {
+/** Quanto a pessoa paga: administrador adquire de graça. */
+const costFor = (skin, admin) => (admin ? 0 : skin.price);
+
+/** Catálogo para a rede, com o que a pessoa tem, o que está vestido e quanto custa para ela. */
+function publicCatalog(owned, equipped, admin = false) {
   const mine = new Set(owned);
   return CATALOG.map((s) => ({
     id: s.id,
     kind: s.kind,
     name: s.name,
     price: s.price,
+    cost: costFor(s, admin),
     owned: s.kind === "standard" || mine.has(s.id),
     equipped: s.id === (skinById(equipped) ? equipped : STANDARD),
   }));
 }
 
-module.exports = { STANDARD, CATALOG, skinById, avatarBody, publicCatalog };
+module.exports = { STANDARD, CATALOG, skinById, avatarBody, costFor, publicCatalog };

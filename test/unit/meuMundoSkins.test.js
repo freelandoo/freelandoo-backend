@@ -37,6 +37,14 @@ test("publicCatalog: padrão sempre seu; vestido desconhecido = padrão", () => 
   assert.equal(c.find((s) => s.id === "standard").equipped, true);
 });
 
+test("administrador adquire de graça; os outros pagam o preço", () => {
+  const sergio = Skins.skinById("sergio");
+  assert.equal(Skins.costFor(sergio, true), 0);
+  assert.equal(Skins.costFor(sergio, false), sergio.price);
+  assert.equal(Skins.publicCatalog([], "standard", true).find((s) => s.id === "sergio").cost, 0);
+  assert.equal(Skins.publicCatalog([], "standard", false).find((s) => s.id === "sergio").cost, sergio.price);
+});
+
 test("espelho do cliente: features/meu-mundo/skins.ts tem os mesmos ids", () => {
   const f = path.join(__dirname, "../../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/skins.ts");
   if (!fs.existsSync(f)) return; // CI sem o front ao lado

@@ -275,6 +275,18 @@ async function mkUser(pool, tag) {
   check("vestir skin que não é sua: 409", (await Life.equipSkin(host, "sergio")).code === "notOwned");
   check("skin inexistente: 404", (await Life.buySkin(host, "nada")).statusCode === 404 && (await Life.equipSkin(host, "nada")).statusCode === 404);
   check("o padrão não se compra", (await Life.buySkin(host, "standard")).statusCode === 404);
+  check("admin: Sergio custa 0 para ele", w0.wardrobe.admin === true && sk(w0, "sergio").cost === 0);
+  // Admin adquire de graça (outro admin, para o caminho pago seguir com o anfitrião).
+  const adm = await mkUser(pool, "adm");
+  await Life.peek(adm);
+  await pool.query(`UPDATE tb_mm_wallet SET coins = 3 WHERE id_user = $1`, [adm]);
+  const free = await Life.buySkin(adm, "sergio");
+  const admCoins = Number((await pool.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [adm])).rows[0].coins);
+  const paid = (await pool.query(`SELECT price FROM tb_mm_skin_owned WHERE id_user = $1`, [adm])).rows[0]?.price;
+  check("admin adquire de graça: é dele, carteira intacta, pago 0", free.bought === true && sk(free, "sergio").owned && Math.floor(admCoins) === 3 && paid === 0, JSON.stringify([free.error, admCoins, paid]));
+  // Quem não é admin paga: o anfitrião perde o papel durante o caminho pago.
+  await pool.query(`UPDATE tb_user_role SET is_active = FALSE WHERE id_user = $1`, [host]);
+  check("sem papel: Sergio custa o preço", sk(await Life.skins(host), "sergio").cost === sk(w0, "sergio").price);
   await pool.query(`UPDATE tb_mm_wallet SET coins = 10 WHERE id_user = $1`, [host]);
   const poor = await Life.buySkin(host, "sergio");
   check("sem moedas: 402 e nada muda", poor.statusCode === 402 && (await coins()) === 10 && !(await Life.skins(host)).wardrobe.skins.find((x) => x.id === "sergio").owned);
@@ -282,6 +294,7 @@ async function mkUser(pool, tag) {
   const price = sk(w0, "sergio").price;
   const [b1, b2] = await Promise.all([Life.buySkin(host, "sergio"), Life.buySkin(host, "sergio")]);
   check("duas compras simultâneas cobram UMA vez", [b1, b2].filter((b) => b.bought).length === 1 && Math.floor(await coins()) === 5000 - price, String(await coins()));
+  await pool.query(`UPDATE tb_user_role SET is_active = TRUE WHERE id_user = $1`, [host]);
   check("comprar não veste", sk(b2, "sergio").owned && !sk(b2, "sergio").equipped && sk(b2, "standard").equipped);
   box.length = 0;
   const eq = await Life.equipSkin(host, "sergio");

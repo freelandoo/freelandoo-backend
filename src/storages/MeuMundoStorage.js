@@ -195,6 +195,17 @@ class MeuMundoStorage {
     };
   }
 
+  /** Administrador adquire skin de graça (mesma regra do roleMiddleware). */
+  static async isAdmin(db, idUser) {
+    const r = await db.query(
+      `SELECT 1 FROM tb_user_role ur JOIN tb_role ro ON ro.id_role = ur.id_role
+        WHERE ur.id_user = $1 AND ur.is_active = TRUE AND ro.is_active = TRUE AND ro.desc_role = 'Administrator'
+        LIMIT 1`,
+      [idUser]
+    );
+    return r.rows.length > 0;
+  }
+
   /** Compra (idempotente: já tinha = false, nada muda). */
   static async addSkin(db, idUser, skin, price) {
     const r = await db.query(
