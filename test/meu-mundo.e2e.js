@@ -51,7 +51,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_skin_owned, tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
@@ -84,6 +84,9 @@ async function bootstrap(pool) {
   const sql299 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/299_meu_mundo_vehicles.sql"), "utf8");
   await pool.query(sql299);
   await pool.query(sql299); // idempotente
+  const sql300 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/300_meu_mundo_skins.sql"), "utf8");
+  await pool.query(sql300);
+  await pool.query(sql300); // idempotente
 }
 
 async function mkUser(pool, admin = true, tag = "") {
@@ -536,7 +539,7 @@ async function expectViolation(pool, sql, params, label) {
   await C.room.leave();
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_skin_owned, tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   process.exit(FAIL ? 1 : 0);
 })().catch((e) => {

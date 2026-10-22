@@ -41,7 +41,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
@@ -57,6 +57,7 @@ async function bootstrap(pool) {
     "297_meu_mundo_atributos_1000.sql",
     "298_meu_mundo_atributos_inicio_baixo.sql",
     "299_meu_mundo_vehicles.sql",
+    "300_meu_mundo_skins.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -264,6 +265,35 @@ async function mkUser(pool, tag) {
   await sleep(150);
   check("energia 5 → ritmo exausto na sala", Math.abs(H().p.pace - PACE.EXHAUSTED) < 1e-6, String(H().p.pace));
   check("o cliente recebe o aviso de vida", got("life").some((x) => Math.abs(x.m.pace - PACE.EXHAUSTED) < 1e-6));
+
+  // ── Vestuário (mig 300): condição física ≠ skin ─────────────────────────────
+  const cond = (await Life.peek(host)).character.body.bodyHint;
+  const w0 = await Life.skins(host);
+  const sk = (w, id) => w.wardrobe.skins.find((x) => x.id === id);
+  check("skins: padrão vestido e seu, Sergio à venda", sk(w0, "standard").equipped && sk(w0, "standard").owned && !sk(w0, "sergio").owned && sk(w0, "sergio").price > 0);
+  check("skins: a condição vem junto", w0.wardrobe.condition === cond);
+  check("vestir skin que não é sua: 409", (await Life.equipSkin(host, "sergio")).code === "notOwned");
+  check("skin inexistente: 404", (await Life.buySkin(host, "nada")).statusCode === 404 && (await Life.equipSkin(host, "nada")).statusCode === 404);
+  check("o padrão não se compra", (await Life.buySkin(host, "standard")).statusCode === 404);
+  await pool.query(`UPDATE tb_mm_wallet SET coins = 10 WHERE id_user = $1`, [host]);
+  const poor = await Life.buySkin(host, "sergio");
+  check("sem moedas: 402 e nada muda", poor.statusCode === 402 && (await coins()) === 10 && !(await Life.skins(host)).wardrobe.skins.find((x) => x.id === "sergio").owned);
+  await pool.query(`UPDATE tb_mm_wallet SET coins = 5000 WHERE id_user = $1`, [host]);
+  const price = sk(w0, "sergio").price;
+  const [b1, b2] = await Promise.all([Life.buySkin(host, "sergio"), Life.buySkin(host, "sergio")]);
+  check("duas compras simultâneas cobram UMA vez", [b1, b2].filter((b) => b.bought).length === 1 && Math.floor(await coins()) === 5000 - price, String(await coins()));
+  check("comprar não veste", sk(b2, "sergio").owned && !sk(b2, "sergio").equipped && sk(b2, "standard").equipped);
+  box.length = 0;
+  const eq = await Life.equipSkin(host, "sergio");
+  await sleep(150);
+  check("vestir: sala desenha o Sergio e o cliente é avisado", eq.avatar === "sergio" && H().p.body === "sergio" && got("life").some((x) => x.m.body === "sergio"));
+  check("vestido: a condição continua a do corpo", eq.character.body.bodyHint === cond && (await Storage.getBody(pool, host)) === "sergio");
+  await Life.peek(host);
+  await sleep(100);
+  check("ler a vida não tira a skin", H().p.body === "sergio");
+  const back2 = await Life.equipSkin(host, "standard");
+  await sleep(150);
+  check("tirar a skin: volta a condição", back2.avatar === cond && H().p.body === cond);
 
   await Promise.race([room.leave().catch(() => {}), sleep(500)]);
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);

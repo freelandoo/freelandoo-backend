@@ -41,6 +41,10 @@ router.get("/life", ...admin, asyncHandler(MeuMundoController.life));
 router.post("/life/activity", ...admin, asyncHandler(MeuMundoController.lifeActivity));
 router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsume));
 router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewcomer));
+// Vestuário (mig 300): catálogo de skins, comprar (moedas do jogo) e vestir.
+router.get("/skins", ...admin, asyncHandler(MeuMundoController.skins));
+router.post("/skins/:id/buy", ...admin, asyncHandler(MeuMundoController.skinBuy));
+router.post("/skins/:id/equip", ...admin, asyncHandler(MeuMundoController.skinEquip));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;

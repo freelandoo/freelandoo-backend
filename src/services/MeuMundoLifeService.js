@@ -20,6 +20,7 @@ const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const { rowToState } = require("../storages/MeuMundoLifeStorage");
 const Life = require("../utils/meuMundoLife");
+const Skins = require("../utils/meuMundoSkins");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.life");
@@ -37,6 +38,8 @@ const ERRORS = {
   bed: ["Para deitar ou dormir, vá até uma cama", 409],
   stimulated: ["Com estimulante no corpo ele não consegue dormir", 409],
   coins: ["Moedas insuficientes", 402],
+  skin: ["Skin não encontrada", 404],
+  notOwned: ["Você ainda não tem essa skin", 409],
   alive: ["Seu hóspede está vivo", 409],
 };
 const fail = (code) => {
@@ -99,6 +102,8 @@ class MeuMundoLifeService {
       // O tipo físico do avatar É o corpo da vida (não se escolhe desde
       // 2026-10-21): gravado só quando muda — é o que as entradas leem.
       await MeuMundoStorage.setBody(c, idUser, Life.bodyHint(state));
+      // O que a sala desenha: a skin vestida ou a condição (mig 300).
+      const avatar = await MeuMundoStorage.getBody(c, idUser);
       await c.query("COMMIT");
       const cur = ctx.newRow || row;
       const snap = {
@@ -111,13 +116,14 @@ class MeuMundoLifeService {
         now: new Date(now).toISOString(),
         character: snap,
         wallet: { coins: Math.floor(Math.max(0, ctx.coins)) },
+        avatar,
         ...(extra || {}),
       };
       if (history) {
         out.days = await MeuMundoLifeStorage.recentDays(pool, idCharacter);
         out.events = await MeuMundoLifeStorage.recentEvents(pool, idCharacter);
       }
-      notifyRoom(idUser, { pace: snap.pace, status: snap.status, activity: snap.activity.kind, bed: state.activity.bed, body: snap.body.bodyHint });
+      notifyRoom(idUser, { pace: snap.pace, status: snap.status, activity: snap.activity.kind, bed: state.activity.bed, body: avatar });
       return out;
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});
@@ -184,6 +190,56 @@ class MeuMundoLifeService {
       ctx.coins -= item.price;
       ctx.events.push(...r.events);
       return { consumed: { item: item.id, price: item.price } };
+    });
+  }
+
+  // ═══ VESTUÁRIO (mm3d-16, mig 300) ═══
+  // Comprar e vestir passam pelo núcleo da vida: a carteira é a mesma (trava,
+  // simula até agora, cobra) e a sala recebe o corpo novo no fim, como recebe
+  // a mudança de condição física.
+
+  static async wardrobeOf(db, idUser) {
+    const w = await MeuMundoStorage.getWardrobe(db, idUser);
+    return { condition: w.condition, skins: Skins.publicCatalog(w.owned, w.equipped) };
+  }
+
+  /** GET /skins — catálogo com posse e o que está vestido + moedas. */
+  static async skins(idUser) {
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => ({
+      wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser),
+    }));
+  }
+
+  /** Comprar uma skin com as moedas do jogo (já tinha = não cobra de novo). */
+  static async buySkin(idUser, rawSkin) {
+    const skin = Skins.skinById(rawSkin);
+    if (!skin || skin.kind !== "skin") return fail("skin");
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const w = await MeuMundoStorage.getWardrobe(ctx.client, idUser);
+      let bought = false;
+      if (!w.owned.includes(skin.id)) {
+        if (ctx.coins < skin.price) return fail("coins");
+        bought = await MeuMundoStorage.addSkin(ctx.client, idUser, skin.id, skin.price);
+        if (bought) {
+          ctx.coins -= skin.price;
+          ctx.events.push({ at: ctx.now, kind: "skin_bought", data: { skin: skin.id, price: skin.price } });
+        }
+      }
+      return { bought, wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
+    });
+  }
+
+  /** Vestir uma skin que já é sua, ou voltar ao padrão ('standard'). */
+  static async equipSkin(idUser, rawSkin) {
+    const skin = Skins.skinById(rawSkin);
+    if (!skin) return fail("skin");
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      if (skin.kind === "skin") {
+        const w = await MeuMundoStorage.getWardrobe(ctx.client, idUser);
+        if (!w.owned.includes(skin.id)) return fail("notOwned");
+      }
+      await MeuMundoStorage.setSkin(ctx.client, idUser, skin.id);
+      return { wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
     });
   }
 

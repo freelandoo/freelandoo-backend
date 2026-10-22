@@ -71,6 +71,19 @@ async function lifeNewcomer(req, res) {
   return reply(res, await MeuMundoLifeService.newcomer(req.user.id_user));
 }
 
+// Vestuário (mig 300): skins compradas com as moedas do jogo.
+async function skins(req, res) {
+  return reply(res, await MeuMundoLifeService.skins(req.user.id_user));
+}
+
+async function skinBuy(req, res) {
+  return reply(res, await MeuMundoLifeService.buySkin(req.user.id_user, req.params.id));
+}
+
+async function skinEquip(req, res) {
+  return reply(res, await MeuMundoLifeService.equipSkin(req.user.id_user, req.params.id));
+}
+
 async function adminStatus(_req, res) {
   return reply(res, await MeuMundoService.status());
 }
@@ -93,4 +106,7 @@ module.exports = {
   lifeActivity,
   lifeConsume,
   lifeNewcomer,
+  skins,
+  skinBuy,
+  skinEquip,
 };

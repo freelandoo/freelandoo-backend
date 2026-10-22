@@ -4,6 +4,7 @@
 // patrimônio da Freelandoo: são dados do ambiente em desenvolvimento.
 
 const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout");
+const { avatarBody } = require("../utils/meuMundoSkins");
 
 const BODIES = ["normal", "slim", "fat", "strong", "sergio"];
 
@@ -175,9 +176,42 @@ class MeuMundoStorage {
     return r.rows[0].n;
   }
 
+  /** Corpo que a sala desenha: a skin vestida (mig 300) ou a condição física. */
   static async getBody(db, idUser) {
-    const r = await db.query(`SELECT body FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]);
-    return r.rows[0]?.body || "normal";
+    const r = await db.query(`SELECT body, skin FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]);
+    return avatarBody(r.rows[0]?.body || "normal", r.rows[0]?.skin);
+  }
+
+  /** Vestuário (mig 300): skin vestida + compradas. */
+  static async getWardrobe(db, idUser) {
+    const [pref, owned] = await Promise.all([
+      db.query(`SELECT body, skin FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]),
+      db.query(`SELECT skin FROM tb_mm_skin_owned WHERE id_user = $1`, [idUser]),
+    ]);
+    return {
+      condition: pref.rows[0]?.body || "normal",
+      equipped: pref.rows[0]?.skin || "standard",
+      owned: owned.rows.map((r) => r.skin),
+    };
+  }
+
+  /** Compra (idempotente: já tinha = false, nada muda). */
+  static async addSkin(db, idUser, skin, price) {
+    const r = await db.query(
+      `INSERT INTO tb_mm_skin_owned (id_user, skin, price) VALUES ($1, $2, $3)
+       ON CONFLICT (id_user, skin) DO NOTHING`,
+      [idUser, skin, price]
+    );
+    return r.rowCount > 0;
+  }
+
+  static async setSkin(db, idUser, skin) {
+    await db.query(
+      `INSERT INTO tb_mm_avatar_pref (id_user, skin) VALUES ($1, $2)
+       ON CONFLICT (id_user) DO UPDATE SET skin = EXCLUDED.skin, updated_at = NOW()
+       WHERE tb_mm_avatar_pref.skin IS DISTINCT FROM EXCLUDED.skin`,
+      [idUser, skin]
+    );
   }
 
   static async setBody(db, idUser, body) {
