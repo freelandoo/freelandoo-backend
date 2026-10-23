@@ -38,7 +38,8 @@ const {
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { VISIT_RULES } = require("../utils/meuMundoVisits");
 const { MOTION } = require("../utils/meuMundoMotion");
-const { kindOfId } = require("../utils/meuMundoCars");
+const { kindOfId, spotFor } = require("../utils/meuMundoCars");
+const { buildCenterPayload } = require("../utils/meuMundoCenter");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const { createLogger } = require("../utils/logger");
@@ -57,6 +58,17 @@ async function lifeFor(idUser) {
 }
 
 const VISIT_LOCK = "meu_mundo:visitas";
+
+// Viagem ao centro em andamento por pessoa (pedido repetido não cria duas).
+const traveling = new Map(); // id do usuário → ms do início
+const TRAVEL_GUARD_MS = 8000;
+function beginTravel(idUser) {
+  const t = traveling.get(idUser);
+  if (t && Date.now() - t < TRAVEL_GUARD_MS) return false;
+  traveling.set(idUser, Date.now());
+  return true;
+}
+const endTravel = (idUser) => traveling.delete(idUser);
 
 function code(seq) {
   return `bairro-${String(seq).padStart(4, "0")}`;
@@ -105,6 +117,16 @@ class MeuMundoService {
   // ── Decisão do ambiente ────────────────────────────────────────────────────
   static async resolveScene(idUser, residence) {
     const pl = presence.getPlacement(idUser);
+    // 0. No centro (mm3d-17): conectado lá, ou caiu e a sala ainda guarda a vaga dele.
+    if (pl && pl.scene === "center") {
+      const here = presence.get(idUser);
+      if ((here && here.scene === "center") || (pl.roomId && realtime.hasCenterHold(pl.roomId, idUser))) {
+        return { scene: "center", roomId: (here && here.scene === "center" && here.id) || pl.roomId || null };
+      }
+      // Passou do prazo: volta para casa (os veículos já voltaram com a vaga).
+      presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number });
+      return MeuMundoService.resolveScene(idUser, residence);
+    }
     const visit = await MeuMundoVisitStorage.activeAsGuest(pool, idUser);
     // 1. Dentro de uma casa há pouco, e ainda autorizado.
     if (pl && pl.scene === "house" && presence.offlineFor(idUser) <= VISIT_RULES.disconnectGraceMs) {
@@ -224,9 +246,12 @@ class MeuMundoService {
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
     const target = await MeuMundoService.resolveScene(idUser, residence);
     const out =
-      target.scene === "house"
-        ? await MeuMundoService.housePayload(idUser, target.house, body, name, life)
-        : await MeuMundoService.neighborhoodPayload(idUser, residence, target, body, name, life);
+      target.scene === "center"
+        ? await MeuMundoService.centerPayload(idUser, residence, body, name, life, { roomId: target.roomId })
+        : target.scene === "house"
+          ? await MeuMundoService.housePayload(idUser, target.house, body, name, life)
+          : await MeuMundoService.neighborhoodPayload(idUser, residence, target, body, name, life);
+    if (out.error) return out;
     if (out.me) out.me.newResidence = created;
     return out;
   }
@@ -243,6 +268,10 @@ class MeuMundoService {
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
     const target = await MeuMundoService.resolveScene(idUser, residence);
     try {
+      if (target.scene === "center") {
+        const reservation = await realtime.reserveCenterSeat({ userId: idUser, name, body, roomId: target.roomId });
+        return { sceneKey: `center:${reservation.roomId}`, multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
+      }
       if (target.scene === "house") {
         const reservation = await realtime.reserveHouseSeat({ houseId: target.house.id_house, userId: idUser, name, body });
         return { sceneKey: `house:${target.house.id_house}`, multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
@@ -335,6 +364,116 @@ class MeuMundoService {
     realtime.dropFromHouse(houseId, idUser);
     presence.setPlacement(idUser, { scene: "nb", nbId: house.id_neighborhood, arrivalLot: house.lot_number, ride });
     log.info("house.exit", { lot: house.lot_number, ride });
+    return MeuMundoService.enter(idUser);
+  }
+
+  // ── Centro da cidade (mm3d-17) ────────────────────────────────────────────
+  /**
+   * Payload do centro + reserva numa sala de até 20 (a planta é a mesma para
+   * todas). Sem reserva (multiplayer fora), devolve { error } — quem chama
+   * decide voltar à origem.
+   */
+  static async centerPayload(idUser, residence, body, name, life, { roomId = null, vehicle = null } = {}) {
+    let reservation;
+    try {
+      reservation = await realtime.reserveCenterSeat({ userId: idUser, name, body, vehicle, roomId });
+    } catch (err) {
+      log.error("center.reserve_fail", { message: err.message });
+      return { error: "O centro não abriu agora. Tente de novo.", statusCode: 503 };
+    }
+    return {
+      scene: "center",
+      sceneKey: `center:${reservation.roomId}`,
+      release: MEU_MUNDO_RELEASE,
+      environment: "dev",
+      center: buildCenterPayload(),
+      me: { name, body, house: 0, driving: vehicle ? Number(vehicle.id) : 0 },
+      motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
+      multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation },
+      visits: await MeuMundoService.visitState(idUser),
+      life: life !== undefined ? life : await lifeFor(idUser),
+    };
+  }
+
+  /**
+   * Ir ao centro: da rua de um bairro (nunca como convidado de visita), a pé,
+   * montado ou dirigindo — o veículo vai junto e o bairro grava onde ele
+   * estava. O servidor reserva o centro ANTES de soltar o bairro; se a
+   * reserva falhar, nada muda (o veículo volta para o mesmo lugar). Bairro,
+   * lote, casa e residência não mudam.
+   */
+  static async travelToCenter(idUser) {
+    const here = presence.get(idUser);
+    if (!here || here.scene !== "nb") {
+      return here && here.scene === "center"
+        ? { error: "Você já está no centro", statusCode: 409, code: "already" }
+        : { error: "Saia para a rua do bairro para ir ao centro", statusCode: 409 };
+    }
+    const residence = await MeuMundoStorage.getActiveResidence(pool, idUser);
+    if (!residence) return { error: "Sem residência ativa", statusCode: 409 };
+    if (await MeuMundoVisitStorage.activeAsGuest(pool, idUser)) {
+      return { error: "Encerre a visita antes de ir ao centro", statusCode: 409, code: "visiting" };
+    }
+    if (!beginTravel(idUser)) return { error: "Você já está a caminho do centro", statusCode: 409, code: "busy" };
+    try {
+      const nbId = here.id;
+      const pos = realtime.positionIn("nb", nbId, idUser);
+      let vehicle = null;
+      if (pos && pos.driving) {
+        const r = realtime.sendVehicleAway(nbId, idUser);
+        if (r.error === "moving") return { error: "Pare antes de ir ao centro", statusCode: 409, code: "moving" };
+        if (r.error) return { error: "Não foi possível levar o veículo", statusCode: 409 };
+        vehicle = { nbId, id: r.id, kind: r.kind };
+      }
+      const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
+      const before = presence.getPlacement(idUser);
+      presence.setPlacement(idUser, { scene: "center", roomId: null, from: { nbId } });
+      const out = await MeuMundoService.centerPayload(idUser, residence, body, name, undefined, { vehicle });
+      if (out.error) {
+        // Falhou: tudo volta como estava (o veículo, para onde saiu).
+        if (vehicle) realtime.returnAway(nbId, vehicle.id, null);
+        presence.setPlacement(idUser, before || { scene: "nb", nbId });
+        return out;
+      }
+      log.info("center.travel", { vehicle: vehicle ? vehicle.kind : "" });
+      return out;
+    } finally {
+      endTravel(idUser);
+    }
+  }
+
+  /**
+   * Voltar para casa: o servidor decide o bairro (residência ativa do token —
+   * o corpo da requisição é ignorado). Chega na frente da própria casa; quem
+   * volta dirigindo chega com o carro na vaga dele (bike, skate e patins na
+   * frente da casa). Não dá acesso à casa de ninguém.
+   */
+  static async returnHome(idUser) {
+    const here = presence.get(idUser);
+    const pl = presence.getPlacement(idUser);
+    if (!(here && here.scene === "center") && !(pl && pl.scene === "center")) return { error: "Você não está no centro", statusCode: 409 };
+    const roomId = here && here.scene === "center" ? here.id : pl.roomId;
+    const residence = await MeuMundoStorage.getActiveResidence(pool, idUser);
+    if (!residence) return { error: "Sem residência ativa", statusCode: 409 };
+    let ride = 0;
+    if (roomId) {
+      const pos = realtime.positionIn("center", roomId, idUser);
+      if (pos && pos.driving) {
+        const r = realtime.takeDrivenFromCenter(roomId, idUser);
+        if (r.error === "moving") return { error: "Pare antes de voltar para casa", statusCode: 409, code: "moving" };
+        if (!r.error) {
+          const front = frontOfHouse(residence.lot_number);
+          const at = r.kind === "car" ? spotFor("car", ((r.id - 1) % 20) + 1) : { x: front.x, z: front.z, facing: front.rotationY };
+          await MeuMundoVehicleStorage.save(pool, r.nbId, r.id, { x: at.x, z: at.z, facing: at.facing, houseId: null, layout: LAYOUT_VERSION });
+          realtime.returnAway(r.nbId, r.id, at);
+          // Chega montado/dirigindo no bairro de casa (convidado de visita não viaja).
+          if (r.nbId === residence.id_neighborhood) ride = r.id;
+        }
+      }
+      realtime.leaveCenter(roomId, idUser);
+    }
+    presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number, ride });
+    log.info("center.return", { ride: ride ? kindOfId(ride) : "" });
     return MeuMundoService.enter(idUser);
   }
 
@@ -584,7 +723,8 @@ class MeuMundoService {
       const guestOff = presence.offlineFor(v.id_guest);
       // Anfitrião saiu do próprio bairro para outro destino: encerra.
       const host = presence.get(v.id_host);
-      const hostAway = host && ((host.scene === "nb" && host.id !== v.id_neighborhood) || (host.scene === "house" && host.id !== v.id_house));
+      const hostAway =
+        host && (host.scene === "center" || (host.scene === "nb" && host.id !== v.id_neighborhood) || (host.scene === "house" && host.id !== v.id_house));
       const reason = hostAway ? "host_left" : hostOff > grace ? "host_offline" : guestOff > grace ? "guest_offline" : null;
       if (!reason) continue;
       if (!(await MeuMundoVisitStorage.transition(pool, v.id_visit, ["active"], "ended", reason))) continue;
@@ -605,6 +745,12 @@ MeuMundoService.startSweeper = (ms = 5000) => {
   if (sweeper) return;
   sweeper = setInterval(() => {
     MeuMundoService.sweepVisits().catch((err) => log.error("visits.sweep_fail", { message: err.message }));
+    // Veículo que saiu para o centro e nunca chegou volta ao bairro.
+    try {
+      realtime.sweepAway();
+    } catch (err) {
+      log.error("vehicles.sweep_fail", { message: err.message });
+    }
   }, ms);
   sweeper.unref?.();
 };

@@ -28,6 +28,9 @@ router.post("/house/level", ...admin, asyncHandler(MeuMundoController.adminHouse
 // Entrar (lote no bairro em que você está) e sair pela porta.
 router.post("/house/enter", ...admin, asyncHandler(MeuMundoController.houseEnter));
 router.post("/house/exit", ...admin, asyncHandler(MeuMundoController.houseExit));
+// Centro da cidade (mm3d-17): ir e voltar para casa (o bairro de casa é o da residência do token).
+router.post("/center/enter", ...admin, asyncHandler(MeuMundoController.centerEnter));
+router.post("/center/leave", ...admin, asyncHandler(MeuMundoController.centerLeave));
 // Convites e visitas (mig 293).
 router.get("/visits", ...admin, asyncHandler(MeuMundoController.visits));
 router.get("/visits/candidates", ...admin, asyncHandler(MeuMundoController.candidates));

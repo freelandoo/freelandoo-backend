@@ -63,6 +63,15 @@ const {
   createVehicle,
   advanceVehicle,
 } = require("../utils/meuMundoVehicle");
+const {
+  CENTER_VERSION,
+  CENTER_CAPACITY,
+  OBSTACLES: CENTER_OBSTACLES,
+  LIMIT: CENTER_LIMIT,
+  ARRIVAL: CENTER_ARRIVAL,
+  ARRIVAL_SPOTS: CENTER_ARRIVAL_SPOTS,
+  isSafeSpot: isCenterSafe,
+} = require("../utils/meuMundoCenter");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.realtime");
@@ -93,6 +102,8 @@ function refreshLife(userId) {
 // MOVED: o servidor levou a pessoa para outro ambiente (visita encerrada,
 // por exemplo) — o cliente pede o destino novo ao backend.
 const CLOSE = { REPLACED: 4009, FORBIDDEN: 4003, ABUSE: 4029, MOVED: 4011 };
+// Saída pedida pelo cliente (room.leave(true)): não guarda vaga no centro.
+const CLOSE_CONSENTED = 4000;
 
 const Player = schema(
   {
@@ -271,7 +282,13 @@ class BairroRoom extends Room {
     for (const h of await MeuMundoStorage.listHouses(pool, this.neighborhoodId, null)) {
       if (h.ownerName) this.ensureVehicles(h.number);
     }
+    this.limit = LIMIT;
+    this.startLoop();
+    log.info("room.create", { roomId: this.roomId, neighborhood: this.neighborhoodId });
+  }
 
+  /** Mensagens, simulação e vida: iguais na rua do bairro e no centro (CentroRoom). */
+  startLoop() {
     this.onMessage("in", (client, msg) => this.onIntent(client, msg));
     this.onMessage("car", (client, msg) => this.onCar(client, msg));
     this.onMessage("drive", (client, msg) => this.onDrive(client, msg));
@@ -282,7 +299,6 @@ class BairroRoom extends Room {
     this.clock.setInterval(() => {
       for (const s of this.sim.values()) refreshLife(s.userId);
     }, LIFE_REFRESH_MS);
-    log.info("room.create", { roomId: this.roomId, neighborhood: this.neighborhoodId });
   }
 
   async onJoin(client, options) {
@@ -381,11 +397,14 @@ class BairroRoom extends Room {
     if (resident) this.ensureVehicles(residence.lot_number);
     // Saindo de casa montado (mm3d-15): o veículo já foi posto na frente da
     // casa (releaseRide) — a pessoa chega em cima dele.
+    // Voltando do centro dirigindo (mm3d-17): o carro já foi posto na vaga da
+    // casa — a pessoa chega dentro dele.
     const ride = Number(options.ride);
     if (ride) {
       const c = this.state.cars.get(String(ride));
       const pl = this.state.players.get(client.sessionId);
-      if (c && !c.driver && c.kind !== "car" && Math.hypot(c.x - b.x, c.z - b.z) < 2.5) {
+      const reach = c && c.kind === "car" ? 12 : 2.5;
+      if (c && !c.driver && Math.hypot(c.x - b.x, c.z - b.z) < reach) {
         this.mount(client.sessionId, this.sim.get(client.sessionId), pl, ride, c);
       }
     }
@@ -441,7 +460,8 @@ class BairroRoom extends Room {
     for (const kind of KIND_NAMES) {
       const id = vehicleId(kind, lotNumber);
       const key = String(id);
-      if (this.state.cars.has(key) || this.indoors.has(id)) continue;
+      // Guardado numa casa ou levado ao centro (mm3d-17): não aparece na rua.
+      if (this.state.cars.has(key) || this.indoors.has(id) || isAway(this.neighborhoodId, id)) continue;
       // Onde ficou da última vez (mig 299), se ainda couber lá (uma casa que
       // mudou de nível pode ter ocupado o lugar); senão, a vaga.
       const v = this.saved.get(id);
@@ -495,6 +515,32 @@ class BairroRoom extends Room {
       const p = this.state.players.get(sid);
       if (p) Object.assign(p, { car: 0, move: 0 });
       return { id, kind: c.kind };
+    }
+    return { error: "not_riding" };
+  }
+
+  /**
+   * Indo ao centro montado ou dirigindo (mm3d-17): QUALQUER veículo sai da rua
+   * com a pessoa. Grava antes onde ele estava — é para lá que volta se a
+   * viagem falhar ou se ela não voltar com ele. Devolve { id, kind } ou { error }.
+   */
+  sendAway(userId) {
+    for (const [sid, s] of this.sim) {
+      if (s.userId !== userId || !s.car) continue;
+      const c = this.state.cars.get(String(s.car));
+      if (!c || !RIDE_KINDS[c.kind]) return { error: "not_riding" };
+      if (s.veh && Math.hypot(s.veh.vx, s.veh.vz) > CAR.EXIT_MAX_SPEED) return { error: "moving" };
+      const id = s.car;
+      const from = { x: c.x, z: c.z, facing: c.facing };
+      Object.assign(c, { driver: "", sp: 0, st: 0, hb: false, sl: 0, vx: 0, vz: 0, w: 0 });
+      this.persistVehicle(id);
+      this.state.cars.delete(String(id));
+      s.car = 0;
+      s.veh = null;
+      s.drive = IDLE_DRIVE;
+      const p = this.state.players.get(sid);
+      if (p) Object.assign(p, { car: 0, move: 0 });
+      return { id, kind: c.kind, from };
     }
     return { error: "not_riding" };
   }
@@ -554,6 +600,16 @@ class BairroRoom extends Room {
     client.send("tuned", s.tune || {});
   }
 
+  /** O carro é só do titular da casa; bike, skate e patins, de quem chegar. */
+  mayUse(s, p, c, kind) {
+    return !(RIDE_KINDS[kind].ownerOnly && (s.visitor || !p.house || p.house !== c.lot));
+  }
+
+  /** Para onde "Recuperar" leva o veículo: a vaga da casa dele. */
+  homeSpot(kind, c) {
+    return spotFor(kind, c.lot);
+  }
+
   onCar(client, msg) {
     if (!this.countMessage(client)) return;
     const s = this.sim.get(client.sessionId);
@@ -567,8 +623,7 @@ class BairroRoom extends Room {
       const c = id ? this.state.cars.get(String(id)) : null;
       if (!c) return deny("no_car");
       const kind = RIDE_KINDS[c.kind] ? c.kind : "car";
-      // O carro é só do titular da casa; bike, skate e patins, de quem chegar.
-      if (RIDE_KINDS[kind].ownerOnly && (s.visitor || !p.house || p.house !== c.lot)) return deny("not_owner");
+      if (!this.mayUse(s, p, c, kind)) return deny("not_owner");
       if (c.driver) return deny("busy");
       if (Math.hypot(c.x - s.body.x, c.z - s.body.z) > RIDE_KINDS[kind].enter) return deny("far");
       this.mount(client.sessionId, s, p, id, c);
@@ -585,8 +640,8 @@ class BairroRoom extends Room {
       if (now - s.lastRecoverAt < CAR.RECOVER_COOLDOWN_MS) return deny("cooldown");
       if (Math.hypot(s.veh.vx, s.veh.vz) > CAR.RECOVER_MAX_SPEED) return deny("moving");
       const kind = RIDE_KINDS[c.kind] ? c.kind : "car";
-      const spot = spotFor(kind, c.lot);
-      if (!carFits(spot.x, spot.z, spot.facing, this.obstacles.concat(this.carBoxes(client.sessionId)), kind)) return deny("spot_busy");
+      const spot = this.homeSpot(kind, c, client.sessionId);
+      if (!spot || !carFits(spot.x, spot.z, spot.facing, this.obstacles.concat(this.carBoxes(client.sessionId)), kind)) return deny("spot_busy");
       s.lastRecoverAt = now;
       s.veh = createVehicle(spot.x, spot.z, spot.facing);
       Object.assign(s.body, { x: spot.x, z: spot.z, vx: 0, vz: 0, facing: spot.facing });
@@ -692,13 +747,13 @@ class BairroRoom extends Room {
         const v = s.veh;
         const c = this.state.cars.get(String(s.car));
         const kind = c && RIDE_KINDS[c.kind] ? c.kind : "car";
-        advanceVehicle(v, s.drive, dt, boxes, LIMIT, paramsFor(kind, s.tune));
+        advanceVehicle(v, s.drive, dt, boxes, this.limit, paramsFor(kind, s.tune));
         Object.assign(s.body, { x: v.x, z: v.z, vx: v.vx, vz: v.vz, facing: v.yaw });
         if (c) Object.assign(c, { x: v.x, z: v.z, facing: v.yaw, sp: v.u, st: v.steer, hb: v.hb > 0.3, sl: v.slip, vx: v.vx, vz: v.vz, w: v.w });
         if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: RIDE_KINDS[kind].move });
         continue;
       }
-      const move = step(s.body, s.intent, dt, boxes, LIMIT, paceProfile(s.pace));
+      const move = step(s.body, s.intent, dt, boxes, this.limit, paceProfile(s.pace));
       if (!p) continue;
       p.x = s.body.x;
       p.z = s.body.z;
@@ -1151,6 +1206,348 @@ class CasaRoom extends Room {
   }
 }
 
+// ═══ SALA DO CENTRO (mm3d-17) ════════════════════════════════════════════
+// Uma planta só (meuMundoCenter.js) e quantas salas forem precisas, cada uma
+// com até 20 pessoas de QUALQUER bairro. Quem escolhe a sala é o matchmaker
+// (`filterBy mapVersion` + a mais cheia com vaga primeiro): a conferência da
+// vaga e a reserva acontecem no mesmo passo síncrono do Colyseus, então duas
+// entradas ao mesmo tempo não pegam a mesma última vaga e a sala nunca passa
+// de 20 (conectados + reservas + vagas guardadas).
+//
+// Quem cai sem sair (aba fechada, rede) tem a vaga GUARDADA por HOLD_MS: a
+// capacidade aberta para os outros encolhe (maxClients = 20 − guardadas) e a
+// volta dele entra por `reserveHeldSeat`, que devolve a vaga e reserva no
+// mesmo passo. Depois do prazo a vaga se solta e os veículos dele voltam
+// para o bairro de onde vieram.
+//
+// Veículos chegam com o dono (não existem carros do centro). Cada um ganha um
+// id LOCAL da sala (deslocamento da modalidade + vaga da pessoa, 1–80): ids
+// de bairros diferentes não colidem, e só o dono usa (mayUse).
+const CENTER_ROOM = "centro";
+const timing = { holdMs: Number(process.env.MM_CENTER_HOLD_MS) || 20000, emptyMs: Number(process.env.MM_CENTER_EMPTY_MS) || 60000 };
+const centerRooms = new Map(); // roomId → CentroRoom
+
+class CentroRoom extends BairroRoom {
+  async onCreate(options) {
+    this.mapVersion = Number(options.mapVersion) || CENTER_VERSION;
+    this.cap = CENTER_CAPACITY;
+    this.maxClients = this.cap;
+    this.patchRate = PATCH_MS;
+    this.seatReservationTimeout = 20;
+    // Sala vazia espera emptyMs antes de fechar (reconexão, quem está chegando).
+    this.autoDispose = false;
+    this.setState(new State());
+    this.sim = new Map();
+    this.obstacles = CENTER_OBSTACLES.map((b) => ({ ...b }));
+    this.limit = CENTER_LIMIT;
+    this.indoors = new Set();
+    this.saved = new Map();
+    /** userId → { slot, x, z, facing, until } — vaga guardada de quem caiu. */
+    this.holds = new Map();
+    /** userId → hold devolvido por reserveHeldSeat, consumido no onJoin. */
+    this.returning = new Map();
+    /** id local do veículo → { nbId, id, userId } (de onde ele veio). */
+    this.origin = new Map();
+    this.emptyTimer = null;
+    centerRooms.set(this.roomId, this);
+    this.startLoop();
+    this.armEmpty();
+    log.info("center.create", { roomId: this.roomId, version: this.mapVersion });
+  }
+
+  async onJoin(client, options) {
+    const userId = options.userId;
+    const ok = Number(options.mapVersion) === this.mapVersion && userId && (await AuthStorage.isAdmin(pool, userId));
+    // Só entra quem o serviço mandou para o centro (o destino autorizado é gravado antes de reservar).
+    const pl = ok ? presence.getPlacement(userId) : null;
+    if (!ok || !pl || pl.scene !== "center") {
+      log.warn("center.join_denied", { roomId: this.roomId });
+      throw new ServerError(CLOSE.FORBIDDEN, "acesso negado ao centro");
+    }
+    this.cancelEmpty();
+    // Uma sessão por usuário: a nova substitui a antiga (mesma vaga).
+    let slot = 0;
+    let start = null;
+    for (const [sid, s] of this.sim) {
+      if (s.userId !== userId) continue;
+      slot = s.slot;
+      start = { x: s.body.x, z: s.body.z, facing: s.body.facing };
+      const old = this.clients.find((c) => c.sessionId === sid);
+      this.sim.delete(sid);
+      this.state.players.delete(sid);
+      if (old) {
+        old.send("replaced", {});
+        old.leave(CLOSE.REPLACED);
+      }
+    }
+    // Voltando dentro do prazo: a mesma vaga, onde estava.
+    const back = this.returning.get(userId) || this.holds.get(userId);
+    this.returning.delete(userId);
+    if (this.holds.delete(userId)) this.updateCapacity();
+    if (back) {
+      slot = back.slot;
+      start = { x: back.x, z: back.z, facing: back.facing };
+    }
+    if (!slot) slot = this.freeSlot();
+    if (start && !isCenterSafe(start.x, start.z, resolveCircle, MOTION.RADIUS, this.obstacles)) start = null;
+    if (!start) start = { ...CENTER_ARRIVAL };
+
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
+    const b = { x: start.x, z: start.z, vx: 0, vz: 0, facing: start.facing };
+    step(b, { x: 0, z: 0, run: false }, 0, this.obstacles, this.limit);
+    this.sim.set(client.sessionId, {
+      userId,
+      visitor: false,
+      slot,
+      body: b,
+      intent: { x: 0, z: 0, run: false },
+      ...freshBucket(),
+      car: 0,
+      veh: null,
+      drive: IDLE_DRIVE,
+      tune: null,
+      lastRecoverAt: 0,
+      pace: 1,
+    });
+    // `house` = vaga da pessoa NESTA sala (é o que diz de quem é cada veículo).
+    this.state.players.set(
+      client.sessionId,
+      new Player({ name: String(options.name || "morador").slice(0, 24), house: slot, body, x: b.x, z: b.z, facing: b.facing, move: 0, car: 0, pace: 1 })
+    );
+    // Chegou montado ou dirigindo: o veículo que saiu do bairro com ela.
+    const v = options.vehicle;
+    if (v && v.nbId && v.id && claimAway(v.nbId, Number(v.id), userId, this.roomId)) this.arriveWith(client.sessionId, slot, v);
+    presence.claim(userId, this, client.sessionId, "center", this.roomId);
+    presence.setPlacement(userId, { scene: "center", roomId: this.roomId, from: pl.from || null });
+    client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: slot, visitor: false });
+    refreshLife(userId);
+    this.syncLockSoon();
+    log.info("center.join", { roomId: this.roomId, online: this.state.players.size, slot, held: !!back });
+  }
+
+  /** Menor vaga (1–20) sem ninguém e sem guarda. */
+  freeSlot() {
+    const used = new Set();
+    for (const s of this.sim.values()) used.add(s.slot);
+    for (const h of this.holds.values()) used.add(h.slot);
+    for (const h of this.returning.values()) used.add(h.slot);
+    for (let i = 1; i <= this.cap; i++) if (!used.has(i)) return i;
+    return this.cap; // inalcançável: maxClients segura antes
+  }
+
+  /** Põe o veículo que veio do bairro numa vaga de chegada livre, com a pessoa nele. */
+  arriveWith(sid, slot, v) {
+    const kind = RIDE_KINDS[v.kind] ? v.kind : kindOfId(Number(v.id));
+    const id = RIDE_KINDS[kind].offset + slot;
+    const blockers = this.obstacles.concat(this.carBoxes(sid));
+    const spot = CENTER_ARRIVAL_SPOTS.find((p) => carFits(p.x, p.z, p.facing, blockers, kind)) || CENTER_ARRIVAL_SPOTS[0];
+    const c = new Car({ lot: slot, kind, x: spot.x, z: spot.z, facing: spot.facing, driver: "" });
+    this.state.cars.set(String(id), c);
+    this.origin.set(id, { nbId: v.nbId, id: Number(v.id), userId: this.sim.get(sid).userId });
+    this.mount(sid, this.sim.get(sid), this.state.players.get(sid), id, c);
+  }
+
+  /** No centro, todo veículo é só de quem trouxe (a vaga da pessoa). */
+  mayUse(s, p, c) {
+    return !!p.house && p.house === c.lot;
+  }
+
+  /** "Recuperar" no centro: a primeira vaga de chegada livre. */
+  homeSpot(kind, c, sid) {
+    const blockers = this.obstacles.concat(this.carBoxes(sid));
+    return CENTER_ARRIVAL_SPOTS.find((p) => carFits(p.x, p.z, p.facing, blockers, kind)) || null;
+  }
+
+  /** Posição dos veículos do centro não vai ao banco (o do bairro guarda a de lá). */
+  persistVehicle() {}
+
+  updateCapacity() {
+    this.maxClients = Math.max(0, this.cap - this.holds.size);
+    this.syncLockSoon();
+  }
+
+  /**
+   * A trava que o matchmaker enxerga precisa acompanhar a capacidade: o
+   * Colyseus destrava sozinho quando um cliente sai (sem conferir as vagas
+   * guardadas), e a sala cheia por guarda ficava listada como aberta — quem
+   * chegava insistia nela. Reavaliado DEPOIS da contabilidade dele. (O limite
+   * de 20 não depende disto: a reserva confere a vaga de qualquer jeito.)
+   */
+  syncLockSoon() {
+    setTimeout(() => {
+      if (this.closed) return;
+      if (this.hasReachedMaxClients()) {
+        this._listing.locked = true;
+        void this.lock();
+      } else if (this._lockedExplicitly) void this.unlock();
+    }, 0);
+  }
+
+  /** Veículos que vieram com `userId` voltam ao bairro de origem, na posição gravada na saída. */
+  sendVehiclesHome(userId) {
+    for (const [id, o] of [...this.origin]) {
+      if (o.userId !== userId) continue;
+      this.state.cars.delete(String(id));
+      this.origin.delete(id);
+      returnAway(o.nbId, o.id, null);
+    }
+  }
+
+  /**
+   * Tira o veículo em que `userId` está (voltando para casa com ele). Devolve
+   * { nbId, id, kind } de origem ou { error }.
+   */
+  takeDriven(userId) {
+    for (const [sid, s] of this.sim) {
+      if (s.userId !== userId || !s.car) continue;
+      const o = this.origin.get(s.car);
+      const c = this.state.cars.get(String(s.car));
+      if (!o || !c) return { error: "not_riding" };
+      if (s.veh && Math.hypot(s.veh.vx, s.veh.vz) > CAR.EXIT_MAX_SPEED) return { error: "moving" };
+      this.state.cars.delete(String(s.car));
+      this.origin.delete(s.car);
+      s.car = 0;
+      s.veh = null;
+      s.drive = IDLE_DRIVE;
+      return { nbId: o.nbId, id: o.id, kind: c.kind };
+    }
+    return { error: "not_riding" };
+  }
+
+  onLeave(client, code) {
+    const s = this.sim.get(client.sessionId);
+    this.sim.delete(client.sessionId);
+    this.state.players.delete(client.sessionId);
+    if (s) {
+      this.parkCar(client.sessionId, s);
+      presence.release(s.userId, this, client.sessionId);
+      if (code === CLOSE_CONSENTED) {
+        // Saiu do jogo pelo menu: a próxima entrada é em casa (não no centro).
+        this.sendVehiclesHome(s.userId);
+        const pl = presence.getPlacement(s.userId);
+        if (pl && pl.scene === "center" && pl.roomId === this.roomId) presence.setPlacement(s.userId, { scene: "left" });
+      } else this.hold(s);
+    }
+    this.syncLockSoon();
+    this.armEmpty();
+  }
+
+  /** Caiu sem sair: guarda a vaga (e o que ele trouxe) por holdMs. */
+  hold(s) {
+    const until = Date.now() + timing.holdMs;
+    this.holds.set(s.userId, { slot: s.slot, x: s.body.x, z: s.body.z, facing: s.body.facing, until });
+    this.updateCapacity();
+    this.clock.setTimeout(() => {
+      const h = this.holds.get(s.userId);
+      if (!h || h.until !== until) return;
+      this.holds.delete(s.userId);
+      this.updateCapacity();
+      this.sendVehiclesHome(s.userId);
+      log.info("center.hold_expired", { roomId: this.roomId });
+      this.armEmpty();
+    }, timing.holdMs);
+  }
+
+  /** A presença foi para outra sala (voltou para casa, outra aba): sai sem guardar vaga. */
+  dropSession(sessionId) {
+    const s = this.sim.get(sessionId);
+    this.sim.delete(sessionId);
+    this.state.players.delete(sessionId);
+    if (s) {
+      this.parkCar(sessionId, s);
+      this.sendVehiclesHome(s.userId);
+    }
+    this.syncLockSoon();
+    this.armEmpty();
+  }
+
+  cancelEmpty() {
+    if (this.emptyTimer) this.emptyTimer.clear();
+    this.emptyTimer = null;
+  }
+
+  /** Vazia (sem ninguém, sem reserva, sem vaga guardada) por emptyMs: fecha. */
+  armEmpty() {
+    const idle = () => this.clients.length === 0 && this.sim.size === 0 && this.holds.size === 0 && Object.keys(this._reservedSeats || {}).length === 0;
+    if (!idle() || this.emptyTimer) return;
+    this.emptyTimer = this.clock.setTimeout(() => {
+      this.emptyTimer = null;
+      if (idle()) this.disconnect();
+      else this.armEmpty();
+    }, timing.emptyMs);
+  }
+
+  onDispose() {
+    this.closed = true;
+    if (centerRooms.get(this.roomId) === this) centerRooms.delete(this.roomId);
+    for (const [sid, s] of this.sim) presence.release(s.userId, this, sid);
+    for (const o of this.origin.values()) returnAway(o.nbId, o.id, null);
+    this.origin.clear();
+    log.info("center.dispose", { roomId: this.roomId });
+  }
+
+  positionOf(userId) {
+    for (const s of this.sim.values()) if (s.userId === userId) return { x: s.body.x, z: s.body.z, driving: !!s.car, car: s.car };
+    return null;
+  }
+
+  applyHouseLevel() {
+    return false;
+  }
+}
+
+// ── Veículos fora do bairro (no centro, ou a caminho dele) ──────────────────
+// Processo único: a marca vive em memória. Reiniciar o servidor zera as salas
+// do centro e a marca juntas — o veículo fica onde o banco diz (a posição de
+// saída, gravada no sendAway).
+const away = new Map(); // `${nbId}|${id}` → { userId, from, at, roomId|null }
+const awayKey = (nbId, id) => `${nbId}|${id}`;
+function isAway(nbId, id) {
+  return away.has(awayKey(nbId, id));
+}
+
+/** Tira da rua do bairro o veículo em que `userId` está e o marca como fora. */
+function sendVehicleAway(neighborhoodId, userId) {
+  const room = roomsByNeighborhood.get(neighborhoodId);
+  if (!room) return { error: "not_riding" };
+  const r = room.sendAway(userId);
+  if (r.error) return r;
+  away.set(awayKey(neighborhoodId, r.id), { userId, kind: r.kind, from: r.from, at: Date.now(), roomId: null });
+  return r;
+}
+
+/** A sala do centro assume o veículo (só o dono, só se ainda estiver a caminho). */
+function claimAway(nbId, id, userId, roomId) {
+  const a = away.get(awayKey(nbId, id));
+  if (!a || a.userId !== userId || a.roomId) return false;
+  a.roomId = roomId;
+  return true;
+}
+
+/**
+ * O veículo volta para o bairro: em `at` (já gravado pelo serviço) ou, sem
+ * `at`, onde estava quando saiu. Se a rua estiver aberta, aparece na hora.
+ */
+function returnAway(nbId, id, at) {
+  const key = awayKey(nbId, id);
+  const a = away.get(key);
+  away.delete(key);
+  const room = roomsByNeighborhood.get(nbId);
+  const where = at || (a && a.from);
+  if (room && where) room.releaseRide(id, where);
+}
+
+/** Veículo que saiu e nunca chegou (a reserva do centro venceu): volta. */
+function sweepAway(maxMs = 45000) {
+  const now = Date.now();
+  for (const [key, a] of [...away]) {
+    if (a.roomId || now - a.at < maxMs) continue;
+    const [nbId, id] = key.split("|");
+    returnAway(nbId, Number(id), null);
+    log.info("vehicle.away_returned", {});
+  }
+}
+
 let ready = null;
 let transport = null;
 
@@ -1168,6 +1565,8 @@ function init(httpServer) {
   const gameServer = new Server({ transport, greet: false, gracefullyShutdown: false });
   gameServer.define(ROOM_NAME, BairroRoom).filterBy(["neighborhoodId"]);
   gameServer.define(HOUSE_ROOM, CasaRoom).filterBy(["houseId"]);
+  // Centro: salas da MESMA versão da planta; a mais cheia com vaga primeiro (encontros).
+  gameServer.define(CENTER_ROOM, CentroRoom).filterBy(["mapVersion"]).sortBy({ clients: -1 });
   transport.attachToServer(httpServer, {
     filter: (req) => typeof req.url === "string" && req.url.startsWith(WS_PREFIX),
   });
@@ -1196,6 +1595,79 @@ async function reserveHouseSeat({ houseId, userId, name, body, ride = 0 }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
   await ready;
   return matchMaker.joinOrCreate(HOUSE_ROOM, { houseId, userId, name, body, ride });
+}
+
+/**
+ * Reserva o lugar no centro (mm3d-17). Quem chama já gravou o destino
+ * autorizado (placement "center") e conferiu origem e papel. `roomId` = a
+ * pessoa estava numa sala do centro há pouco: tenta a MESMA (vaga guardada,
+ * ou a sala em que ela ainda está conectada); sem vaga lá, qualquer outra.
+ */
+async function reserveCenterSeat({ userId, name, body, vehicle = null, roomId = null }) {
+  if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
+  await ready;
+  const options = { mapVersion: CENTER_VERSION, userId, name, body, vehicle };
+  if (roomId) {
+    const held = await reserveHeldSeat(roomId, userId, options);
+    if (held) return held;
+  }
+  // A sala escolhida pode encher entre a busca e a reserva: o matchmaker tenta
+  // de novo (5×) e, sem vaga, cria outra. Mais algumas voltas para rajadas.
+  let last = null;
+  for (let i = 0; i < 4; i++) {
+    try {
+      return await matchMaker.joinOrCreate(CENTER_ROOM, options);
+    } catch (err) {
+      last = err;
+      if (!/full|SeatReservation/i.test(String(err && (err.name + err.message)))) throw err;
+    }
+  }
+  throw last;
+}
+
+/**
+ * Volta para a mesma sala: devolve a vaga guardada e reserva NO MESMO PASSO
+ * síncrono (ninguém pega a vaga no meio). Sem guarda, só se a pessoa ainda
+ * estiver conectada lá (troca de aba) e houver vaga. null = usar outra sala.
+ */
+function reserveHeldSeat(roomId, userId, options) {
+  const room = centerRooms.get(roomId);
+  if (!room) return null;
+  const hold = room.holds.get(userId);
+  const there = [...room.sim.values()].some((s) => s.userId === userId);
+  if (!hold && !there) return null;
+  if (hold) {
+    room.holds.delete(userId);
+    room.returning.set(userId, hold);
+    room.updateCapacity();
+    // Reserva que não for usada: a vaga se solta e os veículos voltam.
+    room.clock.setTimeout(() => {
+      if (room.returning.get(userId) !== hold) return;
+      room.returning.delete(userId);
+      if (![...room.sim.values()].some((s) => s.userId === userId)) room.sendVehiclesHome(userId);
+      room.armEmpty();
+    }, (room.seatReservationTimeout + 5) * 1000);
+  } else if (room.hasReachedMaxClients()) return null;
+  return matchMaker.reserveSeatFor(room._listing, options).catch(() => null);
+}
+
+/** A sala do centro ainda guarda a vaga desta pessoa (caiu há pouco)? */
+function hasCenterHold(roomId, userId) {
+  const room = centerRooms.get(roomId);
+  return !!room && (room.holds.has(userId) || room.returning.has(userId));
+}
+
+/** A pessoa saiu do centro por uma transição (voltar para casa): sai sem guardar vaga. */
+function leaveCenter(roomId, userId) {
+  const room = centerRooms.get(roomId);
+  if (!room) return;
+  for (const [sid, s] of [...room.sim]) if (s.userId === userId) room.dropSession(sid);
+}
+
+/** Tira do centro o veículo em que `userId` está (voltando para casa com ele). */
+function takeDrivenFromCenter(roomId, userId) {
+  const room = centerRooms.get(roomId);
+  return room ? room.takeDriven(userId) : { error: "not_riding" };
 }
 
 // ── Veículos entre a rua e as casas (mm3d-15; o serviço grava no banco) ─────
@@ -1264,7 +1736,7 @@ function applyLife(userId, life) {
 
 /** Posição do usuário segundo a sala em que ele está (null = não está). */
 function positionIn(scene, id, userId) {
-  const room = scene === "nb" ? roomsByNeighborhood.get(id) : roomsByHouse.get(id);
+  const room = scene === "nb" ? roomsByNeighborhood.get(id) : scene === "center" ? centerRooms.get(id) : roomsByHouse.get(id);
   return room ? room.positionOf(userId) : null;
 }
 
@@ -1273,6 +1745,7 @@ async function status() {
   await ready;
   const rooms = await matchMaker.query({ name: ROOM_NAME });
   const houses = await matchMaker.query({ name: HOUSE_ROOM });
+  const centers = await matchMaker.query({ name: CENTER_ROOM });
   return {
     available: true,
     process: "single",
@@ -1280,17 +1753,29 @@ async function status() {
     clients: rooms.reduce((n, r) => n + (r.clients || 0), 0),
     houseRooms: houses.length,
     houseClients: houses.reduce((n, r) => n + (r.clients || 0), 0),
+    centerRooms: centers.length,
+    centerClients: centers.reduce((n, r) => n + (r.clients || 0), 0),
   };
 }
 
 // Só para a suíte e2e (test/meu-mundo.e2e.js): alcança as salas vivas.
 const _roomFor = (neighborhoodId) => roomsByNeighborhood.get(neighborhoodId) || null;
 const _houseRoomFor = (houseId) => roomsByHouse.get(houseId) || null;
+const _centerRooms = () => [...centerRooms.values()];
+const _centerTiming = timing;
 
 module.exports = {
   init,
   reserveSeat,
   reserveHouseSeat,
+  reserveCenterSeat,
+  hasCenterHold,
+  leaveCenter,
+  takeDrivenFromCenter,
+  sendVehicleAway,
+  returnAway,
+  sweepAway,
+  isAway,
   status,
   applyHouseLevel,
   houseOccupants,
@@ -1305,7 +1790,10 @@ module.exports = {
   WS_PREFIX,
   BairroRoom,
   CasaRoom,
+  CentroRoom,
   CLOSE,
   _roomFor,
   _houseRoomFor,
+  _centerRooms,
+  _centerTiming,
 };

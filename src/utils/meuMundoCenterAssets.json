@@ -1,0 +1,16 @@
+{
+  "version": "centro-v1-abb308c7",
+  "basePath": "/meu-mundo/centro/",
+  "places": {
+    "pizzaria": "centro-pizzaria-2c95a461.glb",
+    "hamburgueria": "centro-hamburgueria-3911eb78.glb",
+    "supermercado": "centro-supermercado-b0f61d78.glb",
+    "universidade": "centro-universidade-ac5b118a.glb",
+    "biblioteca": "centro-biblioteca-5750a7ae.glb",
+    "escola": "centro-escola-a487ac0a.glb",
+    "academia": "centro-academia-5798891f.glb",
+    "jetpack": "centro-jetpack-bbbdcb1a.glb",
+    "igreja": "centro-igreja-36864549.glb",
+    "delegacia": "centro-delegacia-89c89ff4.glb"
+  }
+}

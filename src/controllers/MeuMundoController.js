@@ -37,6 +37,16 @@ async function houseExit(req, res) {
   return reply(res, await MeuMundoService.exitHouse(req.user.id_user));
 }
 
+// Centro da cidade (mm3d-17): ir (da rua do bairro) e voltar para casa. O
+// destino é decidido no servidor — nada do corpo da requisição é usado.
+async function centerEnter(req, res) {
+  return reply(res, await MeuMundoService.travelToCenter(req.user.id_user));
+}
+
+async function centerLeave(req, res) {
+  return reply(res, await MeuMundoService.returnHome(req.user.id_user));
+}
+
 async function visits(req, res) {
   return reply(res, await MeuMundoService.visitState(req.user.id_user));
 }
@@ -95,6 +105,8 @@ module.exports = {
   adminHouseLevel,
   houseEnter,
   houseExit,
+  centerEnter,
+  centerLeave,
   visits,
   candidates,
   invite,
