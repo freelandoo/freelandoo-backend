@@ -36,8 +36,9 @@ async function sim() {
   const tu = await loadFront("sim/tuning.ts");
   const w = await loadFront("sim/world.ts");
   const ap = await loadFront("sim/autopilot.ts");
+  const gen = await loadFront("sim/generator.ts");
   if (!m) return null;
-  return { ...m, ...tr, ...tu, ...w, ...ap };
+  return { ...m, ...tr, ...tu, ...w, ...ap, ...gen };
 }
 
 test("jetpack — grupo: turbo de um puxa a câmera; os outros são rebocados a no máx. 4,5 m e a coluna se refaz", async (t) => {
@@ -155,4 +156,51 @@ test("jetpack — colocação: morreu depois = melhor; mesmo passo → maior dis
     m.placements().map((p) => [p.slot, p.place]),
     [[1, 1], [2, 2], [3, 2], [0, 4]],
   );
+});
+
+// ── Servidor: a mesma sim, gerada do TS (scripts/build-jetpack-sim.js) ────────
+
+const back = require("../../src/utils/meuMundoJetpack");
+
+test("jetpack — servidor: src/utils/meuMundoJetpack.js está em dia com a sim do front", (t) => {
+  const { build, SIM } = require("../../scripts/build-jetpack-sim");
+  if (!require("fs").existsSync(SIM)) return t.skip("front fora do lugar");
+  const cur = require("fs").readFileSync(require.resolve("../../src/utils/meuMundoJetpack"), "utf8");
+  assert.equal(cur, build(), "rode: node scripts/build-jetpack-sim.js");
+});
+
+test("jetpack — servidor: o jogo sozinho é idêntico ao ouro do mm3d-20", () => {
+  const now = golden(back.World, back.autopilot);
+  for (const k of Object.keys(GOLD)) assert.deepEqual(now[k], GOLD[k], k);
+});
+
+test("jetpack — servidor × navegador: partida de 4 passo a passo, igualdade exata", async (t) => {
+  const S = await sim();
+  if (!S) return t.skip("front fora do lugar");
+  const run = (M, tune) => {
+    const m = new M.Match(1234, [0, 1, 2, 3], tune);
+    m.start();
+    const out = [];
+    for (let i = 0; i < 120 * 30 && m.aliveCount(); i++) {
+      if (i === 600) m.runners[2].powerUntil = m.track.t + tune.powerTime;
+      m.step([0, 1, 2, 3].map((s) => (i + s * 37) % (90 + s * 11) < 48 + s * 3));
+      out.push(
+        JSON.stringify([
+          m.ticks,
+          [0, 1, 2, 3].map((s) => m.runners[s].snapshot()),
+          m.track.obstacles.map((o) => [o.id, o.x, o.broken]),
+          m.track.pickups.map((p) => [p.id, p.taken]),
+          m.drain(),
+        ]),
+      );
+    }
+    return out;
+  };
+  const a = run(S, S.TUNING);
+  const b = run(back, back.TUNING);
+  assert.equal(a.length, b.length);
+  for (let i = 0; i < a.length; i++) assert.equal(b[i], a[i], `passo ${i}`);
+  assert.deepEqual(back.TUNING, S.TUNING);
+  assert.deepEqual(back.PARTY, S.PARTY);
+  assert.equal(back.VULCAN_EVERY, S.VULCAN_EVERY);
 });
