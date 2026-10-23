@@ -63,7 +63,8 @@ const PLACE_DEFS = [
   { id: "escola", zone: "educacional", rect: [FRONT, FRONT + 16, -55, -39], h: 6.5, peak: 9.5, front: "w", door: -47, doorW: 2.4 },
   // Sul — atividades (fachadas viradas para o norte, z = -FRONT)
   { id: "academia", zone: "atividades", rect: [-22, -2, -FRONT - 16, -FRONT], h: 7, peak: 9.5, front: "n", door: -12, doorW: 3.4 },
-  { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4 },
+  // game: o local abre um minijogo no cliente em vez de um interior (mm3d-20).
+  { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack" },
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
@@ -112,9 +113,10 @@ function buildPlace(def) {
     interact: Object.freeze({ ...at(1.6), radius: 3 }),
     // Ponto seguro de retorno dos futuros interiores (olhando para a rua).
     return: Object.freeze({ ...at(2.2), facing: facingOut }),
-    // Destino futuro (interior). Nesta entrega nenhum interior existe.
-    destination: `interior:${def.id}`,
-    available: false,
+    // Destino: minijogo (game:<id>, mm3d-20) ou o interior futuro — nenhum
+    // interior existe ainda, então só os minijogos estão disponíveis.
+    destination: def.game ? `game:${def.game}` : `interior:${def.id}`,
+    available: !!def.game,
   });
 }
 

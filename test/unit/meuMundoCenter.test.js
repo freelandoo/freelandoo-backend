@@ -52,8 +52,13 @@ test("registro de destinos: cada local tem entrada, interação, retorno, destin
     assert.ok(p.nameKey.startsWith("centerPlace_"), p.id);
     for (const k of ["entry", "interact", "return"]) assert.ok(Number.isFinite(p[k].x) && Number.isFinite(p[k].z), `${p.id}.${k}`);
     assert.ok(p.interact.radius >= 2.5);
-    assert.equal(p.destination, `interior:${p.id}`);
-    assert.equal(p.available, false, "nenhum interior existe nesta entrega");
+    if (p.id === "jetpack") {
+      assert.equal(p.destination, "game:jetpack");
+      assert.equal(p.available, true, "o jetpack abre o minijogo (mm3d-20)");
+    } else {
+      assert.equal(p.destination, `interior:${p.id}`);
+      assert.equal(p.available, false, "nenhum interior existe ainda");
+    }
   }
 });
 
