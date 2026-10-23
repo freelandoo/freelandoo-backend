@@ -238,6 +238,19 @@ async function mkUser(pool, admin = true, tag = "") {
   const late = await Service.enter(dropper);
   check("depois do prazo, entrar volta para casa", late.sceneKey === `nb:${nbOf.get(dropper)}`, late.sceneKey);
   live.set(dropper, { nb: await consume(late) });
+  // Caiu e escolheu "Voltar para casa": a vaga se solta NA HORA (não no fim do
+  // prazo) e a sala volta a aceitar quem chega (mm3d-19).
+  const again = await toCenter(dropper);
+  check("de volta ao centro, na mesma sala (a mais cheia)", again.room && again.room.roomId === dropRoomId);
+  await bye(again.room, false);
+  await until(() => dr.holds.has(dropper), 2000);
+  const homeOut = await goHome(dropper);
+  await sleep(50);
+  check("caiu e voltou para casa: a vaga guardada se solta na hora", !homeOut.out.error && !dr.holds.has(dropper) && dr.maxClients === 20 && !dr.locked, `max=${dr.maxClients} locked=${dr.locked}`);
+  await goHome(extra);
+  const joins = await toCenter(extra);
+  check("…e quem chega entra nessa sala, não numa nova", joins.room && joins.room.roomId === dropRoomId);
+  await goHome(extra);
 
   // ── Pedido repetido ───────────────────────────────────────────────────────
   const rep = forty[5];

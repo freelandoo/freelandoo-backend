@@ -1662,6 +1662,16 @@ function leaveCenter(roomId, userId) {
   const room = centerRooms.get(roomId);
   if (!room) return;
   for (const [sid, s] of [...room.sim]) if (s.userId === userId) room.dropSession(sid);
+  // Tinha caído (vaga guardada) e voltou para casa: a vaga se solta agora, não
+  // no fim do prazo — senão a sala fica cheia por uma guarda que ninguém vai
+  // usar e quem chega cai em outra sala (mm3d-19).
+  const held = room.holds.delete(userId);
+  const back = room.returning.delete(userId);
+  if (held || back) {
+    room.updateCapacity();
+    room.sendVehiclesHome(userId);
+    room.armEmpty();
+  }
 }
 
 /** Tira do centro o veículo em que `userId` está (voltando para casa com ele). */
