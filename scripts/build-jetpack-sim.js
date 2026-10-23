@@ -52,7 +52,9 @@ function build() {
 if (require.main === module) {
   const next = build();
   if (process.argv.includes("--check")) {
-    const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, "utf8") : "";
+    const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, "utf8").replace(/
+/g, "
+") : "";
     if (cur !== next) {
       console.error("src/utils/meuMundoJetpack.js desatualizado: rode node scripts/build-jetpack-sim.js");
       process.exit(1);
