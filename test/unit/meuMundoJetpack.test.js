@@ -167,9 +167,7 @@ test("jetpack — servidor: src/utils/meuMundoJetpack.js está em dia com a sim 
   if (!require("fs").existsSync(SIM)) return t.skip("front fora do lugar");
   const cur = require("fs").readFileSync(require.resolve("../../src/utils/meuMundoJetpack"), "utf8");
   // CRLF do checkout no Windows não conta como diferença.
-  assert.equal(cur.replace(/
-/g, "
-"), build(), "rode: node scripts/build-jetpack-sim.js");
+  assert.equal(cur.replace(/\r\n/g, "\n"), build(), "rode: node scripts/build-jetpack-sim.js");
 });
 
 test("jetpack — servidor: o jogo sozinho é idêntico ao ouro do mm3d-20", () => {
