@@ -129,4 +129,26 @@ function advanceDriven(v, fallback, dt, boxes, limit, P) {
   return n;
 }
 
-module.exports = { DRIVE_EVERY, DRIVE_MARGIN, HIST, queueDrive, advanceDriven };
+/**
+ * Pedido para descer (mm3d-24): a sala anda atrás do celular (a folga do
+ * volante), então quando a pessoa já parou lá, aqui o veículo ainda freia — a
+ * descida era recusada ("moving") e, aceita, o veículo estacionava antes do
+ * ponto em que a pessoa o viu parar. Numa CÓPIA, aplica as mudanças que já
+ * chegaram e segue até parar (no máximo `max` passos). Devolve a cópia.
+ */
+function settleDriven(v, fallback, boxes, limit, P, max = 90) {
+  const c = { acc: 0, dn: v.dn || 0, drive: v.drive };
+  for (const f of FIELDS) c[f] = v[f];
+  const q = (v.dq || []).slice();
+  for (let i = 0; i < max; i++) {
+    const at = c.dn + 1;
+    while (q.length && q[0].at <= at) c.drive = q.shift().d;
+    const d = v.dq ? c.drive || fallback : fallback;
+    if (!q.length && Math.hypot(c.vx, c.vz) < 0.05 && !(d && d.t > 0)) break;
+    stepVehicle(c, d, boxes, limit, P);
+    c.dn = at;
+  }
+  return c;
+}
+
+module.exports = { DRIVE_EVERY, DRIVE_MARGIN, HIST, queueDrive, advanceDriven, settleDriven };

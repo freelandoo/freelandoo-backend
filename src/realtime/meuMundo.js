@@ -63,7 +63,7 @@ const {
   sanitizeTuning,
   createVehicle,
 } = require("../utils/meuMundoVehicle");
-const { queueDrive, advanceDriven } = require("../utils/meuMundoDriveSync");
+const { queueDrive, advanceDriven, settleDriven } = require("../utils/meuMundoDriveSync");
 const {
   CENTER_VERSION,
   CENTER_CAPACITY,
@@ -659,8 +659,15 @@ class BairroRoom extends Room {
       if (!s.car) return;
       const c = this.state.cars.get(String(s.car));
       if (!c) return;
-      // Só desce com o carro parado (ou quase).
-      if (s.veh && Math.hypot(s.veh.vx, s.veh.vz) > CAR.EXIT_MAX_SPEED) return deny("moving");
+      // Só desce com o carro parado (ou quase) — onde o CELULAR o viu parar:
+      // a sala termina as mudanças de volante que já chegaram (mm3d-24).
+      if (s.veh) {
+        const kind = RIDE_KINDS[c.kind] ? c.kind : "car";
+        const boxes = this.obstacles.concat(this.carBoxes(client.sessionId));
+        const st = settleDriven(s.veh, s.drive, boxes, this.limit, paramsFor(kind, s.tune));
+        if (Math.hypot(st.vx, st.vz) > CAR.EXIT_MAX_SPEED) return deny("moving");
+        Object.assign(s.body, { x: st.x, z: st.z, facing: st.yaw });
+      }
       // O carro para onde está; a pessoa desce num ponto LIVRE ao lado.
       Object.assign(c, { x: s.body.x, z: s.body.z, facing: s.body.facing });
       const blockers = this.obstacles.concat(this.carBoxes(client.sessionId), [carBox(c)]);

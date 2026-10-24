@@ -244,3 +244,29 @@ test("veículo dos outros: segue a curva sem anda-freia e com a frente acompanha
   // O que se via: anda-freia a cada pacote (velocidade desenhada pulando de quadro em quadro).
   assert.ok(after.jerk < 0.5 && after.jerk < before.jerk / 10, `agora: ${fmt(after)} (antes: ${fmt(before)})`);
 });
+
+test("descer (mm3d-24): a sala termina as mudanças que já chegaram e para onde o celular parou", () => {
+  const { settleDriven } = require("../../src/utils/meuMundoDriveSync");
+  const P = V.paramsFor("car", null);
+  const go = { t: 1, b: 0, s: 0, h: false };
+  const brake = { t: 0, b: 1, s: 0, h: false };
+  // volante padrão da sala com cliente novo é IDLE_DRIVE (onDrive só enfileira)
+  const idle = { t: 0, b: 0, s: 0, h: false };
+  const run = (v, s) => {
+    for (let i = 0; i < Math.round(s / 0.05); i++) advanceDriven(v, idle, 0.05, [], 1e9, P);
+  };
+  // celular: acelera 1 s e freia até parar
+  const cli = V.createVehicle(0, 0, 0);
+  for (let i = 0; i < 60; i++) V.stepVehicle(cli, go, [], 1e9, P);
+  for (let i = 0; i < 200 && Math.hypot(cli.vx, cli.vz) > 0.01; i++) V.stepVehicle(cli, brake, [], 1e9, P);
+  // sala: a frenagem chegou, mas a sala ainda está atrás (folga)
+  const srv = V.createVehicle(0, 0, 0);
+  queueDrive(srv, go, 1);
+  queueDrive(srv, brake, 61);
+  run(srv, 1.0);
+  assert.ok(Math.hypot(srv.vx, srv.vz) > 1.5, "na sala ainda está andando");
+  const st = settleDriven(srv, idle, [], 1e9, P);
+  assert.ok(Math.hypot(st.vx, st.vz) < 0.06, "parou");
+  assert.ok(Math.hypot(st.x - cli.x, st.z - cli.z) < 0.05, `parou onde o celular parou (${Math.hypot(st.x - cli.x, st.z - cli.z).toFixed(3)} m)`);
+  assert.ok(Math.hypot(srv.vx, srv.vz) > 1.5, "o veículo de verdade não mudou (cópia)");
+});
