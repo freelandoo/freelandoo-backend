@@ -293,7 +293,9 @@ class JetpackRoom extends Room {
 
   onInput(client, msg) {
     const s = this.sim.get(client.sessionId);
-    if (!s || !this.takeToken(client, s) || !this.match || this.state.phase !== "running") return;
+    // Na contagem também: quem já está segurando no "vai" larga segurando (passo 1).
+    const phase = this.state.phase;
+    if (!s || !this.takeToken(client, s) || !this.match || (phase !== "running" && phase !== "countdown")) return;
     const T = this.match.ticks + 1;
     const k = Math.floor(Number(msg && msg.k));
     if (!Number.isFinite(k) || k < T - INPUT_LATE || k > T + INPUT_EARLY) return;

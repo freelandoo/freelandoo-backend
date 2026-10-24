@@ -617,13 +617,20 @@ class Track {
    */
   static rebuild(seed        , vulcans                   , upTo        , tune         = TUNING)        {
     const tr = new Track(seed, tune);
-    for (const x of vulcans) {
-      tr.fillTo(x + tune.lookahead);
-      tr.gen.vulcanTaken(x);
-      tr.vulcans.push(x);
-    }
-    tr.fillTo(upTo);
+    tr.replay(vulcans, upTo);
     return tr;
+  }
+
+  /** O mesmo que rebuild, no próprio objeto (mesma seed): a predição do cliente refaz o percurso no lugar. */
+  replay(vulcans                   , upTo        ) {
+    const list = [...vulcans];
+    this.reset(this.seed);
+    for (const x of list) {
+      this.fillTo(x + this.tune.lookahead);
+      this.gen.vulcanTaken(x);
+      this.vulcans.push(x);
+    }
+    this.fillTo(upTo);
   }
 }
 

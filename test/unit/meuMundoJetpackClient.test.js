@@ -114,3 +114,201 @@ test("jetpack — TickClock: reset (partida nova) esquece o passo, mas não o RT
   clock.sample(0, 0, 100); // passo 0 = servidor ainda não largou: só mede o RTT
   assert.equal(clock.ready, false);
 });
+
+// ── Predição (net/predict.ts) contra o servidor (Match do back) ─────────────
+
+const Back = require("../../src/utils/meuMundoJetpack");
+const CODE = { ready: 0, flying: 1, falling: 2, out_of_fuel: 3, dead: 4 };
+
+/** Estado da sala como o cliente recebe (espelho do mirror() da JetpackRoom). */
+function stateOf(m, held, taken, broken) {
+  const runners = new Map();
+  for (const s of m.slots) {
+    const r = m.runners[s];
+    runners.set(`sess${s}`, {
+      slot: s, name: "", body: "", ready: false, inMatch: true, online: true,
+      st: CODE[r.state], x: r.x, y: r.y, vy: r.vy, fuel: r.fuel.value, held: !!held[s], thr: r.thrusting,
+      pw: r.powerUntil, pf: r.snapshot().powered, tow: r.towed, grace: r.graceUntil, pid: r.passedId,
+      pass: r.passed, ph: r.phase, fc: r.fuelCollected, got: r.pickupsTaken, sm: r.smashed, dieAt: r.deathTick, place: 0,
+    });
+  }
+  return { phase: "running", seed: m.seed, tick: m.ticks, until: 0, runners, taken: new Map(taken), broken: new Map(broken), vulcans: [...m.track.vulcans] };
+}
+
+/** Segura até a altura alvo (com a frenagem). */
+const hover = (r, target) =>
+  r.vy < 0
+    ? r.y - (r.vy * r.vy) / (2 * (Back.TUNING.thrust - Back.TUNING.gravity)) - 0.1 < target
+    : r.y + (r.vy * r.vy) / (2 * Back.TUNING.gravity) + 0.1 < target;
+/** Botão roteirizado dos outros (por vaga e passo). */
+const script = (s, k) => (k + s * 37) % 50 < 27;
+
+/**
+ * Servidor e cliente (vaga 0) andando juntos, passo a passo. Entrada do
+ * cliente chega ao servidor `oneWay` passos depois; estado a cada 6 passos
+ * (50 ms), também `oneWay` depois. O cliente roda `lead` passos à frente.
+ */
+function race(PartySim, { rttMs, lead, oracle = false, seed = 77, slots = [0, 1, 2, 3], ticks = 2400 }) {
+  const oneWay = Math.round(rttMs / 2 / STEP_MS);
+  const server = new Back.Match(seed, slots, Back.TUNING);
+  server.start();
+  const inbox = []; // { at, k, h }
+  const outbox = []; // { at, state }
+  const pending = [];
+  const taken = new Map();
+  const broken = new Map();
+  const held = [false, false, false, false];
+  let T = 0;
+  let changes = 0;
+  const sim = new PartySim(seed, slots, 0, {
+    send: (k, h) => {
+      changes++;
+      inbox.push({ at: T + oneWay, k, h });
+    },
+    ghostHeld: oracle ? script : undefined,
+  });
+  let maxErr = 0;
+  // Contagem: o botão da largada sai antes do "vai" (a sala aceita a entrada na
+  // contagem) e, no "vai", o cliente salta para `lead` passos à frente.
+  T = -1000;
+  sim.prime(hover(sim.runner, 7));
+  sim.advance(lead, hover(sim.runner, 7));
+  for (T = 1; T <= ticks && server.aliveCount() > 0; T++) {
+    // servidor: entradas que chegaram antes do passo T (atrasadas valem em T)
+    while (inbox.length && inbox[0].at <= T) {
+      const e = inbox.shift();
+      pending.push({ k: Math.max(e.k, T), h: e.h });
+    }
+    while (pending.length && pending[0].k <= T) held[0] = pending.shift().h;
+    for (const s of slots) if (s !== 0) held[s] = script(s, T);
+    server.step(held);
+    for (const e of server.drain()) {
+      if (e.type === "pickup") taken.set(String(e.id), e.slot);
+      else if (e.type === "smash") broken.set(String(e.obstacle), (broken.get(String(e.obstacle)) || 0) | (1 << e.piece));
+    }
+    if (T % 6 === 0) outbox.push({ at: T + oneWay, state: stateOf(server, held, taken, broken) });
+    // cliente
+    while (outbox.length && outbox[0].at <= T) {
+      sim.reconcile(outbox.shift().state);
+      maxErr = Math.max(maxErr, Math.hypot(sim.errX, sim.errY));
+    }
+    const me = sim.runner;
+    sim.advance(T + lead, me.alive && hover(me, 7));
+    sim.decay(1000 / 120);
+  }
+  return { sim, server, changes, maxErr };
+}
+
+const leadFor = (rtt) => Math.min(30, Math.ceil((rtt / 2 + 40) / STEP_MS));
+
+test("jetpack — predição: com os botões certos dos outros e atraso < lead, nenhuma correção", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  for (const rtt of [0, 80, 150]) {
+    const r = race(mod.PartySim, { rttMs: rtt, lead: leadFor(rtt), oracle: true });
+    assert.ok(r.changes > 20, `RTT ${rtt}: o jogador mexeu (${r.changes})`);
+    assert.equal(r.sim.corrections, 0, `RTT ${rtt}: ${r.sim.corrections} correções`);
+    assert.equal(r.maxErr, 0, `RTT ${rtt}: erro visual ${r.maxErr}`);
+  }
+});
+
+test("jetpack — predição: fantasmas com o último botão contado, correções raras e pequenas", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  for (const rtt of [0, 80, 150]) {
+    const r = race(mod.PartySim, { rttMs: rtt, lead: leadFor(rtt) });
+    const states = Math.floor(r.server.ticks / 6);
+    assert.ok(r.sim.corrections <= states * 0.1, `RTT ${rtt}: ${r.sim.corrections} correções em ${states} estados`);
+    assert.ok(r.maxErr < 2, `RTT ${rtt}: erro visual ${r.maxErr}`);
+  }
+});
+
+test("jetpack — predição: entrada que chega tarde corrige (limitado) e o erro visual fica pequeno", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  const r = race(mod.PartySim, { rttMs: 300, lead: 5, oracle: true, slots: [0] });
+  assert.ok(r.sim.corrections > 0, "com atraso acima do lead há correção");
+  assert.ok(r.sim.corrections <= r.changes * 4, `${r.sim.corrections} correções para ${r.changes} mudanças`);
+  assert.ok(r.maxErr < 2, `erro visual ${r.maxErr}`);
+});
+
+test("jetpack — predição: cápsula que outro levou corrige o combustível", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  const seed = 5;
+  const sim = new mod.PartySim(seed, [0, 1], 0);
+  const server = new Back.Match(seed, [0, 1], Back.TUNING);
+  server.start();
+  let got = null;
+  for (let k = 1; k < 4000 && !got && sim.runner.alive; k++) {
+    const me = sim.runner;
+    const next = sim.match.track.pickups.find((p) => !p.taken && p.kind !== "vulcan" && p.x > me.x);
+    const h = hover(me, next ? next.y : 7);
+    for (const e of sim.advance(k, h)) if (e.type === "pickup" && e.slot === 0 && e.kind !== "vulcan") got = e;
+    server.step([sim.heldAt(k), false]);
+    server.drain();
+  }
+  assert.ok(got, "o jogador previsto pegou uma cápsula");
+  const P = sim.tick;
+  sim.advance(P + 12, false);
+  const fuelPredicted = sim.runner.fuel.value;
+  // O servidor diz: no passo P a cápsula foi da vaga 1 (não entrou no meu tanque).
+  const st = stateOf(server, [false, false], [[String(got.id), 1]], []);
+  const me = [...st.runners.values()].find((r) => r.slot === 0);
+  me.fuel -= got.added;
+  me.fc -= got.added;
+  me.got -= 1;
+  sim.reconcile(st);
+  assert.equal(sim.corrections, 1);
+  assert.equal(sim.tick, P + 12, "re-simulou até o passo local");
+  assert.ok(Math.abs(sim.runner.fuel.value - (fuelPredicted - got.added)) < 1e-9, `${sim.runner.fuel.value} × ${fuelPredicted - got.added}`);
+  assert.ok(sim.match.track.pickupById(got.id).taken, "a cápsula continua fora do percurso");
+});
+
+test("jetpack — predição: morte prevista só vira 'saiu' com o estado 4 do servidor", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  const sim = new mod.PartySim(9, [0, 1], 0);
+  const server = new Back.Match(9, [0, 1], Back.TUNING);
+  server.start();
+  const lead = 20;
+  let k = 0;
+  while (sim.runner.alive) {
+    k++;
+    sim.advance(k + lead, false);
+    server.step([false, true]);
+    server.drain();
+  }
+  assert.equal(sim.outConfirmed, false, "morreu só na predição");
+  sim.reconcile(stateOf(server, [false, true], [], []));
+  assert.equal(server.runners[0].alive, true);
+  assert.equal(sim.outConfirmed, false, "o servidor ainda não contou");
+  while (server.runners[0].alive) {
+    server.step([false, true]);
+    server.drain();
+  }
+  sim.reconcile(stateOf(server, [false, true], [], []));
+  assert.equal(sim.outConfirmed, true);
+});
+
+test("jetpack — predição: fantasma não vai além de 300 ms do último estado", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  const sim = new mod.PartySim(3, [0, 1], 0);
+  const server = new Back.Match(3, [0, 1], Back.TUNING);
+  server.start();
+  for (let k = 1; k <= 60; k++) {
+    server.step([false, script(1, k)]);
+    server.drain();
+  }
+  sim.advance(60, false);
+  sim.reconcile(stateOf(server, [false, script(1, 60)], [], []));
+  let at36 = null;
+  for (let k = 61; k <= 60 + 120 && sim.runner.alive; k++) {
+    sim.advance(k, hover(sim.runner, 7));
+    if (k === 96) at36 = sim.ghostSnap(1).x;
+  }
+  assert.ok(sim.tick > 96 + 12, "o cliente seguiu sem estado novo");
+  assert.equal(sim.ghostSnap(1).x, at36, "o fantasma parou em 36 passos (300 ms)");
+  assert.ok(sim.match.runners[1].x > at36, "a sim local seguiu andando");
+});
