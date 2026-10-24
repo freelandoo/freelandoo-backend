@@ -312,3 +312,24 @@ test("jetpack — predição: fantasma não vai além de 300 ms do último estad
   assert.equal(sim.ghostSnap(1).x, at36, "o fantasma parou em 36 passos (300 ms)");
   assert.ok(sim.match.runners[1].x > at36, "a sim local seguiu andando");
 });
+
+// ── Câmera do grupo (party-camera.ts) ────────────────────────────────────────
+
+test("jetpack — câmera: em coluna o líder fica a 26 %; com 4,5 m de folga, ~57 % e a rabeira a 10 %", async (t) => {
+  const mod = await loadFront("party-camera.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  const W = 9.5;
+  const col = mod.partyCameraFocus(100, 100, W);
+  assert.ok(Math.abs(col.screenX - 0.26) < 1e-12);
+  assert.ok(Math.abs(col.focusX - (100 + W * (0.5 - 0.26))) < 1e-9);
+  const open = mod.partyCameraFocus(104.5, 100, W);
+  assert.ok(Math.abs(open.screenX - 0.5737) < 0.001, String(open.screenX));
+  const left = open.focusX - W / 2;
+  assert.ok(Math.abs((100 - left) / W - 0.1) < 1e-9, "rabeira a 10 % da borda");
+  // Mola: chega perto do alvo em ~0,5 s, sem passar muito.
+  const spring = new mod.CameraSpring();
+  let max = 0;
+  for (let i = 0; i < 60; i++) max = Math.max(max, spring.update(open.screenX, 1 / 60));
+  assert.ok(Math.abs(spring.screenX - open.screenX) < 0.01, String(spring.screenX));
+  assert.ok(max < open.screenX + 0.01, "sem passar do alvo");
+});
