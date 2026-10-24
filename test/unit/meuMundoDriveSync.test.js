@@ -27,9 +27,11 @@ function rng(seed) {
 /**
  * 12 s: reta, depois esquerda/direita alternadas (2,5 s cada). O servidor
  * roda em voltas de 50 ms (como a sala); entradas e estados com atraso
- * `latMs` ± 40 ms. `stamped` = protocolo novo (passo marcado).
+ * `latMs` ± 40 ms. `stamped` = protocolo novo (passo marcado). `zig` =
+ * esquerda/direita a cada `zig` s (zigue-zague rápido); `spike` = a rede
+ * congela `spike` s a cada 2 s (pico de 4G).
  */
-function drive(sync, kind, latMs, stamped, seed = 7) {
+function drive(sync, kind, latMs, stamped, seed = 7, { zig = 0, spike = 0 } = {}) {
   const rnd = rng(seed);
   const P = V.paramsFor(kind, null);
   const cli = V.createVehicle(0, 0, 0);
@@ -44,13 +46,14 @@ function drive(sync, kind, latMs, stamped, seed = 7) {
   let maxErr = 0;
   let srvClock = 0;
   const send = (d, k, t) => {
-    lastArrive = Math.max(lastArrive, t + latMs / 1000 + (rnd() - 0.5) * 0.08);
+    const frozen = spike && t % 2 < spike ? spike - (t % 2) : 0;
+    lastArrive = Math.max(lastArrive, t + latMs / 1000 + (rnd() - 0.5) * 0.08 + frozen);
     inbox.push({ at: lastArrive, d, k });
   };
   for (let i = 0; i < 60 * 12; i++) {
     const t = i / 60;
-    const steer = t < 2 ? 0 : Math.floor((t - 2) / 2.5) % 2 === 0 ? 0.8 : -0.8;
-    const want = { t: 1, b: 0, s: steer + 0.03 * Math.sin(t * 9), h: false };
+    const steer = t < 2 ? 0 : Math.floor((t - 2) / (zig || 2.5)) % 2 === 0 ? (zig ? 1 : 0.8) : zig ? -1 : -0.8;
+    const want = { t: 1, b: 0, s: Math.max(-1, Math.min(1, steer + 0.03 * Math.sin(t * 9))), h: false };
     // celular
     if (stamped) {
       if (n % sync.DRIVE_EVERY === 0) {
@@ -109,15 +112,53 @@ test("volante marcado pelo passo: nas curvas a sala segue o mesmo trajeto do cel
   assert.ok(worstBefore > 0.1, `o teste reproduz o problema antigo (pior: ${worstBefore.toFixed(3)} m)`);
 });
 
-test("volante: chegou tarde vale já e a folga cresce; cliente antigo segue como antes", () => {
-  const v = V.createVehicle(0, 0, 0);
+test("volante (mm3d-22b): zigue-zague rápido com a rede congelando — a sala volta no tempo e segue igual", async (t) => {
+  const sync = await loadSync();
+  if (!sync) return t.skip("front fora do lugar");
+  for (const kind of ["bike", "car"]) {
+    for (const zig of [0.15, 0.3]) {
+      for (const spike of [0.4, 1.0]) {
+        const err = drive(sync, kind, 120, true, 11, { zig, spike });
+        assert.ok(err < 0.02, `${kind}, troca a cada ${zig} s, rede parada ${spike} s: correção ${err.toFixed(3)} m`);
+      }
+    }
+  }
+});
+
+test("volante: tarde dentro da história volta no tempo e dá o mesmo trajeto; além dela, vale no passo mais antigo", () => {
+  const P = V.paramsFor("bike", null);
+  const turn = { t: 1, b: 0, s: 0.6, h: false };
+  const go = { t: 1, b: 0, s: 0, h: false };
+  // a sala avança em voltas de 50 ms
+  const run = (v, s) => {
+    for (let i = 0; i < Math.round(s / 0.05); i++) advanceDriven(v, go, 0.05, [], 1e9, P);
+  };
+  // a tempo
+  const a = V.createVehicle(0, 0, 0);
+  queueDrive(a, go, 1);
+  run(a, 0.5);
+  queueDrive(a, turn, 30);
+  run(a, 1.0);
+  // a mesma mudança chegando 0,6 s depois do passo dela
+  const b = V.createVehicle(0, 0, 0);
+  queueDrive(b, go, 1);
+  run(b, 0.5);
+  const off = b.doff;
+  run(b, 0.6);
+  queueDrive(b, turn, 30);
+  run(b, 0.4);
+  assert.equal(b.doff, off, "a folga não muda");
+  assert.equal(b.dn, a.dn);
+  for (const f of ["x", "z", "yaw", "vx", "vz", "w"]) assert.equal(b[f], a[f], f);
+  // além da história (2 s): vale no passo mais antigo guardado e a folga se reajusta
+  const c = V.createVehicle(0, 0, 0);
+  queueDrive(c, go, 1);
+  run(c, 5);
+  const offC = c.doff;
+  queueDrive(c, turn, 5);
+  assert.ok(c.doff > offC);
+  assert.equal(c.dq[c.dq.length - 1].at, c.hist[0].dn + 1);
   const d = { t: 1, b: 0, s: 0.5, h: false };
-  queueDrive(v, d, 10); // primeira: folga inicial
-  const off = v.doff;
-  v.dn = 100;
-  queueDrive(v, d, 11); // muito tarde para a folga atual
-  assert.equal(v.dq[v.dq.length - 1].at, 101);
-  assert.ok(v.doff > off);
   const old = V.createVehicle(0, 0, 0);
   queueDrive(old, d, undefined);
   assert.equal(old.dq, null);
