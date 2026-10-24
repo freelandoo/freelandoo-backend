@@ -64,7 +64,8 @@ const PLACE_DEFS = [
   // Sul — atividades (fachadas viradas para o norte, z = -FRONT)
   { id: "academia", zone: "atividades", rect: [-22, -2, -FRONT - 16, -FRONT], h: 7, peak: 9.5, front: "n", door: -12, doorW: 3.4 },
   // game: o local abre um minijogo no cliente em vez de um interior (mm3d-20).
-  { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack" },
+  // party: o minijogo aceita até N na mesma partida (sala JetpackRoom, mm3d-21).
+  { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack", party: 4 },
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
@@ -117,6 +118,7 @@ function buildPlace(def) {
     // interior existe ainda, então só os minijogos estão disponíveis.
     destination: def.game ? `game:${def.game}` : `interior:${def.id}`,
     available: !!def.game,
+    ...(def.party ? { party: def.party } : {}),
   });
 }
 

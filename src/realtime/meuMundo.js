@@ -40,6 +40,7 @@ const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const MeuMundoVisitStorage = require("../storages/MeuMundoVisitStorage");
 const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const presence = require("./meuMundoPresence");
+const jetpack = require("./meuMundoJetpack");
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { SEAT_REACH, BED_REACH } = require("../utils/meuMundoInteriorKit");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
@@ -1567,6 +1568,8 @@ function init(httpServer) {
   gameServer.define(HOUSE_ROOM, CasaRoom).filterBy(["houseId"]);
   // Centro: salas da MESMA versão da planta; a mais cheia com vaga primeiro (encontros).
   gameServer.define(CENTER_ROOM, CentroRoom).filterBy(["mapVersion"]).sortBy({ clients: -1 });
+  // Jetpack em grupo (mm3d-21): até 4 do mesmo centro.
+  jetpack.define(gameServer);
   transport.attachToServer(httpServer, {
     filter: (req) => typeof req.url === "string" && req.url.startsWith(WS_PREFIX),
   });
@@ -1765,6 +1768,7 @@ async function status() {
     houseClients: houses.reduce((n, r) => n + (r.clients || 0), 0),
     centerRooms: centers.length,
     centerClients: centers.reduce((n, r) => n + (r.clients || 0), 0),
+    ...(await jetpack.jetpackStatus()),
   };
 }
 

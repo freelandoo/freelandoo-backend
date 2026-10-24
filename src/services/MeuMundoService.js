@@ -23,6 +23,7 @@ const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const AuthStorage = require("../storages/AuthStorage");
 const realtime = require("../realtime/meuMundo");
 const presence = require("../realtime/meuMundoPresence");
+const { reserveJetpackSeat, leaveJetpack } = require("../realtime/meuMundoJetpack");
 const {
   MEU_MUNDO_RELEASE,
   buildNeighborhoodPayload,
@@ -39,7 +40,8 @@ const { interiorFor } = require("../utils/meuMundoInteriors");
 const { VISIT_RULES } = require("../utils/meuMundoVisits");
 const { MOTION } = require("../utils/meuMundoMotion");
 const { kindOfId, spotFor } = require("../utils/meuMundoCars");
-const { buildCenterPayload } = require("../utils/meuMundoCenter");
+const { buildCenterPayload, PLACES: CENTER_PLACES } = require("../utils/meuMundoCenter");
+const { PARTY } = require("../utils/meuMundoJetpack");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const { createLogger } = require("../utils/logger");
@@ -62,6 +64,9 @@ const VISIT_LOCK = "meu_mundo:visitas";
 // Viagem ao centro em andamento por pessoa (pedido repetido não cria duas).
 const traveling = new Map(); // id do usuário → ms do início
 const TRAVEL_GUARD_MS = 8000;
+// Jetpack em grupo (mm3d-21): só entra quem está a até 6 m da área de interação da porta.
+const JETPACK_DOOR = CENTER_PLACES.find((p) => p.id === "jetpack").interact;
+const JETPACK_REACH = 6;
 function beginTravel(idUser) {
   const t = traveling.get(idUser);
   if (t && Date.now() - t < TRAVEL_GUARD_MS) return false;
@@ -472,9 +477,35 @@ class MeuMundoService {
       }
       realtime.leaveCenter(roomId, idUser);
     }
+    leaveJetpack(idUser);
     presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number, ride });
     log.info("center.return", { ride: ride ? kindOfId(ride) : "" });
     return MeuMundoService.enter(idUser);
+  }
+
+  // ── Jetpack em grupo (mm3d-21) ────────────────────────────────────────────
+  /**
+   * Lugar na sala do jetpack (até 4) do centro em que a pessoa está, só perto
+   * da porta. A pessoa continua no centro (o avatar fica na porta). `roomId` =
+   * estava numa sala do jetpack há pouco (reconexão): volta ao mesmo jogador.
+   * Sem reserva, o cliente joga sozinho (single-player local).
+   */
+  static async joinJetpack(idUser, { roomId = null } = {}) {
+    const here = presence.get(idUser);
+    if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
+    const pos = realtime.positionIn("center", here.id, idUser);
+    if (!pos || Math.hypot(pos.x - JETPACK_DOOR.x, pos.z - JETPACK_DOOR.z) > JETPACK_REACH) {
+      return { error: "Chegue perto da porta do jetpack", statusCode: 409, code: "far" };
+    }
+    const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
+    let reservation;
+    try {
+      reservation = await reserveJetpackSeat({ userId: idUser, name, body, centerRoomId: here.id, roomId: typeof roomId === "string" ? roomId : null });
+    } catch (err) {
+      log.error("jetpack.reserve_fail", { message: err.message });
+      return { error: "O jetpack em grupo não abriu agora.", statusCode: 503 };
+    }
+    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation }, party: { max: PARTY.max } };
   }
 
   // ── Seletor de nível (teste) ──────────────────────────────────────────────

@@ -769,7 +769,7 @@ class Runner {
     const added = this.fuel.collect(this.tune.fuel[p.kind]);
     this.fuelCollected += added;
     this.pickupsTaken++;
-    this.events.push({ type: 'pickup', kind: p.kind, added, x: p.x, y: p.y });
+    this.events.push({ type: 'pickup', kind: p.kind, added, x: p.x, y: p.y, id: p.id });
     if (p.kind === 'vulcan') {
       this.powerUntil = t + this.tune.powerTime;
       this.poweredFlag = true;

@@ -56,6 +56,7 @@
     "test:meu-mundo-casas": "node test/meu-mundo-casas.e2e.js",
     "test:meu-mundo-vida": "node test/meu-mundo-vida.e2e.js",
     "test:meu-mundo-centro": "node test/meu-mundo-centro.e2e.js",
+    "test:meu-mundo-jetpack": "node test/meu-mundo-jetpack.e2e.js",
     "test:academy-partner": "node test/academy-partner.e2e.js"
   },
   "repository": {

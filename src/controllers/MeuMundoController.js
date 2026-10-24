@@ -47,6 +47,11 @@ async function centerLeave(req, res) {
   return reply(res, await MeuMundoService.returnHome(req.user.id_user));
 }
 
+// Jetpack em grupo (mm3d-21): lugar na sala do centro em que a pessoa está.
+async function jetpackJoin(req, res) {
+  return reply(res, await MeuMundoService.joinJetpack(req.user.id_user, { roomId: req.body?.roomId }));
+}
+
 async function visits(req, res) {
   return reply(res, await MeuMundoService.visitState(req.user.id_user));
 }
@@ -107,6 +112,7 @@ module.exports = {
   houseExit,
   centerEnter,
   centerLeave,
+  jetpackJoin,
   visits,
   candidates,
   invite,
