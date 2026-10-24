@@ -40,10 +40,10 @@ const walker = reach(C.ARRIVAL, MOTION.RADIUS);
 // O carro: o círculo do meio do corpo (os da frente e de trás passam onde ele passa nas retas).
 const car = reach(C.ARRIVAL_SPOTS[0], VEHICLE.COL_RADIUS);
 
-test("centro: os 10 estabelecimentos + a praça, ids estáveis e únicos", () => {
+test("centro: os 11 estabelecimentos + a praça, ids estáveis e únicos", () => {
   const ids = C.PLACES.map((p) => p.id);
-  assert.deepEqual(ids.sort(), ["academia", "biblioteca", "delegacia", "escola", "hamburgueria", "igreja", "jetpack", "pizzaria", "supermercado", "universidade"]);
-  assert.equal(new Set(ids).size, 10);
+  assert.deepEqual(ids.sort(), ["academia", "biblioteca", "delegacia", "escola", "hamburgueria", "hospital", "igreja", "jetpack", "pizzaria", "supermercado", "universidade"]);
+  assert.equal(new Set(ids).size, 11);
   assert.equal(C.PLAZA_PLACE.id, "praca");
 });
 
@@ -88,8 +88,9 @@ test("a pé: da chegada se alcança a porta, o retorno e a interação de TODOS 
 
 test("nenhuma porta bloqueada: a faixa de 1,5 m na frente de cada porta é livre", () => {
   for (const p of C.PLACES) {
-    const out = { n: [0, 1], s: [0, -1], e: [1, 0], w: [-1, 0] }[p.front];
-    const side = [out[1], out[0]];
+    // Para fora da fachada = para onde o retorno olha (vale também para o prédio girado).
+    const out = [Math.sin(p.return.facing), Math.cos(p.return.facing)];
+    const side = [out[1], -out[0]];
     for (const d of [0.9, 1.5, 2.2]) {
       for (const t of [-0.5, 0, 0.5]) {
         const x = p.door.x + out[0] * d + side[0] * t * p.door.width;
@@ -157,8 +158,62 @@ test("chegada a pé e portal em lugar livre; payload sem nada de usuário", () =
   assert.ok(C.isSafeSpot(C.ARRIVAL.x, C.ARRIVAL.z, resolveCircle, MOTION.RADIUS));
   const p = C.buildCenterPayload();
   assert.equal(p.capacity, 20);
-  assert.equal(p.places.length, 10);
+  assert.equal(p.places.length, 11);
   assert.equal(p.obstacles.length, C.OBSTACLES.length);
   assert.ok(JSON.stringify(p).length < 30000, "payload pequeno");
   assert.ok(!/user|email|token/i.test(JSON.stringify(p)));
+});
+
+// ═══ Hospital (mm3d-26) ═══
+const H = C.PLACES.find((p) => p.id === "hospital");
+const hAt = (X, D) => {
+  const r = H.rotationY;
+  const f = r - Math.PI;
+  return { x: H.origin.x + Math.cos(r) * X + Math.sin(f) * D, z: H.origin.z - Math.sin(r) * X + Math.cos(f) * D };
+};
+
+test("hospital: no canto sudoeste, entre a delegacia e a academia, de frente para a praça", () => {
+  assert.equal(H.front, "rot");
+  assert.ok(H.center.x < -30 && H.center.z < -30, "canto sudoeste");
+  // A fachada olha para o nordeste (a praça).
+  assert.ok(Math.abs(H.return.facing - Math.PI / 4) < 1e-3);
+  assert.equal(H.destination, "interior:hospital");
+  // A pegada girada não encosta na delegacia nem na academia (folga ≥ 1 m nas quinas).
+  const box = C.OBSTACLES.find((b) => b.place === "hospital");
+  assert.ok(Math.abs(box.rot - H.rotationY) < 1e-3);
+  for (const id of ["delegacia", "academia"]) {
+    const o = C.PLACES.find((p) => p.id === id).rect;
+    for (const X of [-10, 10]) {
+      for (const D of [0, -14]) {
+        const q = hAt(X, D);
+        const dx = Math.max(o.x0 - q.x, 0, q.x - o.x1);
+        const dz = Math.max(o.z0 - q.z, 0, q.z - o.z1);
+        assert.ok(Math.hypot(dx, dz) >= 1, `quina do hospital em ${id}`);
+      }
+    }
+  }
+});
+
+test("hospital: a calçada leva a pé da curva do anel até a porta, sem nada no caminho", () => {
+  for (let D = 1; D <= 18; D += 0.5) {
+    const q = hAt(D < 6.5 ? 0 : 1.75, D);
+    assert.ok(C.isSafeSpot(q.x, q.z, resolveCircle, MOTION.RADIUS), `calçada bloqueada em D=${D}`);
+    assert.ok(walker(q.x, q.z), `calçada fora de alcance em D=${D}`);
+  }
+});
+
+test("hospital: um carro chega pela pista até o pátio; a ambulância fica parada na baia, fora da calçada", () => {
+  for (let D = 8; D <= 20; D += 1) {
+    const q = hAt(-1.35, D);
+    assert.ok(car(q.x, q.z), `pista em D=${D}`);
+  }
+  const amb = C.PROPS.find((o) => o.id === "ambulancia");
+  assert.ok(amb && C.OBSTACLES.some((b) => b.x === amb.x && b.z === amb.z), "ambulância colide");
+  assert.ok(Math.abs(amb.facing - Math.PI / 4) < 1e-3, "bico para a praça");
+  // O eixo da porta (entre os pilares da marquise) passa longe dela.
+  for (let D = 0.5; D <= 7; D += 0.5) {
+    const q = hAt(0, D);
+    assert.ok(C.isSafeSpot(q.x, q.z, resolveCircle, MOTION.RADIUS), `ambulância na calçada em D=${D}`);
+  }
+  for (const g of C.GROUNDS) assert.ok(["pave", "asphalt", "walk", "mark"].includes(g.kind));
 });

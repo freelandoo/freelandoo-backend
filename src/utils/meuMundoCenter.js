@@ -27,7 +27,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const CENTER_VERSION = 1; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam
+const CENTER_VERSION = 2; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -69,28 +69,58 @@ const PLACE_DEFS = [
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
+  // Canto sudoeste, entre a delegacia e a academia (mm3d-26): o hospital fica na
+  // DIAGONAL, de frente para a praça. Prédio girado = `at` (meio da fachada),
+  // `facing` (para onde a fachada olha), largura × fundo e a porta no X local.
+  // Recuado para o eixo passar no meio do vão entre as quinas da delegacia
+  // (−30, −28) e da academia (−22, −30): o corredor livre tem 6 m (|X| ≤ 3).
+  { id: "hospital", zone: "civica", at: { x: -34.5, z: -37.5 }, facing: Math.PI / 4, width: 20, depth: 14, h: 7.6, peak: 10.4, doorX: 0, doorW: 2.6 },
 ];
 
 /** Direção para FORA da fachada (de onde se chega à porta). */
 const OUTWARD = Object.freeze({ n: { x: 0, z: 1 }, s: { x: 0, z: -1 }, e: { x: 1, z: 0 }, w: { x: -1, z: 0 } });
 
-function buildPlace(def) {
+/** Quadro de um prédio de frente reta (n/s/e/w) a partir do retângulo. */
+function straightFrame(def) {
   const [x0, x1, z0, z1] = def.rect;
   const out = OUTWARD[def.front];
-  // Ponto da porta na fachada.
   const door =
     def.front === "n" ? { x: def.door, z: z1 } : def.front === "s" ? { x: def.door, z: z0 } : def.front === "e" ? { x: x1, z: def.door } : { x: x0, z: def.door };
+  const origin =
+    def.front === "n" ? { x: (x0 + x1) / 2, z: z1 } : def.front === "s" ? { x: (x0 + x1) / 2, z: z0 } : def.front === "e" ? { x: x1, z: (z0 + z1) / 2 } : { x: x0, z: (z0 + z1) / 2 };
+  const ns = def.front === "n" || def.front === "s";
+  return { out, door, origin, rect: { x0, x1, z0, z1 }, frontW: ns ? x1 - x0 : z1 - z0, depth: ns ? z1 - z0 : x1 - x0, front: def.front };
+}
+
+/** Quadro de um prédio girado: `rect` vira a caixa que o envolve (só para conferência). */
+function rotatedFrame(def) {
+  const out = { x: Math.sin(def.facing), z: Math.cos(def.facing) };
+  const rot = def.facing + Math.PI;
+  const ax = { x: Math.cos(rot), z: -Math.sin(rot) };
+  const origin = def.at;
+  const door = { x: origin.x + ax.x * def.doorX, z: origin.z + ax.z * def.doorX };
+  const xs = [];
+  const zs = [];
+  for (const l of [-def.width / 2, def.width / 2]) {
+    for (const d of [0, def.depth]) {
+      xs.push(origin.x + ax.x * l - out.x * d);
+      zs.push(origin.z + ax.z * l - out.z * d);
+    }
+  }
+  const rect = { x0: round(Math.min(...xs)), x1: round(Math.max(...xs)), z0: round(Math.min(...zs)), z1: round(Math.max(...zs)) };
+  return { out, door, origin, rect, frontW: def.width, depth: def.depth, front: "rot" };
+}
+
+function buildPlace(def) {
+  const { out, door, origin, rect, frontW, depth, front } = def.at ? rotatedFrame(def) : straightFrame(def);
+  const { x0, x1, z0, z1 } = rect;
   const facingOut = round(Math.atan2(out.x, out.z));
   // Origem do MODELO: meio da fachada, no chão. O modelo é feito com a frente
   // no -Z local e o corpo para o +Z; a rotação o leva ao lugar.
   const rot = Math.atan2(out.x, out.z) + Math.PI;
-  const origin =
-    def.front === "n" ? { x: (x0 + x1) / 2, z: z1 } : def.front === "s" ? { x: (x0 + x1) / 2, z: z0 } : def.front === "e" ? { x: x1, z: (z0 + z1) / 2 } : { x: x0, z: (z0 + z1) / 2 };
   // Eixo X local no mundo (mesma convenção do Babylon): a porta no quadro do modelo.
   const ax = { x: Math.cos(rot), z: -Math.sin(rot) };
   const doorLocalX = (door.x - origin.x) * ax.x + (door.z - origin.z) * ax.z;
-  const frontW = def.front === "n" || def.front === "s" ? x1 - x0 : z1 - z0;
-  const depth = def.front === "n" || def.front === "s" ? z1 - z0 : x1 - x0;
   const facingIn = round(Math.atan2(-out.x, -out.z));
   const at = (d) => ({ x: round(door.x + out.x * d), z: round(door.z + out.z * d) });
   return Object.freeze({
@@ -100,8 +130,9 @@ function buildPlace(def) {
     nameKey: `centerPlace_${def.id}`,
     rect: Object.freeze({ x0, x1, z0, z1 }),
     size: Object.freeze({ w: round(x1 - x0), d: round(z1 - z0), h: def.h, peak: def.peak }),
-    center: Object.freeze({ x: round((x0 + x1) / 2), z: round((z0 + z1) / 2) }),
-    front: def.front,
+    center: Object.freeze({ x: round(origin.x - (out.x * depth) / 2), z: round(origin.z - (out.z * depth) / 2) }),
+    // n/s/e/w ou "rot" (prédio girado: a colisão é a pegada girada, não `rect`).
+    front,
     // Para onde a FACHADA olha (o modelo é desenhado com a frente no -Z local e girado por isto).
     rotationY: round(((rot % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)),
     origin: Object.freeze({ x: round(origin.x), z: round(origin.z) }),
@@ -204,13 +235,47 @@ const ARRIVAL = Object.freeze({ x: -50, z: 4.1, facing: round(Math.PI / 2) });
 // Portal "Bairros": a volta para casa. Atravessar = pedir ao servidor.
 const PORTAL = Object.freeze({ id: "portal-bairros", x: PORTAL_X, z: 0, radius: 4.5, nameKey: "centerHome" });
 
+// ═══ HOSPITAL (mm3d-26) ═══ — pátio, baia da ambulância e o caminho até o anel.
+// Medidas no quadro do hospital: X = lateral da fachada (o X local do modelo),
+// D = metros para FORA da fachada. O corredor entre as quinas da delegacia e
+// da academia é |X| ≤ 3 (ver PLACE_DEFS): pista da ambulância de um lado,
+// calçada do outro, e os dois chegam à curva sudoeste do anel.
+const HOSPITAL = PLACES.find((p) => p.id === "hospital");
+function hospitalAt(X, D) {
+  const r = HOSPITAL.rotationY;
+  const f = r - Math.PI;
+  return { x: round(HOSPITAL.origin.x + Math.cos(r) * X + Math.sin(f) * D), z: round(HOSPITAL.origin.z - Math.sin(r) * X + Math.cos(f) * D) };
+}
+/** Placa de chão girada com o hospital: X de x0 a x1, D de d0 a d1. */
+function hospitalPad(kind, x0, x1, d0, d1) {
+  return Object.freeze({ kind, ...hospitalAt((x0 + x1) / 2, (d0 + d1) / 2), w: round(x1 - x0), d: round(d1 - d0), rot: HOSPITAL.rotationY });
+}
+// kind: pave (pátio) · asphalt (pista; por cima da calçada do anel = rebaixo) · walk (calçada) · mark (faixa amarela da baia).
+const GROUNDS = Object.freeze([
+  hospitalPad("pave", -9, 7, 0, 7),
+  hospitalPad("asphalt", -7.6, -3.4, 0.3, 7),
+  hospitalPad("asphalt", -3, 0.3, 6, 21.5),
+  hospitalPad("walk", 0.5, 3, 6.5, 19),
+  hospitalPad("mark", -7.6, -7.4, 0.3, 7),
+  hospitalPad("mark", -3.6, -3.4, 0.3, 7),
+]);
+// Ambulância estacionada na baia, de bico para a praça (pronta para sair).
+const AMBULANCE = Object.freeze({ id: "ambulancia", ...hospitalAt(-5.5, 3.7), facing: round(HOSPITAL.rotationY - Math.PI), half: Object.freeze({ x: 1.08, z: 2.8 }), h: 2.9 });
+const PROPS = Object.freeze([AMBULANCE]);
+// Pilares da marquise (no modelo: X ±2,1, 1,7 a 2,1 m da fachada).
+const HOSPITAL_PILLARS = Object.freeze([-2.1, 2.1].map((X) => Object.freeze(hospitalAt(X, 1.9))));
+
 // Postes da calçada de fora do anel, nas curvas (longe de portas e travessias).
-const STREET_LAMPS = Object.freeze([[24.6, 24.6], [-24.6, 24.6], [24.6, -24.6], [-24.6, -24.6], [-40, 5.6], [-47, -5.6]].map((p) => Object.freeze(p)));
-// Árvores fora das quadras (colidem), sem tapar porta nem caminho.
+// A curva sudoeste perdeu o seu (ficava no meio da calçada do hospital): os
+// três do caminho do hospital fazem a vez.
+const HOSPITAL_LAMPS = [hospitalAt(3.4, 12), hospitalAt(-3.3, 12), hospitalAt(3.4, 16.5)].map((p) => [p.x, p.z]);
+const STREET_LAMPS = Object.freeze([[24.6, 24.6], [-24.6, 24.6], [24.6, -24.6], [-40, 5.6], [-47, -5.6], ...HOSPITAL_LAMPS].map((p) => Object.freeze(p)));
+// Árvores fora das quadras (colidem), sem tapar porta nem caminho. (A de
+// [−44, −46] saiu: é o miolo do hospital.)
 const STREET_TREES = Object.freeze(
   [
     [-58, 20], [-58, 40], [-40, 46], [-20, 52], [0, 54], [40, 58], [58, 30], [58, 10], [58, -12],
-    [58, -36], [58, -58], [20, -56], [0, -58], [-26, -56], [-44, -46], [-58, -44], [-38, 36],
+    [58, -36], [58, -58], [20, -56], [0, -58], [-26, -56], [-58, -44], [-38, 36],
   ].map(([x, z]) => Object.freeze([x, z, 1.1]))
 );
 
@@ -224,9 +289,16 @@ function buildObstacles() {
   };
   // Prédios: a pegada inteira (o modelo detalhado nunca é colisor).
   for (const p of PLACES) {
+    if (p.front === "rot") {
+      push(p.center.x, p.center.z, p.model.width / 2, p.model.depth / 2, p.rotationY, p.size.h, p.id);
+      continue;
+    }
     const { x0, x1, z0, z1 } = p.rect;
     push((x0 + x1) / 2, (z0 + z1) / 2, (x1 - x0) / 2, (z1 - z0) / 2, 0, p.size.h, p.id);
   }
+  // Objetos parados (ambulância): caixa girada pelo rumo.
+  for (const o of PROPS) push(o.x, o.z, o.half.x, o.half.z, o.facing, o.h);
+  for (const p of HOSPITAL_PILLARS) push(p.x, p.z, 0.22, 0.22, HOSPITAL.rotationY, 2.5);
   // Praça: monumento, floreiras, frades, bancos, postes, árvores.
   push(MONUMENT.x, MONUMENT.z, MONUMENT.radius * 0.88, MONUMENT.radius * 0.88, 0, MONUMENT.h);
   push(MONUMENT.x, MONUMENT.z, MONUMENT.radius * 0.88, MONUMENT.radius * 0.88, Math.PI / 4, MONUMENT.h);
@@ -297,8 +369,11 @@ function loadAssets() {
     const a = JSON.parse(fs.readFileSync(ASSETS_FILE, "utf8"));
     if (!a || typeof a.basePath !== "string" || !a.places) return null;
     const places = {};
-    for (const p of PLACES) if (typeof a.places[p.id] === "string" && /^[a-z0-9._-]+\.glb$/i.test(a.places[p.id])) places[p.id] = a.places[p.id];
-    return Object.freeze({ version: String(a.version || ""), basePath: a.basePath, places: Object.freeze(places) });
+    const ok = (v) => typeof v === "string" && /^[a-z0-9._-]+\.glb$/i.test(v);
+    for (const p of PLACES) if (ok(a.places[p.id])) places[p.id] = a.places[p.id];
+    const props = {};
+    for (const o of PROPS) if (a.props && ok(a.props[o.id])) props[o.id] = a.props[o.id];
+    return Object.freeze({ version: String(a.version || ""), basePath: a.basePath, places: Object.freeze(places), props: Object.freeze(props) });
   } catch {
     return null;
   }
@@ -327,6 +402,8 @@ function buildCenterPayload() {
     parking: PARKING,
     streetLamps: STREET_LAMPS,
     streetTrees: STREET_TREES,
+    grounds: GROUNDS,
+    props: PROPS,
     arrival: ARRIVAL,
     portal: PORTAL,
     obstacles: OBSTACLES,
@@ -348,6 +425,8 @@ module.exports = {
   PARKING,
   PORTAL,
   MONUMENT,
+  GROUNDS,
+  PROPS,
   isSafeSpot,
   onRoad,
   buildCenterPayload,

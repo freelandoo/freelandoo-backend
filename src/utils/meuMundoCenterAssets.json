@@ -1,5 +1,5 @@
 {
-  "version": "centro-v1-abb308c7",
+  "version": "centro-v2-b8fdd946",
   "basePath": "/meu-mundo/centro/",
   "places": {
     "pizzaria": "centro-pizzaria-2c95a461.glb",
@@ -11,6 +11,10 @@
     "academia": "centro-academia-5798891f.glb",
     "jetpack": "centro-jetpack-bbbdcb1a.glb",
     "igreja": "centro-igreja-36864549.glb",
-    "delegacia": "centro-delegacia-89c89ff4.glb"
+    "delegacia": "centro-delegacia-89c89ff4.glb",
+    "hospital": "centro-hospital-567ca464.glb"
+  },
+  "props": {
+    "ambulancia": "centro-ambulancia-22a7d4a7.glb"
   }
 }
