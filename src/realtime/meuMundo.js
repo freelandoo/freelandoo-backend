@@ -62,8 +62,8 @@ const {
   sanitizeDrive,
   sanitizeTuning,
   createVehicle,
-  advanceVehicle,
 } = require("../utils/meuMundoVehicle");
+const { queueDrive, advanceDriven } = require("../utils/meuMundoDriveSync");
 const {
   CENTER_VERSION,
   CENTER_CAPACITY,
@@ -584,7 +584,11 @@ class BairroRoom extends Room {
     if (!this.countMessage(client)) return;
     const s = this.sim.get(client.sessionId);
     const d = sanitizeDrive(msg);
-    if (s && s.car && d) s.drive = d;
+    if (!s || !s.car || !d) return;
+    // mm3d-22: com o passo do cliente (k), vale no mesmo passo aqui (meuMundoDriveSync.js).
+    const k = msg && typeof msg.k === "number" ? Math.floor(msg.k) : -1;
+    if (k >= 0 && s.veh) queueDrive(s.veh, d, k);
+    else s.drive = d;
   }
 
   /**
@@ -748,7 +752,7 @@ class BairroRoom extends Room {
         const v = s.veh;
         const c = this.state.cars.get(String(s.car));
         const kind = c && RIDE_KINDS[c.kind] ? c.kind : "car";
-        advanceVehicle(v, s.drive, dt, boxes, this.limit, paramsFor(kind, s.tune));
+        advanceDriven(v, s.drive, dt, boxes, this.limit, paramsFor(kind, s.tune));
         Object.assign(s.body, { x: v.x, z: v.z, vx: v.vx, vz: v.vz, facing: v.yaw });
         if (c) Object.assign(c, { x: v.x, z: v.z, facing: v.yaw, sp: v.u, st: v.steer, hb: v.hb > 0.3, sl: v.slip, vx: v.vx, vz: v.vz, w: v.w });
         if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: RIDE_KINDS[kind].move });
