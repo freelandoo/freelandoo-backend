@@ -43,6 +43,8 @@ router.post("/visits/:id/cancel", ...admin, asyncHandler(MeuMundoController.canc
 router.post("/visits/:id/end", ...admin, asyncHandler(MeuMundoController.endVisit));
 // Vida do hóspede (mig 295): estado, atividade com horas, comer/tomar, novo hóspede.
 router.get("/life", ...admin, asyncHandler(MeuMundoController.life));
+// Hospital do centro (mm3d-26): planta por dentro + leito + régua da alta.
+router.get("/hospital", ...admin, asyncHandler(MeuMundoController.hospital));
 router.post("/life/activity", ...admin, asyncHandler(MeuMundoController.lifeActivity));
 router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsume));
 router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewcomer));

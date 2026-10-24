@@ -26,6 +26,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 
 const CENTER_VERSION = 2; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26)
 const CENTER_CAPACITY = 20;
@@ -74,7 +75,7 @@ const PLACE_DEFS = [
   // `facing` (para onde a fachada olha), largura × fundo e a porta no X local.
   // Recuado para o eixo passar no meio do vão entre as quinas da delegacia
   // (−30, −28) e da academia (−22, −30): o corredor livre tem 6 m (|X| ≤ 3).
-  { id: "hospital", zone: "civica", at: { x: -34.5, z: -37.5 }, facing: Math.PI / 4, width: 20, depth: 14, h: 7.6, peak: 10.4, doorX: 0, doorW: 2.6 },
+  { id: "hospital", zone: "civica", at: { x: -34.5, z: -37.5 }, facing: Math.PI / 4, width: 20, depth: 14, h: 7.6, peak: 10.4, doorX: 0, doorW: 2.6, interior: true },
 ];
 
 /** Direção para FORA da fachada (de onde se chega à porta). */
@@ -145,10 +146,10 @@ function buildPlace(def) {
     interact: Object.freeze({ ...at(1.6), radius: 3 }),
     // Ponto seguro de retorno dos futuros interiores (olhando para a rua).
     return: Object.freeze({ ...at(2.2), facing: facingOut }),
-    // Destino: minijogo (game:<id>, mm3d-20) ou o interior futuro — nenhum
-    // interior existe ainda, então só os minijogos estão disponíveis.
+    // Destino: minijogo (game:<id>, mm3d-20) ou interior (interior:<id>). Só
+    // abrem os que existem: os minijogos e o hospital (mm3d-26, INTERIORS).
     destination: def.game ? `game:${def.game}` : `interior:${def.id}`,
-    available: !!def.game,
+    available: !!def.game || !!def.interior,
     ...(def.party ? { party: def.party } : {}),
   });
 }
@@ -404,6 +405,8 @@ function buildCenterPayload() {
     streetTrees: STREET_TREES,
     grounds: GROUNDS,
     props: PROPS,
+    // Interiores que abrem (destino interior:<id>): a mesma planta para todos.
+    interiors: { hospital: HOSPITAL_INTERIOR },
     arrival: ARRIVAL,
     portal: PORTAL,
     obstacles: OBSTACLES,

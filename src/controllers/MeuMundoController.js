@@ -1,5 +1,7 @@
 const MeuMundoService = require("../services/MeuMundoService");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
+const { HOSPITAL_INTERIOR, bedFor } = require("../utils/meuMundoHospital");
+const { RULES } = require("../utils/meuMundoLife");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -69,6 +71,14 @@ const decline = withVisit((u, id) => MeuMundoService.decline(u, id));
 const cancel = withVisit((u, id) => MeuMundoService.cancel(u, id));
 const endVisit = withVisit((u, id) => MeuMundoService.endVisit(u, id));
 
+// Hospital do centro (mm3d-26): a planta por dentro, o leito do usuário e a
+// régua da alta — em qualquer ambiente (internado abre direto no leito).
+async function hospital(req, res) {
+  const life = await MeuMundoLifeService.peek(req.user.id_user);
+  if (life && life.error) return reply(res, life);
+  return reply(res, { interior: HOSPITAL_INTERIOR, bed: bedFor(req.user.id_user), dischargeAt: RULES.DISCHARGE_AT, life });
+}
+
 // Vida do hóspede (mm3d-13). Deitar/dormir vão pela sala da casa (cama).
 async function life(req, res) {
   return reply(res, await MeuMundoLifeService.get(req.user.id_user));
@@ -121,6 +131,7 @@ module.exports = {
   cancel,
   endVisit,
   life,
+  hospital,
   lifeActivity,
   lifeConsume,
   lifeNewcomer,

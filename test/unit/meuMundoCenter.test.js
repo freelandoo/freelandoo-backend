@@ -58,7 +58,8 @@ test("registro de destinos: cada local tem entrada, interação, retorno, destin
       assert.equal(p.party, 4, "até 4 na mesma partida (mm3d-21)");
     } else {
       assert.equal(p.destination, `interior:${p.id}`);
-      assert.equal(p.available, false, "nenhum interior existe ainda");
+      // Só o hospital tem interior (mm3d-26); os outros seguem "Em breve".
+      assert.equal(p.available, p.id === "hospital", p.id);
     }
   }
 });
@@ -161,6 +162,7 @@ test("chegada a pé e portal em lugar livre; payload sem nada de usuário", () =
   assert.equal(p.places.length, 11);
   assert.equal(p.obstacles.length, C.OBSTACLES.length);
   assert.ok(JSON.stringify(p).length < 30000, "payload pequeno");
+  assert.ok(p.interiors.hospital && p.interiors.hospital.beds.length >= 6, "interior do hospital no payload");
   assert.ok(!/user|email|token/i.test(JSON.stringify(p)));
 });
 
@@ -216,4 +218,17 @@ test("hospital: um carro chega pela pista até o pátio; a ambulância fica para
     assert.ok(C.isSafeSpot(q.x, q.z, resolveCircle, MOTION.RADIUS), `ambulância na calçada em D=${D}`);
   }
   for (const g of C.GROUNDS) assert.ok(["pave", "asphalt", "walk", "mark"].includes(g.kind));
+});
+
+test("hospital por dentro: seis leitos na enfermaria, cada um com ponto de levantar livre; a porta é a saída", () => {
+  const { HOSPITAL_INTERIOR: I, WARD_BEDS } = require("../../src/utils/meuMundoHospital");
+  const { isFreeSpot } = require("../../src/utils/meuMundoInteriorMotion");
+  assert.equal(WARD_BEDS.length, 6);
+  for (const id of WARD_BEDS) {
+    const b = I.beds.find((x) => x.id === id);
+    assert.ok(b.z > 6, `${id} na enfermaria`);
+    assert.ok(isFreeSpot(I, b.floor, b.stand.x, b.stand.z), `${id}: levantar em lugar livre`);
+  }
+  assert.equal(I.floors.length, 1);
+  assert.ok(Math.hypot(I.exit.x - I.door.x, I.exit.z - I.door.z) < 1, "saída junto da porta");
 });

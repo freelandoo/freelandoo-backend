@@ -73,6 +73,14 @@ const FURNITURE = Object.freeze({
   lamp: { w: 0.34, d: 0.34, h: 1.6 },
   piano: { w: 1.5, d: 0.62, h: 1.2 },
   rug: { w: 2.0, d: 1.4, h: 0.02, solid: false },
+  // Hospital (mm3d-26): leito (mesmo colchão da cama, para a pose de deitar
+  // servir igual), suporte de soro, monitor, biombo, balcão e armário.
+  hbed: { w: 1.0, d: 2.1, h: 0.5, beds: [[0, 0]] },
+  ivpole: { w: 0.44, d: 0.44, h: 1.9 },
+  monitor: { w: 0.55, d: 0.42, h: 1.45 },
+  screen: { w: 1.6, d: 0.08, h: 1.8 },
+  reception: { w: 2.6, d: 0.8, h: 1.05 },
+  cabinet: { w: 0.9, d: 0.45, h: 1.2 },
 });
 
 const DEG = Math.PI / 180;
