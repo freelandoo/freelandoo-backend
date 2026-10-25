@@ -16,6 +16,7 @@ const { Router } = require("express");
 const authMiddleware = require("../middlewares/authMiddleware");
 const roleMiddleware = require("../middlewares/roleMiddleware");
 const asyncHandler = require("../utils/asyncHandler");
+const rateLimit = require("../middlewares/rateLimit");
 const MeuMundoController = require("../controllers/MeuMundoController");
 
 const router = Router();
@@ -74,6 +75,11 @@ router.get("/wallets", ...admin, asyncHandler(MeuMundoController.wallets));
 router.get("/polens/purchase/:session", ...admin, asyncHandler(MeuMundoController.polensPurchase));
 // Card de perfil (mm3d-31): o jogador tocado, só se estiver na sua sala agora.
 router.get("/players/:session", ...admin, asyncHandler(MeuMundoController.playerProfile));
+// Chat (mm3d-32): Global do jogo e abrir a conversa 1:1 (histórico na Freelandoo).
+router.get("/chat/global", ...admin, asyncHandler(MeuMundoController.chatHistory));
+router.post("/chat/global", ...admin, rateLimit.chat, asyncHandler(MeuMundoController.chatSend));
+router.post("/chat/global/:id/report", ...admin, asyncHandler(MeuMundoController.chatReport));
+router.post("/chat/direct", ...admin, asyncHandler(MeuMundoController.chatDirect));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;

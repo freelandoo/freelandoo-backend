@@ -139,6 +139,20 @@ async function wallets(req, res) {
 async function playerProfile(req, res) {
   return reply(res, await require("../services/MeuMundoPlayerService").profile(req.user.id_user, req.params.session));
 }
+// Chat do jogo (mm3d-32): Global (sala meu_mundo) e abrir a conversa 1:1.
+const chat = () => require("../services/MeuMundoChatService");
+async function chatHistory(req, res) {
+  return reply(res, await chat().history(req.user.id_user, req.query || {}));
+}
+async function chatSend(req, res) {
+  return reply(res, await chat().send(req.user.id_user, req.body || {}));
+}
+async function chatReport(req, res) {
+  return reply(res, await chat().report(req.user.id_user, req.params.id, req.body || {}));
+}
+async function chatDirect(req, res) {
+  return reply(res, await chat().openDirect(req.user.id_user, req.body || {}));
+}
 async function polensPurchase(req, res) {
   return reply(res, await MeuMundoInboxService.polensPurchase(req.user.id_user, req.params.session));
 }
@@ -200,6 +214,10 @@ module.exports = {
   wallets,
   polensPurchase,
   playerProfile,
+  chatHistory,
+  chatSend,
+  chatReport,
+  chatDirect,
   lifeNewcomer,
   skins,
   skinBuy,
