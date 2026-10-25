@@ -17,6 +17,7 @@
 --    Poléns). CHECK reescrito como SUPERSET com o mesmo nome + NOT VALID
 --    (lição da mig 152). A carteira de Poléns continua sendo a da Freelandoo
 --    (polen_wallets) — o jogo não tem carteira de Poléns própria.
+-- 5) Corpo "female" no CHECK do avatar (skin "feminina").
 
 CREATE TABLE IF NOT EXISTS public.tb_mm_mail (
   id BIGSERIAL PRIMARY KEY,
@@ -68,6 +69,11 @@ CREATE TABLE IF NOT EXISTS public.tb_mm_inbox_pref (
   promos BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 5) Corpo "female" (a skin "feminina"): CHECK do corpo como superset, mesmo nome.
+ALTER TABLE public.tb_mm_avatar_pref DROP CONSTRAINT IF EXISTS chk_mm_avatar_body;
+ALTER TABLE public.tb_mm_avatar_pref
+  ADD CONSTRAINT chk_mm_avatar_body CHECK (body IN ('normal', 'slim', 'fat', 'strong', 'sergio', 'female'));
 
 ALTER TABLE public.polen_transactions
   DROP CONSTRAINT IF EXISTS polen_transactions_type_chk;

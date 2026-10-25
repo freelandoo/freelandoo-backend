@@ -11,18 +11,19 @@ test("padrão desenha a condição física; skin desenha o próprio corpo", () =
   for (const c of ["normal", "slim", "fat", "strong"]) {
     assert.equal(Skins.avatarBody(c, "standard"), c);
     assert.equal(Skins.avatarBody(c, "sergio"), "sergio");
+    assert.equal(Skins.avatarBody(c, "feminina"), "female");
     // skin desconhecida (catálogo mudou) volta para a condição
     assert.equal(Skins.avatarBody(c, "nao-existe"), c);
   }
   assert.equal(Skins.avatarBody(null, null), "normal");
 });
 
-test("catálogo: um padrão grátis, skins com preço e corpo conhecido pela sala", () => {
+test("catálogo: um padrão grátis, skins com preço (a feminina é grátis) e corpo conhecido pela sala", () => {
   const std = Skins.CATALOG.filter((s) => s.kind === "standard");
   assert.equal(std.length, 1);
   assert.equal(std[0].price, 0);
   for (const s of Skins.CATALOG.filter((x) => x.kind === "skin")) {
-    assert.ok(s.price > 0, s.id);
+    assert.ok(s.id === "feminina" ? s.price === 0 : s.price > 0, s.id);
     assert.ok(MeuMundoStorage.BODIES.includes(s.body), s.id);
     assert.match(s.id, /^[a-z0-9-]{1,32}$/);
   }
@@ -30,9 +31,9 @@ test("catálogo: um padrão grátis, skins com preço e corpo conhecido pela sal
 
 test("publicCatalog: padrão sempre seu; vestido desconhecido = padrão", () => {
   const a = Skins.publicCatalog([], "standard");
-  assert.deepEqual(a.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, true], ["sergio", false, false]]);
+  assert.deepEqual(a.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, true], ["sergio", false, false], ["feminina", false, false]]);
   const b = Skins.publicCatalog(["sergio"], "sergio");
-  assert.deepEqual(b.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, false], ["sergio", true, true]]);
+  assert.deepEqual(b.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, false], ["sergio", true, true], ["feminina", false, false]]);
   const c = Skins.publicCatalog([], "sumiu");
   assert.equal(c.find((s) => s.id === "standard").equipped, true);
 });

@@ -424,7 +424,7 @@ class MeuMundoLifeService {
           return { kind, where: !row ? "spot" : row.houseId ? "house" : "street" };
         });
       }
-      return { inventory: { wardrobe, vehicles, house, recentGifts } };
+      return { items: Life.publicCatalog().items, inventory: { wardrobe, vehicles, house, recentGifts } };
     });
   }
 

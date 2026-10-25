@@ -21,6 +21,9 @@ const CATALOG = Object.freeze([
   Object.freeze({ id: STANDARD, kind: "standard", name: "Padrão", price: 0, currency: "coins", body: null }),
   // O lutador da RA da Casa Views (mm3d-10).
   Object.freeze({ id: "sergio", kind: "skin", name: "Sergio", price: 1000, currency: "coins", body: "sergio" }),
+  // A versão feminina da personagem padrão (mm3d-30): mesmo esqueleto e mesmas
+  // animações do padrão, de graça — escolher a personagem não é produto.
+  Object.freeze({ id: "feminina", kind: "skin", name: "Feminina", price: 0, currency: "coins", body: "female" }),
 ]);
 
 const BY_ID = new Map(CATALOG.map((s) => [s.id, s]));

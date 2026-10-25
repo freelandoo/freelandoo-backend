@@ -6,7 +6,8 @@
 const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout");
 const { avatarBody } = require("../utils/meuMundoSkins");
 
-const BODIES = ["normal", "slim", "fat", "strong", "sergio"];
+// "female" (mm3d-30): a personagem feminina, corpo da skin "feminina".
+const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female"];
 
 // Uma chave só para TODA alocação de residência. É ela que impede dois
 // pedidos simultâneos de pegarem a mesma casa e — o caso mais sutil — de cada
