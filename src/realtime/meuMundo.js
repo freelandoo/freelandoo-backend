@@ -56,6 +56,8 @@ const {
 } = require("../utils/meuMundoLayout");
 const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds, freshStamina, setStamina, staminaIntent } = require("../utils/meuMundoMotion");
 const { publicCatalog } = require("../utils/meuMundoLife");
+/** Pose de indisposto (mm3d-28): saúde perto do hospital, pela lista de necessidades da vida. */
+const isUnwell = (life) => Array.isArray(life.needs) && life.needs.some((n) => n && n.id === "unwell");
 const { CAR, RIDE_KINDS, KIND_NAMES, vehicleId, kindOfId, spotFor, carBox, blocks, carFits, exitSpots } = require("../utils/meuMundoCars");
 const {
   IDLE: IDLE_DRIVE,
@@ -130,6 +132,8 @@ const Player = schema(
     // Fôlego de corrida (mm3d-28): % que resta (passos de 5) e sem fôlego (só anda).
     st: t.uint8(),
     wd: t.boolean(),
+    // Indisposto (mm3d-28): a vida diz "unwell"; o cliente só troca a pose.
+    sk: t.boolean(),
   },
   "MMPlayer"
 );
@@ -206,6 +210,8 @@ const HousePlayer = schema(
     ride: t.uint8(),
     st: t.uint8(),
     wd: t.boolean(),
+    // Indisposto (mm3d-28): a vida diz "unwell"; o cliente só troca a pose.
+    sk: t.boolean(),
   },
   "MMCasaPlayer"
 );
@@ -443,6 +449,7 @@ class BairroRoom extends Room {
     s.pace = life.pace;
     p.pace = life.pace;
     setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
+    p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
   }
 
@@ -1242,6 +1249,7 @@ class CasaRoom extends Room {
     s.pace = life.pace;
     p.pace = life.pace;
     setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
+    p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
     if (s.bedPending) return;
     const resting = life.status === "alive" && (life.activity === "lying" || life.activity === "sleeping");
