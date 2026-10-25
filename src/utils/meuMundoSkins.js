@@ -24,6 +24,8 @@ const CATALOG = Object.freeze([
   // A versão feminina da personagem padrão (mm3d-30): mesmo esqueleto e mesmas
   // animações do padrão, de graça — escolher a personagem não é produto.
   Object.freeze({ id: "feminina", kind: "skin", name: "Feminina", price: 0, currency: "coins", body: "female" }),
+  // Ekaterina (mm3d-30): personagem própria, como o Sergio — mesmo preço dele.
+  Object.freeze({ id: "ekaterina", kind: "skin", name: "Ekaterina", price: 1000, currency: "coins", body: "ekaterina" }),
 ]);
 
 const BY_ID = new Map(CATALOG.map((s) => [s.id, s]));

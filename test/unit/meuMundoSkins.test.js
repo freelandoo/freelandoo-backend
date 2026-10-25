@@ -12,6 +12,7 @@ test("padrão desenha a condição física; skin desenha o próprio corpo", () =
     assert.equal(Skins.avatarBody(c, "standard"), c);
     assert.equal(Skins.avatarBody(c, "sergio"), "sergio");
     assert.equal(Skins.avatarBody(c, "feminina"), "female");
+    assert.equal(Skins.avatarBody(c, "ekaterina"), "ekaterina");
     // skin desconhecida (catálogo mudou) volta para a condição
     assert.equal(Skins.avatarBody(c, "nao-existe"), c);
   }
@@ -31,9 +32,9 @@ test("catálogo: um padrão grátis, skins com preço (a feminina é grátis) e 
 
 test("publicCatalog: padrão sempre seu; vestido desconhecido = padrão", () => {
   const a = Skins.publicCatalog([], "standard");
-  assert.deepEqual(a.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, true], ["sergio", false, false], ["feminina", false, false]]);
+  assert.deepEqual(a.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, true], ["sergio", false, false], ["feminina", false, false], ["ekaterina", false, false]]);
   const b = Skins.publicCatalog(["sergio"], "sergio");
-  assert.deepEqual(b.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, false], ["sergio", true, true], ["feminina", false, false]]);
+  assert.deepEqual(b.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, false], ["sergio", true, true], ["feminina", false, false], ["ekaterina", false, false]]);
   const c = Skins.publicCatalog([], "sumiu");
   assert.equal(c.find((s) => s.id === "standard").equipped, true);
 });
