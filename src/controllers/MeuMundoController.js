@@ -135,6 +135,10 @@ async function inventory(req, res) {
 async function wallets(req, res) {
   return reply(res, await MeuMundoLifeService.wallets(req.user.id_user));
 }
+// Card de perfil de outro jogador na mesma sala (mm3d-31).
+async function playerProfile(req, res) {
+  return reply(res, await require("../services/MeuMundoPlayerService").profile(req.user.id_user, req.params.session));
+}
 async function polensPurchase(req, res) {
   return reply(res, await MeuMundoInboxService.polensPurchase(req.user.id_user, req.params.session));
 }
@@ -195,6 +199,7 @@ module.exports = {
   inventory,
   wallets,
   polensPurchase,
+  playerProfile,
   lifeNewcomer,
   skins,
   skinBuy,

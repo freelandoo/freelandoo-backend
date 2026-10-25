@@ -72,6 +72,8 @@ router.get("/inventory", ...admin, asyncHandler(MeuMundoController.inventory));
 router.get("/wallets", ...admin, asyncHandler(MeuMundoController.wallets));
 // Situação de uma compra de Poléns iniciada no jogo (o crédito é do webhook).
 router.get("/polens/purchase/:session", ...admin, asyncHandler(MeuMundoController.polensPurchase));
+// Card de perfil (mm3d-31): o jogador tocado, só se estiver na sua sala agora.
+router.get("/players/:session", ...admin, asyncHandler(MeuMundoController.playerProfile));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;

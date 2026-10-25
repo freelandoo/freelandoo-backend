@@ -1868,6 +1868,19 @@ function pushNotice(userId, notice) {
   return presence.send(userId, "notice", notice);
 }
 
+/**
+ * Card de perfil (mm3d-31): a conta por trás de um boneco que `viewerId`
+ * tocou. Só vale se a sessão está na MESMA sala em que ele está agora.
+ */
+function playerInMyRoom(viewerId, sessionId) {
+  const p = presence.get(viewerId);
+  if (!p || !p.room || !p.room.sim) return null;
+  const s = p.room.sim.get(sessionId);
+  if (!s || !s.userId) return null;
+  const st = p.room.state && p.room.state.players && p.room.state.players.get(sessionId);
+  return { userId: s.userId, name: (st && st.name) || null };
+}
+
 /** Posição do usuário segundo a sala em que ele está (null = não está). */
 function positionIn(scene, id, userId) {
   const room = scene === "nb" ? roomsByNeighborhood.get(id) : scene === "center" ? centerRooms.get(id) : roomsByHouse.get(id);
@@ -1918,6 +1931,7 @@ module.exports = {
   positionIn,
   applyLife,
   pushNotice,
+  playerInMyRoom,
   stowRide,
   addRideToHouse,
   takeRideOut,
