@@ -42,7 +42,7 @@ const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const presence = require("./meuMundoPresence");
 const jetpack = require("./meuMundoJetpack");
 const { interiorFor } = require("../utils/meuMundoInteriors");
-const { SEAT_REACH, BED_REACH } = require("../utils/meuMundoInteriorKit");
+const { SEAT_REACH, BED_REACH, FRIDGE_REACH } = require("../utils/meuMundoInteriorKit");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
 const { stepInterior, isFreeSpot } = require("../utils/meuMundoInteriorMotion");
 const {
@@ -54,7 +54,8 @@ const {
   houseBoxes,
   levelDef,
 } = require("../utils/meuMundoLayout");
-const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds } = require("../utils/meuMundoMotion");
+const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds, freshStamina, setStamina, staminaIntent } = require("../utils/meuMundoMotion");
+const { publicCatalog } = require("../utils/meuMundoLife");
 const { CAR, RIDE_KINDS, KIND_NAMES, vehicleId, kindOfId, spotFor, carBox, blocks, carFits, exitSpots } = require("../utils/meuMundoCars");
 const {
   IDLE: IDLE_DRIVE,
@@ -126,6 +127,9 @@ const Player = schema(
     // Ritmo de caminhada pelo corpo (mm3d-13): 1 normal, 0,7 cansado, 0,42
     // exausto. O cliente usa na predição (paceSpeeds) e na pose cansada.
     pace: t.float32(),
+    // Fôlego de corrida (mm3d-28): % que resta (passos de 5) e sem fôlego (só anda).
+    st: t.uint8(),
+    wd: t.boolean(),
   },
   "MMPlayer"
 );
@@ -200,6 +204,8 @@ const HousePlayer = schema(
     pace: t.float32(),
     // mm3d-15: id do veículo em que está montado (0 = a pé; move 6/7/8).
     ride: t.uint8(),
+    st: t.uint8(),
+    wd: t.boolean(),
   },
   "MMCasaPlayer"
 );
@@ -429,13 +435,14 @@ class BairroRoom extends Room {
     log.info("join", { roomId: this.roomId, online: this.state.players.size, visitor });
   }
 
-  /** Vida recalculada (MeuMundoLifeService → applyLife): na rua, o ritmo e o tipo físico. */
+  /** Vida recalculada (MeuMundoLifeService → applyLife): na rua, o ritmo, o fôlego e o tipo físico. */
   applyLife(sid, life) {
     const s = this.sim.get(sid);
     const p = this.state.players.get(sid);
     if (!s || !p) return;
     s.pace = life.pace;
     p.pace = life.pace;
+    setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
   }
 
@@ -792,12 +799,15 @@ class BairroRoom extends Room {
         if (p) Object.assign(p, { x: v.x, z: v.z, facing: v.yaw, move: RIDE_KINDS[kind].move });
         continue;
       }
-      const move = step(s.body, s.intent, dt, boxes, this.limit, paceProfile(s.pace));
+      const st = s.stam || (s.stam = freshStamina());
+      const move = step(s.body, staminaIntent(st, s.intent, dt), dt, boxes, this.limit, paceProfile(s.pace));
       if (!p) continue;
       p.x = s.body.x;
       p.z = s.body.z;
       p.facing = s.body.facing;
       p.move = move;
+      p.st = Math.round((20 * st.left) / st.maxS) * 5;
+      p.wd = st.winded;
     }
   }
 }
@@ -828,6 +838,7 @@ class CasaRoom extends Room {
     this.onMessage("stand", (client) => this.onStand(client));
     this.onMessage("bed", (client, msg) => this.onBed(client, msg));
     this.onMessage("ride", (client, msg) => this.onRide(client, msg));
+    this.onMessage("fridge", (client, msg) => this.onFridge(client, msg));
     this.onMessage("*", (client) => this.countMessage(client));
     this.setSimulationInterval((dt) => this.tick(dt), SIM_MS);
     this.clock.setInterval(() => {
@@ -1147,6 +1158,52 @@ class CasaRoom extends Room {
     client.send("bed", { ok: true, bed: bed.id, a: kind === "sleeping" ? "sleep" : "lie" });
   }
 
+  /**
+   * Geladeira (mm3d-28). `{ a: "open", fridge }`: confere que é o titular, no
+   * mesmo andar e perto do ponto em frente à porta, e devolve o estoque, a vida
+   * e o catálogo. `{ a: "eat", fridge, item, key }`: confere de novo e come UMA
+   * unidade (MeuMundoLifeService.eatFromFridge — idempotente pela chave).
+   * A interface é só de quem abriu: nada disso entra no estado da sala.
+   */
+  async onFridge(client, msg) {
+    if (!this.countMessage(client)) return;
+    const sid = client.sessionId;
+    const s = this.sim.get(sid);
+    const a = msg && (msg.a === "open" || msg.a === "eat") ? msg.a : "";
+    const want = msg && typeof msg.fridge === "string" ? msg.fridge : "";
+    const key = msg && typeof msg.key === "string" ? msg.key.slice(0, 64) : "";
+    const fr = (this.def.fridges || []).find((f) => f.id === want);
+    const deny = (reason) => client.send("fridge", { ok: false, a, fridge: want, key, reason });
+    if (!s || !fr || !a) return deny("fridge");
+    if (!s.host) return deny("not_owner");
+    if (s.ride) return deny("riding");
+    if (s.seat || s.bed || s.bedPending || s.fridgePending) return deny("busy");
+    if (fr.floor !== s.body.floor || Math.hypot(fr.x - s.body.x, fr.z - s.body.z) > FRIDGE_REACH) return deny("far");
+    s.fridgePending = true;
+    let out;
+    try {
+      out = a === "open" ? await MeuMundoLifeService.peek(s.userId) : await MeuMundoLifeService.eatFromFridge(s.userId, msg.item, key);
+    } catch (err) {
+      log.error("life.fridge_fail", { message: err.message });
+      out = { error: "falha", code: "error" };
+    }
+    s.fridgePending = false;
+    if (!this.sim.has(sid)) return;
+    if (!out || out.error) return deny((out && out.code) || "life");
+    client.send("fridge", {
+      ok: true,
+      a,
+      fridge: fr.id,
+      key,
+      stock: out.fridge || {},
+      character: out.character,
+      wallet: out.wallet,
+      ate: out.ate || null,
+      replay: !!out.replay,
+      ...(a === "open" ? { catalog: publicCatalog() } : {}),
+    });
+  }
+
   putInBed(sid, s, bed, kind) {
     s.bed = bed.id;
     s.restKind = kind;
@@ -1184,6 +1241,7 @@ class CasaRoom extends Room {
     if (!s || !p) return;
     s.pace = life.pace;
     p.pace = life.pace;
+    setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
     if (s.bedPending) return;
     const resting = life.status === "alive" && (life.activity === "lying" || life.activity === "sleeping");
@@ -1230,9 +1288,12 @@ class CasaRoom extends Room {
     for (const [sid, s] of this.sim) {
       if (s.seat || s.bed) continue;
       expireIntent(s, now);
-      const move = stepInterior(s.body, s.intent, dt, this.def, paceSpeeds(s.pace));
+      const st = s.stam || (s.stam = freshStamina());
+      const move = stepInterior(s.body, staminaIntent(st, s.intent, dt), dt, this.def, paceSpeeds(s.pace));
       const p = this.state.players.get(sid);
       if (!p) continue;
+      p.st = Math.round((20 * st.left) / st.maxS) * 5;
+      p.wd = st.winded;
       p.x = s.body.x;
       p.z = s.body.z;
       p.y = s.body.y;
@@ -1786,7 +1847,8 @@ function applyLife(userId, life) {
   const p = presence.get(userId);
   if (!p || !p.room.applyLife) return false;
   p.room.applyLife(p.sessionId, life);
-  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, body: life.body });
+  // Avisos (needs) vão junto: o cliente fala com o retrato sem pedir nada (mm3d-28).
+  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, body: life.body, needs: life.needs || [], stamina: life.stamina || null });
   return true;
 }
 

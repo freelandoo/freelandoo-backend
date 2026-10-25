@@ -41,7 +41,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
@@ -58,6 +58,7 @@ async function bootstrap(pool) {
     "298_meu_mundo_atributos_inicio_baixo.sql",
     "299_meu_mundo_vehicles.sql",
     "300_meu_mundo_skins.sql",
+    "301_meu_mundo_geladeira.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -103,6 +104,12 @@ async function mkUser(pool, tag) {
   check("GET: geração 1 viva, carteira 500, catálogo e relógio", g.character.status === "alive" && g.wallet.coins === 500 && g.catalog.items.length >= 30 && g.catalog.clock.meals.join() === "10,14,18,22");
   check("GET: diário de hoje e evento de nascimento", g.days.length === 1 && g.days[0].closed === false && g.events.some((e) => e.kind === "born"));
   check("GET: sem semente nem ids internos", !JSON.stringify(g).match(/"seed"|id_character|id_user|@mm\.test/));
+  // Geladeira (mig 301): o kit inicial vem uma vez só.
+  check("geladeira: kit inicial na primeira leitura", g.fridge.prato_feito === 2 && g.fridge.cafe === 2, JSON.stringify(g.fridge));
+  await Life.peek(host);
+  check("…e não se repete", (await Life.peek(host)).fridge.prato_feito === 2);
+  check("vida nova: agenda, sono, exposição, vida e fôlego no snapshot",
+    g.character.meals.length === 4 && g.character.sleep.warnAt === 16 && g.character.life.budgetDays === 730 && g.character.stamina.maxS > 0 && Array.isArray(g.character.needs));
 
   // ── Comer, carteira ──────────────────────────────────────────────────────────
   await pool.query(`UPDATE tb_mm_character SET satiety = 30 WHERE id_user = $1`, [host]);
@@ -265,6 +272,59 @@ async function mkUser(pool, tag) {
   await sleep(150);
   check("energia 5 → ritmo exausto na sala", Math.abs(H().p.pace - PACE.EXHAUSTED) < 1e-6, String(H().p.pace));
   check("o cliente recebe o aviso de vida", got("life").some((x) => Math.abs(x.m.pace - PACE.EXHAUSTED) < 1e-6));
+
+  // ── Geladeira (mm3d-28, mig 301) ───────────────────────────────────────────
+  check("payload da casa traz a geladeira", inHouse.interior?.fridges?.length >= 1);
+  check("a sala manda o fôlego no estado", typeof H().p.st === "number" && H().p.wd === false);
+  await pool.query(`UPDATE tb_mm_character SET energy = 80, satiety = 30, toxicity = 0, effects = '[]'::jsonb WHERE id_user = $1 AND status = 'alive'`, [host]);
+  await pool.query(`UPDATE tb_mm_wallet SET coins = 200 WHERE id_user = $1`, [host]);
+  const buy = await Life.buy(host, "pizza", 2);
+  check("Mercado → geladeira: cobra e guarda, não come", buy.bought?.qty === 2 && buy.fridge.pizza === 2 && Math.floor(buy.wallet.coins) === 180 && buy.character.vitals.satiety < 31, JSON.stringify(buy.error || buy.fridge));
+  check("comprar quantidade inválida: 400", (await Life.buy(host, "pizza", 0)).statusCode === 400 && (await Life.buy(host, "pizza", 11)).statusCode === 400);
+  const fr = interiorFor(1).fridges[0];
+  box.length = 0;
+  room.onMessage("fridge", (m) => box.push({ t: "fridge", m }));
+  Object.assign(H().s.body, { x: 1.7, z: 3.5 });
+  room.send("fridge", { a: "open", fridge: fr.id });
+  await until(() => got("fridge").length);
+  check("abrir longe da geladeira é recusado", got("fridge")[0]?.m.ok === false && got("fridge")[0].m.reason === "far");
+  Object.assign(H().s.body, { x: fr.x, z: fr.z, floor: fr.floor });
+  H().s.host = false;
+  room.send("fridge", { a: "open", fridge: fr.id });
+  await until(() => got("fridge").length >= 2);
+  check("visitante não abre a geladeira do dono", got("fridge")[1]?.m.reason === "not_owner");
+  H().s.host = true;
+  room.send("fridge", { a: "open", fridge: fr.id });
+  await until(() => got("fridge").length >= 3);
+  const op = got("fridge")[2]?.m;
+  check("abrir perto: estoque, vida e catálogo (só para quem abriu)", op?.ok && op.stock.pizza === 2 && op.catalog?.items?.length >= 30 && op.character?.vitals, JSON.stringify(op?.reason));
+  room.send("fridge", { a: "eat", fridge: fr.id, item: "pizza", key: "keyAAAA1111" });
+  await until(() => got("fridge").length >= 4);
+  const e1 = got("fridge")[3]?.m;
+  check("comer: uma unidade a menos e a vida atualizada", e1?.ok && e1.stock.pizza === 1 && e1.ate?.item === "pizza" && e1.character.vitals.satiety > 50 && !e1.replay, JSON.stringify(e1));
+  room.send("fridge", { a: "eat", fridge: fr.id, item: "pizza", key: "keyAAAA1111" });
+  await until(() => got("fridge").length >= 5);
+  const e2 = got("fridge")[4]?.m;
+  check("mesma chave de novo (retry): não come outra vez", e2?.ok && e2.replay && e2.stock.pizza === 1, JSON.stringify(e2));
+  const qty = async (id) => (await pool.query(`SELECT qty FROM tb_mm_pantry WHERE id_user = $1 AND item_id = $2`, [host, id])).rows[0]?.qty ?? 0;
+  await pool.query(`UPDATE tb_mm_character SET satiety = 20 WHERE id_user = $1 AND status = 'alive'`, [host]);
+  const [t1, t2] = await Promise.all([Life.eatFromFridge(host, "pizza", "tabUmUm11"), Life.eatFromFridge(host, "pizza", "tabDois22")]);
+  check("duas abas na última unidade: só uma come", [t1, t2].filter((x) => x.ate).length === 1 && [t1, t2].some((x) => x.code === "empty") && (await qty("pizza")) === 0, JSON.stringify([t1.code, t2.code]));
+  await pool.query(`UPDATE tb_mm_character SET satiety = 20 WHERE id_user = $1 AND status = 'alive'`, [host]);
+  await pool.query(`UPDATE tb_mm_pantry SET qty = 3 WHERE id_user = $1 AND item_id = 'prato_feito'`, [host]);
+  const [r1, r2] = await Promise.all([Life.eatFromFridge(host, "prato_feito", "mesmaChave1"), Life.eatFromFridge(host, "prato_feito", "mesmaChave1")]);
+  check("mesma chave em paralelo: come uma vez", r1.ate && r2.ate && [r1, r2].filter((x) => x.replay).length === 1 && (await qty("prato_feito")) === 2, JSON.stringify([r1.replay, r2.replay, await qty("prato_feito")]));
+  const fromFridge = await pool.query(
+    `SELECT 1 FROM tb_mm_character_event e JOIN tb_mm_character c USING (id_character)
+      WHERE c.id_user = $1 AND e.kind = 'routine_meal' AND e.data->>'from' = 'fridge'`,
+    [host]
+  );
+  check("a rotina come da geladeira antes de comprar", fromFridge.rowCount >= 1);
+  check("acabou: 409 empty", (await Life.eatFromFridge(host, "pizza", "acabouXX1")).code === "empty");
+  check("chave inválida: 400", (await Life.eatFromFridge(host, "cafe", "x")).statusCode === 400);
+  await Life.peek(host);
+  await sleep(150);
+  check("o aviso de vida leva as necessidades e o fôlego", got("life").some((x) => Array.isArray(x.m.needs) && x.m.stamina && x.m.stamina.maxS > 0));
 
   // ── Vestuário (mig 300): condição física ≠ skin ─────────────────────────────
   const cond = (await Life.peek(host)).character.body.bodyHint;

@@ -41,6 +41,10 @@ const ERRORS = {
   skin: ["Skin não encontrada", 404],
   notOwned: ["Você ainda não tem essa skin", 409],
   alive: ["Seu hóspede está vivo", 409],
+  empty: ["Acabou na geladeira", 409],
+  stack: ["A geladeira não cabe mais desse item", 409],
+  qty: ["Quantidade inválida", 400],
+  key: ["Pedido inválido", 400],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -70,6 +74,12 @@ class MeuMundoLifeService {
       const now = Date.now();
       let coins = await MeuMundoLifeStorage.lockWallet(c, idUser, Life.RULES.START_COINS);
       let row = await MeuMundoLifeStorage.lockLatest(c, idUser);
+      // Geladeira (mig 301): travada junto (a carteira já serializa a pessoa).
+      const pantry0 = await MeuMundoLifeStorage.pantry(c, idUser);
+      const pantry = { ...pantry0 };
+      if (await MeuMundoLifeStorage.claimPantrySeed(c, idUser)) {
+        for (const [id, n] of Object.entries(Life.FRIDGE.STARTER)) pantry[id] = Math.min(Life.FRIDGE.MAX_STACK, (pantry[id] || 0) + n);
+      }
       const events = [];
       if (!row) {
         const s0 = Life.birth(crypto.randomInt(1, 2 ** 31 - 1), now);
@@ -79,10 +89,10 @@ class MeuMundoLifeService {
       const s = rowToState(row);
       // A carteira entra na simulação: o trabalho rende e a rotina compra comida.
       const wallet = { coins };
-      const sim = Life.simulate(s, now, wallet);
+      const sim = Life.simulate(s, now, wallet, pantry);
       events.push(...sim.events);
       coins = wallet.coins;
-      const ctx = { now, row, coins, events, client: c };
+      const ctx = { now, row, coins, events, client: c, pantry };
       const extra = act ? await act(s, ctx) : {};
       if (extra && extra.error) {
         await c.query("ROLLBACK");
@@ -99,6 +109,7 @@ class MeuMundoLifeService {
       await MeuMundoLifeStorage.insertEvents(c, row.id_character, events);
       if (ctx.newEvents) await MeuMundoLifeStorage.insertEvents(c, idCharacter, ctx.newEvents);
       await MeuMundoLifeStorage.setCoins(c, idUser, Math.max(0, ctx.coins));
+      await MeuMundoLifeStorage.savePantry(c, idUser, pantry0, pantry);
       // O tipo físico do avatar É o corpo da vida (não se escolhe desde
       // 2026-10-21): gravado só quando muda — é o que as entradas leem.
       await MeuMundoStorage.setBody(c, idUser, Life.bodyHint(state));
@@ -117,13 +128,23 @@ class MeuMundoLifeService {
         character: snap,
         wallet: { coins: Math.floor(Math.max(0, ctx.coins)) },
         avatar,
+        fridge: Object.fromEntries(Object.entries(pantry).filter(([, n]) => n > 0)),
         ...(extra || {}),
       };
       if (history) {
         out.days = await MeuMundoLifeStorage.recentDays(pool, idCharacter);
         out.events = await MeuMundoLifeStorage.recentEvents(pool, idCharacter);
       }
-      notifyRoom(idUser, { pace: snap.pace, status: snap.status, activity: snap.activity.kind, bed: state.activity.bed, body: avatar });
+      notifyRoom(idUser, {
+        pace: snap.pace,
+        status: snap.status,
+        activity: snap.activity.kind,
+        bed: state.activity.bed,
+        body: avatar,
+        // Avisos com retrato e fôlego de corrida (2026-10-24).
+        needs: snap.needs,
+        stamina: snap.stamina,
+      });
       return out;
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});
@@ -190,6 +211,53 @@ class MeuMundoLifeService {
       ctx.coins -= item.price;
       ctx.events.push(...r.events);
       return { consumed: { item: item.id, price: item.price } };
+    });
+  }
+
+  // ═══ GELADEIRA (mm3d-28, mig 301) ═══
+
+  /** Mercado → geladeira: cobra `qty` × preço e guarda (não come). */
+  static async buy(idUser, rawItem, rawQty = 1) {
+    const item = Life.ITEM_BY_ID.get(String(rawItem || ""));
+    if (!item) return fail("item");
+    const qty = Number(rawQty);
+    if (!Number.isInteger(qty) || qty < 1 || qty > Life.FRIDGE.MAX_BUY) return fail("qty");
+    return MeuMundoLifeService.withLife(idUser, (s, ctx) => {
+      const cost = item.price * qty;
+      if (ctx.coins < cost) return fail("coins");
+      const have = ctx.pantry[item.id] || 0;
+      if (have + qty > Life.FRIDGE.MAX_STACK) return fail("stack");
+      ctx.coins -= cost;
+      ctx.pantry[item.id] = have + qty;
+      ctx.events.push({ at: ctx.now, kind: "buy", data: { item: item.id, qty, price: cost } });
+      return { bought: { item: item.id, qty, price: cost } };
+    });
+  }
+
+  /**
+   * Comer UMA unidade da geladeira. `key` (8–64, gerada pelo cliente por
+   * pedido) torna o pedido idempotente: a mesma chave de novo (clique duplo,
+   * retry, outra aba) devolve o resultado gravado sem comer outra vez. Duas
+   * chaves diferentes para a última unidade: o lock por pessoa serializa e a
+   * segunda recebe "empty". Quem chama (a sala da casa) já conferiu que a
+   * pessoa é a dona e está na geladeira.
+   */
+  static async eatFromFridge(idUser, rawItem, rawKey) {
+    const key = String(rawKey || "");
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(key)) return fail("key");
+    const item = Life.ITEM_BY_ID.get(String(rawItem || ""));
+    if (!item) return fail("item");
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const done = await MeuMundoLifeStorage.consumeKey(ctx.client, idUser, key);
+      if (done) return { ate: done, replay: true };
+      if (!((ctx.pantry[item.id] || 0) > 0)) return fail("empty");
+      const r = Life.consume(s, item.id, ctx.now);
+      if (!r.ok) return fail(r.code);
+      ctx.pantry[item.id] -= 1;
+      ctx.events.push(...r.events);
+      const ate = { item: item.id, meal: r.meal };
+      await MeuMundoLifeStorage.saveConsumeKey(ctx.client, idUser, key, ate);
+      return { ate, replay: false };
     });
   }
 

@@ -37,6 +37,8 @@ const BED_REACH = 1.9;
 // Altura do colchão: a pose "Lie"/"Sleep" (pipeline/build_rest.py) já traz o
 // corpo nela; o servidor põe o personagem no chão, no ponto de deitar.
 const BED_TOP = 0.48;
+// Geladeira (mm3d-28): abre a até FRIDGE_REACH do ponto em frente à porta.
+const FRIDGE_REACH = 1.4;
 const EPS = 1e-6;
 
 // ═══ MÓVEIS ═══ — w × d × h (m), frente no −Z local. `seats`: pontos onde o
@@ -474,6 +476,41 @@ function buildInterior(plan) {
   });
   def.beds = beds;
   def.bedTop = BED_TOP;
+
+  // Geladeiras (mm3d-28): o ponto em pé em frente à porta, olhando para ela.
+  // A porta é a face −z local do móvel (onde o puxador é desenhado).
+  const fridges = [];
+  floors.forEach((fl, fi) => {
+    fl.furniture.forEach((it) => {
+      if (it.t !== "fridge") return;
+      const s = furnitureSize(it);
+      const rot = it.r * DEG;
+      const reach = MOTION.RADIUS + 0.2;
+      const at = { x: it.x, z: it.z };
+      const front = s.d / 2 + reach;
+      const cands = [];
+      for (const dz of [-0.15, 0, 0.25, 0.5]) for (const dx of [0, -0.3, 0.3, -0.55, 0.55]) cands.push([dx, -(front + dz)]);
+      const stand = standPoint(fl, fi, it, at, cands, front + 1.1);
+      // Sem lugar em frente a casa continua montando (a geladeira só não abre);
+      // o teste das plantas exige uma geladeira utilizável em todo nível.
+      if (!stand) {
+        (def.warnings = def.warnings || []).push(`geladeira sem lugar em frente (${it.x},${it.z}, piso ${fi})`);
+        return;
+      }
+      const back = rotY(0, 1, rot);
+      fridges.push({
+        id: `f${String(fridges.length + 1).padStart(2, "0")}`,
+        floor: fi,
+        x: stand.x,
+        z: stand.z,
+        // Olhando para a geladeira (do ponto em pé para o móvel).
+        facing: round(Math.atan2(back.x, back.z)),
+        center: { x: round(it.x), z: round(it.z) },
+        r: it.r,
+      });
+    });
+  });
+  def.fridges = fridges;
   // Medidas-padrão de cada móvel: o cliente desenha com estas (não guarda cópia).
   def.furnitureTypes = Object.fromEntries(Object.entries(FURNITURE).map(([k, v]) => [k, { w: v.w, d: v.d, h: v.h }]));
 
@@ -486,4 +523,4 @@ function buildInterior(plan) {
   return def;
 }
 
-module.exports = { FURNITURE, FLOOR_H, WALL_T, WALL_H, RAIL_H, SEAT_TOP, SEAT_REACH, BED_TOP, BED_REACH, buildInterior, furnitureBox, rotY };
+module.exports = { FURNITURE, FLOOR_H, WALL_T, WALL_H, RAIL_H, SEAT_TOP, SEAT_REACH, BED_TOP, BED_REACH, FRIDGE_REACH, buildInterior, furnitureBox, rotY };

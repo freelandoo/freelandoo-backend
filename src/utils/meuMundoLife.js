@@ -14,8 +14,11 @@
 //
 // ═══ RELÓGIO ═══
 // O relógio do jogo é o de Brasília (UTC−3 fixo — o Brasil não tem horário
-// de verão desde 2019), igual para todo mundo; 1 h de jogo = 1 h real.
-// Refeições: janelas de 2 h que abrem às 10, 14, 18 e 22 h.
+// de verão desde 2019), igual para todo mundo; 1 h de jogo = 1 h real. O fuso
+// é do JOGO, não do aparelho nem do lugar: ninguém troca, e cada refeição tem
+// id próprio (dia local do horário nominal + hora) — não há como duplicar.
+// Refeições (2026-10-24, ver MEALS): 10, 14, 18 e 22 h, aceitas de 2 h antes
+// até 2 h depois (inclusive); passou disso, 2 h de penalidade GRADUAL.
 //
 // ═══ UNIDADES ═══
 // Vitais e fertilidade 0–100; inteligência, força e velocidade 0–1000 (ATTR). Taxas "por hora". Tempo em ms (epoch) nas
@@ -27,10 +30,77 @@ const HOUR = 3600 * 1000;
 const STEP_MS = 15 * 60 * 1000;
 const MAX_CATCHUP_MS = 60 * 24 * HOUR; // além disso, o tempo passa sem simular
 
+const DAY = 24 * HOUR;
+
 const CLOCK = Object.freeze({
   OFFSET_MIN: -180, // America/Sao_Paulo
   MEALS: [10, 14, 18, 22],
-  MEAL_WINDOW_H: 2,
+});
+
+// ═══ AGENDA DAS REFEIÇÕES (2026-10-24) ═══
+// Cada refeição aceita comida de BEFORE_H antes a AFTER_H depois do horário
+// (10 h: 08–12 h; 22 h: 20–24 h). A tolerância não pune. Terminada a
+// tolerância sem a refeição quitada, PENALTY é aplicado aos poucos durante
+// PENALTY_H (10 h: 12–14 h), pela fração exata do tempo — às 13 h vai metade,
+// às 14 h vai tudo e para. Comer no atraso para o resto (proporcional ao
+// crédito que faltava); o que já foi perdido não volta.
+//  • Saciedade: no atraso a agenda SUBSTITUI o decaimento natural (vale o mais
+//    forte dos dois, nunca a soma) — a mesma fome não é cobrada duas vezes.
+//  • Saúde: a penalidade aguda não desce abaixo de HEALTH_FLOOR; dali para
+//    baixo é a deterioração prolongada (EXPOSURE), que precisa de tempo.
+//  • Crédito: cada item tem `meal` (1 = refeição inteira, fração = lanche,
+//    0 = não conta — bebida não quita refeição). Porções se somam dentro da
+//    mesma refeição até DONE_AT; a sobra NÃO vai para a próxima.
+const MEALS = Object.freeze({
+  HOURS: CLOCK.MEALS,
+  BEFORE_H: 2,
+  AFTER_H: 2,
+  PENALTY_H: 2,
+  PENALTY: Object.freeze({ satiety: 25, energy: 10, stress: 10, health: 10 }),
+  HEALTH_FLOOR: 10,
+  DONE_AT: 1,
+});
+
+// ═══ SONO ═══ — `awakeH` são as horas acordado (dormir desconta 3 h por
+// hora; deitado acordado conta meia). Logout NÃO é dormir: o tempo segue.
+const SLEEP = Object.freeze({
+  WARN_H: 16, // aviso "Já estou há N horas acordado"
+  STRESS_PER_H: 0.12, // estresse extra por hora acima de WARN_H
+});
+
+// ═══ EXPOSIÇÃO ACUMULADA ═══ — horas × gravidade (0–1) em que o hóspede
+// esteve em estado crítico. Sobe enquanto dura, desce (RECOVER por hora) quando
+// passa. É o que separa "um dia ruim" (recuperável) de negligência: o dano de
+// fome prolongada, o desgaste da vida e as consequências de longo prazo saem
+// daqui, nunca de um limiar cruzado uma vez. A simulação nunca reprocessa um
+// intervalo (simAt), então nada é contado duas vezes.
+const EXPOSURE = Object.freeze({
+  KEYS: ["hunger", "sleep", "stress", "health"],
+  RECOVER: Object.freeze({ hunger: 0.5, sleep: 0.5, stress: 0.4, health: 0.25 }),
+  HOSPITAL_RECOVER: 3, // internado, a exposição desce 3× mais rápido (tratamento)
+  STARVE_AFTER: 8, // horas-críticas de fome antes do dano de inanição
+  STARVE_RAMP: 16,
+});
+
+// ═══ VIDA ═══ — orçamento de LIFE_DAYS dias equivalentes. Bem cuidado,
+// cada dia real gasta 1 (vida nominal = 2 anos reais); em estado crítico o
+// desgaste acelera (WEAR × gravidade). Idade cronológica = agora − born_at
+// (não entra na conta: o desgaste basal JÁ é 1 dia por dia). Comida e sono
+// reduzem o desgaste futuro, nunca devolvem o gasto.
+const LIFE = Object.freeze({
+  DAYS: 730,
+  WEAR: Object.freeze({ hunger: 12, sleep: 10, stress: 6, health: 10 }),
+  WARN_LEFT_DAYS: 30,
+});
+
+// ═══ FÔLEGO DE CORRIDA ═══ — segundos de corrida com o fôlego cheio e
+// segundos para encher de novo, pela condição (a sala aplica; ver
+// meuMundoMotion.js STAMINA). Energia geral ≠ fôlego: correr não gasta energia.
+const STAMINA = Object.freeze({
+  BASE_S: 45,
+  SPEED_S: 0.06, // + segundos por ponto de velocidade (0–1000)
+  MIN_S: 6,
+  REFILL_S: 20,
 });
 
 const ACTIVITIES = Object.freeze(["idle", "lying", "sleeping", "studying", "training", "working", "hospital"]);
@@ -71,9 +141,21 @@ const RULES = Object.freeze({
   FATAL_VITALITY: 20, // internado com vitalidade ≤ isto não resiste
   START_COINS: 500,
   WORK_COINS_H: 14,
-  MEAL_MISSED: { mood: -6, stress: 4 },
+  // Recuperação de saúde por hora (só com fome, sono, estresse e toxicidade
+  // sob controle); bem alimentado (saciedade > FED_AT e dieta ≥ 0) soma FED.
+  // Nenhuma comida devolve saúde de uma vez.
+  RECOVERY: { idle: 0.25, lying: 0.4, sleeping: 0.6, hospital: 1.8, FED: 0.2, FED_AT: 40 },
   // Gordo (BODY.FAT_AT): todo dano à saúde pesa 1,2× (pedido do Alex, 2026-10-21).
   FAT_HEALTH_MUL: 1.2,
+});
+
+// ═══ GELADEIRA ═══ — estoque por pessoa (mig 301). O Mercado do STATUS
+// compra para cá; comer é na geladeira da casa. Toda pessoa ganha STARTER
+// uma vez (para a primeira refeição não depender de ir ao mercado).
+const FRIDGE = Object.freeze({
+  STARTER: Object.freeze({ prato_feito: 2, frango_salada: 1, iogurte_aveia: 2, bowl_frutas: 1, agua_coco: 2, cafe: 2 }),
+  MAX_STACK: 99, // por item
+  MAX_BUY: 10, // por compra
 });
 
 // ═══ CORPO ═══ — desde 2026-10-21 o tipo físico NÃO se escolhe: sai daqui.
@@ -134,35 +216,36 @@ const PACE = Object.freeze({ NORMAL: 1, TIRED: 0.7, EXHAUSTED: 0.42 });
 // Saudável é caro, porcaria é barata (pedido do Alex).
 // kcal, sat (saciedade), sugar/sodium 0–10, nutri −10…+10 (qualidade),
 // protein (g), mood (prazer por 2 h), energy/stress instantâneos, tox
-// (toxicidade), effect = [id, horas].
+// (toxicidade), effect = [id, horas], meal = crédito de refeição (MEALS:
+// 1 quita, fração é lanche, 0 não conta).
 const I = (id, kind, name, price, o = {}) =>
-  Object.freeze({ id, kind, name, price, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, effect: null, ...o });
+  Object.freeze({ id, kind, name, price, meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, effect: null, ...o });
 
 const ITEMS = Object.freeze([
   // Comida saudável (cara)
-  I("salmao_legumes", "food", "Salmão grelhado com legumes", 58, { kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6 }),
-  I("frango_salada", "food", "Frango grelhado com salada", 42, { kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4 }),
-  I("prato_integral", "food", "Arroz integral, feijão, ovo e salada", 34, { kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
-  I("bowl_frutas", "food", "Bowl de frutas", 28, { kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6 }),
-  I("omelete_legumes", "food", "Omelete de legumes", 26, { kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
-  I("iogurte_aveia", "food", "Iogurte natural com aveia", 24, { kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
-  I("sopa_legumes", "food", "Sopa de legumes", 22, { kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3 }),
-  I("agua_coco", "drink", "Água de coco", 12, { kcal: 60, sat: 4, sugar: 2, nutri: 4, energy: 3 }),
+  I("salmao_legumes", "food", "Salmão grelhado com legumes", 58, { meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6 }),
+  I("frango_salada", "food", "Frango grelhado com salada", 42, { meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4 }),
+  I("prato_integral", "food", "Arroz integral, feijão, ovo e salada", 34, { meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
+  I("bowl_frutas", "food", "Bowl de frutas", 28, { meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6 }),
+  I("omelete_legumes", "food", "Omelete de legumes", 26, { meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
+  I("iogurte_aveia", "food", "Iogurte natural com aveia", 24, { meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
+  I("sopa_legumes", "food", "Sopa de legumes", 22, { meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3 }),
+  I("agua_coco", "drink", "Água de coco", 12, { meal: 0.1, kcal: 60, sat: 4, sugar: 2, nutri: 4, energy: 3 }),
   // Comida do dia a dia
-  I("prato_feito", "food", "Prato feito (arroz, feijão, bife e fritas)", 18, { kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
+  I("prato_feito", "food", "Prato feito (arroz, feijão, bife e fritas)", 18, { meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
   // Porcaria (barata)
-  I("hamburguer", "food", "Hambúrguer com fritas", 12, { kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
-  I("pizza", "food", "Pizza (3 fatias)", 10, { kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
-  I("cachorro_quente", "food", "Cachorro-quente", 8, { kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
-  I("coxinha", "food", "Coxinha", 5, { kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
-  I("chocolate", "food", "Barra de chocolate", 5, { kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
-  I("miojo", "food", "Miojo", 4, { kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
-  I("salgadinho", "food", "Salgadinho de pacote", 4, { kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
-  I("biscoito_recheado", "food", "Biscoito recheado", 3, { kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
+  I("hamburguer", "food", "Hambúrguer com fritas", 12, { meal: 1, kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
+  I("pizza", "food", "Pizza (3 fatias)", 10, { meal: 1, kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
+  I("cachorro_quente", "food", "Cachorro-quente", 8, { meal: 0.7, kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
+  I("coxinha", "food", "Coxinha", 5, { meal: 0.4, kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
+  I("chocolate", "food", "Barra de chocolate", 5, { meal: 0.2, kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
+  I("miojo", "food", "Miojo", 4, { meal: 0.6, kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
+  I("salgadinho", "food", "Salgadinho de pacote", 4, { meal: 0.2, kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
+  I("biscoito_recheado", "food", "Biscoito recheado", 3, { meal: 0.2, kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
   I("refrigerante", "drink", "Refrigerante (lata)", 3, { kcal: 150, sat: 3, sugar: 10, nutri: -7, mood: 7, energy: 2 }),
   // Suplementos
-  I("albumina", "supplement", "Albumina", 15, { kcal: 110, sat: 6, nutri: 3, protein: 25, effect: ["albumin", 4] }),
-  I("whey", "supplement", "Whey protein", 45, { kcal: 130, sat: 8, sugar: 1, nutri: 4, protein: 25, effect: ["whey", 4] }),
+  I("albumina", "supplement", "Albumina", 15, { meal: 0.2, kcal: 110, sat: 6, nutri: 3, protein: 25, effect: ["albumin", 4] }),
+  I("whey", "supplement", "Whey protein", 45, { meal: 0.2, kcal: 130, sat: 8, sugar: 1, nutri: 4, protein: 25, effect: ["whey", 4] }),
   I("pre_treino", "supplement", "Pré-treino", 30, { energy: 15, tox: 5, effect: ["preworkout", 3] }),
   I("creatina", "supplement", "Creatina", 35, { nutri: 1, effect: ["creatine", 24] }),
   I("multivitaminico", "supplement", "Multivitamínico", 25, { nutri: 2, effect: ["multivit", 24] }),
@@ -211,19 +294,87 @@ function atLocalHour(ms, h) {
   return midnight + h * HOUR - off;
 }
 
-/** Próximo instante > ms em que uma janela de refeição FECHA (12, 16, 20, 24 h). */
-function nextWindowClose(ms) {
-  for (const start of CLOCK.MEALS) {
-    const close = atLocalHour(ms, start + CLOCK.MEAL_WINDOW_H);
-    if (close > ms) return close;
+// ═══ REFEIÇÕES (instâncias) ═══
+/**
+ * As refeições de ontem, hoje e amanhã em volta de `ms`, em ordem. Cada uma:
+ * id (dia local do horário nominal + hora), `at` (horário), `open` (aceita a
+ * partir de), `tolEnd` (fim da tolerância, inclusive), `penEnd` (fim da
+ * penalidade). A das 22 h atravessa a meia-noite com o id do dia em que abriu.
+ */
+function mealInstances(ms) {
+  const out = [];
+  for (const dd of [-1, 0, 1]) {
+    const base = ms + dd * DAY;
+    const day = localParts(base).day;
+    MEALS.HOURS.forEach((h, i) => {
+      const at = atLocalHour(base, h);
+      out.push({
+        id: `${day}@${h}`,
+        i,
+        h,
+        day,
+        at,
+        open: at - MEALS.BEFORE_H * HOUR,
+        tolEnd: at + MEALS.AFTER_H * HOUR,
+        penEnd: at + (MEALS.AFTER_H + MEALS.PENALTY_H) * HOUR,
+      });
+    });
   }
-  return atLocalHour(ms + 24 * HOUR, CLOCK.MEALS[0] + CLOCK.MEAL_WINDOW_H);
+  return out;
 }
 
-/** Índice da janela de refeição aberta em `ms` (−1 = nenhuma). */
+const mealCredit = (s, id) => (s.meals.log[id] ? s.meals.log[id].c : 0);
+const mealDone = (s, id) => mealCredit(s, id) >= MEALS.DONE_AT - 1e-9;
+
+/**
+ * A refeição que um consumo em `ms` atende: a MAIS ANTIGA ainda pendente que
+ * aceita comida agora (tolerância ou atraso). Às 12 h, a das 10 h vem antes
+ * da das 14 h; encerrada a penalidade, a refeição não captura mais nada.
+ */
+function pendingMeal(s, ms) {
+  for (const m of mealInstances(ms)) if (ms >= m.open && ms < m.penEnd && !mealDone(s, m.id)) return m;
+  return null;
+}
+
+/** Refeição em atraso (penalidade correndo) em `ms` e a fração que ainda pesa (0–1). */
+function latePenalty(s, ms) {
+  for (const m of mealInstances(ms)) {
+    if (ms >= m.tolEnd && ms < m.penEnd) {
+      const f = 1 - Math.min(1, mealCredit(s, m.id) / MEALS.DONE_AT);
+      return f > 1e-9 ? { meal: m, f } : null;
+    }
+  }
+  return null;
+}
+
+/** Índice (0–3) da refeição cuja tolerância está aberta em `ms` (−1 = nenhuma; no limite vale a anterior). */
 function mealWindowAt(ms) {
-  const { hour } = localParts(ms);
-  return CLOCK.MEALS.findIndex((h) => hour >= h && hour < h + CLOCK.MEAL_WINDOW_H);
+  const m = mealInstances(ms).find((x) => ms >= x.open && ms <= x.tolEnd);
+  return m ? m.i : -1;
+}
+
+/** Próximo instante > ms em que alguma refeição abre, termina a tolerância ou a penalidade. */
+function nextMealBoundary(ms) {
+  let b = Infinity;
+  for (const m of mealInstances(ms)) for (const x of [m.open, m.tolEnd, m.penEnd]) if (x > ms && x < b) b = x;
+  return b;
+}
+
+/**
+ * Estado antigo (mig 295: `meals = { day, eaten[4] }`) → registro por id. As
+ * comidas de hoje marcadas viram refeição quitada; nada mais é inventado.
+ * Também preenche exposição e desgaste de quem nasceu antes de 2026-10-24.
+ */
+function normalize(s) {
+  if (!s.meals || !s.meals.log) {
+    const old = s.meals || {};
+    const log = {};
+    if (old.day && Array.isArray(old.eaten)) old.eaten.forEach((e, i) => e && (log[`${old.day}@${MEALS.HOURS[i]}`] = { c: 1 }));
+    s.meals = { log };
+  }
+  if (!s.exposure) s.exposure = { hunger: 0, sleep: 0, stress: 0, health: 0 };
+  if (!(s.wearDays >= 0)) s.wearDays = 0;
+  return s;
 }
 
 const effectOn = (s, id, t) => s.effects.some((e) => e.id === id && e.until > t);
@@ -292,7 +443,9 @@ function birth(seed, t) {
     activity: { kind: "idle", startedAt: t, until: null, bed: null, resume: null },
     effects: [],
     peaks: null, // preenchido logo abaixo (maior valor já alcançado)
-    meals: { day: localParts(t).day, eaten: [false, false, false, false] },
+    meals: { log: {} },
+    exposure: { hunger: 0, sleep: 0, stress: 0, health: 0 },
+    wearDays: 0, // dias equivalentes de vida já gastos (LIFE)
     dayAcc: emptyDay(localParts(t).day),
     status: "alive",
     deathCause: null,
@@ -332,6 +485,38 @@ function decay(s, k, dt) {
 }
 
 // ═══ UM PASSO ═══
+/** Gravidade (0–1) de cada estado crítico agora (EXPOSURE). */
+function severity(s) {
+  return {
+    hunger: clamp((15 - s.satiety) / 15, 0, 1),
+    sleep: clamp((s.awakeH - SLEEP.WARN_H) / 24, 0, 1),
+    stress: clamp((s.stress - 70) / 30, 0, 1),
+    health: clamp((40 - s.health) / 30, 0, 1),
+  };
+}
+
+/**
+ * Consequências de longo prazo pela exposição acumulada — todas com teto e
+ * todas somem quando a exposição desce (cuidar de novo recupera). Regras
+ * fictícias de jogo, não descrição médica.
+ *  • apetite: fome prolongada faz a saciedade descer mais devagar (nunca impede comer);
+ *  • metabolismo: o corpo gasta menos kcal (não mexe na saciedade: a agenda já cobra);
+ *  • ansiedade: o estresse sobe mais fácil;
+ *  • disciplina: estudo/treino rendem menos (o jogador continua no controle);
+ *  • fertilidade: o alvo desce; resistência: menos fôlego de corrida.
+ */
+function longTerm(s) {
+  const e = s.exposure;
+  return {
+    appetite: 1 - Math.min(0.25, e.hunger * 0.008),
+    metabolism: 1 - Math.min(0.15, e.hunger * 0.005),
+    anxiety: 1 + Math.min(0.3, (e.sleep + e.stress) * 0.01),
+    discipline: 1 - Math.min(0.25, e.sleep * 0.01 + e.stress * 0.005),
+    fertility: Math.min(25, 0.25 * (e.hunger + e.sleep + e.stress)),
+    endurance: 1 - Math.min(0.4, (e.sleep + e.hunger + e.health) * 0.01),
+  };
+}
+
 function admit(s, t, events, reason) {
   s.vitality = clamp(s.vitality - RULES.ADMIT_SEQUEL);
   if (s.vitality <= RULES.FATAL_VITALITY) return die(s, t, events, "complicacoes");
@@ -360,6 +545,12 @@ function stepState(s, t, dt, events, out) {
   const diabetesOpen = s.hasDiabetes && !hospital && !effectOn(s, "metformin", t);
   const hyperOpen = s.hasHypertension && !hospital && !effectOn(s, "losartan", t);
   const fp = fatPct(s);
+  // Refeição em atraso: fração da penalidade que ainda pesa (internado não paga).
+  const late = hospital ? null : latePenalty(s, t);
+  const pen = late ? late.f : 0;
+  const perH = (k) => (MEALS.PENALTY[k] / MEALS.PENALTY_H) * pen;
+  const sev = severity(s);
+  const lt = longTerm(s);
 
   // Energia
   let de = rate.energy;
@@ -368,13 +559,19 @@ function stepState(s, t, dt, events, out) {
     if (stim) de *= 0.5;
     else if (effectOn(s, "energy_drink", t) || effectOn(s, "coffee", t) || effectOn(s, "preworkout", t)) de *= 0.8;
     if (diabetesOpen) de -= 1;
-    if (s.satiety <= 0) de -= 2;
+    if (s.satiety <= 0 && !pen) de -= 2;
   }
+  de -= perH("energy");
   s.energy = clamp(s.energy + de * dt);
 
   // Saciedade (internado recebe soro: tende a 60)
   if (hospital) s.satiety += (60 - s.satiety) * Math.min(1, 0.5 * dt);
-  else s.satiety = clamp(s.satiety + rate.satiety * (0.8 + 0.4 * p.appetite) * dt);
+  else {
+    let dsat = rate.satiety * (0.8 + 0.4 * p.appetite) * lt.appetite;
+    // No atraso a agenda SUBSTITUI o decaimento natural: vale o mais forte.
+    if (pen) dsat = Math.min(dsat, -perH("satiety"));
+    s.satiety = clamp(s.satiety + dsat * dt);
+  }
 
   // Horas acordado
   if (eff === "sleeping" || hospital) s.awakeH = Math.max(0, s.awakeH - 3 * dt);
@@ -383,7 +580,7 @@ function stepState(s, t, dt, events, out) {
   else s.zeroEnergyH = 0;
 
   // Corpo: gasto calórico contínuo (a comida soma na hora de comer)
-  const burn = RULES.BASE_KCAL_H * (0.85 + 0.3 * p.metabolism) * Math.pow(weightKg(s) / 70, 0.75) * rate.kcal * dt;
+  const burn = RULES.BASE_KCAL_H * (0.85 + 0.3 * p.metabolism) * Math.pow(weightKg(s) / 70, 0.75) * rate.kcal * lt.metabolism * dt;
   s.fatKg = clamp(s.fatKg - burn / RULES.KCAL_PER_KG, 2, 140);
   const anab = effectOn(s, "anabolic", t);
   const protein = effectOn(s, "whey", t) ? 1.4 : effectOn(s, "albumin", t) ? 1.25 : 1;
@@ -393,7 +590,7 @@ function stepState(s, t, dt, events, out) {
 
   // Atributos (0–1000; ver ATTR)
   const focus = (s.energy < 20 ? 0.4 : 1) * (s.stress > 70 ? 0.6 : 1);
-  const disc = 0.7 + 0.6 * p.discipline;
+  const disc = (0.7 + 0.6 * p.discipline) * lt.discipline;
   const useful = usefulHours(s, kind, dt);
   if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * (stim ? 1.15 : 1));
   if (kind === "training") {
@@ -419,11 +616,12 @@ function stepState(s, t, dt, events, out) {
   // Estresse
   let ds = rate.stress;
   if (ds > 0) {
-    ds *= 0.7 + 0.6 * p.anxiety;
+    ds *= (0.7 + 0.6 * p.anxiety) * lt.anxiety;
     if (effectOn(s, "calm", t)) ds *= 0.5;
   }
-  if (s.awakeH > 20) ds += (s.awakeH - 20) * 0.15;
-  if (s.satiety <= 0 && !hospital) ds += 3;
+  if (s.awakeH > SLEEP.WARN_H) ds += (s.awakeH - SLEEP.WARN_H) * SLEEP.STRESS_PER_H;
+  if (s.satiety <= 0 && !hospital && !pen) ds += 3;
+  ds += perH("stress");
   if (s.energy <= 0.01 && stim) ds += 6;
   if (diabetesOpen || hyperOpen) ds += 0.5;
   s.stress = clamp(s.stress + ds * dt);
@@ -469,7 +667,9 @@ function stepState(s, t, dt, events, out) {
   const dmgMul = 1.2 - 0.4 * p.resilience;
   const dmg = {};
   if (!hospital) {
-    if (s.satiety <= 0) dmg.fome = 1.2;
+    // Inanição é deterioração PROLONGADA: só depois de horas críticas acumuladas.
+    const starve = clamp((s.exposure.hunger - EXPOSURE.STARVE_AFTER) / EXPOSURE.STARVE_RAMP, 0, 1);
+    if (starve > 0) dmg.fome = 1.2 * starve;
     if (s.energy <= 0.01 && stim) dmg.exaustao = 2.5;
     else if (s.zeroEnergyH > 0) dmg.exaustao = 1.5;
     if (s.awakeH > 40) dmg.sono = (s.awakeH - 40) * 0.08;
@@ -486,9 +686,12 @@ function stepState(s, t, dt, events, out) {
     total += dmg[k];
   }
   const ok = s.satiety > 25 && s.energy > 25 && s.stress < 70 && s.toxicity < 30;
-  let rec = hospital ? 1.8 : !ok ? 0 : eff === "sleeping" ? 0.6 : eff === "lying" ? 0.4 : 0.25;
+  const R = RULES.RECOVERY;
+  let rec = hospital ? R.hospital : !ok ? 0 : (R[eff] ?? R.idle) + (s.satiety > R.FED_AT && s.diet >= 0 ? R.FED : 0);
   if (effectOn(s, "multivit", t)) rec *= 1.3;
   s.health = Math.min(s.vitality, clamp(s.health + (rec - total) * dt));
+  // Penalidade aguda da refeição: exata pela fração do tempo, até o piso.
+  if (pen && s.health > MEALS.HEALTH_FLOOR) s.health = Math.max(MEALS.HEALTH_FLOOR, s.health - perH("health") * dt);
   if (s.health >= 80) s.vitality = clamp(s.vitality + (0.5 / 24) * dt);
 
   // Fertilidade: caminha para um alvo
@@ -499,6 +702,7 @@ function stepState(s, t, dt, events, out) {
   if (s.health < 50) ft -= (50 - s.health) * 0.6;
   if (s.hasDiabetes) ft -= 10;
   if (s.toxicity > 30) ft -= 15;
+  ft -= lt.fertility;
   s.fertility = clamp(s.fertility + (clamp(ft) - s.fertility) * Math.min(1, 0.02 * dt));
 
   // Humor: caminha para um alvo
@@ -513,6 +717,14 @@ function stepState(s, t, dt, events, out) {
     Math.min(25, pleasure);
   if (diabetesOpen || hyperOpen) mt -= 5;
   s.mood = clamp(s.mood + (clamp(mt) - s.mood) * Math.min(1, 0.25 * dt));
+
+  // Exposição (pela gravidade do começo do passo) e desgaste da vida.
+  let wear = 1;
+  for (const k of EXPOSURE.KEYS) {
+    s.exposure[k] = sev[k] > 0 ? s.exposure[k] + sev[k] * dt : Math.max(0, s.exposure[k] - EXPOSURE.RECOVER[k] * (hospital ? EXPOSURE.HOSPITAL_RECOVER : 1) * dt);
+    wear += LIFE.WEAR[k] * sev[k];
+  }
+  s.wearDays += (wear * dt) / 24;
 
   // Diário do dia
   const acc = s.dayAcc;
@@ -532,12 +744,15 @@ function stepState(s, t, dt, events, out) {
     if (s.health <= 0) return die(s, end, events, "infarto");
     if (!hospital) return admit(s, end, events, "infarto");
   }
+  if (s.wearDays >= LIFE.DAYS) return die(s, end, events, "velhice");
   if (s.health <= 0) {
     const cause = Object.entries(dmg).sort((a, b) => b[1] - a[1])[0];
     return die(s, end, events, cause ? cause[0] : "complicacoes");
   }
   if (!hospital && s.health <= RULES.HOSPITAL_AT) return admit(s, end, events, "saude");
-  if (hospital && s.health >= RULES.DISCHARGE_AT && s.toxicity < RULES.DISCHARGE_MAX_TOX) {
+  // Alta: saúde ≥ DISCHARGE_AT — ou perto do teto, quando a vitalidade (teto da
+  // saúde) já é menor que isso (antes, quem tinha vitalidade < 60 nunca saía).
+  if (hospital && s.health >= Math.min(RULES.DISCHARGE_AT, s.vitality - 5) && s.toxicity < RULES.DISCHARGE_MAX_TOX) {
     s.activity = { kind: "idle", startedAt: end, until: null, bed: null, resume: null };
     events.push({ at: end, kind: "hospital_out", data: { health: r2(s.health) } });
     return;
@@ -582,7 +797,7 @@ function nextBoundary(s, t, to) {
   // Grade GLOBAL de 15 min: simular em pedaços (a cada leitura) dá os mesmos
   // passos que simular de uma vez.
   const grid = Math.floor(t / STEP_MS) * STEP_MS + STEP_MS;
-  let b = Math.min(to, grid, nextWindowClose(t), atLocalHour(t + 24 * HOUR, 0));
+  let b = Math.min(to, grid, nextMealBoundary(t), atLocalHour(t + 24 * HOUR, 0));
   if (s.activity.until && s.activity.until > t) b = Math.min(b, s.activity.until);
   for (const e of s.effects) if (e.until > t) b = Math.min(b, e.until);
   return b;
@@ -601,19 +816,25 @@ function atBoundary(s, t, events, out) {
     }
     events.push({ at: t, kind: "activity_end", data: { kind: a.kind } });
   }
-  const { day, hour } = localParts(t);
-  // Janela que fechou agora (12, 16, 20 ou 0 h = a das 22 do dia anterior).
-  const closed = CLOCK.MEALS.findIndex((h) => Math.abs(((h + CLOCK.MEAL_WINDOW_H) % 24) - hour) < 1e-6);
-  if (closed >= 0 && !s.meals.eaten[closed] && s.activity.kind !== "hospital") {
-    s.mood = clamp(s.mood + RULES.MEAL_MISSED.mood);
-    s.stress = clamp(s.stress + RULES.MEAL_MISSED.stress);
-    s.dayAcc.mealsMissed += 1;
-    events.push({ at: t, kind: "meal_missed", data: { meal: CLOCK.MEALS[closed] } });
+  const { day } = localParts(t);
+  // Agenda: acabou a tolerância sem quitar (atrasou — a penalidade começa) ou
+  // acabou a penalidade (perdida de vez). A das 22 h fecha à meia-noite,
+  // ainda no diário do dia dela (a virada vem logo abaixo).
+  if (s.activity.kind !== "hospital") {
+    for (const m of mealInstances(t)) {
+      if (mealDone(s, m.id)) continue;
+      if (m.tolEnd === t) {
+        s.dayAcc.mealsMissed += 1;
+        events.push({ at: t, kind: "meal_missed", data: { meal: m.h, id: m.id } });
+      } else if (m.penEnd === t) events.push({ at: t, kind: "meal_lost", data: { meal: m.h, id: m.id } });
+    }
   }
   if (day !== s.dayAcc.day) {
     out.days.push(closeDay(s));
     s.dayAcc = emptyDay(day);
-    s.meals = { day, eaten: [false, false, false, false] };
+    // O registro das refeições guarda só os últimos dias.
+    const keep = localParts(t - 2 * DAY).day;
+    for (const id of Object.keys(s.meals.log)) if (id.slice(0, 10) < keep) delete s.meals.log[id];
   }
   routine(s, t, events, out);
 }
@@ -629,17 +850,22 @@ function routine(s, t, events, out) {
   const working = ROUTINE.KINDS.includes(a.kind) && a.until;
   const pausedAwake = a.kind === "lying" && a.resume && ROUTINE.KINDS.includes(a.resume.kind);
   if (!working && !pausedAwake) return;
-  // Comer: só na janela aberta, se ainda não comeu nela e se a carteira paga
-  // (também no descanso da rotina — dormindo, não).
-  const w = mealWindowAt(t);
-  if (w >= 0 && !s.meals.eaten[w] && s.satiety <= RULES.FULL_SATIETY && out.wallet) {
-    const buy = ROUTINE.MEALS.map((id) => ITEM_BY_ID.get(id)).find((it) => it.price <= out.wallet.coins);
-    if (buy) {
-      const r = consume(s, buy.id, t);
-      if (r.ok) {
-        out.wallet.coins -= buy.price;
-        out.coins -= buy.price;
-        events.push(...r.events, { at: t, kind: "routine_meal", data: { item: buy.id, price: buy.price } });
+  // Comer: com uma refeição pendente (no horário ou atrasada) — primeiro o que
+  // tem na geladeira, senão compra o que a carteira paga (também no descanso
+  // da rotina — dormindo, não).
+  if (pendingMeal(s, t) && s.satiety <= RULES.FULL_SATIETY) {
+    const own = out.pantry ? pantryMeal(out.pantry) : null;
+    const buy = own ? null : out.wallet ? ROUTINE.MEALS.map((id) => ITEM_BY_ID.get(id)).find((it) => it.price <= out.wallet.coins) : null;
+    const it = own || buy;
+    if (it) {
+      const r = consume(s, it.id, t);
+      if (r.ok && own) {
+        out.pantry[it.id] -= 1;
+        events.push(...r.events, { at: t, kind: "routine_meal", data: { item: it.id, price: 0, from: "fridge" } });
+      } else if (r.ok) {
+        out.wallet.coins -= it.price;
+        out.coins -= it.price;
+        events.push(...r.events, { at: t, kind: "routine_meal", data: { item: it.id, price: it.price } });
       }
     }
   }
@@ -665,6 +891,17 @@ function routine(s, t, events, out) {
   }
 }
 
+/** O melhor prato da geladeira para a rotina: o que mais quita, depois o mais saudável. */
+function pantryMeal(pantry) {
+  let best = null;
+  for (const [id, qty] of Object.entries(pantry)) {
+    const it = ITEM_BY_ID.get(id);
+    if (!it || !(qty > 0) || it.kind !== "food" || it.meal < 0.5) continue;
+    if (!best || it.meal > best.meal || (it.meal === best.meal && (it.nutri > best.nutri || (it.nutri === best.nutri && it.id < best.id)))) best = it;
+  }
+  return best;
+}
+
 /**
  * Avança a vida até `to` (ms). Muta `s`. Devolve os eventos, os dias
  * fechados e o saldo de moedas do período (ganho trabalhando − gasto pela
@@ -672,9 +909,11 @@ function routine(s, t, events, out) {
  * compra o que ela paga, e ela é atualizada aqui (quem simula aos pedaços
  * passa a mesma carteira — o resultado é o mesmo).
  */
-function simulate(s, to, wallet = null) {
+function simulate(s, to, wallet = null, pantry = null) {
+  normalize(s);
   const events = [];
-  const out = { days: [], coins: 0, wallet };
+  // `pantry` ({ itemId: qtd }) é a geladeira: a rotina come dela antes de comprar.
+  const out = { days: [], coins: 0, wallet, pantry };
   if (to <= s.simAt) return { events, days: out.days, coins: 0 };
   let t = s.simAt;
   const stop = Math.min(to, t + MAX_CATCHUP_MS);
@@ -695,6 +934,7 @@ const fail = (code) => ({ ok: false, code });
 
 /** Comer / tomar um item do catálogo. Não mexe na carteira (o serviço cobra). */
 function consume(s, itemId, t) {
+  normalize(s);
   const it = ITEM_BY_ID.get(itemId);
   if (!it) return fail("item");
   if (s.status !== "alive") return fail("dead");
@@ -726,15 +966,24 @@ function consume(s, itemId, t) {
   if (it.kind === "food") {
     if (it.nutri >= 5) s.dayAcc.healthy += 1;
     else if (it.nutri <= -5) s.dayAcc.junk += 1;
-    const w = mealWindowAt(t);
-    if (w >= 0 && !s.meals.eaten[w]) {
-      s.meals.eaten[w] = true;
-      s.dayAcc.mealsEaten += 1;
-      events.push({ at: t, kind: "meal", data: { meal: CLOCK.MEALS[w], item: it.id } });
+  }
+  // Crédito de refeição: vai para UMA refeição (a mais antiga pendente), até
+  // quitar; a sobra se perde (não adianta comer pela próxima).
+  let meal = null;
+  if (it.meal > 0) {
+    const m = pendingMeal(s, t);
+    if (m) {
+      const c = Math.min(MEALS.DONE_AT, mealCredit(s, m.id) + it.meal);
+      s.meals.log[m.id] = { c };
+      const late = t > m.tolEnd;
+      const done = c >= MEALS.DONE_AT - 1e-9;
+      if (done && !late) s.dayAcc.mealsEaten += 1;
+      meal = { id: m.id, at: m.h, credit: r2(c), done, late };
+      events.push({ at: t, kind: done ? "meal" : "meal_part", data: { meal: m.h, id: m.id, item: it.id, credit: r2(c), late } });
     }
   }
   events.push({ at: t, kind: "consume", data: { item: it.id } });
-  return { ok: true, item: it, events };
+  return { ok: true, item: it, events, meal };
 }
 
 /**
@@ -780,12 +1029,64 @@ function bodyHint(s) {
   return "normal";
 }
 
+/** Estado de uma refeição em `t`: eaten | upcoming | open | partial | late | missed. */
+function mealState(s, m, t) {
+  const c = mealCredit(s, m.id);
+  if (c >= MEALS.DONE_AT - 1e-9) return "eaten";
+  if (t < m.open) return "upcoming";
+  if (t <= m.tolEnd) return c > 0 ? "partial" : "open";
+  if (t < m.penEnd) return "late";
+  return "missed";
+}
+
+const mealView = (s, m, t) => ({
+  at: m.h,
+  id: m.id,
+  opensAt: new Date(m.open).toISOString(),
+  closesAt: new Date(m.tolEnd).toISOString(),
+  penaltyEndsAt: new Date(m.penEnd).toISOString(),
+  credit: r2(mealCredit(s, m.id)),
+  state: mealState(s, m, t),
+});
+
 function mealsToday(s, t) {
-  const { hour } = localParts(t);
-  return CLOCK.MEALS.map((h, i) => ({
-    at: h,
-    state: s.meals.eaten[i] ? "eaten" : hour >= h + CLOCK.MEAL_WINDOW_H ? "missed" : hour >= h ? "open" : "upcoming",
-  }));
+  const today = localParts(t).day;
+  return mealInstances(t)
+    .filter((m) => m.day === today)
+    .map((m) => mealView(s, m, t));
+}
+
+/** Fôlego de corrida pela condição (STAMINA): segundos de corrida e de recarga. */
+function stamina(s) {
+  let k = longTerm(s).endurance;
+  if (s.energy < 30) k *= 0.5 + s.energy / 60;
+  if (s.health < 50) k *= 0.4 + (0.6 * s.health) / 50;
+  if (s.satiety <= 5) k *= 0.7;
+  const maxS = Math.max(STAMINA.MIN_S, (STAMINA.BASE_S + s.speed * STAMINA.SPEED_S) * k);
+  return { maxS: r2(maxS), refillS: r2(STAMINA.REFILL_S / Math.max(0.35, k)) };
+}
+
+/**
+ * Necessidades de agora, da mais urgente para a mais leve (o cliente escolhe
+ * qual falar e combina as duas primeiras). `level`: 1 emergência/hospital,
+ * 2 saúde ou exaustão crítica, 3 fome intensa, 4 sono, 5 alertas leves.
+ */
+function needs(s, t) {
+  if (s.status !== "alive") return [];
+  const a = s.activity.kind;
+  if (a === "hospital") return [{ id: "hospital", level: 1 }];
+  const out = [];
+  const asleep = a === "sleeping";
+  if (s.health <= RULES.HOSPITAL_AT + 10) out.push({ id: "unwell", level: 2 });
+  if (s.energy < 10 && !asleep) out.push({ id: "exhausted", level: 2 });
+  const late = latePenalty(s, t);
+  if (s.satiety < 12 || late) out.push({ id: "starving", level: 3, meal: late ? late.meal.h : null });
+  else if (s.satiety < 30) out.push({ id: "hungry", level: 5 });
+  if (s.awakeH >= SLEEP.WARN_H && !asleep) out.push({ id: "sleep", level: 4, hours: Math.floor(s.awakeH) });
+  if (s.energy >= 10 && s.energy < 25 && !asleep) out.push({ id: "tired", level: 5 });
+  if (s.stress >= 80) out.push({ id: "stressed", level: 5 });
+  if (LIFE.DAYS - s.wearDays <= LIFE.WARN_LEFT_DAYS) out.push({ id: "aging", level: 5 });
+  return out.sort((x, y) => x.level - y.level);
 }
 
 /** Projeção para a rede (cards): tudo arredondado, nada interno. */
@@ -857,6 +1158,22 @@ function snapshot(s, t) {
       .filter((e) => e.until > t && e.id !== "pleasure")
       .map((e) => ({ id: e.id, remainingH: r2((e.until - t) / HOUR) })),
     meals: mealsToday(s, t),
+    // A refeição que um prato atenderia agora (pode ser de ontem, em atraso).
+    pendingMeal: (() => {
+      const m = pendingMeal(s, t);
+      return m ? mealView(s, m, t) : null;
+    })(),
+    sleep: { awakeHours: r2(s.awakeH), warnAt: SLEEP.WARN_H },
+    exposure: Object.fromEntries(EXPOSURE.KEYS.map((k) => [k, r2(s.exposure[k])])),
+    life: {
+      budgetDays: LIFE.DAYS,
+      wearDays: r2(s.wearDays),
+      leftDays: r2(Math.max(0, LIFE.DAYS - s.wearDays)),
+      // Dias de vida gastos por dia real agora (1 = bem cuidado).
+      wearRate: r2(EXPOSURE.KEYS.reduce((n, k) => n + LIFE.WEAR[k] * severity(s)[k], 1)),
+    },
+    stamina: stamina(s),
+    needs: needs(s, t),
     today: { ...dayCondition(s.dayAcc), day: s.dayAcc.day, hours: Object.fromEntries(Object.entries(s.dayAcc.hours).map(([k, v]) => [k, r2(v)])) },
     pace: pace(s),
   };
@@ -869,7 +1186,8 @@ function publicCatalog() {
     activityHours: ACTIVITY_HOURS,
     attributes: { max: ATTR.MAX, usefulH: ATTR.USEFUL_H, floor: ATTR.FLOOR },
     routine: { meals: ROUTINE.MEALS, sleepAtEnergy: ROUTINE.SLEEP_AT_ENERGY, restAtStress: ROUTINE.REST_AT_STRESS },
-    clock: { offsetMin: CLOCK.OFFSET_MIN, meals: CLOCK.MEALS, mealWindowH: CLOCK.MEAL_WINDOW_H },
+    clock: { offsetMin: CLOCK.OFFSET_MIN, meals: CLOCK.MEALS, beforeH: MEALS.BEFORE_H, afterH: MEALS.AFTER_H, penaltyH: MEALS.PENALTY_H },
+    mealPenalty: MEALS.PENALTY,
   };
 }
 
@@ -880,6 +1198,12 @@ module.exports = {
   ACTIVITY_HOURS,
   RATES,
   RULES,
+  FRIDGE,
+  MEALS,
+  SLEEP,
+  EXPOSURE,
+  LIFE,
+  STAMINA,
   BODY,
   ATTR,
   ROUTINE,
@@ -899,4 +1223,10 @@ module.exports = {
   localParts,
   atLocalHour,
   mealWindowAt,
+  mealInstances,
+  pendingMeal,
+  latePenalty,
+  normalize,
+  stamina,
+  needs,
 };

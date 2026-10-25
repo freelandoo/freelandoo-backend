@@ -45,6 +45,10 @@ function rowToState(r) {
     },
     effects: r.effects || [],
     meals: r.meals,
+    // mig 301: NULL = hóspede de antes — viveu bem cuidado até o último
+    // instante simulado (1 dia de vida por dia); exposição começa em zero.
+    exposure: r.exposure || { hunger: 0, sleep: 0, stress: 0, health: 0 },
+    wearDays: r.wear_days != null ? r.wear_days : Math.max(0, (ms(r.sim_at) - ms(r.born_at)) / 86400000),
     dayAcc: r.day_acc,
     status: r.status,
     deathCause: r.death_cause,
@@ -60,6 +64,7 @@ const COLS = [
   "awake_h", "zero_energy_h", "diet", "intelligence", "strength", "speed", "fertility", "attr_peaks",
   "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
+  "wear_days", "exposure",
 ];
 
 function values(s) {
@@ -73,6 +78,7 @@ function values(s) {
     a.resume ? JSON.stringify(a.resume) : null,
     JSON.stringify(s.effects), JSON.stringify(s.meals), JSON.stringify(s.dayAcc),
     s.status, iso(s.diedAt), s.deathCause, iso(s.simAt),
+    s.wearDays, JSON.stringify(s.exposure),
   ];
 }
 
@@ -212,6 +218,50 @@ class MeuMundoLifeStorage {
 
   static async setCoins(c, idUser, coins) {
     await c.query(`UPDATE tb_mm_wallet SET coins = $2, updated_at = NOW() WHERE id_user = $1`, [idUser, coins]);
+  }
+
+  // ═══ GELADEIRA (mig 301) ═══ — estoque por pessoa; quem chama já travou a carteira.
+
+  /** Estoque { itemId: qtd } (só o que tem). */
+  static async pantry(c, idUser) {
+    const r = await c.query(`SELECT item_id, qty FROM tb_mm_pantry WHERE id_user = $1 AND qty > 0`, [idUser]);
+    return Object.fromEntries(r.rows.map((x) => [x.item_id, x.qty]));
+  }
+
+  /** Grava as quantidades que mudaram (`next` inteiro × `prev`). */
+  static async savePantry(c, idUser, prev, next) {
+    for (const [id, qty] of Object.entries(next)) {
+      if ((prev[id] || 0) === qty) continue;
+      await c.query(
+        `INSERT INTO tb_mm_pantry (id_user, item_id, qty) VALUES ($1, $2, $3)
+         ON CONFLICT (id_user, item_id) DO UPDATE SET qty = EXCLUDED.qty, updated_at = NOW()`,
+        [idUser, id, qty]
+      );
+    }
+  }
+
+  /** Kit inicial: devolve true só na primeira vez (marca na carteira). */
+  static async claimPantrySeed(c, idUser) {
+    const r = await c.query(
+      `UPDATE tb_mm_wallet SET pantry_seeded_at = NOW() WHERE id_user = $1 AND pantry_seeded_at IS NULL RETURNING 1`,
+      [idUser]
+    );
+    return r.rowCount > 0;
+  }
+
+  /** Resultado gravado de um consumo com esta chave (ou null). */
+  static async consumeKey(c, idUser, key) {
+    const r = await c.query(`SELECT result FROM tb_mm_consume_key WHERE id_user = $1 AND key = $2`, [idUser, key]);
+    return r.rows[0] ? r.rows[0].result : null;
+  }
+
+  static async saveConsumeKey(c, idUser, key, result) {
+    await c.query(
+      `INSERT INTO tb_mm_consume_key (id_user, key, result) VALUES ($1, $2, $3) ON CONFLICT (id_user, key) DO NOTHING`,
+      [idUser, key, JSON.stringify(result)]
+    );
+    // Limpeza preguiçosa das chaves velhas desta pessoa.
+    await c.query(`DELETE FROM tb_mm_consume_key WHERE id_user = $1 AND created_at < NOW() - INTERVAL '2 days'`, [idUser]);
   }
 }
 

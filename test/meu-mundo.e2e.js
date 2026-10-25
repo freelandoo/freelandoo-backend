@@ -198,7 +198,7 @@ async function expectViolation(pool, sql, params, label) {
   check("o bairro 02 não vê ninguém do 01", C.room.state.players.size === 1);
   const pB = () => A.room.state.players.get(B.room.sessionId);
   const keysB = Object.keys(pB().toJSON ? pB().toJSON() : pB());
-  check("estado só traz campos públicos", keysB.sort().join() === "body,car,facing,house,move,name,pace,x,z", keysB.join());
+  check("estado só traz campos públicos", keysB.sort().join() === "body,car,facing,house,move,name,pace,st,wd,x,z", keysB.join());
 
   // Movimento validado no servidor: intenção absurda não vira teleporte.
   const x0 = pB().x;

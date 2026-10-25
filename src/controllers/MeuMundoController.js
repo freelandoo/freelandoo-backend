@@ -92,6 +92,11 @@ async function lifeConsume(req, res) {
   return reply(res, await MeuMundoLifeService.consume(req.user.id_user, req.body?.item));
 }
 
+// Geladeira (mig 301): o Mercado compra para a geladeira; comer é na casa (sala).
+async function lifeBuy(req, res) {
+  return reply(res, await MeuMundoLifeService.buy(req.user.id_user, req.body?.item, req.body?.qty ?? 1));
+}
+
 async function lifeNewcomer(req, res) {
   return reply(res, await MeuMundoLifeService.newcomer(req.user.id_user));
 }
@@ -134,6 +139,7 @@ module.exports = {
   hospital,
   lifeActivity,
   lifeConsume,
+  lifeBuy,
   lifeNewcomer,
   skins,
   skinBuy,

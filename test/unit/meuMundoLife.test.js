@@ -244,6 +244,11 @@ test("permanência: força e velocidade param em 60% do pico; inteligência em 9
     L.simulate(s, t, { coins: 1e6 });
     s.satiety = 90; // o teste alimenta: aqui só importa o tempo sem treinar
     s.health = 100;
+    // aqui só os atributos: o resto da vida é reposto (e a velhice fica de fora)
+    Object.assign(s, { wearDays: 0, energy: 100, awakeH: 0, stress: 20, vitality: 100, zeroEnergyH: 0 });
+    s.exposure = { hunger: 0, sleep: 0, stress: 0, health: 0 };
+    s.meals.log = {};
+    s.activity = { kind: "idle", startedAt: t, until: null, bed: null, resume: null };
   }
   assert.ok(Math.abs(s.strength - 480) < 1, `força ${s.strength}`);
   assert.ok(Math.abs(s.speed - 300) < 1, `velocidade ${s.speed}`);
@@ -285,13 +290,15 @@ test("hospital trata e dá alta com saúde ≥ 60, e cada internação deixa seq
   const s = fresh();
   s.health = 16;
   s.satiety = 0;
+  s.exposure.hunger = 40; // fome PROLONGADA (a inanição só vem depois de horas críticas)
   const { events } = L.simulate(s, T0 + 2 * H);
   assert.ok(events.some((e) => e.kind === "hospital_in"));
   assert.equal(s.activity.kind, "hospital");
   assert.equal(s.vitality, 100 - L.RULES.ADMIT_SEQUEL);
   assert.equal(L.consume(s, "pizza", s.simAt).code, "hospital");
   assert.equal(L.startActivity(s, "studying", 2, s.simAt).code, "hospital");
-  const r = L.simulate(s, T0 + 60 * H);
+  // (sem ninguém alimentar depois da alta ele voltaria a piorar: confere no dia da alta)
+  const r = L.simulate(s, T0 + 30 * H);
   const out = r.events.find((e) => e.kind === "hospital_out");
   assert.ok(out, "teve alta");
   assert.ok(out.data.health >= 60, `saúde na alta ${out.data.health}`);
@@ -303,6 +310,7 @@ test("internado com a vitalidade no fim não resiste", () => {
   s.vitality = 25;
   s.health = 16;
   s.satiety = 0;
+  s.exposure.hunger = 40; // fome PROLONGADA (a inanição só vem depois de horas críticas)
   L.simulate(s, T0 + 2 * H);
   assert.equal(s.status, "dead");
   assert.equal(s.deathCause, "complicacoes");
@@ -400,7 +408,8 @@ test("gordo: os danos à saúde pesam 1,2×", () => {
   fat.fatKg = fat.leanKg; // 50% de gordura
   assert.equal(L.bodyHint(fat), "fat");
   for (const s of [thin, fat]) {
-    s.satiety = 0; // fome: dano contínuo
+    s.satiety = 0; // fome prolongada: dano contínuo
+    s.exposure.hunger = 40;
     s.health = 80;
     s.diabetesRisk = 0;
     s.bpRisk = 0;

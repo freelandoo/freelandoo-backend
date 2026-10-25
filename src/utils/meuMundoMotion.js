@@ -142,4 +142,39 @@ function step(body, intent, dt, boxes, limit, profile = null) {
   return intent.run && run > walk && speed > (walk + run) / 2 - 0.4 ? 2 : 1;
 }
 
-module.exports = { MOTION, resolveCircle, sanitizeIntent, step, paceSpeeds };
+// ═══ FÔLEGO DE CORRIDA (mm3d-28) ═══ — a sala gasta o fôlego enquanto a
+// pessoa corre DE VERDADE (pediu corrida e está se movendo) e devolve quando
+// anda ou para. Vazio, ela só anda até recuperar RECOVER_AT do fôlego. Não há
+// tranco: a aceleração de `step` leva da corrida à caminhada aos poucos. Os
+// segundos vêm da vida (meuMundoLife.js `stamina`: debilitado corre menos e
+// recupera mais devagar). Só a sala calcula; o cliente lê `wd` do estado e
+// não prevê corrida enquanto ele estiver ligado (nada de física em dobro).
+const STAMINA = Object.freeze({ RECOVER_AT: 0.3, DEFAULT: Object.freeze({ maxS: 45, refillS: 20 }) });
+
+function freshStamina(cfg = STAMINA.DEFAULT) {
+  return { left: cfg.maxS, maxS: cfg.maxS, refillS: cfg.refillS, winded: false };
+}
+
+/** A vida mudou o fôlego: mantém a fração cheia. */
+function setStamina(st, cfg) {
+  if (!cfg || !(cfg.maxS > 0) || !(cfg.refillS > 0)) return;
+  const frac = st.maxS > 0 ? st.left / st.maxS : 1;
+  st.maxS = cfg.maxS;
+  st.refillS = cfg.refillS;
+  st.left = Math.min(st.maxS, frac * st.maxS);
+}
+
+/** Avança o fôlego e devolve a intenção valendo (sem corrida quando sem fôlego). */
+function staminaIntent(st, intent, dt) {
+  const moving = intent.x !== 0 || intent.z !== 0;
+  if (intent.run && moving && !st.winded) {
+    st.left = Math.max(0, st.left - dt);
+    if (st.left <= 0) st.winded = true;
+    return intent;
+  }
+  st.left = Math.min(st.maxS, st.left + dt * (st.maxS / st.refillS));
+  if (st.winded && st.left >= STAMINA.RECOVER_AT * st.maxS) st.winded = false;
+  return intent.run ? { x: intent.x, z: intent.z, run: false } : intent;
+}
+
+module.exports = { MOTION, STAMINA, resolveCircle, sanitizeIntent, step, paceSpeeds, freshStamina, setStamina, staminaIntent };
