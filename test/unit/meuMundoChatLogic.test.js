@@ -69,6 +69,16 @@ test("não lidas do Global: conta só as dos outros com o painel fechado", { ski
   assert.equal(L.bumpUnread(3, { mine: false }, true), 0);
 });
 
+test("balão: mesmo corte do back (espaços colapsados, 90 com …)", { skip }, async () => {
+  const L = await load();
+  const back = require("../../src/utils/meuMundoChat");
+  assert.equal(L.BUBBLE_MAX, back.BUBBLE_MAX);
+  const cases = ["  oi   tudo\n\nbem  ", "", "a".repeat(89), "a".repeat(90), "a".repeat(91), `${"palavra ".repeat(20)}fim`, "\t x \t"];
+  for (const c of cases) assert.equal(L.bubbleText(c), back.bubbleText(c), JSON.stringify(c));
+  assert.equal(L.bubbleText("a".repeat(120)).length, 90);
+  assert.ok(L.bubbleText("a".repeat(120)).endsWith("…"));
+});
+
 test("id do cliente é UUID (o /conversations recusa outro formato)", { skip }, async () => {
   const L = await load();
   assert.match(L.newClientId(), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
