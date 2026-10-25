@@ -37,8 +37,9 @@ const BED_REACH = 1.9;
 // Altura do colchão: a pose "Lie"/"Sleep" (pipeline/build_rest.py) já traz o
 // corpo nela; o servidor põe o personagem no chão, no ponto de deitar.
 const BED_TOP = 0.48;
-// Geladeira (mm3d-28): abre a até FRIDGE_REACH do ponto em frente à porta.
-const FRIDGE_REACH = 1.4;
+// Geladeira (mm3d-28): abre a até FRIDGE_REACH do ponto em frente à porta
+// (o cliente oferece a 1,5 m; a folga cobre a latência de quem chega de lado).
+const FRIDGE_REACH = 1.7;
 const EPS = 1e-6;
 
 // ═══ MÓVEIS ═══ — w × d × h (m), frente no −Z local. `seats`: pontos onde o
