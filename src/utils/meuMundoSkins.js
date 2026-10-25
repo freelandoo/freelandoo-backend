@@ -5,7 +5,9 @@
 //             que sai da vida (meuMundoLife.js, bodyHint). Não se compra nem
 //             se escolhe.
 //   SKIN      outro visual inteiro (ex.: o Sergio), comprado com as moedas do
-//             jogo. Vestida, o avatar é o dela, em qualquer condição.
+//             jogo — ou, se `currency: "polens"`, EXCLUSIVA de Poléns (mm3d-30:
+//             a carteira de Poléns da Freelandoo; nunca se paga com moedas).
+//             Vestida, o avatar é o dela, em qualquer condição.
 //
 // O cliente espelha os ids em features/meu-mundo/skins.ts (arte, fundo e
 // nome visível); quem vale aqui é o PREÇO e o corpo de cada skin. Skin nova =
@@ -16,9 +18,9 @@ const STANDARD = "standard";
 
 const CATALOG = Object.freeze([
   // O personagem padrão: de todos, de graça, corpo = condição física.
-  Object.freeze({ id: STANDARD, kind: "standard", name: "Padrão", price: 0, body: null }),
+  Object.freeze({ id: STANDARD, kind: "standard", name: "Padrão", price: 0, currency: "coins", body: null }),
   // O lutador da RA da Casa Views (mm3d-10).
-  Object.freeze({ id: "sergio", kind: "skin", name: "Sergio", price: 1000, body: "sergio" }),
+  Object.freeze({ id: "sergio", kind: "skin", name: "Sergio", price: 1000, currency: "coins", body: "sergio" }),
 ]);
 
 const BY_ID = new Map(CATALOG.map((s) => [s.id, s]));
@@ -31,8 +33,11 @@ function avatarBody(condition, skin) {
   return (s && s.body) || condition || "normal";
 }
 
-/** Quanto a pessoa paga: administrador adquire de graça. */
-const costFor = (skin, admin) => (admin ? 0 : skin.price);
+/**
+ * Quanto a pessoa paga: administrador adquire de graça o que é em moedas do
+ * jogo. Poléns são dinheiro de verdade — exclusiva de Poléns cobra de todos.
+ */
+const costFor = (skin, admin) => (admin && skin.currency !== "polens" ? 0 : skin.price);
 
 /** Catálogo para a rede, com o que a pessoa tem, o que está vestido e quanto custa para ela. */
 function publicCatalog(owned, equipped, admin = false) {
@@ -42,6 +47,7 @@ function publicCatalog(owned, equipped, admin = false) {
     kind: s.kind,
     name: s.name,
     price: s.price,
+    currency: s.currency,
     cost: costFor(s, admin),
     owned: s.kind === "standard" || mine.has(s.id),
     equipped: s.id === (skinById(equipped) ? equipped : STANDARD),

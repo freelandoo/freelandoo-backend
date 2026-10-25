@@ -1860,6 +1860,14 @@ function applyLife(userId, life) {
   return true;
 }
 
+/**
+ * Notificação nova do sino (mm3d-30, MeuMundoInboxService): vai pela sala em
+ * que a pessoa está, como o "life". Fora do jogo, fica só no histórico.
+ */
+function pushNotice(userId, notice) {
+  return presence.send(userId, "notice", notice);
+}
+
 /** Posição do usuário segundo a sala em que ele está (null = não está). */
 function positionIn(scene, id, userId) {
   const room = scene === "nb" ? roomsByNeighborhood.get(id) : scene === "center" ? centerRooms.get(id) : roomsByHouse.get(id);
@@ -1909,6 +1917,7 @@ module.exports = {
   dropFromHouse,
   positionIn,
   applyLife,
+  pushNotice,
   stowRide,
   addRideToHouse,
   takeRideOut,

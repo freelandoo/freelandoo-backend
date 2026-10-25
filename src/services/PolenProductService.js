@@ -8,6 +8,8 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PolenProductService");
 
+const RETURN_PATHS = Object.freeze({ default: "/loja-polens", "meu-mundo": "/meu-mundo/admin" });
+
 function clampInt(value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback = 0 } = {}) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -150,19 +152,23 @@ class PolenProductService {
       if (totalPolens <= 0) return { error: "Produto sem Poléns configurados" };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
+      // Retorno: a Loja de Polén, ou o Meu Mundo quando a compra começou no jogo
+      // (mm3d-30). Lista fechada — o navegador nunca escolhe a URL.
+      const back = RETURN_PATHS[body.return_to] || RETURN_PATHS.default;
       const session = await PaymentGateway.createCheckout({
         amount_cents: amount,
         currency: "BRL",
         productName: `Loja de Polén - ${product.name}`,
         customerEmail: user.email || undefined,
         clientReferenceId: user.id_user,
-        successUrl: `${frontend}/loja-polens?polens_checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${frontend}/loja-polens?polens_checkout=cancel`,
+        successUrl: `${frontend}${back}?polens_checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${frontend}${back}?polens_checkout=cancel`,
         metadata: {
           type: "polen_purchase",
           user_id: user.id_user,
           product_id: product.id,
           polens_amount: String(totalPolens),
+          ...(back !== RETURN_PATHS.default ? { return_to: String(body.return_to) } : {}),
           ...(body.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
         },
       });
@@ -242,6 +248,13 @@ class PolenProductService {
       }
 
       await client.query("COMMIT");
+      // Recibo no correio do Meu Mundo (mm3d-30): depois do COMMIT, idempotente
+      // pela sessão e sem derrubar o webhook se falhar.
+      await require("./MeuMundoInboxService").polensCredited(meta.user_id, {
+        sessionId: session.id,
+        polens: polensCredit,
+        productName: product.name,
+      });
       return { purchase, wallet: credit.wallet, transaction: credit.transaction };
     } catch (err) {
       await client.query("ROLLBACK");

@@ -219,7 +219,7 @@ const PACE = Object.freeze({ NORMAL: 1, TIRED: 0.7, EXHAUSTED: 0.42 });
 // (toxicidade), effect = [id, horas], meal = crédito de refeição (MEALS:
 // 1 quita, fração é lanche, 0 não conta).
 const I = (id, kind, name, price, o = {}) =>
-  Object.freeze({ id, kind, name, price, meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, effect: null, ...o });
+  Object.freeze({ id, kind, name, price, currency: "coins", meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, effect: null, ...o });
 
 const ITEMS = Object.freeze([
   // Comida saudável (cara)

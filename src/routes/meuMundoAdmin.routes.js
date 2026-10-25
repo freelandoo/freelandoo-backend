@@ -54,6 +54,24 @@ router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewc
 router.get("/skins", ...admin, asyncHandler(MeuMundoController.skins));
 router.post("/skins/:id/buy", ...admin, asyncHandler(MeuMundoController.skinBuy));
 router.post("/skins/:id/equip", ...admin, asyncHandler(MeuMundoController.skinEquip));
+// Sino e correio interno (mig 302, mm3d-30): histórico, leitura, presentes.
+router.get("/notices", ...admin, asyncHandler(MeuMundoController.notices));
+router.get("/notices/summary", ...admin, asyncHandler(MeuMundoController.noticesSummary));
+router.post("/notices/read", ...admin, asyncHandler(MeuMundoController.noticesRead));
+router.get("/mail", ...admin, asyncHandler(MeuMundoController.mail));
+router.post("/mail/read-all", ...admin, asyncHandler(MeuMundoController.mailReadAll));
+router.get("/mail/prefs", ...admin, asyncHandler(MeuMundoController.mailPrefs));
+router.post("/mail/prefs", ...admin, asyncHandler(MeuMundoController.mailPrefsSet));
+// Comunicado / promoção / presente da plataforma. Fica no Administrator mesmo
+// quando o jogo abrir ao público (esta é a única rota do correio que envia).
+router.post("/mail/send", ...admin, asyncHandler(MeuMundoController.mailSend));
+router.get("/mail/:id", ...admin, asyncHandler(MeuMundoController.mailOpen));
+router.post("/mail/:id/claim", ...admin, asyncHandler(MeuMundoController.mailClaim));
+// Aba Itens (inventário real) e os dois saldos (moedas do jogo + Poléns da Freelandoo).
+router.get("/inventory", ...admin, asyncHandler(MeuMundoController.inventory));
+router.get("/wallets", ...admin, asyncHandler(MeuMundoController.wallets));
+// Situação de uma compra de Poléns iniciada no jogo (o crédito é do webhook).
+router.get("/polens/purchase/:session", ...admin, asyncHandler(MeuMundoController.polensPurchase));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;

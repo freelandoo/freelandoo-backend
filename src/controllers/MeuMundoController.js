@@ -1,5 +1,6 @@
 const MeuMundoService = require("../services/MeuMundoService");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
+const MeuMundoInboxService = require("../services/MeuMundoInboxService");
 const { HOSPITAL_INTERIOR, bedFor } = require("../utils/meuMundoHospital");
 const { RULES } = require("../utils/meuMundoLife");
 
@@ -94,7 +95,48 @@ async function lifeConsume(req, res) {
 
 // Geladeira (mig 301): o Mercado compra para a geladeira; comer é na casa (sala).
 async function lifeBuy(req, res) {
-  return reply(res, await MeuMundoLifeService.buy(req.user.id_user, req.body?.item, req.body?.qty ?? 1));
+  return reply(res, await MeuMundoLifeService.buy(req.user.id_user, req.body?.item, req.body?.qty ?? 1, req.body?.key));
+}
+
+// Sino, correio, presentes, itens e saldos (mig 302, mm3d-30).
+async function notices(req, res) {
+  return reply(res, await MeuMundoInboxService.notices(req.user.id_user, req.query || {}));
+}
+async function noticesSummary(req, res) {
+  return reply(res, await MeuMundoInboxService.summary(req.user.id_user));
+}
+async function noticesRead(req, res) {
+  return reply(res, await MeuMundoInboxService.readNotices(req.user.id_user, req.body || {}));
+}
+async function mail(req, res) {
+  return reply(res, await MeuMundoInboxService.mail(req.user.id_user, req.query || {}));
+}
+async function mailOpen(req, res) {
+  return reply(res, await MeuMundoInboxService.openMail(req.user.id_user, req.params.id));
+}
+async function mailReadAll(req, res) {
+  return reply(res, await MeuMundoInboxService.readAllMail(req.user.id_user));
+}
+async function mailClaim(req, res) {
+  return reply(res, await MeuMundoLifeService.claimGift(req.user.id_user, req.params.id));
+}
+async function mailPrefs(req, res) {
+  return reply(res, await MeuMundoInboxService.prefs(req.user.id_user));
+}
+async function mailPrefsSet(req, res) {
+  return reply(res, await MeuMundoInboxService.setPrefs(req.user.id_user, req.body || {}));
+}
+async function mailSend(req, res) {
+  return reply(res, await MeuMundoInboxService.send(req.user.id_user, req.body || {}));
+}
+async function inventory(req, res) {
+  return reply(res, await MeuMundoLifeService.inventory(req.user.id_user));
+}
+async function wallets(req, res) {
+  return reply(res, await MeuMundoLifeService.wallets(req.user.id_user));
+}
+async function polensPurchase(req, res) {
+  return reply(res, await MeuMundoInboxService.polensPurchase(req.user.id_user, req.params.session));
 }
 
 async function lifeNewcomer(req, res) {
@@ -140,6 +182,19 @@ module.exports = {
   lifeActivity,
   lifeConsume,
   lifeBuy,
+  notices,
+  noticesSummary,
+  noticesRead,
+  mail,
+  mailOpen,
+  mailReadAll,
+  mailClaim,
+  mailPrefs,
+  mailPrefsSet,
+  mailSend,
+  inventory,
+  wallets,
+  polensPurchase,
   lifeNewcomer,
   skins,
   skinBuy,

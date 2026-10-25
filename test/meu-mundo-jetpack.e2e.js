@@ -64,6 +64,7 @@ const MIGS = [
   "299_meu_mundo_vehicles",
   "300_meu_mundo_skins",
   "301_meu_mundo_geladeira",
+  "302_meu_mundo_inbox",
 ];
 const TABLES = `tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
   tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user`;
@@ -73,6 +74,7 @@ async function bootstrap(pool) {
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
+  await require("./helpers/mmPolens").polenTables(pool);
   for (const m of MIGS) await pool.query(fs.readFileSync(path.join(__dirname, `../src/databases/migrations/${m}.sql`), "utf8"));
 }
 

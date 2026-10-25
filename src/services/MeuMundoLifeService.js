@@ -18,7 +18,11 @@ const crypto = require("crypto");
 const pool = require("../databases");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
+const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
+const Inbox = require("../storages/MeuMundoInboxStorage");
+const PolenStorage = require("../storages/PolenStorage");
 const { rowToState } = require("../storages/MeuMundoLifeStorage");
+const Cars = require("../utils/meuMundoCars");
 const Life = require("../utils/meuMundoLife");
 const Skins = require("../utils/meuMundoSkins");
 const { createLogger } = require("../utils/logger");
@@ -45,11 +49,94 @@ const ERRORS = {
   stack: ["A geladeira não cabe mais desse item", 409],
   qty: ["Quantidade inválida", 400],
   key: ["Pedido inválido", 400],
+  polens: ["Poléns insuficientes", 402],
+  currency: ["Este produto é exclusivo de Poléns", 409],
+  mail: ["Presente não encontrado", 404],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
   return { error, statusCode, code };
 };
+
+// ═══ HISTÓRICO DO SINO (mm3d-30) ═══
+// Necessidade entra no histórico quando aparece, e a mesma só volta depois de
+// NEED_QUIET_H horas (o card temporário segue a regra do cliente,
+// needs-logic.ts; o histórico não vira uma fila de "fome" a cada minuto).
+const NEED_QUIET_H = 3;
+// Eventos da vida que viram notificação (prioridade 1 = mais urgente).
+const LIFE_NOTICES = {
+  death: 1,
+  heart_attack: 1,
+  hospital_in: 1,
+  hospital_out: 2,
+  diabetes: 2,
+  hypertension: 2,
+  born: 3,
+};
+
+async function recordNotices(c, idUser, idCharacter, needs, events) {
+  const out = [];
+  for (const n of needs) {
+    const row = await Inbox.insertNeed(c, idUser, {
+      code: n.id,
+      priority: Math.min(5, Math.max(1, n.level)),
+      data: n.hours != null ? { hours: n.hours } : {},
+      quietH: NEED_QUIET_H,
+    });
+    if (row) out.push(row);
+  }
+  for (const e of events) {
+    const pr = LIFE_NOTICES[e.kind];
+    if (!pr || (e.kind === "born" && !(e.data && e.data.generation > 1))) continue;
+    const row = await Inbox.insertNotice(c, idUser, {
+      kind: "life",
+      code: e.kind,
+      priority: pr,
+      data: e.data || {},
+      dedupeKey: `life:${idCharacter}:${e.kind}:${e.at}`,
+    });
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Cobra um produto na moeda DELE. Moedas do jogo saem de `ctx.coins` (gravadas
+ * no fim da transação da vida); Poléns saem da carteira oficial da Freelandoo
+ * (polen_wallets) na MESMA transação — se a entrega falhar, o débito volta
+ * junto. `ref` é a origem única do débito: a mesma ref de novo (clique duplo,
+ * retry, outra aba) bate no índice único de polen_transactions e não cobra.
+ */
+async function charge(ctx, idUser, { currency, amount, ref, what }) {
+  if (amount <= 0) return null;
+  if (currency !== "polens") {
+    if (ctx.coins < amount) return fail("coins");
+    ctx.coins -= amount;
+    return null;
+  }
+  const c = ctx.client;
+  const wallet = await PolenStorage.getOrCreateWallet(c, idUser);
+  await c.query(`SAVEPOINT mm_polens`);
+  try {
+    const r = await PolenStorage.debit(c, {
+      user_id: idUser,
+      wallet_id: wallet.id,
+      amount,
+      type: "spend_meu_mundo",
+      source: "meu_mundo_shop",
+      source_id: ref,
+      metadata: what,
+    });
+    await c.query(`RELEASE SAVEPOINT mm_polens`);
+    if (!r) return fail("polens");
+    ctx.polens = Number(r.wallet.balance);
+    return null;
+  } catch (err) {
+    await c.query(`ROLLBACK TO SAVEPOINT mm_polens`);
+    if (err.code === "23505") return fail("key"); // a mesma ref já foi cobrada
+    throw err;
+  }
+}
 
 /** Avisa a sala (ritmo, cama) depois do COMMIT. Require tardio: a sala também usa este serviço. */
 function notifyRoom(idUser, snap) {
@@ -100,6 +187,10 @@ class MeuMundoLifeService {
       }
       const idCharacter = ctx.newRow ? ctx.newRow.id_character : row.id_character;
       const state = ctx.newState || s;
+      const notices = await recordNotices(c, idUser, row.id_character, Life.snapshot(state, now).needs, [
+        ...events,
+        ...(ctx.newEvents || []),
+      ]);
       // O hóspede da linha travada sempre é gravado (vivo, ou como estava ao
       // morrer); o novo (newcomer) já nasceu gravado pelo insert.
       await MeuMundoLifeStorage.save(c, row.id_character, s);
@@ -126,7 +217,7 @@ class MeuMundoLifeService {
       const out = {
         now: new Date(now).toISOString(),
         character: snap,
-        wallet: { coins: Math.floor(Math.max(0, ctx.coins)) },
+        wallet: { coins: Math.floor(Math.max(0, ctx.coins)), ...(ctx.polens != null ? { polens: ctx.polens } : {}) },
         avatar,
         fridge: Object.fromEntries(Object.entries(pantry).filter(([, n]) => n > 0)),
         ...(extra || {}),
@@ -145,6 +236,7 @@ class MeuMundoLifeService {
         needs: snap.needs,
         stamina: snap.stamina,
       });
+      for (const n of notices) require("./MeuMundoInboxService").push(idUser, n);
       return out;
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});
@@ -204,6 +296,7 @@ class MeuMundoLifeService {
     const itemId = String(rawItem || "");
     const item = Life.ITEM_BY_ID.get(itemId);
     if (!item) return fail("item");
+    if (item.currency === "polens") return fail("currency");
     return MeuMundoLifeService.withLife(idUser, (s, ctx) => {
       if (ctx.coins < item.price) return fail("coins");
       const r = Life.consume(s, itemId, ctx.now);
@@ -216,21 +309,32 @@ class MeuMundoLifeService {
 
   // ═══ GELADEIRA (mm3d-28, mig 301) ═══
 
-  /** Mercado → geladeira: cobra `qty` × preço e guarda (não come). */
-  static async buy(idUser, rawItem, rawQty = 1) {
+  /**
+   * Mercado → geladeira: cobra `qty` × preço NA MOEDA DO PRODUTO e guarda
+   * (não come). Produto de Poléns exige `key` (8–64, uma por pedido): a
+   * mesma chave não cobra duas vezes.
+   */
+  static async buy(idUser, rawItem, rawQty = 1, rawKey = null) {
     const item = Life.ITEM_BY_ID.get(String(rawItem || ""));
     if (!item) return fail("item");
     const qty = Number(rawQty);
     if (!Number.isInteger(qty) || qty < 1 || qty > Life.FRIDGE.MAX_BUY) return fail("qty");
-    return MeuMundoLifeService.withLife(idUser, (s, ctx) => {
+    const key = String(rawKey || "");
+    if (item.currency === "polens" && !/^[A-Za-z0-9_-]{8,64}$/.test(key)) return fail("key");
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       const cost = item.price * qty;
-      if (ctx.coins < cost) return fail("coins");
       const have = ctx.pantry[item.id] || 0;
       if (have + qty > Life.FRIDGE.MAX_STACK) return fail("stack");
-      ctx.coins -= cost;
+      const err = await charge(ctx, idUser, {
+        currency: item.currency,
+        amount: cost,
+        ref: `item:${idUser}:${key}`,
+        what: { item: item.id, qty },
+      });
+      if (err) return err;
       ctx.pantry[item.id] = have + qty;
-      ctx.events.push({ at: ctx.now, kind: "buy", data: { item: item.id, qty, price: cost } });
-      return { bought: { item: item.id, qty, price: cost } };
+      ctx.events.push({ at: ctx.now, kind: "buy", data: { item: item.id, qty, price: cost, currency: item.currency } });
+      return { bought: { item: item.id, qty, price: cost, currency: item.currency } };
     });
   }
 
@@ -261,6 +365,82 @@ class MeuMundoLifeService {
     });
   }
 
+  // ═══ PRESENTES E ITENS (mm3d-30, mig 302) ═══
+
+  /**
+   * Resgatar o presente de uma carta. Dentro da transação da vida: a carta é
+   * travada, o presente vai para a geladeira / vestuário / carteira do jogo e
+   * `claimed_at` é gravado UMA vez. Já resgatado = devolve o resultado gravado
+   * (clique duplo, outra aba, reconexão) sem entregar de novo.
+   */
+  static async claimGift(idUser, rawMail) {
+    if (!/^\d{1,18}$/.test(String(rawMail || ""))) return fail("mail");
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const mail = await Inbox.lockMail(ctx.client, idUser, rawMail);
+      if (!mail || mail.kind !== "gift" || !mail.gift) return fail("mail");
+      if (mail.claimedAt) return { claim: { mailId: mail.id, ...mail.claimResult, replay: true } };
+      const g = mail.gift;
+      let result;
+      if (g.type === "item") {
+        if (!Life.ITEM_BY_ID.get(g.id)) return fail("item");
+        const have = ctx.pantry[g.id] || 0;
+        if (have + g.qty > Life.FRIDGE.MAX_STACK) return fail("stack");
+        ctx.pantry[g.id] = have + g.qty;
+        result = { type: "item", id: g.id, qty: g.qty, where: "fridge" };
+      } else if (g.type === "skin") {
+        const added = await MeuMundoStorage.addSkin(ctx.client, idUser, g.id, 0);
+        result = { type: "skin", id: g.id, qty: 1, where: "wardrobe", alreadyOwned: !added };
+      } else if (g.type === "coins") {
+        ctx.coins += g.qty;
+        result = { type: "coins", id: "coins", qty: g.qty, where: "wallet" };
+      } else return fail("mail");
+      if (!(await Inbox.markClaimed(ctx.client, idUser, mail.id, result))) return fail("mail");
+      await Inbox.readMail(ctx.client, idUser, mail.id);
+      ctx.events.push({ at: ctx.now, kind: "gift", data: { mail: mail.id, ...result } });
+      return { claim: { mailId: mail.id, ...result, replay: false } };
+    });
+  }
+
+  /**
+   * Aba Itens: o inventário REAL, lido das fontes que já existem — geladeira
+   * (tb_mm_pantry, depois da simulação até agora: a rotina pode ter comido),
+   * vestuário (tb_mm_skin_owned), veículos e casa da residência. Sem estoque
+   * paralelo: a geladeira e esta aba leem a mesma linha.
+   */
+  static async inventory(idUser) {
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      const wardrobe = await MeuMundoLifeService.wardrobeOf(c, idUser);
+      const residence = await MeuMundoStorage.getActiveResidence(c, idUser);
+      const recentGifts = await Inbox.recentClaims(c, idUser);
+      let vehicles = [];
+      let house = null;
+      if (residence) {
+        const lot = Number(residence.lot_number);
+        house = { level: Number(residence.level), lot, neighborhood: residence.name };
+        const moved = await MeuMundoVehicleStorage.listByNeighborhood(c, residence.id_neighborhood);
+        vehicles = Cars.KIND_NAMES.map((kind) => {
+          const row = moved.find((v) => v.id === Cars.vehicleId(kind, lot));
+          return { kind, where: !row ? "spot" : row.houseId ? "house" : "street" };
+        });
+      }
+      return { inventory: { wardrobe, vehicles, house, recentGifts } };
+    });
+  }
+
+  /** Os dois saldos, cada um da sua fonte. Poléns indisponível = null (nunca um zero inventado). */
+  static async wallets(idUser) {
+    const out = await MeuMundoLifeService.withLife(idUser);
+    let polens = null;
+    try {
+      const w = await PolenStorage.getWallet(pool, idUser);
+      polens = w ? Number(w.balance) : 0; // sem carteira ainda = saldo zero de verdade
+    } catch (err) {
+      log.warn("polens_wallet_fail", { message: err.message });
+    }
+    return { wallet: { coins: out.wallet.coins, polens } };
+  }
+
   // ═══ VESTUÁRIO (mm3d-16, mig 300) ═══
   // Comprar e vestir passam pelo núcleo da vida: a carteira é a mesma (trava,
   // simula até agora, cobra) e a sala recebe o corpo novo no fim, como recebe
@@ -287,12 +467,16 @@ class MeuMundoLifeService {
       let bought = false;
       if (!w.owned.includes(skin.id)) {
         const cost = Skins.costFor(skin, await MeuMundoStorage.isAdmin(ctx.client, idUser));
-        if (ctx.coins < cost) return fail("coins");
+        // Posse conferida sob o lock da pessoa: uma skin, um débito (ref fixa por pessoa + skin).
+        const err = await charge(ctx, idUser, {
+          currency: skin.currency,
+          amount: cost,
+          ref: `skin:${idUser}:${skin.id}`,
+          what: { skin: skin.id },
+        });
+        if (err) return err;
         bought = await MeuMundoStorage.addSkin(ctx.client, idUser, skin.id, cost);
-        if (bought) {
-          ctx.coins -= cost;
-          ctx.events.push({ at: ctx.now, kind: "skin_bought", data: { skin: skin.id, price: cost } });
-        }
+        if (bought) ctx.events.push({ at: ctx.now, kind: "skin_bought", data: { skin: skin.id, price: cost, currency: skin.currency } });
       }
       return { bought, wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
     });
