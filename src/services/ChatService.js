@@ -103,9 +103,14 @@ function mapMessage(row) {
 // responsável liberou o tipo de chat (e o enxame, na sala de enxame). Antes a
 // supervisão só era conferida no joinRoom, então ler mensagens pelo REST ou
 // escutar a sala pelo socket com o id na mão pulava o portão.
-async function assertRoomReadable(user, room) {
+async function assertRoomReadable(user, room, opts = {}) {
   if (!room) return { error: "Sala não encontrada", statusCode: 404 };
   if (room.status !== "active") return { error: "Sala não está ativa", statusCode: 403 };
+  // mm3d-32: o Global do jogo só passa pelo MeuMundoChatService (filtro de
+  // bloqueio); pelas rotas do site ele não existe.
+  if (room.type === "meu_mundo" && !opts.game) {
+    return { error: "Sala não encontrada", statusCode: 404 };
+  }
   // mm3d-32: o Global do jogo usa a permissão do chat global, não a do enxame.
   const permKey = room.type === "machine" ? "can_use_machine_chat" : "can_use_global_chat";
   const minorBlock = await assertMinorPermission(user.id_user, permKey);
@@ -300,7 +305,7 @@ class ChatService {
   // Mensagens
   // ------------------------------------------------------------------
 
-  static async listMessages(user, params, query) {
+  static async listMessages(user, params, query, opts = {}) {
     return runWithLogs(
       log,
       "listMessages",
@@ -312,7 +317,7 @@ class ChatService {
           return { error: "id_chat_room inválido" };
         }
         const room = await ChatStorage.getRoomById(pool, id_chat_room);
-        const blocked = await assertRoomReadable(user, room);
+        const blocked = await assertRoomReadable(user, room, opts);
         if (blocked) return blocked;
 
         const limit = Math.min(Math.max(parseInt(query?.limit, 10) || MESSAGES_PAGE_DEFAULT, 1), 100);
@@ -361,7 +366,7 @@ class ChatService {
         }
 
         const room = await ChatStorage.getRoomById(pool, id_chat_room);
-        const blocked = await assertRoomReadable(user, room);
+        const blocked = await assertRoomReadable(user, room, opts);
         if (blocked) return blocked;
 
         const sanitized = sanitizeContent(body?.content);
