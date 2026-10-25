@@ -30,7 +30,9 @@ const UUID_RE =
 // Escopo de não-lido de uma sala (não a instância): 'global' ou 'machine:<id>'.
 function scopeForRoom(room) {
   if (!room) return null;
-  return room.type === "global" ? "global" : `machine:${room.id_machine}`;
+  if (room.type === "global") return "global";
+  if (room.type === "meu_mundo") return "meu_mundo";
+  return `machine:${room.id_machine}`;
 }
 
 function sanitizeContent(raw) {
@@ -104,7 +106,8 @@ function mapMessage(row) {
 async function assertRoomReadable(user, room) {
   if (!room) return { error: "Sala não encontrada", statusCode: 404 };
   if (room.status !== "active") return { error: "Sala não está ativa", statusCode: 403 };
-  const permKey = room.type === "global" ? "can_use_global_chat" : "can_use_machine_chat";
+  // mm3d-32: o Global do jogo usa a permissão do chat global, não a do enxame.
+  const permKey = room.type === "machine" ? "can_use_machine_chat" : "can_use_global_chat";
   const minorBlock = await assertMinorPermission(user.id_user, permKey);
   if (minorBlock) return minorBlock;
   if (room.type === "machine" && room.id_machine) {
@@ -217,6 +220,9 @@ class ChatService {
   static async canSubscribe(id_user, id_chat_room) {
     if (!id_user || !id_chat_room || !UUID_RE.test(id_chat_room)) return false;
     const room = await ChatStorage.getRoomById(pool, id_chat_room);
+    // mm3d-32: o Global do jogo é entregue pela sala do Meu Mundo, filtrado
+    // por bloqueio; pelo socket ele chegaria sem esse filtro.
+    if (room && room.type === "meu_mundo") return false;
     return !(await assertRoomReadable({ id_user }, room));
   }
 
@@ -342,7 +348,7 @@ class ChatService {
     );
   }
 
-  static async sendMessage(user, params, body) {
+  static async sendMessage(user, params, body, opts = {}) {
     return runWithLogs(
       log,
       "sendMessage",
@@ -391,8 +397,9 @@ class ChatService {
         }
 
         // resolve perfil pra anexar (badge)
-        let id_profile = null;
-        if (room.type === "machine" && room.id_machine) {
+        // mm3d-32: o jogo assina com o perfil-conta (é a pessoa), não com um perfil qualquer.
+        let id_profile = opts.id_profile || null;
+        if (!id_profile && room.type === "machine" && room.id_machine) {
           id_profile = await ChatStorage.getUserProfileForMachine(pool, {
             id_user: user.id_user,
             id_machine: room.id_machine,
@@ -448,10 +455,13 @@ class ChatService {
         // Push pra quem está na sala (WebSocket) — o front não faz mais poll
         // curto de mensagens; sem esse emit, mensagem nova só apareceria no
         // fallback lento.
-        realtime.emitToChatRoom(id_chat_room, "chat:message", {
-          id_chat_room,
-          message: finalMessage,
-        });
+        // mm3d-32: silent = quem entrega é a sala do jogo (filtrada por bloqueio).
+        if (!opts.silent) {
+          realtime.emitToChatRoom(id_chat_room, "chat:message", {
+            id_chat_room,
+            message: finalMessage,
+          });
+        }
 
         return { message: finalMessage };
       }
