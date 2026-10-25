@@ -35,7 +35,7 @@ const SIM_MS = 25; // 3 passos de 1/120 s por volta
 const PATCH_MS = 50; // 20 Hz de estado
 const MAX_MSG_PER_SEC = 30;
 const ABUSE_DROPS = 200;
-/** Janela aceita para o passo de uma entrada: até 1 s atrasada, até 0,5 s adiantada. */
+/** Janela do passo de uma entrada: até 0,5 s adiantada; mais de 1 s atrasada vale agora (mm3d-27). */
 const INPUT_LATE = 120;
 const INPUT_EARLY = 60;
 /** Estado do jogador como número (cliente e servidor). */
@@ -298,7 +298,11 @@ class JetpackRoom extends Room {
     if (!s || !this.takeToken(client, s) || !this.match || (phase !== "running" && phase !== "countdown")) return;
     const T = this.match.ticks + 1;
     const k = Math.floor(Number(msg && msg.k));
-    if (!Number.isFinite(k) || k < T - INPUT_LATE || k > T + INPUT_EARLY) return;
+    if (!Number.isFinite(k) || k > T + INPUT_EARLY) return;
+    // Atrasada além da janela (aba que voltou do segundo plano, mm3d-27): vale
+    // agora. Descartar deixava o botão preso no último valor — "segurando" sem
+    // ninguém segurar, até a próxima mudança.
+    if (k < T - INPUT_LATE) s.inputs.length = 0;
     s.inputs.push({ k: Math.max(k, T), h: !!(msg && msg.h) });
     if (s.inputs.length > 64) s.inputs.splice(0, s.inputs.length - 64);
   }

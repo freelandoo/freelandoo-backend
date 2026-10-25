@@ -22,6 +22,17 @@
 //
 // Como a física é determinística, os dois trajetos ficam iguais e a
 // reconciliação não tem o que corrigir. Cliente antigo (sem `k`): como antes.
+//
+// mm3d-27 — ABA EM SEGUNDO PLANO: o navegador para o laço do celular (sem
+// passos, sem mensagens) e a sala seguia com o último volante — acelerando,
+// o carro andava ~70 m sozinho em 5 s e, na volta, o passo `k` velho caía no
+// "chegou tarde" (volta 2 s no tempo com o volante errado). Agora:
+// - o celular manda FREIO ao esconder a aba e repete o volante a cada
+//   DRIVE_BEAT_MS enquanto dirige; sem notícia por DRIVE_STALE_MS a sala
+//   freia sozinha (`expireDrive`) — vale também para celular que travou;
+// - ao voltar, o celular assume o estado da sala e começa uma ÉPOCA nova
+//   (`e`): o passo recomeça do zero e a sala mede a folga de novo, sem
+//   voltar no tempo com mudanças da época anterior.
 
 const { STEP, MAX_STEPS, stepVehicle } = require("./meuMundoVehicle");
 
@@ -34,6 +45,12 @@ const HIST = 120;
 /** Adiantada além disto (passos, 2 s): a folga encolhe (relógio do cliente atrasou). */
 const DRIVE_EARLY = 120;
 const QUEUE_MAX = 64;
+/** Sem volante do motorista há tanto tempo (ms), a sala freia (aba escondida, celular travado). */
+const DRIVE_STALE_MS = 1500;
+/** Freio de quem sumiu: sem acelerador, freio cheio, volante reto. */
+const STALE_DRIVE = Object.freeze({ t: 0, b: 1, s: 0, h: false });
+/** Já parado: solta o freio (segurar o freio parado engata a ré). */
+const PARKED_DRIVE = Object.freeze({ t: 0, b: 0, s: 0, h: false });
 
 const FIELDS = ["x", "z", "yaw", "vx", "vz", "w", "steer", "thr", "hb", "ax", "ay", "u", "slip", "beta", "gear", "stopT"];
 
@@ -51,14 +68,26 @@ function restore(v, s) {
 
 let seq = 0;
 
-/** Mudança de volante recebida (`d` já higienizado). `k` = passo do cliente. */
-function queueDrive(v, d, k) {
+/**
+ * Mudança de volante recebida (`d` já higienizado). `k` = passo do cliente;
+ * `e` = época do cliente (mm3d-27): época nova = passo recomeça, folga medida
+ * de novo, fila e "volta no tempo" da época anterior descartadas.
+ */
+function queueDrive(v, d, k, e) {
   if (!v) return;
   if (!Number.isInteger(k) || k < 0) {
     v.dq = null;
     v.drive = d;
     return;
   }
+  if (Number.isInteger(e) && e !== v.de) {
+    v.de = e;
+    delete v.doff;
+    v.dq = [];
+    v.applied = [];
+    v.rewind = null;
+  }
+  v.stale = false;
   const next = (v.dn || 0) + 1;
   if (typeof v.doff !== "number") v.doff = next - k + DRIVE_MARGIN;
   let at = k + v.doff;
@@ -90,6 +119,7 @@ function stepOne(v, fallback, boxes, limit, P) {
     v.drive = m.d;
     (v.applied || (v.applied = [])).push(m);
   }
+  if (v.stale && v.drive === STALE_DRIVE && v.stopT > 0.2) v.drive = PARKED_DRIVE;
   stepVehicle(v, q ? v.drive || fallback : fallback, boxes, limit, P);
   v.dn = at;
   v.hist.push(snap(v));
@@ -151,4 +181,19 @@ function settleDriven(v, fallback, boxes, limit, P, max = 90) {
   return c;
 }
 
-module.exports = { DRIVE_EVERY, DRIVE_MARGIN, HIST, queueDrive, advanceDriven, settleDriven };
+/**
+ * Motorista sem notícia há `quietMs` (mm3d-27): a partir do próximo passo o
+ * veículo freia (fila descartada). Devolve true quando acabou de expirar.
+ * Só para quem manda época (cliente que repete o volante); cliente antigo não.
+ */
+function expireDrive(v, quietMs) {
+  if (!v || v.de == null || !(quietMs >= DRIVE_STALE_MS) || v.stale) return false;
+  v.stale = true;
+  v.drive = STALE_DRIVE;
+  if (v.dq) v.dq = [];
+  v.applied = [];
+  v.rewind = null;
+  return true;
+}
+
+module.exports = { DRIVE_EVERY, DRIVE_MARGIN, HIST, DRIVE_STALE_MS, STALE_DRIVE, queueDrive, advanceDriven, settleDriven, expireDrive };

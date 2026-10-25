@@ -63,7 +63,7 @@ const {
   sanitizeTuning,
   createVehicle,
 } = require("../utils/meuMundoVehicle");
-const { queueDrive, advanceDriven, settleDriven } = require("../utils/meuMundoDriveSync");
+const { queueDrive, advanceDriven, settleDriven, expireDrive } = require("../utils/meuMundoDriveSync");
 const {
   CENTER_VERSION,
   CENTER_CAPACITY,
@@ -82,6 +82,10 @@ const ROOM_NAME = "bairro";
 const HOUSE_ROOM = "casa";
 const SIM_MS = 50; // 20 Hz de simulação
 const PATCH_MS = 100; // 10 Hz de estado para os clientes
+// mm3d-27: o cliente repete a intenção a cada 1 s enquanto anda (KEEPALIVE_MS
+// de net.ts). Sem notícia por mais que isto, a aba sumiu (segundo plano,
+// celular travado): a pessoa para, em vez de andar sozinha até a parede.
+const INTENT_STALE_MS = 2500;
 const MAX_MSG_PER_SEC = 30;
 const ABUSE_DROPS = 200; // mensagens descartadas em 10 s → desconecta
 const LAST_POS_TTL = 10 * 60 * 1000;
@@ -242,6 +246,13 @@ function takeToken(client, s) {
 }
 
 const freshBucket = () => ({ bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now() });
+
+/** Intenção de andar sem notícia (mm3d-27): a pessoa para. */
+function expireIntent(s, now) {
+  const it = s.intent;
+  if (!it || (!it.x && !it.z) || now - (s.intentAt || 0) <= INTENT_STALE_MS) return;
+  s.intent = { x: 0, z: 0, run: false };
+}
 
 class BairroRoom extends Room {
   async onCreate(options) {
@@ -587,7 +598,16 @@ class BairroRoom extends Room {
     if (!s || !s.car || !d) return;
     // mm3d-22: com o passo do cliente (k), vale no mesmo passo aqui (meuMundoDriveSync.js).
     const k = msg && typeof msg.k === "number" ? Math.floor(msg.k) : -1;
-    if (k >= 0 && s.veh) queueDrive(s.veh, d, k);
+    // mm3d-27: época do cliente (recomeça o passo ao voltar do segundo plano).
+    const e = msg && typeof msg.e === "number" ? Math.floor(msg.e) : undefined;
+    s.driveAt = Date.now();
+    // Aba escondida (mm3d-27): o celular avisa e para de simular — freia já.
+    if (msg && msg.z === 1 && s.veh && e !== undefined) {
+      s.veh.de = e;
+      expireDrive(s.veh, Infinity);
+      return;
+    }
+    if (k >= 0 && s.veh) queueDrive(s.veh, d, k, e);
     else s.drive = d;
   }
 
@@ -703,7 +723,10 @@ class BairroRoom extends Room {
     if (!this.countMessage(client)) return;
     const s = this.sim.get(client.sessionId);
     const intent = sanitizeIntent(msg);
-    if (s && intent) s.intent = intent;
+    if (s && intent) {
+      s.intent = intent;
+      s.intentAt = Date.now();
+    }
   }
 
   /**
@@ -751,12 +774,16 @@ class BairroRoom extends Room {
   tick(dtMs) {
     const dt = Math.min(dtMs / 1000, 0.25);
     const hasCars = this.state.cars.size > 0;
+    const now = Date.now();
     for (const [sid, s] of this.sim) {
       const boxes = hasCars ? this.obstacles.concat(this.carBoxes(sid)) : this.obstacles;
       const p = this.state.players.get(sid);
+      expireIntent(s, now);
       if (s.car && s.veh) {
         // Dirigindo: a física do carro (passo fixo com acumulador).
         const v = s.veh;
+        // mm3d-27: motorista sem notícia (aba escondida) — freia em vez de seguir acelerando.
+        if (expireDrive(v, now - (s.driveAt || now))) s.drive = IDLE_DRIVE;
         const c = this.state.cars.get(String(s.car));
         const kind = c && RIDE_KINDS[c.kind] ? c.kind : "car";
         advanceDriven(v, s.drive, dt, boxes, this.limit, paramsFor(kind, s.tune));
@@ -1023,7 +1050,10 @@ class CasaRoom extends Room {
     if (!this.countMessage(client)) return;
     const s = this.sim.get(client.sessionId);
     const intent = sanitizeIntent(msg);
-    if (s && intent) s.intent = intent;
+    if (s && intent) {
+      s.intent = intent;
+      s.intentAt = Date.now();
+    }
   }
 
   /**
@@ -1196,8 +1226,10 @@ class CasaRoom extends Room {
 
   tick(dtMs) {
     const dt = Math.min(dtMs / 1000, 0.25);
+    const now = Date.now();
     for (const [sid, s] of this.sim) {
       if (s.seat || s.bed) continue;
+      expireIntent(s, now);
       const move = stepInterior(s.body, s.intent, dt, this.def, paceSpeeds(s.pace));
       const p = this.state.players.get(sid);
       if (!p) continue;

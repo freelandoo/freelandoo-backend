@@ -148,7 +148,7 @@ const script = (s, k) => (k + s * 37) % 50 < 27;
  * cliente chega ao servidor `oneWay` passos depois; estado a cada 6 passos
  * (50 ms), também `oneWay` depois. O cliente roda `lead` passos à frente.
  */
-function race(PartySim, { rttMs, lead, oracle = false, seed = 77, slots = [0, 1, 2, 3], ticks = 2400 }) {
+function race(PartySim, { rttMs, lead, oracle = false, seed = 77, slots = [0, 1, 2, 3], ticks = 2400, onFrame = null }) {
   const oneWay = Math.round(rttMs / 2 / STEP_MS);
   const server = new Back.Match(seed, slots, Back.TUNING);
   server.start();
@@ -195,6 +195,7 @@ function race(PartySim, { rttMs, lead, oracle = false, seed = 77, slots = [0, 1,
     const me = sim.runner;
     sim.advance(T + lead, me.alive && hover(me, 7));
     sim.decay(1000 / 120);
+    if (onFrame) onFrame(sim);
   }
   return { sim, server, changes, maxErr };
 }
@@ -332,4 +333,47 @@ test("jetpack — câmera: em coluna o líder fica a 26 %; com 4,5 m de folga, ~
   for (let i = 0; i < 60; i++) max = Math.max(max, spring.update(open.screenX, 1 / 60));
   assert.ok(Math.abs(spring.screenX - open.screenX) < 0.01, String(spring.screenX));
   assert.ok(max < open.screenX + 0.01, "sem passar do alvo");
+});
+
+test("jetpack (mm3d-27) — o outro jogador não salta na tela quando o botão dele muda", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  for (const rtt of [80, 150]) {
+    let rawPrev = null;
+    let drawPrev = null;
+    let rawMax = 0;
+    let drawMax = 0;
+    race(mod.PartySim, {
+      rttMs: rtt,
+      lead: leadFor(rtt),
+      slots: [0, 1],
+      onFrame: (sim) => {
+        const g = sim.ghostSnap(1);
+        if (!g || g.state === "dead") return;
+        const raw = g.y;
+        const drawn = g.y + sim.ghostErr(1).y;
+        if (rawPrev !== null) rawMax = Math.max(rawMax, Math.abs(raw - rawPrev));
+        if (drawPrev !== null) drawMax = Math.max(drawMax, Math.abs(drawn - drawPrev));
+        rawPrev = raw;
+        drawPrev = drawn;
+      },
+    });
+    t.diagnostic(`RTT ${rtt}: maior passo por quadro cru ${rawMax.toFixed(3)} m, desenhado ${drawMax.toFixed(3)} m`);
+    assert.ok(drawMax < rawMax, `RTT ${rtt}: suavizado (${drawMax}) < cru (${rawMax})`);
+    assert.ok(drawMax < 0.2, `RTT ${rtt}: passo desenhado ${drawMax} m`);
+  }
+});
+
+test("jetpack (mm3d-27) — aba escondida: release solta o botão uma vez, no passo seguinte", async (t) => {
+  const mod = await loadFront("net/predict.ts");
+  if (!mod) return t.skip("front fora do lugar");
+  const sent = [];
+  const sim = new mod.PartySim(5, [0, 1], 0, { send: (k, h) => sent.push({ k, h }) });
+  sim.advance(30, true);
+  sim.release();
+  sim.release();
+  assert.deepEqual(sent.slice(-1)[0], { k: 31, h: false });
+  assert.equal(sent.filter((m) => !m.h).length, 1, "uma vez só");
+  sim.advance(40, false);
+  assert.equal(sent.length, 2, "seguir sem segurar não manda de novo");
 });

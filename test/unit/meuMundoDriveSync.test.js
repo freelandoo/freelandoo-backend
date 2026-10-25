@@ -12,7 +12,7 @@ const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const V = require("../../src/utils/meuMundoVehicle");
-const { DRIVE_EVERY, queueDrive, advanceDriven } = require("../../src/utils/meuMundoDriveSync");
+const { DRIVE_EVERY, DRIVE_STALE_MS, queueDrive, advanceDriven, expireDrive } = require("../../src/utils/meuMundoDriveSync");
 
 process.removeAllListeners("warning");
 
@@ -269,4 +269,140 @@ test("descer (mm3d-24): a sala termina as mudanças que já chegaram e para onde
   assert.ok(Math.hypot(st.vx, st.vz) < 0.06, "parou");
   assert.ok(Math.hypot(st.x - cli.x, st.z - cli.z) < 0.05, `parou onde o celular parou (${Math.hypot(st.x - cli.x, st.z - cli.z).toFixed(3)} m)`);
   assert.ok(Math.hypot(srv.vx, srv.vz) > 1.5, "o veículo de verdade não mudou (cópia)");
+});
+
+// ─── mm3d-27: aba em segundo plano ─────────────────────────────────────────
+
+/** Acelera 2 s com a sala junto (rede ideal), época 1. */
+function warm(P) {
+  const srv = V.createVehicle(0, 0, 0);
+  const thr = { t: 1, b: 0, s: 0, h: false };
+  queueDrive(srv, thr, 1, 1);
+  for (let i = 0; i < 40; i++) advanceDriven(srv, null, 0.05, [], 1e9, P);
+  return srv;
+}
+
+test("aba escondida (mm3d-27): a sala freia e estaciona, sem engatar a ré", () => {
+  const P = V.paramsFor("car", null);
+  const srv = warm(P);
+  assert.ok(Math.hypot(srv.vx, srv.vz) > 5, "estava andando");
+  const at = { x: srv.x, z: srv.z };
+  assert.equal(expireDrive(srv, Infinity), true);
+  for (let i = 0; i < 100; i++) advanceDriven(srv, null, 0.05, [], 1e9, P);
+  // Antes: seguia acelerando com o último volante (~71 m em 5 s).
+  assert.ok(Math.hypot(srv.x - at.x, srv.z - at.z) < 8, "parou perto de onde a aba sumiu");
+  assert.ok(Math.hypot(srv.vx, srv.vz) < 0.05, "parado");
+  assert.ok(srv.u > -0.05, "sem ré");
+});
+
+test("sem notícia do motorista (mm3d-27): só expira depois de DRIVE_STALE_MS e só para cliente com época", () => {
+  const P = V.paramsFor("car", null);
+  const srv = warm(P);
+  assert.equal(expireDrive(srv, DRIVE_STALE_MS - 1), false);
+  assert.equal(expireDrive(srv, DRIVE_STALE_MS), true);
+  const old = V.createVehicle(0, 0, 0);
+  queueDrive(old, { t: 1, b: 0, s: 0, h: false }, 1);
+  assert.equal(expireDrive(old, Infinity), false, "cliente antigo (sem época) não repete o volante");
+  // Uma mensagem nova acorda o motorista.
+  queueDrive(srv, { t: 1, b: 0, s: 0, h: false }, 200, 1);
+  assert.equal(srv.stale, false);
+});
+
+test("época nova (mm3d-27): ao voltar, o passo recomeça e a sala segue o MESMO trajeto do celular", () => {
+  const P = V.paramsFor("car", null);
+  const srv = warm(P);
+  expireDrive(srv, Infinity);
+  for (let i = 0; i < 100; i++) advanceDriven(srv, null, 0.05, [], 1e9, P);
+  // Celular volta: assume o estado da sala e começa a época 2 no passo 0.
+  const cli = V.createVehicle(srv.x, srv.z, srv.yaw);
+  Object.assign(cli, { vx: srv.vx, vz: srv.vz, w: srv.w });
+  const hist = [{ x: cli.x, z: cli.z }];
+  let held = { t: 0, b: 0, s: 0, h: false };
+  let clock = 0;
+  for (let n = 0; n < 240; n++) {
+    const t = n / 60;
+    if (n % DRIVE_EVERY === 0) {
+      const want = { t: 1, b: 0, s: Math.round(Math.sin(t * 2) * 20) / 20, h: false };
+      if (want.s !== held.s || want.t !== held.t) {
+        held = want;
+        queueDrive(srv, want, n + 1, 2);
+      }
+    }
+    V.stepVehicle(cli, held, [], 1e9, P);
+    hist.push({ x: cli.x, z: cli.z });
+    while (clock + 0.05 <= t + 1e-9) {
+      clock += 0.05;
+      advanceDriven(srv, null, 0.05, [], 1e9, P);
+    }
+  }
+  // Passo k do celular = passo k + doff da sala (a folga fixa da época nova).
+  const k = srv.dn - srv.doff;
+  assert.ok(k > 100 && k < hist.length, `passo comparável (${k})`);
+  const err = Math.hypot(srv.x - hist[k].x, srv.z - hist[k].z);
+  assert.ok(err < 1e-6, `mesmo trajeto (erro ${err})`);
+});
+
+const WALKER = path.resolve(__dirname, "../../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/engine/remote-walker.ts");
+
+test("pessoa dos outros (mm3d-27): anda em ritmo constante, sem anda-freia a cada pacote", async (t) => {
+  if (!fs.existsSync(WALKER)) return t.skip("front fora do lugar");
+  const { RemoteWalker } = await import(pathToFileURL(WALKER).href);
+  const rnd = rng(3);
+  const speed = 4; // m/s, correndo
+  const w = new RemoteWalker();
+  const pose = { x: 0, z: 0, y: 0, facing: 0 };
+  let old = 0; // antes: perseguia o último ponto (1 − e^(−10 dt))
+  let target = 0;
+  let nextArrive = 0;
+  let sent = 0;
+  const stepsNew = [];
+  const stepsOld = [];
+  let prevNew = null;
+  let prevOld = null;
+  for (let i = 0; i < 60 * 6; i++) {
+    const now = i / 60;
+    // A sala manda a 10 Hz; a chegada oscila ± 30 ms.
+    while (now >= nextArrive) {
+      target = speed * sent * 0.1;
+      w.push(nextArrive, target, 0, 0);
+      sent++;
+      nextArrive = sent * 0.1 + 0.05 + (rnd() - 0.5) * 0.06;
+    }
+    w.pose(now, pose);
+    old += (target - old) * (1 - Math.exp(-10 / 60));
+    if (now > 1) {
+      if (prevNew !== null) stepsNew.push(pose.x - prevNew);
+      if (prevOld !== null) stepsOld.push(old - prevOld);
+    }
+    prevNew = pose.x;
+    prevOld = old;
+  }
+  const spread = (xs) => {
+    const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+    return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length) / m;
+  };
+  const sNew = spread(stepsNew);
+  const sOld = spread(stepsOld);
+  t.diagnostic(`variação do passo por quadro: antes ${(sOld * 100).toFixed(0)} %, agora ${(sNew * 100).toFixed(0)} %`);
+  assert.ok(sNew < 0.2, `agora ${sNew}`);
+  assert.ok(sNew < sOld / 2, `antes ${sOld}, agora ${sNew}`);
+});
+
+test("pessoa dos outros (mm3d-27): parado por um tempo e voltando a andar não atravessa o intervalo vazio", async (t) => {
+  if (!fs.existsSync(WALKER)) return t.skip("front fora do lugar");
+  const { RemoteWalker } = await import(pathToFileURL(WALKER).href);
+  const w = new RemoteWalker();
+  const pose = { x: 0, z: 0, y: 0, facing: 0 };
+  w.push(0, 0, 0, 0);
+  w.push(0.1, 0.4, 0, 0);
+  // 5 s sem estado (parado / aba escondida), então anda de novo.
+  w.push(5.1, 0.8, 0, 0);
+  w.pose(5.1, pose);
+  assert.ok(Math.abs(pose.x - 0.4) < 0.25, `começa de onde estava desenhado (${pose.x})`);
+  w.pose(5.4, pose);
+  assert.ok(Math.abs(pose.x - 0.8) < 0.05, `chega ao novo ponto em ~0,2 s (${pose.x})`);
+  // Teleporte (porta, portal): sem deslizar.
+  w.push(5.5, 30, 0, 0);
+  w.pose(5.5, pose);
+  assert.equal(pose.x, 30);
 });
