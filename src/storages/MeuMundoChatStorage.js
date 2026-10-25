@@ -28,6 +28,16 @@ class MeuMundoChatStorage {
     return r.rows;
   }
 
+  /** A mensagem existe e é desta sala? (denúncia pelo jogo só vale para o Global do jogo) */
+  static async messageInRoom(conn, idChatMessage, idChatRoom) {
+    const r = await conn.query(
+      `SELECT 1 FROM public.tb_chat_message
+        WHERE id_chat_message = $1 AND id_chat_room = $2 AND deleted_at IS NULL`,
+      [idChatMessage, idChatRoom]
+    );
+    return r.rowCount > 0;
+  }
+
   /** Perfil-conta a partir de um id de perfil (só perfil-conta vivo). */
   static async accountProfileById(conn, profileId) {
     const r = await conn.query(

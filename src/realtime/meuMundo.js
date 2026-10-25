@@ -1868,38 +1868,8 @@ function pushNotice(userId, notice) {
   return presence.send(userId, "notice", notice);
 }
 
-/**
- * Chat Global do jogo (mm3d-32): uma linha para quem está numa sala agora.
- * O MeuMundoChatService já filtrou quem bloqueou/foi bloqueado.
- */
-function pushChat(userId, line) {
-  return presence.send(userId, "chat", line);
-}
-
-/** sessionId de `userId` na sala em que `viewerId` está (null = outra sala). */
-function sessionOf(viewerId, userId) {
-  const p = presence.get(viewerId);
-  const q = presence.get(userId);
-  if (!p || !q || p.room !== q.room) return null;
-  return q.sessionId;
-}
-
-/**
- * Balão sobre a cabeça: só para quem está na MESMA sala de quem falou e passa
- * em `canSee(userId)` (bloqueio). Vai com sessionId, nunca com id de conta.
- */
-function sayInRoom(userId, text, canSee) {
-  const p = presence.get(userId);
-  if (!p || !p.room || !p.room.sim) return 0;
-  let n = 0;
-  for (const c of p.room.clients) {
-    const s = p.room.sim.get(c.sessionId);
-    if (!s || !s.userId || s.userId === userId || !canSee(s.userId)) continue;
-    c.send("say", { s: p.sessionId, t: text });
-    n++;
-  }
-  return n;
-}
+// Chat do jogo (mm3d-32): entrega pela sala, em módulo próprio (testável sem Colyseus).
+const { pushChat, sessionOf, sayInRoom } = require("./meuMundoChatRelay");
 
 /**
  * Card de perfil (mm3d-31): a conta por trás de um boneco que `viewerId`

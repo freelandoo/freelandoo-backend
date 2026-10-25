@@ -18,7 +18,7 @@ const P2 = "22222222-2222-4222-8222-222222222222";
 const PX = "99999999-9999-4999-8999-999999999999";
 const PROFILE_OF = { 1: P1, 2: P2, 3: "33333333-3333-4333-8333-333333333333" };
 
-const w = { online: [1, 2, 3], blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], rooms: new Map(), lookups: 0 };
+const w = { online: [1, 2, 3], blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], rooms: new Map(), lookups: 0, gameMessages: new Set(), reported: [], listQuery: null };
 
 stub("databases", { query: async () => ({ rows: [] }) });
 stub("realtime/meuMundo.js", {
@@ -31,6 +31,7 @@ stub("realtime/meuMundoPresence.js", { onlineUsers: () => w.online });
 stub("storages/MeuMundoChatStorage.js", {
   ensureRoom: async () => ({ id_chat_room: "00000000-0000-4000-8000-000000000001", type: "meu_mundo" }),
   blockPairs: async (_c, u) => w.blocks.filter((p) => p.blocker_user_id === u || p.blocked_user_id === u),
+  messageInRoom: async (_c, id) => w.gameMessages.has(id),
   accountProfileById: async (_c, pid) => {
     w.lookups++;
     return pid === P2 ? { id_profile: P2, id_user: 2 } : pid === P1 ? { id_profile: P1, id_user: 1 } : null;
@@ -42,15 +43,15 @@ stub("services/ChatService.js", {
     w.sent.push({ user, params, body, opts });
     return { message: { id_chat_message: "m1", content: body.content, hidden: false, created_at: "t", sender: { id_user: user.id_user, username: "eu" }, profile: { id_profile: P1, display_name: "Eu", avatar_url: null } } };
   },
-  listMessages: async () => ({ items: w.history, next_before: null, has_more: false }),
-  reportMessage: async () => ({ ok: true }),
+  listMessages: async (_u, _p, q) => { w.listQuery = q; return { items: w.history, next_before: null, has_more: false }; },
+  reportMessage: async (_u, params) => { w.reported.push(params.id_chat_message); return w.reportResult || { ok: true }; },
 });
 stub("services/ConversationService.js", {
   openOrCreate: async (user, payload) => { w.opened.push({ user, payload }); return { conversation: { id_conversation: "c1" } }; },
 });
 
 const S = require("../../src/services/MeuMundoChatService");
-const reset = () => Object.assign(w, { blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], lookups: 0 });
+const reset = () => Object.assign(w, { blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], lookups: 0, gameMessages: new Set(), reported: [], reportResult: null, listQuery: null });
 
 test("enviar: grava com o perfil-conta, silencioso, e entrega a todos online", async () => {
   reset();
@@ -78,6 +79,7 @@ test("moderação recusou: devolve o erro e não entrega nada", async () => {
   const r = await S.send(1, { text: "xxx" });
   require(path.join(SRC, "services/ChatService.js")).sendMessage = orig;
   assert.equal(r.error, "Mensagem bloqueada.");
+  assert.equal(r.code, "block", "o front diferencia bloqueio/silêncio/análise pelo code");
   assert.equal(w.pushed.length, 0);
   assert.equal(w.said.length, 0);
 });
@@ -113,4 +115,36 @@ test("profileId que não é UUID é recusado antes de chegar ao banco", async ()
   const r = await S.openDirect(1, { profileId: "p2" });
   assert.equal(r.statusCode, 404);
   assert.equal(w.lookups, 0);
+});
+
+const M1 = "44444444-4444-4444-8444-444444444444";
+
+test("denúncia: só mensagem do Global do jogo; fora dele é 404 sem chamar o ChatService", async () => {
+  reset();
+  const r = await S.report(1, M1, { reason: "x" });
+  assert.equal(r.statusCode, 404);
+  assert.equal(r.code, "gone");
+  assert.deepEqual(w.reported, []);
+  w.gameMessages.add(M1);
+  assert.deepEqual(await S.report(1, M1, { reason: "x" }), { ok: true });
+  assert.deepEqual(w.reported, [M1]);
+});
+
+test("denúncia: 'não encontrada' do ChatService vira 404", async () => {
+  reset();
+  w.gameMessages.add(M1);
+  w.reportResult = { error: "Mensagem não encontrada" };
+  const r = await S.report(1, M1, {});
+  assert.equal(r.statusCode, 404);
+});
+
+test("histórico: cursor inválido é 400; válido passa adiante", async () => {
+  reset();
+  const bad = await S.history(1, { before: "ontem" });
+  assert.equal(bad.statusCode, 400);
+  assert.equal(w.listQuery, null, "não chegou ao ChatService");
+  await S.history(1, { before: "2026-10-25T10:00:00.000Z" });
+  assert.equal(w.listQuery.before, "2026-10-25T10:00:00.000Z");
+  await S.history(1, {});
+  assert.equal(w.listQuery.before, null);
 });

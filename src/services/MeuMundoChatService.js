@@ -34,11 +34,14 @@ class MeuMundoChatService {
   static async history(userId, query = {}) {
     const room = await MeuMundoChatStorage.ensureRoom(pool);
     if (!room) return fail("Chat indisponível", "unavailable", 503);
+    // Cursor inválido vira erro do Postgres (500) lá dentro: recusa aqui.
+    const before = query.before != null && query.before !== "" ? String(query.before) : null;
+    if (before && Number.isNaN(Date.parse(before))) return fail("Cursor inválido", "cursor", 400);
     // game: true — a sala meu_mundo só abre por aqui (rotas públicas do /chat devolvem 404).
     const r = await ChatService.listMessages(
       { id_user: userId },
       { id_chat_room: room.id_chat_room },
-      { before: query.before, limit: query.limit || 50 },
+      { before, limit: query.limit || 50 },
       { game: true }
     );
     if (r.error) return r;
@@ -61,7 +64,10 @@ class MeuMundoChatService {
       { content: body.text },
       { id_profile, silent: true, game: true }
     );
-    if (r.error || !r.message) return r.error ? r : fail("Mensagem não enviada", "failed", 500);
+    // Moderação recusou: `code` = a ação (block / mute_temp / review) — o painel
+    // do jogo diferencia "bloqueada", "silenciado" e "em análise" por ele.
+    if (r.error) return r.moderation_action ? { ...r, code: r.moderation_action } : r;
+    if (!r.message) return fail("Mensagem não enviada", "failed", 500);
 
     const pairs = await MeuMundoChatStorage.blockPairs(pool, userId);
     const cut = blockedWith(pairs, userId);
@@ -76,7 +82,15 @@ class MeuMundoChatService {
 
   static async report(userId, messageId, body = {}) {
     if (!UUID.test(String(messageId || ""))) return fail("Mensagem não encontrada", "gone", 404);
-    return ChatService.reportMessage({ id_user: userId }, { id_chat_message: messageId }, body);
+    const room = await MeuMundoChatStorage.ensureRoom(pool);
+    if (!room) return fail("Chat indisponível", "unavailable", 503);
+    // Pelo jogo só se denuncia mensagem do Global do jogo.
+    if (!(await MeuMundoChatStorage.messageInRoom(pool, messageId, room.id_chat_room))) {
+      return fail("Mensagem não encontrada", "gone", 404);
+    }
+    const r = await ChatService.reportMessage({ id_user: userId }, { id_chat_message: messageId }, body);
+    if (r && r.error && !r.statusCode && /não encontrada/i.test(r.error)) return { ...r, code: "gone", statusCode: 404 };
+    return r;
   }
 
   /** Acha/cria a conversa 1:1 com o jogador (sessão na minha sala OU perfil-conta da linha). */

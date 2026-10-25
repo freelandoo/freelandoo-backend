@@ -448,13 +448,10 @@ class ChatService {
           scope: scopeForRoom(room),
         }).catch(() => {});
 
-        // re-lê com enriquecimento (mesmo formato do list)
-        const enriched = await ChatStorage.listMessages(pool, {
-          id_chat_room,
-          before: null,
-          limit: 1,
-        });
-        const message = enriched.length > 0 ? mapMessage(enriched[0]) : null;
+        // re-lê com enriquecimento (mesmo formato do list) PELO ID inserido:
+        // "a última da sala" podia ser a de outra pessoa que chegou junto.
+        const enriched = await ChatStorage.getMessageEnriched(pool, inserted.id_chat_message);
+        const message = enriched ? mapMessage(enriched) : null;
         const finalMessage = message || mapMessage({ ...inserted });
 
         // Push pra quem está na sala (WebSocket) — o front não faz mais poll

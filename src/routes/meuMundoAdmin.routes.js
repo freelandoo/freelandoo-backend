@@ -78,7 +78,7 @@ router.get("/players/:session", ...admin, asyncHandler(MeuMundoController.player
 // Chat (mm3d-32): Global do jogo e abrir a conversa 1:1 (histórico na Freelandoo).
 router.get("/chat/global", ...admin, asyncHandler(MeuMundoController.chatHistory));
 router.post("/chat/global", ...admin, rateLimit.chat, asyncHandler(MeuMundoController.chatSend));
-router.post("/chat/global/:id/report", ...admin, asyncHandler(MeuMundoController.chatReport));
+router.post("/chat/global/:id/report", ...admin, rateLimit.chat, asyncHandler(MeuMundoController.chatReport));
 router.post("/chat/direct", ...admin, asyncHandler(MeuMundoController.chatDirect));
 router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
 

@@ -2,6 +2,36 @@
 
 const ONLINE_WINDOW_SECONDS = 60;
 
+// Mensagem com autor e perfil (o formato que mapMessage lê). Uma cópia só:
+// a lista e a releitura do que acabou de ser gravado usam este mesmo SELECT.
+const ENRICHED_MESSAGE_SELECT = `
+      SELECT
+        m.id_chat_message,
+        m.id_chat_room,
+        m.id_user,
+        m.id_profile,
+        m.content,
+        m.message_type,
+        m.created_at,
+        m.deleted_at,
+        m.hidden_at,
+        m.hidden_reason,
+        u.username        AS user_username,
+        u.nome            AS user_nome,
+        p.display_name    AS profile_display_name,
+        p.avatar_url      AS profile_avatar_url,
+        p.sub_profile_slug AS profile_slug,
+        cat.id_machine    AS profile_machine_id,
+        mac.name          AS profile_machine_name,
+        mac.slug          AS profile_machine_slug,
+        COALESCE(p.xp_level, 0)::int AS profile_xp_level
+        FROM public.tb_chat_message m
+        JOIN public.tb_user u ON u.id_user = m.id_user
+        LEFT JOIN public.tb_profile p ON p.id_profile = m.id_profile AND p.deleted_at IS NULL
+        LEFT JOIN public.tb_category cat ON cat.id_category = p.id_category
+        LEFT JOIN public.tb_machine  mac ON mac.id_machine = cat.id_machine
+`;
+
 class ChatStorage {
   // ----------------------------------------------------------------
   // Rooms
@@ -168,31 +198,7 @@ class ChatStorage {
     }
     const { rows } = await conn.query(
       `
-      SELECT
-        m.id_chat_message,
-        m.id_chat_room,
-        m.id_user,
-        m.id_profile,
-        m.content,
-        m.message_type,
-        m.created_at,
-        m.deleted_at,
-        m.hidden_at,
-        m.hidden_reason,
-        u.username        AS user_username,
-        u.nome            AS user_nome,
-        p.display_name    AS profile_display_name,
-        p.avatar_url      AS profile_avatar_url,
-        p.sub_profile_slug AS profile_slug,
-        cat.id_machine    AS profile_machine_id,
-        mac.name          AS profile_machine_name,
-        mac.slug          AS profile_machine_slug,
-        COALESCE(p.xp_level, 0)::int AS profile_xp_level
-        FROM public.tb_chat_message m
-        JOIN public.tb_user u ON u.id_user = m.id_user
-        LEFT JOIN public.tb_profile p ON p.id_profile = m.id_profile AND p.deleted_at IS NULL
-        LEFT JOIN public.tb_category cat ON cat.id_category = p.id_category
-        LEFT JOIN public.tb_machine  mac ON mac.id_machine = cat.id_machine
+      ${ENRICHED_MESSAGE_SELECT}
        WHERE m.id_chat_room = $1
          AND m.deleted_at IS NULL
          ${cursorClause}
@@ -202,6 +208,22 @@ class ChatStorage {
       args
     );
     return rows;
+  }
+
+  /**
+   * UMA mensagem enriquecida pelo id (mesmo formato do listMessages). É o que
+   * o sendMessage relê depois do INSERT — reler "a última da sala" pegava a
+   * mensagem de outra pessoa quando duas chegavam juntas (mm3d-32).
+   */
+  static async getMessageEnriched(conn, id_chat_message) {
+    const { rows } = await conn.query(
+      `
+      ${ENRICHED_MESSAGE_SELECT}
+       WHERE m.id_chat_message = $1
+      `,
+      [id_chat_message]
+    );
+    return rows[0] || null;
   }
 
   static async getMessageById(conn, id_chat_message) {
