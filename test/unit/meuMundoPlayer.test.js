@@ -18,6 +18,7 @@ const world = { rooms: new Map(), blocks: new Set(), lockedUsers: new Set(), fol
 stub("databases", {
   query: async (sql) => {
     if (/FROM public\.tb_user WHERE/.test(sql)) return { rows: [{ username: "alex.s" }] };
+    if (/SELECT municipio, estado FROM public\.tb_profile/.test(sql)) return { rows: [{ municipio: "Fortaleza", estado: "CE" }] };
     if (/tb_profile_portfolio_item/.test(sql)) return { rows: [{ n: 2 }] };
     if (/profile_ratings/.test(sql)) return { rows: [{ n: 0, avg: 0 }] };
     throw new Error(`consulta inesperada: ${sql}`);
@@ -93,6 +94,7 @@ test("projeção pública é do jogador TOCADO, campo a campo", async () => {
   assert.equal(p.displayName, "Alex Sandro Rodrigues");
   assert.equal(p.username, "alex.s");
   assert.equal(p.coverUrl, "https://cdn/b-t.jpg");
+  assert.equal(p.city, "Fortaleza, CE");
   assert.equal(p.posts, 2);
   assert.equal(p.followers, 0);
   assert.equal(p.following, 1);
@@ -100,7 +102,7 @@ test("projeção pública é do jogador TOCADO, campo a campo", async () => {
   assert.equal(p.isFollowing, true);
   // Nada além do que o card mostra (xp, id da conta, dados da manifestação).
   assert.deepEqual(Object.keys(p).sort(), [
-    "avatarUrl", "coverUrl", "displayName", "followers", "following", "isFollowing", "name", "online",
+    "avatarUrl", "city", "coverUrl", "displayName", "followers", "following", "isFollowing", "name", "online",
     "posts", "profileId", "ratings", "sessionId", "unavailable", "username", "viewerProfileId",
   ]);
   world.following = false;

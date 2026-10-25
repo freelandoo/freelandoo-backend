@@ -8,7 +8,7 @@
 // olhando nem o de alguém fora da cena.
 //
 // Projeção pública campo a campo do perfil-conta (regra 14): nome, @, foto,
-// capa (o banner da manifestação ativa), posts públicos (sem os exclusivos de
+// capa (o banner da manifestação ativa), cidade do perfil, posts públicos (sem os exclusivos de
 // comunidade), seguidores/seguindo, avaliações reais e se quem olha já
 // segue. Bloqueio em qualquer direção (tb_user_block) ou conta bloqueada (blocked_at) =
 // "indisponível", sem dado nenhum além do nome que a sala já mostra.
@@ -43,8 +43,9 @@ class MeuMundoPlayerService {
 
     const type = EntityFollowStorage.normalizeType("profile");
     const viewerAcc = await UserPublicSummaryStorage.getAccountProfile(pool, viewerId);
-    const [user, counts, posts, rating, banner, follow] = await Promise.all([
+    const [user, place, counts, posts, rating, banner, follow] = await Promise.all([
       pool.query(`SELECT username FROM public.tb_user WHERE id_user = $1`, [userId]),
+      pool.query(`SELECT municipio, estado FROM public.tb_profile WHERE id_profile = $1`, [acc.id_profile]),
       EntityFollowStorage.counts(pool, { entity_type: type, entity_id: acc.id_profile }),
       pool.query(
         `SELECT COUNT(*)::int AS n FROM public.tb_profile_portfolio_item
@@ -72,6 +73,8 @@ class MeuMundoPlayerService {
         username: user.rows[0]?.username || null,
         avatarUrl: acc.avatar_url || null,
         coverUrl: (banner && (banner.banner_thumb_url || banner.banner_url)) || null,
+        // Só o que a pessoa preencheu no perfil (sem cidade = sem linha).
+        city: [place.rows[0]?.municipio, place.rows[0]?.estado].map((v) => (v || "").trim()).filter(Boolean).join(", ") || null,
         posts: posts.rows[0].n,
         followers: Number(counts?.followers_count) || 0,
         following: Number(counts?.following_count) || 0,
