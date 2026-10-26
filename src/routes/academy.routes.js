@@ -85,6 +85,8 @@ router.get("/academies/:id/training-grid", authMiddleware, asyncHandler(WorkoutC
 // Fichas vencidas (90 dias na mesma ficha): acende a bolinha do botão
 // "Membros" e monta o modal que recebe o professor na página da academia.
 router.get("/academies/:id/expired-plans", authMiddleware, asyncHandler(WorkoutController.expiredPlans));
+// Fila do professor para o modal da entrada do app (mig 305).
+router.get("/me/training-queue", authMiddleware, asyncHandler(WorkoutController.trainingQueue));
 router.get("/academies/:id/members/:memberId/plans", authMiddleware, asyncHandler(WorkoutController.memberPlans));
 router.post("/academies/:id/members/:memberId/plans", authMiddleware, asyncHandler(WorkoutController.createPlan));
 router.patch("/academies/:id/plans/:planId", authMiddleware, asyncHandler(WorkoutController.updatePlan));

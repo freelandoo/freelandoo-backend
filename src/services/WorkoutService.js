@@ -16,6 +16,7 @@ const FitnessProposalStorage = require("../storages/FitnessProposalStorage");
 const AcademyService = require("./AcademyService");
 const { sanitizeExercises } = require("../utils/workoutSanitize");
 const { parseValidadeDias, venceEm, diasRestantes, VALIDADE_PADRAO } = require("../utils/workoutValidity");
+const { montarFila } = require("../utils/trainingQueue");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("workout-service");
@@ -301,6 +302,36 @@ class WorkoutService {
           vence_em: venceEm(r.active_plan_since, r.active_plan_validade_dias),
         })),
       };
+    });
+  }
+
+  /**
+   * Fila de treinos do PROFESSOR (mig 305) — o modal que abre ao entrar na
+   * Freelandoo. Uma entrada por academia em que ele é professor: quem está
+   * vencido, vencendo ou sem treino, mais `reminder_at` (o "Avisar
+   * professores" do Coliseu), que reabre o modal para quem o dispensou antes.
+   *
+   * Só professor, não o dono: o dono vê a mesma fila na página da academia, e
+   * um modal na entrada do app para quem administra seria ruído todo dia.
+   */
+  static async trainingQueue(id_user) {
+    return runWithLogs(log, "training-queue", () => ({ id_user }), async () => {
+      const ids = await AcademyStorage.listProfessorAcademies(pool, id_user);
+      const academias = [];
+      for (const id_academy of ids) {
+        const academy = await AcademyStorage.getById(pool, id_academy);
+        if (!academy || academy.is_active === false) continue;
+        const fila = montarFila(await WorkoutStorage.trainingQueueRows(pool, id_academy));
+        if (fila.length === 0) continue;
+        academias.push({
+          id_academy,
+          slug: academy.slug,
+          nome: academy.nome,
+          reminder_at: academy.training_reminder_at ? new Date(academy.training_reminder_at).toISOString() : null,
+          itens: fila,
+        });
+      }
+      return { academias };
     });
   }
 }

@@ -22,5 +22,6 @@ router.get("/members", asyncHandler(PartnerController.listMembers));
 router.get("/members/:id_user", asyncHandler(PartnerController.getMember));
 router.post("/members/:id_user/link", asyncHandler(PartnerController.regenerateLink));
 router.put("/members/:id_user/foto-academia", uploadAcademyPhoto, asyncHandler(PartnerController.uploadPhoto));
+router.post("/training-reminder", asyncHandler(PartnerController.remindTraining));
 
 module.exports = router;

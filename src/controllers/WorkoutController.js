@@ -96,4 +96,9 @@ module.exports = {
     const result = await WorkoutService.expiredPlans(req.user.id_user, req.params.id);
     return sendServiceResult(res, result);
   },
+
+  async trainingQueue(req, res) {
+    const result = await WorkoutService.trainingQueue(req.user.id_user);
+    return sendServiceResult(res, result);
+  },
 };

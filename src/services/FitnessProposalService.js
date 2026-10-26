@@ -137,6 +137,9 @@ async function applyProposal(proposal) {
       notes: payload.notes,
       is_active: payload.is_active,
       validade_dias: payload.validade_dias,
+      // Exercícios revisados = treino atualizado: a vigência recomeça (mig
+      // 305). Só ligar/desligar a ficha não renova.
+      renovar: Array.isArray(payload.exercises),
     });
     if (Array.isArray(payload.exercises)) {
       await WorkoutStorage.replacePlanExercises(pool, plan.id_plan, payload.exercises);

@@ -32,6 +32,10 @@ module.exports = {
     return send(res, await PartnerMemberService.get(req.partnerAcademy, req.params.id_user));
   },
 
+  async remindTraining(req, res) {
+    return send(res, await PartnerMemberService.remindProfessors(req.partnerAcademy));
+  },
+
   // ─── Gestão da chave (dono logado) ─────────────────────────────────────────
   async generateKey(req, res) {
     return sendServiceResult(res, await PartnerMemberService.generateKey(req.user.id_user, req.params.id), 201);

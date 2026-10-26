@@ -13,7 +13,14 @@ const PARTNER_MEMBER_SELECT = `
          CASE WHEN u.academy_onboarding_state = '${ESTADO_AGUARDANDO}' THEN NULL ELSE u.avatar END AS avatar_url,
          plan.nome AS treino_nome,
          plan.created_at AS treino_criado_em,
-         plan.validade_dias AS treino_validade_dias
+         plan.validade_dias AS treino_validade_dias,
+         -- Ficha proposta pelo professor esperando o aluno confirmar (mig 305):
+         -- o Coliseu mostra "aguardando o aluno" em vez de "sem treino/vencido".
+         EXISTS (
+           SELECT 1 FROM public.tb_fitness_change_proposal pr
+            WHERE pr.id_member = m.id_member AND pr.status = 'pending'
+              AND pr.kind IN ('plan_create', 'plan_update')
+         ) AS proposta_treino_pendente
     FROM public.tb_academy_member m
     JOIN public.tb_user u ON u.id_user = m.id_user
     LEFT JOIN LATERAL (

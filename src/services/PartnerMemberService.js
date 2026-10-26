@@ -24,6 +24,9 @@ const { normalizeCPF } = require("../utils/documents");
 const { validateEmailFormat, calculateAge } = require("../utils/validateSignup");
 const { usernameBaseFromName, usernameCandidate } = require("../utils/academyUsername");
 const { venceEm } = require("../utils/workoutValidity");
+const WorkoutStorage = require("../storages/WorkoutStorage");
+const { montarFila } = require("../utils/trainingQueue");
+const realtime = require("../realtime/socket");
 const {
   sha256Hex,
   generateFirstAccessToken,
@@ -74,6 +77,7 @@ function toItem(row) {
           vence_em: venceEm(row.treino_criado_em, row.treino_validade_dias).toISOString(),
         }
       : null,
+    proposta_treino_pendente: row.proposta_treino_pendente === true,
   };
 }
 
@@ -294,6 +298,25 @@ class PartnerMemberService {
     const row = await PartnerStorage.getMemberForPartner(pool, academy.id_academy, id_user);
     if (!row) return fail(404, "nao_encontrado");
     return { status: 200, body: toItem(row) };
+  }
+
+  // ─── POST /partner/v1/training-reminder ────────────────────────────────────
+  // "Avisar professores" da aba Treinos do Coliseu (mig 305). Grava o instante
+  // (o modal reabre para quem o dispensou antes dele) e, para quem está com o
+  // app aberto, empurra o evento que abre o modal na hora. Sem professor
+  // cadastrado não há a quem avisar — e isso é dito, não engolido.
+  static async remindProfessors(academy) {
+    const professores = await AcademyStorage.listProfessors(pool, academy.id_academy);
+    if (professores.length === 0) return fail(409, "sem_professor");
+    const pendentes = montarFila(await WorkoutStorage.trainingQueueRows(pool, academy.id_academy)).length;
+    await pool.query(`UPDATE public.tb_academy SET training_reminder_at = NOW() WHERE id_academy = $1`, [
+      academy.id_academy,
+    ]);
+    for (const p of professores) {
+      realtime.emitToUser(p.id_user, "training-queue:remind", { id_academy: academy.id_academy });
+    }
+    log.info("training_reminder", { id_academy: academy.id_academy, professores: professores.length, pendentes });
+    return { status: 200, body: { professores: professores.length, pendentes } };
   }
 
   // ─── Chave de parceiro (dono da academia) ──────────────────────────────────

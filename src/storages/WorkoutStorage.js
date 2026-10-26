@@ -59,13 +59,17 @@ module.exports = {
     return r.rows[0] || null;
   },
 
-  async updatePlan(db, id_plan, { nome, notes, is_active, validade_dias }) {
+  // `renovar` (mig 305): a vigência recomeça — o vencimento é created_at +
+  // validade_dias, então uma ficha REVISADA que mantivesse o created_at antigo
+  // nasceria vencida e o aluno nunca sairia da fila do professor.
+  async updatePlan(db, id_plan, { nome, notes, is_active, validade_dias, renovar = false }) {
     const r = await db.query(
       `UPDATE public.tb_workout_plan
           SET nome = COALESCE($2, nome),
               notes = $3,
               is_active = COALESCE($4, is_active),
               validade_dias = COALESCE($5::smallint, validade_dias),
+              created_at = CASE WHEN $6::boolean THEN NOW() ELSE created_at END,
               updated_at = NOW()
         WHERE id_plan = $1 RETURNING *`,
       [
@@ -74,6 +78,7 @@ module.exports = {
         notes === undefined ? null : notes,
         is_active === undefined ? null : is_active,
         validade_dias === undefined ? null : validade_dias,
+        renovar === true,
       ]
     );
     return r.rows[0] || null;
@@ -262,6 +267,40 @@ module.exports = {
           AND plan.created_at IS NOT NULL
           AND plan.created_at + (plan.validade_dias * INTERVAL '1 day') <= NOW()
         ORDER BY plan.created_at ASC`,
+      [id_academy]
+    );
+    return r.rows;
+  },
+
+  // Fila de treinos do professor (mig 305). A ficha que vale é a ATIVA MAIS
+  // RECENTE — a mesma do GET /partner/v1/members, que é o que o Coliseu
+  // mostra; com a mais antiga, a fila daqui e a aba de lá discordariam de quem
+  // tem duas fichas ativas. Matrícula cancelada fica de fora, como no
+  // expiredPlans. A classificação (vencido/vencendo/sem treino) é do
+  // utils/trainingQueue.js.
+  async trainingQueueRows(db, id_academy) {
+    const r = await db.query(
+      `SELECT m.id_member, m.id_user,
+              COALESCE(u.nome, u.username, m.member_name) AS nome,
+              plan.nome AS treino_nome,
+              plan.created_at AS treino_criado_em,
+              plan.validade_dias AS treino_validade_dias,
+              EXISTS (
+                SELECT 1 FROM public.tb_fitness_change_proposal pr
+                 WHERE pr.id_member = m.id_member AND pr.status = 'pending'
+                   AND pr.kind IN ('plan_create', 'plan_update')
+              ) AS proposta_pendente
+         FROM public.tb_academy_member m
+         JOIN public.tb_user u ON u.id_user = m.id_user
+         LEFT JOIN LATERAL (
+           SELECT p.nome, p.created_at, p.validade_dias
+             FROM public.tb_workout_plan p
+            WHERE p.id_user = m.id_user AND p.is_active = TRUE
+            ORDER BY p.created_at DESC
+            LIMIT 1
+         ) plan ON TRUE
+        WHERE m.id_academy = $1
+          AND m.membership_status <> 'canceled'`,
       [id_academy]
     );
     return r.rows;

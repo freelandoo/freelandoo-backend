@@ -121,7 +121,8 @@ simplesmente não aparece).
         "criado_em": "2026-10-20T12:00:00.000Z",
         "validade_dias": 60,
         "vence_em": "2026-12-19T12:00:00.000Z"
-      }
+      },
+      "proposta_treino_pendente": false
     }
   ],
   "proximo_cursor": "…"
@@ -131,12 +132,27 @@ simplesmente não aparece).
 - `avatar_url`: `null` enquanto `aguardando_aceite` (a conta não tem foto até o aceite).
 - `treino`: a ficha **ativa mais recente** do aluno; `vence_em = criado_em + validade_dias`
   (30, 60 ou 90 dias, escolhidos por quem montou a ficha). `null` sem ficha ativa.
+  Ficha revisada pelo professor e aceita pelo aluno recomeça a vigência (mig 305).
+- `proposta_treino_pendente`: o professor já mandou uma ficha (nova ou revisada) e ela
+  espera o aluno confirmar no app. Enquanto isso o aluno sai da fila do professor.
 - `proximo_cursor`: opaco; `null` na última página. Cursor inválido →
   `400 { erro: "cursor_invalido" }`.
 
 ## 5. `GET /partner/v1/members/:id_user`
 
 Mesmo formato de um item da lista. Fora desta academia → `404 { erro: "nao_encontrado" }`.
+
+## 6. `POST /partner/v1/training-reminder` — avisar os professores
+
+Sem corpo. Os professores da academia recebem de novo o modal da **fila de treinos**
+(vencidos, vencendo e sem treino) — na hora, se estiverem com o app aberto, ou na
+próxima vez que entrarem, mesmo que tenham dispensado o modal antes.
+
+```json
+{ "professores": 2, "pendentes": 37 }
+```
+
+- Academia sem professor cadastrado → `409 { erro: "sem_professor" }`.
 
 ## Lado do aluno (para referência)
 
