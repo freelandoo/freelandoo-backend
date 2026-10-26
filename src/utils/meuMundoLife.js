@@ -147,6 +147,14 @@ const RULES = Object.freeze({
   RECOVERY: { idle: 0.25, lying: 0.4, sleeping: 0.6, hospital: 1.8, FED: 0.2, FED_AT: 40 },
   // Gordo (BODY.FAT_AT): todo dano à saúde pesa 1,2× (pedido do Alex, 2026-10-21).
   FAT_HEALTH_MUL: 1.2,
+  // Saúde baixa pesa no resto (pedido do Alex, 2026-10-26: "não pode estar
+  // disposto e sem estresse com a saúde grave"). Fator u = 0 com saúde ≥ FROM
+  // e 1 com saúde ≤ FULL. Energia: teto 100 − ENERGY_CAP·u; estresse: piso
+  // STRESS_FLOOR·u (até STRESS_MAX). Grave (< 35) = no máximo "Bem" e no
+  // mínimo "Tenso". Sem gasto extra e com o gasto do dia encolhendo junto
+  // com o teto: senão vira ciclo vicioso (energia zera → dano → saúde pior);
+  // os limites nunca travam a recuperação (energia > 25 e estresse < 70).
+  UNWELL: Object.freeze({ FROM: 60, FULL: 15, ENERGY_CAP: 60, STRESS_FLOOR: 72, STRESS_MAX: 60 }),
 });
 
 // ═══ GELADEIRA ═══ — estoque por pessoa (mig 301). O Mercado do STATUS
@@ -264,6 +272,16 @@ const ITEM_BY_ID = new Map(ITEMS.map((it) => [it.id, it]));
 
 // ═══ UTILIDADES ═══
 const clamp = (v, lo = 0, hi = 100) => (v < lo ? lo : v > hi ? hi : v);
+/** Quanto a saúde baixa pesa (0–1; ver RULES.UNWELL). */
+const unwellOf = (s) => clamp((RULES.UNWELL.FROM - s.health) / (RULES.UNWELL.FROM - RULES.UNWELL.FULL), 0, 1);
+/** Teto da energia e piso do estresse pela saúde. */
+function applyUnwell(s) {
+  const u = unwellOf(s);
+  if (!u) return;
+  const U = RULES.UNWELL;
+  s.energy = Math.min(s.energy, 100 - U.ENERGY_CAP * u);
+  s.stress = Math.max(s.stress, Math.min(U.STRESS_MAX, U.STRESS_FLOOR * u));
+}
 const r2 = (v) => Math.round(v * 100) / 100;
 
 /** PRNG determinístico (mulberry32) — personalidade sai da semente. */
@@ -592,6 +610,9 @@ function stepState(s, t, dt, events, out) {
     if (diabetesOpen) de -= 1;
     if (s.satiety <= 0 && !pen) de -= 2;
   }
+  // Doente o tanque é menor (teto de applyUnwell) e o gasto encolhe junto:
+  // a energia dura o mesmo dia — sem isso ele zerava à tarde e afundava.
+  if (de < 0) de *= 1 - (RULES.UNWELL.ENERGY_CAP / 100) * unwellOf(s);
   de -= perH("energy");
   s.energy = clamp(s.energy + de * dt);
 
@@ -656,6 +677,7 @@ function stepState(s, t, dt, events, out) {
   if (s.energy <= 0.01 && stim) ds += 6;
   if (diabetesOpen || hyperOpen) ds += 0.5;
   s.stress = clamp(s.stress + ds * dt);
+  applyUnwell(s);
 
   // Riscos de doença
   let dr = -0.08;
@@ -985,6 +1007,7 @@ function consume(s, itemId, t) {
   if (it.sodium > 4) s.bpRisk = clamp(s.bpRisk + (it.sodium - 4) * 1.5);
   s.energy = clamp(s.energy + it.energy);
   s.stress = clamp(s.stress + it.stress);
+  applyUnwell(s);
   s.toxicity += it.tox;
   if (it.mood) s.effects.push({ id: "pleasure", until: t + 2 * HOUR, mag: it.mood });
   if (it.effect) {
