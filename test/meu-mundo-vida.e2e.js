@@ -142,6 +142,13 @@ async function mkUser(pool, tag) {
   const c0 = await coins();
   const uni = await Life.setActivity(host, "studying", 2, "universidade");
   check("universidade cobra a hora de aula (2 h = 16 moedas)", uni.character?.activity.place === "universidade" && (await coins()) === c0 - 16, `${c0} → ${await coins()}`);
+  // mm3d-37d: rezar só na igreja, 1–3 h.
+  check("rezar fora da igreja: recusado", (await Life.setActivity(host, "praying", 1, "universidade")).code === "place");
+  here = "igreja";
+  check("rezar 4 h: fora da faixa", (await Life.setActivity(host, "praying", 4, "igreja")).code === "hours");
+  const pr = await Life.setActivity(host, "praying", 1, "igreja");
+  check("rezar 1 h na igreja", pr.character?.activity.kind === "praying" && pr.character.activity.place === "igreja", JSON.stringify(pr.error));
+  check("preso não se marca pela rota", (await Life.setActivity(host, "jail", 1)).code === "activity");
   here = "biblioteca";
   check("horas fora da faixa são recusadas", (await Life.setActivity(host, "studying", 500, "biblioteca")).code === "hours");
   const st = await Life.setActivity(host, "studying", 8, "biblioteca");

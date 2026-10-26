@@ -103,7 +103,9 @@ const STAMINA = Object.freeze({
   REFILL_S: 20,
 });
 
-const ACTIVITIES = Object.freeze(["idle", "lying", "sleeping", "studying", "training", "working", "hospital"]);
+// praying (mm3d-37d): rezar na igreja; jail (mm3d-37f): preso na delegacia —
+// como o hospital, só a vida/o servidor põe alguém preso.
+const ACTIVITIES = Object.freeze(["idle", "lying", "sleeping", "studying", "training", "working", "hospital", "praying", "jail"]);
 // Horas que o jogador pode marcar em cada atividade (deitar sem hora = até levantar).
 const ACTIVITY_HOURS = Object.freeze({
   studying: [1, 72],
@@ -111,6 +113,7 @@ const ACTIVITY_HOURS = Object.freeze({
   working: [1, 72],
   sleeping: [1, 16],
   lying: [1, 24],
+  praying: [1, 3],
 });
 
 // Por hora: energia, saciedade, estresse e o multiplicador do gasto calórico.
@@ -122,6 +125,10 @@ const RATES = Object.freeze({
   training: { energy: -11, satiety: -10, stress: -2.5, kcal: 6.0 },
   working: { energy: -6.5, satiety: -7, stress: 3, kcal: 1.6 },
   hospital: { energy: 6, satiety: 0, stress: -2, kcal: 1.0 },
+  // Rezar (mm3d-37d): o estresse cai rápido e o humor sobe (ver o humor).
+  praying: { energy: -1.5, satiety: -4, stress: -15, kcal: 1.0 },
+  // Preso (mm3d-37f): parado na cela, a cabeça pesa.
+  jail: { energy: -3, satiety: -5, stress: 2, kcal: 1.0 },
 });
 
 const RULES = Object.freeze({
@@ -208,12 +215,15 @@ const TRAINED = Object.freeze(["intelligence", "strength", "speed"]);
 const PLACES = Object.freeze({
   training: Object.freeze(["academia"]),
   studying: Object.freeze(["universidade", "biblioteca", "escola"]),
+  // mm3d-37d: rezar é na igreja.
+  praying: Object.freeze(["igreja"]),
 });
 const PLACE_RULES = Object.freeze({
   academia: Object.freeze({ mul: 1, feeH: 0 }),
   universidade: Object.freeze({ mul: 1.5, feeH: 8 }),
   biblioteca: Object.freeze({ mul: 1, feeH: 0 }),
   escola: Object.freeze({ mul: 1, feeH: 0 }),
+  igreja: Object.freeze({ mul: 1, feeH: 0 }),
 });
 // Cardápio dos restaurantes do centro (mm3d-37c): pede no balcão e come na
 // hora (vale a refeição como qualquer prato). Comprar para a geladeira é só
@@ -435,7 +445,7 @@ const weightKg = (s) => s.fatKg + s.leanKg;
 function emptyDay(day) {
   return {
     day,
-    hours: { idle: 0, lying: 0, sleeping: 0, studying: 0, training: 0, working: 0, hospital: 0 },
+    hours: { idle: 0, lying: 0, sleeping: 0, studying: 0, training: 0, working: 0, hospital: 0, praying: 0, jail: 0 },
     mealsEaten: 0,
     mealsMissed: 0,
     healthy: 0,
@@ -802,6 +812,7 @@ function stepState(s, t, dt, events, out) {
     (s.health - 70) * 0.3 +
     Math.min(25, pleasure);
   if (diabetesOpen || hyperOpen) mt -= 5;
+  if (kind === "praying") mt += 15;
   s.mood = clamp(s.mood + (clamp(mt) - s.mood) * Math.min(1, 0.25 * dt));
 
   // Exposição (pela gravidade do começo do passo) e desgaste da vida.
@@ -814,7 +825,8 @@ function stepState(s, t, dt, events, out) {
 
   // Diário do dia
   const acc = s.dayAcc;
-  acc.hours[kind] += dt;
+  // Diário gravado antes de uma atividade existir não tem a chave dela.
+  acc.hours[kind] = (acc.hours[kind] || 0) + dt;
   acc.moodSum += s.mood * dt;
   acc.moodH += dt;
   acc.minHealth = Math.min(acc.minHealth, s.health);
@@ -1080,7 +1092,7 @@ function consume(s, itemId, t) {
  * cama); sem cama, o serviço recusa antes de chegar aqui.
  */
 function startActivity(s, kind, hours, t, bed = null, place = null) {
-  if (!ACTIVITIES.includes(kind) || kind === "hospital") return fail("activity");
+  if (!ACTIVITIES.includes(kind) || kind === "hospital" || kind === "jail") return fail("activity");
   if (s.status !== "alive") return fail("dead");
   if (s.activity.kind === "hospital") return fail("hospital");
   if (kind === "idle") {

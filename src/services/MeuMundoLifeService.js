@@ -30,7 +30,7 @@ const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.life");
 
-const REST_ROUTE_KINDS = ["idle", "studying", "training", "working"];
+const REST_ROUTE_KINDS = ["idle", "studying", "training", "working", "praying"];
 
 const ERRORS = {
   item: ["Item não encontrado", 404],
@@ -54,7 +54,7 @@ const ERRORS = {
   polens: ["Poléns insuficientes", 402],
   currency: ["Este produto é exclusivo de Poléns", 409],
   mail: ["Presente não encontrado", 404],
-  place: ["Treino é na academia; estudo, na universidade, biblioteca ou escola do centro", 409],
+  place: ["Treino é na academia; estudo, na universidade, biblioteca ou escola; reza, na igreja — dentro do prédio", 409],
   menu: ["Isso não tem no cardápio", 404],
   away: ["Você precisa estar lá dentro", 409],
   market: ["Compras para a geladeira são no supermercado do centro", 409],
