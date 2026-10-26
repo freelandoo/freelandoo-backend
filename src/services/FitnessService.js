@@ -8,6 +8,7 @@ const pool = require("../databases");
 const FitnessStorage = require("../storages/FitnessStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
 const PlatformStorage = require("../storages/PlatformStorage");
+const { SPORTS, parseSport } = require("../utils/sports");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("fitness-service");
@@ -36,6 +37,25 @@ class FitnessService {
       if (!platform) return { error: "Plataforma fitness indisponível.", statusCode: 503 };
       return { platform };
     });
+  }
+
+  // ─── Esporte da pessoa (mig 306) ───────────────────────────────────────────
+  // `sport: null` = ainda não escolheu → a tela abre o modal do primeiro acesso.
+  // As opções vão junto para o front não manter uma segunda lista.
+  static async getSport(id_user) {
+    const r = await pool.query(`SELECT sport FROM public.tb_user_sport WHERE id_user = $1`, [id_user]);
+    return { sport: parseSport(r.rows[0]?.sport), options: SPORTS };
+  }
+
+  static async setSport(id_user, raw) {
+    const sport = parseSport(raw);
+    if (!sport) return { error: "Escolha um esporte da lista." };
+    await pool.query(
+      `INSERT INTO public.tb_user_sport (id_user, sport) VALUES ($1, $2)
+       ON CONFLICT (id_user) DO UPDATE SET sport = EXCLUDED.sport, updated_at = NOW()`,
+      [id_user, sport]
+    );
+    return { sport, options: SPORTS };
   }
 
   // ─── Resumo do dia ─────────────────────────────────────────────────────────

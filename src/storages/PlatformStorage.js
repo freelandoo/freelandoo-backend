@@ -47,9 +47,10 @@ const PLATFORM_SEED = Object.freeze({
     bio: "A plataforma de games da Freelandoo. Todo mundo lê, todo mundo publica.",
   },
   [FITNESS_KIND]: {
+    // Mig 306: a plataforma passou a se chamar Esportes (o slug fica).
     slug: "fitness",
-    name: "Fitness",
-    bio: "A plataforma fitness da Freelandoo. Todo mundo lê, todo mundo publica.",
+    name: "Esportes",
+    bio: "A plataforma de esportes da Freelandoo. Todo mundo lê, todo mundo publica.",
   },
 });
 

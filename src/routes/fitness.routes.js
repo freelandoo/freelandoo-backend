@@ -17,6 +17,9 @@ router.use(authMiddleware);
 
 // A plataforma (mig 276): a comunidade cujo feed é a raiz do /fitness.
 router.get("/platform", asyncHandler(FitnessController.platform));
+// Esportes (mig 306): o esporte da pessoa ("Meu esporte") + a lista de opções.
+router.get("/sport", asyncHandler(FitnessController.getSport));
+router.put("/sport", asyncHandler(FitnessController.setSport));
 router.get("/summary", asyncHandler(FitnessController.summary));
 router.get("/indicators", asyncHandler(FitnessController.indicators));
 router.get("/history", asyncHandler(FitnessController.history));

@@ -9,6 +9,14 @@ module.exports = {
     return sendServiceResult(res, result);
   },
 
+  async getSport(req, res) {
+    return sendServiceResult(res, await FitnessService.getSport(req.user.id_user));
+  },
+
+  async setSport(req, res) {
+    return sendServiceResult(res, await FitnessService.setSport(req.user.id_user, (req.body || {}).sport));
+  },
+
   async summary(req, res) {
     const result = await FitnessService.summary(req.user.id_user, req.query.date);
     return sendServiceResult(res, result);

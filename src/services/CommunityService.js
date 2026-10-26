@@ -15,6 +15,7 @@ const TerritorialCommunity = require("../utils/territorialCommunity");
 const CommunityPolicy = require("../utils/communityPolicy");
 const AuthStorage = require("../storages/AuthStorage");
 const { PLATFORM_KINDS } = require("../utils/gamesScore");
+const { parseSport } = require("../utils/sports");
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
 const Subject = require("../utils/subjectCommunities");
 const SpaceCaps = require("../utils/spaceCaps");
@@ -756,6 +757,7 @@ class CommunityService {
         // para a tela dizer o que fazer em vez de parecer vazia.
         let feedScope = params.id_profile;
         let author_game_key = null;
+        let sport = null;
         const scopeInfo = {};
         const empty = (extra) => ({ items: [], next_cursor: null, has_more: false, ...scopeInfo, ...extra });
         const kind = gate.community?.kind;
@@ -787,6 +789,19 @@ class CommunityService {
             author_game_key = await SubjectCommunityStorage.getCurrentGameKey(pool, viewer?.id_user || null);
             if (!author_game_key) return empty({ needs_current_game: true });
           }
+        } else if (kind === "fitness") {
+          // ESPORTES (mig 306): "Meu esporte" é o recorte por POST — o esporte
+          // que o autor escolheu ao publicar —, e não por autor como no Games:
+          // quem joga futebol e treina na academia posta nos dois.
+          const scope = query?.scope === "my_sport" ? "my_sport" : "all";
+          scopeInfo.sport_scope = scope;
+          if (scope === "my_sport") {
+            if (!viewer?.id_user) return empty({ needs_sport: true });
+            const r = await pool.query(`SELECT sport FROM public.tb_user_sport WHERE id_user = $1`, [viewer.id_user]);
+            sport = parseSport(r.rows[0]?.sport);
+            if (!sport) return empty({ needs_sport: true });
+            scopeInfo.sport = sport;
+          }
         }
 
         const [postRows, recadoRows] = await Promise.all([
@@ -797,6 +812,7 @@ class CommunityService {
             before_key,
             author_id_user,
             author_game_key,
+            sport,
           }),
           CommunityStorage.listCommunityRecados(pool, feedScope, {
             limit: limit + 1,
@@ -804,6 +820,7 @@ class CommunityService {
             before_key,
             author_id_user,
             author_game_key,
+            sport,
           }),
         ]);
 
@@ -889,13 +906,19 @@ class CommunityService {
         }
         const community = await CommunityStorage.getById(pool, params.id_profile);
         if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
-        const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
-        if (!membership) {
-          return { error: "Você precisa ser membro para publicar na comunidade." };
+        // Plataforma (games, financeiro, esportes) não tem membros — a MESMA
+        // isenção do linkFeedItem. Sem ela, o Recado do menu "+" das
+        // plataformas respondia "você precisa ser membro" a todo mundo.
+        if (!PLATFORM_KINDS.includes(community.kind)) {
+          const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
+          if (!membership) {
+            return { error: "Você precisa ser membro para publicar na comunidade." };
+          }
         }
         const id = await CommunityStorage.createRecado(pool, params.id_profile, {
           body: text,
           id_author_user: id_user,
+          sport: community.kind === "fitness" ? parseSport(body?.sport) : null,
         });
         return { ok: true, id };
       }
@@ -1019,11 +1042,15 @@ class CommunityService {
           }
         }
 
+        // Esportes (mig 306): o esporte escolhido no composer. Inválido ou
+        // ausente vira NULL — o post publica do mesmo jeito, só não entra em
+        // nenhum "Meu esporte".
         const linked = await CommunityStorage.linkFeedItem(
           pool,
           params.id_profile,
           id_portfolio_item,
-          id_user
+          id_user,
+          community.kind === "fitness" ? parseSport(body?.sport) : null
         );
         if (isExclusive) {
           await CommunityStorage.setItemExclusiveCommunity(pool, id_portfolio_item, params.id_profile);

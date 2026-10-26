@@ -645,20 +645,21 @@ class CommunityStorage {
 
   // ─── Feed estilo grupo (posts dos membros) ──────────────────────────────────
   // Liga um post/bee (portfolio-item de um membro) ao feed da comunidade.
-  static async linkFeedItem(conn, id_community, id_portfolio_item, id_author_user) {
+  static async linkFeedItem(conn, id_community, id_portfolio_item, id_author_user, sport = null) {
     const r = await conn.query(
       // kind herda o DEFAULT 'post' (mig 162). O índice único virou PARCIAL na
       // mig 162 (WHERE id_portfolio_item IS NOT NULL), então o ON CONFLICT
       // PRECISA repetir o predicado — senão o Postgres não infere o índice e
       // estoura 42P10 ("no unique or exclusion constraint matching"), quebrando
       // todo link de post no feed da comunidade.
+      // `sport` (mig 306): só a plataforma Esportes manda; nas outras é NULL.
       `INSERT INTO public.tb_community_feed_item
-         (id_community_profile, id_portfolio_item, id_author_user)
-       VALUES ($1, $2, $3)
+         (id_community_profile, id_portfolio_item, id_author_user, sport)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (id_community_profile, id_portfolio_item)
          WHERE id_portfolio_item IS NOT NULL DO NOTHING
        RETURNING id`,
-      [id_community, id_portfolio_item, id_author_user || null]
+      [id_community, id_portfolio_item, id_author_user || null, sport || null]
     );
     return r.rowCount > 0;
   }
@@ -718,7 +719,7 @@ class CommunityStorage {
    * os posts de todas as comunidades de carro — ou só as do mesmo modelo — na
    * MESMA consulta do mural, em vez de uma segunda que divergiria dela.
    */
-  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key, author_id_user, author_game_key = null }) {
+  static async listCommunityFeedPosts(conn, id_community, { viewer_id_user, limit, before_ts, before_key, author_id_user, author_game_key = null, sport = null }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 24);
     const r = await conn.query(
       `SELECT
@@ -760,6 +761,8 @@ class CommunityStorage {
            FROM public.tb_community_feed_item
           WHERE id_community_profile = ANY($1::uuid[])
             AND id_portfolio_item IS NOT NULL
+            -- "Meu esporte" (mig 306): o esporte escolhido ao publicar.
+            AND ($8::text IS NULL OR sport = $8::text)
        ) cfi
        JOIN public.tb_profile_portfolio_item ppi ON ppi.id_portfolio_item = cfi.id_portfolio_item
        JOIN public.tb_profile pro ON pro.id_profile = ppi.id_profile
@@ -824,6 +827,7 @@ class CommunityStorage {
         before_key || null,
         author_id_user || null,
         author_game_key || null,
+        sport || null,
       ]
     );
     return r.rows;
@@ -833,13 +837,13 @@ class CommunityStorage {
   // Cria um recado. Aliases das colunas seguem o shape que PortfolioFeedService
   // .shapeRow espera (post_id 'r<id>', description=body, contadores zerados etc.),
   // para reusar o mesmo cartão FeedPost do /feed sem código de shape duplicado.
-  static async createRecado(conn, id_community, { body, id_author_user }) {
+  static async createRecado(conn, id_community, { body, id_author_user, sport = null }) {
     const r = await conn.query(
       `INSERT INTO public.tb_community_feed_item
-         (id_community_profile, id_portfolio_item, id_author_user, kind, body)
-       VALUES ($1, NULL, $2, 'recado', $3)
+         (id_community_profile, id_portfolio_item, id_author_user, kind, body, sport)
+       VALUES ($1, NULL, $2, 'recado', $3, $4)
        RETURNING id`,
-      [id_community, id_author_user, body]
+      [id_community, id_author_user, body, sport || null]
     );
     return r.rows[0].id;
   }
@@ -869,7 +873,7 @@ class CommunityStorage {
   // unificada com os posts via chave textual ('r' || id) na MESMA stream.
   // O mesmo recorte por autor do `listCommunityFeedPosts` — sem ele, a vitrine
   // "meus posts" traria os recados de todo mundo no meio dos posts do dono.
-  static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key, author_id_user, author_game_key = null }) {
+  static async listCommunityRecados(conn, id_community, { limit, before_ts, before_key, author_id_user, author_game_key = null, sport = null }) {
     const lim = Math.min(Math.max(Number(limit) || 12, 1), 25);
     const r = await conn.query(
       `SELECT
@@ -914,6 +918,7 @@ class CommunityStorage {
           SELECT 1 FROM public.tb_user_current_game ucg
            WHERE ucg.id_user = cfi.id_author_user AND ucg.game_key = $6::text
         ))
+        AND ($7::text IS NULL OR cfi.sport = $7::text)
       ORDER BY cfi.created_at DESC, cfi.id DESC
       LIMIT $4`,
       [
@@ -923,6 +928,7 @@ class CommunityStorage {
         lim,
         author_id_user || null,
         author_game_key || null,
+        sport || null,
       ]
     );
     return r.rows;
