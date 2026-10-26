@@ -93,6 +93,25 @@ class MeuMundoChatService {
     return r;
   }
 
+  /**
+   * mm3d-33: a mensagem 1:1 entre perfis-conta acabou de ser gravada (o
+   * /conversations já conferiu bloqueio). Se o destinatário está no jogo, só
+   * ele recebe o balão sobre quem falou + o aviso. Quem não joga não custa banco.
+   */
+  static async relayDirect({ fromUserId, actorId, to, conversationId, body }) {
+    if (!to || !to.is_user_account || !to.id_user || String(to.id_user) === String(fromUserId)) return false;
+    if (!presence.get(to.id_user)) return false;
+    const text = bubbleText(body);
+    if (!text) return false;
+    const actor = await ProfileStorage.getProfileById(pool, actorId);
+    if (!actor || !actor.is_user_account || String(actor.id_user) !== String(fromUserId)) return false;
+    return require("../realtime/meuMundo").directInGame(to.id_user, fromUserId, {
+      conversationId,
+      name: actor.display_name || actor.username || "",
+      text,
+    });
+  }
+
   /** Acha/cria a conversa 1:1 com o jogador (sessão na minha sala OU perfil-conta da linha). */
   static async openDirect(userId, body = {}) {
     let targetUserId = null;

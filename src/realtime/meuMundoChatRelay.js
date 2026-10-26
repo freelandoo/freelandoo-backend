@@ -38,4 +38,14 @@ function sayInRoom(userId, text, canSee) {
   return n;
 }
 
-module.exports = { pushChat, sessionOf, sayInRoom };
+/**
+ * mm3d-33: mensagem 1:1 que CHEGA para quem está no jogo. Vai SÓ para o
+ * destinatário: `s` = sessão de quem mandou na mesma sala (o balão sai em cima
+ * dele; null = está em outra sala ou fora do jogo, só o aviso aparece).
+ */
+function directInGame(toUserId, fromUserId, { conversationId, name, text }) {
+  if (!presence.get(toUserId)) return false;
+  return presence.send(toUserId, "dm", { s: sessionOf(toUserId, fromUserId), t: text, c: conversationId, n: name });
+}
+
+module.exports = { pushChat, sessionOf, sayInRoom, directInGame };

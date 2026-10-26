@@ -592,6 +592,16 @@ class ConversationService {
                   reason: "message_received",
                   id_conversation: conv.id_conversation,
                 });
+                // Meu Mundo (mm3d-33): destinatário jogando vê o balão sobre quem falou.
+                require("./MeuMundoChatService")
+                  .relayDirect({
+                    fromUserId: user.id_user,
+                    actorId: actorRes.actor_id,
+                    to: otherProfile,
+                    conversationId: conv.id_conversation,
+                    body,
+                  })
+                  .catch(() => {});
               }
             }
           } catch {

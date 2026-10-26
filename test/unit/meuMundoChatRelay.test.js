@@ -5,7 +5,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const presence = require("../../src/realtime/meuMundoPresence");
-const { sessionOf, sayInRoom, pushChat } = require("../../src/realtime/meuMundoChatRelay");
+const { sessionOf, sayInRoom, pushChat, directInGame } = require("../../src/realtime/meuMundoChatRelay");
 
 function fakeRoom(players) {
   const room = { clients: [], sim: new Map() };
@@ -53,4 +53,16 @@ test("pushChat: entrega a linha só a quem está no jogo", () => {
   assert.equal(pushChat("u1", { id: "m1" }), true);
   assert.deepEqual(room.client("sA").got, [["chat", { id: "m1" }]]);
   assert.equal(pushChat("u9", { id: "m1" }), false);
+});
+
+test("directInGame (mm3d-33): só o destinatário recebe; sessão de quem falou só na mesma sala", () => {
+  const room = fakeRoom([["sA", "u1"], ["sB", "u2"], ["sC", "u3"]]);
+  const other = fakeRoom([["sD", "u4"]]);
+  assert.equal(directInGame("u2", "u1", { conversationId: "c1", name: "Alex", text: "oi" }), true);
+  assert.deepEqual(room.client("sB").got, [["dm", { s: "sA", t: "oi", c: "c1", n: "Alex" }]]);
+  assert.deepEqual(room.client("sA").got, [], "quem mandou não recebe");
+  assert.deepEqual(room.client("sC").got, [], "terceiro da sala não vê");
+  assert.equal(directInGame("u4", "u1", { conversationId: "c2", name: "Alex", text: "oi" }), true);
+  assert.deepEqual(other.client("sD").got, [["dm", { s: null, t: "oi", c: "c2", n: "Alex" }]], "outra sala: só o aviso");
+  assert.equal(directInGame("u9", "u1", { conversationId: "c3", name: "", text: "oi" }), false, "fora do jogo");
 });

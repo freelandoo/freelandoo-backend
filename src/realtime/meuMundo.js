@@ -1869,7 +1869,7 @@ function pushNotice(userId, notice) {
 }
 
 // Chat do jogo (mm3d-32): entrega pela sala, em módulo próprio (testável sem Colyseus).
-const { pushChat, sessionOf, sayInRoom } = require("./meuMundoChatRelay");
+const { pushChat, sessionOf, sayInRoom, directInGame } = require("./meuMundoChatRelay");
 
 /**
  * Card de perfil (mm3d-31): a conta por trás de um boneco que `viewerId`
@@ -1937,6 +1937,7 @@ module.exports = {
   pushChat,
   sessionOf,
   sayInRoom,
+  directInGame,
   playerInMyRoom,
   stowRide,
   addRideToHouse,

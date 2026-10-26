@@ -18,7 +18,7 @@ const P2 = "22222222-2222-4222-8222-222222222222";
 const PX = "99999999-9999-4999-8999-999999999999";
 const PROFILE_OF = { 1: P1, 2: P2, 3: "33333333-3333-4333-8333-333333333333" };
 
-const w = { online: [1, 2, 3], blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], rooms: new Map(), lookups: 0, gameMessages: new Set(), reported: [], listQuery: null };
+const w = { direct: [], profiles: {}, online: [1, 2, 3], blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], rooms: new Map(), lookups: 0, gameMessages: new Set(), reported: [], listQuery: null };
 
 stub("databases", { query: async () => ({ rows: [] }) });
 stub("realtime/meuMundo.js", {
@@ -26,8 +26,9 @@ stub("realtime/meuMundo.js", {
   sayInRoom: (u, text, canSee) => { w.said.push([u, text, [1, 2, 3].filter(canSee)]); return 1; },
   sessionOf: () => null,
   playerInMyRoom: (viewer, sid) => w.rooms.get(`${viewer}:${sid}`) || null,
+  directInGame: (to, from, p) => { w.direct.push([to, from, p]); return true; },
 });
-stub("realtime/meuMundoPresence.js", { onlineUsers: () => w.online });
+stub("realtime/meuMundoPresence.js", { onlineUsers: () => w.online, get: (u) => (w.online.includes(u) ? { room: {} } : null) });
 stub("storages/MeuMundoChatStorage.js", {
   ensureRoom: async () => ({ id_chat_room: "00000000-0000-4000-8000-000000000001", type: "meu_mundo" }),
   blockPairs: async (_c, u) => w.blocks.filter((p) => p.blocker_user_id === u || p.blocked_user_id === u),
@@ -37,7 +38,10 @@ stub("storages/MeuMundoChatStorage.js", {
     return pid === P2 ? { id_profile: P2, id_user: 2 } : pid === P1 ? { id_profile: P1, id_user: 1 } : null;
   },
 });
-stub("storages/ProfileStorage.js", { getUserAccountProfileId: async (_c, u) => PROFILE_OF[u] });
+stub("storages/ProfileStorage.js", {
+  getUserAccountProfileId: async (_c, u) => PROFILE_OF[u],
+  getProfileById: async (_c, pid) => { w.lookups++; return w.profiles[pid] || null; },
+});
 stub("services/ChatService.js", {
   sendMessage: async (user, params, body, opts) => {
     w.sent.push({ user, params, body, opts });
@@ -51,7 +55,7 @@ stub("services/ConversationService.js", {
 });
 
 const S = require("../../src/services/MeuMundoChatService");
-const reset = () => Object.assign(w, { blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], lookups: 0, gameMessages: new Set(), reported: [], reportResult: null, listQuery: null });
+const reset = () => Object.assign(w, { direct: [], profiles: {}, online: [1, 2, 3], blocks: [], pushed: [], said: [], sent: [], opened: [], history: [], lookups: 0, gameMessages: new Set(), reported: [], reportResult: null, listQuery: null });
 
 test("enviar: grava com o perfil-conta, silencioso, e entrega a todos online", async () => {
   reset();
@@ -147,4 +151,37 @@ test("histórico: cursor inválido é 400; válido passa adiante", async () => {
   assert.equal(w.listQuery.before, "2026-10-25T10:00:00.000Z");
   await S.history(1, {});
   assert.equal(w.listQuery.before, null);
+});
+
+// mm3d-33: 1:1 que chega para quem está no jogo — balão + aviso só para ele.
+const ACC2 = { id_profile: P2, id_user: 2, is_user_account: true };
+test("relayDirect: perfil-conta para perfil-conta jogando → só o destinatário, texto do balão", async () => {
+  reset();
+  w.profiles[P1] = { id_profile: P1, id_user: 1, is_user_account: true, display_name: "Alex" };
+  const ok = await S.relayDirect({ fromUserId: 1, actorId: P1, to: ACC2, conversationId: "c1", body: `  oi   ${"x".repeat(200)}` });
+  assert.equal(ok, true);
+  assert.equal(w.direct.length, 1);
+  const [to, from, p] = w.direct[0];
+  assert.equal(to, 2);
+  assert.equal(from, 1);
+  assert.equal(p.conversationId, "c1");
+  assert.equal(p.name, "Alex");
+  assert.equal(p.text.length, 90, "corte do balão");
+  assert.ok(p.text.startsWith("oi x"));
+});
+
+test("relayDirect: destinatário fora do jogo não custa banco; perfil que não é conta não vira balão", async () => {
+  reset();
+  w.online = [1];
+  w.profiles[P1] = { id_profile: P1, id_user: 1, is_user_account: true, display_name: "Alex" };
+  assert.equal(await S.relayDirect({ fromUserId: 1, actorId: P1, to: ACC2, conversationId: "c1", body: "oi" }), false);
+  assert.equal(w.lookups, 0);
+  w.online = [1, 2];
+  assert.equal(await S.relayDirect({ fromUserId: 1, actorId: P1, to: { ...ACC2, is_user_account: false }, conversationId: "c1", body: "oi" }), false);
+  w.profiles[P1].is_user_account = false;
+  assert.equal(await S.relayDirect({ fromUserId: 1, actorId: P1, to: ACC2, conversationId: "c1", body: "oi" }), false, "remetente com perfil de negócio");
+  w.profiles[P1] = { id_profile: P1, id_user: 3, is_user_account: true };
+  assert.equal(await S.relayDirect({ fromUserId: 1, actorId: P1, to: ACC2, conversationId: "c1", body: "oi" }), false, "perfil de outra pessoa");
+  assert.equal(await S.relayDirect({ fromUserId: 2, actorId: P2, to: ACC2, conversationId: "c1", body: "oi" }), false, "consigo mesmo");
+  assert.equal(w.direct.length, 0);
 });
