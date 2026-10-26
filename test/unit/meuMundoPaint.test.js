@@ -149,29 +149,33 @@ test("paint — ponte cresce no vão a cada tiro e dá para andar nela", () => {
   assert.ok(b.ground && Math.abs(b.y) < 0.01 && b.z > base.z + base.r + 2, "não andou na ponte");
 });
 
-test("paint — degrau no ar empilha: 3 pulos sobem mais de 3 m", () => {
+test("paint — cama elástica: pisou, é lançado ~4 m; no ar ainda pula mais uma vez", () => {
   const map = P.buildPaintMap();
   const base = map.islands[map.bases[0].island];
   const b = P.newBody(base.x, 0, base.z, 0);
   const solids = map.solids.slice();
-  for (let k = 0; k < 3; k++) {
-    P.stepBody(b, { mx: 0, mz: 0, run: false, jump: true }, solids);
-    let fired = false;
-    for (let i = 0; i < 120; i++) {
-      P.stepBody(b, { mx: 0, mz: 0, run: false, jump: false }, solids);
-      if (!fired && !b.ground && b.vy <= 0) {
-        const s = { slot: 0, team: 0, x: b.x, y: b.y, z: b.z, ground: b.ground, gy: b.gy, facing: 0 };
-        const r = P.resolveShot(world(solids), s, PAINT.STEP, P.muzzleOf(s, 0), { x: 0, y: -1, z: 0 });
-        assert.equal(r.kind, "blob");
-        solids.push(P.blobSolid(r.blob, 100 + k, 0));
-        P.liftOnto(b, r.blob.x, r.blob.z, r.blob.r, r.blob.y1);
-        fired = true;
-      }
-      if (fired && b.ground) break;
-    }
-    assert.ok(b.ground, "não pousou no degrau");
+  const s = { slot: 0, team: 0, x: b.x, y: b.y, z: b.z, ground: true, gy: 0, facing: 0 };
+  const r = P.resolveShot(world(solids), s, PAINT.STEP, P.muzzleOf(s, 0), { x: 0, y: -1, z: 0 });
+  assert.equal(r.kind, "blob");
+  assert.ok(r.blob.y1 - r.blob.y0 <= T.stepUp, "a cama elástica tem que dar para entrar andando");
+  solids.push(P.blobSolid(r.blob, 7, 0));
+  // anda até ela: quica
+  let bounced = null;
+  let top = 0;
+  for (let i = 0; i < 120 && bounced === null; i++) {
+    P.stepBody(b, { mx: 0, mz: 1, run: false, jump: false }, solids);
+    if (b.bounce !== null) bounced = b.bounce;
   }
-  assert.ok(b.y > 3 && b.y < 3 * T.jumpV ** 2 / (2 * T.gravity), `altura depois de 3 degraus: ${b.y}`);
+  assert.equal(bounced, 7, "não quicou na cama elástica");
+  assert.ok(b.vy > 12 && !b.ground && b.jumps === 1);
+  for (let i = 0; i < 200; i++) {
+    P.stepBody(b, { mx: 0, mz: 0, run: false, jump: false }, solids);
+    top = Math.max(top, b.y);
+    if (b.vy < 0) break;
+  }
+  assert.ok(top > 4.2 && top < 5, `altura do quique ${top}`);
+  P.stepBody(b, { mx: 0, mz: 0, run: false, jump: true }, solids);
+  assert.ok(b.vy > 6 && b.jumps === 2, "sem o pulo no ar depois do quique");
 });
 
 // ── Robô que sobe a torre ────────────────────────────────────────────────────
@@ -224,16 +228,7 @@ function climber(match, slot) {
   const face = (x, z) => {
     b.facing = Math.atan2(x - b.x, z - b.z);
   };
-  /** Pula e põe degrau embaixo do pé no topo do pulo. */
-  const stack = () => {
-    run({ mx: 0, mz: 0, run: false, jump: true });
-    for (let i = 0; i < 80 && !(b.vy <= 0 && !b.ground); i++) run({ mx: 0, mz: 0, run: false, jump: false });
-    if (b.ground) return false;
-    const made = fire(PAINT.STEP, { x: 0, y: -1, z: 0 });
-    for (let i = 0; i < 80 && !b.ground; i++) run({ mx: 0, mz: 0, run: false, jump: false });
-    return !!made;
-  };
-  /** Vai da ilha em que está até a ilha `to` (ponte + degraus). */
+  /** Vai da ilha em que está até a ilha `to` (ponte na altura daqui + cama elástica para subir). */
   const hop = (to) => {
     const dx = to.x - b.x;
     const dz = to.z - b.z;
@@ -242,15 +237,9 @@ function climber(match, slot) {
     const uz = dz / d;
     // até a borda, olhando para a próxima
     walkTo(b.x + ux * 30, b.z + uz * 30, true);
-    // sobe até ficar acima do topo de lá
-    let guard = 0;
-    while (b.y < to.y + 0.2 && guard++ < 12) {
-      assert.ok(p.ammo[PAINT.STEP] >= T.cost[PAINT.STEP], `sem munição amarela indo para a ilha ${to.id}`);
-      stack();
-    }
-    // ponte até lá
     face(to.x, to.z);
-    guard = 0;
+    // ponte na altura daqui até encostar na ilha de lá
+    let guard = 0;
     for (;;) {
       const reach = Math.hypot(to.x - b.x, to.z - b.z) - to.r;
       const made = [...match.blobs.values()].filter((x) => x.owner === slot && x.blob.c === PAINT.BRIDGE);
@@ -259,11 +248,38 @@ function climber(match, slot) {
       assert.ok(guard++ < 40, `ponte não chega na ilha ${to.id}`);
       assert.ok(p.ammo[PAINT.BRIDGE] >= 1, `sem munição turquesa indo para a ilha ${to.id}`);
       fire(PAINT.BRIDGE, { x: ux, y: 0, z: uz });
-      // anda pela ponte enquanto ela cresce
       walkTo(b.x + ux * 30, b.z + uz * 30, true, 40);
     }
+    if (to.y > b.y + 0.3) {
+      // perto da parede de lá, cama elástica logo atrás de si; volta nela, é
+      // lançado e vai para cima da ilha (pula no ar se faltar altura)
+      // fica a ~1,4 m da borda de lá (nem embaixo da ilha, se a ponte passou por baixo)
+      for (let i = 0; i < 400; i++) {
+        const gap = Math.hypot(to.x - b.x, to.z - b.z) - (to.r + 1.4);
+        if (Math.abs(gap) < 0.12) break;
+        const before = { x: b.x, z: b.z };
+        const sgn = gap > 0 ? 1 : -1;
+        run({ mx: ux * sgn * 0.5, mz: uz * sgn * 0.5, run: false, jump: false });
+        if (Math.hypot(b.x - before.x, b.z - before.z) < 1e-4) break;
+      }
+      run({ mx: 0, mz: 0, run: false, jump: false }, 20);
+      assert.ok(p.ammo[PAINT.STEP] >= T.cost[PAINT.STEP], `sem munição amarela indo para a ilha ${to.id}`);
+      b.facing = Math.atan2(-ux, -uz);
+      run({ mx: 0, mz: 0, run: false, jump: false }); // a partida fica com a pose virada
+      const pad = fire(PAINT.STEP, { x: 0, y: -1, z: 0 });
+      assert.ok(pad && pad.blob.c === PAINT.STEP, `a cama elástica não nasceu (ilha ${to.id})`);
+      let bounced = false;
+      for (let i = 0; i < 300; i++) {
+        // sobe reto e só avança acima do topo de lá (o topo é uma ilha suspensa: avançar subindo bate a cabeça embaixo dela)
+        const toward = bounced ? (b.y > to.y + 0.1 ? 1 : 0) : -1;
+        const jump = bounced && !b.ground && b.vy < 1 && b.y < to.y + 0.4 && b.jumps < T.maxJumps;
+        run({ mx: ux * toward, mz: uz * toward, run: false, jump });
+        if (b.bounce !== null) bounced = true;
+        if (bounced && b.ground) break;
+      }
+      assert.ok(bounced, `não quicou na cama elástica (ilha ${to.id})`);
+    }
     walkTo(to.x, to.z, false);
-    // pegou o que tem no caminho (cápsulas/gatinhos), está em cima
     assert.ok(Math.abs(b.y - to.y) < 0.05 && Math.hypot(b.x - to.x, b.z - to.z) < to.r, `não chegou na ilha ${to.id} (y ${b.y} × ${to.y})`);
   };
   /** Passa pelas cápsulas e gatinhos da ilha em que está. */

@@ -17,7 +17,7 @@ const PAINT = {
   BRIDGE: 0,
   /** Vermelho escuro: dano; apaga a tinta do outro time. */
   HARM: 1,
-  /** Amarelo: degrau (sobe). */
+  /** Amarelo: cama elástica (mm3d-35e: quem pisa é lançado para cima). */
   STEP: 2,
 }         
                                   
@@ -66,9 +66,11 @@ const TUNING = {
   bridgeH: 0.34,
   /** A ponte cresce até esta distância horizontal de quem atira. */
   bridgeReach: 12,
-  /** Degrau (amarelo): cilindro alto. */
-  stepR: 0.85,
-  stepH: 1.0,
+  /** Cama elástica (amarelo, mm3d-35e): almofada baixa (dá para entrar andando) que lança para cima. */
+  stepR: 1.0,
+  stepH: 0.4,
+  /** Velocidade do lançamento: ~4,6 m de altura (+ o pulo no ar; o topo pede 5,2 m). */
+  bounceV: 14.2,
   /** Tinta some depois de (s) e cada jogador tem no máximo N manchas. */
   blobLife: 45,
   blobsPerPlayer: 60,
@@ -403,6 +405,21 @@ function supportAt(solids                  , x        , z        , maxY        ,
   return best
 }
 
+/** Índice do sólido que dá o chão de `supportAt` (-1 = nenhum). */
+function supportIndex(solids                  , x        , z        , maxY        , pad = FOOT_R) {
+  let best = -Infinity
+  let idx = -1
+  for (let i = 0; i < solids.length; i++) {
+    const s = solids[i]
+    if (s.y1 > maxY || s.y1 <= best) continue
+    if (inside(s, x, z, pad)) {
+      best = s.y1
+      idx = i
+    }
+  }
+  return idx
+}
+
 /**
  * Tira o corpo (círculo de raio r, de `y` a `y + h`) de dentro dos sólidos que
  * ele não consegue subir (topo acima de `y + up`). Mexe em `p` e devolve se
@@ -570,7 +587,7 @@ function rayBody(o      , d      , b                                     , r    
 // aqui para os dois lados concordarem sobre o que dá e o que não dá.
 
 function newBody(x        , y        , z        , facing        )            {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, ground: true, air: 0, gy: y, facing, jumps: 0 }
+  return { x, y, z, vx: 0, vy: 0, vz: 0, ground: true, air: 0, gy: y, facing, jumps: 0, bounce: null }
 }
 
 /** Movimento para a animação: 0 parado, 1 andando, 2 correndo, 5 no ar. */
@@ -578,6 +595,7 @@ function newBody(x        , y        , z        , facing        )            {
 
 function stepBody(b           , it            , solids                  , dt = TUNING.step)           {
   const T = TUNING
+  b.bounce = null
   let mx = it.mx
   let mz = it.mz
   const m = Math.hypot(mx, mz)
@@ -633,13 +651,24 @@ function stepBody(b           , it            , solids                  , dt = T
   }
   // chão: o mais alto até o pé (+ subida, se já estava pisando)
   const reach = wasGround ? Math.max(prevY, b.y) + T.stepUp : Math.max(prevY, b.y) + 0.02
-  const floor = supportAt(solids, b.x, b.z, reach)
-  if (b.vy <= 0 && floor > -Infinity && b.y <= floor + (wasGround ? 0.06 : 0)) {
+  const fi = supportIndex(solids, b.x, b.z, reach)
+  const fs = fi >= 0 ? solids[fi] : null
+  const floor = fs ? fs.y1 : -Infinity
+  if (b.vy <= 0 && fs && b.y <= floor + (wasGround ? 0.06 : 0)) {
     b.y = floor
+    b.gy = floor
+    if (fs.k === 0 && fs.c === PAINT.STEP) {
+      // cama elástica (mm3d-35e): lança para cima; no ar ainda tem um pulo
+      b.vy = T.bounceV
+      b.ground = false
+      b.air = T.coyote
+      b.jumps = 1
+      b.bounce = fs.b ?? -1
+      return 5
+    }
     b.vy = 0
     b.ground = true
     b.air = 0
-    b.gy = floor
     b.jumps = 0
   } else if (wasGround && b.vy <= 0 && floor > -Infinity && b.y - floor <= 0.25) {
     // descendo rampa/degrau baixo: gruda
@@ -671,7 +700,7 @@ function knockBody(b           , kx        , ky        , kz        ) {
   }
 }
 
-/** Um degrau nasceu embaixo de quem está aqui: sobe para o topo (até 1,1 m). */
+/** Uma mancha nasceu embaixo de quem está aqui: sobe para o topo (até 1,1 m). */
 function liftOnto(b           , x        , z        , r        , top        ) {
   if (Math.hypot(b.x - x, b.z - z) > r + TUNING.bodyR * 0.5) return false
   if (top <= b.y || top - b.y > 1.1) return false
@@ -694,7 +723,8 @@ function liftOnto(b           , x        , z        , r        , top        ) {
 //    Senão (mirando o vão, ou o lado de uma ilha) → a ponte CRESCE: acha a
 //    borda do chão na direção da mira, na altura do último chão pisado, e põe
 //    um disco logo depois dela. Segurando o botão, disco atrás de disco.
-//  - AMARELO (degrau): no ar → degrau embaixo do pé (empilha). No chão →
+//  - AMARELO (cama elástica, mm3d-35e): no ar → embaixo do pé (cai nela e é
+//    lançado). No chão →
 //    onde a mira bate (perto), ou logo à frente.
 //  - VERMELHO ESCURO (dano): acerta o jogador do OUTRO time, o chefão, ou
 //    apaga tinta do outro time; no chão vira só respingo.
@@ -1210,4 +1240,4 @@ class PaintMatch {
 /** Atalho para quem só precisa saber se a pose está fora (cliente). */
 const PAINT_FIRE_COLORS                        = [PAINT.BRIDGE, PAINT.HARM, PAINT.STEP]
 
-module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, buildPaintMap, fellOut, spawnPoint, FOOT_R, supportAt, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, PaintMatch, PAINT_FIRE_COLORS };
+module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, buildPaintMap, fellOut, spawnPoint, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, PaintMatch, PAINT_FIRE_COLORS };
