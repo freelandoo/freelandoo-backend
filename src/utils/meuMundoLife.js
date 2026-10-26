@@ -456,6 +456,37 @@ function birth(seed, t) {
   return s;
 }
 
+// ═══ MORTE: FUNERAL E HERANÇA (mm3d-34) ═══
+// Regra do Alex: morrer de velhice é o fim natural — o novo hóspede herda 20%
+// do maior valor que o antigo alcançou em cada atributo e a Freelandoo paga o
+// funeral. Qualquer outra causa (doença, infarto, hospital) não deixa herança
+// e o jogador paga o funeral (o que tiver, até o preço: a carteira não fica
+// negativa e o jogo nunca trava por falta de moedas).
+const AFTERLIFE = Object.freeze({ FUNERAL_COINS: 300, INHERIT: 0.2, NATURAL: "velhice" });
+
+/** O que a morte deixa (null = vivo). `inherit` = valores que o novo hóspede recebe. */
+function afterlife(s) {
+  if (s.status !== "dead") return null;
+  const natural = s.deathCause === AFTERLIFE.NATURAL;
+  const peak = (k) => Math.max(s[k] || 0, (s.peaks && s.peaks[k]) || 0);
+  return {
+    natural,
+    funeral: { coins: AFTERLIFE.FUNERAL_COINS, paidBy: natural ? "freelandoo" : "player" },
+    inherit: natural ? Object.fromEntries(TRAINED.map((k) => [k, r2(AFTERLIFE.INHERIT * peak(k))])) : null,
+  };
+}
+
+/** Novo hóspede com a herança: nunca abaixo do que ele já nasceria; vira o piso dele. */
+function applyInheritance(n, inherit) {
+  if (!inherit) return n;
+  for (const k of TRAINED) {
+    const v = Math.min(ATTR.MAX, Math.max(n[k], inherit[k] || 0));
+    n[k] = v;
+    n.peaks[k] = Math.max(n.peaks[k], v);
+  }
+  return n;
+}
+
 // ═══ ATRIBUTOS ═══
 const attrFloor = (s, k) => ATTR.FLOOR[k] * s.peaks[k];
 
@@ -1102,6 +1133,7 @@ function snapshot(s, t) {
     status: s.status === "dead" ? "dead" : a.kind === "hospital" ? "hospital" : "alive",
     deathCause: s.deathCause,
     diedAt: s.diedAt ? new Date(s.diedAt).toISOString() : null,
+    afterlife: afterlife(s),
     personality: s.personality,
     vitals: {
       energy: r2(s.energy),
@@ -1208,6 +1240,9 @@ module.exports = {
   ATTR,
   ROUTINE,
   PACE,
+  AFTERLIFE,
+  afterlife,
+  applyInheritance,
   ITEMS,
   ITEM_BY_ID,
   birth,

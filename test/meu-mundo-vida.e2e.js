@@ -86,7 +86,7 @@ async function mkUser(pool, tag) {
   const Life = require("../src/services/MeuMundoLifeService");
   const L = require("../src/utils/meuMundoLayout");
   const { interiorFor } = require("../src/utils/meuMundoInteriors");
-  const { PACE } = require("../src/utils/meuMundoLife");
+  const { PACE, AFTERLIFE } = require("../src/utils/meuMundoLife");
 
   const host = await mkUser(pool, "host");
   await Storage.ensureResidence(pool, host);
@@ -178,7 +178,10 @@ async function mkUser(pool, tag) {
   check("morto não come, não estuda", (await Life.consume(host, "pizza")).code === "dead" && (await Life.setActivity(host, "studying", 1)).code === "dead");
   const wallet0 = (await Life.peek(host)).wallet.coins;
   const nc = await Life.newcomer(host);
-  check("novo hóspede: geração 2, vivo, carteira mantida", nc.character.generation === 2 && nc.character.status === "alive" && nc.wallet.coins === wallet0);
+  // mm3d-34: morte por overdose = o jogador paga o funeral (até o que tiver) e não há herança.
+  const funeralPaid = Math.min(AFTERLIFE.FUNERAL_COINS, wallet0);
+  check("novo hóspede: geração 2, vivo, funeral pago pelo jogador", nc.character.generation === 2 && nc.character.status === "alive" && nc.wallet.coins === wallet0 - funeralPaid && nc.funeral.paidBy === "player" && nc.funeral.coins === funeralPaid, JSON.stringify(nc.funeral));
+  check("overdose não deixa herança", nc.inherited === null);
   check("novo hóspede de novo: 409 (o atual está vivo)", (await Life.newcomer(host)).statusCode === 409);
   const gens = (await pool.query(`SELECT generation, status, death_seen_at FROM tb_mm_character WHERE id_user = $1 ORDER BY generation`, [host])).rows;
   check("o falecido fica no histórico, com a morte vista", gens.length === 2 && gens[0].status === "dead" && !!gens[0].death_seen_at && gens[1].status === "alive");
@@ -189,6 +192,22 @@ async function mkUser(pool, tag) {
     dup = true;
   }
   check("o banco recusa dois hóspedes vivos", dup);
+
+  // mm3d-34: velhice = Freelandoo paga o funeral e o novo herda 20% do pico.
+  await pool.query(
+    `UPDATE tb_mm_character SET status = 'dead', death_cause = 'velhice', died_at = NOW(), activity = 'idle',
+            intelligence = 500, attr_peaks = '{"intelligence":800,"strength":400,"speed":100}'::jsonb
+      WHERE id_user = $1 AND generation = 2`,
+    [host]
+  );
+  const wallet1 = (await Life.peek(host)).wallet.coins;
+  const heir = await Life.newcomer(host);
+  check("velhice: funeral pago pela Freelandoo, carteira intacta", heir.funeral.paidBy === "freelandoo" && heir.wallet.coins === wallet1, JSON.stringify(heir.funeral));
+  check("velhice: herança de 20% do pico", heir.inherited && heir.inherited.intelligence === 160 && heir.inherited.strength === 80, JSON.stringify(heir.inherited));
+  const g3 = (await pool.query(`SELECT intelligence, strength, attr_peaks FROM tb_mm_character WHERE id_user = $1 AND generation = 3`, [host])).rows[0];
+  check("geração 3 nasce com a herança (e ela é o piso)", Number(g3.intelligence) === 160 && Number(g3.strength) === 80 && Number(g3.attr_peaks.intelligence) === 160, JSON.stringify(g3));
+  const funerals = (await pool.query(`SELECT kind, data FROM tb_mm_character_event e JOIN tb_mm_character c USING (id_character) WHERE c.id_user = $1 AND e.kind = 'funeral' ORDER BY e.at`, [host])).rows;
+  check("os dois funerais ficam no histórico de quem morreu", funerals.length === 2 && funerals[0].data.paidBy === "player" && funerals[1].data.paidBy === "freelandoo");
 
   // ── Sala da casa: deitar, dormir, levantar ─────────────────────────────────
   const server = http.createServer(express());
@@ -221,7 +240,7 @@ async function mkUser(pool, tag) {
   for (const s of street.sim.values()) if (s.userId === host) Object.assign(s.body, { x: door.x, z: door.z, vx: 0, vz: 0 });
   await sleep(120);
   const inHouse = await Service.enterHouse(host, lot);
-  check("payload da casa traz as camas e a vida", inHouse.interior?.beds?.length >= 1 && inHouse.life?.character?.generation === 2);
+  check("payload da casa traz as camas e a vida", inHouse.interior?.beds?.length >= 1 && inHouse.life?.character?.generation === 3); // 3: velhice do mm3d-34 acima
   await join(inHouse);
   const H = () => {
     const r = realtime._houseRoomFor(res.id_house);

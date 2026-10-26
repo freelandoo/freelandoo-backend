@@ -421,3 +421,35 @@ test("gordo: os danos à saúde pesam 1,2×", () => {
   assert.ok(lostThin > 0, "fome machuca");
   assert.ok(Math.abs(lostFat / lostThin - L.RULES.FAT_HEALTH_MUL) < 0.02, `perda ${lostThin} × ${lostFat}`);
 });
+
+// mm3d-34: velhice deixa 20% de herança e funeral pago pela Freelandoo;
+// qualquer outra causa não deixa herança e o jogador paga.
+test("afterlife: velhice herda 20% do pico e a Freelandoo paga; doença não herda e o jogador paga", () => {
+  const s = fresh(11);
+  assert.equal(L.afterlife(s), null, "vivo não tem funeral");
+  s.status = "dead";
+  s.deathCause = "velhice";
+  s.intelligence = 400;
+  s.peaks = { intelligence: 600, strength: 300, speed: 90 };
+  s.strength = 250;
+  s.speed = 90;
+  const old = L.afterlife(s);
+  assert.equal(old.natural, true);
+  assert.deepEqual(old.funeral, { coins: L.AFTERLIFE.FUNERAL_COINS, paidBy: "freelandoo" });
+  assert.deepEqual(old.inherit, { intelligence: 120, strength: 60, speed: 18 });
+  const n = L.applyInheritance(fresh(12), old.inherit);
+  assert.equal(n.intelligence, 120);
+  assert.equal(n.strength, 60);
+  assert.ok(n.speed >= 20, "nunca abaixo do que já nasceria");
+  assert.equal(n.peaks.intelligence, 120, "a herança vira o piso");
+  inRange(n);
+
+  for (const cause of ["infarto", "diabetes", "complicacoes", "fome"]) {
+    s.deathCause = cause;
+    const a = L.afterlife(s);
+    assert.equal(a.natural, false);
+    assert.equal(a.funeral.paidBy, "player");
+    assert.equal(a.inherit, null);
+  }
+  assert.equal(L.snapshot(s, T0).afterlife.funeral.paidBy, "player");
+});

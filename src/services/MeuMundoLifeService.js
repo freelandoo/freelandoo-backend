@@ -72,6 +72,7 @@ const LIFE_NOTICES = {
   diabetes: 2,
   hypertension: 2,
   born: 3,
+  funeral: 2,
 };
 
 async function recordNotices(c, idUser, idCharacter, needs, events) {
@@ -499,17 +500,29 @@ class MeuMundoLifeService {
   /**
    * Novo hóspede: só depois da morte. O antigo fica no banco (histórico,
    * morte vista); o novo nasce com geração + 1. A casa e a carteira são da
-   * pessoa e continuam.
+   * pessoa e continuam. Funeral e herança (mm3d-34) saem de Life.afterlife:
+   * velhice = Freelandoo paga e o novo herda 20%; outra causa = o jogador paga
+   * (até o que tiver) e o novo começa do zero. Tudo na mesma transação.
    */
   static async newcomer(idUser) {
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       if (s.status !== "dead") return fail("alive");
       await MeuMundoLifeStorage.markDeathSeen(ctx.client, ctx.row.id_character);
-      const n = Life.birth(crypto.randomInt(1, 2 ** 31 - 1), ctx.now);
+      const after = Life.afterlife(s);
+      const funeral = { paidBy: after.funeral.paidBy, coins: after.funeral.coins };
+      if (funeral.paidBy === "player") {
+        funeral.coins = Math.min(after.funeral.coins, Math.max(0, Math.floor(ctx.coins)));
+        ctx.coins -= funeral.coins;
+      }
+      const n = Life.applyInheritance(Life.birth(crypto.randomInt(1, 2 ** 31 - 1), ctx.now), after.inherit);
       ctx.newRow = await MeuMundoLifeStorage.insert(ctx.client, idUser, ctx.row.generation + 1, n);
       ctx.newState = n;
-      ctx.newEvents = [{ at: ctx.now, kind: "born", data: { generation: ctx.row.generation + 1 } }];
-      return { newcomer: true };
+      // O funeral é do hóspede que se foi (fica no histórico dele).
+      ctx.events.push({ at: ctx.now, kind: "funeral", data: { ...funeral, cause: s.deathCause } });
+      ctx.newEvents = [
+        { at: ctx.now, kind: "born", data: { generation: ctx.row.generation + 1, ...(after.inherit ? { inherited: after.inherit } : {}) } },
+      ];
+      return { newcomer: true, funeral, inherited: after.inherit };
     });
   }
 }
