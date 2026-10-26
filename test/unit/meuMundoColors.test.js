@@ -46,6 +46,7 @@ test("espelho: avatar-colors.ts tem a mesma paleta e o mesmo padrão", async (t)
   for (const part of C.PARTS) assert.deepEqual(F.PALETTE[part].map((c) => c.hex), C.PALETTE[part].map((c) => c.hex), part);
   assert.equal(F.lookCode(F.parseLook("b97b")), "b97b");
   assert.equal(F.lookCode(F.parseLook("c000")), C.DEFAULT_LOOK);
+  assert.deepEqual([...F.COLORABLE_SKINS].sort(), [...C.COLORABLE_SKINS].sort());
 });
 
 test("recolorPixels: pinta só a região, mantém o sombreado e o resto intacto", async (t) => {
