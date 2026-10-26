@@ -143,8 +143,10 @@ const RULES = Object.freeze({
   WORK_COINS_H: 14,
   // Recuperação de saúde por hora (só com fome, sono, estresse e toxicidade
   // sob controle); bem alimentado (saciedade > FED_AT e dieta ≥ 0) soma FED.
-  // Nenhuma comida devolve saúde de uma vez.
-  RECOVERY: { idle: 0.25, lying: 0.4, sleeping: 0.6, hospital: 1.8, FED: 0.2, FED_AT: 40 },
+  // Dormir rende 3/h e o hospital também (pedido do Alex, 2026-10-26: doente
+  // todo dia estava chato); multivitamínico ×MULTIVIT, com creatina junto
+  // ×MULTIVIT_CREATINE. Comida natural (`heal`) devolve pontos na hora.
+  RECOVERY: { idle: 0.25, lying: 0.4, sleeping: 3, hospital: 3, FED: 0.2, FED_AT: 40, MULTIVIT: 1.3, MULTIVIT_CREATINE: 1.7 },
   // Gordo (BODY.FAT_AT): todo dano à saúde pesa 1,2× (pedido do Alex, 2026-10-21).
   FAT_HEALTH_MUL: 1.2,
   // Saúde baixa pesa no resto (pedido do Alex, 2026-10-26: "não pode estar
@@ -225,19 +227,20 @@ const PACE = Object.freeze({ NORMAL: 1, TIRED: 0.7, EXHAUSTED: 0.42 });
 // kcal, sat (saciedade), sugar/sodium 0–10, nutri −10…+10 (qualidade),
 // protein (g), mood (prazer por 2 h), energy/stress instantâneos, tox
 // (toxicidade), effect = [id, horas], meal = crédito de refeição (MEALS:
-// 1 quita, fração é lanche, 0 não conta).
+// 1 quita, fração é lanche, 0 não conta), heal = saúde na hora (comida
+// natural, mais cara; nunca passa da vitalidade).
 const I = (id, kind, name, price, o = {}) =>
-  Object.freeze({ id, kind, name, price, currency: "coins", meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, effect: null, ...o });
+  Object.freeze({ id, kind, name, price, currency: "coins", meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, heal: 0, effect: null, ...o });
 
 const ITEMS = Object.freeze([
   // Comida saudável (cara)
-  I("salmao_legumes", "food", "Salmão grelhado com legumes", 58, { meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6 }),
-  I("frango_salada", "food", "Frango grelhado com salada", 42, { meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4 }),
+  I("salmao_legumes", "food", "Salmão grelhado com legumes", 75, { meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6, heal: 3 }),
+  I("frango_salada", "food", "Frango grelhado com salada", 55, { meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4, heal: 3 }),
   I("prato_integral", "food", "Arroz integral, feijão, ovo e salada", 34, { meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
-  I("bowl_frutas", "food", "Bowl de frutas", 28, { meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6 }),
+  I("bowl_frutas", "food", "Bowl de frutas", 38, { meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6, heal: 3 }),
   I("omelete_legumes", "food", "Omelete de legumes", 26, { meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
   I("iogurte_aveia", "food", "Iogurte natural com aveia", 24, { meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
-  I("sopa_legumes", "food", "Sopa de legumes", 22, { meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3 }),
+  I("sopa_legumes", "food", "Sopa de legumes", 32, { meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3, heal: 3 }),
   I("agua_coco", "drink", "Água de coco", 12, { meal: 0.1, kcal: 60, sat: 4, sugar: 2, nutri: 4, energy: 3 }),
   // Comida do dia a dia
   I("prato_feito", "food", "Prato feito (arroz, feijão, bife e fritas)", 18, { meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
@@ -741,7 +744,7 @@ function stepState(s, t, dt, events, out) {
   const ok = s.satiety > 25 && s.energy > 25 && s.stress < 70 && s.toxicity < 30;
   const R = RULES.RECOVERY;
   let rec = hospital ? R.hospital : !ok ? 0 : (R[eff] ?? R.idle) + (s.satiety > R.FED_AT && s.diet >= 0 ? R.FED : 0);
-  if (effectOn(s, "multivit", t)) rec *= 1.3;
+  if (effectOn(s, "multivit", t)) rec *= effectOn(s, "creatine", t) ? R.MULTIVIT_CREATINE : R.MULTIVIT;
   s.health = Math.min(s.vitality, clamp(s.health + (rec - total) * dt));
   // Penalidade aguda da refeição: exata pela fração do tempo, até o piso.
   if (pen && s.health > MEALS.HEALTH_FLOOR) s.health = Math.max(MEALS.HEALTH_FLOOR, s.health - perH("health") * dt);
@@ -1005,6 +1008,7 @@ function consume(s, itemId, t) {
   }
   // Só o EXCESSO pesa: sal e açúcar de comida de verdade o corpo elimina.
   if (it.sodium > 4) s.bpRisk = clamp(s.bpRisk + (it.sodium - 4) * 1.5);
+  if (it.heal) s.health = Math.min(s.vitality, clamp(s.health + it.heal));
   s.energy = clamp(s.energy + it.energy);
   s.stress = clamp(s.stress + it.stress);
   applyUnwell(s);
