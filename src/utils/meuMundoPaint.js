@@ -721,7 +721,8 @@ function liftOnto(b           , x        , z        , r        , top        ) {
 //
 //  - TURQUESA (ponte): bateu no TOPO de algo ao alcance → poça-plataforma ali.
 //    Senão (mirando o vão, ou o lado de uma ilha) → a ponte CRESCE: acha a
-//    borda do chão na direção da mira, na altura do último chão pisado, e põe
+//    borda do chão na direção da mira, na altura do PÉ de quem atira (no ar,
+//    a ponte nasce onde ele está — pular serve para isso, mm3d-35f), e põe
 //    um disco logo depois dela. Segurando o botão, disco atrás de disco.
 //  - AMARELO (cama elástica, mm3d-35e): no ar → embaixo do pé (cai nela e é
 //    lançado). No chão →
@@ -823,7 +824,7 @@ function resolveShot(world           , s         , c            , o      , dir  
   if (hit && hit.normal.y > 0.5 && Math.hypot(hit.point.x - s.x, hit.point.z - s.z) <= T.bridgeReach) {
     return { kind: "blob", blob: blobOf(c, hit.point.x, hit.point.z, hit.point.y - T.bridgeH * 0.5) }
   }
-  // Crescer: a borda na direção da mira, na altura do último chão.
+  // Crescer: a borda na direção da mira, na altura do pé (no ar também: pulou, a ponte sai lá em cima).
   let hx = d.x
   let hz = d.z
   const hl = Math.hypot(hx, hz)
@@ -834,7 +835,7 @@ function resolveShot(world           , s         , c            , o      , dir  
     hx /= hl
     hz /= hl
   }
-  const footY = Math.min(s.y, s.gy)
+  const footY = s.y
   for (let k = 0.6; k <= T.bridgeReach; k += 0.35) {
     const px = s.x + hx * k
     const pz = s.z + hz * k

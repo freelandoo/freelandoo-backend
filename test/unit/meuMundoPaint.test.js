@@ -149,6 +149,23 @@ test("paint — ponte cresce no vão a cada tiro e dá para andar nela", () => {
   assert.ok(b.ground && Math.abs(b.y) < 0.01 && b.z > base.z + base.r + 2, "não andou na ponte");
 });
 
+test("paint — pulou e atirou turquesa: a ponte nasce na altura do pé, no ar, e ele pousa nela", () => {
+  const map = P.buildPaintMap();
+  const base = map.islands[map.bases[0].island];
+  const b = P.newBody(base.x, 0, base.z + base.r - 0.7, 0);
+  const solids = map.solids.slice();
+  P.stepBody(b, { mx: 0, mz: 0, run: false, jump: true }, solids);
+  for (let i = 0; i < 30 && b.vy > 0.5; i++) P.stepBody(b, { mx: 0, mz: 0, run: false, jump: false }, solids);
+  assert.ok(!b.ground && b.y > 1, "não está no alto do pulo");
+  const s = { slot: 0, team: 0, x: b.x, y: b.y, z: b.z, ground: false, gy: b.gy, facing: 0 };
+  const r = P.resolveShot(world(solids), s, PAINT.BRIDGE, P.muzzleOf(s, 0), { x: 0, y: 0, z: 1 });
+  assert.equal(r.kind, "blob");
+  assert.ok(Math.abs(r.blob.y1 - s.y) < 1e-3, `ponte na altura errada: ${r.blob.y1} × pé ${s.y}`);
+  solids.push(P.blobSolid(r.blob, 9, 0));
+  for (let i = 0; i < 120 && !b.ground; i++) P.stepBody(b, { mx: 0, mz: 1, run: false, jump: false }, solids);
+  assert.ok(b.ground && Math.abs(b.y - r.blob.y1) < 0.01, `não pousou na ponte do alto (y ${b.y})`);
+});
+
 test("paint — cama elástica: pisou, é lançado ~4 m; no ar ainda pula mais uma vez", () => {
   const map = P.buildPaintMap();
   const base = map.islands[map.bases[0].island];
