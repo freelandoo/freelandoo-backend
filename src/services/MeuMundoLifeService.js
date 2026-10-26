@@ -25,6 +25,7 @@ const { rowToState } = require("../storages/MeuMundoLifeStorage");
 const Cars = require("../utils/meuMundoCars");
 const Life = require("../utils/meuMundoLife");
 const Skins = require("../utils/meuMundoSkins");
+const Colors = require("../utils/meuMundoColors");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.life");
@@ -44,6 +45,7 @@ const ERRORS = {
   coins: ["Moedas insuficientes", 402],
   skin: ["Skin não encontrada", 404],
   notOwned: ["Você ainda não tem essa skin", 409],
+  noColors: ["Este personagem tem visual próprio", 400],
   alive: ["Seu hóspede está vivo", 409],
   empty: ["Acabou na geladeira", 409],
   stack: ["A geladeira não cabe mais desse item", 409],
@@ -207,6 +209,8 @@ class MeuMundoLifeService {
       await MeuMundoStorage.setBody(c, idUser, Life.bodyHint(state));
       // O que a sala desenha: a skin vestida ou a condição (mig 300).
       const avatar = await MeuMundoStorage.getBody(c, idUser);
+      // Cores da skin vestida (mm3d-36, mig 304): "" = visual próprio.
+      const look = await MeuMundoStorage.getLook(c, idUser);
       await c.query("COMMIT");
       const cur = ctx.newRow || row;
       const snap = {
@@ -220,6 +224,7 @@ class MeuMundoLifeService {
         character: snap,
         wallet: { coins: Math.floor(Math.max(0, ctx.coins)), ...(ctx.polens != null ? { polens: ctx.polens } : {}) },
         avatar,
+        look,
         fridge: Object.fromEntries(Object.entries(pantry).filter(([, n]) => n > 0)),
         ...(extra || {}),
       };
@@ -233,6 +238,7 @@ class MeuMundoLifeService {
         activity: snap.activity.kind,
         bed: state.activity.bed,
         body: avatar,
+        look,
         // Avisos com retrato e fôlego de corrida (2026-10-24).
         needs: snap.needs,
         stamina: snap.stamina,
@@ -448,8 +454,10 @@ class MeuMundoLifeService {
   // a mudança de condição física.
 
   static async wardrobeOf(db, idUser) {
-    const [w, admin] = await Promise.all([MeuMundoStorage.getWardrobe(db, idUser), MeuMundoStorage.isAdmin(db, idUser)]);
-    return { condition: w.condition, admin, skins: Skins.publicCatalog(w.owned, w.equipped, admin) };
+    const [w, admin, colors] = await Promise.all([MeuMundoStorage.getWardrobe(db, idUser), MeuMundoStorage.isAdmin(db, idUser), MeuMundoStorage.getColors(db, idUser)]);
+    // Cores de cada skin colorível (mm3d-36): o código de cada uma, já validado.
+    const looks = Object.fromEntries([...Colors.COLORABLE_SKINS].map((id) => [id, Colors.lookFor(colors, id)]));
+    return { condition: w.condition, admin, skins: Skins.publicCatalog(w.owned, w.equipped, admin), colors: looks };
   }
 
   /** GET /skins — catálogo com posse e o que está vestido + moedas. */
@@ -494,6 +502,22 @@ class MeuMundoLifeService {
       }
       await MeuMundoStorage.setSkin(ctx.client, idUser, skin.id);
       return { wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
+    });
+  }
+
+  /**
+   * Cores do personagem (mm3d-36, mig 304): de graça, quantas vezes quiser,
+   * só no padrão e na feminina. Passa pelo núcleo da vida como vestir: no fim
+   * a sala recebe o look novo (todos veem).
+   */
+  static async setSkinColors(idUser, rawSkin, rawLook) {
+    const skin = Skins.skinById(rawSkin);
+    if (!skin) return fail("skin");
+    if (!Colors.COLORABLE_SKINS.has(skin.id)) return fail("noColors");
+    const look = Colors.normalizeLook(rawLook);
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      await MeuMundoStorage.setColors(ctx.client, idUser, skin.id, look);
+      return { look, wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
     });
   }
 

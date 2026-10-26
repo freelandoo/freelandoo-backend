@@ -87,6 +87,9 @@ async function bootstrap(pool) {
   const sql300 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/300_meu_mundo_skins.sql"), "utf8");
   await pool.query(sql300);
   await pool.query(sql300); // idempotente
+  const sql304 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/304_meu_mundo_avatar_colors.sql"), "utf8");
+  await pool.query(sql304);
+  await pool.query(sql304); // idempotente (mm3d-36)
 }
 
 async function mkUser(pool, admin = true, tag = "") {
@@ -198,7 +201,9 @@ async function expectViolation(pool, sql, params, label) {
   check("o bairro 02 não vê ninguém do 01", C.room.state.players.size === 1);
   const pB = () => A.room.state.players.get(B.room.sessionId);
   const keysB = Object.keys(pB().toJSON ? pB().toJSON() : pB());
-  check("estado só traz campos públicos", keysB.sort().join() === "body,car,facing,house,move,name,pace,sk,st,wd,x,z", keysB.join());
+  // Nenhum campo fora da lista pública (st/wd só aparecem quando têm valor; look = cores, mm3d-36).
+  const PUBLIC = new Set(["body", "car", "facing", "house", "look", "move", "name", "pace", "sk", "st", "wd", "x", "z"]);
+  check("estado só traz campos públicos", keysB.every((k) => PUBLIC.has(k)) && keysB.includes("look"), keysB.join());
 
   // Movimento validado no servidor: intenção absurda não vira teleporte.
   const x0 = pB().x;

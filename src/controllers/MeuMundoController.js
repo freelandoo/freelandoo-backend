@@ -179,6 +179,11 @@ async function skinEquip(req, res) {
   return reply(res, await MeuMundoLifeService.equipSkin(req.user.id_user, req.params.id));
 }
 
+// Cores do personagem (mm3d-36): { look } = 4 dígitos base36.
+async function skinColors(req, res) {
+  return reply(res, await MeuMundoLifeService.setSkinColors(req.user.id_user, req.params.id, req.body?.look));
+}
+
 async function adminStatus(_req, res) {
   return reply(res, await MeuMundoService.status());
 }
@@ -228,4 +233,5 @@ module.exports = {
   skins,
   skinBuy,
   skinEquip,
+  skinColors,
 };

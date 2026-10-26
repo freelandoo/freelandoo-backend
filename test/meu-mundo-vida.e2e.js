@@ -61,6 +61,7 @@ async function bootstrap(pool) {
     "300_meu_mundo_skins.sql",
     "301_meu_mundo_geladeira.sql",
     "302_meu_mundo_inbox.sql",
+    "304_meu_mundo_avatar_colors.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -388,6 +389,18 @@ async function mkUser(pool, tag) {
   const back2 = await Life.equipSkin(host, "standard");
   await sleep(150);
   check("tirar a skin: volta a condição", back2.avatar === cond && H().p.body === cond);
+
+  // ═══ Cores do personagem (mm3d-36, mig 304) ═══
+  check("cores: começa nas de sempre", back2.look === "0032" && H().p.look === "0032" && back2.wardrobe.colors.standard === "0032");
+  box.length = 0;
+  const c1 = await Life.setSkinColors(host, "standard", "6478");
+  await sleep(150);
+  check("cores: grava, a sala pinta e o cliente é avisado", c1.look === "6478" && H().p.look === "6478" && got("life").some((x) => x.m.look === "6478"));
+  check("cores: cada skin guarda as suas", c1.wardrobe.colors.standard === "6478" && c1.wardrobe.colors.feminina === "0032");
+  check("cores: Sergio tem visual próprio", (await Life.setSkinColors(host, "sergio", "6478")).code === "noColors");
+  check("cores: código inválido vira o padrão", (await Life.setSkinColors(host, "standard", "zz!")).look === "0032");
+  await Life.setSkinColors(host, "standard", "b97b");
+  check("cores: são da conta (lidas de novo)", (await Storage.getLook(pool, host)) === "b97b");
 
   await Promise.race([room.leave().catch(() => {}), sleep(500)]);
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);

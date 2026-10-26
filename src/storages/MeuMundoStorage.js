@@ -5,6 +5,7 @@
 
 const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout");
 const { avatarBody } = require("../utils/meuMundoSkins");
+const { lookFor } = require("../utils/meuMundoColors");
 
 // mm3d-30: "female" = skin "feminina"; "ekaterina" = skin "ekaterina".
 const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterina"];
@@ -181,6 +182,27 @@ class MeuMundoStorage {
   static async getBody(db, idUser) {
     const r = await db.query(`SELECT body, skin FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]);
     return avatarBody(r.rows[0]?.body || "normal", r.rows[0]?.skin);
+  }
+
+  /** Cores da skin vestida (mm3d-36, mig 304): "" para skin sem cores. */
+  static async getLook(db, idUser) {
+    const r = await db.query(`SELECT skin, colors FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]);
+    return lookFor(r.rows[0]?.colors, r.rows[0]?.skin || "standard");
+  }
+
+  /** Cores de cada skin colorível (mm3d-36), para o guarda-roupa. */
+  static async getColors(db, idUser) {
+    const r = await db.query(`SELECT colors FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]);
+    return r.rows[0]?.colors || {};
+  }
+
+  /** Grava as cores de uma skin (código já validado por quem chama). */
+  static async setColors(db, idUser, skin, look) {
+    await db.query(
+      `INSERT INTO tb_mm_avatar_pref (id_user, colors) VALUES ($1, jsonb_build_object($2::text, $3::text))
+       ON CONFLICT (id_user) DO UPDATE SET colors = tb_mm_avatar_pref.colors || jsonb_build_object($2::text, $3::text), updated_at = NOW()`,
+      [idUser, skin, look]
+    );
   }
 
   /** Vestuário (mig 300): skin vestida + compradas. */

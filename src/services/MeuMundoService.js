@@ -46,6 +46,7 @@ const { buildCenterPayload, PLACES: CENTER_PLACES } = require("../utils/meuMundo
 const { PARTY } = require("../utils/meuMundoJetpack");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
+const Inbox = require("../storages/MeuMundoInboxStorage");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.service");
@@ -198,6 +199,7 @@ class MeuMundoService {
       me: {
         name,
         body,
+        look: await MeuMundoStorage.getLook(pool, idUser),
         // Visitante: "house" continua sendo a casa DELE (em outro bairro);
         // `visiting` diz qual casa daqui ele pode visitar.
         house: residence.lot_number,
@@ -239,7 +241,7 @@ class MeuMundoService {
         isMine: house.owner_id === idUser,
       },
       interior: publicInterior(def),
-      me: { name, body, role: house.owner_id === idUser ? "owner" : "guest" },
+      me: { name, body, look: await MeuMundoStorage.getLook(pool, idUser), role: house.owner_id === idUser ? "owner" : "guest" },
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer,
       visits: await MeuMundoService.visitState(idUser),
@@ -262,6 +264,13 @@ class MeuMundoService {
           : await MeuMundoService.neighborhoodPayload(idUser, residence, target, body, name, life);
     if (out.error) return out;
     if (out.me) out.me.newResidence = created;
+    // Cores do personagem (mm3d-36): um aviso no sino, uma vez por conta.
+    try {
+      const n = await Inbox.insertNotice(pool, idUser, { kind: "life", code: "colors_hint", priority: 4, data: {}, dedupeKey: "colors-hint" });
+      if (n) require("./MeuMundoInboxService").push(idUser, n);
+    } catch (err) {
+      log.warn("colors_hint_fail", { message: err.message });
+    }
     return out;
   }
 
@@ -396,7 +405,7 @@ class MeuMundoService {
       release: MEU_MUNDO_RELEASE,
       environment: "dev",
       center: buildCenterPayload(),
-      me: { name, body, house: 0, driving: vehicle ? Number(vehicle.id) : 0 },
+      me: { name, body, look: await MeuMundoStorage.getLook(pool, idUser), house: 0, driving: vehicle ? Number(vehicle.id) : 0 },
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation },
       visits: await MeuMundoService.visitState(idUser),

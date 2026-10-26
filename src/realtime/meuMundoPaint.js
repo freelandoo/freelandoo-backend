@@ -24,6 +24,8 @@
 const { Room, ServerError, matchMaker } = require("@colyseus/core");
 const { schema, t } = require("@colyseus/schema");
 const pool = require("../databases");
+const MeuMundoStorage = require("../storages/MeuMundoStorage");
+const { roomLook } = require("../utils/meuMundoColors");
 const AuthStorage = require("../storages/AuthStorage");
 const presence = require("./meuMundoPresence");
 const { PaintMatch, PAINT_MODES, modeCapacity, modeTeams } = require("../utils/meuMundoPaint");
@@ -47,6 +49,8 @@ const PtPlayer = schema(
     sit: t.uint8(),
     name: t.string(),
     body: t.string(),
+    // Cores do personagem (mm3d-36): código look; "" = textura original.
+    look: t.string(),
     online: t.boolean(),
     x: t.float32(),
     y: t.float32(),
@@ -137,6 +141,9 @@ class PaintRoom extends Room {
 
   async onJoin(client, options) {
     const userId = options.userId;
+    const body = String(options.body || "normal").slice(0, 16);
+    // Cores (mm3d-36): lidas do banco pela conta; falha = textura original.
+    const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
     const here = userId ? presence.get(userId) : null;
     const admin = userId && (await AuthStorage.isAdmin(pool, userId));
     const sameCenter = here && here.scene === "center" && here.id === this.centerRoomId;
@@ -165,7 +172,8 @@ class PaintRoom extends Room {
         team,
         sit,
         name: String(options.name || "morador").slice(0, 24),
-        body: String(options.body || "normal").slice(0, 16),
+        body,
+        look,
         online: true,
       });
       this.state.players.set(client.sessionId, p);

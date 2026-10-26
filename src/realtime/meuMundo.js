@@ -57,6 +57,9 @@ const {
 } = require("../utils/meuMundoLayout");
 const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds, freshStamina, setStamina, staminaIntent } = require("../utils/meuMundoMotion");
 const { publicCatalog } = require("../utils/meuMundoLife");
+const { roomLook } = require("../utils/meuMundoColors");
+/** Cores de quem entra (mm3d-36): lidas do banco pela conta; falha = textura original. */
+const lookOf = (body, userId) => MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
 /** Pose de indisposto (mm3d-28): saúde perto do hospital, pela lista de necessidades da vida. */
 const isUnwell = (life) => Array.isArray(life.needs) && life.needs.some((n) => n && n.id === "unwell");
 const { CAR, RIDE_KINDS, KIND_NAMES, vehicleId, kindOfId, spotFor, carBox, blocks, carFits, exitSpots } = require("../utils/meuMundoCars");
@@ -119,6 +122,8 @@ const Player = schema(
     name: t.string(),
     house: t.uint8(),
     body: t.string(),
+    // Cores (mm3d-36, mig 304): código look; "" = visual próprio.
+    look: t.string(),
     x: t.float32(),
     z: t.float32(),
     facing: t.float32(),
@@ -197,6 +202,8 @@ const HousePlayer = schema(
   {
     name: t.string(),
     body: t.string(),
+    // Cores (mm3d-36, mig 304): código look; "" = visual próprio.
+    look: t.string(),
     host: t.boolean(),
     x: t.float32(),
     z: t.float32(),
@@ -387,6 +394,7 @@ class BairroRoom extends Room {
     }
 
     const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
+    const look = await lookOf(body, userId);
     const b = { x: start.x, z: start.z, vx: 0, vz: 0, facing: start.facing };
     // Posição de partida também passa pela colisão (memória antiga num lugar
     // que virou obstáculo não pode prender ninguém).
@@ -411,6 +419,7 @@ class BairroRoom extends Room {
         name: String(options.name || "morador").slice(0, 24),
         house: visitor ? 0 : residence.lot_number,
         body,
+        look,
         x: b.x,
         z: b.z,
         facing: b.facing,
@@ -452,6 +461,7 @@ class BairroRoom extends Room {
     setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
     p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
+    if (typeof life.look === "string") p.look = roomLook(p.body, life.look);
   }
 
   onLeave(client) {
@@ -890,6 +900,7 @@ class CasaRoom extends Room {
     }
     const e = this.def.entry;
     const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
+    const look = await lookOf(body, userId);
     const b = { x: e.x, z: e.z, vx: 0, vz: 0, facing: e.facing, floor: e.floor, y: 0 };
     stepInterior(b, { x: 0, z: 0, run: false }, 0, this.def);
     this.sim.set(client.sessionId, {
@@ -910,6 +921,7 @@ class CasaRoom extends Room {
       new HousePlayer({
         name: String(options.name || "morador").slice(0, 24),
         body,
+        look,
         host: isOwner,
         x: b.x,
         z: b.z,
@@ -1252,6 +1264,7 @@ class CasaRoom extends Room {
     setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
     p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
+    if (typeof life.look === "string") p.look = roomLook(p.body, life.look);
     if (s.bedPending) return;
     const resting = life.status === "alive" && (life.activity === "lying" || life.activity === "sleeping");
     const here = resting && life.bed && life.bed.houseId === this.houseId ? this.def.beds.find((b) => b.id === life.bed.bedId) : null;
@@ -1407,6 +1420,7 @@ class CentroRoom extends BairroRoom {
     if (!start) start = { ...CENTER_ARRIVAL };
 
     const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
+    const look = await lookOf(body, userId);
     const b = { x: start.x, z: start.z, vx: 0, vz: 0, facing: start.facing };
     step(b, { x: 0, z: 0, run: false }, 0, this.obstacles, this.limit);
     this.sim.set(client.sessionId, {
@@ -1426,7 +1440,7 @@ class CentroRoom extends BairroRoom {
     // `house` = vaga da pessoa NESTA sala (é o que diz de quem é cada veículo).
     this.state.players.set(
       client.sessionId,
-      new Player({ name: String(options.name || "morador").slice(0, 24), house: slot, body, x: b.x, z: b.z, facing: b.facing, move: 0, car: 0, pace: 1 })
+      new Player({ name: String(options.name || "morador").slice(0, 24), house: slot, body, look, x: b.x, z: b.z, facing: b.facing, move: 0, car: 0, pace: 1 })
     );
     // Chegou montado ou dirigindo: o veículo que saiu do bairro com ela.
     const v = options.vehicle;
@@ -1859,7 +1873,7 @@ function applyLife(userId, life) {
   if (!p || !p.room.applyLife) return false;
   p.room.applyLife(p.sessionId, life);
   // Avisos (needs) vão junto: o cliente fala com o retrato sem pedir nada (mm3d-28).
-  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, body: life.body, needs: life.needs || [], stamina: life.stamina || null });
+  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, body: life.body, look: life.look ?? "", needs: life.needs || [], stamina: life.stamina || null });
   return true;
 }
 

@@ -57,6 +57,7 @@ router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewc
 router.get("/skins", ...admin, asyncHandler(MeuMundoController.skins));
 router.post("/skins/:id/buy", ...admin, asyncHandler(MeuMundoController.skinBuy));
 router.post("/skins/:id/equip", ...admin, asyncHandler(MeuMundoController.skinEquip));
+router.post("/skins/:id/colors", ...admin, asyncHandler(MeuMundoController.skinColors));
 // Sino e correio interno (mig 302, mm3d-30): histórico, leitura, presentes.
 router.get("/notices", ...admin, asyncHandler(MeuMundoController.notices));
 router.get("/notices/summary", ...admin, asyncHandler(MeuMundoController.noticesSummary));

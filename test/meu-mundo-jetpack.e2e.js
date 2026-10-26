@@ -65,6 +65,7 @@ const MIGS = [
   "300_meu_mundo_skins",
   "301_meu_mundo_geladeira",
   "302_meu_mundo_inbox",
+  "304_meu_mundo_avatar_colors",
 ];
 const TABLES = `tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
   tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user`;
