@@ -234,6 +234,14 @@ const MENUS = Object.freeze({
 });
 const MARKET_PLACE = "supermercado";
 
+// ═══ CRIMES (mm3d-37f) ═══ — pedido do Alex: dirigir na praça e atropelar
+// alguém levam à delegacia. A sala do centro vê o crime; aqui mora a pena.
+//  - praça: a 1ª vez no dia é multa (até o que tiver); a reincidência, prisão;
+//  - atropelamento: prisão.
+// Preso = atividade "jail" por alguns MINUTOS (tempo de verdade), na cela;
+// nada de estudar, treinar, trabalhar ou rezar até sair.
+const CRIME = Object.freeze({ PLAZA_FINE: 50, PLAZA_JAIL_MIN: 15, HIT_JAIL_MIN: 30 });
+
 /** Moedas para marcar `hours` de `kind` em `place` (0 = de graça). */
 function placeFee(kind, place, hours) {
   if (!PLACES[kind] || !PLACE_RULES[place]) return 0;
@@ -1037,6 +1045,7 @@ function consume(s, itemId, t) {
   if (!it) return fail("item");
   if (s.status !== "alive") return fail("dead");
   if (s.activity.kind === "hospital") return fail("hospital");
+  if (s.activity.kind === "jail") return fail("jail");
   if (s.activity.kind === "sleeping") return fail("sleeping");
   if ((it.kind === "food" || it.kind === "drink") && it.sat > 0 && s.satiety > RULES.FULL_SATIETY) return fail("full");
   const events = [];
@@ -1095,6 +1104,8 @@ function startActivity(s, kind, hours, t, bed = null, place = null) {
   if (!ACTIVITIES.includes(kind) || kind === "hospital" || kind === "jail") return fail("activity");
   if (s.status !== "alive") return fail("dead");
   if (s.activity.kind === "hospital") return fail("hospital");
+  // Preso (mm3d-37f): nada até a pena acabar.
+  if (s.activity.kind === "jail") return fail("jail");
   if (kind === "idle") {
     s.activity = { kind: "idle", startedAt: t, until: null, bed: null, resume: null };
     return { ok: true, events: [{ at: t, kind: "activity", data: { kind } }] };
@@ -1110,6 +1121,24 @@ function startActivity(s, kind, hours, t, bed = null, place = null) {
   s.activity = { kind, startedAt: t, until: t + h * HOUR, bed, resume: null, place: PLACES[kind] ? place : null };
   if (kind === "sleeping") s.zeroEnergyH = 0;
   return { ok: true, hours: h, events: [{ at: t, kind: "activity", data: { kind, hours: h, ...(PLACES[kind] ? { place } : {}) } }] };
+}
+
+/**
+ * A pena de um crime visto pela sala (mm3d-37f). Devolve a multa (moedas, o
+ * serviço cobra até o que houver) ou os minutos de prisão; sem efeito com o
+ * hóspede morto, internado ou já preso.
+ */
+function crime(s, kind, t) {
+  if (s.status !== "alive" || s.activity.kind === "hospital" || s.activity.kind === "jail") return { ok: false, events: [] };
+  const acc = s.dayAcc;
+  acc.crimes = acc.crimes || {};
+  acc.crimes[kind] = (acc.crimes[kind] || 0) + 1;
+  if (kind === "praca" && acc.crimes[kind] === 1) {
+    return { ok: true, fine: CRIME.PLAZA_FINE, events: [{ at: t, kind: "fined", data: { reason: kind, coins: CRIME.PLAZA_FINE } }] };
+  }
+  const minutes = kind === "praca" ? CRIME.PLAZA_JAIL_MIN : CRIME.HIT_JAIL_MIN;
+  s.activity = { kind: "jail", startedAt: t, until: t + minutes * 60 * 1000, bed: null, resume: null, place: "delegacia" };
+  return { ok: true, jailed: true, minutes, events: [{ at: t, kind: "jailed", data: { reason: kind, minutes } }] };
 }
 
 // ═══ LEITURA ═══
@@ -1322,6 +1351,8 @@ module.exports = {
   placeFee,
   MENUS,
   MARKET_PLACE,
+  CRIME,
+  crime,
   AFTERLIFE,
   afterlife,
   applyInheritance,

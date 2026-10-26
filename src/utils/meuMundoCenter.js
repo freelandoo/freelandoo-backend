@@ -29,7 +29,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 3; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35)
+const CENTER_VERSION = 4; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -174,9 +174,10 @@ const PLAZA_BENCHES = Object.freeze(
 const PLAZA_LAMPS = Object.freeze([[11.6, 15.2], [-11.6, 15.2], [11.6, -15.2], [-11.6, -15.2], [15.2, 11.6], [-15.2, 11.6], [15.2, -11.6], [-15.2, -11.6]].map((p) => Object.freeze(p)));
 const PLAZA_FLOWERS = Object.freeze([[9.5, 15.6], [-9.5, 15.6], [9.5, -15.6], [-9.5, -15.6], [15.6, 9.5], [-15.6, 9.5], [15.6, -9.5], [-15.6, -9.5]].map((p) => Object.freeze(p)));
 
-// Floreiras na borda da praça (meia-largura 0,45, altura 0,6), com um frade
-// no meio de cada travessia: o vão de 1,75 m deixa passar quem anda (0,84 m) e
-// segura o carro (1,96 m). Nas curvas, uma floreira diagonal fecha o canto.
+// Floreiras na borda da praça (meia-largura 0,45, altura 0,6). Desde o
+// mm3d-37f a travessia é ABERTA (sem frade): o carro (1,96 m) passa pelo vão
+// de 3,8 m — e dirigir na praça é crime (multa; reincidência, prisão), pedido
+// do Alex. Nas curvas, uma floreira diagonal fecha o canto.
 const PLANTER = Object.freeze({ half: 0.45, h: 0.6, from: 1.9, to: 14 });
 const BOLLARD = 0.18;
 
@@ -193,7 +194,6 @@ function plazaEdges() {
     seg(e, mid * s, PLANTER.half, len / 2);
     seg(-e, mid * s, PLANTER.half, len / 2);
   }
-  bollards.push([0, e], [0, -e], [e, 0], [-e, 0]);
   // Cantos: de (14, e) a (e, 14) — diagonal.
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {

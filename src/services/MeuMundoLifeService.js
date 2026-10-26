@@ -36,6 +36,7 @@ const ERRORS = {
   item: ["Item não encontrado", 404],
   dead: ["Seu hóspede morreu", 409],
   hospital: ["Ele está internado no hospital", 409],
+  jail: ["Ele está preso na delegacia", 409],
   sleeping: ["Ele está dormindo", 409],
   full: ["Ele está cheio", 409],
   activity: ["Atividade inválida", 400],
@@ -79,6 +80,9 @@ const LIFE_NOTICES = {
   hypertension: 2,
   born: 3,
   funeral: 2,
+  // mm3d-37f: multa e prisão.
+  fined: 2,
+  jailed: 1,
 };
 
 async function recordNotices(c, idUser, idCharacter, needs, events) {
@@ -240,6 +244,8 @@ class MeuMundoLifeService {
         pace: snap.pace,
         status: snap.status,
         activity: snap.activity.kind,
+        // Fim da atividade (ISO): o cronômetro da cela (mm3d-37f).
+        until: snap.activity.until,
         bed: state.activity.bed,
         body: avatar,
         look,
@@ -341,6 +347,25 @@ class MeuMundoLifeService {
     if (!menu.includes(itemId)) return fail("menu");
     if (!require("../realtime/meuMundo").atCenterPlace(idUser, place)) return fail("away");
     return MeuMundoLifeService.consume(idUser, itemId);
+  }
+
+  /**
+   * Crime visto pela sala do centro (mm3d-37f): multa (até o que tiver) ou
+   * prisão. Devolve { jailed, minutes } para a sala tirar a pessoa do carro.
+   */
+  static async crime(idUser, kind) {
+    if (kind !== "praca" && kind !== "atropelamento") return fail("activity");
+    return MeuMundoLifeService.withLife(idUser, (s, ctx) => {
+      const r = Life.crime(s, kind, ctx.now);
+      if (!r.ok) return { crime: null };
+      if (r.fine) {
+        const paid = Math.min(Math.max(0, Math.floor(ctx.coins)), r.fine);
+        ctx.coins -= paid;
+        r.events[0].data.coins = paid;
+      }
+      ctx.events.push(...r.events);
+      return { crime: { kind, fine: r.fine ? r.events[0].data.coins : 0, jailed: !!r.jailed, minutes: r.minutes || 0 } };
+    });
   }
 
   // ═══ GELADEIRA (mm3d-28, mig 301) ═══

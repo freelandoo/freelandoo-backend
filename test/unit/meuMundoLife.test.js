@@ -453,3 +453,32 @@ test("afterlife: velhice herda 20% do pico e a Freelandoo paga; doença não her
   }
   assert.equal(L.snapshot(s, T0).afterlife.funeral.paidBy, "player");
 });
+
+// mm3d-37f: praça = multa na 1ª vez do dia e prisão na reincidência;
+// atropelamento = prisão. Preso não faz nada até a pena acabar.
+test("crime: praça multa e depois prende; preso não age; a pena acaba sozinha", () => {
+  const s = fresh(13);
+  const fine = L.crime(s, "praca", T0);
+  assert.equal(fine.ok, true);
+  assert.equal(fine.fine, L.CRIME.PLAZA_FINE);
+  assert.equal(fine.jailed, undefined);
+  assert.equal(fine.events[0].kind, "fined");
+  assert.equal(s.activity.kind, "idle", "multa não prende");
+
+  const jail = L.crime(s, "praca", T0 + 60000);
+  assert.equal(jail.jailed, true);
+  assert.equal(jail.minutes, L.CRIME.PLAZA_JAIL_MIN);
+  assert.equal(s.activity.kind, "jail");
+  assert.equal(s.activity.place, "delegacia");
+  assert.equal(L.crime(s, "atropelamento", T0 + 120000).ok, false, "já preso: sem pena nova");
+  assert.equal(L.startActivity(s, "working", 2, T0 + 120000).code, "jail");
+  assert.equal(L.consume(s, L.ITEMS[0].id, T0 + 120000).code, "jail");
+  assert.equal(L.snapshot(s, T0 + 120000).activity.place, "delegacia");
+
+  L.simulate(s, T0 + 60000 + (L.CRIME.PLAZA_JAIL_MIN + 1) * 60000);
+  assert.equal(s.activity.kind, "idle", "a pena acabou");
+
+  const hit = L.crime(fresh(14), "atropelamento", T0);
+  assert.equal(hit.jailed, true);
+  assert.equal(hit.minutes, L.CRIME.HIT_JAIL_MIN);
+});

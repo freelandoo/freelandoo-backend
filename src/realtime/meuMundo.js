@@ -80,6 +80,7 @@ const {
   ARRIVAL_SPOTS: CENTER_ARRIVAL_SPOTS,
   isSafeSpot: isCenterSafe,
   PLACES: CENTER_PLACES,
+  DIMS: CENTER_DIMS,
 } = require("../utils/meuMundoCenter");
 const { createLogger } = require("../utils/logger");
 
@@ -1486,6 +1487,94 @@ class CentroRoom extends BairroRoom {
     return this.cap; // inalcançável: maxClients segura antes
   }
 
+  // ── Crimes (mm3d-37f) ─────────────────────────────────────────────────────
+  // Dirigir na praça (o carro inteiro dentro da borda) e atropelar quem está a
+  // pé (carro a mais de HIT_SPEED encostando). A sala vê; a pena é da vida
+  // (multa ou prisão); preso, a sala tira do carro e leva à porta da delegacia.
+  tick(dtMs) {
+    super.tick(dtMs);
+    this.checkCrimes(Date.now());
+  }
+
+  checkCrimes(now) {
+    const inside = CENTER_DIMS.plaza - 1;
+    for (const [sid, s] of this.sim) {
+      if (!s.car || !s.veh || s.crimeBusy) continue;
+      const c = this.state.cars.get(String(s.car));
+      if (!c || c.kind !== "car") continue;
+      const inPlaza = Math.abs(c.x) < inside && Math.abs(c.z) < inside;
+      if (inPlaza && !s.inPlaza) this.crime(sid, s, "praca");
+      s.inPlaza = inPlaza;
+      if (s.crimeBusy || Math.hypot(s.veh.vx, s.veh.vz) < CRIME_HIT_SPEED || now - (s.lastHitAt || 0) < CRIME_HIT_COOLDOWN_MS) continue;
+      const box = carBox(c);
+      for (const [osid, o] of this.sim) {
+        if (osid === sid || o.car) continue;
+        const r = resolveCircle(o.body.x, o.body.z, MOTION.RADIUS, [box]);
+        if (Math.hypot(r.x - o.body.x, r.z - o.body.z) < 1e-3) continue;
+        s.lastHitAt = now;
+        this.crime(sid, s, "atropelamento");
+        break;
+      }
+    }
+  }
+
+  crime(sid, s, kind) {
+    s.crimeBusy = true;
+    const Life = require("../services/MeuMundoLifeService");
+    Life.crime(s.userId, kind)
+      .then((r) => {
+        const cr = r && r.crime;
+        const client = this.clients.find((x) => x.sessionId === sid);
+        if (cr && client) client.send("crime", { kind, fine: cr.fine, jailed: cr.jailed, minutes: cr.minutes });
+        if (cr && cr.jailed) this.arrest(sid);
+      })
+      .catch((err) => log.error("crime.fail", { message: err.message }))
+      .finally(() => {
+        const cur = this.sim.get(sid);
+        if (cur) cur.crimeBusy = false;
+      });
+  }
+
+  /** Preso: o carro para onde está e a pessoa vai para a porta da delegacia, sem andar. */
+  arrest(sid) {
+    const s = this.sim.get(sid);
+    const p = this.state.players.get(sid);
+    if (!s) return;
+    this.parkCar(sid, s);
+    const d = CENTER_PLACE_BY_ID.get("delegacia");
+    const at = d.return;
+    Object.assign(s.body, { x: at.x, z: at.z, vx: 0, vz: 0, facing: at.facing });
+    s.intent = { x: 0, z: 0, run: false };
+    s.jailed = true;
+    if (p) Object.assign(p, { car: 0, x: at.x, z: at.z, facing: at.facing, move: 0 });
+    const client = this.clients.find((x) => x.sessionId === sid);
+    if (client) client.send("moved", { x: at.x, z: at.z, facing: at.facing, car: 0 });
+  }
+
+  /** Preso não anda nem pega veículo (a vida diz quando acaba). */
+  applyLife(sid, life) {
+    super.applyLife(sid, life);
+    const s = this.sim.get(sid);
+    if (!s) return;
+    const act = typeof life.activity === "string" ? life.activity : life.activity && life.activity.kind;
+    s.jailed = act === "jail";
+  }
+
+  onIntent(client, msg) {
+    const s = this.sim.get(client.sessionId);
+    if (s && s.jailed) return void this.countMessage(client);
+    super.onIntent(client, msg);
+  }
+
+  onCar(client, msg) {
+    const s = this.sim.get(client.sessionId);
+    if (s && s.jailed && msg && msg.a === "enter") {
+      this.countMessage(client);
+      return client.send("car_denied", { reason: "jailed" });
+    }
+    super.onCar(client, msg);
+  }
+
   /** Põe o veículo que veio do bairro numa vaga de chegada livre, com a pessoa nele. */
   arriveWith(sid, slot, v) {
     const kind = RIDE_KINDS[v.kind] ? v.kind : kindOfId(Number(v.id));
@@ -1917,7 +2006,7 @@ function applyLife(userId, life) {
   if (!p || !p.room.applyLife) return false;
   p.room.applyLife(p.sessionId, life);
   // Avisos (needs) vão junto: o cliente fala com o retrato sem pedir nada (mm3d-28).
-  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, body: life.body, look: life.look ?? "", needs: life.needs || [], stamina: life.stamina || null });
+  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, until: life.until ?? null, body: life.body, look: life.look ?? "", needs: life.needs || [], stamina: life.stamina || null });
   return true;
 }
 
@@ -1946,6 +2035,10 @@ function playerInMyRoom(viewerId, sessionId) {
 }
 
 /** Posição do usuário segundo a sala em que ele está (null = não está). */
+// Crimes (mm3d-37f): velocidade mínima do atropelamento e o intervalo entre dois.
+const CRIME_HIT_SPEED = 3;
+const CRIME_HIT_COOLDOWN_MS = 10000;
+
 // Quem entra num prédio fica parado na porta (o centro só para de desenhar)
 // e segue na sala: estar perto da porta é estar lá dentro (mm3d-37b).
 const PLACE_REACH = 7;

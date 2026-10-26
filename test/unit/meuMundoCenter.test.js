@@ -117,8 +117,9 @@ test("praça: miolo livre para encontro (só o monumento no meio) e acessível a
   for (const [x, z] of [[0, 18.5], [0, -18.5], [18.5, 0], [-18.5, 0]]) assert.ok(walker(x, z), `travessia (${x}, ${z})`);
 });
 
-test("carro: não entra na praça, mas dá a volta inteira no anel e chega aos dois estacionamentos", () => {
-  for (let x = -15; x <= 15; x += 1) for (let z = -15; z <= 15; z += 1) assert.ok(!car(x, z), `carro na praça (${x}, ${z})`);
+test("carro: entra na praça pelas 4 travessias (é crime, mm3d-37f), dá a volta inteira no anel e chega aos dois estacionamentos", () => {
+  // Desde o mm3d-37f a travessia não tem frade: o carro passa, e a sala multa/prende.
+  for (const [x, z] of [[0, 12], [0, -12], [12, 0], [-12, 0]]) assert.ok(car(x, z), `carro não entra na praça por (${x}, ${z})`);
   // Eixo do anel, de 5 em 5 graus (retas e curvas).
   const k = C.DIMS.ring - C.DIMS.cornerR;
   for (let a = 0; a < 360; a += 5) {
