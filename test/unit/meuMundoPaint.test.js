@@ -89,6 +89,39 @@ test("paint — corpo: anda, pula ~1,3 m, não sobe 1 m andando, cai do vão", (
   assert.ok(P.fellOut(-30, false) && !P.fellOut(-10, false));
 });
 
+test("paint — pulo duplo: o 2º pulo no ar sobe mais, o 3º não existe; no chão volta a ter dois", () => {
+  const map = P.buildPaintMap();
+  const base = map.islands[map.bases[0].island];
+  const b = P.newBody(base.x, 0, base.z, 0);
+  const idle = { mx: 0, mz: 0, run: false, jump: false };
+  P.stepBody(b, { ...idle, jump: true }, map.solids);
+  assert.equal(b.jumps, 1);
+  let top = 0;
+  for (let i = 0; i < 25; i++) {
+    P.stepBody(b, idle, map.solids);
+    top = Math.max(top, b.y);
+  }
+  P.stepBody(b, { ...idle, jump: true }, map.solids);
+  assert.equal(b.jumps, 2);
+  assert.ok(b.vy > 6, "o 2º pulo não subiu");
+  for (let i = 0; i < 12; i++) P.stepBody(b, idle, map.solids);
+  const vy = b.vy;
+  P.stepBody(b, { ...idle, jump: true }, map.solids);
+  assert.ok(b.vy < vy, "3º pulo no ar não pode existir");
+  for (let i = 0; i < 120; i++) {
+    P.stepBody(b, idle, map.solids);
+    top = Math.max(top, b.y);
+  }
+  assert.ok(top > 2.2 && top < 3.2, `altura do pulo duplo ${top}`);
+  assert.ok(b.ground && b.jumps === 0, "no chão volta a ter os dois pulos");
+  // caiu da borda sem pular: ainda tem um pulo no ar
+  const c = P.newBody(base.x, 0, base.z, 0);
+  for (let i = 0; i < 300 && c.ground; i++) P.stepBody(c, { mx: 0, mz: -1, run: true, jump: false }, map.solids);
+  for (let i = 0; i < 10; i++) P.stepBody(c, idle, map.solids);
+  P.stepBody(c, { ...idle, jump: true }, map.solids);
+  assert.ok(c.vy > 6 && c.jumps === 2, "sem o pulo no ar depois de cair da borda");
+});
+
 /** Mundo de tiro só com o mapa + tinta já feita. */
 function world(solids) {
   return { solids, bodies: [], boss: null };

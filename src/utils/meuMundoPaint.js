@@ -32,6 +32,9 @@ const TUNING = {
   run: 6.6,
   /** Pulo: 7,6 m/s com g 22 → ~1,31 m de altura, ~0,69 s no ar. */
   jumpV: 7.6,
+  /** Pulo duplo (mm3d-35c, pedido do Alex): mais um pulo no ar, um pouco mais baixo. */
+  maxJumps: 2,
+  airJumpV: 7.0,
   /** Controle no ar (fração da aceleração no chão). */
   airControl: 0.55,
   accel: 30,
@@ -567,7 +570,7 @@ function rayBody(o      , d      , b                                     , r    
 // aqui para os dois lados concordarem sobre o que dá e o que não dá.
 
 function newBody(x        , y        , z        , facing        )            {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, ground: true, air: 0, gy: y, facing }
+  return { x, y, z, vx: 0, vy: 0, vz: 0, ground: true, air: 0, gy: y, facing, jumps: 0 }
 }
 
 /** Movimento para a animação: 0 parado, 1 andando, 2 correndo, 5 no ar. */
@@ -598,10 +601,17 @@ function stepBody(b           , it            , solids                  , dt = T
   }
   if (m > 0.05) b.facing = Math.atan2(mx, mz)
 
-  if (it.jump && (b.ground || b.air < T.coyote) && b.vy <= 0.01) {
-    b.vy = T.jumpV
-    b.ground = false
-    b.air = T.coyote
+  if (it.jump) {
+    if ((b.ground || b.air < T.coyote) && b.vy <= 0.01) {
+      b.vy = T.jumpV
+      b.ground = false
+      b.air = T.coyote
+      b.jumps = 1
+    } else if (!b.ground && b.jumps < T.maxJumps) {
+      // pulo no ar (mm3d-35c): saiu da borda sem pular também tem um
+      b.vy = T.airJumpV
+      b.jumps = T.maxJumps
+    }
   }
 
   // horizontal + empurrão de lado
@@ -630,6 +640,7 @@ function stepBody(b           , it            , solids                  , dt = T
     b.ground = true
     b.air = 0
     b.gy = floor
+    b.jumps = 0
   } else if (wasGround && b.vy <= 0 && floor > -Infinity && b.y - floor <= 0.25) {
     // descendo rampa/degrau baixo: gruda
     b.y = floor
