@@ -56,6 +56,12 @@ const server = app.listen(PORT, () => {
   const AiReplyWorker = require("./src/services/AiReplyWorker");
   AiReplyWorker.start();
 
+  // WhatsApp oficial de academia (mig 307): re-tenta o repasse ao sistema da
+  // academia que falhou na hora. Sem isto, mensagem que pegou o sistema dela
+  // fora do ar nunca chega lá — e ninguém vê erro.
+  const WhatsappForwardDispatcher = require("./src/services/WhatsappForwardDispatcher");
+  WhatsappForwardDispatcher.startSweeper();
+
   // Prospecção (mig 254): a fila de descoberta e enriquecimento de empresas.
   // A busca da tela lê SEMPRE a base local; quem fala com o OpenStreetMap, com
   // a API de CNPJ e com o site do lead é este worker, à parte.

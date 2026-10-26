@@ -154,6 +154,39 @@ próxima vez que entrarem, mesmo que tenham dispensado o modal antes.
 
 - Academia sem professor cadastrado → `409 { erro: "sem_professor" }`.
 
+## 7. WhatsApp oficial da academia (mig 307)
+
+O número oficial (Cloud API) da academia é cadastrado na Freelandoo pelo **dono** e ligado à
+academia na página dela. Daí em diante o **atendimento é do sistema da academia**: a Freelandoo
+repassa o que chega e envia o que o sistema manda.
+
+⚠️ **Atendimento, não disparo.** Só texto livre, só dentro da janela de 24h de quem escreveu. Sem
+template e sem iniciar conversa — é a regra do portfólio da Freelandoo perante a Meta.
+
+- `GET /partner/v1/whatsapp` → `{ conectado, numero, qualidade, webhook_configurado }`.
+- `PUT /partner/v1/whatsapp/webhook { url }` (https) → `{ url, segredo }`. O segredo sai **uma
+  vez**; chamar de novo gera outro.
+- `POST /partner/v1/whatsapp/mensagens { telefone, texto }` → `{ wa_message_id, janela_ate }`.
+  Erros: `409 janela_fechada` (a pessoa precisa escrever de novo), `409 sem_numero`,
+  `409 numero_desconectado`, `502 whatsapp_erro { detalhe }`.
+- `GET /partner/v1/whatsapp/midia/:media_id` → os bytes (com `Content-Type`). Só mídia recebida no
+  número desta academia.
+
+### O repasse (Freelandoo → sistema da academia)
+
+`POST <url>` com `X-Freelandoo-Timestamp` e `X-Freelandoo-Signature: sha256=<hex>`, onde
+`hex = HMAC-SHA256(segredo, "<timestamp>.<corpo cru>")`. Recuse timestamp com mais de 5 minutos.
+Entrega at-least-once (re-tenta com espera crescente): deduplique por `wa_message_id`.
+
+```json
+{ "tipo": "mensagem", "wa_message_id": "wamid…", "telefone": "5511999998888", "nome": "Maria",
+  "texto": "Oi!", "tipo_midia": "text", "media_id": null,
+  "enviada_em": "2026-10-26T12:00:00.000Z", "janela_ate": "2026-10-27T12:00:00.000Z" }
+{ "tipo": "status", "wa_message_id": "wamid…", "status": "failed", "erro": "…" }
+```
+
+`tipo_midia`: `text`, `image`, `audio`, `video`, `document`, `other`.
+
 ## Lado do aluno (para referência)
 
 - `GET /auth/primeiro-acesso/:token` → `{ valido, nome, academia: { nome, slug, logo } }`.

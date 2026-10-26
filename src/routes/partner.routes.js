@@ -24,4 +24,10 @@ router.post("/members/:id_user/link", asyncHandler(PartnerController.regenerateL
 router.put("/members/:id_user/foto-academia", uploadAcademyPhoto, asyncHandler(PartnerController.uploadPhoto));
 router.post("/training-reminder", asyncHandler(PartnerController.remindTraining));
 
+// WhatsApp oficial da academia operado pelo sistema dela (mig 307).
+router.get("/whatsapp", asyncHandler(PartnerController.whatsappStatus));
+router.put("/whatsapp/webhook", asyncHandler(PartnerController.whatsappWebhook));
+router.post("/whatsapp/mensagens", asyncHandler(PartnerController.whatsappSend));
+router.get("/whatsapp/midia/:media_id", asyncHandler(PartnerController.whatsappMedia));
+
 module.exports = router;

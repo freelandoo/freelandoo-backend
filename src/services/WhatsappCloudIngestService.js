@@ -54,6 +54,9 @@ const NotificationService = require("./NotificationService");
 // ⚠️ SQL PURO. Este é o ÚNICO módulo do subsistema de IA que a ingestão pode
 // importar — ele não alcança nada que envie, e é isso que mantém o invariante.
 const AiJobStorage = require("../storages/AiJobStorage");
+// Mig 307: o repasse ao sistema da academia. Fala HTTP com o sistema dela,
+// nunca com a Meta — o isolation test confere que ele não alcança quem envia.
+const WhatsappForwardDispatcher = require("./WhatsappForwardDispatcher");
 const { redactPhone } = require("../utils/whatsappJid");
 const { createLogger } = require("../utils/logger");
 
@@ -100,6 +103,7 @@ class WhatsappCloudIngestService {
         body: msg.body,
         media_type: msg.mediaType,
         sent_at: msg.sentAt,
+        media_id: msg.mediaId,
       });
 
       // A Meta entrega at-least-once: a repetição é esperada, e o UNIQUE de
@@ -118,9 +122,31 @@ class WhatsappCloudIngestService {
       await WhatsappStorage.touchConversation(pool, conversation.id_conversation, {
         preview: msg.body,
         sent_at: msg.sentAt,
-        inc_unread: true,
+        // Número de academia (mig 307): a caixa é a do sistema dela — o "não
+        // lida" daqui acenderia o sino do dono por mensagem que ele não atende.
+        inc_unread: !instance.id_academy_forward,
         service_window_expires_at: new Date(msg.sentAt.getTime() + SERVICE_WINDOW_MS),
       });
+
+      // ⚠️ NÚMERO DE ACADEMIA (mig 307): a caixa é a do SISTEMA dela (o
+      // Coliseu), não a da Freelandoo. A mensagem fica gravada aqui — é daqui
+      // que sai a janela de 24h que o envio confere —, mas segue para lá e
+      // NÃO chama a IA nem acende a caixa do dono: no Coliseu, toda resposta
+      // é de uma pessoa.
+      if (instance.id_academy_forward) {
+        await WhatsappForwardDispatcher.forward(instance.id_academy_forward, {
+          tipo: "mensagem",
+          wa_message_id: msg.waMessageId,
+          telefone: msg.phone,
+          nome: msg.pushName || null,
+          texto: msg.body,
+          tipo_midia: msg.mediaType,
+          media_id: msg.mediaId || null,
+          enviada_em: msg.sentAt.toISOString(),
+          janela_ate: new Date(msg.sentAt.getTime() + SERVICE_WINDOW_MS).toISOString(),
+        });
+        continue;
+      }
 
       // ⚠️ ENFILEIRA A RESPOSTA — E ENFILEIRAR NÃO É ENVIAR.
       //
@@ -302,6 +328,22 @@ class WhatsappCloudIngestService {
       // migration. Contar deixa o número visível no log quando o W4 chegar,
       // em vez de o recibo sumir sem rastro.
       statuses += block.statuses.length;
+
+      // Número de academia: o envio que FALHOU volta ao sistema dela, para a
+      // bolha da recepção dizer que não saiu (os outros recibos não mudam nada
+      // lá).
+      if (instance.id_academy_forward) {
+        for (const s of block.statuses) {
+          if (!s || s.status !== "failed" || !s.id) continue;
+          const e = Array.isArray(s.errors) ? s.errors[0] : null;
+          await WhatsappForwardDispatcher.forward(instance.id_academy_forward, {
+            tipo: "status",
+            wa_message_id: String(s.id),
+            status: "failed",
+            erro: (e && (e.title || e.message)) || "A Meta não entregou a mensagem.",
+          });
+        }
+      }
     }
 
     return { type: "messages", saved, duplicated, statuses, ignored, quality };

@@ -31,6 +31,9 @@ router.post("/academies/:id/sync", authMiddleware, asyncHandler(AcademyControlle
 const PartnerController = require("../controllers/PartnerController");
 router.get("/academies/:id/partner-key", authMiddleware, asyncHandler(PartnerController.keyStatus));
 router.post("/academies/:id/partner-key", authMiddleware, asyncHandler(PartnerController.generateKey));
+// WhatsApp oficial pelo sistema da academia (mig 307): o dono liga o número dele.
+router.get("/academies/:id/whatsapp-forward", authMiddleware, asyncHandler(PartnerController.whatsappForwardStatus));
+router.put("/academies/:id/whatsapp-forward", authMiddleware, asyncHandler(PartnerController.whatsappForwardSet));
 
 // Vínculo por CPF — rate-limited (consulta provider externo).
 router.post("/academies/:id/link", authMiddleware, authLimiter, asyncHandler(AcademyController.link));

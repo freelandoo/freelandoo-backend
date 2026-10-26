@@ -216,6 +216,34 @@ async function fetchMedia() {
   return notYet("download de mídia");
 }
 
+/**
+ * Os bytes de uma mídia recebida, pelo `media_id` do webhook (mig 307). Dois
+ * passos, como a Meta exige: o GET do id devolve uma URL temporária, e a URL
+ * só abre com o MESMO token no cabeçalho. Nada é guardado — os bytes passam
+ * direto para quem pediu.
+ */
+async function fetchMediaById(mediaId) {
+  const cfg = ensureConfigured();
+  const id = String(mediaId || "").replace(/[^0-9A-Za-z_-]/g, "");
+  if (!id) throw new CloudApiError("Mídia inválida.", 400);
+  const meta = ensureOk(await call(cfg, "GET", `/${id}`));
+  if (!meta || !meta.url) throw new CloudApiError("A Meta não devolveu a mídia.", 502);
+  let r;
+  try {
+    r = await fetch(meta.url, {
+      headers: { Authorization: `Bearer ${cfg.token}` },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new CloudApiError("Falha de rede ao baixar a mídia.", 502);
+  }
+  if (!r.ok) throw new CloudApiError("A mídia expirou ou não está mais disponível.", 404);
+  return {
+    buffer: Buffer.from(await r.arrayBuffer()),
+    mime: meta.mime_type || r.headers.get("content-type") || "application/octet-stream",
+  };
+}
+
 /* ─────────────────────────── W3 — cadastro do número ─────────────────────── */
 
 /**
@@ -421,4 +449,5 @@ module.exports = {
   deriveTwoStepPin,
   sendText,
   fetchMedia,
+  fetchMediaById,
 };

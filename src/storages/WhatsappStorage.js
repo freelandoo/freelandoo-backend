@@ -100,7 +100,7 @@ class WhatsappStorage {
   static async getInstanceByRef(conn, provider, evolution_instance) {
     const r = await conn.query(
       `SELECT id_instance, id_user, provider, evolution_instance, waba_id,
-              status, connected_number
+              status, connected_number, id_academy_forward
          FROM public.tb_whatsapp_instance
         WHERE provider = $1 AND evolution_instance = $2
         LIMIT 1`,
@@ -429,12 +429,13 @@ class WhatsappStorage {
   /** `null` quando a mensagem já existia (eco ou reentrega) — não é erro. */
   static async insertMessage(
     conn,
-    { id_conversation, wa_message_id, direction, sender_label, body, media_type, sent_at }
+    { id_conversation, wa_message_id, direction, sender_label, body, media_type, sent_at, media_id = null }
   ) {
+    // `media_id` (mig 307): o id da mídia na Meta — a Cloud API só baixa por ele.
     const r = await conn.query(
       `INSERT INTO public.tb_whatsapp_message
-              (id_conversation, wa_message_id, direction, sender_label, body, media_type, sent_at)
-            VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5, $6, $7)
+              (id_conversation, wa_message_id, direction, sender_label, body, media_type, sent_at, media_id)
+            VALUES ($1, NULLIF($2, ''), $3, NULLIF($4, ''), $5, $6, $7, $8)
        ON CONFLICT (id_conversation, wa_message_id) WHERE wa_message_id IS NOT NULL
        DO NOTHING
          RETURNING id_message, wa_message_id, direction, sender_label, body, media_type, sent_at`,
@@ -446,6 +447,7 @@ class WhatsappStorage {
         String(body || ""),
         media_type || "text",
         sent_at,
+        media_id || null,
       ]
     );
     return r.rowCount ? r.rows[0] : null;
