@@ -34,6 +34,8 @@ router.post("/center/enter", ...admin, asyncHandler(MeuMundoController.centerEnt
 router.post("/center/leave", ...admin, asyncHandler(MeuMundoController.centerLeave));
 // Jetpack em grupo (mm3d-21): sala do centro em que você está, perto da porta.
 router.post("/center/jetpack", ...admin, asyncHandler(MeuMundoController.jetpackJoin));
+// Paint (mm3d-35): treino, 1×1, 2×2 ou 3×3, perto da porta.
+router.post("/center/paint", ...admin, asyncHandler(MeuMundoController.paintJoin));
 // Convites e visitas (mig 293).
 router.get("/visits", ...admin, asyncHandler(MeuMundoController.visits));
 router.get("/visits/candidates", ...admin, asyncHandler(MeuMundoController.candidates));

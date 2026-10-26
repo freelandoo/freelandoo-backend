@@ -28,7 +28,7 @@ const fs = require("fs");
 const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 
-const CENTER_VERSION = 2; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26)
+const CENTER_VERSION = 3; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -67,6 +67,10 @@ const PLACE_DEFS = [
   // game: o local abre um minijogo no cliente em vez de um interior (mm3d-20).
   // party: o minijogo aceita até N na mesma partida (sala JetpackRoom, mm3d-21).
   { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack", party: 4 },
+  // Paint (mm3d-35): torre estreita no vão entre a academia e o jetpack, no eixo
+  // da travessia sul (sai da praça e dá de frente com a porta). 0,4 m de folga
+  // de cada lado: ninguém passa entre os prédios.
+  { id: "paint", zone: "atividades", rect: [-1.6, 5.6, -FRONT - 14, -FRONT], h: 13, peak: 17, front: "n", door: 2, doorW: 2.4, game: "paint", party: 6 },
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },

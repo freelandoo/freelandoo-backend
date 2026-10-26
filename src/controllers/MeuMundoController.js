@@ -55,6 +55,11 @@ async function jetpackJoin(req, res) {
   return reply(res, await MeuMundoService.joinJetpack(req.user.id_user, { roomId: req.body?.roomId }));
 }
 
+// Paint (mm3d-35): lugar numa sala do centro em que a pessoa está, no modo pedido.
+async function paintJoin(req, res) {
+  return reply(res, await MeuMundoService.joinPaint(req.user.id_user, { mode: req.body?.mode, roomId: req.body?.roomId }));
+}
+
 async function visits(req, res) {
   return reply(res, await MeuMundoService.visitState(req.user.id_user));
 }
@@ -188,6 +193,7 @@ module.exports = {
   centerEnter,
   centerLeave,
   jetpackJoin,
+  paintJoin,
   visits,
   candidates,
   invite,

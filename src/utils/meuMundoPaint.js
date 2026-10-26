@@ -1178,6 +1178,17 @@ class PaintMatch {
     this.emit({ type: "end", reason })
   }
 
+  /** Cópia da partida (rede): a mancha que a sala criou (ou a prevista, id negativo). */
+  putBlob(id        , owner        , team        , blob         ) {
+    this.blobs.set(id, { id, owner, team, born: this.time, solid: blobSolid(blob, id, team), blob })
+    this.solidsCache = null
+  }
+
+  /** Cópia da partida (rede): a mancha sumiu na sala (ou a prevista foi trocada/recusada). */
+  takeBlob(id        ) {
+    if (this.blobs.delete(id)) this.solidsCache = null
+  }
+
   /** Saiu da sala: some dos alvos (a tinta dele fica até vencer). */
   setOnline(slot        , on         ) {
     const p = this.players.get(slot)

@@ -24,6 +24,8 @@ const AuthStorage = require("../storages/AuthStorage");
 const realtime = require("../realtime/meuMundo");
 const presence = require("../realtime/meuMundoPresence");
 const { reserveJetpackSeat, leaveJetpack } = require("../realtime/meuMundoJetpack");
+const { reservePaintSeat, leavePaint } = require("../realtime/meuMundoPaint");
+const { PAINT_MODES } = require("../utils/meuMundoPaint");
 const {
   MEU_MUNDO_RELEASE,
   buildNeighborhoodPayload,
@@ -67,6 +69,8 @@ const TRAVEL_GUARD_MS = 8000;
 // Jetpack em grupo (mm3d-21): só entra quem está a até 6 m da área de interação da porta.
 const JETPACK_DOOR = CENTER_PLACES.find((p) => p.id === "jetpack").interact;
 const JETPACK_REACH = 6;
+// Paint (mm3d-35): a mesma regra de porta.
+const PAINT_DOOR = CENTER_PLACES.find((p) => p.id === "paint").interact;
 function beginTravel(idUser) {
   const t = traveling.get(idUser);
   if (t && Date.now() - t < TRAVEL_GUARD_MS) return false;
@@ -478,6 +482,7 @@ class MeuMundoService {
       realtime.leaveCenter(roomId, idUser);
     }
     leaveJetpack(idUser);
+    leavePaint(idUser);
     presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number, ride });
     log.info("center.return", { ride: ride ? kindOfId(ride) : "" });
     return MeuMundoService.enter(idUser);
@@ -506,6 +511,31 @@ class MeuMundoService {
       return { error: "O jetpack em grupo não abriu agora.", statusCode: 503 };
     }
     return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation }, party: { max: PARTY.max } };
+  }
+
+  // ── Paint (mm3d-35) ───────────────────────────────────────────────────────
+  /**
+   * Lugar numa sala do Paint do centro em que a pessoa está, perto da porta:
+   * treino (sala só sua), 1×1, 2×2 ou 3×3. A pessoa continua no centro.
+   * `roomId` = estava numa sala do Paint há pouco (reconexão).
+   */
+  static async joinPaint(idUser, { mode = "solo", roomId = null } = {}) {
+    if (!Object.prototype.hasOwnProperty.call(PAINT_MODES, mode)) return { error: "Modo inválido", statusCode: 400 };
+    const here = presence.get(idUser);
+    if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
+    const pos = realtime.positionIn("center", here.id, idUser);
+    if (!pos || Math.hypot(pos.x - PAINT_DOOR.x, pos.z - PAINT_DOOR.z) > JETPACK_REACH) {
+      return { error: "Chegue perto da porta do Paint", statusCode: 409, code: "far" };
+    }
+    const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
+    let reservation;
+    try {
+      reservation = await reservePaintSeat({ userId: idUser, name, body, centerRoomId: here.id, mode, roomId: typeof roomId === "string" ? roomId : null });
+    } catch (err) {
+      log.error("paint.reserve_fail", { message: err.message });
+      return { error: "O Paint não abriu agora.", statusCode: 503 };
+    }
+    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation }, mode };
   }
 
   // ── Seletor de nível (teste) ──────────────────────────────────────────────
