@@ -55,6 +55,9 @@ const ERRORS = {
   currency: ["Este produto é exclusivo de Poléns", 409],
   mail: ["Presente não encontrado", 404],
   place: ["Treino é na academia; estudo, na universidade, biblioteca ou escola do centro", 409],
+  menu: ["Isso não tem no cardápio", 404],
+  away: ["Você precisa estar lá dentro", 409],
+  market: ["Compras para a geladeira são no supermercado do centro", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -326,6 +329,20 @@ class MeuMundoLifeService {
     });
   }
 
+  /**
+   * Pedido no balcão da pizzaria/hamburgueria (mm3d-37c): item do cardápio
+   * do lugar, a pessoa lá dentro (sala do centro); come na hora, pagando.
+   */
+  static async order(idUser, rawPlace, rawItem) {
+    const place = String(rawPlace || "");
+    const menu = Life.MENUS[place];
+    if (!menu) return fail("away");
+    const itemId = String(rawItem || "");
+    if (!menu.includes(itemId)) return fail("menu");
+    if (!require("../realtime/meuMundo").atCenterPlace(idUser, place)) return fail("away");
+    return MeuMundoLifeService.consume(idUser, itemId);
+  }
+
   // ═══ GELADEIRA (mm3d-28, mig 301) ═══
 
   /**
@@ -336,6 +353,8 @@ class MeuMundoLifeService {
   static async buy(idUser, rawItem, rawQty = 1, rawKey = null) {
     const item = Life.ITEM_BY_ID.get(String(rawItem || ""));
     if (!item) return fail("item");
+    // Só no supermercado do centro (mm3d-37c), segundo a sala do centro.
+    if (!require("../realtime/meuMundo").atCenterPlace(idUser, Life.MARKET_PLACE)) return fail("market");
     const qty = Number(rawQty);
     if (!Number.isInteger(qty) || qty < 1 || qty > Life.FRIDGE.MAX_BUY) return fail("qty");
     const key = String(rawKey || "");

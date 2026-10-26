@@ -54,6 +54,8 @@ router.post("/life/activity", ...admin, asyncHandler(MeuMundoController.lifeActi
 router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsume));
 // Mercado → geladeira (mig 301). Comer da geladeira é pela sala da casa (mensagem "fridge").
 router.post("/life/buy", ...admin, asyncHandler(MeuMundoController.lifeBuy));
+// Pedido no balcão da pizzaria/hamburgueria (mm3d-37c): come na hora, lá dentro.
+router.post("/life/order", ...admin, asyncHandler(MeuMundoController.lifeOrder));
 router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewcomer));
 // Vestuário (mig 300): catálogo de skins, comprar (moedas do jogo) e vestir.
 router.get("/skins", ...admin, asyncHandler(MeuMundoController.skins));

@@ -109,6 +109,11 @@ async function lifeConsume(req, res) {
 }
 
 // Geladeira (mig 301): o Mercado compra para a geladeira; comer é na casa (sala).
+// Pedido no balcão do restaurante (mm3d-37c): come na hora.
+async function lifeOrder(req, res) {
+  return reply(res, await MeuMundoLifeService.order(req.user.id_user, req.body?.place, req.body?.item));
+}
+
 async function lifeBuy(req, res) {
   return reply(res, await MeuMundoLifeService.buy(req.user.id_user, req.body?.item, req.body?.qty ?? 1, req.body?.key));
 }
@@ -222,6 +227,7 @@ module.exports = {
   lifeActivity,
   lifeConsume,
   lifeBuy,
+  lifeOrder,
   notices,
   noticesSummary,
   noticesRead,

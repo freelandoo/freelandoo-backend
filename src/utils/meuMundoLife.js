@@ -215,6 +215,15 @@ const PLACE_RULES = Object.freeze({
   biblioteca: Object.freeze({ mul: 1, feeH: 0 }),
   escola: Object.freeze({ mul: 1, feeH: 0 }),
 });
+// Cardápio dos restaurantes do centro (mm3d-37c): pede no balcão e come na
+// hora (vale a refeição como qualquer prato). Comprar para a geladeira é só
+// no supermercado.
+const MENUS = Object.freeze({
+  pizzaria: Object.freeze(["pizza", "refrigerante", "agua_coco"]),
+  hamburgueria: Object.freeze(["hamburguer", "cachorro_quente", "coxinha", "refrigerante"]),
+});
+const MARKET_PLACE = "supermercado";
+
 /** Moedas para marcar `hours` de `kind` em `place` (0 = de graça). */
 function placeFee(kind, place, hours) {
   if (!PLACES[kind] || !PLACE_RULES[place]) return 0;
@@ -1269,6 +1278,9 @@ function publicCatalog() {
     activityHours: ACTIVITY_HOURS,
     // Onde treinar e estudar (mm3d-37b), rendimento e hora de aula.
     places: { ...PLACES, rules: PLACE_RULES },
+    // Cardápios (mm3d-37c) e onde se compra para a geladeira.
+    menus: MENUS,
+    marketPlace: MARKET_PLACE,
     attributes: { max: ATTR.MAX, usefulH: ATTR.USEFUL_H, floor: ATTR.FLOOR },
     routine: { meals: ROUTINE.MEALS, sleepAtEnergy: ROUTINE.SLEEP_AT_ENERGY, restAtStress: ROUTINE.REST_AT_STRESS },
     clock: { offsetMin: CLOCK.OFFSET_MIN, meals: CLOCK.MEALS, beforeH: MEALS.BEFORE_H, afterH: MEALS.AFTER_H, penaltyH: MEALS.PENALTY_H },
@@ -1296,6 +1308,8 @@ module.exports = {
   PLACES,
   PLACE_RULES,
   placeFee,
+  MENUS,
+  MARKET_PLACE,
   AFTERLIFE,
   afterlife,
   applyInheritance,

@@ -56,3 +56,16 @@ test("pontos de uso e assentos ficam livres e dentro do prédio", () => {
     }
   }
 });
+
+test("cardápios dos restaurantes: itens do catálogo, comida e bebida (mm3d-37c)", () => {
+  const L = require("../../src/utils/meuMundoLife");
+  for (const [place, menu] of Object.entries(L.MENUS)) {
+    assert.ok(I[place], `${place} tem interior`);
+    assert.ok(menu.length >= 3, place);
+    for (const id of menu) {
+      const it = L.ITEM_BY_ID.get(id);
+      assert.ok(it && (it.kind === "food" || it.kind === "drink") && it.currency === "coins", `${place}: ${id}`);
+    }
+  }
+  assert.ok(I[L.MARKET_PLACE], "o supermercado tem interior");
+});

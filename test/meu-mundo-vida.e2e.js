@@ -316,6 +316,13 @@ async function mkUser(pool, tag) {
   check("a sala manda o fôlego no estado", typeof H().p.st === "number" && H().p.wd === false);
   await pool.query(`UPDATE tb_mm_character SET energy = 80, satiety = 30, toxicity = 0, effects = '[]'::jsonb WHERE id_user = $1 AND status = 'alive'`, [host]);
   await pool.query(`UPDATE tb_mm_wallet SET coins = 200 WHERE id_user = $1`, [host]);
+  // mm3d-37c: comprar para a geladeira só no supermercado; pedir no balcão só lá dentro.
+  here = null;
+  check("comprar fora do supermercado: recusado", (await Life.buy(host, "pizza", 1)).code === "market");
+  here = "pizzaria";
+  check("pedir na pizzaria o que não é do cardápio: 404", (await Life.order(host, "pizzaria", "hamburguer")).code === "menu");
+  check("pedir na hamburgueria estando na pizzaria: recusado", (await Life.order(host, "hamburgueria", "hamburguer")).code === "away");
+  here = "supermercado";
   const buy = await Life.buy(host, "pizza", 2);
   check("Mercado → geladeira: cobra e guarda, não come", buy.bought?.qty === 2 && buy.fridge.pizza === 2 && Math.floor(buy.wallet.coins) === 180 && buy.character.vitals.satiety < 31, JSON.stringify(buy.error || buy.fridge));
   check("comprar quantidade inválida: 400", (await Life.buy(host, "pizza", 0)).statusCode === 400 && (await Life.buy(host, "pizza", 11)).statusCode === 400);
