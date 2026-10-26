@@ -51,7 +51,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_skin_owned, tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_car_paint_owned, tb_mm_skin_owned, tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
@@ -90,6 +90,9 @@ async function bootstrap(pool) {
   const sql304 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/304_meu_mundo_avatar_colors.sql"), "utf8");
   await pool.query(sql304);
   await pool.query(sql304); // idempotente (mm3d-36)
+  const sql309 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/309_meu_mundo_vendedor.sql"), "utf8");
+  await pool.query(sql309);
+  await pool.query(sql309); // idempotente (mm3d-37e: cor do carro)
 }
 
 async function mkUser(pool, admin = true, tag = "") {

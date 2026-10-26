@@ -42,8 +42,10 @@ const MIGS = [
   "301_meu_mundo_geladeira",
   "302_meu_mundo_inbox",
   "304_meu_mundo_avatar_colors",
+  "308_meu_mundo_lugar_atividade",
+  "309_meu_mundo_vendedor",
 ];
-const TABLES = `polen_purchases, polen_products, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
+const TABLES = `tb_mm_car_paint_owned, polen_purchases, polen_products, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
   tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user`;
 
 async function bootstrap(pool) {
@@ -75,6 +77,8 @@ async function mkUser(pool, tag, admin = true) {
   const pool = require("../src/databases");
   await bootstrap(pool);
   const Life = require("../src/services/MeuMundoLifeService");
+  // mm3d-37c: comprar para a geladeira é no supermercado do centro — aqui a pessoa "está" lá.
+  require("../src/realtime/meuMundo").atCenterPlace = (_u, p) => p === "supermercado";
   const Inbox = require("../src/services/MeuMundoInboxService");
   const Skins = require("../src/utils/meuMundoSkins");
   const LifeRules = require("../src/utils/meuMundoLife");

@@ -167,6 +167,8 @@ const Car = schema(
     vx: t.float32(),
     vz: t.float32(),
     w: t.float32(),
+    // mm3d-37e: cor da lataria do carro (id de meuMundoShop.js; "" = de fábrica).
+    paint: t.string(),
   },
   "MMCar"
 );
@@ -294,7 +296,10 @@ class BairroRoom extends Room {
     // responde entra no estado, e a leitura não a sobrescreve (revisão).
     this.obstacles = buildObstacles();
     roomsByNeighborhood.set(this.neighborhoodId, this);
+    // Cor do carro de cada casa (mm3d-37e, mig 309).
+    this.paints = new Map();
     for (const row of await MeuMundoStorage.listHouseLevels(pool, this.neighborhoodId)) {
+      if (row.paint) this.paints.set(Number(row.number), row.paint);
       const key = String(row.number);
       const cur = this.state.houses.get(key);
       if (cur && cur.rev >= (row.rev || 0)) continue;
@@ -505,8 +510,21 @@ class BairroRoom extends Room {
       const v = this.saved.get(id);
       this.saved.delete(id);
       const p = v && carFits(v.x, v.z, v.facing, this.obstacles, kind) ? v : spotFor(kind, lotNumber);
-      this.state.cars.set(key, new Car({ lot: lotNumber, kind, x: p.x, z: p.z, facing: p.facing, driver: "" }));
+      this.state.cars.set(key, new Car({ lot: lotNumber, kind, x: p.x, z: p.z, facing: p.facing, driver: "", paint: this.paintFor(kind, lotNumber) }));
     }
+  }
+
+  /** Cor da lataria (só o carro tem; o resto é "" — mm3d-37e). */
+  paintFor(kind, lotNumber) {
+    return kind === "car" ? (this.paints && this.paints.get(lotNumber)) || "" : "";
+  }
+
+  /** A casa trocou a cor do carro (vendedor do centro, mm3d-37e). */
+  applyCarPaint(lotNumber, paint) {
+    if (!this.paints) this.paints = new Map();
+    this.paints.set(lotNumber, paint);
+    const c = this.state.cars.get(String(vehicleId("car", lotNumber)));
+    if (c) c.paint = paint;
   }
 
   /** Grava onde o veículo parou (mig 299). Falhar aqui não trava a sala. */
@@ -578,7 +596,7 @@ class BairroRoom extends Room {
       s.drive = IDLE_DRIVE;
       const p = this.state.players.get(sid);
       if (p) Object.assign(p, { car: 0, move: 0 });
-      return { id, kind: c.kind, from };
+      return { id, kind: c.kind, from, paint: c.paint || "" };
     }
     return { error: "not_riding" };
   }
@@ -589,7 +607,11 @@ class BairroRoom extends Room {
     const key = String(id);
     const c = this.state.cars.get(key);
     if (c) Object.assign(c, { x: at.x, z: at.z, facing: at.facing });
-    else this.state.cars.set(key, new Car({ lot: ((id - 1) % 20) + 1, kind: kindOfId(id), x: at.x, z: at.z, facing: at.facing, driver: "" }));
+    else {
+      const lot = ((id - 1) % 20) + 1;
+      const kind = kindOfId(id);
+      this.state.cars.set(key, new Car({ lot, kind, x: at.x, z: at.z, facing: at.facing, driver: "", paint: this.paintFor(kind, lot) }));
+    }
   }
 
   /** Caixas dos veículos que bloqueiam `sessionId` (menos o dele e os que não bloqueiam parados). */
@@ -1470,7 +1492,9 @@ class CentroRoom extends BairroRoom {
     const id = RIDE_KINDS[kind].offset + slot;
     const blockers = this.obstacles.concat(this.carBoxes(sid));
     const spot = CENTER_ARRIVAL_SPOTS.find((p) => carFits(p.x, p.z, p.facing, blockers, kind)) || CENTER_ARRIVAL_SPOTS[0];
-    const c = new Car({ lot: slot, kind, x: spot.x, z: spot.z, facing: spot.facing, driver: "" });
+    // A cor vem do registro do servidor (o veículo saiu do bairro), não do cliente.
+    const paint = (away.get(awayKey(v.nbId, Number(v.id))) || {}).paint || "";
+    const c = new Car({ lot: slot, kind, x: spot.x, z: spot.z, facing: spot.facing, driver: "", paint });
     this.state.cars.set(String(id), c);
     this.origin.set(id, { nbId: v.nbId, id: Number(v.id), userId: this.sim.get(sid).userId });
     this.mount(sid, this.sim.get(sid), this.state.players.get(sid), id, c);
@@ -1641,7 +1665,7 @@ function sendVehicleAway(neighborhoodId, userId) {
   if (!room) return { error: "not_riding" };
   const r = room.sendAway(userId);
   if (r.error) return r;
-  away.set(awayKey(neighborhoodId, r.id), { userId, kind: r.kind, from: r.from, at: Date.now(), roomId: null });
+  away.set(awayKey(neighborhoodId, r.id), { userId, kind: r.kind, from: r.from, at: Date.now(), roomId: null, paint: r.paint || "" });
   return r;
 }
 
@@ -1838,6 +1862,25 @@ function releaseRide(neighborhoodId, id, at) {
   if (room) room.releaseRide(id, at);
 }
 
+/**
+ * Leva a cor nova do carro (mm3d-37e) à sala viva do bairro e, se o carro
+ * estiver no centro com o dono, à sala do centro também.
+ */
+function applyCarPaint(neighborhoodId, lotNumber, paint) {
+  const room = roomsByNeighborhood.get(neighborhoodId);
+  if (room) room.applyCarPaint(lotNumber, paint);
+  const carId = vehicleId("car", lotNumber);
+  const a = away.get(awayKey(neighborhoodId, carId));
+  if (a) a.paint = paint;
+  for (const cr of centerRooms.values()) {
+    for (const [cid, o] of cr.origin || []) {
+      if (o.nbId !== neighborhoodId || o.id !== carId) continue;
+      const c = cr.state.cars.get(String(cid));
+      if (c) c.paint = paint;
+    }
+  }
+}
+
 /** Leva a troca de nível à sala viva do bairro (se houver alguém online). */
 function applyHouseLevel(neighborhoodId, lotNumber, level, rev) {
   const room = roomsByNeighborhood.get(neighborhoodId);
@@ -1968,6 +2011,7 @@ module.exports = {
   dropFromHouse,
   positionIn,
   atCenterPlace,
+  applyCarPaint,
   applyLife,
   pushNotice,
   pushChat,

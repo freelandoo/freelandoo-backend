@@ -56,6 +56,10 @@ router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsu
 router.post("/life/buy", ...admin, asyncHandler(MeuMundoController.lifeBuy));
 // Pedido no balcão da pizzaria/hamburgueria (mm3d-37c): come na hora, lá dentro.
 router.post("/life/order", ...admin, asyncHandler(MeuMundoController.lifeOrder));
+// Vendedor do centro (mm3d-37e): casas e cores do carro, com a pessoa na sala dele.
+router.get("/shop", ...admin, asyncHandler(MeuMundoController.shopCatalog));
+router.post("/shop/house", ...admin, asyncHandler(MeuMundoController.shopHouse));
+router.post("/shop/paint", ...admin, asyncHandler(MeuMundoController.shopPaint));
 router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewcomer));
 // Vestuário (mig 300): catálogo de skins, comprar (moedas do jogo) e vestir.
 router.get("/skins", ...admin, asyncHandler(MeuMundoController.skins));

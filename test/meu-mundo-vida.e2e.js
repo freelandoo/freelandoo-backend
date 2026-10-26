@@ -41,7 +41,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
@@ -63,6 +63,7 @@ async function bootstrap(pool) {
     "302_meu_mundo_inbox.sql",
     "304_meu_mundo_avatar_colors.sql",
     "308_meu_mundo_lugar_atividade.sql",
+    "309_meu_mundo_vendedor.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -125,6 +126,36 @@ async function mkUser(pool, tag) {
   check("sem moedas: 402 e nada muda", broke.statusCode === 402 && broke.code === "coins" && (await coins()) === 1 && (await char()).satiety < 31);
   check("item inexistente: 404", (await Life.consume(host, "nada")).statusCode === 404);
   await pool.query(`UPDATE tb_mm_wallet SET coins = 500 WHERE id_user = $1`, [host]);
+
+  // ── Vendedor do centro (mm3d-37e): casas e cores do carro ───────────────────
+  {
+    const RTv = require("../src/realtime/meuMundo");
+    const Shop = require("../src/services/MeuMundoShopService");
+    const placeOf = RTv.atCenterPlace;
+    RTv.atCenterPlace = () => false;
+    check("vendedor: longe dele, recusado", (await Shop.buyHouse(host, 2)).code === "away" && (await Shop.paintCar(host, "azul")).code === "away");
+    RTv.atCenterPlace = (_u, p) => p === "supermercado";
+    const cat = await Shop.catalog(host);
+    check("catálogo: casa nível 1, carro vermelho, níveis à venda e 10 cores", cat.house?.level === 1 && cat.house.paint === "vermelho" && cat.houses.length >= 8 && cat.paints.length === 10, JSON.stringify(cat.house));
+    check("catálogo: o vermelho é de graça e já é seu", cat.paints.find((p) => p.id === "vermelho").owned && cat.paints.find((p) => p.id === "azul").price === 600);
+    await pool.query(`UPDATE tb_mm_wallet SET coins = 700 WHERE id_user = $1`, [host]);
+    check("casa nível 2 sem moedas: 402", (await Shop.buyHouse(host, 2)).code === "coins");
+    check("nível que não existe: 400", (await Shop.buyHouse(host, 99)).code === "level");
+    check("o mesmo nível: 409", (await Shop.buyHouse(host, 1)).code === "same");
+    const az = await Shop.paintCar(host, "azul");
+    check("cor azul: 600 moedas e o carro da casa fica azul", az.paint?.bought === true && (await coins()) === 100 && (await pool.query(`SELECT car_paint FROM tb_mm_house WHERE id_house = $1`, [res.id_house])).rows[0].car_paint === "azul", JSON.stringify(az.error));
+    const back = await Shop.paintCar(host, "vermelho");
+    check("voltar ao vermelho: de graça (de fábrica = NULL)", back.paint?.price === 0 && (await coins()) === 100 && (await pool.query(`SELECT car_paint FROM tb_mm_house WHERE id_house = $1`, [res.id_house])).rows[0].car_paint === null);
+    const again = await Shop.paintCar(host, "azul");
+    check("o azul já é seu: trocar não cobra de novo", again.paint?.bought === false && (await coins()) === 100);
+    await pool.query(`UPDATE tb_mm_wallet SET coins = 2000 WHERE id_user = $1`, [host]);
+    const up = await Shop.buyHouse(host, 3);
+    check("casa nível 3: paga 1500 e a casa sobe", up.house?.level === 3 && (await coins()) === 500 && (await Storage.getActiveResidence(pool, host)) && (await pool.query(`SELECT level FROM tb_mm_house WHERE id_house = $1`, [res.id_house])).rows[0].level === 3, JSON.stringify(up.error));
+    const down = await Shop.buyHouse(host, 1);
+    check("descer para o nível 1: de graça", down.house?.level === 1 && (await coins()) === 500);
+    RTv.atCenterPlace = placeOf;
+    await pool.query(`UPDATE tb_mm_wallet SET coins = 500 WHERE id_user = $1`, [host]);
+  }
 
   // ── Atividade com horas, tempo passando com o jogo fechado ─────────────────
   check("deitar pela rota pede cama", (await Life.setActivity(host, "lying", 2)).code === "bed");

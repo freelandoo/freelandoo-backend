@@ -43,13 +43,13 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_skin_owned, tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_car_paint_owned, tb_mm_skin_owned, tb_mm_vehicle, tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
-  for (const f of ["291_meu_mundo_bairros.sql", "292_meu_mundo_house_levels.sql", "293_meu_mundo_visits.sql", "294_meu_mundo_body_sergio.sql", "299_meu_mundo_vehicles.sql", "300_meu_mundo_skins.sql", "304_meu_mundo_avatar_colors.sql"]) {
+  for (const f of ["291_meu_mundo_bairros.sql", "292_meu_mundo_house_levels.sql", "293_meu_mundo_visits.sql", "294_meu_mundo_body_sergio.sql", "299_meu_mundo_vehicles.sql", "300_meu_mundo_skins.sql", "304_meu_mundo_avatar_colors.sql", "309_meu_mundo_vendedor.sql"]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
     await pool.query(sql); // idempotente

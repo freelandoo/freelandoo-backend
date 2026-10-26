@@ -142,7 +142,7 @@ class MeuMundoStorage {
   /** Nível e revisão de cada casa do bairro (estado inicial da sala). */
   static async listHouseLevels(db, idNeighborhood) {
     const r = await db.query(
-      `SELECT l.lot_number AS number, h.level, h.level_rev AS rev
+      `SELECT l.lot_number AS number, h.level, h.level_rev AS rev, h.car_paint AS paint
          FROM tb_mm_lot l JOIN tb_mm_house h ON h.id_lot = l.id_lot
         WHERE l.id_neighborhood = $1`,
       [idNeighborhood]
@@ -164,6 +164,33 @@ class MeuMundoStorage {
       [idHouse, level]
     );
     return r.rows[0] || null;
+  }
+
+  // ── Vendedor (mm3d-37e, mig 309) ──────────────────────────────────────────
+  /** Cor do carro da casa (null = vermelho de fábrica). */
+  static async setCarPaint(db, idHouse, paint) {
+    const r = await db.query(`UPDATE tb_mm_house SET car_paint = $2 WHERE id_house = $1 RETURNING car_paint`, [idHouse, paint]);
+    return r.rows[0] || null;
+  }
+
+  static async carPaintOf(db, idHouse) {
+    const r = await db.query(`SELECT level, car_paint FROM tb_mm_house WHERE id_house = $1`, [idHouse]);
+    return r.rows[0] || null;
+  }
+
+  /** Cores do carro que a pessoa já comprou. */
+  static async ownedPaints(db, idUser) {
+    const r = await db.query(`SELECT paint FROM tb_mm_car_paint_owned WHERE id_user = $1`, [idUser]);
+    return r.rows.map((x) => x.paint);
+  }
+
+  /** Grava a compra; false = já tinha (nada a cobrar). */
+  static async addOwnedPaint(db, idUser, paint, price) {
+    const r = await db.query(
+      `INSERT INTO tb_mm_car_paint_owned (id_user, paint, price) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [idUser, paint, price]
+    );
+    return r.rowCount > 0;
   }
 
   static async countResidents(db, idNeighborhood) {

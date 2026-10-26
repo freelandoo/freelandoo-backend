@@ -3,6 +3,7 @@ const MeuMundoLifeService = require("../services/MeuMundoLifeService");
 const MeuMundoInboxService = require("../services/MeuMundoInboxService");
 const { HOSPITAL_INTERIOR, bedFor } = require("../utils/meuMundoHospital");
 const { CENTER_INTERIORS } = require("../utils/meuMundoCenterInteriors");
+const MeuMundoShopService = require("../services/MeuMundoShopService");
 const { RULES } = require("../utils/meuMundoLife");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -109,6 +110,17 @@ async function lifeConsume(req, res) {
 }
 
 // Geladeira (mig 301): o Mercado compra para a geladeira; comer é na casa (sala).
+// Vendedor do centro (mm3d-37e): o catálogo, a casa e a cor do carro.
+async function shopCatalog(req, res) {
+  return reply(res, await MeuMundoShopService.catalog(req.user.id_user));
+}
+async function shopHouse(req, res) {
+  return reply(res, await MeuMundoShopService.buyHouse(req.user.id_user, req.body?.level));
+}
+async function shopPaint(req, res) {
+  return reply(res, await MeuMundoShopService.paintCar(req.user.id_user, req.body?.paint));
+}
+
 // Pedido no balcão do restaurante (mm3d-37c): come na hora.
 async function lifeOrder(req, res) {
   return reply(res, await MeuMundoLifeService.order(req.user.id_user, req.body?.place, req.body?.item));
@@ -228,6 +240,9 @@ module.exports = {
   lifeConsume,
   lifeBuy,
   lifeOrder,
+  shopCatalog,
+  shopHouse,
+  shopPaint,
   notices,
   noticesSummary,
   noticesRead,
