@@ -1101,6 +1101,25 @@ class PaintMatch {
     if (v.hp === 0) {
       v.ko = this.time + TUNING.koTime
       this.emit({ type: "ko", slot, by })
+      this.steal(v, a)
+    }
+  }
+
+  /**
+   * Quem derrubou fica com os gatinhos de quem caiu (pedido do Alex, como no
+   * Cat Demon). Muda o placar dos dois times; o portal de quem ganhou pode abrir.
+   */
+          steal(v             , a             ) {
+    const n = v.cats
+    if (n <= 0 || v.slot === a.slot) return
+    v.cats = 0
+    a.cats += n
+    this.teamCats[v.team] = Math.max(0, this.teamCats[v.team] - n)
+    this.teamCats[a.team] += n
+    this.emit({ type: "steal", from: v.slot, to: a.slot, n })
+    if (!this.portalOpen[a.team] && this.teamCats[a.team] >= TUNING.catsToPortal) {
+      this.portalOpen[a.team] = true
+      this.emit({ type: "portal", team: a.team })
     }
   }
 

@@ -387,6 +387,40 @@ test("paint — tiro vermelho tira coração do outro time, soco empurra, 5 = no
   assert.equal(m.drain().filter((e) => e.type === "hit").length, 0);
 });
 
+test("paint — nocaute por tiro: quem derrubou fica com os gatinhos de quem caiu (placar e portal)", () => {
+  const m = duel();
+  // o time 1 pega 12 gatinhos; o time 0 já tem 9
+  const p0 = m.players.get(0);
+  const p1 = m.players.get(1);
+  p1.cats = 12;
+  m.teamCats[1] = 12;
+  p0.cats = 9;
+  m.teamCats[0] = 9;
+  const base = m.map.islands[m.map.bases[0].island];
+  place(m, 0, base.x, 0, base.z, 0);
+  place(m, 1, base.x, 0, base.z + 6, Math.PI);
+  for (let q = 1; q <= 5; q++) {
+    const o = P.muzzleOf(m.players.get(0).pose, 0);
+    m.fire(0, PAINT.HARM, o, { x: base.x - o.x, y: 1.2 - o.y, z: base.z + 6 - o.z }, q);
+    m.tick(1 / T.fireRate[PAINT.HARM] + 0.01);
+  }
+  const ev = m.drain();
+  const st = ev.find((e) => e.type === "steal");
+  assert.ok(ev.find((e) => e.type === "ko" && e.slot === 1), "não nocauteou");
+  assert.ok(st && st.from === 1 && st.to === 0 && st.n === 12, JSON.stringify(st));
+  assert.equal(p1.cats, 0);
+  assert.equal(p0.cats, 21);
+  assert.deepEqual([...m.teamCats], [21, 0]);
+  assert.ok(m.portalOpen[0] && ev.find((e) => e.type === "portal" && e.team === 0), "o portal de quem roubou não abriu");
+  // cair nas nuvens não dá gatinho para ninguém
+  p0.cats = 3;
+  m.teamCats[0] = 3;
+  place(m, 0, base.x, -40, base.z);
+  m.tick(0.05);
+  assert.ok(!m.drain().find((e) => e.type === "steal"));
+  assert.equal(p0.cats, 3);
+});
+
 test("paint — mesmo time não se machuca; vermelho apaga tinta do outro time", () => {
   const m = new P.PaintMatch("2v2", [
     { slot: 0, team: 0, sit: 0 },
