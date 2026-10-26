@@ -27,6 +27,7 @@
 const fs = require("fs");
 const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
+const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
 const CENTER_VERSION = 3; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35)
 const CENTER_CAPACITY = 20;
@@ -153,7 +154,7 @@ function buildPlace(def) {
     // Destino: minijogo (game:<id>, mm3d-20) ou interior (interior:<id>). Só
     // abrem os que existem: os minijogos e o hospital (mm3d-26, INTERIORS).
     destination: def.game ? `game:${def.game}` : `interior:${def.id}`,
-    available: !!def.game || !!def.interior,
+    available: !!def.game || !!def.interior || !!CENTER_INTERIORS[def.id],
     ...(def.party ? { party: def.party } : {}),
   });
 }
@@ -410,6 +411,8 @@ function buildCenterPayload() {
     grounds: GROUNDS,
     props: PROPS,
     // Interiores que abrem (destino interior:<id>): a mesma planta para todos.
+    // O hospital vem aqui (mm3d-26); os outros prédios (mm3d-37) são buscados
+    // ao entrar (GET /center/interiors/:id) para o payload continuar pequeno.
     interiors: { hospital: HOSPITAL_INTERIOR },
     arrival: ARRIVAL,
     portal: PORTAL,

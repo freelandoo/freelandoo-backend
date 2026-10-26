@@ -36,6 +36,8 @@ router.post("/center/leave", ...admin, asyncHandler(MeuMundoController.centerLea
 router.post("/center/jetpack", ...admin, asyncHandler(MeuMundoController.jetpackJoin));
 // Paint (mm3d-35): treino, 1×1, 2×2 ou 3×3, perto da porta.
 router.post("/center/paint", ...admin, asyncHandler(MeuMundoController.paintJoin));
+// Interior de um prédio do centro (mm3d-37): a planta, buscada ao entrar.
+router.get("/center/interiors/:id", ...admin, asyncHandler(MeuMundoController.centerInterior));
 // Convites e visitas (mig 293).
 router.get("/visits", ...admin, asyncHandler(MeuMundoController.visits));
 router.get("/visits/candidates", ...admin, asyncHandler(MeuMundoController.candidates));

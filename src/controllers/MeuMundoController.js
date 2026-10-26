@@ -2,6 +2,7 @@ const MeuMundoService = require("../services/MeuMundoService");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
 const MeuMundoInboxService = require("../services/MeuMundoInboxService");
 const { HOSPITAL_INTERIOR, bedFor } = require("../utils/meuMundoHospital");
+const { CENTER_INTERIORS } = require("../utils/meuMundoCenterInteriors");
 const { RULES } = require("../utils/meuMundoLife");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -83,6 +84,15 @@ async function hospital(req, res) {
   const life = await MeuMundoLifeService.peek(req.user.id_user);
   if (life && life.error) return reply(res, life);
   return reply(res, { interior: HOSPITAL_INTERIOR, bed: bedFor(req.user.id_user), dischargeAt: RULES.DISCHARGE_AT, life });
+}
+
+// Interior de um prédio do centro (mm3d-37): a planta é a mesma para todos e
+// não muda entre deploys sem mudar a versão — o navegador pode guardar.
+async function centerInterior(req, res) {
+  const id = String(req.params.id || "");
+  const interior = Object.prototype.hasOwnProperty.call(CENTER_INTERIORS, id) ? CENTER_INTERIORS[id] : null;
+  if (!interior) return reply(res, { error: "Local sem interior", statusCode: 404 });
+  return reply(res, { id, interior });
 }
 
 // Vida do hóspede (mm3d-13). Deitar/dormir vão pela sala da casa (cama).
@@ -189,6 +199,7 @@ async function adminStatus(_req, res) {
 }
 
 module.exports = {
+  centerInterior,
   adminNeighborhood,
   adminSession,
   adminStatus,

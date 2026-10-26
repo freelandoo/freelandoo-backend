@@ -62,8 +62,8 @@ test("registro de destinos: cada local tem entrada, interação, retorno, destin
       assert.equal(p.party, 6, "3 × 3 (mm3d-35)");
     } else {
       assert.equal(p.destination, `interior:${p.id}`);
-      // Só o hospital tem interior (mm3d-26); os outros seguem "Em breve".
-      assert.equal(p.available, p.id === "hospital", p.id);
+      // Todo prédio tem interior (mm3d-26 hospital; mm3d-37 os outros).
+      assert.equal(p.available, true, p.id);
     }
   }
 });

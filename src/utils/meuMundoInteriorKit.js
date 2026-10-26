@@ -41,6 +41,8 @@ const BED_TOP = 0.48;
 // (o cliente oferece a 1,5 m; a folga cobre a latência de quem chega de lado).
 const FRIDGE_REACH = 1.7;
 const EPS = 1e-6;
+// Meia caixa do NPC em pé (mm3d-37).
+const NPC_HALF = 0.3;
 
 // ═══ MÓVEIS ═══ — w × d × h (m), frente no −Z local. `seats`: pontos onde o
 // personagem fica sentado (coordenadas locais; a frente do assento é o −Z).
@@ -84,6 +86,49 @@ const FURNITURE = Object.freeze({
   screen: { w: 1.6, d: 0.08, h: 1.8 },
   reception: { w: 2.6, d: 0.8, h: 1.05 },
   cabinet: { w: 0.9, d: 0.45, h: 1.2 },
+  // ── Centro por dentro (mm3d-37) ── `use` = o que se faz ali (vira um ponto
+  // de uso em `def.spots`, ou o uso do assento); `anim` = o movimento de quem
+  // usa; `spotOn` = o ponto é EM CIMA do móvel (tapete, área livre), não em
+  // frente a ele.
+  // Academia
+  treadmill: { w: 0.9, d: 1.9, h: 1.4, solid: false, spotOn: true, use: "train", anim: "run" },
+  squat_rack: { w: 1.8, d: 1.3, h: 2.3, solid: false, spotOn: true, use: "train", anim: "squat" },
+  punching_bag: { w: 0.6, d: 0.6, h: 2.1, use: "train", anim: "punch" },
+  plyo_box: { w: 0.8, d: 0.7, h: 0.6, use: "train", anim: "boxjump" },
+  gym_mat: { w: 1.1, d: 2.0, h: 0.03, solid: false, spotOn: true, use: "train", anim: "situps" },
+  kettlebells: { w: 1.1, d: 0.45, h: 0.35, use: "train", anim: "kettlebell" },
+  dumbbell_rack: { w: 1.8, d: 0.6, h: 1.0 },
+  weight_bench: { w: 0.5, d: 1.4, h: 0.5 },
+  mirror: { w: 3.0, d: 0.06, h: 2.0 },
+  lockers: { w: 1.4, d: 0.5, h: 1.9 },
+  // Escola, universidade e biblioteca
+  blackboard: { w: 3.4, d: 0.1, h: 2.2 },
+  lectern: { w: 0.7, d: 0.5, h: 1.15 },
+  bookcase: { w: 1.8, d: 0.42, h: 2.3 },
+  // Igreja (o banco é um assento de rezar)
+  pew: { w: 2.6, d: 0.62, h: 0.95, seats: [[-0.8, 0.04], [0, 0.04], [0.8, 0.04]], use: "pray" },
+  altar: { w: 2.2, d: 0.9, h: 1.0 },
+  cross: { w: 1.3, d: 0.12, h: 2.5 },
+  candles: { w: 0.4, d: 0.4, h: 1.3 },
+  // Pizzaria e hamburgueria
+  order_counter: { w: 3.0, d: 0.7, h: 1.05, use: "order" },
+  pizza_oven: { w: 1.8, d: 1.4, h: 1.9 },
+  menu_board: { w: 2.6, d: 0.08, h: 2.4 },
+  booth: { w: 1.5, d: 0.75, h: 1.15, seats: [[-0.36, 0.06], [0.36, 0.06]] },
+  soda_machine: { w: 0.9, d: 0.6, h: 1.8 },
+  fryer: { w: 0.7, d: 0.62, h: 0.95 },
+  stool: { w: 0.42, d: 0.42, h: 0.75, seats: [[0, 0]] },
+  // Supermercado (prateleiras de cena, pedido do Alex: sem produto para pegar)
+  gondola: { w: 3.2, d: 1.0, h: 1.7 },
+  fridge_case: { w: 2.6, d: 0.8, h: 2.1 },
+  fruit_stand: { w: 1.6, d: 1.0, h: 0.9 },
+  checkout: { w: 2.2, d: 0.8, h: 1.0, use: "market" },
+  // Sala do vendedor (casas e carros)
+  poster: { w: 1.6, d: 0.05, h: 1.4 },
+  // Delegacia
+  bars: { w: 4.0, d: 0.1, h: 2.6 },
+  cot: { w: 0.8, d: 1.9, h: 0.45, beds: [[0, 0]] },
+  flag: { w: 0.5, d: 0.5, h: 2.2 },
 });
 
 const DEG = Math.PI / 180;
@@ -321,6 +366,11 @@ function buildInterior(plan) {
       const b = furnitureBox(it);
       boxes.push({ x: round(b.x), z: round(b.z), hx: round(b.hx), hz: round(b.hz), rot: 0, h: round(y + b.h) });
     }
+    // NPC em pé (mm3d-37): ninguém atravessa o atendente.
+    for (const n of plan.npcs || []) {
+      if ((n.floor || 0) !== fi) continue;
+      boxes.push({ x: round(n.x), z: round(n.z), hx: NPC_HALF, hz: NPC_HALF, rot: 0, h: round(y + 1.8) });
+    }
     const bounds = {
       minX: Math.min(...fl.rooms.map((r) => r.x0)),
       maxX: Math.max(...fl.rooms.map((r) => r.x1)),
@@ -365,6 +415,8 @@ function buildInterior(plan) {
     floors,
     stairs: (plan.stairs || []).map((s) => ({ ...s })),
     bounds: { minX, maxX, minZ, maxZ },
+    // Tema de cores do local (mm3d-37; casas e hospital: nenhum).
+    theme: plan.theme || null,
   };
 
   const door = plan.door;
@@ -378,6 +430,7 @@ function buildInterior(plan) {
   const walk = walkInterior({ ...def, seats: [] });
   const reachable = (fi, c) => walk.cells.some((w) => w.floor === fi && Math.hypot(w.x - c.x, w.z - c.z) <= 0.2);
   const seats = [];
+  const npcs = [];
   const problems = [];
   // Ponto de levantar: o primeiro candidato (coordenadas locais do móvel)
   // livre, alcançável, no MESMO cômodo do móvel (livre do outro lado de uma
@@ -391,7 +444,8 @@ function buildInterior(plan) {
       const q = rotY(lx, lz, rot);
       const c = { x: round(it.x + q.x), z: round(it.z + q.z) };
       const close = Math.hypot(c.x - at.x, c.z - at.z) <= reach - 0.25;
-      if (close && inRoom(c) && isFreeSpot(def, fi, c.x, c.z) && reachable(fi, c)) return c;
+      // Cela (mm3d-37f): fechada pela grade de propósito — não se chega da porta.
+      if (close && inRoom(c) && isFreeSpot(def, fi, c.x, c.z) && (room.cell || reachable(fi, c))) return c;
     }
     return null;
   };
@@ -401,10 +455,15 @@ function buildInterior(plan) {
       if (!kind.seats) return;
       const s = furnitureSize(it);
       const rot = it.r * DEG;
-      for (const [sx, sz] of kind.seats) {
+      kind.seats.forEach(([sx, sz], si) => {
         const p = rotY(sx, sz, rot);
         const fwd = rotY(0, -1, rot);
         const facing = Math.atan2(fwd.x, fwd.z);
+        // Assento do NPC (mm3d-37): o vendedor sentado; não é oferecido a ninguém.
+        if (it.npc && si === 0) {
+          npcs.push({ role: it.npc, floor: fi, x: round(it.x + p.x), z: round(it.z + p.z), facing: round(facing), pose: "sit" });
+          return;
+        }
         const reach = MOTION.RADIUS + 0.12;
         // Em frente; dos lados (um pouco recuado, para não raspar na mesa à
         // frente da cadeira); atrás.
@@ -420,6 +479,7 @@ function buildInterior(plan) {
         // lado de uma parede não serve (seria atravessá-la).
         const stand = standPoint(fl, fi, it, { x: it.x + p.x, z: it.z + p.z }, cands, SEAT_REACH);
         if (!stand) problems.push(`assento sem lugar para levantar (${it.t} em ${it.x},${it.z}, piso ${fi})`);
+        const use = it.use || kind.use;
         if (stand) seats.push({
           id: `s${String(seats.length + 1).padStart(2, "0")}`,
           floor: fi,
@@ -428,8 +488,9 @@ function buildInterior(plan) {
           facing: round(facing),
           stand,
           kind: it.t,
+          ...(use ? { use } : {}),
         });
-      }
+      });
     });
   });
   def.seats = seats;
@@ -512,6 +573,55 @@ function buildInterior(plan) {
     });
   });
   def.fridges = fridges;
+  // Pontos de uso (mm3d-37): móvel com `use` e sem assento — o ponto em pé em
+  // frente a ele, olhando para ele (ou em cima, `spotOn`). Treinar, pedir no
+  // balcão, pagar no caixa…
+  const spots = [];
+  floors.forEach((fl, fi) => {
+    fl.furniture.forEach((it) => {
+      const kind = FURNITURE[it.t];
+      const use = it.use || kind.use;
+      if (!use || kind.seats) return;
+      const s = furnitureSize(it);
+      const rot = it.r * DEG;
+      const fwd = rotY(0, -1, rot);
+      let stand;
+      let facing;
+      if (kind.spotOn) {
+        stand = isFreeSpot(def, fi, it.x, it.z) && reachable(fi, it) ? { x: round(it.x), z: round(it.z) } : null;
+        facing = Math.atan2(fwd.x, fwd.z);
+      } else {
+        const reach = MOTION.RADIUS + 0.2;
+        const front = s.d / 2 + reach;
+        const cands = [];
+        for (const dz of [0, 0.2, 0.45]) for (const dx of [0, -0.3, 0.3, -0.6, 0.6]) cands.push([dx, -(front + dz)]);
+        stand = standPoint(fl, fi, it, { x: it.x, z: it.z }, cands, front + 1.1);
+        const back = rotY(0, 1, rot);
+        facing = Math.atan2(back.x, back.z);
+      }
+      if (!stand) {
+        problems.push(`ponto de uso sem lugar (${it.t} em ${it.x},${it.z}, piso ${fi})`);
+        return;
+      }
+      spots.push({
+        id: `u${String(spots.length + 1).padStart(2, "0")}`,
+        floor: fi,
+        x: stand.x,
+        z: stand.z,
+        facing: round(facing),
+        use,
+        anim: it.anim || kind.anim || null,
+        kind: it.t,
+        center: { x: round(it.x), z: round(it.z) },
+      });
+    });
+  });
+  def.spots = spots;
+  for (const n of plan.npcs || []) {
+    const fwd = rotY(0, -1, (n.r || 0) * DEG);
+    npcs.push({ role: n.role, floor: n.floor || 0, x: round(n.x), z: round(n.z), facing: round(Math.atan2(fwd.x, fwd.z)), pose: "stand" });
+  }
+  def.npcs = npcs;
   // Medidas-padrão de cada móvel: o cliente desenha com estas (não guarda cópia).
   def.furnitureTypes = Object.fromEntries(Object.entries(FURNITURE).map(([k, v]) => [k, { w: v.w, d: v.d, h: v.h }]));
 
