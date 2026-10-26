@@ -42,6 +42,8 @@ function rowToState(r) {
       until: ms(r.activity_until),
       bed: r.activity_bed,
       resume: r.activity_resume,
+      // mig 308: onde treina/estuda (mm3d-37b)
+      place: r.activity_place || null,
     },
     effects: r.effects || [],
     meals: r.meals,
@@ -62,7 +64,7 @@ const COLS = [
   "energy", "satiety", "mood", "stress", "health", "vitality", "fat_kg", "lean_kg",
   "diabetes_risk", "has_diabetes", "bp_risk", "has_hypertension", "toxicity", "cardiac",
   "awake_h", "zero_energy_h", "diet", "intelligence", "strength", "speed", "fertility", "attr_peaks",
-  "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume",
+  "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume", "activity_place",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
   "wear_days", "exposure",
 ];
@@ -76,6 +78,7 @@ function values(s) {
     a.kind, iso(a.startedAt), iso(a.until),
     a.bed ? JSON.stringify(a.bed) : null,
     a.resume ? JSON.stringify(a.resume) : null,
+    a.place || null,
     JSON.stringify(s.effects), JSON.stringify(s.meals), JSON.stringify(s.dayAcc),
     s.status, iso(s.diedAt), s.deathCause, iso(s.simAt),
     s.wearDays, JSON.stringify(s.exposure),

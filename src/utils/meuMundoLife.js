@@ -201,6 +201,26 @@ const ATTR = Object.freeze({
 });
 const TRAINED = Object.freeze(["intelligence", "strength", "speed"]);
 
+// ═══ LUGARES (mm3d-37b) ═══ — treino e estudo só dentro do prédio do centro
+// (pedido do Alex). A atividade guarda o lugar; a universidade cobra a hora de
+// aula (moedas do jogo, na largada) e rende mais; biblioteca e escola são de
+// graça. Trabalhar continua em qualquer lugar.
+const PLACES = Object.freeze({
+  training: Object.freeze(["academia"]),
+  studying: Object.freeze(["universidade", "biblioteca", "escola"]),
+});
+const PLACE_RULES = Object.freeze({
+  academia: Object.freeze({ mul: 1, feeH: 0 }),
+  universidade: Object.freeze({ mul: 1.5, feeH: 8 }),
+  biblioteca: Object.freeze({ mul: 1, feeH: 0 }),
+  escola: Object.freeze({ mul: 1, feeH: 0 }),
+});
+/** Moedas para marcar `hours` de `kind` em `place` (0 = de graça). */
+function placeFee(kind, place, hours) {
+  if (!PLACES[kind] || !PLACE_RULES[place]) return 0;
+  return Math.round(PLACE_RULES[place].feeH * Number(hours || 0));
+}
+
 // ═══ ROTINA ═══ — estudar/treinar/trabalhar por horas não é maratona: o
 // hóspede dorme quando a energia acaba, descansa quando o estresse estoura e
 // come nas janelas (comprando com as moedas do jogo), depois volta à tarefa.
@@ -647,7 +667,8 @@ function stepState(s, t, dt, events, out) {
   const focus = (s.energy < 20 ? 0.4 : 1) * (s.stress > 70 ? 0.6 : 1);
   const disc = (0.7 + 0.6 * p.discipline) * lt.discipline;
   const useful = usefulHours(s, kind, dt);
-  if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * (stim ? 1.15 : 1));
+  const at = PLACE_RULES[s.activity.place]?.mul ?? 1;
+  if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * at * (stim ? 1.15 : 1));
   if (kind === "training") {
     const pre = effectOn(s, "preworkout", t) ? 1.15 : 1;
     const creat = effectOn(s, "creatine", t) ? 1.1 : 1;
@@ -816,7 +837,7 @@ function stepState(s, t, dt, events, out) {
   if (s.zeroEnergyH >= RULES.COLLAPSE_AFTER_H) {
     // Desmaio: dorme no chão e, se a ordem ainda vale, volta a ela depois.
     const prev = s.activity;
-    const resume = prev.until && prev.until > end + RULES.COLLAPSE_SLEEP_H * HOUR ? { kind: prev.kind, until: prev.until } : null;
+    const resume = prev.until && prev.until > end + RULES.COLLAPSE_SLEEP_H * HOUR ? { kind: prev.kind, until: prev.until, place: prev.place || null } : null;
     s.health = clamp(s.health - 3);
     s.mood = clamp(s.mood - 10);
     s.zeroEnergyH = 0;
@@ -866,7 +887,7 @@ function atBoundary(s, t, events, out) {
   const a = s.activity;
   if (a.until && a.until <= t) {
     if ((a.kind === "sleeping" || a.kind === "lying") && a.resume && a.resume.until > t) {
-      s.activity = { kind: a.resume.kind, startedAt: t, until: a.resume.until, bed: null, resume: null };
+      s.activity = { kind: a.resume.kind, startedAt: t, until: a.resume.until, bed: null, resume: null, place: a.resume.place || null };
     } else {
       s.activity = { kind: "idle", startedAt: t, until: null, bed: null, resume: null };
     }
@@ -930,7 +951,7 @@ function routine(s, t, events, out) {
   if (leftH < ROUTINE.MIN_LEFT_H) return;
   const pause = (kind, h, reason) => {
     const until = t + Math.min(h, leftH) * HOUR;
-    s.activity = { kind, startedAt: t, until, bed: null, resume: { kind: a.kind, until: a.until } };
+    s.activity = { kind, startedAt: t, until, bed: null, resume: { kind: a.kind, until: a.until, place: a.place || null } };
     if (kind === "sleeping") s.zeroEnergyH = 0;
     events.push({ at: t, kind: "routine_pause", data: { during: a.kind, pause: kind, reason, hours: r2(Math.min(h, leftH)) } });
   };
@@ -1049,7 +1070,7 @@ function consume(s, itemId, t) {
  * o jogo fechado). Deitar e dormir pedem `bed` (a sala da casa confere a
  * cama); sem cama, o serviço recusa antes de chegar aqui.
  */
-function startActivity(s, kind, hours, t, bed = null) {
+function startActivity(s, kind, hours, t, bed = null, place = null) {
   if (!ACTIVITIES.includes(kind) || kind === "hospital") return fail("activity");
   if (s.status !== "alive") return fail("dead");
   if (s.activity.kind === "hospital") return fail("hospital");
@@ -1058,14 +1079,16 @@ function startActivity(s, kind, hours, t, bed = null) {
     return { ok: true, events: [{ at: t, kind: "activity", data: { kind } }] };
   }
   if ((kind === "lying" || kind === "sleeping") && !bed) return fail("bed");
+  // Treino e estudo só no prédio (mm3d-37b): o serviço confere que a pessoa está lá.
+  if (PLACES[kind] && !PLACES[kind].includes(place)) return fail("place");
   if (kind === "sleeping" && effectOn(s, "stim", t)) return fail("stimulated");
   const range = ACTIVITY_HOURS[kind];
   let h = hours == null && kind === "lying" ? range[1] : Number(hours);
   if (!Number.isFinite(h) || h < range[0] || h > range[1]) return fail("hours");
   h = Math.round(h * 4) / 4;
-  s.activity = { kind, startedAt: t, until: t + h * HOUR, bed, resume: null };
+  s.activity = { kind, startedAt: t, until: t + h * HOUR, bed, resume: null, place: PLACES[kind] ? place : null };
   if (kind === "sleeping") s.zeroEnergyH = 0;
-  return { ok: true, events: [{ at: t, kind: "activity", data: { kind, hours: h } }] };
+  return { ok: true, hours: h, events: [{ at: t, kind: "activity", data: { kind, hours: h, ...(PLACES[kind] ? { place } : {}) } }] };
 }
 
 // ═══ LEITURA ═══
@@ -1211,7 +1234,8 @@ function snapshot(s, t) {
       until: a.until ? new Date(a.until).toISOString() : null,
       remainingH: a.until ? r2(Math.max(0, (a.until - t) / HOUR)) : null,
       inBed: !!a.bed,
-      resume: a.resume ? { kind: a.resume.kind, until: new Date(a.resume.until).toISOString() } : null,
+      place: a.place || null,
+      resume: a.resume ? { kind: a.resume.kind, until: new Date(a.resume.until).toISOString(), place: a.resume.place || null } : null,
     },
     effects: s.effects
       .filter((e) => e.until > t && e.id !== "pleasure")
@@ -1243,6 +1267,8 @@ function publicCatalog() {
   return {
     items: ITEMS.map((it) => ({ ...it, effect: it.effect ? { id: it.effect[0], hours: it.effect[1] } : null })),
     activityHours: ACTIVITY_HOURS,
+    // Onde treinar e estudar (mm3d-37b), rendimento e hora de aula.
+    places: { ...PLACES, rules: PLACE_RULES },
     attributes: { max: ATTR.MAX, usefulH: ATTR.USEFUL_H, floor: ATTR.FLOOR },
     routine: { meals: ROUTINE.MEALS, sleepAtEnergy: ROUTINE.SLEEP_AT_ENERGY, restAtStress: ROUTINE.REST_AT_STRESS },
     clock: { offsetMin: CLOCK.OFFSET_MIN, meals: CLOCK.MEALS, beforeH: MEALS.BEFORE_H, afterH: MEALS.AFTER_H, penaltyH: MEALS.PENALTY_H },
@@ -1267,6 +1293,9 @@ module.exports = {
   ATTR,
   ROUTINE,
   PACE,
+  PLACES,
+  PLACE_RULES,
+  placeFee,
   AFTERLIFE,
   afterlife,
   applyInheritance,

@@ -62,6 +62,7 @@ async function bootstrap(pool) {
     "301_meu_mundo_geladeira.sql",
     "302_meu_mundo_inbox.sql",
     "304_meu_mundo_avatar_colors.sql",
+    "308_meu_mundo_lugar_atividade.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -127,9 +128,24 @@ async function mkUser(pool, tag) {
 
   // ── Atividade com horas, tempo passando com o jogo fechado ─────────────────
   check("deitar pela rota pede cama", (await Life.setActivity(host, "lying", 2)).code === "bed");
-  check("horas fora da faixa são recusadas", (await Life.setActivity(host, "studying", 500)).code === "hours");
-  const st = await Life.setActivity(host, "studying", 8);
-  check("estudar 8 h: atividade gravada com o fim", st.character.activity.kind === "studying" && st.character.activity.remainingH === 8);
+  // mm3d-37b: treino e estudo só no prédio; a "sala do centro" aqui é de mentira.
+  const RT = require("../src/realtime/meuMundo");
+  let here = null;
+  RT.atCenterPlace = (_u, p) => here === p;
+  check("estudar sem lugar: recusado (só no prédio)", (await Life.setActivity(host, "studying", 2)).code === "place");
+  check("estudar longe da biblioteca: recusado", (await Life.setActivity(host, "studying", 2, "biblioteca")).code === "place");
+  here = "academia";
+  check("estudar na academia: recusado (lugar errado)", (await Life.setActivity(host, "studying", 2, "academia")).code === "place");
+  const tr = await Life.setActivity(host, "training", 1, "academia");
+  check("treinar na academia: grava o lugar", tr.character?.activity.kind === "training" && tr.character.activity.place === "academia", JSON.stringify(tr.error));
+  here = "universidade";
+  const c0 = await coins();
+  const uni = await Life.setActivity(host, "studying", 2, "universidade");
+  check("universidade cobra a hora de aula (2 h = 16 moedas)", uni.character?.activity.place === "universidade" && (await coins()) === c0 - 16, `${c0} → ${await coins()}`);
+  here = "biblioteca";
+  check("horas fora da faixa são recusadas", (await Life.setActivity(host, "studying", 500, "biblioteca")).code === "hours");
+  const st = await Life.setActivity(host, "studying", 8, "biblioteca");
+  check("estudar 8 h na biblioteca: de graça, atividade gravada com o fim", st.character.activity.kind === "studying" && st.character.activity.remainingH === 8 && (await coins()) === c0 - 16);
   const int0 = (await char()).intelligence;
   await pool.query(
     `UPDATE tb_mm_character SET sim_at = sim_at - interval '9 hours', activity_started_at = activity_started_at - interval '9 hours',
@@ -170,13 +186,13 @@ async function mkUser(pool, tag) {
   await pool.query(`UPDATE tb_mm_character SET health = 10 WHERE id_user = $1`, [host]);
   const hosp = await Life.get(host);
   check("saúde 10 → internado", hosp.character.status === "hospital" && hosp.events.some((e) => e.kind === "hospital_in"));
-  check("internado não come nem estuda (409)", (await Life.consume(host, "pizza")).code === "hospital" && (await Life.setActivity(host, "studying", 2)).code === "hospital");
+  check("internado não come nem estuda (409)", (await Life.consume(host, "pizza")).code === "hospital" && (await Life.setActivity(host, "studying", 2, "biblioteca")).code === "hospital");
 
   // ── Morte e novo hóspede ────────────────────────────────────────────────────
   await pool.query(`UPDATE tb_mm_character SET activity = 'idle', health = 30, toxicity = 400, sim_at = sim_at - interval '3 hours' WHERE id_user = $1`, [host]);
   const dead = await Life.get(host);
   check("overdose → morto, com a causa", dead.character.status === "dead" && dead.character.deathCause === "overdose", JSON.stringify(dead.character.deathCause));
-  check("morto não come, não estuda", (await Life.consume(host, "pizza")).code === "dead" && (await Life.setActivity(host, "studying", 1)).code === "dead");
+  check("morto não come, não estuda", (await Life.consume(host, "pizza")).code === "dead" && (await Life.setActivity(host, "studying", 1, "biblioteca")).code === "dead");
   const wallet0 = (await Life.peek(host)).wallet.coins;
   const nc = await Life.newcomer(host);
   // mm3d-34: morte por overdose = o jogador paga o funeral (até o que tiver) e não há herança.

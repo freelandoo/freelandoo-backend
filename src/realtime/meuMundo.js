@@ -79,6 +79,7 @@ const {
   ARRIVAL: CENTER_ARRIVAL,
   ARRIVAL_SPOTS: CENTER_ARRIVAL_SPOTS,
   isSafeSpot: isCenterSafe,
+  PLACES: CENTER_PLACES,
 } = require("../utils/meuMundoCenter");
 const { createLogger } = require("../utils/logger");
 
@@ -1902,6 +1903,22 @@ function playerInMyRoom(viewerId, sessionId) {
 }
 
 /** Posição do usuário segundo a sala em que ele está (null = não está). */
+// Quem entra num prédio fica parado na porta (o centro só para de desenhar)
+// e segue na sala: estar perto da porta é estar lá dentro (mm3d-37b).
+const PLACE_REACH = 7;
+const CENTER_PLACE_BY_ID = new Map(CENTER_PLACES.map((p) => [p.id, p]));
+
+/** A pessoa está num prédio do centro (a pé, perto da porta dele)? */
+function atCenterPlace(userId, placeId) {
+  const place = CENTER_PLACE_BY_ID.get(placeId);
+  if (!place) return false;
+  for (const room of centerRooms.values()) {
+    const p = room.positionOf(userId);
+    if (p && !p.driving && Math.hypot(p.x - place.door.x, p.z - place.door.z) <= PLACE_REACH) return true;
+  }
+  return false;
+}
+
 function positionIn(scene, id, userId) {
   const room = scene === "nb" ? roomsByNeighborhood.get(id) : scene === "center" ? centerRooms.get(id) : roomsByHouse.get(id);
   return room ? room.positionOf(userId) : null;
@@ -1950,6 +1967,7 @@ module.exports = {
   houseOccupants,
   dropFromHouse,
   positionIn,
+  atCenterPlace,
   applyLife,
   pushNotice,
   pushChat,

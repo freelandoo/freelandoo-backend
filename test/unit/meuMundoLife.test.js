@@ -55,7 +55,7 @@ test("5 h estudando: inteligência sobe, energia cai, a atividade termina sozinh
   const s = fresh();
   s.energy = 100;
   const int0 = s.intelligence;
-  assert.ok(L.startActivity(s, "studying", 5, T0).ok);
+  assert.ok(L.startActivity(s, "studying", 5, T0, null, "biblioteca").ok);
   const { events } = L.simulate(s, T0 + 5 * H);
   assert.ok(s.intelligence > int0 + 2, `inteligência ${int0} → ${s.intelligence}`);
   assert.ok(s.energy < 70, `energia ${s.energy}`);
@@ -145,7 +145,7 @@ test("diabetes sem remédio machuca; com metformina, não", () => {
 
 test("rotina sem moedas: dorme e descansa sozinho (sem desmaio), mas sem comer passa fome", () => {
   const s = fresh(5);
-  assert.ok(L.startActivity(s, "studying", 72, T0).ok);
+  assert.ok(L.startActivity(s, "studying", 72, T0, null, "biblioteca").ok);
   const { events } = L.simulate(s, T0 + 72 * H, { coins: 0 });
   const kinds = events.map((e) => e.kind);
   assert.ok(!kinds.includes("collapse"), "não desmaia na rotina");
@@ -159,7 +159,7 @@ test("rotina: sem energia ele dorme e volta à mesma tarefa", () => {
   const s = fresh(5);
   s.energy = 5;
   s.satiety = 90;
-  assert.ok(L.startActivity(s, "studying", 40, T0).ok);
+  assert.ok(L.startActivity(s, "studying", 40, T0, null, "biblioteca").ok);
   const { events } = L.simulate(s, T0 + 9 * H, { coins: 500 });
   const p = events.find((e) => e.kind === "routine_pause");
   assert.ok(p && p.data.pause === "sleeping" && p.data.reason === "energy", JSON.stringify(p));
@@ -179,8 +179,8 @@ test("rotina come na janela com as moedas da carteira (a pedaços dá o mesmo)",
   const b = fresh(8);
   const wa = { coins: 300 };
   const wb = { coins: 300 };
-  L.startActivity(a, "training", 72, T0);
-  L.startActivity(b, "training", 72, T0);
+  L.startActivity(a, "training", 72, T0, null, "academia");
+  L.startActivity(b, "training", 72, T0, null, "academia");
   const ra = L.simulate(a, T0 + 72 * H, wa);
   let net = 0;
   for (let h = 1; h <= 72; h++) net += L.simulate(b, T0 + h * H, wb).coins;
@@ -202,8 +202,8 @@ test("só as primeiras horas do dia rendem: 10 h de treino ≈ 4 h", () => {
     s.stress = 10;
   }
   const s0 = four.strength;
-  L.startActivity(four, "training", 4, T0);
-  L.startActivity(ten, "training", 10, T0);
+  L.startActivity(four, "training", 4, T0, null, "academia");
+  L.startActivity(ten, "training", 10, T0, null, "academia");
   L.simulate(four, T0 + 4 * H);
   L.simulate(ten, T0 + 4 * H);
   const g4 = four.strength - s0;
@@ -220,11 +220,11 @@ test("nasce fraco (dezenas) e a escala é longa: 72 h de treino dão ~+20; um an
   assert.ok(s.speed >= 20 && s.speed <= 35, `velocidade inicial ${s.speed}`);
   const w = { coins: 1e6 };
   const s0 = s.strength;
-  L.startActivity(s, "training", 72, T0);
+  L.startActivity(s, "training", 72, T0, null, "academia");
   L.simulate(s, T0 + 72 * H, w);
   assert.ok(s.strength - s0 > 8 && s.strength - s0 < 35, `72 h: ${s0} → ${s.strength}`);
   for (let t = T0 + 72 * H; t < T0 + 365 * 24 * H; t += 72 * H) {
-    L.startActivity(s, "training", 72, t);
+    L.startActivity(s, "training", 72, t, null, "academia");
     L.simulate(s, t + 72 * H, w);
   }
   assert.equal(s.status, "alive");
@@ -257,8 +257,8 @@ test("permanência: força e velocidade param em 60% do pico; inteligência em 9
   Object.assign(back, { strength: 480, peaks: { ...s.peaks }, energy: 100, satiety: 90, stress: 10, simAt: T0 });
   const novice = fresh(4);
   Object.assign(novice, { strength: 480, peaks: { intelligence: novice.intelligence, strength: 480, speed: novice.speed }, energy: 100, satiety: 90, stress: 10 });
-  L.startActivity(back, "training", 4, T0);
-  L.startActivity(novice, "training", 4, T0);
+  L.startActivity(back, "training", 4, T0, null, "academia");
+  L.startActivity(novice, "training", 4, T0, null, "academia");
   L.simulate(back, T0 + 4 * H);
   L.simulate(novice, T0 + 4 * H);
   assert.ok(back.strength - 480 > 1.8 * (novice.strength - 480), `memória ${back.strength} × ${novice.strength}`);
@@ -296,7 +296,7 @@ test("hospital trata e dá alta com saúde ≥ 60, e cada internação deixa seq
   assert.equal(s.activity.kind, "hospital");
   assert.equal(s.vitality, 100 - L.RULES.ADMIT_SEQUEL);
   assert.equal(L.consume(s, "pizza", s.simAt).code, "hospital");
-  assert.equal(L.startActivity(s, "studying", 2, s.simAt).code, "hospital");
+  assert.equal(L.startActivity(s, "studying", 2, s.simAt, null, "biblioteca").code, "hospital");
   // (sem ninguém alimentar depois da alta ele voltaria a piorar: confere no dia da alta)
   const r = L.simulate(s, T0 + 30 * H);
   const out = r.events.find((e) => e.kind === "hospital_out");
@@ -319,8 +319,8 @@ test("internado com a vitalidade no fim não resiste", () => {
 test("simular aos pedaços dá o mesmo que de uma vez", () => {
   const a = fresh(3);
   const b = fresh(3);
-  L.startActivity(a, "training", 10, T0);
-  L.startActivity(b, "training", 10, T0);
+  L.startActivity(a, "training", 10, T0, null, "academia");
+  L.startActivity(b, "training", 10, T0, null, "academia");
   L.simulate(a, T0 + 30 * H);
   for (let h = 1; h <= 30; h++) L.simulate(b, T0 + h * H);
   assert.deepEqual(a, b);
@@ -344,8 +344,8 @@ test("treino com whey e anabolizante ganha mais força, e o anabolizante derruba
   }
   L.consume(juiced, "whey", T0);
   L.consume(juiced, "anabolizante", T0);
-  L.startActivity(plain, "training", 4, T0);
-  L.startActivity(juiced, "training", 4, T0);
+  L.startActivity(plain, "training", 4, T0, null, "academia");
+  L.startActivity(juiced, "training", 4, T0, null, "academia");
   L.simulate(plain, T0 + 4 * H);
   L.simulate(juiced, T0 + 4 * H);
   assert.ok(juiced.strength - plain.strength > 1, `${plain.strength} × ${juiced.strength}`);
