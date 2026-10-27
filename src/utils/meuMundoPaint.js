@@ -97,16 +97,16 @@ const TUNING = {
   catsToPortal: 20,
   portalR: 1.8,
 
-  /** Chefão (mm3d-38: gato-gorila de porcelana, 5 m; anda apoiado nas mãos). */
+  /** Chefão (mm3d-38: gato-gorila de porcelana, 10 m — o Alex pediu +5 m; anda apoiado nas mãos). */
   bossHp: 4000,
   bossHarm: 20,
   bossPunch: 10,
-  bossR: 1.9,
-  bossH: 5,
+  bossR: 3.8,
+  bossH: 10,
   /** Anda até a vítima (m/s), vira (rad/s) e não sai deste raio do centro da ilha. */
-  bossWalk: 2.4,
+  bossWalk: 3.6,
   bossTurn: 2.2,
-  bossLeash: 13,
+  bossLeash: 11.5,
   /** Pausa entre um golpe e outro (s). */
   bossRest: 1.1,
   /**
@@ -114,8 +114,8 @@ const TUNING = {
    * Patada: cone na frente. Tapa no chão: círculo à frente dele (pula e bate
    * as duas mãos). Rugido: sem dano (quando o primeiro chega e na metade da vida).
    */
-  bossSwipe: { reach: 5.2, cos: 0.35, hit: 0.75, dur: 1.7, dmg: 30, knock: 7, lift: 4.5 },
-  bossSlam: { ahead: 3, r: 4.6, hit: 1.15, dur: 2.4, dmg: 45, knock: 5.5, lift: 6.5 },
+  bossSwipe: { reach: 9, cos: 0.35, hit: 0.75, dur: 1.7, dmg: 30, knock: 7, lift: 4.5 },
+  bossSlam: { ahead: 6, r: 7.5, hit: 1.15, dur: 2.4, dmg: 45, knock: 5.5, lift: 6.5 },
   bossRoar: { dur: 2.2 },
 
   /** Partida. */
