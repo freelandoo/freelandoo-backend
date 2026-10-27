@@ -62,6 +62,11 @@ async function paintJoin(req, res) {
   return reply(res, await MeuMundoService.joinPaint(req.user.id_user, { mode: req.body?.mode, roomId: req.body?.roomId }));
 }
 
+// Corrida em grupo (mm3d-39b): lugar na próxima largada do centro em que a pessoa está.
+async function corridaJoin(req, res) {
+  return reply(res, await MeuMundoService.joinCorrida(req.user.id_user));
+}
+
 async function visits(req, res) {
   return reply(res, await MeuMundoService.visitState(req.user.id_user));
 }
@@ -227,6 +232,7 @@ module.exports = {
   centerLeave,
   jetpackJoin,
   paintJoin,
+  corridaJoin,
   visits,
   candidates,
   invite,

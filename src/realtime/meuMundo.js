@@ -42,6 +42,7 @@ const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const presence = require("./meuMundoPresence");
 const jetpack = require("./meuMundoJetpack");
 const paint = require("./meuMundoPaint");
+const corrida = require("./meuMundoCorrida");
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { SEAT_REACH, BED_REACH, FRIDGE_REACH } = require("../utils/meuMundoInteriorKit");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
@@ -1813,6 +1814,8 @@ function init(httpServer) {
   jetpack.define(gameServer);
   // Paint (mm3d-35): treino, 1×1, 2×2 e 3×3 do mesmo centro.
   paint.define(gameServer);
+  // Corrida antigravidade em grupo (mm3d-39b): até 6 do mesmo centro, o resto é computador.
+  corrida.define(gameServer);
   transport.attachToServer(httpServer, {
     filter: (req) => typeof req.url === "string" && req.url.startsWith(WS_PREFIX),
   });
@@ -2077,6 +2080,7 @@ async function status() {
     centerClients: centers.reduce((n, r) => n + (r.clients || 0), 0),
     ...(await jetpack.jetpackStatus()),
     ...(await paint.paintStatus()),
+    ...(await corrida.corridaStatus()),
   };
 }
 

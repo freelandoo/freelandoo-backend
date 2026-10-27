@@ -25,6 +25,7 @@ const realtime = require("../realtime/meuMundo");
 const presence = require("../realtime/meuMundoPresence");
 const { reserveJetpackSeat, leaveJetpack } = require("../realtime/meuMundoJetpack");
 const { reservePaintSeat, leavePaint } = require("../realtime/meuMundoPaint");
+const { reserveCorridaSeat, leaveCorrida } = require("../realtime/meuMundoCorrida");
 const { PAINT_MODES } = require("../utils/meuMundoPaint");
 const {
   MEU_MUNDO_RELEASE,
@@ -72,6 +73,8 @@ const JETPACK_DOOR = CENTER_PLACES.find((p) => p.id === "jetpack").interact;
 const JETPACK_REACH = 6;
 // Paint (mm3d-35): a mesma regra de porta.
 const PAINT_DOOR = CENTER_PLACES.find((p) => p.id === "paint").interact;
+// Corrida em grupo (mm3d-39b): a mesma regra de porta.
+const CORRIDA_DOOR = CENTER_PLACES.find((p) => p.id === "corrida").interact;
 function beginTravel(idUser) {
   const t = traveling.get(idUser);
   if (t && Date.now() - t < TRAVEL_GUARD_MS) return false;
@@ -492,6 +495,7 @@ class MeuMundoService {
     }
     leaveJetpack(idUser);
     leavePaint(idUser);
+    leaveCorrida(idUser);
     presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number, ride });
     log.info("center.return", { ride: ride ? kindOfId(ride) : "" });
     return MeuMundoService.enter(idUser);
@@ -545,6 +549,30 @@ class MeuMundoService {
       return { error: "O Paint não abriu agora.", statusCode: 503 };
     }
     return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation }, mode };
+  }
+
+  // ── Corrida antigravidade em grupo (mm3d-39b) ─────────────────────────────
+  /**
+   * Lugar na próxima largada do centro em que a pessoa está, perto da porta.
+   * A sala espera até 1 minuto por mais gente e completa 6 naves com o
+   * computador. Sozinho não passa por aqui (é no aparelho).
+   */
+  static async joinCorrida(idUser) {
+    const here = presence.get(idUser);
+    if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
+    const pos = realtime.positionIn("center", here.id, idUser);
+    if (!pos || Math.hypot(pos.x - CORRIDA_DOOR.x, pos.z - CORRIDA_DOOR.z) > JETPACK_REACH) {
+      return { error: "Chegue perto da porta da corrida", statusCode: 409, code: "far" };
+    }
+    const name = await MeuMundoStorage.getPublicName(pool, idUser);
+    let reservation;
+    try {
+      reservation = await reserveCorridaSeat({ userId: idUser, name, centerRoomId: here.id });
+    } catch (err) {
+      log.error("corrida.reserve_fail", { message: err.message });
+      return { error: "A corrida em grupo não abriu agora.", statusCode: 503 };
+    }
+    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
   }
 
   // ── Seletor de nível (teste) ──────────────────────────────────────────────
