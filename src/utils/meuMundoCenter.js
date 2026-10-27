@@ -29,7 +29,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 4; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f)
+const CENTER_VERSION = 5; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -72,6 +72,9 @@ const PLACE_DEFS = [
   // da travessia sul (sai da praça e dá de frente com a porta). 0,4 m de folga
   // de cada lado: ninguém passa entre os prédios.
   { id: "paint", zone: "atividades", rect: [-1.6, 5.6, -FRONT - 14, -FRONT], h: 13, peak: 17, front: "n", door: 2, doorW: 2.4, game: "paint", party: 6 },
+  // Corrida antigravidade (mm3d-39): hangar no canto nordeste, ao norte da
+  // universidade, de frente para a curva nordeste do anel.
+  { id: "corrida", zone: "atividades", rect: [FRONT, FRONT + 22, 19, 30], h: 8, peak: 14, front: "w", door: 24.5, doorW: 3.4, game: "corrida" },
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },

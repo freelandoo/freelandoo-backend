@@ -40,10 +40,10 @@ const walker = reach(C.ARRIVAL, MOTION.RADIUS);
 // O carro: o círculo do meio do corpo (os da frente e de trás passam onde ele passa nas retas).
 const car = reach(C.ARRIVAL_SPOTS[0], VEHICLE.COL_RADIUS);
 
-test("centro: os 12 estabelecimentos + a praça, ids estáveis e únicos", () => {
+test("centro: os 13 estabelecimentos + a praça, ids estáveis e únicos", () => {
   const ids = C.PLACES.map((p) => p.id);
-  assert.deepEqual(ids.sort(), ["academia", "biblioteca", "delegacia", "escola", "hamburgueria", "hospital", "igreja", "jetpack", "paint", "pizzaria", "supermercado", "universidade"]);
-  assert.equal(new Set(ids).size, 12);
+  assert.deepEqual(ids.sort(), ["academia", "biblioteca", "corrida", "delegacia", "escola", "hamburgueria", "hospital", "igreja", "jetpack", "paint", "pizzaria", "supermercado", "universidade"]);
+  assert.equal(new Set(ids).size, 13);
   assert.equal(C.PLAZA_PLACE.id, "praca");
 });
 
@@ -60,6 +60,9 @@ test("registro de destinos: cada local tem entrada, interação, retorno, destin
       assert.equal(p.destination, "game:paint");
       assert.equal(p.available, true, "o Paint abre o minijogo (mm3d-35)");
       assert.equal(p.party, 6, "3 × 3 (mm3d-35)");
+    } else if (p.id === "corrida") {
+      assert.equal(p.destination, "game:corrida");
+      assert.equal(p.available, true, "a corrida abre o minijogo (mm3d-39)");
     } else {
       assert.equal(p.destination, `interior:${p.id}`);
       // Todo prédio tem interior (mm3d-26 hospital; mm3d-37 os outros).
@@ -164,7 +167,7 @@ test("chegada a pé e portal em lugar livre; payload sem nada de usuário", () =
   assert.ok(C.isSafeSpot(C.ARRIVAL.x, C.ARRIVAL.z, resolveCircle, MOTION.RADIUS));
   const p = C.buildCenterPayload();
   assert.equal(p.capacity, 20);
-  assert.equal(p.places.length, 12);
+  assert.equal(p.places.length, 13);
   assert.equal(p.obstacles.length, C.OBSTACLES.length);
   assert.ok(JSON.stringify(p).length < 30000, "payload pequeno");
   assert.ok(p.interiors.hospital && p.interiors.hospital.beds.length >= 6, "interior do hospital no payload");
