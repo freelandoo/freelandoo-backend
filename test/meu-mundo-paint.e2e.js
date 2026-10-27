@@ -216,8 +216,8 @@ async function mkUser(pool, tag) {
   B.ev.length = 0;
   const o2 = P.muzzleOf(m.players.get(sa).pose, 0);
   A.room.send("f", { c: 1, o: [o2.x, o2.y, o2.z], d: [base.x - o2.x, 1.0 - o2.y, base.z + 6 - o2.z], q: 78 });
-  check("vermelho: o outro time perde coração (ev para os dois)", await until(() => A.ev.some((e) => e.type === "hit" && e.slot === sb) && B.ev.some((e) => e.type === "hit" && e.slot === sb && e.kz > 0)));
-  check("…e no estado", await until(() => playerOf(B, sb).hp === T.hearts - 1));
+  check("vermelho: o outro time perde sangue (ev para os dois)", await until(() => A.ev.some((e) => e.type === "hit" && e.slot === sb) && B.ev.some((e) => e.type === "hit" && e.slot === sb && e.kz > 0)));
+  check("…e no estado", await until(() => playerOf(B, sb).hp === T.hpMax - T.harmDmg));
   check("quem atirou não recebe o próprio rastro", !A.ev.some((e) => e.type === "shot" && e.slot === sa) && B.ev.some((e) => e.type === "shot" && e.slot === sa));
 
   // vermelho do outro time apaga a tinta

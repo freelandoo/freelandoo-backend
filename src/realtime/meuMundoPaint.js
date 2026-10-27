@@ -7,8 +7,8 @@
 // fecha 20 s depois. Treino começa na hora.
 //
 // O servidor decide o JOGO rodando a regra do navegador (utils/meuMundoPaint.js,
-// GERADO do TS): munição, cápsulas, corações, nocaute, tinta, gatinhos, portal,
-// chefão, tempo e resultado. O MOVIMENTO é do aparelho: a pose chega a ~15 Hz
+// GERADO do TS): munição, cápsulas, sangue, nocaute, tinta, gatinhos, portal,
+// chefão (mm3d-38: ele anda e bate — a pose dele vai no estado), tempo e resultado. O MOVIMENTO é do aparelho: a pose chega a ~15 Hz
 // e a regra só recusa o impossível (o aparelho recebe `fix`).
 //
 // O que fica no estado (schema): jogadores, tinta, gatinhos pegos, cápsulas
@@ -98,6 +98,12 @@ const PtState = schema(
     p0: t.boolean(),
     p1: t.boolean(),
     bossHp: t.uint16(),
+    // chefão (mm3d-38): onde está, para onde olha, o que faz e desde quando (s de partida)
+    bx: t.float32(),
+    bz: t.float32(),
+    bf: t.float32(),
+    ba: t.string(),
+    bt: t.float32(),
     players: t.map(PtPlayer),
     blobs: t.map(PtBlob),
     result: t.string(), // JSON do resultado (fim)
@@ -369,6 +375,15 @@ class PaintRoom extends Room {
           this.state.cats.set(String(e.id), e.team);
           pub.push(e);
           break;
+        case "catBack":
+          this.state.cats.delete(String(e.id));
+          pub.push(e);
+          break;
+        case "steal":
+          // os gatinhos roubados mudam de time no mapa de pegos
+          for (const [id, team] of this.match.catsTaken) if (this.state.cats.get(String(id)) !== team) this.state.cats.set(String(id), team);
+          pub.push(e);
+          break;
         case "capsule": {
           const back = this.match.capsuleBack.get(e.id);
           this.state.caps.set(String(e.id), back || 0);
@@ -409,6 +424,11 @@ class PaintRoom extends Room {
     this.state.p0 = m.portalOpen[0];
     this.state.p1 = m.portalOpen[1];
     this.state.bossHp = Math.max(0, Math.round(m.bossHp));
+    this.state.bx = m.boss.x;
+    this.state.bz = m.boss.z;
+    this.state.bf = m.boss.facing;
+    this.state.ba = m.boss.act;
+    this.state.bt = m.boss.at;
     for (const [sid, p] of this.state.players) {
       const s = this.seats.get(sid);
       const mp = s && m.players.get(s.slot);

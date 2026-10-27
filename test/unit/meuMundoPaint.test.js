@@ -5,7 +5,8 @@
 // o mapa é coerente (gatinhos e cápsulas em cima de ilha, ninguém nasce no ar);
 // o corpo anda, pula e cai como combinado; a ponte cresce no vão e o degrau
 // empilha; a partida conta gatinhos, abre o portal, leva ao chefão, tira
-// coração, nocauteia, apaga tinta do outro time e termina. E o principal: um
+// sangue, nocauteia, apaga tinta do outro time e termina; o chefão (mm3d-38)
+// ruge, persegue, dá patada e tapa no chão. E o principal: um
 // robô SOBE a torre inteira de cada time só com o que o jogo dá (munição das
 // cápsulas no caminho), da base até o portal.
 
@@ -345,7 +346,7 @@ const place = (m, slot, x, y, z, facing = 0) => {
   p.pose = { x, y, z, facing, ground: true, gy: y, e: p.epoch };
 };
 
-test("paint — tiro vermelho tira coração do outro time, soco empurra, 5 = nocaute e volta à base", () => {
+test("paint — tiro vermelho tira sangue do outro time, soco empurra, sangue zerado = nocaute e volta à base", () => {
   const m = duel();
   const base = m.map.islands[m.map.bases[0].island];
   place(m, 0, base.x, 0, base.z, 0);
@@ -359,18 +360,22 @@ test("paint — tiro vermelho tira coração do outro time, soco empurra, 5 = no
   shoot(1);
   let ev = m.drain();
   const hit = ev.find((e) => e.type === "hit");
-  assert.ok(hit && hit.slot === 1 && hit.hp === 4 && hit.how === "harm" && hit.kz > 0);
+  assert.ok(hit && hit.slot === 1 && hit.hp === T.hpMax - T.harmDmg && hit.how === "harm" && hit.kz > 0);
   // soco: perto e de frente
   place(m, 1, base.x, 0, base.z + 1.2, Math.PI);
   m.punch(0);
   ev = m.drain();
   const ph = ev.find((e) => e.type === "hit");
-  assert.ok(ph && ph.how === "punch" && ph.hp === 3 && ph.kz > 5);
+  assert.ok(ph && ph.how === "punch" && ph.hp === T.hpMax - T.harmDmg - T.punchDmg && ph.kz > 5);
   // soco de novo antes do tempo: nada
   m.punch(0);
   assert.equal(m.drain().filter((e) => e.type === "hit").length, 0);
   place(m, 1, base.x, 0, base.z + 6, Math.PI);
+  // 65 de sangue: 3 tiros deixam 5, o 4º derruba
   for (let q = 2; q <= 4; q++) shoot(q);
+  assert.ok(!m.drain().find((e) => e.type === "ko"));
+  assert.equal(m.players.get(1).hp, 5);
+  shoot(5);
   ev = m.drain();
   assert.ok(ev.find((e) => e.type === "ko" && e.slot === 1));
   assert.ok(m.players.get(1).ko > 0);
@@ -378,7 +383,7 @@ test("paint — tiro vermelho tira coração do outro time, soco empurra, 5 = no
   ev = m.drain();
   const rs = ev.find((e) => e.type === "respawn" && e.slot === 1);
   assert.ok(rs && rs.e === 1 && !rs.inBoss);
-  assert.equal(m.players.get(1).hp, T.hearts);
+  assert.equal(m.players.get(1).hp, T.hpMax);
   assert.ok(rs.x > 0, "time 1 volta à base leste");
   // escudo: logo depois de voltar não toma dano
   place(m, 1, base.x, 0, base.z + 6, Math.PI);
@@ -412,13 +417,162 @@ test("paint — nocaute por tiro: quem derrubou fica com os gatinhos de quem cai
   assert.equal(p0.cats, 21);
   assert.deepEqual([...m.teamCats], [21, 0]);
   assert.ok(m.portalOpen[0] && ev.find((e) => e.type === "portal" && e.team === 0), "o portal de quem roubou não abriu");
-  // cair nas nuvens não dá gatinho para ninguém
-  p0.cats = 3;
-  m.teamCats[0] = 3;
+  // cair nas nuvens não dá gatinho para ninguém: os do jogador voltam ao mapa
+  const stolen = [...p0.catIds];
+  assert.equal(p1.catIds.length, 0);
   place(m, 0, base.x, -40, base.z);
   m.tick(0.05);
-  assert.ok(!m.drain().find((e) => e.type === "steal"));
-  assert.equal(p0.cats, 3);
+  const fall = m.drain();
+  assert.ok(!fall.find((e) => e.type === "steal"));
+  assert.equal(p0.cats, 0);
+  assert.equal(m.teamCats[0], 0);
+  assert.ok(m.portalOpen[0], "portal que já abriu fica aberto");
+  const drop = fall.find((e) => e.type === "drop");
+  assert.ok(drop && drop.slot === 0 && drop.n === 21);
+  assert.deepEqual(fall.filter((e) => e.type === "catBack").map((e) => e.id).sort(), stolen.sort());
+});
+
+test("paint — caiu com gatinhos: eles voltam ao mapa e podem ser pegos de novo", () => {
+  const m = duel();
+  const p = m.players.get(0);
+  const few = m.map.cats.filter((c) => c.x < 1).slice(0, 3);
+  for (const c of few) {
+    place(m, 0, c.x, c.y, c.z);
+    m.tick(0.02);
+  }
+  assert.equal(p.cats, 3);
+  assert.deepEqual(p.catIds, few.map((c) => c.id));
+  m.drain();
+  place(m, 0, few[0].x, -40, few[0].z);
+  m.tick(0.02);
+  const ev = m.drain();
+  assert.equal(ev.filter((e) => e.type === "catBack").length, 3);
+  for (const c of few) assert.ok(!m.catsTaken.has(c.id), `gatinho ${c.id} não voltou`);
+  assert.equal(m.teamCats[0], 0);
+  // o outro jogador pega um deles
+  const c = few[1];
+  place(m, 1, c.x, c.y, c.z);
+  m.tick(0.02);
+  assert.equal(m.players.get(1).cats, 1);
+  assert.equal(m.catsTaken.get(c.id), 1);
+});
+
+test("paint — na ilha do chefão: jogador não machuca jogador e ninguém perde gatinho", () => {
+  const m = duel();
+  const a = m.players.get(0);
+  const v = m.players.get(1);
+  a.inBoss = v.inBoss = true;
+  v.cats = 7;
+  v.catIds = [1, 2, 3, 4, 5, 6, 7];
+  m.teamCats[1] = 7;
+  const h = m.map.boss;
+  place(m, 0, h.x - 12, h.y, h.z - 8, 0);
+  place(m, 1, h.x - 12, h.y, h.z - 2, Math.PI);
+  m.punch(0);
+  const o = P.muzzleOf(a.pose, 0);
+  m.fire(0, PAINT.HARM, o, { x: 0, y: 0, z: 1 }, 1);
+  assert.equal(m.drain().filter((e) => e.type === "hit").length, 0);
+  assert.equal(v.hp, T.hpMax);
+  // caiu da ilha do chefão: volta lá em cima, com os gatinhos
+  place(m, 1, h.x, h.y - 40, h.z);
+  m.tick(0.02);
+  const ev = m.drain();
+  assert.ok(ev.find((e) => e.type === "respawn" && e.slot === 1 && e.inBoss));
+  assert.ok(!ev.find((e) => e.type === "drop"));
+  assert.equal(v.cats, 7);
+});
+
+test("paint — chefão: ruge quando o primeiro chega, persegue, dá patada e tapa no chão; não sai da ilha", () => {
+  const m = duel();
+  const p = m.players.get(0);
+  const h = m.map.boss;
+  // ninguém lá em cima: fica parado no meio
+  m.tick(1);
+  assert.equal(m.boss.act, "idle");
+  assert.ok(Math.hypot(m.boss.x - h.x, m.boss.z - h.z) < 1e-6);
+  p.inBoss = true;
+  place(m, 0, h.x, h.y, h.z - 11);
+  m.tick(0.05);
+  let ev = m.drain();
+  assert.ok(ev.find((e) => e.type === "bossAct" && e.act === "roar" && e.slot === 0));
+  assert.equal(m.boss.act, "roar");
+  // rugido não tira sangue; depois ele anda até a vítima
+  for (let i = 0; i < 50; i++) m.tick(0.05);
+  assert.equal(p.hp, T.hpMax);
+  assert.equal(m.boss.act, "walk");
+  // anda até a patada e acerta (empurra para longe)
+  const acts = [];
+  const hits = [];
+  for (let i = 0; i < 400 && hits.length < 3; i++) {
+    m.tick(0.05);
+    for (const e of m.drain()) {
+      if (e.type === "bossAct") acts.push(e.act);
+      if (e.type === "hit" && e.by === -1) hits.push(e);
+    }
+    // a vítima fica parada (sem escudo: volta a ter sangue para apanhar de novo)
+    if (p.ko) {
+      p.ko = 0;
+      p.hp = T.hpMax;
+    }
+    p.shield = 0;
+  }
+  assert.ok(hits.length >= 3, `golpes: ${hits.length}`);
+  assert.deepEqual(acts.slice(0, 3), ["swipe", "swipe", "slam"]);
+  assert.equal(hits[0].how, "boss");
+  assert.equal(hits[0].hp, T.hpMax - T.bossSwipe.dmg);
+  assert.ok(hits[0].kz < 0, "patada empurra para longe do chefão");
+  assert.ok(hits[2].ky === T.bossSlam.lift);
+  // no ar escapa do tapa no chão
+  p.hp = T.hpMax;
+  m.boss.count = 2;
+  m.boss.next = 0;
+  m.boss.act = "idle";
+  for (let i = 0; i < 40 && m.boss.act !== "slam"; i++) m.tick(0.05);
+  assert.equal(m.boss.act, "slam");
+  p.pose.ground = false;
+  p.pose.y = h.y + 1.5;
+  for (let i = 0; i < 30; i++) m.tick(0.05);
+  assert.ok(!m.drain().find((e) => e.type === "hit"), "no ar não leva o tapa no chão");
+  // corre para a borda: ele segue mas não sai do raio
+  place(m, 0, h.x, h.y, h.z - 17.5);
+  for (let i = 0; i < 400; i++) {
+    m.tick(0.05);
+    p.shield = m.time + 10;
+  }
+  assert.ok(Math.hypot(m.boss.x - h.x, m.boss.z - h.z) <= T.bossLeash + 1e-6);
+});
+
+test("paint — chefão derruba: ko sem ladrão, volta lá em cima; metade da vida = novo rugido", () => {
+  const m = duel();
+  const p = m.players.get(0);
+  const h = m.map.boss;
+  p.inBoss = true;
+  p.cats = 4;
+  p.catIds = [1, 2, 3, 4];
+  m.boss.roared = true;
+  place(m, 0, h.x, h.y, h.z - 4);
+  p.hp = 10;
+  let ko = null;
+  for (let i = 0; i < 200 && !ko; i++) {
+    m.tick(0.05);
+    ko = m.drain().find((e) => e.type === "ko");
+  }
+  assert.ok(ko && ko.slot === 0 && ko.by === -1);
+  assert.equal(p.cats, 4);
+  m.tick(T.koTime + 0.1);
+  const rs = m.drain().find((e) => e.type === "respawn");
+  assert.ok(rs && rs.inBoss);
+  // metade da vida: ruge de novo (uma vez)
+  m.bossHp = T.bossHp / 2;
+  m.boss.act = "idle";
+  place(m, 0, h.x, h.y, h.z - 10);
+  p.shield = m.time + 100;
+  let roars = 0;
+  for (let i = 0; i < 200; i++) {
+    m.tick(0.05);
+    roars += m.drain().filter((e) => e.type === "bossAct" && e.act === "roar").length;
+  }
+  assert.equal(roars, 1);
 });
 
 test("paint — mesmo time não se machuca; vermelho apaga tinta do outro time", () => {
@@ -507,11 +661,14 @@ test("paint — 20 gatinhos abrem o portal do time, portal leva ao chefão, dano
   assert.ok(p.inBoss);
   const rs = m.drain().find((e) => e.type === "respawn");
   assert.ok(rs && rs.inBoss && Math.abs(rs.y - m.map.boss.y) < 1e-6);
-  // dano no chefão até acabar
-  const boss = m.bossBody();
-  place(m, 0, boss.x - 6, boss.y, boss.z, Math.PI / 2);
+  // dano no chefão até acabar (o escudo deixa o teste medir só o dano; ele anda)
+  const start = m.bossBody();
+  place(m, 0, start.x - 6, start.y, start.z, Math.PI / 2);
   for (let q = 1; m.phase !== "end" && q < 1000; q++) {
+    p.shield = m.time + 10;
     if (p.ammo[PAINT.HARM] < 1) p.ammo[PAINT.HARM] = T.ammoMax;
+    const boss = m.bossBody();
+    p.pose.facing = Math.atan2(boss.x - p.pose.x, boss.z - p.pose.z);
     const o = P.muzzleOf(p.pose, p.pose.facing);
     m.fire(0, PAINT.HARM, o, { x: boss.x - o.x, y: boss.y + 2 - o.y, z: boss.z - o.z }, q);
     m.tick(1 / T.fireRate[PAINT.HARM] + 0.001);
