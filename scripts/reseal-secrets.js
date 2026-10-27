@@ -31,6 +31,9 @@ const ALVOS = [
   { tabela: "tb_academy", pk: "id_academy", coluna: "api_token_enc" },
   { tabela: "tb_whatsapp_instance", pk: "id_instance", coluna: "access_token_sealed" },
   { tabela: "tb_ai_provider_key", pk: "provider", coluna: "api_key_sealed" },
+  // Recebimentos da academia (mig 310): chave PIX e documento do titular.
+  { tabela: "tb_academy_payout_account", pk: "id_academy", coluna: "pix_key_sealed" },
+  { tabela: "tb_academy_payout_account", pk: "id_academy", coluna: "holder_doc_sealed" },
 ];
 
 const APPLY = process.argv.includes("--apply");

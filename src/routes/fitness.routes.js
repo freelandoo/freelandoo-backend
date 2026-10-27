@@ -6,6 +6,7 @@
 const { Router } = require("express");
 const FitnessController = require("../controllers/FitnessController");
 const FitnessProposalController = require("../controllers/FitnessProposalController");
+const AcademyFeeController = require("../controllers/AcademyFeeController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const requireFeature = require("../middlewares/requireFeature");
 const asyncHandler = require("../utils/asyncHandler");
@@ -23,6 +24,13 @@ router.put("/sport", asyncHandler(FitnessController.setSport));
 router.get("/summary", asyncHandler(FitnessController.summary));
 router.get("/indicators", asyncHandler(FitnessController.indicators));
 router.get("/history", asyncHandler(FitnessController.history));
+
+// Minha academia (mig 310): calendário mês a mês, histórico inteiro das
+// mensalidades e o "Pagar pela Freelandoo". `:id_member` é o vínculo DO
+// usuário (outro aluno = 404).
+router.get("/academies/:id_member/month", asyncHandler(AcademyFeeController.month));
+router.get("/academies/:id_member/payments", asyncHandler(AcademyFeeController.payments));
+router.post("/academies/:id_member/payments/:external_id/pay", asyncHandler(AcademyFeeController.pay));
 
 // Alimentos
 router.get("/foods", asyncHandler(FitnessController.searchFoods));

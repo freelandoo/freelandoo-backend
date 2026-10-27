@@ -16,13 +16,17 @@ function buildUrl(baseUrl, path, params) {
   return url.toString();
 }
 
-async function call(baseUrl, token, path, params) {
+async function call(baseUrl, token, path, params, { method = "GET", body } = {}) {
   const url = buildUrl(baseUrl, path, params);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
     if (res.status === 401 || res.status === 403) {
@@ -50,8 +54,36 @@ module.exports = {
   getAccessEvents(baseUrl, token, since, limit = 200) {
     return call(baseUrl, token, "/api/freelandoo/access-events", { since, limit });
   },
-  // { payments: [{id,cpf,amount_cents,due_date,status,paid_at}], next_cursor }
+  // { payments: [{id,cpf,amount_cents,due_date,status,paid_at,method?}], next_cursor }
   getPayments(baseUrl, token, since, limit = 200) {
     return call(baseUrl, token, "/api/freelandoo/payments", { since, limit });
+  },
+
+  // ── Pagar pela Freelandoo (mig 310) ─────────────────────────────────────
+  // Opcionais no contrato: academia que não implementa responde 404 aqui e o
+  // "Pagar" simplesmente não aparece para os alunos dela.
+
+  // { supports_paid_callback: boolean }
+  getCapabilities(baseUrl, token) {
+    return call(baseUrl, token, "/api/freelandoo/capabilities");
+  },
+  // { id, cpf, amount_cents, due_date, status, paid_at, method? } — a cobrança
+  // AGORA, reconferida antes de abrir o checkout (o espelho pode ter 10 min).
+  getPayment(baseUrl, token, id) {
+    return call(baseUrl, token, `/api/freelandoo/payments/${encodeURIComponent(id)}`);
+  },
+  // Baixa: o aluno pagou pela Freelandoo. Idempotente por `ref` do lado de lá.
+  markPaid(baseUrl, token, id, { amount_cents, paid_at, ref }) {
+    return call(baseUrl, token, `/api/freelandoo/payments/${encodeURIComponent(id)}/paid`, null, {
+      method: "POST",
+      body: { amount_cents, paid_at, ref },
+    });
+  },
+  // Estorno antes do repasse: a cobrança volta a ficar em aberto lá.
+  reopen(baseUrl, token, id, { ref }) {
+    return call(baseUrl, token, `/api/freelandoo/payments/${encodeURIComponent(id)}/reopened`, null, {
+      method: "POST",
+      body: { ref },
+    });
   },
 };

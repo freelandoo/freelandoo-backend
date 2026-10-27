@@ -53,6 +53,7 @@ const whatsappRoutes = require("./whatsapp.routes");
 const planRoutes = require("./plan.routes");
 const bookingFeeAdminRoutes = require("./bookingFeeAdmin.routes");
 const communityCommerceAdminRoutes = require("./communityCommerceAdmin.routes");
+const academyFeeAdminRoutes = require("./academyFeeAdmin.routes");
 const bookingFeePublicRoutes = require("./bookingFeePublic.routes");
 const serviceRequestRoutes = require("./serviceRequest.routes");
 const portfolioFeedRoutes = require("./portfolioFeed.routes");
@@ -262,6 +263,8 @@ module.exports = (app) => {
   // Comércio entre vizinhos (migs 248/249): preços do delivery, régua da venda
   // e a fila de disputas.
   app.use("/admin/community-commerce", communityCommerceAdminRoutes);
+  // Repasses das mensalidades de academia pagas pela Freelandoo (mig 310).
+  app.use("/admin/academy-payouts", academyFeeAdminRoutes);
   app.use("/public/booking-fees", bookingFeePublicRoutes);
   app.use("/service-requests", serviceRequestRoutes);
   app.use("/feed", portfolioFeedRoutes);

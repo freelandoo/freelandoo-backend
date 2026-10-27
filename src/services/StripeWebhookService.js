@@ -881,6 +881,11 @@ async function fulfillCheckoutSession(session) {
     // holdback e — se houve add-on — abre o chamado de entrega JÁ PAGO.
     const CommunityListingOrderService = require("./CommunityListingOrderService");
     result = await CommunityListingOrderService.confirmStripeSession(session);
+  } else if (meta.type === "academy_fee") {
+    // Mensalidade de academia (mig 310): apura a tarifa, escreve o repasse com
+    // holdback, marca o espelho e dá a baixa na API da academia.
+    const AcademyFeeService = require("./AcademyFeeService");
+    result = await AcademyFeeService.confirmStripeSession(session);
   } else if (meta.type === "premium") {
     result = await PremiumService.confirmStripeSession(session);
   } else if (meta.type === "course_purchase") {
@@ -985,6 +990,13 @@ async function expireCheckoutSession(session, reason) {
         const CommunityListingOrderService = require("./CommunityListingOrderService");
         const ex = await CommunityListingOrderService.expireBySession(session.id);
         if (ex) log.info("expire.community_listing_order", { session_id: session.id, reason });
+        break;
+      }
+      case "academy_fee": {
+        // Libera a trava de "um checkout por cobrança" para o aluno tentar de novo.
+        const AcademyFeeService = require("./AcademyFeeService");
+        const ex = await AcademyFeeService.expireBySession(session.id);
+        if (ex) log.info("expire.academy_fee", { session_id: session.id, reason });
         break;
       }
       case "community_delivery": {
@@ -1172,6 +1184,9 @@ async function dispatchEvent(event) {
       const CommunityListingOrderService = require("./CommunityListingOrderService");
       const listingOrderResult = await CommunityListingOrderService.handleChargeRefunded(charge);
       if (listingOrderResult && !listingOrderResult.ignored) break;
+      const AcademyFeeService = require("./AcademyFeeService");
+      const academyFeeResult = await AcademyFeeService.handleChargeRefunded(charge);
+      if (academyFeeResult && !academyFeeResult.ignored) break;
       const premiumResult = await PremiumService.handleChargeRefunded(charge);
       if (premiumResult && !premiumResult.ignored) break;
       const CoursesService = require("./CoursesService");

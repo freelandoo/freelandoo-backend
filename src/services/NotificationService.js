@@ -996,6 +996,40 @@ class NotificationService {
       },
     });
   }
+
+  /**
+   * Mensalidade da academia paga pela Freelandoo (mig 310): o dono fica
+   * sabendo quem pagou, quanto entra e quando o repasse fica disponível.
+   */
+  static async notifyAcademyFee({
+    recipient_user_id,
+    actor_user_id,
+    id_academy,
+    academy_slug,
+    id_order,
+    member_name,
+    amount_cents,
+    net_cents,
+    available_at,
+  }) {
+    if (!recipient_user_id || !id_academy) return null;
+    const num = (n) => (Number.isFinite(Number(n)) ? Number(n) : null);
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      type: "academy_fee_paid",
+      id_actor_user: actor_user_id || null,
+      entity_type: "academy",
+      entity_id: id_academy,
+      payload: {
+        id_order: id_order ?? null,
+        slug: academy_slug || null,
+        member_name: typeof member_name === "string" ? member_name.slice(0, 120) : null,
+        amount_cents: num(amount_cents),
+        net_cents: num(net_cents),
+        available_at: available_at || null,
+      },
+    });
+  }
 }
 
 module.exports = NotificationService;

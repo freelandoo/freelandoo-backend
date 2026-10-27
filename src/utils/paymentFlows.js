@@ -71,6 +71,9 @@ const PAYMENT_FLOWS = {
   // Site autoral (mig 263): os R$299 de criação, cobrados no PEDIDO. A
   // manutenção mensal é o `plan_subscription` do plano `site-freelandoo`.
   managed_site_setup:     { recurring: false, label: "Site autoral — criação" },
+  // Mensalidade da academia paga pela Freelandoo (mig 310): a Freelandoo fica
+  // com a tarifa real + R$ 2,50 e repassa o resto à academia (PIX manual).
+  academy_fee:            { recurring: false, label: "Mensalidade de academia" },
 
   // ── Recorrentes ───────────────────────────────────────────────────────────
   plan_subscription:      { recurring: true,  label: "Plano mensal" },

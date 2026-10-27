@@ -83,6 +83,8 @@ class FitnessService {
           membership_status: m.membership_status,
           plan_name: m.plan_name,
           expires_at: m.expires_at,
+          // mig 310: o calendário pinta ✕ só a partir do vínculo.
+          linked_at: m.linked_at,
           month_days: await AcademyStorage.listEventDays(
             pool,
             m.id_member,

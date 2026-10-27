@@ -268,6 +268,22 @@ const server = app.listen(PORT, () => {
   setTimeout(tickListingOrders, 9 * 60 * 1000);
   setInterval(tickListingOrders, ONE_HOUR);
 
+  // Mensalidade de academia pela Freelandoo (mig 310): libera repasses com o
+  // holdback vencido e REPETE a baixa/reabertura na API da academia que não
+  // respondeu na hora. A cada 10 min: a academia não saber que recebeu deixa o
+  // aluno recebendo cobrança de uma mensalidade paga.
+  const AcademyFeeService = require("./src/services/AcademyFeeService");
+  const tickAcademyFees = async () => {
+    try {
+      const r = await AcademyFeeService.sweep();
+      if (r?.released || r?.academy_pending) bootLog.info("academy_fee.sweep", r);
+    } catch (err) {
+      bootLog.error("academy_fee.scheduler_error", { message: err.message });
+    }
+  };
+  setTimeout(tickAcademyFees, 11 * 60 * 1000);
+  setInterval(tickAcademyFees, 10 * 60 * 1000);
+
   // Job: reconciliação de pagamentos — para webhooks perdidos, cruza pendentes
   // antigos com o estado real da session no Stripe e re-entrega os que já foram
   // pagos. Roda 7 min após boot e a cada 2h (projeto PayDebug, D6).

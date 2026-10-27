@@ -52,6 +52,9 @@ const INVENTARIO_STRIPE = [
   // `StoreCartService.confirmStripeSession`, montado nos TRÊS pontos do
   // webhook — e na cadeia de charge.refunded ele vem ANTES da Loja avulsa.
   "store_cart",
+  // Mensalidade da academia pela Freelandoo (mig 310). Confirmador:
+  // `AcademyFeeService.confirmStripeSession`, montado nos TRÊS pontos.
+  "academy_fee",
 ];
 
 test("todo metadata.type do Stripe está declarado", () => {

@@ -10,6 +10,7 @@ const requireFeature = require("../middlewares/requireFeature");
 const { auth: authLimiter } = require("../middlewares/rateLimit");
 const uploadPortfolioMedia = require("../middlewares/uploadPortfolioMedia");
 const AcademySocialController = require("../controllers/AcademySocialController");
+const AcademyFeeController = require("../controllers/AcademyFeeController");
 const asyncHandler = require("../utils/asyncHandler");
 
 const router = Router();
@@ -27,6 +28,13 @@ router.post("/academies", authMiddleware, asyncHandler(AcademyController.create)
 router.patch("/academies/:id", authMiddleware, asyncHandler(AcademyController.update));
 router.post("/academies/:id/test-connection", authMiddleware, asyncHandler(AcademyController.testConnection));
 router.post("/academies/:id/sync", authMiddleware, asyncHandler(AcademyController.syncNow));
+
+// Recebimentos (mig 310): para onde vai o dinheiro das mensalidades pagas pela
+// Freelandoo, e os repasses. Só o dono; a chave volta sempre mascarada.
+router.get("/academies/:id/payout-account", authMiddleware, asyncHandler(AcademyFeeController.getAccount));
+router.put("/academies/:id/payout-account", authMiddleware, asyncHandler(AcademyFeeController.putAccount));
+router.delete("/academies/:id/payout-account", authMiddleware, asyncHandler(AcademyFeeController.deleteAccount));
+router.get("/academies/:id/payouts", authMiddleware, asyncHandler(AcademyFeeController.listPayouts));
 // Chave de parceiro (mig 296): o dono gera/rotaciona; a chave crua sai uma vez.
 const PartnerController = require("../controllers/PartnerController");
 router.get("/academies/:id/partner-key", authMiddleware, asyncHandler(PartnerController.keyStatus));

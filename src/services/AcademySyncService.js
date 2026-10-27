@@ -85,6 +85,8 @@ class AcademySyncService {
           due_date: p.due_date || null,
           status,
           paid_at: p.paid_at || null,
+          // mig 310: forma de recebimento (texto curto da academia, só exibição).
+          method: typeof p.method === "string" ? p.method.trim().toLowerCase().slice(0, 24) || null : null,
         });
       }
       if (rows.length) await AcademyStorage.upsertPayments(pool, academy.id_academy, rows);
@@ -119,12 +121,32 @@ class AcademySyncService {
       });
     }
 
+    // ── capacidade de receber baixa (mig 310), 1x/dia ──
+    await this.refreshCapabilities(academy, token);
+
     await AcademyStorage.setSync(pool, academy.id_academy, {
       status: "ok",
       error: null,
       events_cursor: eventsCursor,
       payments_cursor: paymentsCursor,
     });
+  }
+
+  /**
+   * A API da academia sabe receber a baixa? Sem isso o "Pagar" não aparece
+   * (mig 310). Relida 1x/dia; erro de rede mantém o valor anterior — só uma
+   * resposta de verdade (inclusive o 404 de quem não implementa) muda.
+   */
+  static async refreshCapabilities(academy, token, { force = false } = {}) {
+    const last = academy.capabilities_checked_at ? new Date(academy.capabilities_checked_at).getTime() : 0;
+    if (!force && Date.now() - last < 24 * 3600 * 1000) return academy.pay_callback === true;
+    const res = await gymProvider.getCapabilities(academy.api_base_url, token);
+    let supported;
+    if (res.data) supported = res.data.supports_paid_callback === true;
+    else if (res.status === 404) supported = false;
+    else return academy.pay_callback === true;
+    await AcademyStorage.setCapabilities(pool, academy.id_academy, { pay_callback: supported });
+    return supported;
   }
 
   // Sync imediato de uma academia (botão do dono / pós-vínculo).

@@ -100,6 +100,31 @@ status (ex.: `pending` → `paid`) deve reaparecer no feed (a Freelandoo faz ups
   `canceled` = cobrança cancelada antes de ser paga; `refunded` = estornada ou contestada
   (chargeback). Ambos desde 2026-10-06 (mig 273); status desconhecido vira `pending`.
 - `paid_at: null` quando não pago.
+- `method` (opcional, desde a mig 310): forma de recebimento em texto curto (`pix`, `boleto`,
+  `dinheiro`…); `"freelandoo"` quando o aluno pagou pela Freelandoo. Só exibição.
+
+## 4. Pagar pela Freelandoo (opcional, desde a mig 310)
+
+O aluno pode pagar a mensalidade no app da Freelandoo (Mercado Pago da
+Freelandoo). Ela retém a tarifa real do Mercado Pago + R$ 2,50 e repassa o resto
+por PIX à chave que o dono cadastrou em "Recebimentos". Para isso o provedor
+PRECISA dar baixa na cobrança — senão o aluno segue sendo cobrado lá.
+
+Quem não implementa esta seção responde 404 em `capabilities` e o botão "Pagar"
+não aparece para os alunos dele.
+
+- `GET /api/freelandoo/capabilities` → `200 { "supports_paid_callback": true }`.
+  Relido 1×/dia no sync.
+- `GET /api/freelandoo/payments/:id` → o item no mesmo formato da lista (seção 3),
+  ou 404. Chamado na hora de abrir o checkout: o valor e a situação valem DESTA
+  resposta. A Freelandoo confere que o `cpf` é o do aluno.
+- `POST /api/freelandoo/payments/:id/paid` com `{ "amount_cents", "paid_at", "ref" }`.
+  `ref` = `freelandoo:<pedido>`. **Idempotente por `ref`** (repetir = 200).
+  Respostas: 200 baixou; 409 `already_paid` (já pago por outro meio — a
+  Freelandoo trata com o aluno); 5xx = a Freelandoo tenta de novo (a cada ~10 min,
+  com recuo, por até 2 dias).
+- `POST /api/freelandoo/payments/:id/reopened` com `{ "ref" }`: estorno na
+  Freelandoo ANTES do repasse; a cobrança volta a ficar em aberto. Idempotente.
 
 ## Teste de conexão
 
@@ -110,5 +135,7 @@ O botão "Testar conexão" da Freelandoo chama `member?cpf=00000000000` e espera
 
 - Auth: `src/lib/freelandoo/auth.ts` (Bearer vs env `FREELANDOO_API_TOKEN`, constant-time).
 - Queries/mapeamentos: `src/lib/freelandoo/provider.ts` + `mapping.ts` (cursores
+- Pagar pela Freelandoo: `src/lib/freelandoo/baixa.ts` (baixa no Asaas por `receiveInCash`,
+  reabertura por `undoReceivedInCash`, idempotência em `Cobranca.freelandooRef`).
   base64url `timestamp|id`; `Cobranca.updatedAt` adicionada por migration para o feed de
   payments detectar mudança de status).

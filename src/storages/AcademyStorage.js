@@ -143,6 +143,15 @@ module.exports = {
     );
   },
 
+  async setCapabilities(db, id_academy, { pay_callback }) {
+    await db.query(
+      `UPDATE public.tb_academy
+          SET pay_callback = $2, capabilities_checked_at = NOW(), updated_at = NOW()
+        WHERE id_academy = $1`,
+      [id_academy, pay_callback === true]
+    );
+  },
+
   async listForSync(db, limit = 10) {
     const r = await db.query(
       `SELECT * FROM public.tb_academy
@@ -373,21 +382,60 @@ module.exports = {
     return r.rows.map((row) => row.day);
   },
 
+  /**
+   * Dias com catraca no FUSO DE BRASÍLIA (mig 310). O `listEventDays` acima
+   * agrupa em UTC: uma entrada às 22h viraria o dia seguinte no calendário.
+   * Devolve 'YYYY-MM-DD' (texto, nunca Date — o driver converteria de volta
+   * para meia-noite UTC e o front mostraria o dia anterior).
+   */
+  async listLocalEventDays(db, id_member, fromDay, toDayExclusive) {
+    const r = await db.query(
+      `SELECT DISTINCT to_char((occurred_at AT TIME ZONE 'America/Sao_Paulo')::date, 'YYYY-MM-DD') AS day
+         FROM public.tb_academy_access_event
+        WHERE id_member = $1
+          AND occurred_at >= ($2::date::timestamp AT TIME ZONE 'America/Sao_Paulo')
+          AND occurred_at <  ($3::date::timestamp AT TIME ZONE 'America/Sao_Paulo')
+        ORDER BY day ASC`,
+      [id_member, fromDay, toDayExclusive]
+    );
+    return r.rows.map((row) => row.day);
+  },
+
   // ─── Espelho: pagamentos ───────────────────────────────────────────────────
+  // `paid_via` (mig 310): a baixa que a Freelandoo fez continua 'freelandoo'
+  // quando a academia devolve a cobrança paga no próximo sync — a API dela diz
+  // `method: 'freelandoo'`, e mesmo uma que não diga não apaga a marca enquanto
+  // a cobrança seguir paga.
   async upsertPayments(db, id_academy, payments) {
     let upserted = 0;
     for (const p of payments) {
       const r = await db.query(
         `INSERT INTO public.tb_academy_payment
-           (id_academy, id_member, external_id, amount_cents, due_date, status, paid_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
+           (id_academy, id_member, external_id, amount_cents, due_date, status, paid_at, method, paid_via)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::varchar,
+                 CASE WHEN $8::varchar = 'freelandoo' THEN 'freelandoo' ELSE 'academy' END)
          ON CONFLICT (id_academy, external_id) DO UPDATE SET
            amount_cents = EXCLUDED.amount_cents,
            due_date = EXCLUDED.due_date,
            status = EXCLUDED.status,
            paid_at = EXCLUDED.paid_at,
+           method = COALESCE(EXCLUDED.method, tb_academy_payment.method),
+           paid_via = CASE
+             WHEN EXCLUDED.method = 'freelandoo' THEN 'freelandoo'
+             WHEN tb_academy_payment.paid_via = 'freelandoo' AND EXCLUDED.status = 'paid' THEN 'freelandoo'
+             ELSE 'academy'
+           END,
            updated_at = NOW()`,
-        [id_academy, p.id_member, p.external_id, p.amount_cents, p.due_date || null, p.status, p.paid_at || null]
+        [
+          id_academy,
+          p.id_member,
+          p.external_id,
+          p.amount_cents,
+          p.due_date || null,
+          p.status,
+          p.paid_at || null,
+          p.method || null,
+        ]
       );
       upserted += r.rowCount;
     }
@@ -396,7 +444,7 @@ module.exports = {
 
   async listPaymentsForMember(db, id_member, limit = 12) {
     const r = await db.query(
-      `SELECT external_id, amount_cents, due_date, status, paid_at
+      `SELECT external_id, amount_cents, due_date, status, paid_at, method, paid_via
          FROM public.tb_academy_payment
         WHERE id_member = $1
         ORDER BY due_date DESC NULLS LAST

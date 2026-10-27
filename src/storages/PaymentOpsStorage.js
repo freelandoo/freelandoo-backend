@@ -31,6 +31,8 @@ const SOURCES = [
   { flow: "casa",           table: "public.casa_participant_product_order", session_col: "stripe_session_id",     pending: "status = 'pending'" },
   // Hologramas da aba RA (mig 274).
   { flow: "casa_holograma", table: "public.tb_casa_hologram_purchase", session_col: "stripe_session_id",          pending: "status = 'pending'" },
+  // Mensalidade de academia pela Freelandoo (mig 310).
+  { flow: "mensalidade_academia", table: "public.tb_academy_fee_order", session_col: "session_id",          pending: "status = 'pending'" },
   { flow: "agendamento",    table: "public.tb_profile_bookings",      session_col: "stripe_checkout_session_id", pending: "status = 'pending_payment'" },
 ];
 
