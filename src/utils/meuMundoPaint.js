@@ -106,7 +106,7 @@ const TUNING = {
   /** Anda até a vítima (m/s), vira (rad/s) e não sai deste raio do centro da ilha. */
   bossWalk: 3.6,
   bossTurn: 2.2,
-  bossLeash: 11.5,
+  bossLeash: 16,
   /** Pausa entre um golpe e outro (s). */
   bossRest: 1.1,
   /**
@@ -246,7 +246,7 @@ const BRANCH_AT = [2, 5, 8, 10]
 const SUMMIT_Y = 30
 const CENTER_Y = [7, 14, 21, 28]
 const CENTER_Z = [5, -5, 5, -5]
-const BOSS = { x: 0, y: 60, z: 320, r: 18 }
+const BOSS = { x: 0, y: 60, z: 320, r: 24 } // mm3d-38c: maior para o chefão de 10 m
 
 const round = (v        ) => Math.round(v * 1000) / 1000
 
@@ -350,7 +350,7 @@ function buildPaintMap()           {
   })
   for (const [i, c] of ([0, 1, 2, 1, 1, 2]         ).entries()) {
     const a = (i / 6) * Math.PI * 2 + 0.4
-    capsules.push({ id: capSeq++, c, x: round(BOSS.x + Math.sin(a) * 13), y: BOSS.y, z: round(BOSS.z + Math.cos(a) * 13) })
+    capsules.push({ id: capSeq++, c, x: round(BOSS.x + Math.sin(a) * 17), y: BOSS.y, z: round(BOSS.z + Math.cos(a) * 17) })
   }
 
   const solids          = []
