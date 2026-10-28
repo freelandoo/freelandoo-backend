@@ -310,6 +310,8 @@ class Match {
         down: false,
         kd: 0,
         move: { x: 0, z: 0, at: -Infinity },
+        /** mm3d-45: posição que o aparelho mandou (o movimento é dele; a sala só limita). */
+        pos: null,
         taps: 0,
         tally: { thrown: 0, landed: 0, kd: 0, dmg: 0, taken: 0 },
         aiCool: 0.8 + this.R() * 0.6,
@@ -348,7 +350,9 @@ class Match {
   // ── entrada ───────────────────────────────────────────────────────────────
 
   /**
-   * Do aparelho: `m` = [x, z] direção no chão (|m| ≤ 1), `a` = combo pedido
+   * Do aparelho: `p` = [x, z] onde o lutador está no aparelho (mm3d-45: o
+   * movimento é do aparelho, a sala só não deixa passar da velocidade
+   * possível), `m` = [x, z] direção no chão (|m| ≤ 1; sem `p`), `a` = combo pedido
    * (lista de pedaços) com `c` = id do aparelho, `d` = esquivar, `k` = toques
    * para levantar. Lixo é ignorado.
    */
@@ -363,6 +367,11 @@ class Match {
         if (n > 1) (x /= n), (z /= n);
         A.move = { x, z, at: this.t };
       }
+    }
+    if (Array.isArray(msg.p) && msg.p.length === 2) {
+      const x = Number(msg.p[0]);
+      const z = Number(msg.p[1]);
+      if (Number.isFinite(x) && Number.isFinite(z)) A.pos = { x: clamp(x, -BOXE.RING, BOXE.RING), z: clamp(z, -BOXE.RING, BOXE.RING), at: this.t };
     }
     if (msg.a !== undefined) this.attack(A, validCombo(msg.a), Number(msg.c) >>> 0);
     if (msg.d) this.dodge(A);
@@ -451,7 +460,7 @@ class Match {
     if (D.blood <= 0) return; // a queda vem no fim do passo
     // um socão no meio do combo dele corta o combo; pancadinha não
     const kind = clean && dmg >= 8 ? "stagger" : dmg >= 6 || clean ? "heavy" : "light";
-    const interrupt = !(da.code === ACT.COMBO && this.t < da.end && dmg < 3.5);
+    const interrupt = !(da.code === ACT.COMBO && this.t < da.end && dmg < 2);
     if (interrupt) this.react(D, kind, A, Math.min(0.35, dmg * 0.03));
     if (kind === "stagger") this.ev.push([r2(this.t), EV.STUN, D.i]);
   }
@@ -546,6 +555,16 @@ class Match {
           const d = Math.hypot(dx, dz) || 1;
           if (d < 2) (vx = (dx / d) * 1.1), (vz = (dz / d) * 1.1);
         }
+      } else if (!A.down && !A.cpu && A.pos && this.t - A.pos.at <= BOXE.INPUT_TTL) {
+        // a posição do aparelho, até onde as pernas (e um empurrão) alcançam neste passo
+        const dx = A.pos.x - A.x;
+        const dz = A.pos.z - A.z;
+        const d = Math.hypot(dx, dz);
+        const max = (this.footSpeed(A) * 1.4 + 1.6) * T + 0.01;
+        const k = d > max ? max / d : 1;
+        A.x += dx * k;
+        A.z += dz * k;
+        A.kx = A.kz = 0;
       } else if (!A.down) {
         const fs = this.footSpeed(A) * (A.stun > 0 ? 0.3 : 1);
         const a = A.act;

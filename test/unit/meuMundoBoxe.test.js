@@ -306,3 +306,26 @@ test("vida: vitória paga a bolsa até 5 lutas por dia", () => {
   assert.equal(coins, 5 * 40);
   assert.equal(s.boxing.w, 7);
 });
+
+test("posição do aparelho (mm3d-45): a sala segue, mas só até onde as pernas alcançam", () => {
+  const m = live();
+  const A = m.F[0];
+  m.F[1].cpu = false;
+  Object.assign(A, { x: -1, z: 0 });
+  Object.assign(m.F[1], { x: 2, z: 2 });
+  // perto: vai direto
+  m.input(0, { p: [-0.9, 0.05] });
+  m.step();
+  assert.ok(Math.abs(A.x + 0.9) < 1e-6 && Math.abs(A.z - 0.05) < 1e-6);
+  // longe demais (teleporte): anda só um passo possível
+  m.input(0, { p: [2.5, -2.5] });
+  m.step();
+  assert.ok(Math.hypot(A.x + 0.9, A.z - 0.05) < 0.3, "não teleporta");
+  // fora do ringue: preso nas cordas; lixo ignorado
+  m.input(0, { p: [99, NaN] });
+  for (let i = 0; i < 200; i++) {
+    m.input(0, { p: [9, -9] });
+    m.step();
+  }
+  assert.ok(A.x <= B.BOXE.RING + 1e-9 && A.z >= -B.BOXE.RING - 1e-9);
+});
