@@ -14,7 +14,7 @@
 /**
  * As quatro tintas. O índice é o que viaja na rede. mm3d-46 (pedido do Alex):
  * a ponte virou LARANJA, o dano PRETO, a cama elástica VERMELHA e entrou o
- * MURO (turquesa, a cor que sobrou) — munição só pelo ícone da Freelandoo.
+ * MURO (amarelo holográfico, mm3d-46b) — munição só pelo ícone da Freelandoo.
  */
 const PAINT = {
   /** Laranja: plataforma (ponte). */
@@ -23,12 +23,12 @@ const PAINT = {
   HARM: 1,
   /** Vermelho: cama elástica (mm3d-35e: quem pisa é lançado para cima). */
   STEP: 2,
-  /** Turquesa: muro em pé, de frente para a mira — barra quem passa e o tiro preto. */
+  /** Amarelo (holograma): muro em pé, de frente para a mira — barra quem passa e o tiro preto. */
   WALL: 3,
 }         
                                       
 
-const PAINT_COLORS = ["#FF7A1A", "#1A161D", "#E5222E", "#1FC8C0"]         
+const PAINT_COLORS = ["#FF7A1A", "#1A161D", "#E5222E", "#FFD21F"]         
 
 const TUNING = {
   /** Passo fixo da física do corpo. */
@@ -67,7 +67,7 @@ const TUNING = {
   /** Alcance (m) do raio de cada cor. */
   range: [13, 24, 9, 16]                     ,
 
-  /** Ponte (turquesa): disco achatado. */
+  /** Ponte (laranja): disco achatado. */
   bridgeR: 1.25,
   bridgeH: 0.34,
   /** A ponte cresce até esta distância horizontal de quem atira. */
