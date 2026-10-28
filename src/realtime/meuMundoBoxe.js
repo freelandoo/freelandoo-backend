@@ -1,9 +1,10 @@
-// src/realtime/meuMundoBoxe.js — MEU MUNDO 3D: Arena de Boxe (mm3d-43)
+// src/realtime/meuMundoBoxe.js — MEU MUNDO 3D: Arena de Boxe (mm3d-43 → mm3d-44)
 //
-// Pedido do Alex: "dá para lutar sozinho contra o computador; no multiplayer
-// você entra com outro usuário, mas não controla o personagem — conta
-// velocidade, força, treino, alimentado, descansado; você calcula e deixa eles
-// brigando, e o usuário assiste; se perder por muito pode ir para o hospital".
+// mm3d-43: "sozinho contra o computador ou multiplayer com outro usuário;
+// conta velocidade, força, treino, alimentado, descansado; se perder por muito
+// pode ir para o hospital". mm3d-44: agora a pessoa CONTROLA o lutador (anda e
+// aperta ATACAR, que solta um combo sorteado; ESQUIVAR) e a sala roda a luta
+// AO VIVO (src/utils/meuMundoBoxe.js Match) a cada TICK, com o computador.
 //
 // Uma sala por luta, do MESMO centro:
 //  • "solo": uma pessoa, larga na hora contra o computador que ela escolheu
@@ -11,11 +12,12 @@
 //    semente guardada em previewCpu).
 //  • "mp": duas pessoas; espera até LOBBY_MS desde que abriu; ninguém veio =
 //    luta contra o computador parelho (o aparelho avisa).
-// Na largada a sala lê a VIDA de cada um (MeuMundoLifeService.fighter),
-// calcula a luta INTEIRA (src/utils/meuMundoBoxe.js) e manda a linha do tempo;
-// os aparelhos só desenham. A sala segue o relógio: quem joga a TOALHA perde
-// ali (a luta para para os dois). No fim, cada pessoa recebe a consequência na
-// vida (MeuMundoLifeService.fightAftermath) — mesmo quem fechou a aba: a sala
+// Na largada a sala lê a VIDA de cada um (MeuMundoLifeService.fighter) e abre
+// a partida; cada aparelho manda "in" (joystick, ataque com o combo, esquiva,
+// toques para levantar) e recebe "s" a cada passo (posições, sangue, fôlego,
+// a ação de cada um e os eventos). Quem joga a TOALHA perde ali. No fim, cada
+// pessoa recebe a consequência na vida (MeuMundoLifeService.fightAftermath) —
+// mesmo quem fechou a aba (o lutador fica parado na guarda e apanha): a sala
 // não se desfaz sozinha durante a luta (autoDispose desligado).
 //
 // A pessoa continua presente no centro (como no jetpack/Paint/corrida/Rolê).
@@ -34,8 +36,10 @@ const log = createLogger("meuMundo.boxe");
 
 const BOXE_ROOM = "boxe";
 const CLOSE = { REPLACED: 4009, FORBIDDEN: 4003, ABUSE: 4029 };
-const TICK_MS = 100;
+const TICK_MS = Math.round(Boxe.BOXE.TICK * 1000);
 const MAX_MSG_PER_SEC = 10;
+/** Entrada da luta (joystick a ~15/s + botões). */
+const MAX_IN_PER_SEC = 40;
 /** Entrada no ringue e apresentação antes do 1º sino (s): o aparelho anima. */
 const INTRO_S = 5;
 /** Bolsa da vitória no multiplayer (contra gente). */
@@ -106,7 +110,9 @@ class BoxeRoom extends Room {
     this.state.until = this.mode === "mp" ? Date.now() + timing.lobbyMs : 0;
     /** sessionId → { userId, slot, name, strategy, tier, fighter, bucket, lastRefill } */
     this.seats = new Map();
-    this.fight = null;
+    this.fight = null; // true depois da largada
+    this.match = null;
+    this.simAt = 0;
     this.corners = null; // [{ userId|null, name, body, look, cpu, strategy, purse }]
     this.startedAt = 0;
     this.towel = null; // { who, at }
@@ -114,6 +120,7 @@ class BoxeRoom extends Room {
     this.closeTimer = null;
     rooms.set(this.roomId, this);
     this.onMessage("towel", (client) => this.onTowel(client));
+    this.onMessage("in", (client, msg) => this.onInput(client, msg));
     this.onMessage("ping", (client, msg) => this.onPing(client, msg));
     this.setSimulationInterval(() => this.loop(), TICK_MS);
     log.info("boxe.create", { roomId: this.roomId, mode: this.mode });
@@ -135,7 +142,7 @@ class BoxeRoom extends Room {
     const strategy = STRATS.includes(options.strategy) ? options.strategy : "balanced";
     const tier = TIER_IDS.includes(options.tier) ? options.tier : "even";
     this.state.players.set(client.sessionId, new BxPlayer({ slot, name, online: true, cpu: false }));
-    this.seats.set(client.sessionId, { userId, slot, name, strategy, tier, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now() });
+    this.seats.set(client.sessionId, { userId, slot, name, strategy, tier, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), inBucket: MAX_IN_PER_SEC, inRefill: Date.now() });
     byUser.set(userId, { room: this, sessionId: client.sessionId });
     client.send("welcome", { slot, mode: this.mode, left: this.mode === "mp" ? Math.max(0, this.state.until - Date.now()) : 0 });
     log.info("boxe.join", { roomId: this.roomId, people: this.seats.size, slot });
@@ -191,12 +198,24 @@ class BoxeRoom extends Room {
 
   // ── mensagens ──────────────────────────────────────────────────────────────
 
+  /** O lutador: joystick, ataque (combo pedido), esquiva, toques para levantar. */
+  onInput(client, msg) {
+    const s = this.seats.get(client.sessionId);
+    if (!s || !this.match || this.state.phase !== "fight") return;
+    const now = Date.now();
+    s.inBucket = Math.min(MAX_IN_PER_SEC, s.inBucket + ((now - s.inRefill) / 1000) * MAX_IN_PER_SEC);
+    s.inRefill = now;
+    if (s.inBucket < 1) return;
+    s.inBucket -= 1;
+    this.match.input(s.slot, msg);
+  }
+
   /** Jogar a toalha: quem joga perde agora e a luta para para os dois. */
   onTowel(client) {
     const s = this.seats.get(client.sessionId);
-    if (!s || !this.fight || this.towel || this.state.phase !== "fight" || !this.takeToken(client, s)) return;
-    const at = Math.max(0, Math.round(this.state.time * 100) / 100);
-    if (at >= this.fight.result.t) return;
+    if (!s || !this.match || this.towel || this.state.phase !== "fight" || !this.takeToken(client, s)) return;
+    const at = Math.max(0, Math.round(this.match.t * 100) / 100);
+    if (!this.match.towel(s.slot)) return;
     this.towel = { who: s.slot, at };
     this.broadcast("towel", { who: s.slot, at });
     log.info("boxe.towel", { roomId: this.roomId, slot: s.slot, at });
@@ -262,9 +281,15 @@ class BoxeRoom extends Room {
       return;
     }
     this.corners = corners;
-    this.fight = Boxe.simulate({ stats: corners[0].stats, strategy: corners[0].strategy }, { stats: corners[1].stats, strategy: corners[1].strategy }, seed);
+    this.match = new Boxe.Match(
+      corners.map((c) => ({ stats: c.stats, cpu: c.cpu, tier: c.tier })),
+      seed,
+      { intro: timing.introS },
+    );
+    this.fight = true;
     this.autoDispose = false;
     this.startedAt = Date.now();
+    this.simAt = 0;
     this.state.phase = "fight";
     this.state.time = -timing.introS;
     this.state.until = 0;
@@ -276,13 +301,15 @@ class BoxeRoom extends Room {
       cpu: c.cpu,
       strategy: c.strategy,
       record: c.record,
-      view: this.fight.view[i],
+      view: { ...this.match.F[i].f.view, conditions: this.match.F[i].f.conditions, strategy: c.strategy },
     }));
+    const table = Boxe.Match.table();
+    const first = this.match.snapshot();
     for (const client of this.clients) {
       const s = this.seats.get(client.sessionId);
-      if (s) client.send("start", { me: s.slot, nobody, intro: timing.introS, corners: pub, fight: this.fight });
+      if (s) client.send("start", { me: s.slot, nobody, intro: timing.introS, corners: pub, table, snap: first });
     }
-    log.info("boxe.start", { roomId: this.roomId, mode: this.mode, cpu: corners.some((c) => c.cpu), method: this.fight.result.method });
+    log.info("boxe.start", { roomId: this.roomId, mode: this.mode, cpu: corners.some((c) => c.cpu) });
   }
 
   loop() {
@@ -291,19 +318,29 @@ class BoxeRoom extends Room {
       return;
     }
     if (this.startedAt < 0 || this.state.phase !== "fight") return;
-    this.state.time = ((Date.now() - this.startedAt) / 1000) * timing.speed - timing.introS;
-    const end = this.towel ? this.towel.at + 2.5 : this.fight.result.t + 1.5;
-    if (this.state.time >= end && !this.applied) void this.finish();
+    // a partida anda no relógio da sala (a suíte acelera com `speed`)
+    const want = ((Date.now() - this.startedAt) / 1000) * timing.speed;
+    const T = Boxe.BOXE.TICK;
+    let n = 0;
+    while (this.simAt + T <= want + 1e-9 && n < 400) {
+      this.match.step();
+      this.simAt += T;
+      n++;
+    }
+    if (n === 0) return;
+    this.state.time = this.match.t;
+    this.broadcast("s", this.match.snapshot());
+    const r = this.match.result;
+    const end = r ? r.t + (this.towel ? 2.5 : 1.5) : Infinity;
+    if (this.match.t >= end && !this.applied) void this.finish();
   }
 
   async finish() {
     this.applied = true;
-    const cut = this.towel ? this.towel.at : Infinity;
-    const towelWho = this.towel ? this.towel.who : null;
     const out = [];
     for (let i = 0; i < 2; i++) {
       const c = this.corners[i];
-      const sum = Boxe.summary(this.fight, i, cut, towelWho);
+      const sum = this.match.summary(i);
       out[i] = { slot: i, ...sum };
       if (!c.userId) continue;
       try {
@@ -319,9 +356,9 @@ class BoxeRoom extends Room {
       const s = this.seats.get(client.sessionId);
       if (!s) continue;
       const mine = out[s.slot];
-      client.send("result", { me: s.slot, towel: this.towel, rows: out.map(({ aftermath, ...r }) => r), aftermath: mine.aftermath || null });
+      client.send("result", { me: s.slot, towel: this.towel, rows: out.map(({ aftermath, ...r }) => r), aftermath: mine.aftermath || null, score: this.match.score() });
     }
-    log.info("boxe.end", { roomId: this.roomId, method: this.towel ? "towel" : this.fight.result.method });
+    log.info("boxe.end", { roomId: this.roomId, method: this.match.result ? this.match.result.method : "?" });
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }
 }
@@ -375,7 +412,7 @@ function leaveBoxe(userId) {
 /** Está numa luta agora? (uma por vez). */
 const inBoxe = (userId) => {
   const mine = byUser.get(userId);
-  return !!(mine && mine.room.fight && mine.room.state.phase === "fight");
+  return !!(mine && mine.room.match && mine.room.state.phase === "fight");
 };
 
 async function boxeStatus() {

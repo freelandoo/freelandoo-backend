@@ -1,98 +1,140 @@
-// src/utils/meuMundoBoxe.js — MEU MUNDO 3D: a luta da Arena de Boxe (mm3d-43).
+// src/utils/meuMundoBoxe.js — MEU MUNDO 3D: a luta da Arena de Boxe (mm3d-43 → mm3d-44).
 //
-// Pedido do Alex: "lá você não controla o personagem; o que conta é
-// velocidade, força, o treino, se está alimentado, descansado — você calcula
-// tudo e deixa eles brigando, com barra de sangue e de cansaço, e o usuário
-// assiste". Então a luta é uma SIMULAÇÃO com semente, calculada inteira no
-// servidor na largada (ela mexe na vida: saúde, energia, hospital). Os
-// aparelhos recebem a LINHA DO TEMPO (golpes, defesas, quedas e amostras de
-// sangue/fôlego/posição) e só desenham — nada de conta de ponto flutuante
-// repetida em dois motores.
+// mm3d-44 (pedido do Alex): "faça com que a pessoa possa controlar seu
+// personagem e ter um botão de ataque, para fazer os combos que você vai mandar
+// em aleatório". A luta deixou de ser calculada de uma vez: é uma PARTIDA AO
+// VIVO que a sala (src/realtime/meuMundoBoxe.js) roda a TICK. O aparelho manda
+// o joystick (direção no chão), o ATAQUE (um combo sorteado de PIECES) e a
+// ESQUIVA; o servidor anda com os dois, decide cada pancada (alcance, bloqueio,
+// esquiva, limpo), as quedas, a contagem e o fim. O computador é a IA daqui.
+//
+// O que a VIDA decide continua valendo (fighter(): força, velocidade,
+// inteligência, massa magra, gordura, energia, saciedade, estresse, sono,
+// saúde): força = dano; velocidade = mão (o combo toca mais rápido) e pernas;
+// reflexo = guarda que segura sozinha e a janela da esquiva; fôlego = quanto
+// aguenta socar; queixo = quanto aguenta apanhar e levantar.
 //
 // Regras (jogo, não manual de boxe):
-//  • 3 rounds de ROUND_S com BREAK_S de intervalo; no intervalo o canto
-//    devolve um pouco de sangue e de fôlego.
-//  • Sangue 0 = QUEDA. Contagem até 10 (o relógio do round para): levanta
-//    conforme queixo e saúde, com menos sangue a cada queda; não levantou =
-//    nocaute; a 3ª queda = nocaute técnico.
+//  • 3 rounds de ROUND_S, BREAK_S de intervalo (o canto devolve um pouco de
+//    sangue e fôlego; cada um vai para o seu canto).
+//  • Golpe chega no quadro da pancada do clipe (PIECES, medido nas animações):
+//    fora do alcance = erro; defensor esquivando (janela) = escapou; parado na
+//    guarda = pode BLOQUEAR sozinho (pelo reflexo e fôlego, leva uma lasca);
+//    socando ou atordoado = toma cheio (e às vezes LIMPO, ×1,6).
+//  • Sangue 0 = QUEDA. Contagem de 1 a 10 (o relógio do round para); levanta
+//    pelo queixo — e quem está no chão pode apertar ATACAR para levantar mais
+//    rápido; 3 quedas = nocaute técnico.
 //  • Sem queda decisiva = pontos (round a round, 10 × 9; queda tira 1).
-//  • Fôlego (cansaço): cada golpe gasta, errar gasta mais, levar no corpo
-//    tira; volta devagar com a guarda. Cansado = mão lenta, guarda baixa,
-//    mais golpe limpo levado. O teto do fôlego desce ao longo da luta.
-//
-// O lutador sai da VIDA (fightStats em meuMundoLife.js → fighter() aqui):
-// força e velocidade (o treino, 0–1000), massa magra, gordura, saúde,
-// vitalidade, energia (descansado), saciedade (alimentado), estresse, horas
-// acordado, resistência de longo prazo e a personalidade (agressividade).
-// O computador é gerado pelos números do jogador (mais fraco/parelho/mais forte).
+//  • Fôlego: cada pancada gasta, a esquiva gasta; volta parado. Cansado = mão
+//    lenta, pernas lentas e menos dano; sem fôlego não ataca.
 
 const BOXE = Object.freeze({
   ROUNDS: 3,
   ROUND_S: 60,
   BREAK_S: 10,
   TICK: 0.05,
-  /** Amostras de posição/sangue/fôlego para os aparelhos (s). */
-  SAMPLE: 0.2,
   /** Meia largura útil do ringue (m): as cordas ficam em ±3,1. */
   RING: 2.7,
-  /** Distância de luta (centro a centro, m). */
-  RANGE: 1.05,
-  /** Uma contagem do árbitro (s): 10 contagens ≈ 7 s. */
-  COUNT_S: 0.7,
+  /** Distância de luta que o computador procura (centro a centro, m). */
+  RANGE: 0.95,
+  /** Alcance da pancada (centro a centro, m). */
+  REACH: 1.22,
+  /** Ninguém atravessa ninguém (m). */
+  MIN_SEP: 0.72,
+  /** Uma contagem do árbitro (s). */
+  COUNT_S: 0.75,
   /** Tempo da queda até a contagem começar (s). */
   FALL_S: 1.3,
+  /** Kip Up do chão até em pé (s). */
+  RISE_S: 1.65,
   /** Depois de levantar, o árbitro limpa as luvas (s). */
-  RESUME_S: 1.6,
-  /** Fim (nocaute ou sino final) até a sala fechar a luta (s). */
-  OUTRO_S: 6,
+  RESUME_S: 0.6,
   MAX_KD: 3,
-  /** Golpe acima disto (de sangue) atordoa. */
-  STUN_DMG: 7,
-  /** Escala geral do dano (calibrada: luta parelha de nível médio ≈ metade por nocaute). */
-  DMG: 0.66,
+  /** Escala geral do dano (calibrada: parelho médio derruba em ~20 golpes). */
+  DMG: 0.5,
+  /** Intenção de andar vale por este tempo sem nova mensagem (s). */
+  INPUT_TTL: 0.6,
+  /** Apresentação antes do 1º sino (s; a sala pode mudar). */
+  INTRO_S: 5,
 });
 
-/** Golpes: tempo total, momento(s) do impacto, dano, fôlego, alcance, precisão. */
-const PUNCHES = Object.freeze({
-  jab: { dur: 0.5, hits: [0.2], dmg: [4], stam: 1.6, reach: 1.3, acc: 1 },
-  cross: { dur: 0.62, hits: [0.27], dmg: [7], stam: 2.6, reach: 1.25, acc: 0.9 },
-  hook: { dur: 0.72, hits: [0.34], dmg: [9], stam: 3.4, reach: 1.05, acc: 0.82 },
-  upper: { dur: 0.78, hits: [0.36], dmg: [10.5], stam: 3.9, reach: 0.95, acc: 0.76 },
-  combo: { dur: 1.55, hits: [0.22, 0.6, 1.0], dmg: [4, 6, 8], stam: 6.8, reach: 1.2, acc: 0.86 },
-});
-const PUNCH_KINDS = Object.keys(PUNCHES);
+/** Quadros por segundo das animações (build_boxe_mocap.py). */
+const FPS = 30;
 
-/** Estratégia escolhida antes da luta. */
+/**
+ * Pedaços de combo: o trecho [from, to] (quadros) do clipe e as pancadas
+ * [quadro, mão, peso]. Quadros medidos nas animações da pasta "boxe" do Alex
+ * (maior extensão da mão). Um ATAQUE = 1 a 3 pedaços sorteados, em sequência.
+ */
+const PIECES = Object.freeze([
+  { clip: "BJab", n: 46, from: 3, to: 30, hits: [[13, 0, 0.75]] },
+  { clip: "BBox0", n: 64, from: 3, to: 34, hits: [[13, 0, 0.8], [21, 1, 1]] },
+  { clip: "BBox1", n: 65, from: 8, to: 36, hits: [[21, 1, 1.2]] },
+  { clip: "BBox2", n: 53, from: 4, to: 30, hits: [[14, 0, 1.05]] },
+  { clip: "BBox3", n: 67, from: 10, to: 36, hits: [[22, 1, 1]] },
+  { clip: "BBox4", n: 67, from: 10, to: 38, hits: [[22, 0, 1.2]] },
+  { clip: "BBox5", n: 61, from: 4, to: 54, hits: [[14, 0, 0.8], [46, 0, 0.9]] },
+  { clip: "BBag", n: 98, from: 8, to: 50, hits: [[15, 0, 0.6], [24, 0, 0.6], [35, 1, 0.65], [44, 1, 0.65]] },
+  { clip: "BBag", n: 98, from: 48, to: 86, hits: [[56, 0, 0.6], [63, 1, 0.65], [70, 0, 0.6], [77, 1, 0.7]] },
+]);
+/** Sorteio dos pedaços (os fortes e os do saco aparecem menos). */
+const PIECE_W = [3, 3, 2.2, 2, 2, 1.8, 1.2, 1, 1];
+const MAX_PIECES = 3;
+/** Esquiva: trecho do "Dodging", janela em que nada pega (s, no ritmo 1) e custo. */
+const DODGE = Object.freeze({ clip: "BDodge", n: 68, from: 1, to: 34, open: 0.05, close: 0.72, stam: 6 });
+
+/** Reações (ações que a sala impõe): clipe, trecho e duração (s). */
+const REACT = Object.freeze({
+  block: { clip: "BHitLite", n: 33, from: 1, to: 12, dur: 0.3, stun: 0.12 },
+  light: { clip: "BHitLite", n: 33, from: 1, to: 22, dur: 0.5, stun: 0.3 },
+  heavy: { clip: "BHit", n: 44, from: 1, to: 40, dur: 0.9, stun: 0.6 },
+  stagger: { clip: "BStagger", n: 74, from: 1, to: 60, dur: 1.6, stun: 1.1 },
+});
+
+/** Códigos das ações no estado (o aparelho tem a mesma lista). */
+const ACT = Object.freeze({ NONE: 0, COMBO: 1, DODGE: 2, LIGHT: 3, HEAVY: 4, STAGGER: 5, BLOCK: 6, DOWN: 7, RISE: 8, WIN: 9, LOSE: 10, WARM: 11 });
+
+/** Estratégia do computador (o jogador agora luta ele mesmo). */
 const STRATEGIES = Object.freeze({
-  aggressive: { attack: 1.35, guard: 0.75, power: 1.25 },
+  aggressive: { attack: 1.35, guard: 0.75, power: 1.1 },
   balanced: { attack: 1, guard: 1, power: 1 },
-  defensive: { attack: 0.7, guard: 1.35, power: 0.85 },
+  defensive: { attack: 0.7, guard: 1.35, power: 0.95 },
 });
 
-/** Adversários do computador: escala dos números do jogador. */
+/** Adversários do computador: escala dos números do jogador e a mão da IA. */
 const TIERS = Object.freeze({
-  easy: { mul: 0.78, purse: 15 },
-  even: { mul: 1, purse: 40 },
-  hard: { mul: 1.2, purse: 90 },
+  easy: { mul: 0.78, purse: 15, ai: 0.7 },
+  even: { mul: 1, purse: 40, ai: 1 },
+  hard: { mul: 1.2, purse: 90, ai: 1.25 },
 });
 
-/** Códigos da linha do tempo (o aparelho tem a mesma lista). */
+/** Eventos (o aparelho tem a mesma lista): [t, código, quem, …]. */
 const EV = Object.freeze({
-  BELL: 0, // início de round (who = round 1..3)
-  BREAK: 1, // fim de round (who = round)
-  PUNCH: 2, // [t, who, 2, kind, res, dmg, zone]: kind índice de PUNCH_KINDS; res 0 erro 1 bloqueio 2 esquiva 3 acerto 4 limpo
-  DOWN: 3, // [t, who, 3, kd]
-  COUNT: 4, // [t, who, 4, n]
-  UP: 5, // [t, who, 5]
-  KO: 6, // [t, who(caído), 6, tko?1:0]
-  STUN: 7, // [t, who, 7]
-  END: 8, // [t, winner(-1 empate), 8]
+  BELL: 0, // [t, 0, round]
+  BREAK: 1, // [t, 1, round]
+  PUNCH: 2, // [t, 2, quem bateu, res, dano, mão]
+  DOWN: 3, // [t, 3, quem caiu, kd]
+  COUNT: 4, // [t, 4, quem, n]
+  UP: 5, // [t, 5, quem]
+  KO: 6, // [t, 6, quem caiu, tko?1:0]
+  STUN: 7, // [t, 7, quem]
+  END: 8, // [t, 8, vencedor (-1 empate)]
 });
 const RES = Object.freeze({ MISS: 0, BLOCK: 1, SLIP: 2, HIT: 3, CLEAN: 4 });
+
+/** Fases (estado). */
+const PH = Object.freeze({ INTRO: 0, ROUND: 1, BREAK: 2, COUNT: 3, END: 4 });
+
+/** Onde cada um fica na apresentação e no intervalo. */
+const CORNERS = Object.freeze([
+  { x: -1.6, z: -0.4 },
+  { x: 1.6, z: 0.4 },
+]);
 
 const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100;
+const r3 = (v) => Math.round(v * 1000) / 1000;
 const sq = (v) => Math.sqrt(clamp(v));
 
 function rng(seed) {
@@ -196,387 +238,618 @@ function cpuStats(base, tier, seed) {
   };
 }
 
-// ═══ A LUTA ═══
+// ═══ A PARTIDA ═══
+
+/** Duração (s, no ritmo 1) de um pedaço. */
+const pieceDur = (p) => (PIECES[p].to - PIECES[p].from) / FPS;
+
+/** Combo válido vindo do aparelho (1 a 3 pedaços conhecidos) ou null. */
+function validCombo(list) {
+  if (!Array.isArray(list) || list.length < 1 || list.length > MAX_PIECES) return null;
+  const out = list.map((v) => Number(v));
+  return out.every((v) => Number.isInteger(v) && v >= 0 && v < PIECES.length) ? out : null;
+}
+
+/** Sorteia um combo de `n` pedaços (sem repetir o mesmo pedaço em seguida). */
+function randomCombo(R, n) {
+  const out = [];
+  const sum = PIECE_W.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < n; i++) {
+    let k = 0;
+    for (let tries = 0; tries < 4; tries++) {
+      let r = R() * sum;
+      k = 0;
+      while (k < PIECE_W.length - 1 && (r -= PIECE_W[k]) > 0) k++;
+      if (k !== out[out.length - 1]) break;
+    }
+    out.push(k);
+  }
+  return out;
+}
 
 /**
- * Luta inteira, de uma vez. `a` e `b` = { stats, strategy }. Devolve a
- * linha do tempo para os aparelhos e o resultado (ver summary()).
+ * Uma luta ao vivo. `corners` = [{ stats, cpu, tier, strategy }, …].
+ * A sala chama input() com o que chega dos aparelhos, step() a cada TICK e
+ * snapshot() para mandar; `ev` acumula os eventos desde o último snapshot.
  */
-function simulate(a, b, seed) {
-  const R = rng(seed);
-  const T = BOXE.TICK;
-  const F = [a, b].map((x, i) => {
-    const f = fighter(x.stats, x.strategy);
-    return {
-      i,
-      f,
-      x: i === 0 ? -1.6 : 1.6,
-      z: i === 0 ? -0.4 : 0.4,
-      blood: 100,
-      bloodMax: 100,
-      stam: 100,
-      stamMax: 100,
-      act: null, // { kind, t0, dur, hits, next }
-      cool: 0.6 + R() * 0.5,
-      move: "in",
-      side: R() < 0.5 ? -1 : 1,
-      moveFor: 0,
-      guard: 1,
-      stun: 0,
-      down: false,
-      kd: 0,
-      thrown: 0,
-      landed: 0,
-      dmgDealt: 0,
-      dmgTaken: 0,
-      roundPts: 0,
-    };
-  });
-  const ev = [];
-  const smp = [[], []];
-  const cards = [];
-  let t = 0;
-  let nextSample = 0;
-  let result = null;
+class Match {
+  constructor(corners, seed, opts = {}) {
+    this.R = rng(seed);
+    this.seed = seed;
+    this.intro = opts.intro ?? BOXE.INTRO_S;
+    this.t = -this.intro;
+    this.phase = PH.INTRO;
+    this.round = 1;
+    this.clock = BOXE.ROUND_S;
+    this.breakLeft = 0;
+    this.count = null; // { who, n, next, will, need, riseAt }
+    this.result = null;
+    this.ev = [];
+    this.cards = [];
+    this.roundPts = [0, 0];
+    this.kdRound = [0, 0];
+    this.activeS = 0;
+    this.F = corners.map((c, i) => {
+      const f = fighter(c.stats, c.strategy);
+      return {
+        i,
+        f,
+        cpu: !!c.cpu,
+        ai: (TIERS[c.tier] || TIERS.even).ai,
+        x: CORNERS[i].x,
+        z: CORNERS[i].z,
+        face: 0,
+        kx: 0,
+        kz: 0,
+        blood: 100,
+        bloodMax: 100,
+        stam: 100,
+        stamMax: 100,
+        act: { code: ACT.WARM, seq: 1, t0: this.t, rate: 1, cid: 0, pieces: [], hits: [], end: Infinity, open: 0, close: 0 },
+        stun: 0,
+        down: false,
+        kd: 0,
+        move: { x: 0, z: 0, at: -Infinity },
+        taps: 0,
+        tally: { thrown: 0, landed: 0, kd: 0, dmg: 0, taken: 0 },
+        aiCool: 0.8 + this.R() * 0.6,
+        aiDir: { x: 0, z: 0 },
+        aiSide: this.R() < 0.5 ? -1 : 1,
+        aiSeen: 0,
+        aiDodgeAt: null,
+      };
+    });
+    this.seq = 1;
+  }
 
-  const sample = () => {
-    for (const p of F) smp[p.i].push(r2(p.x), r2(p.z), Math.round(p.blood), Math.round(p.stam));
-  };
-  const sampleTo = (until) => {
-    while (nextSample <= until + 1e-9) {
-      sample();
-      nextSample = r2(nextSample + BOXE.SAMPLE);
-    }
-  };
-  const stamF = (p) => clamp(p.stam / 100);
+  // ── números de cada um agora ───────────────────────────────────────────────
+  stamF(A) {
+    return clamp(A.stam / 100);
+  }
+  /** Ritmo do combo (mão rápida, fôlego). */
+  atkRate(A) {
+    return r3(clamp(0.85 + 0.55 * A.f.hands, 0.8, 1.45) * (0.72 + 0.28 * this.stamF(A)));
+  }
+  /** Pernas (m/s). */
+  footSpeed(A) {
+    return r3(1.55 * (0.75 + 0.45 * A.f.hands) * (0.6 + 0.4 * this.stamF(A)));
+  }
+  canAct(A) {
+    if (this.phase !== PH.ROUND || A.down || A.stun > 0) return false;
+    const a = A.act;
+    return a.code === ACT.NONE || this.t >= a.end;
+  }
 
-  /** Golpe chega: decide erro, bloqueio, esquiva, acerto ou limpo. */
-  const land = (A, D, kind, k) => {
-    const P = PUNCHES[kind];
-    const dist = Math.hypot(A.x - D.x, A.z - D.z);
-    const out = [r2(t), A.i, EV.PUNCH, PUNCH_KINDS.indexOf(kind), RES.MISS, 0, 0];
-    if (D.down || dist > P.reach + 0.25) {
-      A.stam = Math.max(0, A.stam - P.stam * 0.4);
-      ev.push(out);
-      return;
-    }
-    const busy = !!D.act;
-    const cornered = Math.max(Math.abs(D.x), Math.abs(D.z)) > BOXE.RING - 0.25 ? 0.85 : 1;
-    const defense = D.f.reflex * (0.22 + 0.36 * D.guard) * (0.45 + 0.55 * stamF(D)) * (busy ? 0.45 : 1) * (D.stun > 0 ? 0.35 : 1) * cornered * D.f.sg.guard;
-    const hitP = clamp(A.f.accuracy * P.acc * (0.55 + 0.45 * stamF(A)) * (0.85 + 0.3 * A.f.hands) - defense * 0.75, 0.12, 0.9);
-    if (R() > hitP) {
-      // não entrou: guarda alta segura; senão escapou (ou passou longe)
-      const blocked = D.guard > 0.55 && !busy && R() < 0.75;
-      if (blocked) {
-        out[4] = RES.BLOCK;
-        const chip = BOXE.DMG * P.dmg[k] * A.f.power * 0.12;
-        D.blood = Math.max(0.5, D.blood - chip);
-        D.stam = Math.max(0, D.stam - P.dmg[k] * 0.25);
-        out[5] = r1(chip);
-      } else {
-        out[4] = R() < 0.6 ? RES.SLIP : RES.MISS;
-        A.stam = Math.max(0, A.stam - P.stam * 0.35);
+  setAct(A, code, extra = {}) {
+    A.act = { code, seq: ++this.seq, t0: r3(this.t), rate: 1, cid: 0, pieces: [], hits: [], end: Infinity, open: 0, close: 0, ...extra };
+    return A.act;
+  }
+
+  // ── entrada ───────────────────────────────────────────────────────────────
+
+  /**
+   * Do aparelho: `m` = [x, z] direção no chão (|m| ≤ 1), `a` = combo pedido
+   * (lista de pedaços) com `c` = id do aparelho, `d` = esquivar, `k` = toques
+   * para levantar. Lixo é ignorado.
+   */
+  input(slot, msg) {
+    const A = this.F[slot];
+    if (!A || A.cpu || !msg || typeof msg !== "object") return;
+    if (Array.isArray(msg.m) && msg.m.length === 2) {
+      let x = Number(msg.m[0]);
+      let z = Number(msg.m[1]);
+      if (Number.isFinite(x) && Number.isFinite(z)) {
+        const n = Math.hypot(x, z);
+        if (n > 1) (x /= n), (z /= n);
+        A.move = { x, z, at: this.t };
       }
-      ev.push(out);
+    }
+    if (msg.a !== undefined) this.attack(A, validCombo(msg.a), Number(msg.c) >>> 0);
+    if (msg.d) this.dodge(A);
+    if (msg.k) A.taps = Math.min(12, A.taps + Math.min(4, Math.max(0, Number(msg.k) | 0)));
+  }
+
+  attack(A, combo, cid = 0) {
+    if (!this.canAct(A) || A.stam < 6) return false;
+    const pieces = combo || randomCombo(this.R, 1 + Math.floor(this.R() * MAX_PIECES));
+    const rate = this.atkRate(A);
+    const hits = [];
+    let off = 0;
+    for (const p of pieces) {
+      const P = PIECES[p];
+      for (const [fr, hand, w] of P.hits) hits.push({ at: r3(this.t + (off + (fr - P.from) / FPS) / rate), hand, w });
+      off += pieceDur(p);
+    }
+    this.setAct(A, ACT.COMBO, { rate, cid, pieces, hits, end: r3(this.t + off / rate) });
+    return true;
+  }
+
+  dodge(A) {
+    if (!this.canAct(A) || A.stam < DODGE.stam) return false;
+    const rate = r3(1 + 0.35 * A.f.reflex);
+    A.stam = Math.max(0, A.stam - DODGE.stam * (1.1 - 0.3 * A.f.engine));
+    this.setAct(A, ACT.DODGE, {
+      rate,
+      open: r3(this.t + DODGE.open / rate),
+      close: r3(this.t + (DODGE.close / rate) * (0.85 + 0.3 * A.f.reflex)),
+      end: r3(this.t + (DODGE.to - DODGE.from) / FPS / rate),
+    });
+    return true;
+  }
+
+  // ── a pancada ─────────────────────────────────────────────────────────────
+
+  land(A, D, hit) {
+    const out = [r2(this.t), EV.PUNCH, A.i, RES.MISS, 0, hit.hand];
+    A.tally.thrown++;
+    const cost = 4.2 * hit.w * (1.1 - 0.3 * A.f.engine);
+    A.stam = Math.max(0, A.stam - cost);
+    A.stamMax = Math.max(55, A.stamMax - cost * 0.06);
+    const dist = Math.hypot(A.x - D.x, A.z - D.z);
+    const whiff = (1 - A.f.accuracy) * 0.3;
+    if (D.down || dist > BOXE.REACH || this.R() < whiff) {
+      A.stam = Math.max(0, A.stam - cost * 0.4);
+      this.ev.push(out);
       return;
     }
-    const cleanP = 0.07 + 0.22 * (1 - stamF(D)) + (D.stun > 0 ? 0.2 : 0) + (kind === "upper" || kind === "hook" ? 0.04 : 0);
-    const clean = R() < cleanP;
-    const body = kind !== "jab" && R() < 0.3;
-    let dmg = (BOXE.DMG * P.dmg[k] * A.f.power * A.f.sg.power * (0.55 + 0.45 * stamF(A)) * (clean ? 1.6 : 1) * (0.82 + R() * 0.36)) / D.f.chin;
-    if (body) dmg *= 0.6;
+    const da = D.act;
+    if (da.code === ACT.DODGE && this.t >= da.open && this.t <= da.close) {
+      out[3] = RES.SLIP;
+      A.stam = Math.max(0, A.stam - cost * 0.3);
+      this.ev.push(out);
+      return;
+    }
+    const sf = this.stamF(D);
+    const guarding = (da.code === ACT.NONE || this.t >= da.end || da.code === ACT.BLOCK) && D.stun <= 0;
+    const blockP = guarding ? clamp((0.18 + 0.5 * D.f.reflex) * (0.5 + 0.5 * sf) * D.f.sg.guard, 0, 0.6) : 0;
+    let dmg = (BOXE.DMG * 6.2 * hit.w * A.f.power * A.f.sg.power * (0.55 + 0.45 * this.stamF(A)) * (0.85 + this.R() * 0.3)) / D.f.chin;
+    if (this.R() < blockP) {
+      const chip = Math.max(0.3, dmg * 0.18);
+      D.blood = Math.max(0.5, D.blood - chip);
+      D.stam = Math.max(0, D.stam - hit.w * 2);
+      D.tally.taken += chip;
+      out[3] = RES.BLOCK;
+      out[4] = r1(chip);
+      this.ev.push(out);
+      this.react(D, "block", A, 0.05);
+      return;
+    }
+    const cleanP = 0.06 + 0.22 * (1 - sf) + (D.stun > 0 ? 0.18 : 0) + (da.code === ACT.COMBO && this.t < da.end ? 0.1 : 0);
+    const clean = this.R() < cleanP;
+    if (clean) dmg *= 1.6;
     dmg = Math.max(0.5, dmg);
     D.blood = Math.max(0, D.blood - dmg);
-    D.stam = Math.max(0, D.stam - dmg * (body ? 1.1 : 0.35));
-    D.bloodMax = Math.max(40, D.bloodMax - dmg * 0.18);
-    A.landed++;
-    A.dmgDealt += dmg;
-    D.dmgTaken += dmg;
-    A.roundPts += dmg * (clean ? 1.3 : 1);
-    out[4] = clean ? RES.CLEAN : RES.HIT;
-    out[5] = r1(dmg);
-    out[6] = body ? 1 : 0;
-    ev.push(out);
-    // empurrão do golpe
+    D.stam = Math.max(0, D.stam - dmg * 0.35);
+    D.bloodMax = Math.max(40, D.bloodMax - dmg * 0.15);
+    A.tally.landed++;
+    A.tally.dmg += dmg;
+    D.tally.taken += dmg;
+    this.roundPts[A.i] += dmg * (clean ? 1.3 : 1);
+    out[3] = clean ? RES.CLEAN : RES.HIT;
+    out[4] = r1(dmg);
+    this.ev.push(out);
+    if (D.blood <= 0) return; // a queda vem no fim do passo
+    // um socão no meio do combo dele corta o combo; pancadinha não
+    const kind = clean && dmg >= 8 ? "stagger" : dmg >= 6 || clean ? "heavy" : "light";
+    const interrupt = !(da.code === ACT.COMBO && this.t < da.end && dmg < 3.5);
+    if (interrupt) this.react(D, kind, A, Math.min(0.35, dmg * 0.03));
+    if (kind === "stagger") this.ev.push([r2(this.t), EV.STUN, D.i]);
+  }
+
+  react(D, kind, A, push) {
+    const r = REACT[kind];
+    this.setAct(D, kind === "block" ? ACT.BLOCK : kind === "light" ? ACT.LIGHT : kind === "heavy" ? ACT.HEAVY : ACT.STAGGER, { end: r3(this.t + r.dur) });
+    D.stun = Math.max(D.stun, r.stun);
+    const dx = D.x - A.x;
+    const dz = D.z - A.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const k = (kind === "stagger" ? 1.6 : 1) * push * 6;
+    D.kx += (dx / d) * k;
+    D.kz += (dz / d) * k;
+  }
+
+  // ── o passo ───────────────────────────────────────────────────────────────
+
+  step() {
+    const T = BOXE.TICK;
+    this.t = r3(this.t + T);
+    if (this.phase === PH.END) {
+      this.walk(T, false);
+      return;
+    }
+    if (this.phase === PH.INTRO) {
+      if (this.t >= 0) this.bell(1);
+      return;
+    }
+    if (this.phase === PH.BREAK) {
+      this.breakLeft -= T;
+      this.walk(T, true);
+      if (this.breakLeft <= 0) this.bell(this.round + 1);
+      return;
+    }
+    if (this.phase === PH.COUNT) {
+      this.counting();
+      this.walk(T, false);
+      return;
+    }
+    // round
+    this.clock -= T;
+    this.activeS += T;
+    const order = this.R() < 0.5 ? [0, 1] : [1, 0];
+    for (const i of order) {
+      const A = this.F[i];
+      const D = this.F[1 - i];
+      if (A.stun > 0) A.stun = Math.max(0, A.stun - T);
+      if (A.cpu) this.ai(A, D, T);
+      const a = A.act;
+      if (a.code === ACT.COMBO) {
+        while (a.hits.length && this.t >= a.hits[0].at - 1e-9) this.land(A, D, a.hits.shift());
+      }
+      if (a.code !== ACT.NONE && a.code !== ACT.DOWN && this.t >= a.end) A.act = { ...a, code: ACT.NONE, hits: [] };
+    }
+    this.walk(T, false);
+    this.regen(T);
+    for (const D of this.F) {
+      if (D.blood <= 0 && !D.down) {
+        this.knockdown(D, this.F[1 - D.i]);
+        return;
+      }
+    }
+    if (this.clock <= 1e-9) this.endRound();
+  }
+
+  regen(T) {
+    for (const A of this.F) {
+      const busy = A.act.code !== ACT.NONE && this.t < A.act.end;
+      const still = Math.hypot(A.move.x, A.move.z) < 0.2;
+      const r = A.f.engine * (busy ? 1.2 : still ? 7 : 4.5) * (0.7 + 0.3 * clamp(A.blood / 60));
+      A.stam = Math.min(A.stamMax, A.stam + r * T);
+    }
+  }
+
+  /** Pernas: o joystick (ou a IA), o avanço no combo, o empurrão e as cordas. */
+  walk(T, toCorner) {
+    for (const A of this.F) {
+      const D = this.F[1 - A.i];
+      let vx = 0;
+      let vz = 0;
+      if (toCorner || this.phase === PH.END || this.phase === PH.COUNT) {
+        if (toCorner) {
+          const dx = CORNERS[A.i].x - A.x;
+          const dz = CORNERS[A.i].z - A.z;
+          const d = Math.hypot(dx, dz);
+          if (d > 0.05) (vx = (dx / d) * Math.min(1.2, d / T)), (vz = (dz / d) * Math.min(1.2, d / T));
+        } else if (this.phase === PH.COUNT && this.count && this.count.who !== A.i) {
+          // quem derrubou vai para longe (canto neutro)
+          const dx = A.x - D.x;
+          const dz = A.z - D.z;
+          const d = Math.hypot(dx, dz) || 1;
+          if (d < 2) (vx = (dx / d) * 1.1), (vz = (dz / d) * 1.1);
+        }
+      } else if (!A.down) {
+        const fs = this.footSpeed(A) * (A.stun > 0 ? 0.3 : 1);
+        const a = A.act;
+        const acting = a.code !== ACT.NONE && this.t < a.end;
+        const m = A.cpu ? A.aiDir : this.t - A.move.at <= BOXE.INPUT_TTL ? A.move : { x: 0, z: 0 };
+        const k = acting ? (a.code === ACT.DODGE ? 0.35 : 0.2) : 1;
+        vx = m.x * fs * k;
+        vz = m.z * fs * k;
+        // no combo, entra no golpe
+        if (a.code === ACT.COMBO && acting) {
+          const dx = D.x - A.x;
+          const dz = D.z - A.z;
+          const d = Math.hypot(dx, dz) || 1;
+          if (d > BOXE.RANGE) (vx += (dx / d) * 0.9), (vz += (dz / d) * 0.9);
+        }
+      }
+      A.x += (vx + A.kx) * T;
+      A.z += (vz + A.kz) * T;
+      const decay = Math.exp(-7 * T);
+      A.kx *= decay;
+      A.kz *= decay;
+      A.x = clamp(A.x, -BOXE.RING, BOXE.RING);
+      A.z = clamp(A.z, -BOXE.RING, BOXE.RING);
+    }
+    this.separate();
+    for (const A of this.F) {
+      const D = this.F[1 - A.i];
+      A.face = Math.atan2(D.x - A.x, D.z - A.z);
+    }
+  }
+
+  /** Ninguém atravessa ninguém — nem encurralado nas cordas (escorrega ao longo delas). */
+  separate() {
+    const [a, b] = this.F;
+    const RING = BOXE.RING;
+    for (let pass = 0; pass < 3; pass++) {
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const d = Math.hypot(dx, dz);
+      if (d >= BOXE.MIN_SEP - 1e-9) return;
+      let ux = d > 1e-6 ? dx / d : 1;
+      let uz = d > 1e-6 ? dz / d : 0;
+      if (pass === 2) {
+        // os dois presos: escorrega pela corda (perpendicular à linha)
+        const k = ux;
+        ux = -uz;
+        uz = k;
+      }
+      const push = (BOXE.MIN_SEP - d) / (pass === 0 ? 2 : 1);
+      if (pass === 0) {
+        a.x = clamp(a.x - ux * push, -RING, RING);
+        a.z = clamp(a.z - uz * push, -RING, RING);
+      }
+      b.x = clamp(b.x + ux * push, -RING, RING);
+      b.z = clamp(b.z + uz * push, -RING, RING);
+      if (pass === 1 && Math.hypot(b.x - a.x, b.z - a.z) < BOXE.MIN_SEP - 1e-9) {
+        a.x = clamp(a.x - ux * push, -RING, RING);
+        a.z = clamp(a.z - uz * push, -RING, RING);
+      }
+    }
+  }
+
+  // ── o computador ──────────────────────────────────────────────────────────
+
+  ai(A, D, T) {
+    const R = this.R;
+    const dist = Math.hypot(D.x - A.x, D.z - A.z);
     const ux = (D.x - A.x) / (dist || 1);
     const uz = (D.z - A.z) / (dist || 1);
-    const push = Math.min(0.35, dmg * 0.025);
-    D.x = clamp(D.x + ux * push, -BOXE.RING, BOXE.RING);
-    D.z = clamp(D.z + uz * push, -BOXE.RING, BOXE.RING);
-    if (D.act && dmg > 5) D.act = null; // interrompido
-    if (dmg >= BOXE.STUN_DMG || (clean && dmg > 6)) {
-      D.stun = 0.5 + Math.min(0.9, dmg * 0.04);
-      ev.push([r2(t), D.i, EV.STUN]);
+    // viu o outro começar um combo: esquiva (pelo reflexo), depois de reagir
+    const da = D.act;
+    if (da.code === ACT.COMBO && da.seq !== A.aiSeen && this.t < da.end) {
+      A.aiSeen = da.seq;
+      if (R() < clamp(0.42 * A.f.reflex * A.ai * A.f.sg.guard, 0, 0.6)) A.aiDodgeAt = this.t + (0.08 + 0.22 * R()) / (0.6 + 0.6 * A.f.reflex);
     }
-  };
-
-  /** Escolhe o que fazer agora (sem golpe em andamento). */
-  const decide = (A, D) => {
-    const dist = Math.hypot(A.x - D.x, A.z - D.z);
-    const sf = stamF(A);
+    if (A.aiDodgeAt !== null && this.t >= A.aiDodgeAt) {
+      A.aiDodgeAt = null;
+      if (this.dodge(A)) return;
+    }
+    A.aiCool -= T;
+    if (A.aiCool > 0 || !this.canAct(A)) return;
+    const sf = this.stamF(A);
     const hurt = A.blood < 30;
     const oppHurt = D.blood < 35 || D.stun > 0;
-    const sg = A.f.sg;
-    // guarda: sobe com a estratégia e desce com o cansaço
-    A.guard = clamp((0.55 + 0.35 * sg.guard - 0.25) * (0.5 + 0.5 * sf) + (hurt ? 0.2 : 0));
-    if (dist > PUNCHES.jab.reach + 0.1) {
-      A.move = hurt && !oppHurt && R() < 0.5 ? "circle" : "in";
-      A.moveFor = 0.4 + R() * 0.5;
-      A.cool = 0.1;
+    if (dist > BOXE.RANGE + 0.12) {
+      const circle = hurt && !oppHurt ? 0.8 : 0.25;
+      A.aiDir = { x: ux - uz * A.aiSide * circle, z: uz + ux * A.aiSide * circle };
+      const n = Math.hypot(A.aiDir.x, A.aiDir.z) || 1;
+      A.aiDir.x /= n;
+      A.aiDir.z /= n;
+      A.aiCool = 0.25 + R() * 0.2;
       return;
     }
-    let attack = (0.32 + 0.4 * A.f.aggression) * sg.attack * (0.35 + 0.65 * sf) * (oppHurt ? 1.5 : 1) * (hurt ? 0.6 : 1);
-    if (A.stam < 8) attack *= 0.15;
-    if (R() < attack) {
-      // escolhe o golpe
-      const w = {
-        jab: 3.2,
-        cross: 2.2,
-        hook: dist < 1.15 ? 1.7 : 0.6,
-        upper: dist < 1.0 ? 1.4 : 0.2,
-        combo: sf > 0.45 ? 1.1 * (oppHurt ? 1.8 : 1) : 0.2,
-      };
-      if (oppHurt) {
-        w.hook *= 1.6;
-        w.upper *= 1.6;
-      }
-      if (sf < 0.3) {
-        w.jab *= 1.5;
-        w.combo *= 0.2;
-      }
-      let sum = 0;
-      for (const k of PUNCH_KINDS) sum += w[k];
-      let r = R() * sum;
-      let kind = "jab";
-      for (const k of PUNCH_KINDS) {
-        r -= w[k];
-        if (r <= 0) {
-          kind = k;
-          break;
-        }
-      }
-      const P = PUNCHES[kind];
-      // mão lenta (cansado/destreinado) = o golpe demora mais
-      const slow = 1 / (0.75 + 0.35 * A.f.hands) / (0.8 + 0.2 * sf);
-      A.act = { kind, t0: t, dur: P.dur * slow, hits: P.hits.map((h) => h * slow), next: 0 };
-      A.stam = Math.max(0, A.stam - P.stam * (1.1 - 0.3 * A.f.engine));
-      A.stamMax = Math.max(55, A.stamMax - P.stam * 0.07);
-      A.thrown++;
-      A.cool = 0.12 + R() * 0.35;
+    let p = (0.3 + 0.4 * A.f.aggression) * A.f.sg.attack * A.ai * (0.3 + 0.7 * sf) * (oppHurt ? 1.5 : 1) * (hurt ? 0.6 : 1);
+    if (A.stam < 12) p *= 0.15;
+    if (R() < p) {
+      const n = sf > 0.6 && R() < 0.55 ? 1 + Math.floor(R() * MAX_PIECES) : 1 + (R() < 0.35 ? 1 : 0);
+      A.aiDir = { x: 0, z: 0 };
+      this.attack(A, randomCombo(R, Math.min(MAX_PIECES, n)));
+      A.aiCool = 0.15 + R() * 0.35 / A.ai;
       return;
     }
-    // sem golpe: anda (recua machucado, cerca, gira)
     const r = R();
-    if (hurt && r < 0.55) A.move = "out";
-    else if (r < 0.45) A.move = "circle";
-    else if (dist > BOXE.RANGE + 0.1) A.move = "in";
-    else A.move = "hold";
-    if (R() < 0.3) A.side = -A.side;
-    A.moveFor = 0.35 + R() * 0.6;
-    A.cool = (0.25 + R() * 0.45) / (0.6 + 0.5 * A.f.hands);
-  };
+    if (hurt && r < 0.5) A.aiDir = { x: -ux, z: -uz };
+    else if (r < 0.55) A.aiDir = { x: -uz * A.aiSide, z: ux * A.aiSide };
+    else if (dist < BOXE.RANGE - 0.15) A.aiDir = { x: -ux * 0.6, z: -uz * 0.6 };
+    else A.aiDir = { x: 0, z: 0 };
+    if (R() < 0.25) A.aiSide = -A.aiSide;
+    A.aiCool = (0.25 + R() * 0.4) / (0.6 + 0.5 * A.f.hands);
+  }
 
-  const step = (A, D) => {
-    if (A.stun > 0) A.stun = Math.max(0, A.stun - T);
-    // golpe em andamento
-    if (A.act) {
-      const a = A.act;
-      while (a.next < a.hits.length && t - a.t0 >= a.hits[a.next]) land(A, D, a.kind, a.next++);
-      if (t - a.t0 >= a.dur) A.act = null;
-    } else {
-      A.cool -= T;
-      if (A.cool <= 0 && A.stun <= 0) decide(A, D);
-    }
-    // pernas
-    const dx = D.x - A.x;
-    const dz = D.z - A.z;
-    const dist = Math.hypot(dx, dz) || 1;
-    const ux = dx / dist;
-    const uz = dz / dist;
-    const foot = (0.7 + 0.8 * A.f.hands) * (0.55 + 0.45 * stamF(A)) * (A.stun > 0 ? 0.3 : 1) * (A.act ? 0.25 : 1);
-    let vx = 0;
-    let vz = 0;
-    A.moveFor -= T;
-    const mv = A.moveFor > 0 ? A.move : dist > BOXE.RANGE + 0.15 ? "in" : "hold";
-    if (mv === "in" && dist > BOXE.RANGE - 0.05) (vx = ux), (vz = uz);
-    else if (mv === "out") (vx = -ux), (vz = -uz);
-    else if (mv === "circle") (vx = -uz * A.side + ux * (dist - BOXE.RANGE)), (vz = ux * A.side + uz * (dist - BOXE.RANGE));
-    if (dist < 0.8) (vx -= ux), (vz -= uz);
-    const n = Math.hypot(vx, vz);
-    if (n > 0) {
-      A.x += (vx / n) * foot * T;
-      A.z += (vz / n) * foot * T;
-    }
-    // nas cordas: escorrega para o lado (gira pelo ringue)
-    if (Math.abs(A.x) > BOXE.RING) A.x = Math.sign(A.x) * BOXE.RING;
-    if (Math.abs(A.z) > BOXE.RING) A.z = Math.sign(A.z) * BOXE.RING;
-    // fôlego volta com a guarda; teto desce ao longo da luta
-    const regen = A.f.engine * (A.act ? 0.6 : A.move === "hold" ? 4.2 : 3) * (0.7 + 0.3 * clamp(A.blood / 60));
-    A.stam = Math.min(A.stamMax, A.stam + regen * T);
-  };
+  // ── sinos, quedas, fim ────────────────────────────────────────────────────
 
-  /** Contagem de uma queda (o relógio do round fica parado). */
-  const knockdown = (D, A) => {
-    D.kd++;
-    D.down = true;
-    D.act = null;
-    A.act = null;
-    A.roundPts += 12;
-    ev.push([r2(t), D.i, EV.DOWN, D.kd]);
-    sampleTo(t);
-    if (D.kd >= BOXE.MAX_KD) {
-      t = r2(t + BOXE.FALL_S);
-      ev.push([r2(t), D.i, EV.KO, 1]);
-      return true;
+  bell(round) {
+    this.round = round;
+    this.phase = PH.ROUND;
+    this.clock = BOXE.ROUND_S;
+    this.roundPts = [0, 0];
+    this.kdRound = this.F.map((p) => p.kd);
+    for (const A of this.F) {
+      A.act = { ...A.act, code: ACT.NONE, hits: [] };
+      A.stun = 0;
+      A.aiCool = 0.4 + this.R() * 0.5;
     }
-    const riseP = clamp(0.42 + 0.55 * D.f.chin - 0.22 * (D.kd - 1) - (D.dmgTaken > 160 ? 0.15 : 0), 0.05, 0.95);
-    const rises = R() < riseP;
-    const at = rises ? 3 + Math.floor(R() * 6) : 10;
-    let c0 = t + BOXE.FALL_S;
-    for (let n = 1; n <= at; n++) {
-      const tc = r2(c0 + (n - 1) * BOXE.COUNT_S);
-      // posições paradas enquanto conta
-      sampleTo(tc);
-      ev.push([tc, D.i, EV.COUNT, n]);
-    }
-    t = r2(c0 + (at - 1) * BOXE.COUNT_S + 0.4);
-    if (!rises) {
-      ev.push([r2(t), D.i, EV.KO, 0]);
-      return true;
-    }
-    ev.push([r2(t), D.i, EV.UP]);
-    D.down = false;
-    D.blood = Math.min(D.bloodMax, 18 + 26 * D.f.chin * (0.8 + R() * 0.4) - 4 * (D.kd - 1));
-    D.stam = Math.min(D.stamMax, D.stam + 15);
-    D.stun = 0.8;
-    // o árbitro separa
-    const dx = D.x - A.x;
-    const dz = D.z - A.z;
-    const dd = Math.hypot(dx, dz) || 1;
-    A.x = clamp(D.x - (dx / dd) * 1.9, -BOXE.RING, BOXE.RING);
-    A.z = clamp(D.z - (dz / dd) * 1.9, -BOXE.RING, BOXE.RING);
-    t = r2(t + BOXE.RESUME_S);
-    sampleTo(t);
-    return false;
-  };
+    this.ev.push([r2(this.t), EV.BELL, round]);
+  }
 
-  sample();
-  nextSample = BOXE.SAMPLE;
-  for (let round = 1; round <= BOXE.ROUNDS && !result; round++) {
-    if (round > 1) {
-      // intervalo: cada um no seu canto, o canto cuida
-      for (const p of F) {
-        p.x = p.i === 0 ? -1.6 : 1.6;
-        p.z = p.i === 0 ? -0.4 : 0.4;
-        p.blood = Math.min(p.bloodMax, p.blood + 8 + 10 * p.f.chin);
-        p.stam = Math.min(p.stamMax, p.stam + 30 * p.f.engine + 10);
-        p.act = null;
-        p.stun = 0;
-        p.cool = 0.5 + R() * 0.4;
-      }
-      t = r2(t + BOXE.BREAK_S);
-      sampleTo(t);
-    }
-    ev.push([r2(t), round, EV.BELL]);
-    for (const p of F) p.roundPts = 0;
-    const kd0 = F.map((p) => p.kd);
-    let clock = 0;
-    while (clock < BOXE.ROUND_S - 1e-9 && !result) {
-      t = r2(t + T);
-      clock += T;
-      const order = R() < 0.5 ? [0, 1] : [1, 0];
-      for (const i of order) step(F[i], F[1 - i]);
-      sampleTo(t);
-      for (const D of F) {
-        if (D.blood <= 0 && !D.down) {
-          const A = F[1 - D.i];
-          if (knockdown(D, A)) {
-            result = { winner: A.i, method: D.kd >= BOXE.MAX_KD ? "tko" : "ko", round, t: r2(t) };
-            break;
-          }
-        }
-      }
-    }
-    // cartão do round: 10 × 9 para quem fez mais; cada queda tira 1
-    const [pa, pb] = F.map((p) => p.roundPts);
+  endRound() {
+    const [pa, pb] = this.roundPts;
     let ca = 10;
     let cb = 10;
-    if (Math.abs(pa - pb) > 1.5) pa > pb ? (cb = 9) : (ca = 9);
-    ca -= F[0].kd - kd0[0];
-    cb -= F[1].kd - kd0[1];
-    cards.push([Math.max(7, ca), Math.max(7, cb)]);
-    if (!result) ev.push([r2(t), round, EV.BREAK]);
+    if (Math.abs(pa - pb) > 3) pa > pb ? (cb = 9) : (ca = 9);
+    ca -= this.F[0].kd - this.kdRound[0];
+    cb -= this.F[1].kd - this.kdRound[1];
+    this.cards.push([Math.max(7, ca), Math.max(7, cb)]);
+    this.ev.push([r2(this.t), EV.BREAK, this.round]);
+    if (this.round >= BOXE.ROUNDS) {
+      const sa = this.cards.reduce((n, c) => n + c[0], 0);
+      const sb = this.cards.reduce((n, c) => n + c[1], 0);
+      this.finish(sa > sb ? 0 : sb > sa ? 1 : -1, sa === sb ? "draw" : "points");
+      return;
+    }
+    this.phase = PH.BREAK;
+    this.breakLeft = BOXE.BREAK_S;
+    for (const A of this.F) {
+      A.blood = Math.min(A.bloodMax, A.blood + 8 + 10 * A.f.chin);
+      A.stam = Math.min(A.stamMax, A.stam + 30 * A.f.engine + 10);
+      A.act = { ...A.act, code: ACT.NONE, hits: [] };
+      A.stun = 0;
+      A.kx = A.kz = 0;
+    }
   }
-  if (!result) {
-    const sa = cards.reduce((n, c) => n + c[0], 0);
-    const sb = cards.reduce((n, c) => n + c[1], 0);
-    result = { winner: sa > sb ? 0 : sb > sa ? 1 : -1, method: sa === sb ? "draw" : "points", round: BOXE.ROUNDS, t: r2(t) };
+
+  knockdown(D, A) {
+    D.kd++;
+    A.tally.kd++;
+    D.down = true;
+    this.setAct(D, ACT.DOWN);
+    if (A.act.code !== ACT.NONE) A.act = { ...A.act, code: ACT.NONE, hits: [] };
+    this.roundPts[A.i] += 12;
+    this.ev.push([r2(this.t), EV.DOWN, D.i, D.kd]);
+    if (D.kd >= BOXE.MAX_KD) {
+      this.ev.push([r2(this.t + BOXE.FALL_S), EV.KO, D.i, 1]);
+      this.finish(A.i, "tko", BOXE.FALL_S);
+      return;
+    }
+    D.taps = 0;
+    const need = 0.42 + 0.2 * (D.kd - 1) + 0.55 * this.R() + (D.tally.taken > 160 ? 0.15 : 0) - 0.25 * (D.f.chin - 0.7);
+    this.count = { who: D.i, n: 0, next: r3(this.t + BOXE.FALL_S), will: 0, need, riseAt: null };
+    this.phase = PH.COUNT;
   }
-  ev.push([r2(t), result.winner, EV.END]);
-  sampleTo(t);
-  const totals = [cards.reduce((n, c) => n + c[0], 0), cards.reduce((n, c) => n + c[1], 0)];
-  return {
-    v: 1,
-    seed,
-    sample: BOXE.SAMPLE,
-    rounds: BOXE.ROUNDS,
-    roundS: BOXE.ROUND_S,
-    breakS: BOXE.BREAK_S,
-    dur: r2(t + BOXE.OUTRO_S),
-    ev,
-    smp,
-    cards,
-    result: { ...result, score: totals },
-    stats: F.map((p) => ({ thrown: p.thrown, landed: p.landed, kd: p.kd, dmg: r1(p.dmgDealt), taken: r1(p.dmgTaken) })),
-    view: F.map((p) => ({ ...p.f.view, conditions: p.f.conditions, strategy: p.f.strategy })),
-  };
+
+  counting() {
+    const c = this.count;
+    const D = this.F[c.who];
+    if (c.riseAt !== null) {
+      if (this.t >= c.riseAt) {
+        // de pé: o árbitro limpa as luvas e volta o round
+        D.down = false;
+        D.blood = Math.min(D.bloodMax, 18 + 26 * D.f.chin * (0.8 + this.R() * 0.4) - 4 * (D.kd - 1));
+        D.stam = Math.min(D.stamMax, D.stam + 15);
+        D.stun = BOXE.RESUME_S + 0.3;
+        D.act = { ...D.act, code: ACT.NONE, hits: [] };
+        this.ev.push([r2(this.t), EV.UP, D.i]);
+        this.count = null;
+        this.phase = PH.ROUND;
+      }
+      return;
+    }
+    if (this.t < c.next) return;
+    c.n++;
+    c.next = r3(c.next + BOXE.COUNT_S);
+    this.ev.push([r2(this.t), EV.COUNT, D.i, c.n]);
+    // a vontade de levantar: o queixo, e os toques de quem está no chão
+    c.will += 0.07 + 0.09 * D.f.chin + 0.035 * D.taps + (D.cpu ? 0.02 * D.ai : 0);
+    D.taps = 0;
+    if (c.n >= 10) {
+      this.ev.push([r2(this.t + 0.4), EV.KO, D.i, 0]);
+      this.finish(1 - D.i, "ko", 0.4);
+      return;
+    }
+    if (c.n >= 3 && c.will >= c.need) {
+      c.riseAt = r3(this.t + BOXE.RISE_S);
+      this.setAct(D, ACT.RISE, { end: c.riseAt });
+    }
+  }
+
+  finish(winner, method, after = 0) {
+    this.phase = PH.END;
+    this.count = null;
+    this.result = { winner, method, round: this.round, t: r2(this.t + after) };
+    this.ev.push([r2(this.t + after), EV.END, winner]);
+    for (const A of this.F) {
+      if (A.act.code === ACT.DOWN) continue;
+      if (winner === A.i) this.setAct(A, ACT.WIN, { t0: r3(this.t + after + 0.8) });
+      else this.setAct(A, ACT.LOSE, { t0: r3(this.t + after + 0.8) });
+    }
+  }
+
+  /** Toalha: quem jogou perde agora. */
+  towel(who) {
+    if (this.result) return false;
+    for (const A of this.F) A.down = false;
+    this.finish(1 - who, "towel");
+    this.result.towel = who;
+    return true;
+  }
+
+  // ── o que vai para os aparelhos ───────────────────────────────────────────
+
+  snapshot() {
+    const ev = this.ev;
+    this.ev = [];
+    const ph = this.phase === PH.ROUND ? [PH.ROUND, this.round, r2(Math.max(0, this.clock))] : this.phase === PH.BREAK ? [PH.BREAK, this.round, r2(Math.max(0, this.breakLeft))] : this.phase === PH.COUNT ? [PH.COUNT, this.round, r2(Math.max(0, this.clock))] : [this.phase, this.round, 0];
+    return {
+      t: r3(this.t),
+      ph,
+      cnt: this.count ? [this.count.who, this.count.n] : null,
+      f: this.F.map((A) => [
+        r3(A.x),
+        r3(A.z),
+        r1(A.blood),
+        r1(A.stam),
+        r1(A.bloodMax),
+        A.act.code,
+        A.act.seq,
+        A.act.t0,
+        A.act.rate,
+        A.act.cid,
+        A.act.pieces,
+        this.footSpeed(A),
+        this.atkRate(A),
+        A.tally.thrown,
+        A.tally.landed,
+        A.tally.kd,
+      ]),
+      ev,
+    };
+  }
+
+  /** O que valeu para `who` (vai para a vida). */
+  summary(who) {
+    const A = this.F[who];
+    const res = this.result || { winner: -1, method: "draw", round: this.round, t: this.t };
+    let outcome;
+    if (res.method === "towel") outcome = res.towel === who ? "loss" : "win";
+    else outcome = res.winner === -1 ? "draw" : res.winner === who ? "win" : "loss";
+    return {
+      outcome,
+      method: res.method,
+      taken: r1(A.tally.taken),
+      thrown: A.tally.thrown,
+      landed: A.tally.landed,
+      kd: A.kd,
+      activeS: Math.round(this.activeS),
+      at: r2(res.t),
+      round: res.round,
+    };
+  }
+
+  /** Placar dos juízes (soma dos rounds fechados). */
+  score() {
+    return [0, 1].map((i) => this.cards.reduce((n, c) => n + c[i], 0));
+  }
+
+  /** Para o aparelho: a tabela dos pedaços e das reações (fonte única daqui). */
+  static table() {
+    return {
+      fps: FPS,
+      pieces: PIECES.map((p) => ({ clip: p.clip, from: (p.from - 1) / (p.n - 1), to: (p.to - 1) / (p.n - 1), dur: r3(pieceDur(PIECES.indexOf(p))), hits: p.hits.map((h) => [r3((h[0] - p.from) / FPS), h[1]]) })),
+      weights: PIECE_W,
+      maxPieces: MAX_PIECES,
+      dodge: { clip: DODGE.clip, from: (DODGE.from - 1) / (DODGE.n - 1), to: (DODGE.to - 1) / (DODGE.n - 1), dur: r3((DODGE.to - DODGE.from) / FPS) },
+      react: Object.fromEntries(Object.entries(REACT).map(([k, r]) => [k, { clip: r.clip, from: (r.from - 1) / (r.n - 1), to: (r.to - 1) / (r.n - 1), dur: r.dur }])),
+      ring: BOXE.RING,
+      minSep: BOXE.MIN_SEP,
+      reach: BOXE.REACH,
+      corners: CORNERS,
+      roundS: BOXE.ROUND_S,
+      breakS: BOXE.BREAK_S,
+      rounds: BOXE.ROUNDS,
+      riseS: BOXE.RISE_S,
+    };
+  }
 }
 
-/**
- * O que valeu até `at` (s) para o lutador `who`: com a toalha (`towel` =
- * quem jogou) a luta acaba ali e quem jogou perde. Dano, golpes e quedas
- * contados pela linha do tempo até o corte.
- */
-function summary(fight, who, at = Infinity, towel = null) {
-  const cut = Math.min(at, fight.result.t);
-  let taken = 0;
-  let thrown = 0;
-  let landed = 0;
-  let kd = 0;
-  let activeS = 0;
-  for (const e of fight.ev) {
-    if (e[0] > cut + 1e-9) break;
-    if (e[2] === EV.PUNCH) {
-      if (e[1] === who) {
-        thrown++;
-        if (e[4] >= RES.HIT) landed++;
-      } else if (e[4] >= RES.BLOCK) taken += e[5];
-    } else if (e[2] === EV.DOWN && e[1] === who) kd = e[3];
-  }
-  // segundos de luta de verdade (sem intervalos)
-  for (const e of fight.ev) {
-    if (e[2] !== EV.BELL) continue;
-    const start = e[0];
-    if (start > cut) break;
-    const end = fight.ev.find((x) => (x[2] === EV.BREAK && x[1] === e[1]) || x[2] === EV.END)?.[0] ?? cut;
-    activeS += Math.max(0, Math.min(end, cut) - start);
-  }
-  let outcome;
-  let method = fight.result.method;
-  if (towel != null && cut < fight.result.t) {
-    outcome = towel === who ? "loss" : "win";
-    method = "towel";
-  } else outcome = fight.result.winner === -1 ? "draw" : fight.result.winner === who ? "win" : "loss";
-  return { outcome, method, taken: r1(taken), thrown, landed, kd, activeS: Math.round(activeS), at: r2(cut), round: roundAt(fight, cut) };
-}
-
-function roundAt(fight, at) {
-  let r = 1;
-  for (const e of fight.ev) {
-    if (e[0] > at) break;
-    if (e[2] === EV.BELL) r = e[1];
-  }
-  return r;
-}
-
-module.exports = { BOXE, PUNCHES, PUNCH_KINDS, STRATEGIES, TIERS, EV, RES, fighter, cpuStats, simulate, summary, rng };
+module.exports = { BOXE, PIECES, PIECE_W, DODGE, REACT, ACT, STRATEGIES, TIERS, EV, RES, PH, CORNERS, fighter, cpuStats, randomCombo, validCombo, Match, rng };

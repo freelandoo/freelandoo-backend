@@ -1,4 +1,4 @@
-// test/meu-mundo-boxe.e2e.js — MEU MUNDO 3D: Arena de Boxe (mm3d-43)
+// test/meu-mundo-boxe.e2e.js — MEU MUNDO 3D: Arena de Boxe (mm3d-43 → mm3d-44, luta ao vivo)
 //
 // Roda: TEST_DATABASE_URL=postgres://...localhost.../mm npm run test:meu-mundo-boxe
 //
@@ -9,10 +9,11 @@
 //
 // Prova: a ficha só abre perto da porta e traz os números da vida e os 3 do
 // computador; sozinho larga na hora contra o escolhido (o MESMO da ficha); a
-// linha do tempo chega inteira; no fim a vida recebe a consequência (energia,
+// tabela dos golpes e o estado chegam; o joystick anda e o ATAQUE solta golpes
+// (mm3d-44); no fim a vida recebe a consequência (energia,
 // saúde, cartel; bolsa na vitória) — mesmo com a aba fechada no meio; cansado
 // demais não entra; multiplayer junta duas pessoas do mesmo centro na mesma
-// luta (cantos 0 e 1, mesma linha do tempo); toalha encerra e quem jogou perde;
+// luta (cantos 0 e 1, o mesmo estado); toalha encerra e quem jogou perde;
 // multiplayer sem ninguém vira computador parelho; voltar para casa tira da espera.
 
 const url = process.env.TEST_DATABASE_URL;
@@ -137,13 +138,18 @@ async function mkUser(pool, tag) {
     const out = await Service.joinBoxe(u, opts);
     if (out.error) return { out };
     const room = await consume(out);
-    const box = { out, room, welcome: null, start: null, result: null, towel: null, replaced: false };
+    const box = { out, room, welcome: null, start: null, result: null, towel: null, replaced: false, snaps: [], ev: [] };
     room.onMessage("welcome", (m) => (box.welcome = m));
     room.onMessage("start", (m) => (box.start = m));
     room.onMessage("result", (m) => (box.result = m));
     room.onMessage("towel", (m) => (box.towel = m));
     room.onMessage("replaced", () => (box.replaced = true));
     room.onMessage("pong", () => {});
+    room.onMessage("s", (m) => {
+      box.snaps.push(m);
+      if (box.snaps.length > 400) box.snaps.shift();
+      box.ev.push(...m.ev);
+    });
     await until(() => box.welcome);
     return box;
   }
@@ -169,7 +175,23 @@ async function mkUser(pool, tag) {
   check("sozinho: larga na hora", await until(() => S.start, 3000));
   check("…eu no canto 0, o computador no 1 (o mesmo da ficha)", S.start.me === 0 && S.start.corners[1].cpu && S.start.corners[1].name === card.boxe.opponents[2].name);
   check("…estratégia e corpo da vida", S.start.corners[0].strategy === "aggressive" && typeof S.start.corners[0].body === "string");
-  check("…a linha do tempo inteira", Array.isArray(S.start.fight.ev) && S.start.fight.ev.length > 10 && S.start.fight.smp[0].length > 100);
+  check("…a tabela dos golpes e o 1º estado", S.start.table && S.start.table.pieces.length >= 5 && S.start.snap && S.start.snap.f.length === 2);
+  check("…o estado chega a cada passo", await until(() => S.snaps.length > 5, 3000));
+  check("…o sino toca", await until(() => S.ev.some((e) => e[1] === 0), 4000));
+  // o joystick anda: para o adversário, e o ATAQUE solta golpes (meus, canto 0)
+  for (let i = 0; i < 40 && !S.ev.some((e) => e[1] === 2 && e[2] === 0); i++) {
+    const me = S.snaps.at(-1).f[0];
+    const op = S.snaps.at(-1).f[1];
+    const dx = op[0] - me[0];
+    const dz = op[1] - me[1];
+    const d = Math.hypot(dx, dz) || 1;
+    S.room.send("in", { m: [dx / d, dz / d] });
+    S.room.send("in", { a: [0, 1], c: i + 1 });
+    await sleep(25);
+  }
+  check("…o ataque do aparelho vira golpe na sala", S.ev.some((e) => e[1] === 2 && e[2] === 0), JSON.stringify(S.ev.slice(-4)));
+  S.room.send("in", { m: "lixo", a: "x", d: 7, k: -1 });
+  S.room.send("in", null);
   check("…resultado no fim", await until(() => S.result, 8000));
   check("…com a consequência na vida", S.result && S.result.aftermath && S.result.aftermath.delta.energy < 0, JSON.stringify(S.result && S.result.aftermath));
   const after = await lifeOf(users[0]);
@@ -207,7 +229,16 @@ async function mkUser(pool, tag) {
   const Bx = await join(users[4], { mode: "mp" });
   check("…o 2º cai na mesma sala e larga na hora", Bx.room.roomId === A.room.roomId && (await until(() => A.start && Bx.start)));
   check("…cantos 0 e 1, os dois humanos", A.start.me !== Bx.start.me && !A.start.corners[0].cpu && !A.start.corners[1].cpu);
-  check("…a MESMA linha do tempo", JSON.stringify(A.start.fight.ev) === JSON.stringify(Bx.start.fight.ev));
+  check("…a mesma tabela e o mesmo estado", JSON.stringify(A.start.table) === JSON.stringify(Bx.start.table) && (await until(() => A.snaps.length && Bx.snaps.length && A.snaps.some((a) => Bx.snaps.some((b) => b.t === a.t && JSON.stringify(b.f) === JSON.stringify(a.f))), 3000)));
+  // cada um anda o seu lutador
+  await until(() => A.room.state.time > 0.5, 4000);
+  const myF = (box) => box.snaps.at(-1).f[box.start.me];
+  const xa0 = myF(A)[0];
+  for (let i = 0; i < 20; i++) {
+    A.room.send("in", { m: [A.start.me === 0 ? -1 : 1, 0] });
+    await sleep(30);
+  }
+  check("…o joystick de um anda o lutador dele", Math.abs(myF(A)[0] - xa0) > 0.1, `${xa0} → ${myF(A)[0]}`);
   await until(() => A.room.state.time > 2, 4000);
   A.room.send("towel");
   check("toalha: chega para os dois", await until(() => A.towel && Bx.towel, 3000));
