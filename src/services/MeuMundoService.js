@@ -27,6 +27,7 @@ const { reserveJetpackSeat, leaveJetpack } = require("../realtime/meuMundoJetpac
 const { reservePaintSeat, leavePaint } = require("../realtime/meuMundoPaint");
 const { reserveCorridaSeat, leaveCorrida } = require("../realtime/meuMundoCorrida");
 const { reserveNoturnoSeat, leaveNoturno } = require("../realtime/meuMundoNoturno");
+const { reserveGincanaSeat, leaveGincana } = require("../realtime/meuMundoGincana");
 const { reserveBoxeSeat, leaveBoxe, previewCpu, inBoxe } = require("../realtime/meuMundoBoxe");
 const MeuMundoLifeServiceRef = () => require("./MeuMundoLifeService");
 const { PAINT_MODES } = require("../utils/meuMundoPaint");
@@ -80,6 +81,8 @@ const PAINT_DOOR = CENTER_PLACES.find((p) => p.id === "paint").interact;
 const CORRIDA_DOOR = CENTER_PLACES.find((p) => p.id === "corrida").interact;
 // Rolê Noturno em grupo (mm3d-42): a mesma regra de porta.
 const NOTURNO_DOOR = CENTER_PLACES.find((p) => p.id === "noturno").interact;
+// Gincana em grupo (mm3d-47): a mesma regra de porta.
+const GINCANA_DOOR = CENTER_PLACES.find((p) => p.id === "gincana").interact;
 // Arena de Boxe (mm3d-43): a mesma regra de porta.
 const BOXE_DOOR = CENTER_PLACES.find((p) => p.id === "boxe").interact;
 function beginTravel(idUser) {
@@ -504,6 +507,7 @@ class MeuMundoService {
     leavePaint(idUser);
     leaveCorrida(idUser);
     leaveNoturno(idUser);
+    leaveGincana(idUser);
     leaveBoxe(idUser);
     presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number, ride });
     log.info("center.return", { ride: ride ? kindOfId(ride) : "" });
@@ -600,6 +604,26 @@ class MeuMundoService {
     } catch (err) {
       log.error("noturno.reserve_fail", { message: err.message });
       return { error: "O rolê em grupo não abriu agora.", statusCode: 503 };
+    }
+    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
+  }
+
+  // ── Gincana em grupo (mm3d-47) ────────────────────────────────────────────
+  /** Lugar na próxima largada da Gincana do centro em que a pessoa está (corpo para os outros a desenharem). */
+  static async joinGincana(idUser, { body } = {}) {
+    const here = presence.get(idUser);
+    if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
+    const pos = realtime.positionIn("center", here.id, idUser);
+    if (!pos || Math.hypot(pos.x - GINCANA_DOOR.x, pos.z - GINCANA_DOOR.z) > JETPACK_REACH) {
+      return { error: "Chegue perto da porta da Gincana", statusCode: 409, code: "far" };
+    }
+    const name = await MeuMundoStorage.getPublicName(pool, idUser);
+    let reservation;
+    try {
+      reservation = await reserveGincanaSeat({ userId: idUser, name, centerRoomId: here.id, body: String(body || "") });
+    } catch (err) {
+      log.error("gincana.reserve_fail", { message: err.message });
+      return { error: "A gincana em grupo não abriu agora.", statusCode: 503 };
     }
     return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
   }

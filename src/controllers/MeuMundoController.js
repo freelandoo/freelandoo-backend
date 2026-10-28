@@ -72,6 +72,11 @@ async function noturnoJoin(req, res) {
   return reply(res, await MeuMundoService.joinNoturno(req.user.id_user, { ride: req.body?.ride, body: req.body?.body }));
 }
 
+// Gincana em grupo (mm3d-47): lugar na próxima largada (o computador completa as 8 vagas).
+async function gincanaJoin(req, res) {
+  return reply(res, await MeuMundoService.joinGincana(req.user.id_user, { body: req.body?.body }));
+}
+
 // Arena de Boxe (mm3d-43): a ficha (vida + adversários) e entrar numa luta.
 async function boxeCard(req, res) {
   return reply(res, await MeuMundoService.boxeCard(req.user.id_user));
@@ -248,6 +253,7 @@ module.exports = {
   paintJoin,
   corridaJoin,
   noturnoJoin,
+  gincanaJoin,
   boxeCard,
   boxeJoin,
   visits,

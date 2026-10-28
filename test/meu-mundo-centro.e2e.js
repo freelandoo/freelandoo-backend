@@ -160,7 +160,7 @@ async function mkUser(pool, admin = true, tag = "") {
   const c1 = await toCenter(u1);
   const c2 = await toCenter(u2);
   check("ir ao centro devolve a cena do centro", c1.out.scene === "center" && c1.out.sceneKey.startsWith("center:"));
-  check("payload do centro: 15 locais + praça, sem dado de usuário", c1.out.center.places.length === 15 && !/[0-9a-f]{8}-[0-9a-f]{4}-|@mm\.test/.test(JSON.stringify(c1.out.center)));
+  check("payload do centro: 16 locais + praça, sem dado de usuário", c1.out.center.places.length === 16 && !/[0-9a-f]{8}-[0-9a-f]{4}-|@mm\.test/.test(JSON.stringify(c1.out.center)));
   check("bairros diferentes se encontram no MESMO centro", c1.room.roomId === c2.room.roomId);
   await until(() => c1.room.state.players.size === 2);
   check("cada um vê o outro na sala do centro", c1.room.state.players.size === 2);

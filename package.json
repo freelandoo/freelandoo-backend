@@ -60,6 +60,7 @@
     "test:meu-mundo-paint": "node test/meu-mundo-paint.e2e.js",
     "test:meu-mundo-corrida": "node test/meu-mundo-corrida.e2e.js",
     "test:meu-mundo-noturno": "node test/meu-mundo-noturno.e2e.js",
+    "test:meu-mundo-gincana": "node test/meu-mundo-gincana.e2e.js",
     "test:meu-mundo-boxe": "node test/meu-mundo-boxe.e2e.js",
     "test:meu-mundo-inbox": "node test/meu-mundo-inbox.e2e.js",
     "test:meu-mundo-chat": "node --test test/meu-mundo-chat.e2e.js",

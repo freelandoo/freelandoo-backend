@@ -29,7 +29,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 7; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43)
+const CENTER_VERSION = 8; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43; 8 = Gincana, mm3d-47)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -84,6 +84,11 @@ const PLACE_DEFS = [
   // supermercado (8 m de largura na altura da porta). A luva no telhado
   // aparece da praça por cima da hamburgueria.
   { id: "boxe", zone: "atividades", rect: [-30, -4, 44, 60], h: 9, peak: 15, front: "e", door: 52, doorW: 3.4, game: "boxe", party: 2 },
+  // Gincana (mm3d-47): pavilhão inflável no fundo leste, atrás da biblioteca,
+  // de frente para o OESTE. Chega-se pelo corredor entre a universidade (z ≥
+  // −12) e a biblioteca (z ≤ −19), que sai da calçada do anel e dá de frente
+  // com a porta (z −16). 2 m de folga dos dois prédios e da cerca.
+  { id: "gincana", zone: "atividades", rect: [48, 62, -31, -13.5], h: 8, peak: 14, front: "w", door: -16, doorW: 3.4, game: "gincana", party: 8 },
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
