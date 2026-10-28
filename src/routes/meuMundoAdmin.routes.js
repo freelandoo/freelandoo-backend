@@ -38,6 +38,8 @@ router.post("/center/jetpack", ...admin, asyncHandler(MeuMundoController.jetpack
 router.post("/center/paint", ...admin, asyncHandler(MeuMundoController.paintJoin));
 // Corrida em grupo (mm3d-39b): espera até 1 minuto e completa 6 naves com o computador.
 router.post("/center/corrida", ...admin, asyncHandler(MeuMundoController.corridaJoin));
+// Rolê Noturno em grupo (mm3d-42): espera até 1 minuto, todos na mesma rua.
+router.post("/center/noturno", ...admin, asyncHandler(MeuMundoController.noturnoJoin));
 // Interior de um prédio do centro (mm3d-37): a planta, buscada ao entrar.
 router.get("/center/interiors/:id", ...admin, asyncHandler(MeuMundoController.centerInterior));
 // Convites e visitas (mig 293).

@@ -67,6 +67,11 @@ async function corridaJoin(req, res) {
   return reply(res, await MeuMundoService.joinCorrida(req.user.id_user));
 }
 
+// Rolê Noturno em grupo (mm3d-42): lugar na próxima largada, com o veículo escolhido.
+async function noturnoJoin(req, res) {
+  return reply(res, await MeuMundoService.joinNoturno(req.user.id_user, { ride: req.body?.ride, body: req.body?.body }));
+}
+
 async function visits(req, res) {
   return reply(res, await MeuMundoService.visitState(req.user.id_user));
 }
@@ -233,6 +238,7 @@ module.exports = {
   jetpackJoin,
   paintJoin,
   corridaJoin,
+  noturnoJoin,
   visits,
   candidates,
   invite,

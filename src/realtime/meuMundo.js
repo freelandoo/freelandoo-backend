@@ -43,6 +43,7 @@ const presence = require("./meuMundoPresence");
 const jetpack = require("./meuMundoJetpack");
 const paint = require("./meuMundoPaint");
 const corrida = require("./meuMundoCorrida");
+const noturno = require("./meuMundoNoturno");
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { SEAT_REACH, BED_REACH, FRIDGE_REACH } = require("../utils/meuMundoInteriorKit");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
@@ -1816,6 +1817,8 @@ function init(httpServer) {
   paint.define(gameServer);
   // Corrida antigravidade em grupo (mm3d-39b): até 6 do mesmo centro, o resto é computador.
   corrida.define(gameServer);
+  // Rolê Noturno em grupo (mm3d-42): até 6 do mesmo centro na mesma rua.
+  noturno.define(gameServer);
   transport.attachToServer(httpServer, {
     filter: (req) => typeof req.url === "string" && req.url.startsWith(WS_PREFIX),
   });
@@ -2081,6 +2084,7 @@ async function status() {
     ...(await jetpack.jetpackStatus()),
     ...(await paint.paintStatus()),
     ...(await corrida.corridaStatus()),
+    ...(await noturno.noturnoStatus()),
   };
 }
 

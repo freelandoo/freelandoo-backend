@@ -26,6 +26,7 @@ const presence = require("../realtime/meuMundoPresence");
 const { reserveJetpackSeat, leaveJetpack } = require("../realtime/meuMundoJetpack");
 const { reservePaintSeat, leavePaint } = require("../realtime/meuMundoPaint");
 const { reserveCorridaSeat, leaveCorrida } = require("../realtime/meuMundoCorrida");
+const { reserveNoturnoSeat, leaveNoturno } = require("../realtime/meuMundoNoturno");
 const { PAINT_MODES } = require("../utils/meuMundoPaint");
 const {
   MEU_MUNDO_RELEASE,
@@ -75,6 +76,8 @@ const JETPACK_REACH = 6;
 const PAINT_DOOR = CENTER_PLACES.find((p) => p.id === "paint").interact;
 // Corrida em grupo (mm3d-39b): a mesma regra de porta.
 const CORRIDA_DOOR = CENTER_PLACES.find((p) => p.id === "corrida").interact;
+// Rolê Noturno em grupo (mm3d-42): a mesma regra de porta.
+const NOTURNO_DOOR = CENTER_PLACES.find((p) => p.id === "noturno").interact;
 function beginTravel(idUser) {
   const t = traveling.get(idUser);
   if (t && Date.now() - t < TRAVEL_GUARD_MS) return false;
@@ -496,6 +499,7 @@ class MeuMundoService {
     leaveJetpack(idUser);
     leavePaint(idUser);
     leaveCorrida(idUser);
+    leaveNoturno(idUser);
     presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number, ride });
     log.info("center.return", { ride: ride ? kindOfId(ride) : "" });
     return MeuMundoService.enter(idUser);
@@ -571,6 +575,26 @@ class MeuMundoService {
     } catch (err) {
       log.error("corrida.reserve_fail", { message: err.message });
       return { error: "A corrida em grupo não abriu agora.", statusCode: 503 };
+    }
+    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
+  }
+
+  // ── Rolê Noturno em grupo (mm3d-42) ───────────────────────────────────────
+  /** Lugar na próxima largada do Rolê do centro em que a pessoa está (veículo e corpo para os outros a desenharem). */
+  static async joinNoturno(idUser, { ride, body } = {}) {
+    const here = presence.get(idUser);
+    if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
+    const pos = realtime.positionIn("center", here.id, idUser);
+    if (!pos || Math.hypot(pos.x - NOTURNO_DOOR.x, pos.z - NOTURNO_DOOR.z) > JETPACK_REACH) {
+      return { error: "Chegue perto da porta do Rolê Noturno", statusCode: 409, code: "far" };
+    }
+    const name = await MeuMundoStorage.getPublicName(pool, idUser);
+    let reservation;
+    try {
+      reservation = await reserveNoturnoSeat({ userId: idUser, name, centerRoomId: here.id, ride: String(ride || ""), body: String(body || "") });
+    } catch (err) {
+      log.error("noturno.reserve_fail", { message: err.message });
+      return { error: "O rolê em grupo não abriu agora.", statusCode: 503 };
     }
     return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
   }
