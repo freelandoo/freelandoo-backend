@@ -67,6 +67,7 @@ const MIGS = [
   "304_meu_mundo_avatar_colors",
   "308_meu_mundo_lugar_atividade",
   "309_meu_mundo_vendedor",
+  "311_meu_mundo_boxe",
 ];
 const TABLES = `tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
   tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user`;
@@ -159,7 +160,7 @@ async function mkUser(pool, admin = true, tag = "") {
   const c1 = await toCenter(u1);
   const c2 = await toCenter(u2);
   check("ir ao centro devolve a cena do centro", c1.out.scene === "center" && c1.out.sceneKey.startsWith("center:"));
-  check("payload do centro: 14 locais + praça, sem dado de usuário", c1.out.center.places.length === 14 && !/[0-9a-f]{8}-[0-9a-f]{4}-|@mm\.test/.test(JSON.stringify(c1.out.center)));
+  check("payload do centro: 15 locais + praça, sem dado de usuário", c1.out.center.places.length === 15 && !/[0-9a-f]{8}-[0-9a-f]{4}-|@mm\.test/.test(JSON.stringify(c1.out.center)));
   check("bairros diferentes se encontram no MESMO centro", c1.room.roomId === c2.room.roomId);
   await until(() => c1.room.state.players.size === 2);
   check("cada um vê o outro na sala do centro", c1.room.state.players.size === 2);

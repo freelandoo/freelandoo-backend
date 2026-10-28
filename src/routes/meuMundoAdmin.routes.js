@@ -40,6 +40,9 @@ router.post("/center/paint", ...admin, asyncHandler(MeuMundoController.paintJoin
 router.post("/center/corrida", ...admin, asyncHandler(MeuMundoController.corridaJoin));
 // Rolê Noturno em grupo (mm3d-42): espera até 1 minuto, todos na mesma rua.
 router.post("/center/noturno", ...admin, asyncHandler(MeuMundoController.noturnoJoin));
+// Arena de Boxe (mm3d-43): a ficha e os adversários; entrar (sozinho ou multiplayer).
+router.get("/center/boxe", ...admin, asyncHandler(MeuMundoController.boxeCard));
+router.post("/center/boxe", ...admin, asyncHandler(MeuMundoController.boxeJoin));
 // Interior de um prédio do centro (mm3d-37): a planta, buscada ao entrar.
 router.get("/center/interiors/:id", ...admin, asyncHandler(MeuMundoController.centerInterior));
 // Convites e visitas (mig 293).

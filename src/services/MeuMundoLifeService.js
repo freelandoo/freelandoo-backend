@@ -59,6 +59,10 @@ const ERRORS = {
   menu: ["Isso não tem no cardápio", 404],
   away: ["Você precisa estar lá dentro", 409],
   market: ["Compras para a geladeira são no supermercado do centro", 409],
+  // Arena de Boxe (mm3d-43)
+  tired: ["Ele está cansado demais para lutar", 409],
+  unfit: ["Com a saúde assim o médico não libera a luta", 409],
+  injured: ["Ele está lesionado e não pode lutar agora", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -604,6 +608,36 @@ class MeuMundoLifeService {
       ];
       return { newcomer: true, funeral, inherited: after.inherit };
     });
+  }
+
+  // ═══ ARENA DE BOXE (mm3d-43) ═══
+
+  /**
+   * Ficha da luta: os números da vida AGORA (simula até agora e grava, como
+   * toda leitura) e se pode subir no ringue. Quem chama é o serviço do centro
+   * (porta) e a sala (largada).
+   */
+  static async fighter(idUser) {
+    const out = await MeuMundoLifeService.withLife(idUser, (s, ctx) => {
+      const can = Life.canFight(s, ctx.now);
+      return { fight: { ok: !!can.ok, code: can.code || null, hours: can.hours || 0, stats: Life.fightStats(s, ctx.now) } };
+    });
+    return out.fight ? { ...out.fight, body: out.avatar, look: out.look, boxing: out.character.boxing } : null;
+  }
+
+  /**
+   * O que a luta deixou na vida (`o` = meuMundoBoxe.summary + purse). A bolsa
+   * entra na carteira na mesma transação; internação vira o aviso de sempre.
+   */
+  static async fightAftermath(idUser, o) {
+    const out = await MeuMundoLifeService.withLife(idUser, (s, ctx) => {
+      const r = Life.fightAftermath(s, o, ctx.now);
+      if (!r.ok) return { aftermath: null };
+      ctx.coins += r.coins;
+      ctx.events.push(...r.events);
+      return { aftermath: { coins: r.coins, injuryH: r.injuryH, hospital: r.hospital, dead: r.dead, delta: r.delta } };
+    });
+    return out.aftermath ? { ...out.aftermath, vitals: out.character.vitals, wallet: out.wallet.coins, boxing: out.character.boxing } : null;
   }
 }
 

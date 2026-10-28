@@ -72,6 +72,15 @@ async function noturnoJoin(req, res) {
   return reply(res, await MeuMundoService.joinNoturno(req.user.id_user, { ride: req.body?.ride, body: req.body?.body }));
 }
 
+// Arena de Boxe (mm3d-43): a ficha (vida + adversários) e entrar numa luta.
+async function boxeCard(req, res) {
+  return reply(res, await MeuMundoService.boxeCard(req.user.id_user));
+}
+
+async function boxeJoin(req, res) {
+  return reply(res, await MeuMundoService.joinBoxe(req.user.id_user, { mode: req.body?.mode, tier: req.body?.tier, strategy: req.body?.strategy }));
+}
+
 async function visits(req, res) {
   return reply(res, await MeuMundoService.visitState(req.user.id_user));
 }
@@ -239,6 +248,8 @@ module.exports = {
   paintJoin,
   corridaJoin,
   noturnoJoin,
+  boxeCard,
+  boxeJoin,
   visits,
   candidates,
   invite,

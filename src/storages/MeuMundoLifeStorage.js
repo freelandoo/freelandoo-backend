@@ -50,6 +50,8 @@ function rowToState(r) {
     // mig 301: NULL = hóspede de antes — viveu bem cuidado até o último
     // instante simulado (1 dia de vida por dia); exposição começa em zero.
     exposure: r.exposure || { hunger: 0, sleep: 0, stress: 0, health: 0 },
+    // mig 311: cartel do boxe (mm3d-43); NULL = nunca lutou
+    boxing: r.boxing || null,
     wearDays: r.wear_days != null ? r.wear_days : Math.max(0, (ms(r.sim_at) - ms(r.born_at)) / 86400000),
     dayAcc: r.day_acc,
     status: r.status,
@@ -66,7 +68,7 @@ const COLS = [
   "awake_h", "zero_energy_h", "diet", "intelligence", "strength", "speed", "fertility", "attr_peaks",
   "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume", "activity_place",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
-  "wear_days", "exposure",
+  "wear_days", "exposure", "boxing",
 ];
 
 function values(s) {
@@ -82,6 +84,7 @@ function values(s) {
     JSON.stringify(s.effects), JSON.stringify(s.meals), JSON.stringify(s.dayAcc),
     s.status, iso(s.diedAt), s.deathCause, iso(s.simAt),
     s.wearDays, JSON.stringify(s.exposure),
+    s.boxing ? JSON.stringify(s.boxing) : null,
   ];
 }
 

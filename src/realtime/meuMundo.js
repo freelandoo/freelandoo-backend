@@ -44,6 +44,7 @@ const jetpack = require("./meuMundoJetpack");
 const paint = require("./meuMundoPaint");
 const corrida = require("./meuMundoCorrida");
 const noturno = require("./meuMundoNoturno");
+const boxe = require("./meuMundoBoxe");
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { SEAT_REACH, BED_REACH, FRIDGE_REACH } = require("../utils/meuMundoInteriorKit");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
@@ -1819,6 +1820,8 @@ function init(httpServer) {
   corrida.define(gameServer);
   // Rolê Noturno em grupo (mm3d-42): até 6 do mesmo centro na mesma rua.
   noturno.define(gameServer);
+  // Arena de Boxe (mm3d-43): uma luta por sala (sozinho ou 2 do mesmo centro).
+  boxe.define(gameServer);
   transport.attachToServer(httpServer, {
     filter: (req) => typeof req.url === "string" && req.url.startsWith(WS_PREFIX),
   });
@@ -2085,6 +2088,7 @@ async function status() {
     ...(await paint.paintStatus()),
     ...(await corrida.corridaStatus()),
     ...(await noturno.noturnoStatus()),
+    ...(await boxe.boxeStatus()),
   };
 }
 

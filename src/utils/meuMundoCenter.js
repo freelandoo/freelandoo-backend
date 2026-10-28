@@ -29,7 +29,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 6; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40)
+const CENTER_VERSION = 7; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -79,6 +79,11 @@ const PLACE_DEFS = [
   // de frente para o sul. Chega-se pelo corredor oeste (da avenida, entre a
   // igreja e a cerca) ou pela quina do anel entre a igreja e a pizzaria.
   { id: "noturno", zone: "atividades", rect: [-56, -36, 37, 51], h: 7, peak: 11, front: "s", door: -46, doorW: 3, game: "noturno" },
+  // Arena de Boxe (mm3d-43): quarteirão atrás da hamburgueria e da pizzaria,
+  // fachada LESTE para o corredor que sobe da praça entre a hamburgueria e o
+  // supermercado (8 m de largura na altura da porta). A luva no telhado
+  // aparece da praça por cima da hamburgueria.
+  { id: "boxe", zone: "atividades", rect: [-30, -4, 44, 60], h: 9, peak: 15, front: "e", door: 52, doorW: 3.4, game: "boxe", party: 2 },
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
@@ -285,10 +290,12 @@ const HOSPITAL_LAMPS = [hospitalAt(3.4, 12), hospitalAt(-3.3, 12), hospitalAt(3.
 const STREET_LAMPS = Object.freeze([[24.6, 24.6], [-24.6, 24.6], [24.6, -24.6], [-40, 5.6], [-47, -5.6], ...HOSPITAL_LAMPS].map((p) => Object.freeze(p)));
 // Árvores fora das quadras (colidem), sem tapar porta nem caminho. (A de
 // [−44, −46] saiu: é o miolo do hospital. mm3d-40: [−40, 46] e [−38, 36]
-// foram para [−30, 50] e [−60, 30] — o Rolê Noturno ocupa aquele canto.)
+// foram para [−30, 50] e [−60, 30] — o Rolê Noturno ocupa aquele canto.
+// mm3d-43: [−30, 50], [−20, 52] e [0, 54] (a arena e a frente da porta dela)
+// foram para [−33, 61], [12, 60] e [5, 62].)
 const STREET_TREES = Object.freeze(
   [
-    [-58, 20], [-58, 40], [-30, 50], [-20, 52], [0, 54], [40, 58], [58, 30], [58, 10], [58, -12],
+    [-58, 20], [-58, 40], [-33, 61], [12, 60], [5, 62], [40, 58], [58, 30], [58, 10], [58, -12],
     [58, -36], [58, -58], [20, -56], [0, -58], [-26, -56], [-58, -44], [-60, 30],
   ].map(([x, z]) => Object.freeze([x, z, 1.1]))
 );
