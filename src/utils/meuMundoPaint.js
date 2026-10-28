@@ -11,18 +11,24 @@
 // diretório por scripts/build-paint-sim.js no back) usam os mesmos valores.
 // Unidades: metros, segundos, m/s. y para cima; o chão das ilhas é o topo.
 
-/** As três tintas. O índice é o que viaja na rede. */
+/**
+ * As quatro tintas. O índice é o que viaja na rede. mm3d-46 (pedido do Alex):
+ * a ponte virou LARANJA, o dano PRETO, a cama elástica VERMELHA e entrou o
+ * MURO (turquesa, a cor que sobrou) — munição só pelo ícone da Freelandoo.
+ */
 const PAINT = {
-  /** Turquesa: plataforma (ponte). */
+  /** Laranja: plataforma (ponte). */
   BRIDGE: 0,
-  /** Vermelho escuro: dano; apaga a tinta do outro time. */
+  /** Preto: dano; apaga a tinta do outro time (o muro aguenta `wallHits`). */
   HARM: 1,
-  /** Amarelo: cama elástica (mm3d-35e: quem pisa é lançado para cima). */
+  /** Vermelho: cama elástica (mm3d-35e: quem pisa é lançado para cima). */
   STEP: 2,
+  /** Turquesa: muro em pé, de frente para a mira — barra quem passa e o tiro preto. */
+  WALL: 3,
 }         
-                                  
+                                      
 
-const PAINT_COLORS = ["#1FC8C0", "#9E1B2B", "#F2C230"]         
+const PAINT_COLORS = ["#FF7A1A", "#1A161D", "#E5222E", "#1FC8C0"]         
 
 const TUNING = {
   /** Passo fixo da física do corpo. */
@@ -55,11 +61,11 @@ const TUNING = {
   capsuleRespawn: 10,
   capsuleR: 1.1,
   /** Tiros por segundo segurando o botão (índice = cor). */
-  fireRate: [7, 6, 3.5]                     ,
+  fireRate: [7, 6, 3.5, 4]                     ,
   /** Custo em munição de cada tiro (índice = cor). */
-  cost: [1, 1, 2]                     ,
+  cost: [1, 1, 2, 1]                     ,
   /** Alcance (m) do raio de cada cor. */
-  range: [13, 24, 9]                     ,
+  range: [13, 24, 9, 16]                     ,
 
   /** Ponte (turquesa): disco achatado. */
   bridgeR: 1.25,
@@ -71,6 +77,23 @@ const TUNING = {
   stepH: 0.4,
   /** Velocidade do lançamento: ~4,6 m de altura (+ o pulo no ar; o topo pede 5,2 m). */
   bounceV: 14.2,
+  /**
+   * Muro (mm3d-46): placa em pé atravessada na mira, nasce no chão onde ela
+   * bate (ou logo à frente). Comprimento, espessura e altura (o pulo duplo
+   * não passa por cima; a cama elástica passa). Começa sem munição: o ícone
+   * da Freelandoo dá `wallGive`.
+   */
+  wallLen: 2,
+  wallT: 0.36,
+  wallH: 3.2,
+  wallReach: 14,
+  /** Tiros pretos do outro time até o muro cair. */
+  wallHits: 3,
+  wallStart: 0,
+  wallGive: 10,
+  wallMax: 20,
+  /** O ícone volta depois de (s). */
+  logoRespawn: 18,
   /** Tinta some depois de (s) e cada jogador tem no máximo N manchas. */
   blobLife: 45,
   blobsPerPlayer: 60,
@@ -132,6 +155,10 @@ function modeTeams(mode           ) {
 function modeCapacity(mode           ) {
   return PAINT_MODES[mode] * modeTeams(mode)
 }
+/** Teto de munição da cor (o muro tem o dele). */
+function ammoCap(c            ) {
+  return c === PAINT.WALL ? TUNING.wallMax : TUNING.ammoMax
+}
 
 // ── sim/map.ts ───────────────────────────────────────────────────────────────
 // features/meu-mundo/paint/sim/map.ts — PAINT (mm3d-35): o mapa das ilhas.
@@ -150,6 +177,13 @@ function modeCapacity(mode           ) {
 //
 // Gatinhos: 18 de cada lado + 12 no meio = 48; o portal pede 20 do time, então
 // quem só ficar no próprio lado não chega lá.
+//
+// mm3d-46 (pedido do Alex): o DOBRO de ilhas com os mesmos gatinhos — galho
+// em toda ilha da espiral, duas ASAS por torre (cadeia baixa no norte e no sul
+// indo até o meio) e mais ilhas no meio. As ilhas novas entram DEPOIS das
+// antigas (ids, enfeites e gatinhos de antes não mudam). Gatinhos por modo:
+// 2×2 tem o dobro e 3×3 o triplo (mais gente pegando). Ícones da Freelandoo
+// (cápsula da cor MURO) nas bases e nas asas.
 
 /** Cilindro vertical (ilha, pilar, mancha de tinta) — `y1` é o topo (o chão). */
                            
@@ -164,7 +198,7 @@ function modeCapacity(mode           ) {
             
                
  
-/** Caixa alinhada aos eixos (caixote, muro). */
+/** Caixa alinhada aos eixos (caixote). */
                            
       
            
@@ -174,9 +208,26 @@ function modeCapacity(mode           ) {
             
             
  
-                                       
+/**
+ * Caixa girada em y (o MURO, mm3d-46): `hx` ao longo do muro, `hz` a meia
+ * espessura, `a` = para onde a frente olha (como `facing`). Sempre tinta.
+ */
+                            
+      
+           
+           
+            
+            
+            
+            
+           
+            
+            
+               
+ 
+                                                   
 
-                                                                                  
+                                                                                           
                          
             
                   
@@ -210,7 +261,8 @@ function modeCapacity(mode           ) {
  
                                
             
-              
+                                                   
+                  
            
            
            
@@ -247,6 +299,24 @@ const SUMMIT_Y = 30
 const CENTER_Y = [7, 14, 21, 28]
 const CENTER_Z = [5, -5, 5, -5]
 const BOSS = { x: 0, y: 60, z: 320, r: 24 } // mm3d-38c: maior para o chefão de 10 m
+/**
+ * Asa (mm3d-46): cadeia baixa do lado norte de cada torre até o meio, em
+ * coordenadas do time 0 (x espelha para o time 1, z espelha para o sul).
+ * A última ilha é do meio (time -1) e só nasce uma vez por lado.
+ */
+const WING                                     = [
+  [-41, 33, 2, 3.6],
+  [-32, 38, 3.6, 3.2],
+  [-23, 34, 5.4, 3.6],
+  [-14.5, 39, 3.8, 3],
+  [-7, 33.5, 6.4, 3.4],
+]
+const WING_JOINT                                   = [0, 39, 8.2, 4.2]
+/** Ilhas novas do meio (mm3d-46): duas baixas e duas médias, norte e sul. */
+const CENTER_EXTRA                             = [
+  [2.5, 16.5, 4],
+  [12, 22, 3.4],
+]
 
 const round = (v        ) => Math.round(v * 1000) / 1000
 
@@ -259,7 +329,7 @@ function hash01(n        ) {
   return (h >>> 0) / 4294967296
 }
 
-function buildPaintMap()           {
+function buildPaintMap(mode            = "solo")           {
   const islands           = []
   const props              = []
   const cats             = []
@@ -280,7 +350,7 @@ function buildPaintMap()           {
     const p = on(isl, ang, f)
     cats.push({ id: catSeq++, ...p, skin: (catSeq % 3 === 0 ? 1 : 0)         , facing: round(hash01(catSeq * 7 + 3) * Math.PI * 2) })
   }
-  const capsule = (isl        , c           , ang        , f        ) => {
+  const capsule = (isl        , c                   , ang        , f        ) => {
     const p = on(isl, ang, f)
     capsules.push({ id: capSeq++, c, ...p })
   }
@@ -342,6 +412,61 @@ function buildPaintMap()           {
     capsule(isl, (i % 3)             , i * 1.3 + Math.PI / 3, 0.15)
   }
 
+  // ── mm3d-46: o dobro de ilhas (depois das antigas: nada de antes muda) ──
+  for (const team of [0, 1]) {
+    const sx = team === 0 ? -1 : 1
+    const cx = COLUMN_X * sx
+    const a0 = team === 0 ? Math.PI / 2 : -Math.PI / 2
+    const turn = team === 0 ? 1 : -1
+    // galho em toda ilha da espiral que ainda não tinha
+    let y = 0
+    for (let i = 0; i < SPIRAL_DY.length; i++) {
+      y += SPIRAL_DY[i]
+      if (BRANCH_AT.includes(i)) continue
+      const ang = a0 + turn * SPIRAL_STEP * (i + 1)
+      const d = SPIRAL_R + SPIRAL_RADII[i] + 6.5
+      const br = island("branch", team, cx + Math.sin(ang) * d, y + 1.4, Math.cos(ang) * d, 2.4)
+      decorate(br)
+    }
+    // asas norte e sul
+    const base = islands[bases[team].island]
+    capsule(base, 3, a0, 0.7)
+    for (const sz of [1, -1]) {
+      WING.forEach(([wx, wz, wy, wr], i) => {
+        const isl = island("wing", team, -wx * sx, wy, wz * sz, wr)
+        decorate(isl)
+        if (i === 2) capsule(isl, 3, 0, 0)
+        else capsule(isl, (i % 3)             , Math.PI * (0.25 + i * 0.4), 0.45)
+      })
+    }
+  }
+  for (const sz of [1, -1]) {
+    const [jx, jz, jy, jr] = WING_JOINT
+    const joint = island("center", -1, jx, jy, jz * sz, jr)
+    decorate(joint)
+    capsule(joint, 3, 0, 0)
+    for (const [ey, ez, er] of CENTER_EXTRA) {
+      const isl = island("center", -1, 0, ey, ez * sz, er)
+      decorate(isl)
+      capsule(isl, ((ey | 0) % 3)             , Math.PI / 2, 0.4)
+    }
+  }
+
+  // Gatinhos a mais por modo (mm3d-46): cada rodada põe outros 48 (18 por lado
+  // + 12 no meio, espelhados) espalhados pelas ilhas, inclusive as novas.
+  const rounds = PAINT_MODES[mode]
+  const side = [0, 1].map((team) => islands.filter((i) => i.team === team && i.kind !== "base"))
+  const middle = islands.filter((i) => i.kind === "center")
+  for (let k = 1; k < rounds; k++) {
+    for (let j = 0; j < 18; j++) {
+      const at = (k * 5 + j * 2) % side[0].length
+      const ang = j * 2.39996 + k * 1.1
+      cat(side[0][at], ang, 0.42)
+      cat(side[1][at], -ang, 0.42)
+    }
+    for (let j = 0; j < 12; j++) cat(middle[(k * 3 + j) % middle.length], j * 2.39996 + k * 0.7, 0.45)
+  }
+
   // Ilha do chefão (provisório até a etapa do chefão).
   const bossIsl = island("boss", -1, BOSS.x, BOSS.y, BOSS.z, BOSS.r)
   const bossSpawns = [0, 1].flatMap((team) => {
@@ -387,15 +512,32 @@ function spawnPoint(map          , team        , slotInTeam        , inBoss     
 // features/meu-mundo/paint/sim/collide.ts — PAINT (mm3d-35): perguntas ao mundo.
 //
 // O mundo é uma lista de sólidos verticais (cilindros e caixas alinhadas): as
-// ilhas, os enfeites e a TINTA (ponte e degrau são cilindros). Três perguntas:
+// ilhas, os enfeites e a TINTA (ponte e degrau são cilindros; o MURO, mm3d-46,
+// é uma caixa girada — as perguntas giram o ponto para o lado dele). Três perguntas:
 //  - apoio: qual o chão mais alto sob um ponto, até uma altura;
 //  - empurrão: tirar o corpo de dentro de um sólido de lado;
 //  - raio: onde o tiro bate (ponto, normal, sólido).
 
-                                        
+                                                   
 
 /** Raio do "pé": anda até a borda sem cair antes (menor que o corpo). */
 const FOOT_R = 0.18
+
+/** Ponto do mundo → eixos do muro (x ao longo dele, z para a frente). */
+function wallLocal(s           , x        , z        ) {
+  const dx = x - s.x
+  const dz = z - s.z
+  const c = Math.cos(s.a)
+  const n = Math.sin(s.a)
+  return { lx: dx * c - dz * n, lz: dx * n + dz * c }
+}
+
+/** Eixos do muro → direção no mundo. */
+function wallWorld(s           , lx        , lz        ) {
+  const c = Math.cos(s.a)
+  const n = Math.sin(s.a)
+  return { x: lx * c + lz * n, z: -lx * n + lz * c }
+}
 
 function inside(s       , x        , z        , pad        ) {
   if (s.k === 0) {
@@ -403,6 +545,10 @@ function inside(s       , x        , z        , pad        ) {
     const dz = z - s.z
     const r = s.r + pad
     return dx * dx + dz * dz <= r * r
+  }
+  if (s.k === 2) {
+    const l = wallLocal(s, x, z)
+    return Math.abs(l.lx) <= s.hx + pad && Math.abs(l.lz) <= s.hz + pad
   }
   return Math.abs(x - s.x) <= s.hx + pad && Math.abs(z - s.z) <= s.hz + pad
 }
@@ -459,6 +605,15 @@ function pushOut(solids                  , p                                    
           p.x = s.x + (dx / d) * R
           p.z = s.z + (dz / d) * R
         }
+        hit = true
+      } else if (s.k === 2) {
+        const l = wallLocal(s, p.x, p.z)
+        const ox = s.hx + r - Math.abs(l.lx)
+        const oz = s.hz + r - Math.abs(l.lz)
+        if (ox <= 0 || oz <= 0) continue
+        const w = ox < oz ? wallWorld(s, Math.sign(l.lx || 1) * ox, 0) : wallWorld(s, 0, Math.sign(l.lz || 1) * oz)
+        p.x += w.x
+        p.z += w.z
         hit = true
       } else {
         const ox = s.hx + r - Math.abs(p.x - s.x)
@@ -570,13 +725,25 @@ function rayBox(o      , d      , s                                             
   return { t: t0, n }
 }
 
+/** Raio × muro: gira o raio para os eixos do muro e usa a caixa. */
+function rayWall(o      , d      , s           , maxT        )                                {
+  const lo = wallLocal(s, o.x, o.z)
+  const c = Math.cos(s.a)
+  const n = Math.sin(s.a)
+  const ld = { x: d.x * c - d.z * n, y: d.y, z: d.x * n + d.z * c }
+  const h = rayBox({ x: lo.lx, y: o.y, z: lo.lz }, ld, { x: 0, z: 0, y0: s.y0, y1: s.y1, hx: s.hx, hz: s.hz }, maxT)
+  if (!h) return null
+  const w = wallWorld(s, h.n.x, h.n.z)
+  return { t: h.t, n: { x: w.x, y: h.n.y, z: w.z } }
+}
+
 /** Primeiro sólido que o raio (d unitário) toca até `maxT`. */
 function raycast(solids                  , o      , d      , maxT        )                {
   let best                = null
   let limit = maxT
   for (let i = 0; i < solids.length; i++) {
     const s = solids[i]
-    const h = s.k === 0 ? rayCyl(o, d, s, limit) : rayBox(o, d, s, limit)
+    const h = s.k === 0 ? rayCyl(o, d, s, limit) : s.k === 2 ? rayWall(o, d, s, limit) : rayBox(o, d, s, limit)
     if (!h) continue
     limit = h.t
     best = { t: h.t, point: { x: o.x + d.x * h.t, y: o.y + d.y * h.t, z: o.z + d.z * h.t }, normal: h.n, index: i }
@@ -735,18 +902,25 @@ function liftOnto(b           , x        , z        , r        , top        ) {
 // resultado. O aparelho manda a origem e a direção; a sala confere que a
 // origem está perto de onde ela sabe que o jogador está.
 //
-//  - TURQUESA (ponte): bateu no TOPO de algo ao alcance → poça-plataforma ali.
+// mm3d-46: as cores mudaram (ponte LARANJA, dano PRETO, cama elástica
+// VERMELHA) e entrou o MURO (turquesa).
+//
+//  - LARANJA (ponte): bateu no TOPO de algo ao alcance → poça-plataforma ali.
 //    Senão (mirando o vão, ou o lado de uma ilha) → a ponte CRESCE: acha a
 //    borda do chão na direção da mira, na altura do PÉ de quem atira (no ar,
 //    a ponte nasce onde ele está — pular serve para isso, mm3d-35f), e põe
 //    um disco logo depois dela. Segurando o botão, disco atrás de disco.
-//  - AMARELO (cama elástica, mm3d-35e): no ar → embaixo do pé (cai nela e é
+//  - VERMELHO (cama elástica, mm3d-35e): no ar → embaixo do pé (cai nela e é
 //    lançado). No chão →
 //    onde a mira bate (perto), ou logo à frente.
-//  - VERMELHO ESCURO (dano): acerta o jogador do OUTRO time, o chefão, ou
-//    apaga tinta do outro time; no chão vira só respingo.
+//  - PRETO (dano): acerta o jogador do OUTRO time, o chefão, ou apaga tinta
+//    do outro time (o muro aguenta alguns tiros — quem conta é a partida);
+//    no chão vira só respingo.
+//  - TURQUESA (muro): placa em pé atravessada na mira, no chão onde a mira
+//    bate (perto) ou logo à frente; mirando o topo de um muro, empilha. Barra
+//    o corpo e o tiro (é sólido como a ilha).
 
-/** Mancha nova (sem id: quem guarda dá). */
+/** Mancha nova (sem id: quem guarda dá). No muro `r` é meio comprimento e `a` para onde olha. */
                           
                
            
@@ -754,6 +928,7 @@ function liftOnto(b           , x        , z        , r        , top        ) {
             
             
            
+            
  
 
                         
@@ -775,6 +950,10 @@ function blobOf(c            , x        , z        , y0        )          {
   const r = c === PAINT.STEP ? TUNING.stepR : TUNING.bridgeR
   const h = c === PAINT.STEP ? TUNING.stepH : TUNING.bridgeH
   return { c, x: r3(x), z: r3(z), y0: r3(y0), y1: r3(y0 + h), r }
+}
+
+function wallOf(x        , z        , y0        , a        )          {
+  return { c: PAINT.WALL, x: r3(x), z: r3(z), y0: r3(y0), y1: r3(y0 + TUNING.wallH), r: TUNING.wallLen / 2, a: r3(a) }
 }
 
 function unit(d      )       {
@@ -811,9 +990,34 @@ function resolveShot(world           , s         , c            , o      , dir  
     }
     if (best) return best
     if (!wall) return { kind: "miss" }
-    const hit = world.solids[wall.index]            
+    const hit = world.solids[wall.index]                        
     if (hit.b !== undefined && hit.team !== s.team) return { kind: "erase", blob: hit.b, point: wall.point }
     return { kind: "splat", point: wall.point, normal: wall.normal }
+  }
+
+  if (c === PAINT.WALL) {
+    // de frente para quem atira (atravessado na mira)
+    let hx = d.x
+    let hz = d.z
+    const hl = Math.hypot(hx, hz)
+    if (hl < 0.2) {
+      hx = Math.sin(s.facing)
+      hz = Math.cos(s.facing)
+    } else {
+      hx /= hl
+      hz /= hl
+    }
+    const a = Math.atan2(hx, hz)
+    const hit = raycast(world.solids, o, d, T.range[PAINT.WALL])
+    if (hit && hit.normal.y > 0.5) {
+      const far = Math.hypot(hit.point.x - s.x, hit.point.z - s.z)
+      if (far <= T.wallReach && far > T.bodyR + T.wallT) return { kind: "blob", blob: wallOf(hit.point.x, hit.point.z, hit.point.y, a) }
+    }
+    // logo à frente: no chão de lá, ou na altura do pé (em cima do vão também)
+    const fx = s.x + hx * 2.2
+    const fz = s.z + hz * 2.2
+    const floor = supportAt(world.solids, fx, fz, s.y + 0.3, 0.05)
+    return { kind: "blob", blob: wallOf(fx, fz, floor > s.y - 2 ? floor : s.y, a) }
   }
 
   if (c === PAINT.STEP) {
@@ -864,8 +1068,9 @@ function resolveShot(world           , s         , c            , o      , dir  
   return { kind: "miss" }
 }
 
-/** Tiro conta como mancha nova em `solids` (cilindro com id, cor e time). */
-function blobSolid(b         , id        , team        )           {
+/** Tiro conta como mancha nova em `solids` (cilindro, ou muro girado, com id, cor e time). */
+function blobSolid(b         , id        , team        )                       {
+  if (b.c === PAINT.WALL) return { k: 2, x: b.x, z: b.z, y0: b.y0, y1: b.y1, hx: b.r, hz: TUNING.wallT / 2, a: b.a ?? 0, b: id, c: b.c, team }
   return { k: 0, x: b.x, z: b.z, y0: b.y0, y1: b.y1, r: b.r, b: id, c: b.c, team }
 }
 
@@ -912,6 +1117,10 @@ function punchReachesBoss(a                                     , boss          
 // acima do que soco + corrida explicam) e devolve "volte para onde estava".
 // Depois de um renascimento a época sobe: pose de época velha é ignorada (é
 // do caminho de antes do teleporte).
+//
+// mm3d-46: quarta cor, o MURO — começa sem munição, o ícone da Freelandoo
+// (cápsula da cor 3) dá 10; o tiro preto do outro time derruba o muro no
+// terceiro acerto. O mapa sai do modo (2×2 e 3×3 com mais gatinhos).
 
 /** O chefão (a sala decide; o aparelho só desenha). `at` = s de partida em que o ato começou. */
                             
@@ -957,6 +1166,8 @@ class PaintMatch {
            catsTaken = new Map                ()
   /** cápsula → volta em (s); ausente = disponível. */
            capsuleBack = new Map                ()
+  /** muro → tiros pretos que já levou. */
+           wallHits = new Map                ()
            teamCats                   = [0, 0]
            portalOpen                     = [false, false]
   bossHp         = TUNING.bossHp
@@ -967,7 +1178,7 @@ class PaintMatch {
           solidsCache                 = null
           poseAt = new Map                ()
 
-  constructor(mode           , seats                                               , map           = buildPaintMap()) {
+  constructor(mode           , seats                                               , map           = buildPaintMap(mode)) {
     this.map = map
     this.mode = mode
     this.time = -TUNING.countdown
@@ -993,7 +1204,7 @@ class PaintMatch {
         team,
         sit: s.sit,
         hp: TUNING.hpMax,
-        ammo: [TUNING.ammoStart, TUNING.ammoStart, TUNING.ammoStart],
+        ammo: [TUNING.ammoStart, TUNING.ammoStart, TUNING.ammoStart, TUNING.wallStart],
         cats: 0,
         catIds: [],
         dmg: 0,
@@ -1002,7 +1213,7 @@ class PaintMatch {
         inBoss: false,
         epoch: 0,
         pose: { x: sp.x, y: sp.y, z: sp.z, facing: sp.facing, ground: true, gy: sp.y, e: 0 },
-        nextFire: [0, 0, 0],
+        nextFire: [0, 0, 0, 0],
         nextPunch: 0,
         blobs: [],
         online: true,
@@ -1089,7 +1300,7 @@ class PaintMatch {
    */
   fire(slot        , c            , o      , dir      , q        ) {
     const p = this.players.get(slot)
-    if (!p || !this.standing(p) || !(c === 0 || c === 1 || c === 2)) return this.deny(slot, q)
+    if (!p || !this.standing(p) || !(c === 0 || c === 1 || c === 2 || c === 3)) return this.deny(slot, q)
     if (![o.x, o.y, o.z, dir.x, dir.y, dir.z].every(Number.isFinite)) return this.deny(slot, q)
     const cost = TUNING.cost[c]
     // folga de 30 ms no ritmo (o relógio do aparelho não é o da sala)
@@ -1125,7 +1336,14 @@ class PaintMatch {
         this.hitBoss(slot, TUNING.bossHarm)
       } else if (res.kind === "erase") {
         to = res.point
-        this.removeBlob(res.blob)
+        const wall = this.blobs.get(res.blob)
+        const hits = (this.wallHits.get(res.blob) ?? 0) + 1
+        if (wall && wall.blob.c === PAINT.WALL && hits < TUNING.wallHits) {
+          // o muro aguenta: só respinga (de frente para quem atirou)
+          this.wallHits.set(res.blob, hits)
+          const l = Math.hypot(dir.x, dir.z) || 1
+          this.emit({ type: "splat", point: res.point, normal: { x: -dir.x / l, y: 0, z: -dir.z / l } })
+        } else this.removeBlob(res.blob)
       } else if (res.kind === "splat") {
         to = res.point
         this.emit({ type: "splat", point: res.point, normal: res.normal })
@@ -1359,6 +1577,7 @@ class PaintMatch {
     const b = this.blobs.get(id)
     if (!b) return
     this.blobs.delete(id)
+    this.wallHits.delete(id)
     this.solidsCache = null
     const owner = this.players.get(b.owner)
     if (owner) {
@@ -1433,10 +1652,10 @@ class PaintMatch {
       }
       // cápsulas
       for (const cap of this.map.capsules) {
-        if (this.capsuleBack.has(cap.id) || p.ammo[cap.c] >= T.ammoMax) continue
+        if (this.capsuleBack.has(cap.id) || p.ammo[cap.c] >= ammoCap(cap.c)) continue
         if (Math.abs(q.y - cap.y) > 1.6 || Math.hypot(q.x - cap.x, q.z - cap.z) > T.capsuleR) continue
-        p.ammo[cap.c] = Math.min(T.ammoMax, p.ammo[cap.c] + T.capsuleGive)
-        this.capsuleBack.set(cap.id, this.time + T.capsuleRespawn)
+        p.ammo[cap.c] = Math.min(ammoCap(cap.c), p.ammo[cap.c] + capsuleGive(cap.c))
+        this.capsuleBack.set(cap.id, this.time + capsuleRespawn(cap.c))
         this.emit({ type: "capsule", id: cap.id, slot: p.slot, c: cap.c })
       }
     }
@@ -1481,7 +1700,17 @@ class PaintMatch {
   }
 }
 
-/** Atalho para quem só precisa saber se a pose está fora (cliente). */
-const PAINT_FIRE_COLORS                        = [PAINT.BRIDGE, PAINT.HARM, PAINT.STEP]
+/** Quanto a cápsula da cor dá (o ícone da Freelandoo dá muros). */
+function capsuleGive(c            ) {
+  return c === PAINT.WALL ? TUNING.wallGive : TUNING.capsuleGive
+}
 
-module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, buildPaintMap, fellOut, spawnPoint, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, PaintMatch, PAINT_FIRE_COLORS };
+/** Em quanto tempo a cápsula da cor volta (s). */
+function capsuleRespawn(c            ) {
+  return c === PAINT.WALL ? TUNING.logoRespawn : TUNING.capsuleRespawn
+}
+
+/** Atalho para quem só precisa saber se a pose está fora (cliente). */
+const PAINT_FIRE_COLORS                        = [PAINT.BRIDGE, PAINT.HARM, PAINT.STEP, PAINT.WALL]
+
+module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, ammoCap, buildPaintMap, fellOut, spawnPoint, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, PaintMatch, capsuleGive, capsuleRespawn, PAINT_FIRE_COLORS };

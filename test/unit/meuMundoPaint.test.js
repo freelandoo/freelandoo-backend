@@ -711,3 +711,136 @@ test("paint — tempo acaba: sem dano no chefão vence o time com mais gatinhos"
   assert.equal(m.result.winnerSlot, -1);
   assert.equal(m.result.winnerTeam, 1);
 });
+
+// ── mm3d-46: cores novas, o dobro de ilhas, gatinhos por modo e o MURO ──────
+
+test("paint mm3d-46 — o dobro de ilhas, mesmos 48 gatinhos; 2×2 dobra e 3×3 triplica, todos em cima de ilha", () => {
+  const old = 2 * (1 + 11 + 4 + 1) + 4; // ilhas da arena antes do mm3d-46
+  for (const [mode, k] of [["solo", 1], ["1v1", 1], ["2v2", 2], ["3v3", 3]]) {
+    const map = P.buildPaintMap(mode);
+    const arena = map.islands.filter((i) => i.kind !== "boss");
+    assert.ok(arena.length >= old * 2, `${mode}: ${arena.length} ilhas`);
+    assert.equal(map.cats.length, 48 * k, mode);
+    assert.equal(new Set(map.cats.map((c) => c.id)).size, 48 * k);
+    const onTop = (p) => Math.abs(P.supportAt(map.solids, p.x, p.z, p.y + 0.01) - p.y) < 1e-6;
+    for (const c of map.cats) assert.ok(onTop(c), `${mode}: gatinho ${c.id} no ar`);
+    for (const c of map.capsules) assert.ok(onTop(c), `${mode}: cápsula ${c.id} no ar`);
+    // os 48 de antes não mudam de lugar
+    const solo = P.buildPaintMap("solo").cats;
+    for (const c of solo) assert.deepEqual(map.cats[c.id], c);
+    // espelhado: cada lado tem o mesmo tanto
+    const side = (s) => map.cats.filter((c) => Math.sign(c.x) === s && Math.abs(c.x) > 6).length;
+    assert.equal(side(-1), side(1), `${mode}: lados desiguais`);
+  }
+  // ícones da Freelandoo (cápsula do muro): na base de cada time e espelhados
+  const map = P.buildPaintMap("1v1");
+  const logos = map.capsules.filter((c) => c.c === PAINT.WALL);
+  assert.ok(logos.length >= 6);
+  for (const b of map.bases) {
+    const base = map.islands[b.island];
+    assert.ok(logos.some((l) => Math.hypot(l.x - base.x, l.z - base.z) <= base.r && l.y === base.y), "base sem ícone");
+  }
+});
+
+/** Muro na frente de quem está na base do time 0, de frente para +z. */
+function wallMatch() {
+  const m = duel();
+  const base = m.map.islands[m.map.bases[0].island];
+  place(m, 0, base.x, 0, base.z - 3, 0);
+  return { m, base };
+}
+
+test("paint mm3d-46 — muro: começa sem munição, o ícone dá 10, nasce em pé atravessado na mira", () => {
+  const { m, base } = wallMatch();
+  const p = m.players.get(0);
+  assert.equal(p.ammo[PAINT.WALL], 0);
+  const o = P.muzzleOf(p.pose, 0);
+  m.fire(0, PAINT.WALL, o, { x: 0, y: -0.3, z: 1 }, 1);
+  assert.ok(m.drain().find((e) => e.type === "deny"), "atirou muro sem munição");
+  // pega o ícone da base
+  const logo = m.map.capsules.find((c) => c.c === PAINT.WALL && Math.hypot(c.x - base.x, c.z - base.z) <= base.r);
+  place(m, 0, logo.x, logo.y, logo.z, 0);
+  m.tick(0.02);
+  assert.equal(p.ammo[PAINT.WALL], T.wallGive);
+  const ev = m.drain();
+  assert.ok(ev.find((e) => e.type === "capsule" && e.c === PAINT.WALL));
+  assert.ok(Math.abs(m.capsuleBack.get(logo.id) - m.time - T.logoRespawn) < 0.05, "o ícone volta em 18 s");
+  // atira no chão à frente: muro em pé, de frente para quem atirou
+  place(m, 0, base.x, 0, base.z - 3, 0);
+  const o2 = P.muzzleOf(p.pose, 0);
+  m.fire(0, PAINT.WALL, o2, { x: 0, y: -0.25, z: 1 }, 2);
+  const blob = m.drain().find((e) => e.type === "blob");
+  assert.ok(blob && blob.blob.c === PAINT.WALL, "o muro não nasceu");
+  assert.equal(p.ammo[PAINT.WALL], T.wallGive - 1);
+  assert.ok(Math.abs(blob.blob.a) < 1e-3, "muro virado errado");
+  assert.ok(Math.abs(blob.blob.y0) < 1e-6 && Math.abs(blob.blob.y1 - T.wallH) < 1e-6, "muro fora do chão");
+  assert.ok(blob.blob.z > base.z - 3 + 1, "muro atrás de quem atirou");
+  const solid = m.blobs.get(blob.id).solid;
+  assert.equal(solid.k, 2);
+});
+
+test("paint mm3d-46 — muro barra quem anda e o tiro preto; o preto do outro time derruba no 3º", () => {
+  const { m, base } = wallMatch();
+  const p0 = m.players.get(0);
+  p0.ammo[PAINT.WALL] = 5;
+  const o = P.muzzleOf(p0.pose, 0);
+  m.fire(0, PAINT.WALL, o, { x: 0, y: -0.25, z: 1 }, 1);
+  const w = m.drain().find((e) => e.type === "blob").blob;
+  // o corpo não atravessa (nem de lado: muro girado também)
+  const b = P.newBody(base.x, 0, base.z - 3, 0);
+  for (let i = 0; i < 200; i++) P.stepBody(b, { mx: 0, mz: 1, run: true, jump: false }, m.solids());
+  assert.ok(b.z < w.z - T.wallT / 2 - T.bodyR + 0.02, `atravessou o muro (z ${b.z} × ${w.z})`);
+  // pulo duplo não passa por cima
+  P.stepBody(b, { mx: 0, mz: 1, run: true, jump: true }, m.solids());
+  for (let i = 0; i < 30; i++) P.stepBody(b, { mx: 0, mz: 1, run: true, jump: false }, m.solids());
+  P.stepBody(b, { mx: 0, mz: 1, run: true, jump: true }, m.solids());
+  for (let i = 0; i < 120; i++) P.stepBody(b, { mx: 0, mz: 1, run: true, jump: false }, m.solids());
+  assert.ok(b.z < w.z, "o pulo duplo passou por cima do muro");
+  // muro girado 90°: barra no eixo x
+  const turned = [...m.map.solids, P.blobSolid({ ...w, x: base.x + 2, z: base.z, a: Math.PI / 2 }, 99, 0)];
+  const c = P.newBody(base.x, 0, base.z, 0);
+  for (let i = 0; i < 200; i++) P.stepBody(c, { mx: 1, mz: 0, run: true, jump: false }, turned);
+  assert.ok(c.x < base.x + 2 - T.wallT / 2 - T.bodyR + 0.02, "atravessou o muro girado");
+  // o time 1 do outro lado do muro atira preto: o muro segura, não acerta o 0
+  place(m, 1, base.x, 0, w.z + 5, Math.PI);
+  const shoot = (q) => {
+    const a = m.players.get(1).pose;
+    const mo = P.muzzleOf(a, a.facing);
+    m.fire(1, PAINT.HARM, mo, { x: p0.pose.x - mo.x, y: 1.2 - mo.y, z: p0.pose.z - mo.z }, q);
+    m.tick(1 / T.fireRate[PAINT.HARM] + 0.01);
+    return m.drain();
+  };
+  for (let q = 1; q < T.wallHits; q++) {
+    const ev = shoot(q);
+    assert.ok(!ev.find((e) => e.type === "hit"), "o tiro atravessou o muro");
+    assert.ok(!ev.find((e) => e.type === "unblob"), `o muro caiu no ${q}º tiro`);
+  }
+  assert.ok(shoot(T.wallHits).find((e) => e.type === "unblob"), "o muro não caiu");
+  assert.ok(shoot(T.wallHits + 1).find((e) => e.type === "hit" && e.slot === 0), "sem muro o tiro não acertou");
+  // o preto do MESMO time não derruba o próprio muro
+  p0.ammo[PAINT.WALL] = 5;
+  place(m, 0, base.x, 0, base.z - 3, 0);
+  m.tick(1);
+  m.fire(0, PAINT.WALL, P.muzzleOf(p0.pose, 0), { x: 0, y: -0.25, z: 1 }, 7);
+  const own = m.drain().find((e) => e.type === "blob");
+  for (let q = 10; q < 16; q++) {
+    m.fire(0, PAINT.HARM, P.muzzleOf(p0.pose, 0), { x: 0, y: 0, z: 1 }, q);
+    m.tick(0.2);
+  }
+  assert.ok(m.blobs.has(own.id), "o próprio time derrubou o muro");
+});
+
+test("paint mm3d-46 — mirando o topo de um muro, o próximo empilha em cima", () => {
+  const { m, base } = wallMatch();
+  const p = m.players.get(0);
+  p.ammo[PAINT.WALL] = 5;
+  m.fire(0, PAINT.WALL, P.muzzleOf(p.pose, 0), { x: 0, y: -0.25, z: 1 }, 1);
+  const w = m.drain().find((e) => e.type === "blob").blob;
+  m.tick(0.5);
+  // de cima de uma ponte alta, mirando o topo do muro
+  place(m, 0, base.x, 4.5, base.z - 3, 0);
+  const o = P.muzzleOf(p.pose, 0);
+  m.fire(0, PAINT.WALL, o, { x: w.x - o.x, y: w.y1 - o.y, z: w.z - o.z }, 2);
+  const top = m.drain().find((e) => e.type === "blob");
+  assert.ok(top && Math.abs(top.blob.y0 - w.y1) < 1e-3, `não empilhou (${top && top.blob.y0})`);
+});

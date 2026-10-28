@@ -9,14 +9,15 @@
 // Prova: só entra no centro e perto da porta; modo inválido = 400; treino é
 // sala só sua e começa na hora; 1×1 junta dois do mesmo centro em times
 // diferentes, começa cheio e tranca (o 3º cai em outra sala); 3×3 = 3 e 3;
-// pela rede: tinta turquesa vira mancha no estado com o número do tiro de
+// pela rede: tinta laranja (ponte) vira mancha no estado com o número do tiro de
 // quem atirou; vermelho tira coração do outro time (pacote `ev` para todos,
 // com o empurrão) e apaga a tinta dele; soco; pose impossível recebe `fix`
 // só para quem mandou; gatinho e cápsula vão para o estado e para o `ev`;
 // queda no meio da partida mantém o jogador (fora dos alvos) e a volta pela
 // reserva liga à mesma vaga; outra aba substitui (4009); voltar para casa tira
 // do Paint; fim → resultado no estado e a sala fecha; mensagens demais são
-// descartadas.
+// descartadas. mm3d-46: o ícone da Freelandoo dá muros (a3) e o muro vai ao
+// estado com o giro e segura o tiro preto.
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/@(localhost|127\.0\.0\.1)[:/]/.test(url)) {
@@ -207,7 +208,7 @@ async function mkUser(pool, tag) {
   check("ponte: mancha no estado para os dois", await until(() => A.room.state.blobs.size === 1 && B.room.state.blobs.size === 1));
   const [blobId, blob] = [...B.room.state.blobs.entries()][0];
   check("…com dono e número do tiro de quem atirou", blob.owner === sa && blob.q === 77 && blob.c === 0);
-  check("…munição turquesa desceu no estado", await until(() => playerOf(A, sa).a0 === T.ammoStart - 1));
+  check("…munição da ponte (laranja) desceu no estado", await until(() => playerOf(A, sa).a0 === T.ammoStart - 1));
 
   // vermelho no outro time
   place(sb, base.x, 0, base.z + 6, Math.PI);
@@ -254,6 +255,27 @@ async function mkUser(pool, tag) {
   const cap = m.map.capsules.find((c) => c.c === 2 && Math.hypot(c.x - base.x, c.z - base.z) < base.r && Math.abs(c.y) < 1e-6);
   place(sa, cap.x, cap.y, cap.z);
   check("cápsula: some no estado e recarrega", await until(() => A.room.state.caps.has(String(cap.id)) && playerOf(A, sa).a2 === T.capsuleGive));
+
+  // muro (mm3d-46): o ícone da Freelandoo dá munição; o muro vai ao estado com o giro e barra o preto
+  check("muro: começa sem munição", playerOf(A, sa).a3 === 0);
+  const logo = m.map.capsules.find((c) => c.c === 3 && Math.hypot(c.x - base.x, c.z - base.z) < base.r && Math.abs(c.y) < 1e-6);
+  place(sa, logo.x, logo.y, logo.z);
+  check("ícone da Freelandoo: +10 muros no estado", await until(() => playerOf(A, sa).a3 === T.wallGive && A.room.state.caps.has(String(logo.id))));
+  place(sa, base.x, 0, base.z - 3, 0);
+  await sleep(120);
+  const before = new Set(A.room.state.blobs.keys());
+  const ow = P.muzzleOf(m.players.get(sa).pose, 0);
+  A.room.send("f", { c: 3, o: [ow.x, ow.y, ow.z], d: [0, -0.25, 1], q: 90 });
+  check("muro: nasce no estado dos dois, em pé e com o giro", await until(() => [...B.room.state.blobs.entries()].some(([id, b]) => !before.has(id) && b.c === 3 && Math.abs(b.y1 - b.y0 - T.wallH) < 1e-3 && Math.abs(b.a) < 1e-3)));
+  const wall = [...A.room.state.blobs.values()].find((b) => b.c === 3);
+  place(sb, base.x, 0, wall.z + 5, Math.PI);
+  await sleep(320);
+  A.ev.length = 0;
+  const wa = m.players.get(sa).pose;
+  const owb = P.muzzleOf(m.players.get(sb).pose, Math.PI);
+  B.room.send("f", { c: 1, o: [owb.x, owb.y, owb.z], d: [wa.x - owb.x, 1.2 - owb.y, wa.z - owb.z], q: 91 });
+  await sleep(250);
+  check("muro: segura o preto do outro time (sem dano em quem está atrás)", !A.ev.some((e) => e.type === "hit" && e.slot === sa) && A.room.state.blobs.size > before.size);
 
   // queda no meio da partida e volta pela reserva
   await bye(B.room, false);

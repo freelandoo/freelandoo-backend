@@ -8,7 +8,8 @@
 //
 // O servidor decide o JOGO rodando a regra do navegador (utils/meuMundoPaint.js,
 // GERADO do TS): munição, cápsulas, sangue, nocaute, tinta, gatinhos, portal,
-// chefão (mm3d-38: ele anda e bate — a pose dele vai no estado), tempo e resultado. O MOVIMENTO é do aparelho: a pose chega a ~15 Hz
+// chefão (mm3d-38: ele anda e bate — a pose dele vai no estado), muro (mm3d-46:
+// quarta cor, munição a3, giro do muro em `a`), tempo e resultado. O MOVIMENTO é do aparelho: a pose chega a ~15 Hz
 // e a regra só recusa o impossível (o aparelho recebe `fix`).
 //
 // O que fica no estado (schema): jogadores, tinta, gatinhos pegos, cápsulas
@@ -62,6 +63,7 @@ const PtPlayer = schema(
     a0: t.uint8(),
     a1: t.uint8(),
     a2: t.uint8(),
+    a3: t.uint8(), // muro (mm3d-46)
     cats: t.uint8(),
     dmg: t.uint16(),
     ko: t.float32(), // nocaute até (s de partida); 0 = de pé
@@ -78,6 +80,7 @@ const PtBlob = schema(
     y0: t.float32(),
     y1: t.float32(),
     r: t.float32(),
+    a: t.float32(), // muro (mm3d-46): para onde olha
     team: t.uint8(),
     owner: t.uint8(),
     q: t.uint32(), // número do tiro no aparelho de quem atirou (troca a prevista)
@@ -365,7 +368,7 @@ class PaintRoom extends Room {
       switch (e.type) {
         case "blob": {
           const b = e.blob;
-          this.state.blobs.set(String(e.id), new PtBlob({ c: b.c, x: b.x, z: b.z, y0: b.y0, y1: b.y1, r: b.r, team: e.team, owner: e.owner, q: e.q || 0 }));
+          this.state.blobs.set(String(e.id), new PtBlob({ c: b.c, x: b.x, z: b.z, y0: b.y0, y1: b.y1, r: b.r, a: b.a || 0, team: e.team, owner: e.owner, q: e.q || 0 }));
           break;
         }
         case "unblob":
@@ -444,6 +447,7 @@ class PaintRoom extends Room {
       p.a0 = mp.ammo[0];
       p.a1 = mp.ammo[1];
       p.a2 = mp.ammo[2];
+      p.a3 = mp.ammo[3];
       p.cats = mp.cats;
       p.dmg = Math.round(mp.dmg);
       p.ko = mp.ko;
