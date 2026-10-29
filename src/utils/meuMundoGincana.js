@@ -28,20 +28,23 @@ const DECK = 3
 
 const GINCANA = {
   step: 1 / 60,
-  gravity: 24,
-  run: 7.2,
-  accel: 42,
+  // mm3d-47b: mais rápido e mais seco (o Alex achou lento e o pulo mole)
+  gravity: 30,
+  run: 8.2,
+  accel: 58,
   /** Controle no ar (fração da aceleração do chão). */
-  airControl: 0.6,
-  /** Pulo: 8,4 m/s com g 24 → ~1,47 m de altura. */
-  jumpV: 8.4,
+  airControl: 0.72,
+  /** Pulo: 9,6 m/s com g 30 → ~1,54 m de altura, 0,64 s no ar. */
+  jumpV: 9.6,
   coyote: 0.12,
+  /** Apertou pular um pouco antes de poder (no ar, chegando ao chão): vale por isto (s). */
+  jumpBuffer: 0.15,
   bodyR: 0.4,
   bodyH: 1.7,
   stepUp: 0.45,
   /** Mergulho: para a frente, um pouco para cima; depois desliza e levanta. */
-  diveV: 10.5,
-  diveUp: 3.8,
+  diveV: 11.5,
+  diveUp: 4.4,
   slideT: 0.45,
   riseT: 0.4,
   /** Derrubado por obstáculo: sem controle por isto (s); depois levanta. */
@@ -51,6 +54,11 @@ const GINCANA = {
   respawnT: 1.3,
   /** Depois de voltar: nada derruba por isto (s). */
   shieldT: 1.2,
+  /** Logo da Freelandoo (mm3d-47b): turbo com brilho — velocidade ×boost por boostT s; o logo volta para quem pegou depois de logoBack s. */
+  boost: 1.5,
+  boostT: 3.5,
+  logoR: 1.25,
+  logoBack: 12,
   /** Prova: limite depois do "vai" e contagem antes. */
   timeLimit: 180,
   countdown: 3,
@@ -310,6 +318,22 @@ function ballLane(seed        , i        ) {
   return (h >>> 3) % BALLS.lanes.length
 }
 
+/**
+ * Logos da Freelandoo (mm3d-47b): nos lugares abertos do caminho. Cada um é
+ * de cada corredor (quem pega não tira dos outros): nada disso viaja na rede.
+ */
+const LOGOS                                                 = [
+  [-4, 12.5], [0, 12.5], [4, 12.5],
+  [0, 79],
+  [-5, 87], [5, 87],
+  [-5, 105], [0, 105], [5, 105],
+  [0, 137],
+  [-3.5, 151], [3.5, 161], [-3.5, 171],
+  [0, 187.5],
+  [-2.9, 216.5], [2.9, 216.5],
+  [-4.3, 233], [0, 241], [4.3, 249],
+].map(([x, z]) => ({ x, z, y: (z > RAMP.z0 ? rampTop(z) : DECK) + 1.1 }))
+
 /** Altura do tampo da rampa em z. */
 function rampTop(z        ) {
   const u = Math.max(0, Math.min(1, (z - RAMP.z0) / (RAMP.z1 - RAMP.z0)))
@@ -402,6 +426,16 @@ const MODE = {
              
                                                                           
                 
+                                                                                     
+                 
+                                                     
+               
+                                                   
+                
+                                                                      
+            
+            
+            
  
 
                             
@@ -433,12 +467,13 @@ const MODE = {
                                             
                                                
                                
+                                             
 
 const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false }
 
 function newRunner(slot        )         {
   const p = spawnAt(0, slot)
-  return { slot, x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, facing: 0, ground: true, air: 0, mode: MODE.RUN, timer: 0, shield: 0, hitCool: 0, cp: 0, fin: -1, launch: GINCANA.jumpV }
+  return { slot, x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, facing: 0, ground: true, air: 0, mode: MODE.RUN, timer: 0, shield: 0, hitCool: 0, cp: 0, fin: -1, launch: GINCANA.jumpV, jumpBuf: 0, boost: 0, took: LOGOS.map(() => -99), px: p.x, py: p.y, pz: p.z }
 }
 
 const EDGE = 0.12
@@ -658,6 +693,8 @@ function respawn(b        ) {
 function stepRunner(b        , it           , w          , out                   , dt = GINCANA.step) {
   const T = GINCANA
   b.shield = Math.max(0, b.shield - dt)
+  b.boost = Math.max(0, b.boost - dt)
+  b.jumpBuf = it.jump ? T.jumpBuffer : Math.max(0, b.jumpBuf - dt)
   b.hitCool = Math.max(0, b.hitCool - dt)
   if (b.mode === MODE.WATER) {
     b.timer -= dt
@@ -682,9 +719,10 @@ function stepRunner(b        , it           , w          , out                  
   }
 
   if (free) {
-    const tx = mx * T.run
-    const tz = mz * T.run
-    const a = T.accel * (b.ground ? 1 : T.airControl) * dt
+    const run = T.run * (b.boost > 0 ? T.boost : 1)
+    const tx = mx * run
+    const tz = mz * run
+    const a = T.accel * (b.boost > 0 ? 1.3 : 1) * (b.ground ? 1 : T.airControl) * dt
     const dvx = tx - b.vx
     const dvz = tz - b.vz
     const dl = Math.hypot(dvx, dvz)
@@ -696,7 +734,8 @@ function stepRunner(b        , it           , w          , out                  
       b.vz += (dvz / dl) * a
     }
     if (m > 0.05) b.facing = Math.atan2(mx, mz)
-    if (!done && it.jump && (b.ground || b.air < T.coyote) && b.vy <= 0.01) {
+    if (!done && b.jumpBuf > 0 && (b.ground || b.air < T.coyote) && b.vy <= 0.01) {
+      b.jumpBuf = 0
       b.vy = T.jumpV
       b.launch = T.jumpV
       b.ground = false
@@ -781,6 +820,15 @@ function stepRunner(b        , it           , w          , out                  
     return
   }
   if (b.mode === MODE.DONE) return
+  // logo da Freelandoo: turbo com brilho (cada corredor tem os seus)
+  for (let i = 0; i < LOGOS.length; i++) {
+    const L = LOGOS[i]
+    if (Math.abs(b.z - L.z) > T.logoR + 0.5 || w.t - b.took[i] < T.logoBack) continue
+    if (Math.hypot(b.x - L.x, b.z - L.z) > T.logoR || b.y > L.y + 0.6 || b.y + T.bodyH < L.y - 0.6) continue
+    b.took[i] = w.t
+    b.boost = T.boostT
+    out?.push({ type: "logo", slot: b.slot, i })
+  }
   const next = CHECKPOINTS[b.cp + 1]
   if (next && b.ground && b.z >= next.z - 1.5) {
     b.cp++
@@ -1050,7 +1098,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
       const ttr = (delta - (s.r + GINCANA.bodyR) / Math.max(r, 1)) / Math.abs(s.w)
       const pass = Math.floor((s.w * t + s.a0) / span)
       const err = (botRand(br.seed, br.slot * 31 + i, pass) - 0.5) * (1 - br.skill) * 0.7
-      if (ttr < 0.26 + err && ttr > 0.02) {
+      if (ttr < 0.22 + err && ttr > 0.02) {
         it.jump = true
         br.jumpCool = 0.7
       }
@@ -1162,6 +1210,11 @@ class GincanaRace {
     ballsAt(this.seed, this.t, w.balls)
     // ladrilhos que já voltaram
     for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] >= 0 && this.t - w.tiles[i] >= TILE_TIME.warn + TILE_TIME.gone) w.tiles[i] = -1
+    for (const b of this.runners) {
+      b.px = b.x
+      b.py = b.y
+      b.pz = b.z
+    }
     if (this.t < 0) return
     for (let i = 0; i < this.runners.length; i++) {
       const b = this.runners[i]
@@ -1256,4 +1309,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, TILE_COLS, TILE_ROWS, TILE_PITCH, TILE_HALF, TILE_Z0, RAMP, FINISH_Z, FINISH_Y, BALLS, PADS, POSTS, SWEEPERS, PENDULUMS, GLOVES, TILES, TILE_TIME, CHECKPOINTS, spawnAt, sweeperAngle, pendulumAt, gloveAt, ballLane, rampTop, ballsAt, tileUp, sectionAt, MODE, IDLE_INTENT, newRunner, groundUnder, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, TILE_COLS, TILE_ROWS, TILE_PITCH, TILE_HALF, TILE_Z0, RAMP, FINISH_Z, FINISH_Y, BALLS, PADS, POSTS, SWEEPERS, PENDULUMS, GLOVES, TILES, TILE_TIME, CHECKPOINTS, spawnAt, sweeperAngle, pendulumAt, gloveAt, ballLane, LOGOS, rampTop, ballsAt, tileUp, sectionAt, MODE, IDLE_INTENT, newRunner, groundUnder, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, GincanaRace };
