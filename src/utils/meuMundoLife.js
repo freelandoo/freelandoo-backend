@@ -707,6 +707,8 @@ function stepState(s, t, dt, events, out) {
   // Horas acordado
   if (eff === "sleeping" || hospital) s.awakeH = Math.max(0, s.awakeH - 3 * dt);
   else s.awakeH += eff === "lying" ? 0.5 * dt : dt;
+  // admin (testes): a energia não acaba nem no tempo fora do jogo — sem desmaio nem dano de exaustão
+  if (s._admin && s.status === "alive") s.energy = 100;
   if (s.energy <= 0.01 && !resting && !stim) s.zeroEnergyH += dt;
   else s.zeroEnergyH = 0;
 
@@ -1310,6 +1312,22 @@ function mealsToday(s, t) {
     .map((m) => mealView(s, m, t));
 }
 
+/**
+ * Admin (2026-10-28, pedido do Alex para os testes): energia sempre cheia,
+ * nunca cansado/exausto e fôlego de corrida sem fim. Só a energia muda no
+ * estado; ritmo e fôlego são trocados na leitura (adminView).
+ */
+const ADMIN_STAMINA = Object.freeze({ maxS: 9999, refillS: 0.5 });
+function adminTopUp(s) {
+  s._admin = true;
+  if (s.status === "alive") s.energy = 100;
+  return s;
+}
+function adminView(snap) {
+  if (snap.status !== "alive") return snap;
+  return { ...snap, pace: PACE.NORMAL, stamina: ADMIN_STAMINA, needs: (snap.needs || []).filter((n) => !/energ|exhaust|exaust|tired|sleep|sono/i.test(String(n.id || n.kind || ""))) };
+}
+
 /** Fôlego de corrida pela condição (STAMINA): segundos de corrida e de recarga. */
 function stamina(s) {
   let k = longTerm(s).endurance;
@@ -1493,6 +1511,9 @@ module.exports = {
   startActivity,
   snapshot,
   pace,
+  adminTopUp,
+  adminView,
+  ADMIN_STAMINA,
   bodyHint,
   dayCondition,
   closeDay,

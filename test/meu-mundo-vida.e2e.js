@@ -88,6 +88,8 @@ async function mkUser(pool, tag) {
   const presence = require("../src/realtime/meuMundoPresence");
   const Service = require("../src/services/MeuMundoService");
   const Life = require("../src/services/MeuMundoLifeService");
+  // os usuários de teste são admins: a regra normal (cansaço, exaustão) é o que se testa aqui
+  Life.adminPerks = false;
   const L = require("../src/utils/meuMundoLayout");
   const { interiorFor } = require("../src/utils/meuMundoInteriors");
   const { PACE, AFTERLIFE } = require("../src/utils/meuMundoLife");
@@ -348,6 +350,19 @@ async function mkUser(pool, tag) {
   await Life.peek(host);
   await sleep(150);
   check("energia 5 → ritmo exausto na sala", Math.abs(H().p.pace - PACE.EXHAUSTED) < 1e-6, String(H().p.pace));
+  // Admin (testes, 2026-10-28): energia volta cheia, ritmo normal e fôlego sem fim.
+  Life.adminPerks = true;
+  const admLife = await Life.peek(host);
+  await sleep(150);
+  check(
+    "admin: energia 100, ritmo normal na sala e fôlego sem fim",
+    admLife.character.vitals.energy === 100 && admLife.character.pace === 1 && admLife.character.stamina.maxS >= 9999 && Math.abs(H().p.pace - 1) < 1e-6,
+    JSON.stringify({ e: admLife.character.vitals?.energy, pace: admLife.character.pace, st: admLife.character.stamina, room: H().p.pace })
+  );
+  Life.adminPerks = false;
+  await pool.query(`UPDATE tb_mm_character SET energy = 5 WHERE id_user = $1 AND status = 'alive'`, [host]);
+  await Life.peek(host);
+  await sleep(150);
   check("o cliente recebe o aviso de vida", got("life").some((x) => Math.abs(x.m.pace - PACE.EXHAUSTED) < 1e-6));
 
   // ── Geladeira (mm3d-28, mig 301) ───────────────────────────────────────────

@@ -98,6 +98,8 @@ async function mkUser(pool, tag) {
   const presence = require("../src/realtime/meuMundoPresence");
   const Service = require("../src/services/MeuMundoService");
   const LifeService = require("../src/services/MeuMundoLifeService");
+  // os usuários de teste são admins: aqui se testa a regra normal (cansaço barra a luta)
+  LifeService.adminPerks = false;
   const Center = require("../src/utils/meuMundoCenter");
   boxe._boxeTiming.lobbyMs = 1200;
   boxe._boxeTiming.closeMs = 600;

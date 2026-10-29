@@ -18,6 +18,7 @@ const crypto = require("crypto");
 const pool = require("../databases");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
+const AuthStorage = require("../storages/AuthStorage");
 const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const Inbox = require("../storages/MeuMundoInboxStorage");
 const PolenStorage = require("../storages/PolenStorage");
@@ -189,10 +190,14 @@ class MeuMundoLifeService {
         events.push({ at: now, kind: "born", data: { generation: 1 } });
       }
       const s = rowToState(row);
+      // Admin (testes): energia infinita, nunca exausto, fôlego sem fim (vale também no tempo fora do jogo).
+      const admin = MeuMundoLifeService.adminPerks && (await AuthStorage.isAdmin(c, idUser));
+      if (admin) Life.adminTopUp(s);
       // A carteira entra na simulação: o trabalho rende e a rotina compra comida.
       const wallet = { coins };
       const sim = Life.simulate(s, now, wallet, pantry);
       events.push(...sim.events);
+      if (admin) Life.adminTopUp(s);
       coins = wallet.coins;
       const ctx = { now, row, coins, events, client: c, pantry };
       const extra = act ? await act(s, ctx) : {};
@@ -225,12 +230,13 @@ class MeuMundoLifeService {
       const look = await MeuMundoStorage.getLook(c, idUser);
       await c.query("COMMIT");
       const cur = ctx.newRow || row;
-      const snap = {
+      const snap0 = {
         generation: cur.generation,
         bornAt: new Date(cur.born_at).toISOString(),
         deathSeen: !!cur.death_seen_at || !!ctx.deathSeen,
         ...Life.snapshot(state, now),
       };
+      const snap = admin ? Life.adminView(snap0) : snap0;
       const out = {
         now: new Date(now).toISOString(),
         character: snap,
@@ -640,5 +646,11 @@ class MeuMundoLifeService {
     return out.aftermath ? { ...out.aftermath, vitals: out.character.vitals, wallet: out.wallet.coins, boxing: out.character.boxing } : null;
   }
 }
+
+/**
+ * Admin com energia infinita, nunca exausto e fôlego sem fim (2026-10-28,
+ * pedido do Alex para os testes). A suíte da vida desliga para testar a regra.
+ */
+MeuMundoLifeService.adminPerks = true;
 
 module.exports = MeuMundoLifeService;
