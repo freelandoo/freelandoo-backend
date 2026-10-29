@@ -117,7 +117,21 @@ async function centerInterior(req, res) {
   const id = String(req.params.id || "");
   const interior = Object.prototype.hasOwnProperty.call(CENTER_INTERIORS, id) ? CENTER_INTERIORS[id] : null;
   if (!interior) return reply(res, { error: "Local sem interior", statusCode: 404 });
+  if (id === "hall") return reply(res, await hallInterior(req.user.id_user, interior));
   return reply(res, { id, interior });
+}
+
+// Salão do Hall da Fama (mm3d-48): só entra quem ficou 3 meses seguidos em 1º
+// (tb_mm_hall_member) — e o admin, que vê o Salão para conferir. Lá dentro, os
+// nichos do Muro dos Herdeiros (nome público, prova e mês).
+async function hallInterior(idUser, interior) {
+  const pool = require("../databases");
+  const AuthStorage = require("../storages/AuthStorage");
+  const MeuMundoHallStorage = require("../storages/MeuMundoHallStorage");
+  const [member, admin] = await Promise.all([MeuMundoHallStorage.isMember(pool, idUser), AuthStorage.isAdmin(pool, idUser)]);
+  if (!member && !admin) return { error: "O Salão é de quem ficou em 1º por três meses seguidos.", statusCode: 403, code: "hall_closed" };
+  const members = await MeuMundoHallStorage.listMembers(pool);
+  return { id: "hall", interior, hall: { member, admin: !member && admin, members } };
 }
 
 // Vida do hóspede (mm3d-13). Deitar/dormir vão pela sala da casa (cama).

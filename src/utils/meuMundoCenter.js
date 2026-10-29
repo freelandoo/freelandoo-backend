@@ -29,7 +29,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 8; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43; 8 = Gincana, mm3d-47)
+const CENTER_VERSION = 9; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43; 8 = Gincana, mm3d-47; 9 = Arena das Lâminas e Salão do Hall da Fama, mm3d-48)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -89,6 +89,12 @@ const PLACE_DEFS = [
   // −12) e a biblioteca (z ≤ −19), que sai da calçada do anel e dá de frente
   // com a porta (z −16). 2 m de folga dos dois prédios e da cerca.
   { id: "gincana", zone: "atividades", rect: [48, 62, -31, -13.5], h: 8, peak: 14, front: "w", door: -16, doorW: 3.4, game: "gincana", party: 8 },
+  // Arena das Lâminas (mm3d-48): luta de espada contra a máquina, no fundo sul,
+  // atrás do jetpack; a porta abre para o corredor entre o jetpack e a escola.
+  { id: "laminas", zone: "atividades", rect: [4, 22, -63, -48], h: 8, peak: 13, front: "e", door: -55.5, doorW: 3.4, game: "laminas" },
+  // Salão do Hall da Fama (mm3d-48): templo de mármore no fundo norte, de frente
+  // para a porta do boxe; só entra quem ficou 3 meses seguidos em 1º (e o admin).
+  { id: "hall", zone: "civica", rect: [6, 28, 51, 63], h: 9, peak: 15, front: "w", door: 57, doorW: 3 },
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
@@ -297,11 +303,12 @@ const STREET_LAMPS = Object.freeze([[24.6, 24.6], [-24.6, 24.6], [24.6, -24.6], 
 // [−44, −46] saiu: é o miolo do hospital. mm3d-40: [−40, 46] e [−38, 36]
 // foram para [−30, 50] e [−60, 30] — o Rolê Noturno ocupa aquele canto.
 // mm3d-43: [−30, 50], [−20, 52] e [0, 54] (a arena e a frente da porta dela)
-// foram para [−33, 61], [12, 60] e [5, 62].)
+// foram para [−33, 61], [12, 60] e [5, 62]. mm3d-48: [12, 60] (Salão do Hall da Fama)
+// e [20, −56] (Arena das Lâminas) foram para [32, 62] e [27, −62].)
 const STREET_TREES = Object.freeze(
   [
-    [-58, 20], [-58, 40], [-33, 61], [12, 60], [5, 62], [40, 58], [58, 30], [58, 10], [58, -12],
-    [58, -36], [58, -58], [20, -56], [0, -58], [-26, -56], [-58, -44], [-60, 30],
+    [-58, 20], [-58, 40], [-33, 61], [32, 62], [5, 62], [40, 58], [58, 30], [58, 10], [58, -12],
+    [58, -36], [58, -58], [27, -62], [0, -58], [-26, -56], [-58, -44], [-60, 30],
   ].map(([x, z]) => Object.freeze([x, z, 1.1]))
 );
 

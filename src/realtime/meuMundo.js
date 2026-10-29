@@ -46,6 +46,7 @@ const corrida = require("./meuMundoCorrida");
 const noturno = require("./meuMundoNoturno");
 const gincana = require("./meuMundoGincana");
 const boxe = require("./meuMundoBoxe");
+const { MobDirector } = require("./meuMundoMobs");
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { SEAT_REACH, BED_REACH, FRIDGE_REACH } = require("../utils/meuMundoInteriorKit");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
@@ -1404,6 +1405,10 @@ class CentroRoom extends BairroRoom {
     /** id local do veículo → { nbId, id, userId } (de onde ele veio). */
     this.origin = new Map();
     this.emptyTimer = null;
+    // Invasões de monstros (mm3d-48b): a sala sorteia, o portal leva à Arena das Lâminas.
+    this.mobDirector = new MobDirector({ isFree: (x, z, r) => isCenterSafe(x, z, resolveCircle, r, this.obstacles) });
+    this.mobSentAt = 0;
+    this.onMessage("mfight", (client, msg) => this.onMobFight(client, msg));
     centerRooms.set(this.roomId, this);
     this.startLoop();
     this.armEmpty();
@@ -1476,6 +1481,7 @@ class CentroRoom extends BairroRoom {
     presence.claim(userId, this, client.sessionId, "center", this.roomId);
     presence.setPlacement(userId, { scene: "center", roomId: this.roomId, from: pl.from || null });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: slot, visitor: false });
+    client.send("mobs", { l: this.mobDirector.list() });
     refreshLife(userId);
     this.syncLockSoon();
     log.info("center.join", { roomId: this.roomId, online: this.state.players.size, slot, held: !!back });
@@ -1497,7 +1503,39 @@ class CentroRoom extends BairroRoom {
   // (multa ou prisão); preso, a sala tira do carro e leva à porta da delegacia.
   tick(dtMs) {
     super.tick(dtMs);
-    this.checkCrimes(Date.now());
+    const now = Date.now();
+    this.checkCrimes(now);
+    this.tickMobs(now, dtMs / 1000);
+  }
+
+  // ── Invasões (mm3d-48b) ───────────────────────────────────────────────────
+  // Lista inteira a cada 0,5 s enquanto houver monstro (são no máximo 2) e na
+  // hora em que muda; o cliente desenha e interpola.
+  tickMobs(now, dt) {
+    const players = [];
+    for (const s of this.sim.values()) if (!s.car) players.push(s.body);
+    const changed = this.mobDirector.tick(now, players, dt);
+    if (changed || (this.mobDirector.mobs.size && now - this.mobSentAt >= 500)) {
+      this.mobSentAt = now;
+      this.broadcast("mobs", { l: this.mobDirector.list() });
+    }
+  }
+
+  /** Fim de uma luta do portal: `r` 1 = venceu (o monstro sai da cidade para todos). */
+  onMobFight(client, msg) {
+    const s = this.sim.get(client.sessionId);
+    if (!s || !msg || typeof msg !== "object") return;
+    const now = Date.now();
+    if (now - (s.mobAt || 0) < 3000) return;
+    s.mobAt = now;
+    if (msg.r !== 1) return;
+    const m = this.mobDirector.claim(Number(msg.id), s.body.x, s.body.z);
+    if (!m) return;
+    const p = this.state.players.get(client.sessionId);
+    this.broadcast("mobwin", { id: m.id, kind: m.kind, name: p ? p.name : "" });
+    this.mobSentAt = now;
+    this.broadcast("mobs", { l: this.mobDirector.list() });
+    log.info("center.mob_win", { roomId: this.roomId, kind: m.kind });
   }
 
   checkCrimes(now) {

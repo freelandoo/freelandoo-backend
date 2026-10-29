@@ -129,6 +129,11 @@ const FURNITURE = Object.freeze({
   bars: { w: 4.0, d: 0.1, h: 2.6 },
   cot: { w: 0.8, d: 1.9, h: 0.45, beds: [[0, 0]] },
   flag: { w: 0.5, d: 0.5, h: 2.2 },
+  // Salão do Hall da Fama (mm3d-48): estátua de herói no pedestal, o Muro dos
+  // Herdeiros (nichos com placa) e a base vazia do Oitavo. `hero` diz quem é.
+  hero_statue: { w: 1.6, d: 1.6, h: 3.4 },
+  honor_wall: { w: 10.0, d: 0.5, h: 3.4 },
+  empty_base: { w: 1.2, d: 1.2, h: 1.1 },
 });
 
 const DEG = Math.PI / 180;

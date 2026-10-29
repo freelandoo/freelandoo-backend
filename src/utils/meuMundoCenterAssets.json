@@ -1,5 +1,5 @@
 {
-  "version": "centro-v8-eb158148",
+  "version": "centro-v9-77737dc6",
   "basePath": "/meu-mundo/centro/",
   "places": {
     "pizzaria": "centro-pizzaria-2c95a461.glb",
@@ -15,6 +15,8 @@
     "noturno": "centro-noturno-b5e93554.glb",
     "boxe": "centro-boxe-9d74cd5a.glb",
     "gincana": "centro-gincana-c4149b4b.glb",
+    "laminas": "centro-laminas-43ed1f82.glb",
+    "hall": "centro-hall-cae02108.glb",
     "igreja": "centro-igreja-36864549.glb",
     "delegacia": "centro-delegacia-89c89ff4.glb",
     "hospital": "centro-hospital-567ca464.glb"

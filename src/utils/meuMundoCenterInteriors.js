@@ -444,7 +444,47 @@ function delegacia() {
   };
 }
 
-const PLANS = { pizzaria, hamburgueria, supermercado, universidade, biblioteca, escola, academia, igreja, delegacia };
+// ═══ SALÃO DO HALL DA FAMA (12 × 22) — mm3d-48 ══════════════════════════════
+// Os Sete dos Jogos Eternos em pedestais (Aurion no fundo, três de cada lado,
+// virados para o tapete), a base vazia do Oitavo no meio ("reservado para quem
+// vencer os Sete") e o Muro dos Herdeiros na parede do fundo. Só entra quem
+// ficou 3 meses seguidos em 1º (tb_mm_hall_member) — e o admin.
+function hall() {
+  const HW = 5.6;
+  const BACK = 21.4;
+  const side = (x, z, r, hero) => ["hero_statue", x, z, r, { hero }];
+  return {
+    level: 0,
+    version: "centro-hall-v1",
+    name: "Salão do Hall da Fama",
+    theme: "hall",
+    door: D(0, 0, 2.2),
+    floors: [
+      {
+        rooms: [R("nave", "Salão", "stone", -HW, 0, HW, BACK)],
+        furniture: [
+          ["rug", 0, 9.8, 0, { w: 1.8, d: 16.6 }],
+          side(-4.4, 5.2, -90, "kragor"),
+          side(-4.4, 9.6, -90, "zephyra"),
+          side(-4.4, 14.0, -90, "maru"),
+          side(4.4, 5.2, 90, "iris"),
+          side(4.4, 9.6, 90, "noctis"),
+          side(4.4, 14.0, 90, "aeryn"),
+          side(0, 18.2, 0, "aurion"),
+          ["empty_base", 0, 11.2, 0],
+          ["honor_wall", 0, BACK - 0.26, 0],
+          ["candles", -2.0, 18.4, 0],
+          ["candles", 2.0, 18.4, 0],
+          ["plant", -5.1, 1.0, 0],
+          ["plant", 5.1, 1.0, 0],
+        ],
+      },
+    ],
+    npcs: [],
+  };
+}
+
+const PLANS = { pizzaria, hamburgueria, supermercado, universidade, biblioteca, escola, academia, igreja, delegacia, hall };
 
 const CENTER_INTERIORS = Object.freeze(Object.fromEntries(Object.entries(PLANS).map(([id, f]) => [id, Object.freeze(buildInterior(f()))])));
 
