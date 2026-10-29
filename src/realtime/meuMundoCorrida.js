@@ -16,13 +16,18 @@
 // no fim da classificação como "não terminou").
 //
 // A pessoa continua presente no centro (como no jetpack/Paint).
+//
+// mm3d-49 (garagem): cada pessoa entra com a nave que escolheu (`ship`, da
+// lista SHIPS da regra; desconhecida = a padrão) e os computadores pegam as
+// que sobraram. A nave muda os status na regra e vai na largada para todos
+// desenharem.
 
 const { Room, ServerError, matchMaker } = require("@colyseus/core");
 const { schema, t } = require("@colyseus/schema");
 const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const presence = require("./meuMundoPresence");
-const { Race, TUNING, BAIA, buildTrack } = require("../utils/meuMundoCorrida");
+const { Race, TUNING, BAIA, SHIPS, buildTrack, shipOf } = require("../utils/meuMundoCorrida");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.corrida");
@@ -57,7 +62,7 @@ const CrState = schema(
     phase: t.string(), // "lobby" | "countdown" | "race" | "end"
     until: t.float64(), // ms (epoch): fim da espera ou fechamento depois do fim
     time: t.float32(), // s de corrida (negativo na contagem)
-    seats: t.string(), // JSON [{ name, human }] na ordem das naves (depois da espera)
+    seats: t.string(), // JSON [{ name, human, ship }] na ordem das naves (depois da espera)
     orbs: t.map("float32"), // cápsula fora → s até voltar
     players: t.map(CrPlayer),
     result: t.string(), // JSON do resultado (fim)
@@ -111,7 +116,7 @@ class CorridaRoom extends Room {
     if (prev && !(prev.room === this && prev.sessionId === client.sessionId)) prev.room.replace(prev.sessionId);
     const slot = this.freeSlot();
     this.state.players.set(client.sessionId, new CrPlayer({ slot, car: -1, name: String(options.name || "piloto").slice(0, 24), online: true }));
-    this.seats.set(client.sessionId, { userId, slot, car: -1, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now(), poseAt: 0 });
+    this.seats.set(client.sessionId, { userId, slot, car: -1, ship: shipOf(options.ship).id, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now(), poseAt: 0 });
     byUser.set(userId, { room: this, sessionId: client.sessionId });
     // left = ms até o fim da espera (o aparelho conta pelo relógio dele)
     client.send("welcome", { slot, until: this.state.until, left: Math.max(0, this.state.until - Date.now()) });
@@ -253,11 +258,14 @@ class CorridaRoom extends Room {
       s.car = i;
       const p = this.state.players.get(sid);
       p.car = i;
-      seats.push({ name: p.name, kind: "remote" });
+      seats.push({ name: p.name, kind: "remote", ship: s.ship });
     });
-    while (seats.length < CARS) seats.push({ name: "", kind: "bot" });
+    // computadores: primeiro as naves que ninguém escolheu
+    const taken = new Set(seats.map((x) => x.ship));
+    const spare = [...SHIPS.filter((x) => !taken.has(x.id)), ...SHIPS].map((x) => x.id);
+    for (let i = 0; seats.length < CARS; i++) seats.push({ name: "", kind: "bot", ship: spare[i % spare.length] });
     this.race = new Race({ track: TRACK, seats, me: -1, seed: (Date.now() & 0xffff) | 1 });
-    const pub = this.race.cars.map((c) => ({ name: c.name, human: c.kind !== "bot" }));
+    const pub = this.race.cars.map((c) => ({ name: c.name, human: c.kind !== "bot", ship: c.ship }));
     this.state.seats = JSON.stringify(pub);
     this.state.phase = "countdown";
     this.state.time = this.race.time;
@@ -331,9 +339,9 @@ function define(gameServer) {
 }
 
 /** Reserva o lugar numa largada do centro em que a pessoa está (quem chama já conferiu papel, centro e porta). */
-async function reserveCorridaSeat({ userId, name, centerRoomId }) {
+async function reserveCorridaSeat({ userId, name, centerRoomId, ship }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name };
+  const options = { centerRoomId, userId, name, ship: shipOf(ship).id };
   let last = null;
   for (let i = 0; i < 4; i++) {
     try {

@@ -570,7 +570,7 @@ class MeuMundoService {
    * A sala espera até 1 minuto por mais gente e completa 6 naves com o
    * computador. Sozinho não passa por aqui (é no aparelho).
    */
-  static async joinCorrida(idUser) {
+  static async joinCorrida(idUser, { ship } = {}) {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
@@ -580,7 +580,7 @@ class MeuMundoService {
     const name = await MeuMundoStorage.getPublicName(pool, idUser);
     let reservation;
     try {
-      reservation = await reserveCorridaSeat({ userId: idUser, name, centerRoomId: here.id });
+      reservation = await reserveCorridaSeat({ userId: idUser, name, centerRoomId: here.id, ship: typeof ship === "string" ? ship.slice(0, 24) : undefined });
     } catch (err) {
       log.error("corrida.reserve_fail", { message: err.message });
       return { error: "A corrida em grupo não abriu agora.", statusCode: 503 };

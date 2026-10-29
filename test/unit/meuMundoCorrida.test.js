@@ -127,3 +127,42 @@ test("corrida — cápsula: quem pede primeiro leva; longe demais não leva", ()
   race.cars[1].dist = o2.s + 400;
   assert.equal(race.claimOrb(1, o2.id, []), false);
 });
+
+test("corrida — garagem (mm3d-49): as naves são equilibradas e cabem no limite da sala", () => {
+  assert.equal(C.SHIPS[0].id, C.DEFAULT_SHIP);
+  for (const s of C.SHIPS) {
+    const d = s.speed + s.accel + s.turn + s.turbo - 4;
+    assert.ok(Math.abs(d) < 1e-9, `${s.id}: desvios somam ${d}`);
+    for (const k of ["speed", "accel", "turn", "turbo"]) assert.ok(Math.abs(s[k] - 1) <= 0.1, `${s.id}.${k}`);
+    // a sala recusa acima de 1,2× o turbo
+    assert.ok(s.speed <= 1.05, s.id);
+  }
+  assert.equal(C.shipOf("nao-existe").id, C.DEFAULT_SHIP);
+});
+
+test("corrida — garagem: a nave do lugar muda o teto de velocidade", () => {
+  const top = (ship) => {
+    const race = new C.Race({ track, seats: [{ name: "A", kind: "local", ship }], rivals: 0 });
+    race.time = 0;
+    race.phase = "race";
+    let v = 0;
+    for (let i = 0; i < 120 * 12; i++) {
+      race.step({ steer: 0, throttle: 1, brake: 0, turbo: false }, []);
+      v = Math.max(v, race.player.v);
+    }
+    assert.equal(race.player.ship, ship);
+    return v;
+  };
+  const fast = top("corisco");
+  const base = top("brasa");
+  const slow = top("tita");
+  assert.ok(fast > base && base > slow, `${fast} > ${base} > ${slow}`);
+});
+
+test("corrida — garagem: sem nave na vaga, cada lugar pega uma (o servidor manda a de cada um)", () => {
+  const race = new C.Race({ track, rivals: 5 });
+  assert.deepEqual(
+    race.cars.map((c) => c.ship),
+    C.SHIPS.map((s) => s.id),
+  );
+});

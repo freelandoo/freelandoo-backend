@@ -458,6 +458,9 @@ const TUNING = {
                                                      
                   
                      
+                                                    
+              
+                  
  
 
                        
@@ -476,11 +479,40 @@ const TUNING = {
 
                                                     
 
+/**
+ * As naves da garagem (mm3d-49). Cada uma ganha num ponto e perde em outro
+ * (os desvios somam zero, nenhum passa de 10%): `speed` = teto (normal e
+ * turbo), `accel` = arrancada, `turn` = curva, `turbo` = quanto dura cada
+ * turbo (faixa e carga). Teto de `speed` ≤ 1,05: a sala aceita até 1,2× o
+ * turbo. A primeira é a nave do mm3d-41 (o padrão).
+ */
+                            
+               
+               
+              
+               
+ 
+const SHIPS                                          = [
+  { id: "brasa", speed: 1, accel: 1, turn: 1, turbo: 1 },
+  { id: "corisco", speed: 1.05, accel: 0.97, turn: 0.96, turbo: 1.02 },
+  { id: "rubi", speed: 1.02, accel: 1.05, turn: 0.98, turbo: 0.95 },
+  { id: "aurora", speed: 0.98, accel: 1, turn: 1.07, turbo: 0.95 },
+  { id: "tita", speed: 0.96, accel: 1.03, turn: 0.95, turbo: 1.06 },
+  { id: "vespa", speed: 1.03, accel: 1.04, turn: 1, turbo: 0.93 },
+]
+const DEFAULT_SHIP = "brasa"
+/** A nave pelo id (id desconhecido = a padrão). */
+function shipOf(id                           ) {
+  return SHIPS.find((s) => s.id === id) ?? SHIPS[0]
+}
+
 const CAR_COLORS = ["#C8102E", "#1F7AE0", "#F2B705", "#16A37F", "#8E44D9", "#F26B1D"]         
 const RIVALS = ["Faísca", "Cometa", "Vulcão", "Neblina", "Trovão"]         
 
                            
               
+               
+                                                                    
                
  
 
@@ -567,6 +599,7 @@ class Race {
       const u = col * W * 0.2
       const bot = seat.kind === "bot"
       const base = bot ? 0.9 + 0.075 * (i / Math.max(1, n - 1)) + this.rand() * 0.02 : 1
+      const ship = shipOf(seat.ship ?? SHIPS[i % SHIPS.length].id)
       this.cars.push({
         id: i,
         name: bot ? seat.name || RIVALS[bots++ % RIVALS.length] : seat.name,
@@ -594,6 +627,8 @@ class Race {
         laneT: 0,
         steerNow: 0,
         throttleNow: 0,
+        ship: ship.id,
+        stats: ship,
       })
     }
   }
@@ -666,21 +701,22 @@ class Race {
     // turbo pelo botão (carga)
     if (inp.turbo && c.charges > 0 && c.boost < 0.3) {
       c.charges--
-      c.boost = TUNING.turboBoost
-      c.v = Math.min(TUNING.boostMax, c.v + TUNING.padKick * 0.6)
+      c.boost = TUNING.turboBoost * c.stats.turbo
+      c.v = Math.min(TUNING.boostMax * c.stats.speed, c.v + TUNING.padKick * 0.6)
       out.push({ type: "turbo", car: c.id })
     }
     if (c.boost > 0) c.boost = Math.max(0, c.boost - dt)
-    const vmax = (c.boost > 0 ? TUNING.boostMax : TUNING.vmax) * c.skill
+    const st = c.stats
+    const vmax = (c.boost > 0 ? TUNING.boostMax : TUNING.vmax) * c.skill * st.speed
     // velocidade
-    if (c.boost > 0) c.v += TUNING.boostAccel * dt * (1 - c.v / TUNING.boostMax)
-    else if (inp.throttle > 0) c.v += TUNING.accel * inp.throttle * dt * Math.max(0, 1 - c.v / vmax) * 1.6
+    if (c.boost > 0) c.v += TUNING.boostAccel * st.accel * dt * (1 - c.v / (TUNING.boostMax * st.speed))
+    else if (inp.throttle > 0) c.v += TUNING.accel * st.accel * inp.throttle * dt * Math.max(0, 1 - c.v / vmax) * 1.6
     if (c.v > vmax) c.v = Math.max(vmax, c.v - TUNING.coast * 3 * dt)
     if (inp.brake > 0) c.v = Math.max(0, c.v - TUNING.brake * inp.brake * dt)
     if (inp.throttle <= 0 && c.boost <= 0 && !c.air) c.v = Math.max(0, c.v - TUNING.coast * dt)
     // direção
     const t = Math.min(1, c.v / TUNING.vmax)
-    const rate = (TUNING.turnLow + (TUNING.turnHigh - TUNING.turnLow) * t) * (c.air ? TUNING.airTurn : 1)
+    const rate = (TUNING.turnLow + (TUNING.turnHigh - TUNING.turnLow) * t) * (c.air ? TUNING.airTurn : 1) * st.turn
     if (c.v > 0.5) c.yaw += inp.steer * rate * dt * Math.min(1, c.v / 8)
     let a = wrapAngle(c.yaw - p.yaw)
     if (!c.air && Math.abs(inp.steer) < 0.05) a -= a * Math.min(1, TUNING.assist * dt)
@@ -792,8 +828,8 @@ class Race {
       const k = `${c.id}:${i}`
       if (this.padCool.has(k)) continue
       this.padCool.set(k, 1)
-      c.boost = Math.max(c.boost, TUNING.padBoost)
-      c.v = Math.min(TUNING.boostMax, c.v + TUNING.padKick)
+      c.boost = Math.max(c.boost, TUNING.padBoost * c.stats.turbo)
+      c.v = Math.min(TUNING.boostMax * c.stats.speed, c.v + TUNING.padKick)
       out.push({ type: "pad", car: c.id })
     }
     for (const o of T.orbs) {
@@ -1003,4 +1039,4 @@ function carPose(race      , c     , out         )          {
   return out
 }
 
-module.exports = { STEP, wrapAngle, wrapS, buildTrack, trackAt, surfaceY, worldAt, BAIA, TUNING, CAR_COLORS, Race, carPose };
+module.exports = { STEP, wrapAngle, wrapS, buildTrack, trackAt, surfaceY, worldAt, BAIA, TUNING, SHIPS, DEFAULT_SHIP, shipOf, CAR_COLORS, Race, carPose };

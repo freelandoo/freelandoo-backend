@@ -129,8 +129,8 @@ async function mkUser(pool, tag) {
     const s = [...room.sim.values()].find((x) => x.userId === u);
     Object.assign(s.body, { x: DOOR.x + dx, z: DOOR.z });
   }
-  async function join(u) {
-    const out = await Service.joinCorrida(u);
+  async function join(u, ship) {
+    const out = await Service.joinCorrida(u, { ship });
     if (out.error) return { out };
     const room = await consume(out);
     const box = { out, room, welcome: null, start: null, snaps: 0, last: null, deny: [], replaced: false, code: null };
@@ -159,14 +159,19 @@ async function mkUser(pool, tag) {
   for (let i = 0; i < 9; i++) nearDoor(users[i]);
 
   // ── Espera de 1 minuto (encurtada) e computadores completando ────────────
-  const A = await join(users[0]);
+  const A = await join(users[0], "vespa");
   check("o 1º fica esperando, com o prazo da espera", A.room.state.phase === "lobby" && A.welcome.until > Date.now());
-  const B = await join(users[1]);
+  const B = await join(users[1], "nave-que-nao-existe");
   check("o 2º cai na mesma largada", B.room.roomId === A.room.roomId);
   check("passou o prazo: larga (contagem)", await until(() => A.room.state.phase === "countdown", 4000));
   check("start: cada um com a sua nave", (await until(() => A.start && B.start)) && A.start.me === 0 && B.start.me === 1);
   const humans = A.start.seats.filter((s) => s.human).length;
   check("6 naves: 2 pessoas + 4 computadores", A.start.seats.length === 6 && humans === 2, JSON.stringify(A.start.seats));
+  // garagem (mm3d-49): cada um com a nave que escolheu; desconhecida = a padrão; computadores com as que sobraram
+  const ships = A.start.seats.map((s) => s.ship);
+  check("garagem: a nave escolhida vai na largada", ships[0] === "vespa" && ships[1] === "brasa", JSON.stringify(ships));
+  check("…os computadores pegam as que sobraram", new Set(ships.slice(2)).size === 4 && ships.slice(2).every((x) => x !== "vespa" && x !== "brasa"), JSON.stringify(ships));
+  check("…e o servidor corre com os status dela", roomOf(A.room.roomId).race.cars[0].stats.speed === 1.03);
   const Cx = await join(users[2]);
   check("trancada: quem chega depois vai para outra largada", Cx.room && Cx.room.roomId !== A.room.roomId && Cx.room.state.phase === "lobby");
   check("sozinho depois do prazo: 1 pessoa + 5 computadores", (await until(() => Cx.start, 4000)) && Cx.start.seats.filter((s) => !s.human).length === 5);
