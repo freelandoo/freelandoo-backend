@@ -1,0 +1,15 @@
+{
+  "version": "estatuas-1272b8c0",
+  "basePath": "/meu-mundo/estatuas/",
+  "models": {
+    "aeryn": "estatua-aeryn-4ed1f545.glb",
+    "aurion": "estatua-aurion-38be25a7.glb",
+    "fera": "estatua-fera-096712ea.glb",
+    "iris": "estatua-iris-8bd9a887.glb",
+    "kragor": "estatua-kragor-ef456f84.glb",
+    "maru": "estatua-maru-19be7f0c.glb",
+    "morkhan": "estatua-morkhan-f45a722d.glb",
+    "noctis": "estatua-noctis-fedccc9b.glb",
+    "zephyra": "estatua-zephyra-a9b9c6f5.glb"
+  }
+}

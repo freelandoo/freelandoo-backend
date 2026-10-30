@@ -16,6 +16,18 @@
 
 const STANDARD = "standard";
 
+// Os Sete e Morkhan (espelho de features/meu-mundo/gods.ts no cliente).
+const GODS = Object.freeze([
+  ["aurion", "Aurion"],
+  ["morkhan", "Morkhan"],
+  ["kragor", "Kragor"],
+  ["zephyra", "Zéphyra"],
+  ["maru", "Marú"],
+  ["iris", "Íris"],
+  ["noctis", "Noctis"],
+  ["aeryn", "Aeryn"],
+]);
+
 const CATALOG = Object.freeze([
   // O personagem padrão: de todos, de graça, corpo = condição física.
   Object.freeze({ id: STANDARD, kind: "standard", name: "Padrão", price: 0, currency: "coins", body: null }),
@@ -26,6 +38,10 @@ const CATALOG = Object.freeze([
   Object.freeze({ id: "feminina", kind: "skin", name: "Feminina", price: 0, currency: "coins", body: "female" }),
   // Ekaterina (mm3d-30): personagem própria, como o Sergio — mesmo preço dele.
   Object.freeze({ id: "ekaterina", kind: "skin", name: "Ekaterina", price: 1000, currency: "coins", body: "ekaterina" }),
+  // Os deuses de Lúmen (mm3d-50, mig 313): skins de 2 m com as animações do
+  // Sergio. Preço PROVISÓRIO em moedas (hoje só admin joga, e admin adquire de
+  // graça); a regra da lore (3 meses em 1º ou compra) entra com o ranking.
+  ...GODS.map(([id, name]) => Object.freeze({ id, kind: "skin", name, price: 5000, currency: "coins", body: id })),
 ]);
 
 const BY_ID = new Map(CATALOG.map((s) => [s.id, s]));
@@ -59,4 +75,4 @@ function publicCatalog(owned, equipped, admin = false) {
   }));
 }
 
-module.exports = { STANDARD, CATALOG, skinById, avatarBody, costFor, publicCatalog };
+module.exports = { STANDARD, GODS, CATALOG, skinById, avatarBody, costFor, publicCatalog };

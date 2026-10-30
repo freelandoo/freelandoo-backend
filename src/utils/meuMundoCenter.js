@@ -25,11 +25,12 @@
 // 36 km/h). Rua 6 m e calçada 2 m como no bairro.
 
 const fs = require("fs");
+const { STATUE_ASSETS, statue } = require("./meuMundoStatues");
 const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 9; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43; 8 = Gincana, mm3d-47; 9 = Arena das Lâminas e Salão do Hall da Fama, mm3d-48)
+const CENTER_VERSION = 10; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43; 8 = Gincana, mm3d-47; 9 = Arena das Lâminas e Salão do Hall da Fama, mm3d-48; 10 = Morkhan na praça, mm3d-50)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -186,7 +187,13 @@ const PLACES = Object.freeze(PLACE_DEFS.map(buildPlace));
 const PLAZA_PLACE = Object.freeze({ id: "praca", zone: "praca", nameKey: "centerPlace_praca", center: { x: 0, z: 0 }, half: PLAZA });
 
 // ═══ PRAÇA ═══ — o miolo (|x|,|z| ≤ 11) fica livre para encontro, fora o monumento.
-const MONUMENT = Object.freeze({ x: 0, z: 0, radius: 2.4, h: 4.2 });
+// mm3d-50: o monumento é o PEDESTAL de Morkhan, o Sem-Nome (10 m, de frente
+// para quem chega pelo portal do oeste), com a fera que ele domou aos pés.
+const MONUMENT = Object.freeze({ x: 0, z: 0, radius: 4.5, h: 1.6 });
+const PLAZA_STATUES = Object.freeze([
+  statue("morkhan", 0, 0, Math.PI / 2, 10, { kind: "pedestal", r: MONUMENT.radius, h: MONUMENT.h }),
+  statue("fera", -3.1, -1.9, Math.PI / 2, 1.5, { kind: "none", r: 0, h: MONUMENT.h }),
+]);
 const PLAZA_TREES = Object.freeze([[13.4, 13.4], [-13.4, 13.4], [13.4, -13.4], [-13.4, -13.4]].map(([x, z]) => Object.freeze([x, z, 1.05])));
 const PLAZA_BENCHES = Object.freeze(
   [
@@ -424,6 +431,7 @@ function buildCenterPayload() {
     plaza: {
       ...PLAZA_PLACE,
       monument: MONUMENT,
+      statues: PLAZA_STATUES,
       trees: PLAZA_TREES,
       benches: PLAZA_BENCHES,
       lamps: PLAZA_LAMPS,
@@ -441,6 +449,8 @@ function buildCenterPayload() {
     // O hospital vem aqui (mm3d-26); os outros prédios (mm3d-37) são buscados
     // ao entrar (GET /center/interiors/:id) para o payload continuar pequeno.
     interiors: { hospital: HOSPITAL_INTERIOR },
+    // Modelos das estátuas (mm3d-50); null = só o pedestal.
+    statueAssets: STATUE_ASSETS,
     arrival: ARRIVAL,
     portal: PORTAL,
     obstacles: OBSTACLES,

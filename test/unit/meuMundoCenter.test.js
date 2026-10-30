@@ -105,7 +105,8 @@ test("a pé: da chegada se alcança a porta, o retorno e a interação de TODOS 
     assert.ok(C.isSafeSpot(p.return.x, p.return.z, resolveCircle, MOTION.RADIUS), `retorno livre de ${p.id}`);
   }
   assert.ok(walker(C.PORTAL.x + 2, C.PORTAL.z), "portal");
-  assert.ok(walker(0, 6), "praça");
+  // mm3d-50: o pedestal de Morkhan (octógono de 4,5 m) ocupa o miolo até ~5,9 m.
+  assert.ok(walker(0, 7.5), "praça");
 });
 
 test("nenhuma porta bloqueada: a faixa de 1,5 m na frente de cada porta é livre", () => {
@@ -183,7 +184,7 @@ test("chegada a pé e portal em lugar livre; payload sem nada de usuário", () =
   assert.equal(p.capacity, 20);
   assert.equal(p.places.length, 18);
   assert.equal(p.obstacles.length, C.OBSTACLES.length);
-  assert.ok(JSON.stringify(p).length < 30000, "payload pequeno");
+  assert.ok(JSON.stringify(p).length < 32000, "payload pequeno"); // mm3d-50: + estátuas e o catálogo delas
   assert.ok(p.interiors.hospital && p.interiors.hospital.beds.length >= 6, "interior do hospital no payload");
   assert.ok(!/user|email|token/i.test(JSON.stringify(p)));
 });

@@ -32,9 +32,9 @@ test("catálogo: um padrão grátis, skins com preço (a feminina é grátis) e 
 
 test("publicCatalog: padrão sempre seu; vestido desconhecido = padrão", () => {
   const a = Skins.publicCatalog([], "standard");
-  assert.deepEqual(a.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, true], ["sergio", false, false], ["feminina", false, false], ["ekaterina", false, false]]);
+  assert.deepEqual(a.slice(0, 4).map((s) => [s.id, s.owned, s.equipped]), [["standard", true, true], ["sergio", false, false], ["feminina", false, false], ["ekaterina", false, false]]);
   const b = Skins.publicCatalog(["sergio"], "sergio");
-  assert.deepEqual(b.map((s) => [s.id, s.owned, s.equipped]), [["standard", true, false], ["sergio", true, true], ["feminina", false, false], ["ekaterina", false, false]]);
+  assert.deepEqual(b.slice(0, 4).map((s) => [s.id, s.owned, s.equipped]), [["standard", true, false], ["sergio", true, true], ["feminina", false, false], ["ekaterina", false, false]]);
   const c = Skins.publicCatalog([], "sumiu");
   assert.equal(c.find((s) => s.id === "standard").equipped, true);
 });
@@ -51,5 +51,20 @@ test("espelho do cliente: features/meu-mundo/skins.ts tem os mesmos ids", () => 
   const f = path.join(__dirname, "../../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/skins.ts");
   if (!fs.existsSync(f)) return; // CI sem o front ao lado
   const src = fs.readFileSync(f, "utf8");
-  for (const s of Skins.CATALOG) assert.match(src, new RegExp(`id: "${s.id}"`), s.id);
+  const gods = fs.readFileSync(path.join(path.dirname(f), "gods.ts"), "utf8");
+  const godIds = new Set(Skins.GODS.map(([id]) => id));
+  for (const s of Skins.CATALOG) {
+    if (godIds.has(s.id)) assert.match(gods, new RegExp(`"${s.id}"`), s.id);
+    else assert.match(src, new RegExp(`id: "${s.id}"`), s.id);
+  }
+});
+
+test("deuses (mm3d-50): skin e corpo com o mesmo id, todos na sala", () => {
+  assert.equal(Skins.GODS.length, 8);
+  for (const [id] of Skins.GODS) {
+    assert.equal(Skins.avatarBody("normal", id), id);
+    assert.ok(MeuMundoStorage.BODIES.includes(id), id);
+  }
+  const sql = fs.readFileSync(path.join(__dirname, "../../src/databases/migrations/313_meu_mundo_deuses.sql"), "utf8");
+  for (const b of MeuMundoStorage.BODIES) assert.match(sql, new RegExp(`'${b}'`), b);
 });

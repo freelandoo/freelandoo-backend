@@ -21,7 +21,7 @@ const MEU_MUNDO_RELEASE = "mm3d-17";
 
 // Versão do DESENHO do bairro. Posição guardada num desenho anterior não vale
 // neste (o que era calçada pode ter virado quintal): quem a lê confere a versão.
-const LAYOUT_VERSION = 3;
+const LAYOUT_VERSION = 4; // 4 = estátuas dos deuses e as 4 pracinhas (mm3d-50)
 const LOTS_PER_NEIGHBORHOOD = 20;
 
 // ═══ O LOTE ═══ — coordenadas LOCAIS, em metros, origem no centro do terreno
@@ -67,6 +67,7 @@ function round(v) {
 }
 
 const { buildCatalog, MAX_LEVEL, ASSET_VERSION: HOUSE_ASSET_VERSION } = require("./meuMundoHouses");
+const { STATUE_ASSETS, statue, statueBoxes } = require("./meuMundoStatues");
 
 /** Área edificável do lote (coordenadas locais). */
 function buildableArea(plan = LOT_PLAN) {
@@ -186,6 +187,34 @@ function lawnPositions() {
   return { plazaTrees, plazaFlowers, cornerTrees, outerTrees: outer };
 }
 
+// ═══ OS DEUSES (mm3d-50) ═══ — Aurion, o Titã Solar, com 10 m no lugar do
+// antigo canteiro, de frente para o ponto de chegada (sul). Os outros seis em
+// púlpitos a 7 m dele, de frente para fora; o quadrante sul fica livre para
+// quem chega ver o Aurion inteiro. Os eixos (caminhos) também ficam livres.
+const PULPIT = Object.freeze({ kind: "pulpit", r: 0.75, h: 1.1 });
+const PLAZA_STATUES = Object.freeze([
+  statue("aurion", 0, 0, 0, 10, { kind: "pedestal", r: 3.6, h: 1.4 }),
+  ...[["kragor", 30], ["zephyra", 60], ["maru", 120], ["iris", 240], ["noctis", 300], ["aeryn", 330]].map(([id, deg]) => {
+    const a = (deg * Math.PI) / 180;
+    return statue(id, 7 * Math.sin(a), 7 * Math.cos(a), a + Math.PI, 2.6, PULPIT);
+  }),
+]);
+// Quatro pracinhas no gramado, nas diagonais: piso redondo, canteiro no meio,
+// quatro bancos virados para ele e um poste. Os bancos da praça saíram daqui.
+const SQUARE = Object.freeze({ r: 5, bed: 1.1, bench: 3.3 });
+const SQUARES = Object.freeze([[19, 19], [-19, 19], [19, -19], [-19, -19]].map((p) => Object.freeze(p)));
+/** Bancos de uma pracinha: [x, z, rot] (encosto para fora, olhando o canteiro). */
+function squareBenches(cx, cz) {
+  return [0, 1, 2, 3].map((i) => {
+    const a = Math.PI / 4 + (i * Math.PI) / 2;
+    const dx = SQUARE.bench * Math.sin(a);
+    const dz = SQUARE.bench * Math.cos(a);
+    return [round(cx + dx), round(cz + dz), round(Math.atan2(dx, dz))];
+  });
+}
+/** Poste de uma pracinha: na borda, do lado de fora (longe do caminho). */
+const squareLamp = (cx, cz) => [round(cx + Math.sign(cx) * (SQUARE.r - 0.5)), round(cz + Math.sign(cz) * (SQUARE.r - 0.5))];
+
 const DIMS = Object.freeze({
   // (cornerTrees é filtrado logo abaixo, depois que os lotes existem)
   ring: RING,
@@ -198,6 +227,9 @@ const DIMS = Object.freeze({
   exitEnd: EXIT_END,
   innerWalk: INNER_WALK,
   ...lawnPositions(),
+  statues: PLAZA_STATUES,
+  square: SQUARE,
+  squares: SQUARES,
 });
 
 const SLOTS = [-2, -1, 0, 1, 2].map((i) => i * LOT_PLAN.width);
@@ -338,12 +370,14 @@ function buildObstacles(levels = null) {
     }
   }
 
-  // Praça: canteiro, bancos e postes do miolo (tamanho fixo) e, no gramado,
-  // os postes das esquinas da calçada e as árvores.
-  push(0, 0, 2.1, 2.1, Math.PI / 4, 1.2);
-  push(0, 0, 2.1, 2.1, 0, 1.2);
-  for (const [x, z] of [[4.6, 4.6], [-4.6, 4.6], [4.6, -4.6], [-4.6, -4.6]]) {
-    push(x, z, 1.05, 0.38, Math.atan2(x, z), 1);
+  // Praça: os deuses (mm3d-50) e os postes do miolo; no gramado, as quatro
+  // pracinhas, os postes das esquinas da calçada e as árvores.
+  boxes.push(...statueBoxes(PLAZA_STATUES));
+  for (const [cx, cz] of SQUARES) {
+    push(cx, cz, SQUARE.bed * 0.85, SQUARE.bed * 0.85, Math.PI / 4, 0.5);
+    for (const [x, z, rot] of squareBenches(cx, cz)) push(x, z, 1.05, 0.38, rot, 1);
+    const [lx, lz] = squareLamp(cx, cz);
+    push(lx, lz, 0.2, 0.2, 0, 3.6);
   }
   for (const sx of [-8.2, 8.2]) for (const sz of [-8.2, 8.2]) push(sx, sz, 0.2, 0.2, 0, 3.6);
   const lampAt = INNER_WALK + 1;
@@ -433,6 +467,8 @@ function buildNeighborhoodPayload({ code, name, houses, residents }) {
     exit: { id: "exit-centro", x: GATE_X - 3, z: EXIT_Z, label: "Centro da cidade" },
     obstacles: buildObstacles(levels),
     houseCatalog: { assetVersion: HOUSE_ASSET_VERSION, basePath: "/meu-mundo/casas/", levels: HOUSE_CATALOG },
+    // Modelos das estátuas (mm3d-50); null = só as bases.
+    statueAssets: STATUE_ASSETS,
     limit: LIMIT,
   };
 }
@@ -459,6 +495,8 @@ module.exports = {
   buildNeighborhoodPayload,
   buildObstacles,
   houseBoxes,
+  squareBenches,
+  squareLamp,
   HOUSE_CATALOG,
   MAX_LEVEL,
   isSelectableLevel,
