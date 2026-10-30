@@ -60,11 +60,11 @@ test("espelho do cliente: features/meu-mundo/skins.ts tem os mesmos ids", () => 
 });
 
 test("deuses (mm3d-50): skin e corpo com o mesmo id, todos na sala", () => {
-  assert.equal(Skins.GODS.length, 8);
+  assert.equal(Skins.GODS.length, 12); // 8 deuses + 4 skins de 2 m (mig 314)
   for (const [id] of Skins.GODS) {
     assert.equal(Skins.avatarBody("normal", id), id);
     assert.ok(MeuMundoStorage.BODIES.includes(id), id);
   }
-  const sql = fs.readFileSync(path.join(__dirname, "../../src/databases/migrations/313_meu_mundo_deuses.sql"), "utf8");
+  const sql = fs.readFileSync(path.join(__dirname, "../../src/databases/migrations/314_meu_mundo_skins_grandes.sql"), "utf8");
   for (const b of MeuMundoStorage.BODIES) assert.match(sql, new RegExp(`'${b}'`), b);
 });

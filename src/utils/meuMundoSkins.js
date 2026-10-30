@@ -26,6 +26,12 @@ const GODS = Object.freeze([
   ["iris", "Íris"],
   ["noctis", "Noctis"],
   ["aeryn", "Aeryn"],
+  // Outras skins de 2 m com a mesma receita (mig 314); Golem, Ciborgue e Dama
+  // também são monstros da Arena das Lâminas.
+  ["ciborgue", "Ciborgue"],
+  ["cavaleiro", "Cavaleiro Dourado"],
+  ["golem", "Golem de Pedra"],
+  ["garras", "Dama das Garras"],
 ]);
 
 const CATALOG = Object.freeze([

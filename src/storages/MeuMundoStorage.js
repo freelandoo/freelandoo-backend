@@ -9,7 +9,7 @@ const { lookFor } = require("../utils/meuMundoColors");
 
 // mm3d-30: "female" = skin "feminina"; "ekaterina" = skin "ekaterina".
 // mm3d-50 (mig 313): os deuses — corpo = id da skin.
-const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn"];
+const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "ciborgue", "cavaleiro", "golem", "garras"];
 
 // Uma chave só para TODA alocação de residência. É ela que impede dois
 // pedidos simultâneos de pegarem a mesma casa e — o caso mais sutil — de cada
