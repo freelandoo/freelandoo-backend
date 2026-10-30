@@ -188,12 +188,9 @@ const PLAZA_PLACE = Object.freeze({ id: "praca", zone: "praca", nameKey: "center
 
 // ═══ PRAÇA ═══ — o miolo (|x|,|z| ≤ 11) fica livre para encontro, fora o monumento.
 // mm3d-50: o monumento é o PEDESTAL de Morkhan, o Sem-Nome (10 m, de frente
-// para quem chega pelo portal do oeste), com a fera que ele domou aos pés.
+// para quem chega pelo portal do oeste) — a única estátua do centro.
 const MONUMENT = Object.freeze({ x: 0, z: 0, radius: 4.5, h: 1.6 });
-const PLAZA_STATUES = Object.freeze([
-  statue("morkhan", 0, 0, Math.PI / 2, 10, { kind: "pedestal", r: MONUMENT.radius, h: MONUMENT.h }),
-  statue("fera", -3.1, -1.9, Math.PI / 2, 1.5, { kind: "none", r: 0, h: MONUMENT.h }),
-]);
+const PLAZA_STATUES = Object.freeze([statue("morkhan", 0, 0, Math.PI / 2, 10, { kind: "pedestal", r: MONUMENT.radius, h: MONUMENT.h })]);
 const PLAZA_TREES = Object.freeze([[13.4, 13.4], [-13.4, 13.4], [13.4, -13.4], [-13.4, -13.4]].map(([x, z]) => Object.freeze([x, z, 1.05])));
 const PLAZA_BENCHES = Object.freeze(
   [

@@ -1,9 +1,9 @@
 // src/utils/meuMundoStatues.js — MEU MUNDO 3D: as estátuas dos deuses (mm3d-50).
 //
-// Os Sete e Morkhan em pedra cinza (MEU MUNDO 3D/pipeline/build_estatuas.py):
-// Aurion com 10 m no meio de cada bairro (onde se nasce), os outros seis em
-// púlpitos em volta dele, e Morkhan com 10 m no meio da praça do centro, com a
-// fera aos pés. QUEM fica ONDE é da planta de cada lugar (meuMundoLayout.js e
+// Só DUAS, em pedra cinza (MEU MUNDO 3D/pipeline/build_estatuas.py): Aurion
+// com 10 m no meio de cada bairro (onde se nasce) e Morkhan com 10 m no meio
+// da praça do centro. Os outros deuses são só skins. QUEM fica ONDE é da
+// planta de cada lugar (meuMundoLayout.js e
 // meuMundoCenter.js); aqui mora só o catálogo dos modelos publicados e a forma
 // de cada entrada:
 //   { id, x, z, rot, height, base: { kind: "pedestal" | "pulpit" | "none", r, h } }

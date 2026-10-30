@@ -21,7 +21,7 @@ const MEU_MUNDO_RELEASE = "mm3d-17";
 
 // Versão do DESENHO do bairro. Posição guardada num desenho anterior não vale
 // neste (o que era calçada pode ter virado quintal): quem a lê confere a versão.
-const LAYOUT_VERSION = 4; // 4 = estátuas dos deuses e as 4 pracinhas (mm3d-50)
+const LAYOUT_VERSION = 4; // 4 = estátua do Aurion e as 4 pracinhas (mm3d-50)
 const LOTS_PER_NEIGHBORHOOD = 20;
 
 // ═══ O LOTE ═══ — coordenadas LOCAIS, em metros, origem no centro do terreno
@@ -187,20 +187,13 @@ function lawnPositions() {
   return { plazaTrees, plazaFlowers, cornerTrees, outerTrees: outer };
 }
 
-// ═══ OS DEUSES (mm3d-50) ═══ — Aurion, o Titã Solar, com 10 m no lugar do
-// antigo canteiro, de frente para o ponto de chegada (sul). Os outros seis em
-// púlpitos a 7 m dele, de frente para fora; o quadrante sul fica livre para
-// quem chega ver o Aurion inteiro. Os eixos (caminhos) também ficam livres.
-const PULPIT = Object.freeze({ kind: "pulpit", r: 0.75, h: 1.1 });
-const PLAZA_STATUES = Object.freeze([
-  statue("aurion", 0, 0, 0, 10, { kind: "pedestal", r: 3.6, h: 1.4 }),
-  ...[["kragor", 30], ["zephyra", 60], ["maru", 120], ["iris", 240], ["noctis", 300], ["aeryn", 330]].map(([id, deg]) => {
-    const a = (deg * Math.PI) / 180;
-    return statue(id, 7 * Math.sin(a), 7 * Math.cos(a), a + Math.PI, 2.6, PULPIT);
-  }),
-]);
+// ═══ O DEUS SOL (mm3d-50) ═══ — Aurion, o Titã Solar, com 10 m no lugar do
+// antigo canteiro, de frente para o ponto de chegada (sul). É a ÚNICA estátua
+// do bairro (os outros deuses são só skins; pedido do Alex). Os quatro bancos
+// da praça continuam nas diagonais, virados para ele.
+const PLAZA_STATUES = Object.freeze([statue("aurion", 0, 0, 0, 10, { kind: "pedestal", r: 3.6, h: 1.4 })]);
 // Quatro pracinhas no gramado, nas diagonais: piso redondo, canteiro no meio,
-// quatro bancos virados para ele e um poste. Os bancos da praça saíram daqui.
+// quatro bancos virados para ele e um poste.
 const SQUARE = Object.freeze({ r: 5, bed: 1.1, bench: 3.3 });
 const SQUARES = Object.freeze([[19, 19], [-19, 19], [19, -19], [-19, -19]].map((p) => Object.freeze(p)));
 /** Bancos de uma pracinha: [x, z, rot] (encosto para fora, olhando o canteiro). */
@@ -370,9 +363,12 @@ function buildObstacles(levels = null) {
     }
   }
 
-  // Praça: os deuses (mm3d-50) e os postes do miolo; no gramado, as quatro
-  // pracinhas, os postes das esquinas da calçada e as árvores.
+  // Praça: Aurion (mm3d-50), os bancos e os postes do miolo; no gramado, as
+  // quatro pracinhas, os postes das esquinas da calçada e as árvores.
   boxes.push(...statueBoxes(PLAZA_STATUES));
+  for (const [x, z] of [[4.6, 4.6], [-4.6, 4.6], [4.6, -4.6], [-4.6, -4.6]]) {
+    push(x, z, 1.05, 0.38, Math.atan2(x, z), 1);
+  }
   for (const [cx, cz] of SQUARES) {
     push(cx, cz, SQUARE.bed * 0.85, SQUARE.bed * 0.85, Math.PI / 4, 0.5);
     for (const [x, z, rot] of squareBenches(cx, cz)) push(x, z, 1.05, 0.38, rot, 1);
