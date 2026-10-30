@@ -84,6 +84,8 @@ function buildCatalog(plan, houseL1, buildable) {
       door: { x: d.doorX, z: oz },
       pathEnd: { x: d.doorX, z: oz },
       colliders: d.colliders.map(([x, z, hx, hz, h]) => [round(x), round(oz + z), hx, hz, h]),
+      // Saídas de vapor das chaminés (mm3d-51): [x, altura, z] no quadro do lote.
+      vents: (d.vents || []).map(([x, z, h]) => [round(x), round(h), round(oz + z)]),
       bytes: d.bytes,
     });
   }
