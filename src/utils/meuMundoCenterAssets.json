@@ -1,27 +1,426 @@
 {
-  "version": "centro-v9-77737dc6",
+  "version": "centro-v10-50e23d09",
   "basePath": "/meu-mundo/centro/",
   "places": {
-    "pizzaria": "centro-pizzaria-2c95a461.glb",
-    "hamburgueria": "centro-hamburgueria-3911eb78.glb",
-    "supermercado": "centro-supermercado-b0f61d78.glb",
-    "universidade": "centro-universidade-ac5b118a.glb",
-    "biblioteca": "centro-biblioteca-5750a7ae.glb",
-    "escola": "centro-escola-a487ac0a.glb",
-    "academia": "centro-academia-5798891f.glb",
-    "jetpack": "centro-jetpack-bbbdcb1a.glb",
-    "paint": "centro-paint-09b74712.glb",
-    "corrida": "centro-corrida-09256b0b.glb",
-    "noturno": "centro-noturno-b5e93554.glb",
-    "boxe": "centro-boxe-9d74cd5a.glb",
-    "gincana": "centro-gincana-c4149b4b.glb",
-    "laminas": "centro-laminas-43ed1f82.glb",
-    "hall": "centro-hall-cae02108.glb",
-    "igreja": "centro-igreja-36864549.glb",
-    "delegacia": "centro-delegacia-89c89ff4.glb",
-    "hospital": "centro-hospital-567ca464.glb"
+    "pizzaria": "centro-pizzaria-7bafa2b4.glb",
+    "hamburgueria": "centro-hamburgueria-6d73db8e.glb",
+    "supermercado": "centro-supermercado-99b03a35.glb",
+    "universidade": "centro-universidade-745eeee3.glb",
+    "biblioteca": "centro-biblioteca-d305e227.glb",
+    "escola": "centro-escola-e47aca52.glb",
+    "academia": "centro-academia-68ebeff3.glb",
+    "jetpack": "centro-jetpack-62bb93a4.glb",
+    "paint": "centro-paint-4258b9b9.glb",
+    "corrida": "centro-corrida-cb7e970d.glb",
+    "noturno": "centro-noturno-c7e4b1bf.glb",
+    "boxe": "centro-boxe-b9ea16d4.glb",
+    "gincana": "centro-gincana-8ab00e0e.glb",
+    "laminas": "centro-laminas-bfdc922f.glb",
+    "hall": "centro-hall-77b2739d.glb",
+    "igreja": "centro-igreja-64f81633.glb",
+    "delegacia": "centro-delegacia-a3aebab8.glb",
+    "hospital": "centro-hospital-ec4c91e6.glb"
   },
   "props": {
-    "ambulancia": "centro-ambulancia-22a7d4a7.glb"
+    "ambulancia": "centro-ambulancia-2c0ec75c.glb"
+  },
+  "fx": {
+    "pizzaria": {
+      "gears": [
+        [
+          0,
+          6.3,
+          1.11,
+          0.32,
+          0.12,
+          0.8,
+          2
+        ]
+      ],
+      "vents": [
+        [
+          3.2,
+          8.1,
+          8.3
+        ]
+      ]
+    },
+    "hamburgueria": {
+      "gears": [
+        [
+          -4.4,
+          6.0,
+          9.2,
+          0.42,
+          0.06,
+          1.8,
+          1
+        ],
+        [
+          4.4,
+          6.0,
+          9.2,
+          0.42,
+          0.06,
+          1.8,
+          1
+        ],
+        [
+          0,
+          5.9,
+          1.88,
+          0.32,
+          0.08,
+          1.2,
+          2
+        ]
+      ],
+      "vents": []
+    },
+    "supermercado": {
+      "gears": [
+        [
+          -12.1,
+          6.1,
+          -0.14,
+          0.38,
+          0.12,
+          -0.5,
+          2
+        ],
+        [
+          12.1,
+          6.1,
+          -0.14,
+          0.38,
+          0.12,
+          0.5,
+          2
+        ]
+      ],
+      "vents": []
+    },
+    "universidade": {
+      "gears": [
+        [
+          0,
+          6.85,
+          0.015,
+          1.32,
+          0.05,
+          -0.12,
+          2
+        ]
+      ],
+      "vents": [
+        [
+          -9.5,
+          14.15,
+          19.7
+        ],
+        [
+          9.5,
+          14.15,
+          19.7
+        ]
+      ]
+    },
+    "biblioteca": {
+      "gears": [
+        [
+          -1.75,
+          5.2,
+          -0.06,
+          0.3,
+          0.12,
+          0.7,
+          2
+        ],
+        [
+          1.75,
+          5.2,
+          -0.06,
+          0.3,
+          0.12,
+          -0.7,
+          2
+        ]
+      ],
+      "vents": [
+        [
+          -5.3,
+          9.95,
+          14.1
+        ]
+      ]
+    },
+    "escola": {
+      "gears": [],
+      "vents": [
+        [
+          -6.2,
+          9.35,
+          13.7
+        ]
+      ]
+    },
+    "academia": {
+      "gears": [
+        [
+          -9.76,
+          4.6,
+          5.45,
+          0.55,
+          0.12,
+          0.6,
+          0
+        ],
+        [
+          -9.76,
+          4.6,
+          10.25,
+          0.55,
+          0.12,
+          -0.6,
+          0
+        ],
+        [
+          9.76,
+          4.6,
+          5.45,
+          0.55,
+          0.12,
+          0.6,
+          0
+        ],
+        [
+          9.76,
+          4.6,
+          10.25,
+          0.55,
+          0.12,
+          -0.6,
+          0
+        ]
+      ],
+      "vents": [
+        [
+          8.2,
+          9.45,
+          14.2
+        ]
+      ]
+    },
+    "jetpack": {
+      "gears": [
+        [
+          -3.0,
+          7.45,
+          3.24,
+          0.6,
+          0.12,
+          0.7,
+          2
+        ],
+        [
+          3.0,
+          7.45,
+          3.24,
+          0.6,
+          0.12,
+          -0.7,
+          2
+        ]
+      ],
+      "vents": []
+    },
+    "paint": {
+      "gears": [
+        [
+          0,
+          9.95,
+          -0.06,
+          0.42,
+          0.12,
+          0.6,
+          2
+        ]
+      ],
+      "vents": [
+        [
+          2.0,
+          13.3,
+          8.4
+        ]
+      ]
+    },
+    "corrida": {
+      "gears": [
+        [
+          -5.55,
+          3.2,
+          4.5,
+          0.75,
+          0.05,
+          -2.6,
+          0
+        ],
+        [
+          -5.55,
+          3.2,
+          17.2,
+          0.75,
+          0.05,
+          -2.6,
+          0
+        ],
+        [
+          5.55,
+          3.2,
+          4.5,
+          0.75,
+          0.05,
+          2.6,
+          0
+        ],
+        [
+          5.55,
+          3.2,
+          17.2,
+          0.75,
+          0.05,
+          2.6,
+          0
+        ]
+      ],
+      "vents": []
+    },
+    "noturno": {
+      "gears": [
+        [
+          -9.81,
+          4.6,
+          6.85,
+          0.6,
+          0.12,
+          0.9,
+          0
+        ],
+        [
+          9.81,
+          4.6,
+          6.85,
+          0.6,
+          0.12,
+          0.9,
+          0
+        ]
+      ],
+      "vents": [
+        [
+          -8.55,
+          10.15,
+          12.3
+        ]
+      ]
+    },
+    "boxe": {
+      "gears": [],
+      "vents": [
+        [
+          -6.45,
+          12.95,
+          24.2
+        ]
+      ]
+    },
+    "gincana": {
+      "gears": [
+        [
+          0,
+          10.2,
+          5.95,
+          0.6,
+          0.1,
+          0.9,
+          2
+        ]
+      ],
+      "vents": [
+        [
+          7.08,
+          3.58,
+          11.7
+        ]
+      ]
+    },
+    "laminas": {
+      "gears": [
+        [
+          -7.67,
+          6.3,
+          9.3,
+          1.2,
+          0.18,
+          -0.25,
+          0
+        ],
+        [
+          7.67,
+          6.3,
+          9.3,
+          1.2,
+          0.18,
+          0.25,
+          0
+        ]
+      ],
+      "vents": []
+    },
+    "delegacia": {
+      "gears": [
+        [
+          0,
+          6.98,
+          1.3,
+          0.3,
+          0.06,
+          1.6,
+          1
+        ]
+      ],
+      "vents": [
+        [
+          -6.5,
+          9.05,
+          14.3
+        ]
+      ]
+    },
+    "hospital": {
+      "gears": [
+        [
+          0,
+          8.25,
+          -0.26,
+          0.42,
+          0.12,
+          0.5,
+          2
+        ]
+      ],
+      "vents": [
+        [
+          -6.5,
+          9.95,
+          12.2
+        ],
+        [
+          6.5,
+          9.95,
+          12.2
+        ]
+      ]
+    }
   }
 }

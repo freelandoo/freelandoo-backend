@@ -410,7 +410,18 @@ function loadAssets() {
     for (const p of PLACES) if (ok(a.places[p.id])) places[p.id] = a.places[p.id];
     const props = {};
     for (const o of PROPS) if (a.props && ok(a.props[o.id])) props[o.id] = a.props[o.id];
-    return Object.freeze({ version: String(a.version || ""), basePath: a.basePath, places: Object.freeze(places), props: Object.freeze(props) });
+    // mm3d-53: engrenagens que giram e saídas de vapor de cada prédio (quadro do
+    // modelo), gerados pelo pipeline junto com os GLBs. Só números; o resto cai.
+    const fx = {};
+    const nums = (row, n) => Array.isArray(row) && row.length === n && row.every((v) => Number.isFinite(v));
+    for (const p of PLACES) {
+      const f = a.fx && a.fx[p.id];
+      if (!f || !places[p.id]) continue;
+      const gears = (Array.isArray(f.gears) ? f.gears : []).filter((g) => nums(g, 7)).slice(0, 24);
+      const vents = (Array.isArray(f.vents) ? f.vents : []).filter((v) => nums(v, 3)).slice(0, 12);
+      if (gears.length || vents.length) fx[p.id] = Object.freeze({ gears, vents });
+    }
+    return Object.freeze({ version: String(a.version || ""), basePath: a.basePath, places: Object.freeze(places), props: Object.freeze(props), fx: Object.freeze(fx) });
   } catch {
     return null;
   }
