@@ -1,8 +1,8 @@
 {
-  "version": "estatuas-0234061f",
+  "version": "estatuas-58e08146",
   "basePath": "/meu-mundo/estatuas/",
   "models": {
-    "aurion": "estatua-aurion-a54b30c6.glb",
-    "morkhan": "estatua-morkhan-bfac545c.glb"
+    "aurion": "estatua-aurion-e10bcf96.glb",
+    "morkhan": "estatua-morkhan-564f307f.glb"
   }
 }
