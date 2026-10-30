@@ -350,9 +350,12 @@ async function mkUser(pool, tag) {
   await Life.peek(host);
   await sleep(150);
   check("energia 5 → ritmo exausto na sala", Math.abs(H().p.pace - PACE.EXHAUSTED) < 1e-6, String(H().p.pace));
-  // Admin (testes, 2026-10-28): energia volta cheia, ritmo normal e fôlego sem fim.
+  // Admin (testes, 2026-10-28): energia volta cheia, ritmo normal e fôlego sem fim;
+  // 2026-10-30: saúde cheia e estresse zero.
   Life.adminPerks = true;
+  await pool.query(`UPDATE tb_mm_character SET health = 30, stress = 90 WHERE id_user = $1 AND status = 'alive'`, [host]);
   const admLife = await Life.peek(host);
+  check("admin: saúde 100 e estresse 0", admLife.character.vitals.health === 100 && admLife.character.vitals.stress === 0, JSON.stringify(admLife.character.vitals));
   await sleep(150);
   check(
     "admin: energia 100, ritmo normal na sala e fôlego sem fim",

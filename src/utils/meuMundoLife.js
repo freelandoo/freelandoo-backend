@@ -883,6 +883,13 @@ function stepState(s, t, dt, events, out) {
     if (s.health <= 0) return die(s, end, events, "infarto");
     if (!hospital) return admit(s, end, events, "infarto");
   }
+  // admin (testes, 2026-10-30): saúde e estresse sempre no melhor valor — sem
+  // internação nem morte por doença, também no tempo fora do jogo.
+  if (s._admin && s.status === "alive") {
+    s.vitality = 100;
+    s.health = 100;
+    s.stress = 0;
+  }
   if (s.wearDays >= LIFE.DAYS) return die(s, end, events, "velhice");
   if (s.health <= 0) {
     const cause = Object.entries(dmg).sort((a, b) => b[1] - a[1])[0];
@@ -1314,18 +1321,25 @@ function mealsToday(s, t) {
 
 /**
  * Admin (2026-10-28, pedido do Alex para os testes): energia sempre cheia,
- * nunca cansado/exausto e fôlego de corrida sem fim. Só a energia muda no
+ * nunca cansado/exausto e fôlego de corrida sem fim; 2026-10-30: saúde cheia
+ * e estresse zero sempre (sem internação). Energia, saúde e estresse mudam no
  * estado; ritmo e fôlego são trocados na leitura (adminView).
  */
 const ADMIN_STAMINA = Object.freeze({ maxS: 9999, refillS: 0.5 });
 function adminTopUp(s) {
   s._admin = true;
-  if (s.status === "alive") s.energy = 100;
+  if (s.status === "alive") {
+    s.energy = 100;
+    s.vitality = 100;
+    s.health = 100;
+    s.stress = 0;
+    if (s.activity && s.activity.kind === "hospital") s.activity = { kind: "idle", startedAt: s.simAt || Date.now(), until: null, bed: null, resume: null };
+  }
   return s;
 }
 function adminView(snap) {
   if (snap.status !== "alive") return snap;
-  return { ...snap, pace: PACE.NORMAL, stamina: ADMIN_STAMINA, needs: (snap.needs || []).filter((n) => !/energ|exhaust|exaust|tired|sleep|sono/i.test(String(n.id || n.kind || ""))) };
+  return { ...snap, pace: PACE.NORMAL, stamina: ADMIN_STAMINA, needs: (snap.needs || []).filter((n) => !/energ|exhaust|exaust|tired|sleep|sono|unwell|stress|hospital/i.test(String(n.id || n.kind || ""))) };
 }
 
 /** Fôlego de corrida pela condição (STAMINA): segundos de corrida e de recarga. */
