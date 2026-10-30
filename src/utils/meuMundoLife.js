@@ -242,34 +242,9 @@ const MARKET_PLACE = "supermercado";
 // nada de estudar, treinar, trabalhar ou rezar até sair.
 const CRIME = Object.freeze({ PLAZA_FINE: 50, PLAZA_JAIL_MIN: 15, HIT_JAIL_MIN: 30 });
 
-// ═══ BOXE (mm3d-43) ═══ — a luta da Arena (src/utils/meuMundoBoxe.js) sai
-// da vida (fightStats) e volta para ela (fightAftermath), na transação.
-// Pedido do Alex: "se ele perder por muito, pode ir até para o hospital,
-// ficar doente". Lutar cansa e gasta comida pela duração; o dano levado tira
-// saúde; ser nocauteado = mais dano e LESÃO (efeito "injury": sem lutar e a
-// saúde volta pela metade); nocaute feio = HOSPITAL. A luta conta como treino
-// (dentro das horas úteis do dia) e a vitória paga bolsa (até PURSE_PER_DAY).
-const BOXING = Object.freeze({
-  MIN_ENERGY: 20,
-  MIN_HEALTH: 40,
-  ENERGY_BASE: 6,
-  ENERGY_PER_MIN: 7,
-  SATIETY_PER_MIN: 3,
-  STRESS_PER_MIN: 2,
-  HEALTH_PER_DMG: 0.22,
-  HEALTH_FLOOR: 5,
-  KO_HEALTH: 10,
-  INJURY_H: Object.freeze({ ko: 48, tko: 24, heavy: 24 }),
-  HEAVY_TAKEN: 150,
-  HOSPITAL_KD: 2,
-  HOSPITAL_TAKEN: 170,
-  STRESS: Object.freeze({ win: -8, draw: 0, loss: 10, ko: 8 }),
-  MOOD: Object.freeze({ win: 12, draw: 0, loss: -10 }),
-  /** Horas de treino por minuto de luta (é treino intenso). */
-  TRAIN_PER_MIN: 0.3,
-  PURSE_PER_DAY: 5,
-  INJURY_RECOVERY: 0.5,
-});
+// Lesão (efeito "injury", deixado pelo boxe antigo, mm3d-43): fora do
+// hospital a saúde volta pela metade até ele vencer.
+const INJURY_RECOVERY = 0.5;
 
 /** Moedas para marcar `hours` de `kind` em `place` (0 = de graça). */
 function placeFee(kind, place, hours) {
@@ -824,8 +799,8 @@ function stepState(s, t, dt, events, out) {
   const R = RULES.RECOVERY;
   let rec = hospital ? R.hospital : !ok ? 0 : (R[eff] ?? R.idle) + (s.satiety > R.FED_AT && s.diet >= 0 ? R.FED : 0);
   if (effectOn(s, "multivit", t)) rec *= effectOn(s, "creatine", t) ? R.MULTIVIT_CREATINE : R.MULTIVIT;
-  // Lesão do boxe (mm3d-43): fora do hospital a saúde volta pela metade.
-  if (!hospital && effectOn(s, "injury", t)) rec *= BOXING.INJURY_RECOVERY;
+  // Lesão (mm3d-43): fora do hospital a saúde volta pela metade.
+  if (!hospital && effectOn(s, "injury", t)) rec *= INJURY_RECOVERY;
   s.health = Math.min(s.vitality, clamp(s.health + (rec - total) * dt));
   // Penalidade aguda da refeição: exata pela fração do tempo, até o piso.
   if (pen && s.health > MEALS.HEALTH_FLOOR) s.health = Math.max(MEALS.HEALTH_FLOOR, s.health - perH("health") * dt);
@@ -1181,98 +1156,6 @@ function crime(s, kind, t) {
   return { ok: true, jailed: true, minutes, events: [{ at: t, kind: "jailed", data: { reason: kind, minutes } }] };
 }
 
-/** Números da vida que a luta usa (meuMundoBoxe.fighter). */
-function fightStats(s, t) {
-  return {
-    strength: r2(s.strength),
-    speed: r2(s.speed),
-    intelligence: r2(s.intelligence),
-    leanKg: r2(s.leanKg),
-    fatPct: r2(fatPct(s)),
-    energy: r2(s.energy),
-    satiety: r2(s.satiety),
-    stress: r2(s.stress),
-    health: r2(s.health),
-    awakeH: r2(s.awakeH),
-    endurance: r2(longTerm(s).endurance),
-    personality: { optimism: s.personality.optimism, anxiety: s.personality.anxiety },
-    injuredH: injuredHours(s, t),
-  };
-}
-
-function injuredHours(s, t) {
-  const e = s.effects.find((x) => x.id === "injury" && x.until > t);
-  return e ? r2((e.until - t) / HOUR) : 0;
-}
-
-/** Pode subir no ringue agora? (ok, ou o motivo). */
-function canFight(s, t) {
-  if (s.status !== "alive") return fail("dead");
-  const k = s.activity.kind;
-  if (k === "hospital") return fail("hospital");
-  if (k === "jail") return fail("jail");
-  if (k === "sleeping" || k === "lying") return fail("sleeping");
-  if (effectOn(s, "injury", t)) return { ok: false, code: "injured", hours: injuredHours(s, t) };
-  if (s.energy < BOXING.MIN_ENERGY) return fail("tired");
-  if (s.health < BOXING.MIN_HEALTH) return fail("unfit");
-  return { ok: true };
-}
-
-/**
- * O que a luta deixou. `o` = meuMundoBoxe.summary() + `purse` (moedas da
- * vitória). Devolve as moedas ganhas, as mudanças (para a tela do fim) e se
- * foi para o hospital.
- */
-function fightAftermath(s, o, t) {
-  const events = [];
-  if (s.status !== "alive" || s.activity.kind === "hospital" || s.activity.kind === "jail") return { ok: false, events, coins: 0 };
-  const B = BOXING;
-  const before = { energy: s.energy, satiety: s.satiety, health: s.health, stress: s.stress, mood: s.mood, strength: s.strength, speed: s.speed };
-  const min = Math.max(0, Number(o.activeS) || 0) / 60;
-  const taken = Math.max(0, Number(o.taken) || 0);
-  const koed = o.outcome === "loss" && (o.method === "ko" || o.method === "tko");
-  s.energy = clamp(s.energy - (B.ENERGY_BASE + B.ENERGY_PER_MIN * min));
-  s.satiety = clamp(s.satiety - B.SATIETY_PER_MIN * min);
-  const dmgMul = 1.2 - 0.4 * s.personality.resilience;
-  const dh = (taken * B.HEALTH_PER_DMG + (koed ? B.KO_HEALTH : 0)) * dmgMul;
-  s.health = Math.max(Math.min(s.health, B.HEALTH_FLOOR), s.health - dh);
-  s.stress = clamp(s.stress + B.STRESS_PER_MIN * min + (B.STRESS[o.outcome] || 0) + (koed ? B.STRESS.ko : 0));
-  s.mood = clamp(s.mood + (B.MOOD[o.outcome] || 0));
-  // treino: as horas da luta entram nas horas úteis de treino do dia
-  const h = min * B.TRAIN_PER_MIN;
-  if (h > 0) {
-    const useful = usefulHours(s, "training", h);
-    gain(s, "strength", ATTR.GAIN_H.trainStr * useful);
-    gain(s, "speed", ATTR.GAIN_H.trainSpd * useful * 1.2);
-    s.dayAcc.hours.training = (s.dayAcc.hours.training || 0) + h;
-  }
-  const injuryH = koed ? B.INJURY_H[o.method] : taken >= B.HEAVY_TAKEN ? B.INJURY_H.heavy : 0;
-  if (injuryH) {
-    const until = t + injuryH * HOUR;
-    const cur = s.effects.find((e) => e.id === "injury");
-    if (cur) cur.until = Math.max(cur.until, until);
-    else s.effects.push({ id: "injury", until });
-  }
-  const rec = (s.boxing = s.boxing || { w: 0, l: 0, d: 0, ko: 0 });
-  if (o.outcome === "win") rec.w++;
-  else if (o.outcome === "loss") rec.l++;
-  else rec.d++;
-  if (o.outcome === "win" && (o.method === "ko" || o.method === "tko")) rec.ko++;
-  const acc = s.dayAcc;
-  acc.fights = (acc.fights || 0) + 1;
-  let coins = 0;
-  if (o.outcome === "win" && o.purse > 0 && (acc.fightsPaid || 0) < B.PURSE_PER_DAY) {
-    coins = Math.round(o.purse);
-    acc.fightsPaid = (acc.fightsPaid || 0) + 1;
-  }
-  const severe = koed && ((o.kd || 0) >= B.HOSPITAL_KD || taken >= B.HOSPITAL_TAKEN);
-  events.push({ at: t, kind: "boxe", data: { outcome: o.outcome, method: o.method, taken: r2(taken), coins, injuryH } });
-  if (severe || s.health <= RULES.HOSPITAL_AT) admit(s, t, events, "boxe");
-  const delta = {};
-  for (const k of Object.keys(before)) delta[k] = r2(s[k] - before[k]);
-  return { ok: true, events, coins, injuryH, hospital: s.activity.kind === "hospital", dead: s.status === "dead", delta };
-}
-
 // ═══ LEITURA ═══
 /** Ritmo de caminhada (a sala aplica nas velocidades). */
 function pace(s) {
@@ -1464,8 +1347,6 @@ function snapshot(s, t) {
     needs: needs(s, t),
     today: { ...dayCondition(s.dayAcc), day: s.dayAcc.day, hours: Object.fromEntries(Object.entries(s.dayAcc.hours).map(([k, v]) => [k, r2(v)])) },
     pace: pace(s),
-    // Arena de Boxe (mm3d-43): cartel e lesão.
-    boxing: { ...(s.boxing || { w: 0, l: 0, d: 0, ko: 0 }), injuredH: injuredHours(s, t), fightsToday: s.dayAcc.fights || 0 },
   };
 }
 
@@ -1510,10 +1391,6 @@ module.exports = {
   MARKET_PLACE,
   CRIME,
   crime,
-  BOXING,
-  fightStats,
-  canFight,
-  fightAftermath,
   AFTERLIFE,
   afterlife,
   applyInheritance,

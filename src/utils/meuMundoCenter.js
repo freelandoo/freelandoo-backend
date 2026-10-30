@@ -83,8 +83,10 @@ const PLACE_DEFS = [
   // Arena de Boxe (mm3d-43): quarteirão atrás da hamburgueria e da pizzaria,
   // fachada LESTE para o corredor que sobe da praça entre a hamburgueria e o
   // supermercado (8 m de largura na altura da porta). A luva no telhado
-  // aparece da praça por cima da hamburgueria.
-  { id: "boxe", zone: "atividades", rect: [-30, -4, 44, 60], h: 9, peak: 15, front: "e", door: 52, doorW: 3.4, game: "boxe", party: 2 },
+  // aparece da praça por cima da hamburgueria. mm3d-56: lá dentro roda a
+  // MESMA luta da Arena das Lâminas (só no aparelho), num ringue grande — o
+  // boxe controlado pela sala (mm3d-43/44) foi apagado.
+  { id: "boxe", zone: "atividades", rect: [-30, -4, 44, 60], h: 9, peak: 15, front: "e", door: 52, doorW: 3.4, game: "boxe" },
   // Gincana (mm3d-47): pavilhão inflável no fundo leste, atrás da biblioteca,
   // de frente para o OESTE. Chega-se pelo corredor entre a universidade (z ≥
   // −12) e a biblioteca (z ≤ −19), que sai da calçada do anel e dá de frente

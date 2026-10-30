@@ -68,8 +68,8 @@ test("registro de destinos: cada local tem entrada, interação, retorno, destin
       assert.equal(p.available, true, "o Rolê Noturno abre o minijogo (mm3d-40)");
     } else if (p.id === "boxe") {
       assert.equal(p.destination, "game:boxe");
-      assert.equal(p.available, true, "a Arena de Boxe abre a luta (mm3d-43)");
-      assert.equal(p.party, 2, "1 contra 1 (mm3d-43)");
+      assert.equal(p.available, true, "a Arena de Boxe abre a luta das Lâminas no ringue (mm3d-56)");
+      assert.equal(p.party, undefined, "luta só no aparelho, sem sala (mm3d-56)");
     } else if (p.id === "gincana") {
       assert.equal(p.destination, "game:gincana");
       assert.equal(p.available, true, "a Gincana abre a prova (mm3d-47)");

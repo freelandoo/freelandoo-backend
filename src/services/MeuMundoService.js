@@ -28,8 +28,6 @@ const { reservePaintSeat, leavePaint } = require("../realtime/meuMundoPaint");
 const { reserveCorridaSeat, leaveCorrida } = require("../realtime/meuMundoCorrida");
 const { reserveNoturnoSeat, leaveNoturno } = require("../realtime/meuMundoNoturno");
 const { reserveGincanaSeat, leaveGincana } = require("../realtime/meuMundoGincana");
-const { reserveBoxeSeat, leaveBoxe, previewCpu, inBoxe } = require("../realtime/meuMundoBoxe");
-const MeuMundoLifeServiceRef = () => require("./MeuMundoLifeService");
 const { PAINT_MODES } = require("../utils/meuMundoPaint");
 const {
   MEU_MUNDO_RELEASE,
@@ -83,8 +81,6 @@ const CORRIDA_DOOR = CENTER_PLACES.find((p) => p.id === "corrida").interact;
 const NOTURNO_DOOR = CENTER_PLACES.find((p) => p.id === "noturno").interact;
 // Gincana em grupo (mm3d-47): a mesma regra de porta.
 const GINCANA_DOOR = CENTER_PLACES.find((p) => p.id === "gincana").interact;
-// Arena de Boxe (mm3d-43): a mesma regra de porta.
-const BOXE_DOOR = CENTER_PLACES.find((p) => p.id === "boxe").interact;
 function beginTravel(idUser) {
   const t = traveling.get(idUser);
   if (t && Date.now() - t < TRAVEL_GUARD_MS) return false;
@@ -508,7 +504,6 @@ class MeuMundoService {
     leaveCorrida(idUser);
     leaveNoturno(idUser);
     leaveGincana(idUser);
-    leaveBoxe(idUser);
     presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number, ride });
     log.info("center.return", { ride: ride ? kindOfId(ride) : "" });
     return MeuMundoService.enter(idUser);
@@ -624,81 +619,6 @@ class MeuMundoService {
     } catch (err) {
       log.error("gincana.reserve_fail", { message: err.message });
       return { error: "A gincana em grupo não abriu agora.", statusCode: 503 };
-    }
-    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
-  }
-
-  // ── Arena de Boxe (mm3d-43) ───────────────────────────────────────────────
-  /** Na porta da arena: a pessoa no centro, a até 6 m da porta (null = ok). */
-  static boxeDoor(idUser) {
-    const here = presence.get(idUser);
-    if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
-    const pos = realtime.positionIn("center", here.id, idUser);
-    if (!pos || Math.hypot(pos.x - BOXE_DOOR.x, pos.z - BOXE_DOOR.z) > JETPACK_REACH) {
-      return { error: "Chegue perto da porta da Arena de Boxe", statusCode: 409, code: "far" };
-    }
-    return null;
-  }
-
-  /**
-   * A ficha antes da luta: os números da vida agora (força, velocidade,
-   * fôlego, queixo e as condições do dia), se pode lutar e os três
-   * adversários do computador (o escolhido é o que a sala vai usar).
-   */
-  static async boxeCard(idUser) {
-    const far = MeuMundoService.boxeDoor(idUser);
-    if (far) return far;
-    const f = await MeuMundoLifeServiceRef().fighter(idUser);
-    if (!f) return { error: "Vida indisponível", statusCode: 503 };
-    const Boxe = require("../utils/meuMundoBoxe");
-    const view = Boxe.fighter(f.stats);
-    return {
-      boxe: {
-        ok: f.ok,
-        code: f.code,
-        injuredH: f.hours || 0,
-        me: { body: f.body, look: f.look, view: view.view, conditions: view.conditions, record: f.boxing },
-        opponents: previewCpu(idUser, f.stats),
-        strategies: Object.keys(Boxe.STRATEGIES),
-        rules: { rounds: Boxe.BOXE.ROUNDS, roundS: Boxe.BOXE.ROUND_S, minEnergy: 20, minHealth: 40 },
-      },
-    };
-  }
-
-  /** Entrar numa luta: sozinho (contra o computador escolhido) ou multiplayer. */
-  static async joinBoxe(idUser, { mode, tier, strategy } = {}) {
-    const far = MeuMundoService.boxeDoor(idUser);
-    if (far) return far;
-    if (inBoxe(idUser)) return { error: "Você já está numa luta", statusCode: 409, code: "busy" };
-    const f = await MeuMundoLifeServiceRef().fighter(idUser);
-    if (!f) return { error: "Vida indisponível", statusCode: 503 };
-    if (!f.ok) {
-      const msg = {
-        tired: "Ele está cansado demais para lutar",
-        unfit: "Com a saúde assim o médico não libera a luta",
-        injured: "Ele está lesionado e não pode lutar agora",
-        hospital: "Ele está internado no hospital",
-        jail: "Ele está preso na delegacia",
-        sleeping: "Ele está dormindo",
-        dead: "Seu hóspede morreu",
-      }[f.code];
-      return { error: msg || "Ele não pode lutar agora", statusCode: 409, code: f.code, hours: f.hours || 0 };
-    }
-    const here = presence.get(idUser);
-    const name = await MeuMundoStorage.getPublicName(pool, idUser);
-    let reservation;
-    try {
-      reservation = await reserveBoxeSeat({
-        userId: idUser,
-        name,
-        centerRoomId: here.id,
-        mode: mode === "mp" ? "mp" : "solo",
-        tier: String(tier || "even"),
-        strategy: String(strategy || "balanced"),
-      });
-    } catch (err) {
-      log.error("boxe.reserve_fail", { message: err.message });
-      return { error: "A arena não abriu agora.", statusCode: 503 };
     }
     return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
   }

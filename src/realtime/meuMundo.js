@@ -45,7 +45,6 @@ const paint = require("./meuMundoPaint");
 const corrida = require("./meuMundoCorrida");
 const noturno = require("./meuMundoNoturno");
 const gincana = require("./meuMundoGincana");
-const boxe = require("./meuMundoBoxe");
 const { MobDirector } = require("./meuMundoMobs");
 const { interiorFor } = require("../utils/meuMundoInteriors");
 const { SEAT_REACH, BED_REACH, FRIDGE_REACH } = require("../utils/meuMundoInteriorKit");
@@ -1861,8 +1860,6 @@ function init(httpServer) {
   noturno.define(gameServer);
   // Gincana em grupo (mm3d-47): até 8 do mesmo centro, o resto é computador.
   gincana.define(gameServer);
-  // Arena de Boxe (mm3d-43): uma luta por sala (sozinho ou 2 do mesmo centro).
-  boxe.define(gameServer);
   transport.attachToServer(httpServer, {
     filter: (req) => typeof req.url === "string" && req.url.startsWith(WS_PREFIX),
   });
@@ -2130,7 +2127,6 @@ async function status() {
     ...(await corrida.corridaStatus()),
     ...(await noturno.noturnoStatus()),
     ...(await gincana.gincanaStatus()),
-    ...(await boxe.boxeStatus()),
   };
 }
 

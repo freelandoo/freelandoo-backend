@@ -42,9 +42,6 @@ router.post("/center/corrida", ...admin, asyncHandler(MeuMundoController.corrida
 router.post("/center/noturno", ...admin, asyncHandler(MeuMundoController.noturnoJoin));
 // Gincana em grupo (mm3d-47): espera até 1 minuto; o computador completa as 8 vagas.
 router.post("/center/gincana", ...admin, asyncHandler(MeuMundoController.gincanaJoin));
-// Arena de Boxe (mm3d-43): a ficha e os adversários; entrar (sozinho ou multiplayer).
-router.get("/center/boxe", ...admin, asyncHandler(MeuMundoController.boxeCard));
-router.post("/center/boxe", ...admin, asyncHandler(MeuMundoController.boxeJoin));
 // Interior de um prédio do centro (mm3d-37): a planta, buscada ao entrar.
 router.get("/center/interiors/:id", ...admin, asyncHandler(MeuMundoController.centerInterior));
 // Convites e visitas (mig 293).
