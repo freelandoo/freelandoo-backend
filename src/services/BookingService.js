@@ -92,14 +92,24 @@ class BookingService {
       if (client_name.length < 2) {
         return { error: "Informe o seu nome para agendar" };
       }
-      if (!GUEST_EMAIL_RE.test(client_email)) {
-        return { error: "Informe um e-mail válido para receber a confirmação" };
+      // E-mail é OPCIONAL (mig 315): o contato obrigatório é o WhatsApp.
+      // Vindo, ele ainda precisa ser válido — senão o lembrete iria para lixo.
+      if (client_email && !GUEST_EMAIL_RE.test(client_email)) {
+        return { error: "O e-mail informado não é válido" };
       }
       // As colunas são VARCHAR e o valor vem da internet: cortar aqui evita que
       // um corpo gigante estoure no INSERT com erro de banco na cara de quem
       // só queria marcar um horário.
       client_name = client_name.slice(0, 120);
-      client_email = client_email.slice(0, 160);
+      client_email = client_email ? client_email.slice(0, 160) : null;
+    }
+
+    // ⚠️ O WHATSAPP É OBRIGATÓRIO (pedido do Alex, 2026-10-31), com ou sem
+    // conta: é por ele que quem atende fala com o cliente. Guarda só os dígitos
+    // (DDD + número, com ou sem 55 na frente).
+    const whatsappDigits = String(client_whatsapp || "").replace(/\D/g, "");
+    if (whatsappDigits.length < 10 || whatsappDigits.length > 13) {
+      return { error: "Informe um WhatsApp com DDD para agendar" };
     }
     if (!booking_date || !start_time) {
       return { error: "Campos obrigatórios: booking_date, start_time" };
@@ -293,7 +303,8 @@ class BookingService {
           booking_date,
           start_time,
           client_name,
-          client_email,
+          // E-mail é opcional (mig 315): ausente, o campo some do metadata.
+          ...(client_email ? { client_email } : {}),
           // Cliente sem conta não tem id — o campo some do metadata em vez de
           // ir como "undefined", que o gateway guardaria como string literal.
           ...(user?.id_user ? { user_id: String(user.id_user) } : {}),
@@ -323,7 +334,7 @@ class BookingService {
         id_client_user: user?.id_user || null,
         client_name,
         client_email,
-        client_whatsapp: client_whatsapp || null,
+        client_whatsapp: whatsappDigits,
         booking_date,
         start_time,
         end_time,
