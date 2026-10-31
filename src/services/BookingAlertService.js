@@ -170,6 +170,7 @@ class BookingAlertService {
                 client_user_id: booking.id_client_user,
                 amount_cents: Number(booking.professional_amount) || null,
                 preview: text,
+                booking,
               }).catch(() => {});
             }
 

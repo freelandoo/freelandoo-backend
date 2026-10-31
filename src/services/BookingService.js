@@ -377,6 +377,18 @@ class BookingService {
       // Fire-and-forget e DEPOIS do COMMIT: a reserva já está gravada, e falha
       // de aviso não pode desfazer um horário que é verdadeiro.
       if (onSite) {
+        // ⚠️ O SINO DO PROFISSIONAL também nasce aqui: no fluxo pago quem o
+        // acende é a confirmação (`notifyBookingReceived` abaixo), e no
+        // balcão não há confirmação — sem esta linha ele nunca sabia de uma
+        // reserva de balcão feita pelo perfil (fora do site).
+        NotificationService.notifyBookingReceived({
+          owner_user_id: booking.profile_owner_user_id,
+          id_profile: booking.id_profile,
+          id_booking: booking.id,
+          client_user_id: booking.id_client_user,
+          amount_cents: null,
+          booking,
+        }).catch(() => {});
         BookingAlertService.notifyBookingConfirmed(booking).catch((err) =>
           log.warn("booking.onsite.alert.fail", { bookingId: booking.id, message: err?.message })
         );
@@ -510,6 +522,7 @@ class BookingService {
       id_booking: confirmed.id,
       client_user_id: confirmed.id_client_user,
       amount_cents: Number(confirmed.professional_amount) || null,
+      booking: confirmed,
     }).catch(() => {});
     // Veio pelo site de uma comunidade? O dono do site (e quem vai atender, se
     // for outra pessoa) recebe o recado na caixa de mensagens e no WhatsApp —

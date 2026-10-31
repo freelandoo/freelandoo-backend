@@ -13,6 +13,13 @@ router.get(
   asyncHandler(NotificationController.unreadCount)
 );
 
+// Agendamentos ainda não vistos (modal "Novo agendamento", 2026-10-31).
+router.get(
+  "/bookings-pending",
+  authMiddleware,
+  asyncHandler(NotificationController.pendingBookings)
+);
+
 router.post(
   "/mark-all-read",
   authMiddleware,

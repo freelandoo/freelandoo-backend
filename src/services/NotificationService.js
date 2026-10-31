@@ -126,6 +126,13 @@ class NotificationService {
     );
   }
 
+  /** Agendamentos ainda não vistos, para o modal "Novo agendamento". */
+  static async pendingBookings(user) {
+    if (!user?.id_user) return { error: "Usuário não autenticado" };
+    const rows = await NotificationStorage.listUnreadBookings(pool, user.id_user);
+    return { items: rows.map(mapRow) };
+  }
+
   static async markOneRead(user, params) {
     return runWithLogs(
       log,
@@ -329,6 +336,7 @@ class NotificationService {
     client_user_id,
     amount_cents,
     preview,
+    booking,
   }) {
     if (!id_booking) return null;
     const recipient =
@@ -337,6 +345,30 @@ class NotificationService {
         ? await NotificationStorage.resolveProfileOwnerUserId(pool, id_profile)
         : null);
     if (!recipient) return null;
+    // O RESUMO DA RESERVA vai no payload (2026-10-31): é o que o modal "Novo
+    // agendamento" mostra sem uma segunda requisição. Sem e-mail do cliente —
+    // o modal não precisa dele.
+    let summary = {};
+    if (booking) {
+      const date = booking.booking_date instanceof Date
+        ? booking.booking_date.toISOString().slice(0, 10)
+        : String(booking.booking_date || "").slice(0, 10);
+      let agenda_href = id_profile ? `/account/profile/${id_profile}/agenda` : "/account";
+      try {
+        const biz = await NotificationStorage.findLedBusinessCommunity(
+          pool, recipient, booking.id_origin_community
+        );
+        if (biz) agenda_href = `/comunidades/${biz}?aba=agenda`;
+      } catch { /* sem negócio: fica a agenda do perfil */ }
+      summary = {
+        client_name: booking.client_name || null,
+        service_name: booking.service_name_snapshot || null,
+        booking_date: date || null,
+        start_time: String(booking.start_time || "").slice(0, 5) || null,
+        payment_status: booking.payment_status || null,
+        agenda_href,
+      };
+    }
     return safeNotify({
       id_recipient_user: recipient,
       id_recipient_profile: id_profile,
@@ -347,6 +379,7 @@ class NotificationService {
       payload: {
         amount_cents: Number.isFinite(amount_cents) ? amount_cents : null,
         preview: typeof preview === "string" ? preview.slice(0, 140) : null,
+        ...summary,
       },
     });
   }

@@ -125,6 +125,49 @@ class NotificationStorage {
     return rows[0]?.unread || 0;
   }
 
+  /**
+   * Agendamentos recebidos e ainda não vistos — o que o modal "Novo
+   * agendamento" mostra (2026-10-31). Lê a MESMA linha do sino: visto lá ou no
+   * modal, some dos dois.
+   */
+  static async listUnreadBookings(conn, id_recipient_user, limit = 10) {
+    const { rows } = await conn.query(
+      `
+      SELECT *
+        FROM public.tb_notification
+       WHERE id_recipient_user = $1
+         AND type = 'booking_received'
+         AND read_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT $2
+      `,
+      [id_recipient_user, limit]
+    );
+    return rows;
+  }
+
+  /**
+   * Para onde "Acessar agenda" leva: a aba Agenda da comunidade de NEGÓCIO
+   * que a pessoa lidera (a de origem, se ela for a líder; senão a primeira),
+   * ou null — e aí quem chama cai na agenda do perfil.
+   */
+  static async findLedBusinessCommunity(conn, id_user, preferred_id_community) {
+    const { rows } = await conn.query(
+      `
+      SELECT id_profile
+        FROM public.tb_profile
+       WHERE id_leader_user = $1
+         AND is_community = TRUE
+         AND community_kind = 'common'
+         AND deleted_at IS NULL
+       ORDER BY (id_profile::text = COALESCE($2::text, '')) DESC, created_at
+       LIMIT 1
+      `,
+      [id_user, preferred_id_community || null]
+    );
+    return rows[0]?.id_profile || null;
+  }
+
   static async markAllRead(conn, id_recipient_user) {
     const { rowCount } = await conn.query(
       `
