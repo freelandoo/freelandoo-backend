@@ -208,6 +208,20 @@ const ATTR = Object.freeze({
 });
 const TRAINED = Object.freeze(["intelligence", "strength", "speed"]);
 
+// ═══ CRESCER (mm3d-58) ═══ — regra do Alex: o hóspede nasce JOVEM (o modelo
+// "inicial" da classe) e vira ADULTO pela idade; ir bastante à academia
+// adianta, e o anabolizante dobra o adiantamento. Virou adulto: +20% em cada
+// atributo sobre o que já tem (o pico sobe junto) e saúde 100.
+//  • Só o tempo: ADULT_DAYS dias (~6 meses de jogo).
+//  • Cada hora ÚTIL de treino (o teto diário de ATTR.USEFUL_H) soma TRAIN_DAYS
+//    dias: 4 h por dia ≈ 7× mais rápido (~26 dias); com anabolizante ≈ 13×.
+const GROWTH = Object.freeze({
+  ADULT_DAYS: 180,
+  TRAIN_DAYS: 1.5,
+  ANABOLIC: 2,
+  BONUS: 0.2,
+});
+
 // ═══ LUGARES (mm3d-37b) ═══ — treino e estudo só dentro do prédio do centro
 // (pedido do Alex). A atividade guarda o lugar; a universidade cobra a hora de
 // aula (moedas do jogo, na largada) e rende mais; biblioteca e escola são de
@@ -446,6 +460,8 @@ function normalize(s) {
   }
   if (!s.exposure) s.exposure = { hunger: 0, sleep: 0, stress: 0, health: 0 };
   if (!(s.wearDays >= 0)) s.wearDays = 0;
+  // mm3d-58: hóspede de antes começa a contar pelos dias já vividos.
+  if (!s.growth) s.growth = { stage: "young", days: s.wearDays };
   return s;
 }
 
@@ -518,6 +534,7 @@ function birth(seed, t) {
     meals: { log: {} },
     exposure: { hunger: 0, sleep: 0, stress: 0, health: 0 },
     wearDays: 0, // dias equivalentes de vida já gastos (LIFE)
+    growth: { stage: "young", days: 0 }, // GROWTH (mm3d-58)
     dayAcc: emptyDay(localParts(t).day),
     status: "alive",
     deathCause: null,
@@ -557,6 +574,18 @@ function applyInheritance(n, inherit) {
     n.peaks[k] = Math.max(n.peaks[k], v);
   }
   return n;
+}
+
+/** Vira adulto (GROWTH): +20% em cada atributo treinável e saúde 100. */
+function growUp(s, t, events) {
+  const before = Object.fromEntries(TRAINED.map((k) => [k, r2(s[k])]));
+  for (const k of TRAINED) {
+    s[k] = Math.min(ATTR.MAX, s[k] * (1 + GROWTH.BONUS));
+    if (s[k] > s.peaks[k]) s.peaks[k] = s[k];
+  }
+  s.health = 100;
+  s.growth = { stage: "adult", days: r2(s.growth.days), at: t };
+  events.push({ at: t, kind: "adult", data: { before, after: Object.fromEntries(TRAINED.map((k) => [k, r2(s[k])])) } });
 }
 
 // ═══ ATRIBUTOS ═══
@@ -714,6 +743,10 @@ function stepState(s, t, dt, events, out) {
     const coins = RULES.WORK_COINS_H * dt * (0.6 + s.intelligence / ATTR.MAX) * focus;
     out.coins += coins;
     s.dayAcc.coins += coins;
+  }
+  if (s.growth.stage !== "adult") {
+    s.growth.days += dt / 24 + (kind === "training" ? GROWTH.TRAIN_DAYS * useful * (anab ? GROWTH.ANABOLIC : 1) : 0);
+    if (s.growth.days >= GROWTH.ADULT_DAYS) growUp(s, t, events);
   }
   // Sem praticar, cai devagar — nunca abaixo do piso (fração do pico).
   if (kind !== "studying" && kind !== "working") decay(s, "intelligence", dt);
@@ -1260,6 +1293,7 @@ function needs(s, t) {
 
 /** Projeção para a rede (cards): tudo arredondado, nada interno. */
 function snapshot(s, t) {
+  normalize(s);
   const fp = fatPct(s);
   const w = weightKg(s);
   const diabetesOpen = s.hasDiabetes && !effectOn(s, "metformin", t) && s.activity.kind !== "hospital";
@@ -1343,6 +1377,13 @@ function snapshot(s, t) {
       // Dias de vida gastos por dia real agora (1 = bem cuidado).
       wearRate: r2(EXPOSURE.KEYS.reduce((n, k) => n + LIFE.WEAR[k] * severity(s)[k], 1)),
     },
+    // mm3d-58: jovem → adulto (o modelo da classe muda; ver GROWTH).
+    growth: {
+      stage: s.growth.stage,
+      days: r2(s.growth.days),
+      adultDays: GROWTH.ADULT_DAYS,
+      pct: s.growth.stage === "adult" ? 100 : r2(Math.min(100, (100 * s.growth.days) / GROWTH.ADULT_DAYS)),
+    },
     stamina: stamina(s),
     needs: needs(s, t),
     today: { ...dayCondition(s.dayAcc), day: s.dayAcc.day, hours: Object.fromEntries(Object.entries(s.dayAcc.hours).map(([k, v]) => [k, r2(v)])) },
@@ -1379,6 +1420,7 @@ module.exports = {
   SLEEP,
   EXPOSURE,
   LIFE,
+  GROWTH,
   STAMINA,
   BODY,
   ATTR,

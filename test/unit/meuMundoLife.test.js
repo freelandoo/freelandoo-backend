@@ -239,6 +239,7 @@ test("permanência: força e velocidade param em 60% do pico; inteligência em 9
   s.intelligence = 700;
   s.peaks = { intelligence: 700, strength: 800, speed: 500 };
   s.satiety = 90;
+  s.growth = { stage: "adult", days: 0 }; // mm3d-58: a virada (+20%) fica de fora
   const end = T0 + 2 * 365 * 24 * H;
   for (let t = T0; t < end; t += 24 * H) {
     L.simulate(s, t, { coins: 1e6 });

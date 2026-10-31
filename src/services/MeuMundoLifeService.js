@@ -84,6 +84,8 @@ const LIFE_NOTICES = {
   // mm3d-37f: multa e prisão.
   fined: 2,
   jailed: 1,
+  // mm3d-58: virou adulto (+20% e saúde 100).
+  adult: 2,
 };
 
 async function recordNotices(c, idUser, idCharacter, needs, events) {

@@ -52,6 +52,8 @@ function rowToState(r) {
     exposure: r.exposure || { hunger: 0, sleep: 0, stress: 0, health: 0 },
     // mig 311: cartel do boxe (mm3d-43); NULL = nunca lutou
     boxing: r.boxing || null,
+    // mig 317: jovem/adulto (mm3d-58); NULL = de antes (normalize completa)
+    growth: r.growth || null,
     wearDays: r.wear_days != null ? r.wear_days : Math.max(0, (ms(r.sim_at) - ms(r.born_at)) / 86400000),
     dayAcc: r.day_acc,
     status: r.status,
@@ -68,7 +70,7 @@ const COLS = [
   "awake_h", "zero_energy_h", "diet", "intelligence", "strength", "speed", "fertility", "attr_peaks",
   "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume", "activity_place",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
-  "wear_days", "exposure", "boxing",
+  "wear_days", "exposure", "boxing", "growth",
 ];
 
 function values(s) {
@@ -85,6 +87,7 @@ function values(s) {
     s.status, iso(s.diedAt), s.deathCause, iso(s.simAt),
     s.wearDays, JSON.stringify(s.exposure),
     s.boxing ? JSON.stringify(s.boxing) : null,
+    s.growth ? JSON.stringify(s.growth) : null,
   ];
 }
 
