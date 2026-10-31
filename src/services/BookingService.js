@@ -263,6 +263,36 @@ class BookingService {
         return { error: "Esse horário cruza o intervalo de quem atende. Escolha outro horário." };
       }
     }
+
+    // ⚠️ HORÁRIO BLOQUEADO PELO DONO ("Bloquear horário", 2026-10-31) também
+    // vale aqui: a lista já não o oferece, mas quem chama a API direto (ou
+    // abriu a página antes do bloqueio) não pode marcar por cima. Cada
+    // horário bloqueado ocupa a duração do slot do dia.
+    {
+      const weekdayOfDate = new Date(booking_date + "T12:00:00Z").getUTCDay();
+      const { rows: ovRows } = await pool.query(
+        `SELECT o.is_day_blocked, o.blocked_slots_json, r.slot_duration_minutes
+           FROM public.tb_profile_availability_overrides o
+           LEFT JOIN public.tb_profile_availability_rules r
+             ON r.id_profile = o.id_profile AND r.weekday = $3
+          WHERE o.id_profile = $1 AND o.override_date = $2 LIMIT 1`,
+        [agendaScope.agendaProfileId, booking_date, weekdayOfDate]
+      );
+      const ov = ovRows[0];
+      if (ov?.is_day_blocked) {
+        return { error: "Esse dia está fechado para agendamento. Escolha outro dia." };
+      }
+      const blocked = Array.isArray(ov?.blocked_slots_json) ? ov.blocked_slots_json : [];
+      const slotLen = Number(ov?.slot_duration_minutes) || 60;
+      const startMin = sh * 60 + sm;
+      for (const b of blocked) {
+        const [bh, bm] = String(b).split(":").map(Number);
+        const bs = bh * 60 + bm;
+        if (startMin < bs + slotLen && endMin > bs) {
+          return { error: "Esse horário foi bloqueado por quem atende. Escolha outro horário." };
+        }
+      }
+    }
     const end_time = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
 
     // Lock: verificar slot livre dentro de uma transação
