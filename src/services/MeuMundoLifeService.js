@@ -542,6 +542,7 @@ class MeuMundoLifeService {
     const skin = Skins.skinById(rawSkin);
     if (!skin || skin.kind !== "skin") return fail("skin");
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      if (skin.adminOnly && !(await MeuMundoStorage.isAdmin(ctx.client, idUser))) return fail("skin");
       const w = await MeuMundoStorage.getWardrobe(ctx.client, idUser);
       let bought = false;
       if (!w.owned.includes(skin.id)) {
@@ -566,7 +567,10 @@ class MeuMundoLifeService {
     const skin = Skins.skinById(rawSkin);
     if (!skin) return fail("skin");
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
-      if (skin.kind === "skin") {
+      if (skin.adminOnly) {
+        // mm3d-58: skin de teste das classes — só administrador, sem compra.
+        if (!(await MeuMundoStorage.isAdmin(ctx.client, idUser))) return fail("skin");
+      } else if (skin.kind === "skin") {
         const w = await MeuMundoStorage.getWardrobe(ctx.client, idUser);
         if (!w.owned.includes(skin.id)) return fail("notOwned");
       }

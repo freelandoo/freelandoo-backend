@@ -14,7 +14,24 @@
 // uma linha em cada lado, com a mesma chave, e o corpo dela em BODIES
 // (MeuMundoStorage) + CHECK chk_mm_avatar_body.
 
+const { CLAN_BODIES } = require("./meuMundoClans");
+
 const STANDARD = "standard";
+
+// mm3d-58: os 8 personagens das classes como skin SÓ DE ADMINISTRADOR (testes,
+// pedido do Alex). Id de skin com hífen (CHECK chk_mm_avatar_skin da mig 300);
+// o corpo é o id da classe. Vestida, passa por cima da classe como as outras.
+const CLAN_SKIN_NAMES = Object.freeze({
+  raposa: "Raposa",
+  raposa_f: "Raposa (menina)",
+  raposa_adulto: "Raposa adulto",
+  raposa_adulta: "Raposa adulta",
+  vampiro: "Vampiro",
+  vampira: "Vampira",
+  vampiro_adulto: "Vampiro adulto",
+  vampira_adulta: "Vampira adulta",
+});
+const CLAN_SKINS = Object.freeze(CLAN_BODIES.map((b) => [b.replace(/_/g, "-"), b]));
 
 // Os Sete e Morkhan (espelho de features/meu-mundo/gods.ts no cliente).
 const GODS = Object.freeze([
@@ -48,6 +65,7 @@ const CATALOG = Object.freeze([
   // Sergio. Preço PROVISÓRIO em moedas (hoje só admin joga, e admin adquire de
   // graça); a regra da lore (3 meses em 1º ou compra) entra com o ranking.
   ...GODS.map(([id, name]) => Object.freeze({ id, kind: "skin", name, price: 5000, currency: "coins", body: id })),
+  ...CLAN_SKINS.map(([id, body]) => Object.freeze({ id, kind: "skin", name: CLAN_SKIN_NAMES[body], price: 0, currency: "coins", body, adminOnly: true })),
 ]);
 
 const BY_ID = new Map(CATALOG.map((s) => [s.id, s]));
@@ -79,16 +97,17 @@ const costFor = (skin, admin) => (admin && skin.currency !== "polens" ? 0 : skin
 /** Catálogo para a rede, com o que a pessoa tem, o que está vestido e quanto custa para ela. */
 function publicCatalog(owned, equipped, admin = false) {
   const mine = new Set(owned);
-  return CATALOG.map((s) => ({
+  // Skin de teste (adminOnly) só aparece para administrador, e já vem "sua".
+  return CATALOG.filter((s) => !s.adminOnly || admin).map((s) => ({
     id: s.id,
     kind: s.kind,
     name: s.name,
     price: s.price,
     currency: s.currency,
     cost: costFor(s, admin),
-    owned: s.kind === "standard" || mine.has(s.id),
+    owned: s.kind === "standard" || mine.has(s.id) || (!!s.adminOnly && admin),
     equipped: s.id === (skinById(equipped) ? equipped : STANDARD),
   }));
 }
 
-module.exports = { STANDARD, GODS, CATALOG, skinById, avatarBody, costFor, publicCatalog };
+module.exports = { STANDARD, GODS, CLAN_SKINS, CATALOG, skinById, avatarBody, costFor, publicCatalog };

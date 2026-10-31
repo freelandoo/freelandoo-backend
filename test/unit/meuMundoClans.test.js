@@ -30,3 +30,18 @@ test("prioridade: skin comprada > classe > padrão/feminina/condição", () => {
   assert.equal(avatarBody("fat", "standard", null), "fat");
   assert.equal(avatarBody("fat", "feminina", null), "female");
 });
+
+test("skins de teste das classes: só admin vê, já vêm suas, passam por cima da classe", () => {
+  const Skins = require("../../src/utils/meuMundoSkins");
+  assert.equal(Skins.CLAN_SKINS.length, 8);
+  for (const [id, body] of Skins.CLAN_SKINS) {
+    assert.match(id, /^[a-z0-9-]{1,32}$/, id); // CHECK chk_mm_avatar_skin (mig 300)
+    assert.equal(Skins.skinById(id).body, body);
+    assert.equal(avatarBody("normal", id, "raposa"), body);
+  }
+  const ids = (admin) => Skins.publicCatalog([], "standard", admin).map((s) => s.id);
+  assert.ok(!ids(false).includes("vampira-adulta"));
+  const mine = Skins.publicCatalog([], "standard", true).find((s) => s.id === "vampira-adulta");
+  assert.equal(mine.owned, true);
+  assert.equal(mine.cost, 0);
+});

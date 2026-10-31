@@ -24,7 +24,8 @@ test("catálogo: um padrão grátis, skins com preço (a feminina é grátis) e 
   assert.equal(std.length, 1);
   assert.equal(std[0].price, 0);
   for (const s of Skins.CATALOG.filter((x) => x.kind === "skin")) {
-    assert.ok(s.id === "feminina" ? s.price === 0 : s.price > 0, s.id);
+    // mm3d-58: as skins de teste das classes (só admin) são de graça.
+    assert.ok(s.id === "feminina" || s.adminOnly ? s.price === 0 : s.price > 0, s.id);
     assert.ok(MeuMundoStorage.BODIES.includes(s.body), s.id);
     assert.match(s.id, /^[a-z0-9-]{1,32}$/);
   }
@@ -53,8 +54,10 @@ test("espelho do cliente: features/meu-mundo/skins.ts tem os mesmos ids", () => 
   const src = fs.readFileSync(f, "utf8");
   const gods = fs.readFileSync(path.join(path.dirname(f), "gods.ts"), "utf8");
   const godIds = new Set(Skins.GODS.map(([id]) => id));
+  const classes = fs.readFileSync(path.join(path.dirname(f), "classes.ts"), "utf8");
   for (const s of Skins.CATALOG) {
-    if (godIds.has(s.id)) assert.match(gods, new RegExp(`"${s.id}"`), s.id);
+    if (s.adminOnly) assert.match(classes, new RegExp(`"${s.id}"`), s.id);
+    else if (godIds.has(s.id)) assert.match(gods, new RegExp(`"${s.id}"`), s.id);
     else assert.match(src, new RegExp(`id: "${s.id}"`), s.id);
   }
 });
