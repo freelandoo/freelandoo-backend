@@ -66,5 +66,7 @@ test("deuses (mm3d-50): skin e corpo com o mesmo id, todos na sala", () => {
     assert.ok(MeuMundoStorage.BODIES.includes(id), id);
   }
   const sql = fs.readFileSync(path.join(__dirname, "../../src/databases/migrations/314_meu_mundo_skins_grandes.sql"), "utf8");
-  for (const b of MeuMundoStorage.BODIES) assert.match(sql, new RegExp(`'${b}'`), b);
+  // mm3d-58: corpo de classe sai da classe e nunca é gravado em avatar_pref.
+  const clans = new Set(require("../../src/utils/meuMundoClans").CLAN_BODIES);
+  for (const b of MeuMundoStorage.BODIES.filter((x) => !clans.has(x))) assert.match(sql, new RegExp(`'${b}'`), b);
 });

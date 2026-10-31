@@ -6,10 +6,12 @@
 const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout");
 const { avatarBody } = require("../utils/meuMundoSkins");
 const { lookFor } = require("../utils/meuMundoColors");
+const { CLAN_BODIES, ARTIFACT, clanBody } = require("../utils/meuMundoClans");
 
 // mm3d-30: "female" = skin "feminina"; "ekaterina" = skin "ekaterina".
 // mm3d-50 (mig 313): os deuses — corpo = id da skin.
-const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "ciborgue", "cavaleiro", "golem", "garras"];
+// mm3d-58: os corpos das classes (calculados, nunca gravados em avatar_pref).
+const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES];
 
 // Uma chave só para TODA alocação de residência. É ela que impede dois
 // pedidos simultâneos de pegarem a mesma casa e — o caso mais sutil — de cada
@@ -21,7 +23,7 @@ const ALLOC_LOCK = "meu_mundo:alocacao";
 const RESIDENCE_SELECT = `
   SELECT r.id_residence, r.id_user, r.started_at,
          h.id_house, h.variant, h.level, h.level_rev, l.lot_number,
-         n.id_neighborhood, n.seq, n.name, n.layout
+         n.id_neighborhood, n.seq, n.name, n.layout, n.clan
     FROM tb_mm_residence r
     JOIN tb_mm_house h ON h.id_house = r.id_house
     JOIN tb_mm_lot l ON l.id_lot = h.id_lot
@@ -38,14 +40,14 @@ class MeuMundoStorage {
     return r.rows[0] || null;
   }
 
-  static async createNeighborhood(c) {
+  static async createNeighborhood(c, clan = null) {
     const { rows } = await c.query(
       `SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM tb_mm_neighborhood`
     );
     const seq = Number(rows[0].next);
     const n = await c.query(
-      `INSERT INTO tb_mm_neighborhood (seq, name) VALUES ($1, $2) RETURNING id_neighborhood, seq`,
-      [seq, `Bairro ${String(seq).padStart(2, "0")}`]
+      `INSERT INTO tb_mm_neighborhood (seq, name, clan) VALUES ($1, $2, $3) RETURNING id_neighborhood, seq`,
+      [seq, `Bairro ${String(seq).padStart(2, "0")}`, clan]
     );
     const id = n.rows[0].id_neighborhood;
     for (let num = 1; num <= LOTS_PER_NEIGHBORHOOD; num++) {
@@ -62,47 +64,76 @@ class MeuMundoStorage {
   }
 
   /**
-   * Recupera a residência ativa ou aloca uma. Idempotente: repetir devolve a
-   * mesma casa. Transacional: ou a residência inteira existe, ou nada mudou.
-   * Devolve { residence, created }.
+   * Primeira casa livre num bairro DA CLASSE (mm3d-58); sem vaga, cria o
+   * próximo bairro dessa classe. Chamar dentro da transação com ALLOC_LOCK.
    */
-  static async ensureResidence(pool, idUser) {
+  static async freeHouseIn(c, clan) {
+    let free = await c.query(
+      `SELECT h.id_house
+         FROM tb_mm_house h
+         JOIN tb_mm_lot l ON l.id_lot = h.id_lot
+         JOIN tb_mm_neighborhood n ON n.id_neighborhood = l.id_neighborhood
+         LEFT JOIN tb_mm_residence r ON r.id_house = h.id_house AND r.status = 'active'
+        WHERE r.id_residence IS NULL AND n.clan = $1
+        ORDER BY n.seq, l.lot_number
+        LIMIT 1`,
+      [clan]
+    );
+    if (!free.rows[0]) {
+      const idNb = await MeuMundoStorage.createNeighborhood(c, clan);
+      free = await c.query(
+        `SELECT h.id_house FROM tb_mm_house h JOIN tb_mm_lot l ON l.id_lot = h.id_lot
+          WHERE l.id_neighborhood = $1 ORDER BY l.lot_number LIMIT 1`,
+        [idNb]
+      );
+    }
+    return free.rows[0].id_house;
+  }
+
+  /**
+   * Leva a residência para um bairro da classe (mm3d-58). Quem já mora em
+   * bairro de outra classe (ou de antes das classes) muda levando o nível da
+   * casa e a pintura do carro; a casa antiga fica livre. Os veículos são
+   * guardados por bairro+lote: na casa nova eles começam na vaga.
+   * Dentro da transação com ALLOC_LOCK. Devolve true se mudou.
+   */
+  static async moveToClan(c, idUser, clan) {
+    const old = await MeuMundoStorage.getActiveResidence(c, idUser);
+    if (old && old.clan === clan) return false;
+    const idHouse = await MeuMundoStorage.freeHouseIn(c, clan);
+    if (old) {
+      await c.query(
+        `UPDATE tb_mm_residence SET status = 'ended', ended_at = NOW(), end_reason = 'clan' WHERE id_residence = $1`,
+        [old.id_residence]
+      );
+      await c.query(
+        `UPDATE tb_mm_house n
+            SET level = o.level, car_paint = o.car_paint, level_rev = n.level_rev + 1
+           FROM tb_mm_house o
+          WHERE n.id_house = $1 AND o.id_house = $2`,
+        [idHouse, old.id_house]
+      );
+    }
+    await c.query(`INSERT INTO tb_mm_residence (id_user, id_house) VALUES ($1, $2)`, [idUser, idHouse]);
+    return true;
+  }
+
+  /**
+   * Recupera a residência ativa ou aloca uma no bairro da classe. Idempotente:
+   * repetir devolve a mesma casa. Transacional. Devolve { residence, created }.
+   */
+  static async ensureResidence(pool, idUser, clan) {
     const existing = await MeuMundoStorage.getActiveResidence(pool, idUser);
-    if (existing) return { residence: existing, created: false };
+    if (existing && existing.clan === clan) return { residence: existing, created: false };
 
     const c = await pool.connect();
+    let created = false;
     try {
       await c.query("BEGIN");
       await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [ALLOC_LOCK]);
       // Dentro do lock: outra requisição do mesmo usuário pode ter acabado de
       // alocar enquanto esta esperava.
-      const again = await MeuMundoStorage.getActiveResidence(c, idUser);
-      if (again) {
-        await c.query("COMMIT");
-        return { residence: again, created: false };
-      }
-      let free = await c.query(
-        `SELECT h.id_house
-           FROM tb_mm_house h
-           JOIN tb_mm_lot l ON l.id_lot = h.id_lot
-           JOIN tb_mm_neighborhood n ON n.id_neighborhood = l.id_neighborhood
-           LEFT JOIN tb_mm_residence r ON r.id_house = h.id_house AND r.status = 'active'
-          WHERE r.id_residence IS NULL
-          ORDER BY n.seq, l.lot_number
-          LIMIT 1`
-      );
-      if (!free.rows[0]) {
-        const idNb = await MeuMundoStorage.createNeighborhood(c);
-        free = await c.query(
-          `SELECT h.id_house FROM tb_mm_house h JOIN tb_mm_lot l ON l.id_lot = h.id_lot
-            WHERE l.id_neighborhood = $1 ORDER BY l.lot_number LIMIT 1`,
-          [idNb]
-        );
-      }
-      await c.query(`INSERT INTO tb_mm_residence (id_user, id_house) VALUES ($1, $2)`, [
-        idUser,
-        free.rows[0].id_house,
-      ]);
+      created = await MeuMundoStorage.moveToClan(c, idUser, clan);
       await c.query("COMMIT");
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});
@@ -112,7 +143,99 @@ class MeuMundoStorage {
       c.release();
     }
     const residence = await MeuMundoStorage.getActiveResidence(pool, idUser);
-    return { residence, created: true };
+    return { residence, created };
+  }
+
+  // ── Classes (mm3d-58, mig 318) ───────────────────────────────────────────
+  static async getClan(db, idUser) {
+    const r = await db.query(
+      `SELECT k.clan, k.sex, k.chosen_at, k.changed_at, k.changes,
+              (SELECT COUNT(*)::int FROM tb_mm_artifact a
+                WHERE a.id_user = $1 AND a.kind = $2 AND a.used_at IS NULL) AS artifacts
+         FROM (SELECT $1::uuid AS id_user) u
+         LEFT JOIN tb_mm_clan k ON k.id_user = u.id_user`,
+      [idUser, ARTIFACT.KIND]
+    );
+    const row = r.rows[0];
+    return {
+      clan: row.clan || null,
+      sex: row.sex || null,
+      chosenAt: row.chosen_at,
+      changedAt: row.changed_at,
+      changes: row.changes || 0,
+      artifacts: row.artifacts,
+    };
+  }
+
+  /** Escolha da classe (uma vez). Muda a residência na mesma transação. */
+  static async chooseClan(pool, idUser, clan, sex) {
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [ALLOC_LOCK]);
+      const had = await c.query(`SELECT clan FROM tb_mm_clan WHERE id_user = $1`, [idUser]);
+      if (had.rows[0]) {
+        await c.query("ROLLBACK");
+        return { error: "Você já escolheu sua classe", statusCode: 409, code: "clan_chosen" };
+      }
+      await c.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, $2, $3)`, [idUser, clan, sex]);
+      await MeuMundoStorage.moveToClan(c, idUser, clan);
+      await c.query("COMMIT");
+      return { ok: true };
+    } catch (err) {
+      await c.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
+
+  /**
+   * Troca de classe pelo ARTEFATO (consumido aqui): recarga de 30 dias desde
+   * a última troca; muda a residência na mesma transação.
+   */
+  static async changeClan(pool, idUser, clan) {
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [ALLOC_LOCK]);
+      const row = (await c.query(`SELECT clan, changed_at FROM tb_mm_clan WHERE id_user = $1 FOR UPDATE`, [idUser])).rows[0];
+      const fail = async (error, statusCode, code) => {
+        await c.query("ROLLBACK");
+        return { error, statusCode, code };
+      };
+      if (!row) return await fail("Escolha sua classe primeiro", 409, "needs_clan");
+      if (row.clan === clan) return await fail("Você já é dessa classe", 400, "same_clan");
+      const wait = row.changed_at ? new Date(row.changed_at).getTime() + ARTIFACT.COOLDOWN_DAYS * 86400000 - Date.now() : 0;
+      if (wait > 0) return await fail("O artefato ainda está recarregando", 409, "clan_cooldown");
+      const art = (
+        await c.query(
+          `SELECT id_artifact FROM tb_mm_artifact
+            WHERE id_user = $1 AND kind = $2 AND used_at IS NULL
+            ORDER BY acquired_at LIMIT 1 FOR UPDATE`,
+          [idUser, ARTIFACT.KIND]
+        )
+      ).rows[0];
+      if (!art) return await fail("Você precisa do artefato de troca de classe", 402, "no_artifact");
+      await c.query(`UPDATE tb_mm_artifact SET used_at = NOW() WHERE id_artifact = $1`, [art.id_artifact]);
+      await c.query(
+        `UPDATE tb_mm_clan SET clan = $2, changed_at = NOW(), changes = changes + 1 WHERE id_user = $1`,
+        [idUser, clan]
+      );
+      await MeuMundoStorage.moveToClan(c, idUser, clan);
+      await c.query("COMMIT");
+      return { ok: true };
+    } catch (err) {
+      await c.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
+
+  /** Dá um artefato (origem: compra, queda de monstro, teste de admin…). */
+  static async grantArtifact(db, idUser, source) {
+    await db.query(`INSERT INTO tb_mm_artifact (id_user, kind, source) VALUES ($1, $2, $3)`, [idUser, ARTIFACT.KIND, source]);
   }
 
   /** Casas do bairro com o nome público do titular (nunca e-mail ou id). */
@@ -206,10 +329,22 @@ class MeuMundoStorage {
     return r.rows[0].n;
   }
 
-  /** Corpo que a sala desenha: a skin vestida (mig 300) ou a condição física. */
+  /**
+   * Corpo que a sala desenha: a skin comprada vestida (mig 300), o corpo da
+   * classe (mm3d-58: classe + sexo + fase da vida) ou a condição física.
+   */
   static async getBody(db, idUser) {
-    const r = await db.query(`SELECT body, skin FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]);
-    return avatarBody(r.rows[0]?.body || "normal", r.rows[0]?.skin);
+    const r = await db.query(
+      `SELECT p.body, p.skin, k.clan, k.sex,
+              (SELECT ch.growth->>'stage' FROM tb_mm_character ch
+                WHERE ch.id_user = u.id_user ORDER BY ch.generation DESC LIMIT 1) AS stage
+         FROM (SELECT $1::uuid AS id_user) u
+         LEFT JOIN tb_mm_avatar_pref p ON p.id_user = u.id_user
+         LEFT JOIN tb_mm_clan k ON k.id_user = u.id_user`,
+      [idUser]
+    );
+    const row = r.rows[0] || {};
+    return avatarBody(row.body || "normal", row.skin, clanBody(row.clan, row.sex, row.stage));
   }
 
   /** Cores da skin vestida (mm3d-36, mig 304): "" para skin sem cores. */

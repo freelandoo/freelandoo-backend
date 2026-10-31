@@ -24,6 +24,21 @@ async function adminNeighborhood(req, res) {
   return reply(res, await MeuMundoService.enter(req.user.id_user));
 }
 
+// Classes (mm3d-58): estado, escolha (uma vez), troca pelo artefato e um
+// artefato de teste (o jogo hoje é só de administradores).
+async function clanGet(req, res) {
+  return reply(res, await MeuMundoService.clanState(req.user.id_user));
+}
+async function clanChoose(req, res) {
+  return reply(res, await MeuMundoService.chooseClan(req.user.id_user, req.body));
+}
+async function clanChange(req, res) {
+  return reply(res, await MeuMundoService.changeClan(req.user.id_user, req.body));
+}
+async function clanTestArtifact(req, res) {
+  return reply(res, await MeuMundoService.grantTestArtifact(req.user.id_user));
+}
+
 // Reconexão: revalida acesso e devolve uma reserva nova (com o ambiente).
 async function adminSession(req, res) {
   return reply(res, await MeuMundoService.reconnect(req.user.id_user));
@@ -245,6 +260,10 @@ async function adminStatus(_req, res) {
 }
 
 module.exports = {
+  clanGet,
+  clanChoose,
+  clanChange,
+  clanTestArtifact,
   centerInterior,
   adminNeighborhood,
   adminSession,

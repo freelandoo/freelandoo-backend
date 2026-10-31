@@ -24,6 +24,11 @@ const admin = [authMiddleware, roleMiddleware("Administrator")];
 
 router.get("/neighborhood", ...admin, asyncHandler(MeuMundoController.adminNeighborhood));
 router.post("/session", ...admin, asyncHandler(MeuMundoController.adminSession));
+// Classes (mm3d-58): sem classe o GET /neighborhood responde 409 needs_clan.
+router.get("/clan", ...admin, asyncHandler(MeuMundoController.clanGet));
+router.post("/clan", ...admin, asyncHandler(MeuMundoController.clanChoose));
+router.post("/clan/change", ...admin, asyncHandler(MeuMundoController.clanChange));
+router.post("/clan/artifact", ...admin, asyncHandler(MeuMundoController.clanTestArtifact));
 // Troca o nível da PRÓPRIA casa (teste). Dono = residência ativa do token.
 router.post("/house/level", ...admin, asyncHandler(MeuMundoController.adminHouseLevel));
 // Entrar (lote no bairro em que você está) e sair pela porta.

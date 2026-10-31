@@ -54,9 +54,19 @@ const BY_ID = new Map(CATALOG.map((s) => [s.id, s]));
 
 const skinById = (id) => BY_ID.get(String(id || "")) || null;
 
-/** Corpo que a sala desenha: o da skin vestida ou, no padrão, a condição. */
-function avatarBody(condition, skin) {
+// Skins que NÃO passam por cima do corpo da classe (mm3d-58): o padrão e a
+// feminina eram "a personagem" — com classe, quem é a pessoa é a classe.
+const UNDER_CLAN = new Set([STANDARD, "feminina"]);
+
+/**
+ * Corpo que a sala desenha: a skin comprada vestida (Sergio, Ekaterina,
+ * deuses) passa por cima de tudo; senão o corpo da classe (mm3d-58); sem
+ * classe, a skin padrão/feminina ou a condição física.
+ */
+function avatarBody(condition, skin, clanBody = null) {
   const s = skinById(skin);
+  if (s && s.body && !UNDER_CLAN.has(s.id)) return s.body;
+  if (clanBody) return clanBody;
   return (s && s.body) || condition || "normal";
 }
 

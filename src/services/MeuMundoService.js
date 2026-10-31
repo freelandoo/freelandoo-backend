@@ -18,6 +18,7 @@
 
 const pool = require("../databases");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
+const { CLANS, ARTIFACT, isClan, isSex } = require("../utils/meuMundoClans");
 const MeuMundoVisitStorage = require("../storages/MeuMundoVisitStorage");
 const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const AuthStorage = require("../storages/AuthStorage");
@@ -259,7 +260,10 @@ class MeuMundoService {
   }
 
   static async enter(idUser) {
-    const { residence, created } = await MeuMundoStorage.ensureResidence(pool, idUser);
+    // mm3d-58: sem classe não entra — a tela de escolha abre antes do bairro.
+    const mine = await MeuMundoStorage.getClan(pool, idUser);
+    if (!mine.clan) return { error: "Escolha sua classe", statusCode: 409, code: "needs_clan" };
+    const { residence, created } = await MeuMundoStorage.ensureResidence(pool, idUser, mine.clan);
     // A vida vem ANTES do corpo: ler a vida grava o tipo físico atual (ele
     // não se escolhe — sai da alimentação e do treino).
     const life = await lifeFor(idUser);
@@ -272,7 +276,10 @@ class MeuMundoService {
           ? await MeuMundoService.housePayload(idUser, target.house, body, name, life)
           : await MeuMundoService.neighborhoodPayload(idUser, residence, target, body, name, life);
     if (out.error) return out;
-    if (out.me) out.me.newResidence = created;
+    if (out.me) {
+      out.me.newResidence = created;
+      out.me.clan = { clan: mine.clan, sex: mine.sex };
+    }
     // Cores do personagem (mm3d-36): um aviso no sino, uma vez por conta.
     try {
       const n = await Inbox.insertNotice(pool, idUser, { kind: "life", code: "colors_hint", priority: 4, data: {}, dedupeKey: "colors-hint" });
@@ -281,6 +288,37 @@ class MeuMundoService {
       log.warn("colors_hint_fail", { message: err.message });
     }
     return out;
+  }
+
+  // ── Classes (mm3d-58) ───────────────────────────────────────────────────
+  static async clanState(idUser) {
+    const mine = await MeuMundoStorage.getClan(pool, idUser);
+    return { ...mine, clans: CLANS, cooldownDays: ARTIFACT.COOLDOWN_DAYS };
+  }
+
+  /** Escolha (uma vez, ao entrar pela primeira vez depois das classes). */
+  static async chooseClan(idUser, body) {
+    const clan = body?.clan;
+    const sex = body?.sex;
+    if (!isClan(clan) || !isSex(sex)) return { error: "Classe inválida", statusCode: 400, code: "bad_clan" };
+    const r = await MeuMundoStorage.chooseClan(pool, idUser, clan, sex);
+    if (r.error) return r;
+    return MeuMundoService.clanState(idUser);
+  }
+
+  /** Troca pelo artefato. O cliente recarrega o jogo depois (casa nova). */
+  static async changeClan(idUser, body) {
+    const clan = body?.clan;
+    if (!isClan(clan)) return { error: "Classe inválida", statusCode: 400, code: "bad_clan" };
+    const r = await MeuMundoStorage.changeClan(pool, idUser, clan);
+    if (r.error) return r;
+    return MeuMundoService.clanState(idUser);
+  }
+
+  /** TESTE (só admin joga hoje): ganha um artefato para conferir a troca. */
+  static async grantTestArtifact(idUser) {
+    await MeuMundoStorage.grantArtifact(pool, idUser, "admin_test");
+    return MeuMundoService.clanState(idUser);
   }
 
   /**

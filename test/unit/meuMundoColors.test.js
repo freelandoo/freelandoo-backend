@@ -33,7 +33,9 @@ test("só o padrão e a feminina mudam de cor; cada skin guarda as suas", () => 
 test("corpos pintados = todos os da sala menos Sergio, Ekaterina e os deuses", () => {
   // mm3d-50: os deuses têm visual próprio (como o Sergio).
   const gods = new Set(require("../../src/utils/meuMundoSkins").GODS.map(([id]) => id));
-  const want = MeuMundoStorage.BODIES.filter((b) => b !== "sergio" && b !== "ekaterina" && !gods.has(b)).sort();
+  // mm3d-58: os corpos das classes também têm visual próprio.
+  const clans = new Set(require("../../src/utils/meuMundoClans").CLAN_BODIES);
+  const want = MeuMundoStorage.BODIES.filter((b) => b !== "sergio" && b !== "ekaterina" && !gods.has(b) && !clans.has(b)).sort();
   assert.deepEqual([...C.COLORABLE_BODIES].sort(), want);
   assert.equal(C.roomLook("sergio", "1111"), "");
   assert.equal(C.roomLook("female", "1111"), "1111");
