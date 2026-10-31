@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const BookingStorage = require("../storages/BookingStorage");
 const BookingAvailabilityStorage = require("../storages/BookingAvailabilityStorage");
+const BookingAvailabilityService = require("./BookingAvailabilityService");
 const ProfileStorage = require("../storages/ProfileStorage");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
@@ -245,6 +246,23 @@ class BookingService {
       duration = rows[0]?.slot_duration_minutes || 60;
     }
     const endMin = sh * 60 + sm + duration;
+
+    // ⚠️ O INTERVALO (almoço, mig 316) TAMBÉM VALE AQUI. A lista de horários
+    // já não oferece nada que encoste nele, mas o serviço tem duração própria:
+    // um corte de 75 min às 11:00 terminaria 12:15, dentro do almoço — e o
+    // horário de início, sozinho, parece livre.
+    {
+      const weekdayOfDate = new Date(booking_date + "T12:00:00Z").getUTCDay();
+      const { rows: brkRows } = await pool.query(
+        `SELECT break_start, break_end FROM public.tb_profile_availability_rules
+          WHERE id_profile = $1 AND weekday = $2 LIMIT 1`,
+        [agendaScope.agendaProfileId, weekdayOfDate]
+      );
+      const brk = BookingAvailabilityService.breakOf(brkRows[0]);
+      if (brk && sh * 60 + sm < brk.e && endMin > brk.s) {
+        return { error: "Esse horário cruza o intervalo de quem atende. Escolha outro horário." };
+      }
+    }
     const end_time = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
 
     // Lock: verificar slot livre dentro de uma transação

@@ -5,11 +5,31 @@ const BookingStorage = require("../storages/BookingStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const { defaultWeeklyRules } = require("../utils/bookingDefaults");
 
+const toMin = (t) => {
+  const [h, m] = String(t).split(":").map(Number);
+  return h * 60 + m;
+};
+
+/**
+ * O intervalo (almoço) de uma regra semanal, em minutos — ou null (mig 316).
+ * Os dois campos andam juntos; um só, ou início ≥ fim, é como não ter.
+ */
+function breakOf(rule) {
+  if (!rule || !rule.break_start || !rule.break_end) return null;
+  const s = toMin(rule.break_start);
+  const e = toMin(rule.break_end);
+  return e > s ? { s, e } : null;
+}
+
 /**
  * Gera slots de horário com base em start/end/duration/buffer.
  * Retorna array de { start: "HH:MM", end: "HH:MM" }.
+ *
+ * Com `brk` (o intervalo, mig 316), nenhum horário encosta nele: o que
+ * cruzaria o almoço é pulado e a contagem recomeça no fim do intervalo — o
+ * expediente da tarde nasce às 13:00, não num quebrado herdado da manhã.
  */
-function generateSlots(startTime, endTime, durationMin, bufferMin) {
+function generateSlots(startTime, endTime, durationMin, bufferMin, brk = null) {
   const slots = [];
   const [sh, sm] = startTime.split(":").map(Number);
   const [eh, em] = endTime.split(":").map(Number);
@@ -18,6 +38,10 @@ function generateSlots(startTime, endTime, durationMin, bufferMin) {
 
   let cursor = startMinutes;
   while (cursor + durationMin <= endMinutes) {
+    if (brk && cursor < brk.e && cursor + durationMin > brk.s) {
+      cursor = brk.e;
+      continue;
+    }
     const slotStart = `${String(Math.floor(cursor / 60)).padStart(2, "0")}:${String(cursor % 60).padStart(2, "0")}`;
     const slotEndMin = cursor + durationMin;
     const slotEnd = `${String(Math.floor(slotEndMin / 60)).padStart(2, "0")}:${String(slotEndMin % 60).padStart(2, "0")}`;
@@ -41,9 +65,28 @@ class BookingAvailabilityService {
     // A agenda é da conta: editar por qualquer perfil grava no perfil-conta.
     const { agendaProfileId } = await BookingAvailabilityStorage.resolveAgendaScope(pool, id_profile);
 
+    const HHMM = /^([01]\d|2[0-3]):[0-5]\d(:\d{2})?$/;
     const results = [];
     for (const rule of rules) {
       if (rule.weekday == null || rule.weekday < 0 || rule.weekday > 6) continue;
+      // Intervalo (mig 316): os dois juntos, início < fim, dentro do expediente.
+      let break_start = null;
+      let break_end = null;
+      if (rule.break_start || rule.break_end) {
+        const start = rule.start_time || "08:00";
+        const end = rule.end_time || "18:00";
+        if (!HHMM.test(String(rule.break_start || "")) || !HHMM.test(String(rule.break_end || ""))) {
+          return { error: "Informe o início e o fim do intervalo" };
+        }
+        if (toMin(rule.break_start) >= toMin(rule.break_end)) {
+          return { error: "O intervalo precisa terminar depois de começar" };
+        }
+        if (toMin(rule.break_start) < toMin(start) || toMin(rule.break_end) > toMin(end)) {
+          return { error: "O intervalo precisa ficar dentro do horário de atendimento" };
+        }
+        break_start = rule.break_start;
+        break_end = rule.break_end;
+      }
       const saved = await BookingAvailabilityStorage.upsertWeeklyRule(pool, {
         id_profile: agendaProfileId,
         weekday: rule.weekday,
@@ -52,6 +95,8 @@ class BookingAvailabilityService {
         end_time: rule.end_time || "18:00",
         slot_duration_minutes: rule.slot_duration_minutes || 60,
         buffer_minutes: rule.buffer_minutes || 0,
+        break_start,
+        break_end,
       });
       results.push(saved);
     }
@@ -202,9 +247,9 @@ class BookingAvailabilityService {
 
       // Slots baseados no horário customizado
       if (ov.custom_start_time && ov.custom_end_time) {
-        slots = generateSlots(ov.custom_start_time, ov.custom_end_time, duration, buffer);
+        slots = generateSlots(ov.custom_start_time, ov.custom_end_time, duration, buffer, breakOf(weeklyRule));
       } else if (weeklyRule && weeklyRule.is_enabled) {
-        slots = generateSlots(weeklyRule.start_time, weeklyRule.end_time, duration, buffer);
+        slots = generateSlots(weeklyRule.start_time, weeklyRule.end_time, duration, buffer, breakOf(weeklyRule));
       }
 
       // Adicionar slots extras
@@ -254,7 +299,7 @@ class BookingAvailabilityService {
     const wr = rule.data;
     if (!wr.is_enabled) return { slots: [] };
 
-    let slots = generateSlots(wr.start_time, wr.end_time, wr.slot_duration_minutes, wr.buffer_minutes);
+    let slots = generateSlots(wr.start_time, wr.end_time, wr.slot_duration_minutes, wr.buffer_minutes, breakOf(wr));
 
     // Remover slots já reservados
     const bookings = await BookingStorage.getActiveBookingsForDate(pool, profileIds, dateStr);
@@ -345,3 +390,6 @@ class BookingAvailabilityService {
 }
 
 module.exports = BookingAvailabilityService;
+
+module.exports.breakOf = breakOf;
+module.exports.generateSlots = generateSlots;

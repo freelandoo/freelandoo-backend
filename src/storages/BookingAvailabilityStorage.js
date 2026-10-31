@@ -12,20 +12,23 @@ class BookingAvailabilityStorage {
     return r.rows;
   }
 
-  static async upsertWeeklyRule(conn, { id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes, buffer_minutes }) {
+  static async upsertWeeklyRule(conn, { id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes, buffer_minutes, break_start = null, break_end = null }) {
+    // O intervalo (mig 316) vai junto: NULL nos dois = sem almoço.
     const r = await conn.query(
       `INSERT INTO public.tb_profile_availability_rules
-        (id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes, buffer_minutes, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        (id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes, buffer_minutes, break_start, break_end, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
        ON CONFLICT (id_profile, weekday) DO UPDATE SET
         is_enabled = EXCLUDED.is_enabled,
         start_time = EXCLUDED.start_time,
         end_time = EXCLUDED.end_time,
         slot_duration_minutes = EXCLUDED.slot_duration_minutes,
         buffer_minutes = EXCLUDED.buffer_minutes,
+        break_start = EXCLUDED.break_start,
+        break_end = EXCLUDED.break_end,
         updated_at = NOW()
        RETURNING *`,
-      [id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes, buffer_minutes]
+      [id_profile, weekday, is_enabled, start_time, end_time, slot_duration_minutes, buffer_minutes, break_start, break_end]
     );
     return r.rows[0];
   }
