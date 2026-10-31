@@ -180,6 +180,9 @@ class MeuMundoStorage {
       }
       await c.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, $2, $3)`, [idUser, clan, sex]);
       await MeuMundoStorage.moveToClan(c, idUser, clan);
+      // Escolheu a classe = é esse personagem que aparece (skin vestida volta
+      // ao padrão; as compradas continuam no vestuário).
+      await MeuMundoStorage.setSkin(c, idUser, "standard");
       await c.query("COMMIT");
       return { ok: true };
     } catch (err) {
@@ -223,6 +226,7 @@ class MeuMundoStorage {
         [idUser, clan]
       );
       await MeuMundoStorage.moveToClan(c, idUser, clan);
+      await MeuMundoStorage.setSkin(c, idUser, "standard");
       await c.query("COMMIT");
       return { ok: true };
     } catch (err) {
@@ -345,6 +349,19 @@ class MeuMundoStorage {
     );
     const row = r.rows[0] || {};
     return avatarBody(row.body || "normal", row.skin, clanBody(row.clan, row.sex, row.stage));
+  }
+
+  /** Corpo da classe agora (classe + sexo + fase da vida); null sem classe. */
+  static async getClanBody(db, idUser) {
+    const r = await db.query(
+      `SELECT k.clan, k.sex,
+              (SELECT ch.growth->>'stage' FROM tb_mm_character ch
+                WHERE ch.id_user = k.id_user ORDER BY ch.generation DESC LIMIT 1) AS stage
+         FROM tb_mm_clan k WHERE k.id_user = $1`,
+      [idUser]
+    );
+    const row = r.rows[0];
+    return row ? clanBody(row.clan, row.sex, row.stage) : null;
   }
 
   /** Cores da skin vestida (mm3d-36, mig 304): "" para skin sem cores. */

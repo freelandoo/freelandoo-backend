@@ -518,10 +518,16 @@ class MeuMundoLifeService {
   // a mudança de condição física.
 
   static async wardrobeOf(db, idUser) {
-    const [w, admin, colors] = await Promise.all([MeuMundoStorage.getWardrobe(db, idUser), MeuMundoStorage.isAdmin(db, idUser), MeuMundoStorage.getColors(db, idUser)]);
+    const [w, admin, colors, clanBody] = await Promise.all([
+      MeuMundoStorage.getWardrobe(db, idUser),
+      MeuMundoStorage.isAdmin(db, idUser),
+      MeuMundoStorage.getColors(db, idUser),
+      MeuMundoStorage.getClanBody(db, idUser),
+    ]);
     // Cores de cada skin colorível (mm3d-36): o código de cada uma, já validado.
     const looks = Object.fromEntries([...Colors.COLORABLE_SKINS].map((id) => [id, Colors.lookFor(colors, id)]));
-    return { condition: w.condition, admin, skins: Skins.publicCatalog(w.owned, w.equipped, admin), colors: looks };
+    // mm3d-58: o "Padrão" do vestuário é o personagem da classe.
+    return { condition: w.condition, clanBody, admin, skins: Skins.publicCatalog(w.owned, w.equipped, admin), colors: looks };
   }
 
   /** GET /skins — catálogo com posse e o que está vestido + moedas. */
