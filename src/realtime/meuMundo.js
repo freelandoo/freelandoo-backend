@@ -46,6 +46,7 @@ const corrida = require("./meuMundoCorrida");
 const noturno = require("./meuMundoNoturno");
 const gincana = require("./meuMundoGincana");
 const { MobDirector } = require("./meuMundoMobs");
+const { TestBots, testBotsOn } = require("./meuMundoTestBots");
 /** Área de nascer monstro no bairro: dentro da cerca viva (HEDGE 83). */
 const HEDGE_SPAN = 80;
 const { interiorFor } = require("../utils/meuMundoInteriors");
@@ -333,6 +334,7 @@ class BairroRoom extends Room {
       isFree: (x, z, r) => isSafeSpot(x, z, resolveCircle, r, this.obstacles),
       collide: (x, z, r) => resolveCircle(x, z, r, this.obstacles),
       span: HEDGE_SPAN,
+      test: testBotsOn(),
     });
     this.startLoop();
     log.info("room.create", { roomId: this.roomId, neighborhood: this.neighborhoodId });
@@ -340,6 +342,9 @@ class BairroRoom extends Room {
 
   /** Mensagens, simulação e vida: iguais na rua do bairro e no centro (CentroRoom). */
   startLoop() {
+    // Teste de carga (MM_TEST_BOTS=1, pedido do Alex em 2026-11-01): robôs com
+    // todas as skins andando na sala. Sem a variável, nada disto existe.
+    if (testBotsOn()) this.testBots = new TestBots(this, { Player, step });
     this.onMessage("in", (client, msg) => this.onIntent(client, msg));
     this.onMessage("car", (client, msg) => this.onCar(client, msg));
     this.onMessage("drive", (client, msg) => this.onDrive(client, msg));
@@ -868,6 +873,7 @@ class BairroRoom extends Room {
       p.st = Math.round((20 * st.left) / st.maxS) * 5;
       p.wd = st.winded;
     }
+    if (this.testBots) this.testBots.tick(dt);
     this.tickMobs(now, dt);
   }
 
@@ -1467,6 +1473,7 @@ class CentroRoom extends BairroRoom {
     this.mobDirector = new MobDirector({
       isFree: (x, z, r) => isCenterSafe(x, z, resolveCircle, r, this.obstacles),
       collide: (x, z, r) => resolveCircle(x, z, r, this.obstacles),
+      test: testBotsOn(),
     });
     centerRooms.set(this.roomId, this);
     this.startLoop();

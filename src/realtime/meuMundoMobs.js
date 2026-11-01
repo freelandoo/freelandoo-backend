@@ -86,7 +86,10 @@ class MobDirector {
    * @param {() => number} [o.rng]
    * @param {number} [o.now] ms
    */
-  constructor({ isFree, collide = (x, z) => ({ x, z }), span = MOBS.SPAN, night = isNight, rng = Math.random, now = Date.now() }) {
+  constructor({ isFree, collide = (x, z) => ({ x, z }), span = MOBS.SPAN, night = isNight, rng = Math.random, now = Date.now(), test = false }) {
+    // Teste de carga (meuMundoTestBots.js, MM_TEST_BOTS=1): todos os tipos na rua a qualquer hora.
+    this.test = test;
+    if (test) night = () => true;
     this.isFree = isFree;
     this.collide = collide;
     this.span = span;
@@ -156,7 +159,7 @@ class MobDirector {
         this.wanderFromHere(m);
         changed = true;
       }
-      if (!night || now - m.born >= MOBS.LIFE_MS) {
+      if (!night || (!this.test && now - m.born >= MOBS.LIFE_MS)) {
         this.mobs.delete(m.id);
         changed = true;
         continue;
@@ -207,7 +210,12 @@ class MobDirector {
       }
     }
 
-    if (night && now >= this.nextAt) {
+    if (this.test) {
+      // Um de cada tipo sempre na rua (vencido, outro nasce em seguida).
+      for (const [k] of KINDS) {
+        if (![...this.mobs.values()].some((m) => m.kind === k) && this.spawn(now, players, k)) changed = true;
+      }
+    } else if (night && now >= this.nextAt) {
       this.nextAt = now + this.between(MOBS.EVERY_MS);
       if (this.mobs.size < MOBS.MAX_ALIVE && this.spawn(now, players)) changed = true;
     }
@@ -220,7 +228,7 @@ class MobDirector {
     return false;
   }
 
-  spawn(now, players) {
+  spawn(now, players, kind = null) {
     const ok = this.spots().filter(
       (p) =>
         players.every((q) => Math.hypot(q.x - p.x, q.z - p.z) >= MOBS.FAR_FROM_PLAYER) &&
@@ -231,7 +239,7 @@ class MobDirector {
     const a = this.rng() * Math.PI * 2;
     const m = {
       id: ++this.seq,
-      kind: this.pickKind(),
+      kind: kind || this.pickKind(),
       cx: at.x,
       cz: at.z,
       a,
