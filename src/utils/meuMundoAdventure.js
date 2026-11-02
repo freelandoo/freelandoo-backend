@@ -12,7 +12,7 @@
 
 const Life = require("./meuMundoLife");
 
-const RULES_VERSION = "R1";
+const RULES_VERSION = "R2";
 
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,
@@ -65,12 +65,37 @@ const XP_GAIN = Object.freeze({
 });
 
 // ═══ CUSTO DA LUTA (energia/estresse persistentes) ═══
+// mm3d-60b (Alex): vitória cansa pouco e ALIVIA o estresse; derrota cansa
+// mais e estressa mais.
 const FIGHT_COST = Object.freeze({
-  win: { energy: -5, stress: 0 },
-  loss: { energy: -8, stress: 5 },
+  win: { energy: -4, stress: -3 },
+  loss: { energy: -10, stress: 6 },
   /** A partir da 3ª derrota seguida no dia: sem estresse (não empilha punição). */
   calmAfter: 3,
 });
+
+// ═══ RESULTADO E DISPOSIÇÃO (mm3d-60b, pedido do Alex) ═══
+// "Quando perde ganha pouco, quando é vitória ganha mais status; com bastante
+// energia e pouco estresse o drop de status é maior; quanto mais energia
+// perde e o estresse aumenta, vai dropando menos."
+// O ganho de atributo da prática é multiplicado por RESULTADO × DISPOSIÇÃO
+// (antes do orçamento do dia, que continua sendo o teto).
+const OUTCOME = Object.freeze({ win: 1.5, loss: 0.35 });
+/** Disposição = 0,6 × energia + 0,4 × (100 − estresse), levada para [min, max]. */
+const CONDITION = Object.freeze({ energyW: 0.6, stressW: 0.4, min: 0.3, max: 1.3 });
+
+/** Fator da disposição pela energia/estresse de ANTES da atividade: 0,3 (exausto e estressado) a 1,3 (descansado e calmo). */
+function conditionFactor(energy, stress) {
+  const e = Math.max(0, Math.min(1, Number(energy) / 100 || 0));
+  const st = Math.max(0, Math.min(1, Number(stress) / 100 || 0));
+  const vigor = CONDITION.energyW * e + CONDITION.stressW * (1 - st);
+  return Math.round((CONDITION.min + (CONDITION.max - CONDITION.min) * vigor) * 100) / 100;
+}
+
+/** Multiplicador do ganho de atributo de uma luta (resultado × disposição). */
+function fightGainMult(win, energy, stress) {
+  return Math.round((win ? OUTCOME.win : OUTCOME.loss) * conditionFactor(energy, stress) * 1000) / 1000;
+}
 
 const MIN_MS = 60000;
 
@@ -117,7 +142,7 @@ function clipSegments(segments, maxMs) {
  * Cada dia gasta o próprio orçamento. Devolve { attrs: {k: ganho real},
  * base: {k: base pedido}, activeMs }.
  */
-function practice(s, activity, segments) {
+function practice(s, activity, segments, mult = 1) {
   const def = ACTIVITIES[activity];
   if (!def) throw new Error(`atividade desconhecida: ${activity}`);
   const clipped = clipSegments(segments, def.maxMin * MIN_MS);
@@ -126,7 +151,7 @@ function practice(s, activity, segments) {
   let activeMs = 0;
   for (const part of splitByDay(clipped)) {
     activeMs += part.ms;
-    const tens = part.ms / (10 * MIN_MS);
+    const tens = (part.ms / (10 * MIN_MS)) * Math.max(0, Number(mult) || 0);
     for (const [role, k] of [["main", def.main], ["sec", def.sec]]) {
       if (!k) continue;
       const b = PER_10MIN[role] * tens;
@@ -176,6 +201,10 @@ module.exports = {
   PER_10MIN,
   XP_GAIN,
   FIGHT_COST,
+  OUTCOME,
+  CONDITION,
+  conditionFactor,
+  fightGainMult,
   splitByDay,
   clipSegments,
   practice,

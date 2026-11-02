@@ -92,11 +92,13 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   const adv = await Store.lockAdventure(c, idUser);
   const before = { energy: s.energy, stress: s.stress };
   const streak = lossesToday(adv, ctx.now);
+  // resultado × disposição (energia/estresse de ANTES da luta) — mm3d-60b
+  const mult = Adv.fightGainMult(verdict.win, before.energy, before.stress);
   const cost = Adv.applyFightCost(s, verdict.win, streak, tutorial);
   // Prática: tempo ATIVO conferido, terminando agora (a luta acabou agora).
   const activeMs = Math.round(verdict.activeSteps * FightSim.DT * 1000);
   const activity = origin === "boxe" ? "boxe" : "laminas";
-  const practice = verdict.abandoned ? { attrs: {}, base: {}, activeMs: 0 } : Adv.practice(s, activity, [{ from: ctx.now - activeMs, to: ctx.now }]);
+  const practice = verdict.abandoned ? { attrs: {}, base: {}, activeMs: 0 } : Adv.practice(s, activity, [{ from: ctx.now - activeMs, to: ctx.now }], mult);
   const xpGain = verdict.abandoned ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
   // Drop: recompensa básica GARANTIDA com participação válida; vitória aumenta.
   const family = Adv.ACTIVITIES[activity].loot;
@@ -127,6 +129,8 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       hits: verdict.hits || 0,
       hitsTaken: verdict.hitsTaken || 0,
       mobId: setup.mobId ?? null,
+      gainMult: mult,
+      condition: Adv.conditionFactor(before.energy, before.stress),
     },
     deltas: {
       xp: level,
@@ -166,7 +170,9 @@ class MeuMundoAdventureService {
       const segs = (segments || [])
         .map((g) => ({ from: Math.max(Number(g.from), ctx.now - 24 * 3600 * 1000), to: Math.min(Number(g.to), ctx.now) }))
         .filter((g) => g.to > g.from);
-      const practice = Adv.practice(s, activity, segs);
+      // disposição também vale nos minijogos (energia/estresse de agora)
+      const condition = Adv.conditionFactor(s.energy, s.stress);
+      const practice = Adv.practice(s, activity, segs, condition);
       if (practice.activeMs <= 0) return { receipt: null, replay: false };
       const adv = await Store.lockAdventure(c, idUser);
       const level = addXp(adv, Adv.minigameXp(practice.activeMs) + (win ? 5 : 0));
@@ -182,7 +188,7 @@ class MeuMundoAdventureService {
         actionKey: String(actionKey),
         rules: Adv.RULES_VERSION,
         activeMs: practice.activeMs,
-        result: { activity, win: !!win },
+        result: { activity, win: !!win, condition },
         deltas: { xp: level, attrs: practice.attrs, coins: drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
         items: drops,
       });

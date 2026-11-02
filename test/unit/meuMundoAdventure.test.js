@@ -81,7 +81,7 @@ test("custo da luta: delta efetivo e a 3ª derrota seguida sem estresse", () => 
   const s = fresh();
   s.energy = 3;
   s.stress = 10;
-  assert.deepEqual(A.applyFightCost(s, false, 0), { energy: -3, stress: 5 });
+  assert.deepEqual(A.applyFightCost(s, false, 0), { energy: -3, stress: 6 });
   assert.deepEqual(A.applyFightCost(s, false, 2), { energy: 0, stress: 0 });
   assert.deepEqual(A.applyFightCost(s, true, 0, true), { energy: 0, stress: 0 }, "tutorial não cobra");
 });
@@ -185,4 +185,27 @@ test("medidor: parado não conta, buraco fecha o trecho, entrega uma vez", () =>
     Svc.creditMinigame = orig;
   }
   assert.deepEqual(calls, [["u", "paint:t:1:u"]]);
+});
+
+test("mm3d-60b: vitória dá mais atributo que derrota; disposição (energia/estresse) pesa", () => {
+  assert.equal(A.conditionFactor(100, 0), 1.3, "descansado e calmo");
+  assert.equal(A.conditionFactor(0, 100), 0.3, "exausto e estressado");
+  assert.ok(A.conditionFactor(80, 10) > A.conditionFactor(40, 60), "mais energia e menos estresse = mais");
+  assert.ok(A.conditionFactor(60, 20) > A.conditionFactor(60, 70), "estresse sozinho já reduz");
+  assert.ok(A.conditionFactor(90, 20) > A.conditionFactor(30, 20), "energia sozinha já reduz");
+  const seg = [{ from: NOON, to: NOON + 4 * MIN }];
+  const win = A.practice(fresh(), "laminas", seg, A.fightGainMult(true, 100, 0)).attrs.strength
+  const loss = A.practice(fresh(), "laminas", seg, A.fightGainMult(false, 100, 0)).attrs.strength
+  const tired = A.practice(fresh(), "laminas", seg, A.fightGainMult(true, 15, 85)).attrs.strength
+  assert.ok(win > loss * 3, `vitória ${win} ≫ derrota ${loss}`)
+  assert.ok(win > tired * 2.5, `descansado ${win} ≫ cansado ${tired}`)
+  assert.ok(loss > 0, "derrota ainda dá um pouco")
+});
+
+test("mm3d-60b: custo — vitória cansa pouco e alivia; derrota cansa e estressa mais", () => {
+  const s = fresh();
+  s.energy = 80;
+  s.stress = 30;
+  assert.deepEqual(A.applyFightCost(s, true, 0), { energy: -4, stress: -3 });
+  assert.deepEqual(A.applyFightCost(s, false, 0), { energy: -10, stress: 6 });
 });
