@@ -41,6 +41,7 @@ const ERRORS = {
   replay: ["Não foi possível conferir a luta", 422],
   clock: ["A gravação da luta não bate com o tempo", 422],
   dead: ["Hóspede sem vida", 409],
+  tutorial: ["A luta de treino é só no prólogo", 403],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -181,6 +182,8 @@ class MeuMundoAdventureService {
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       if (s.status !== "alive") return fail("dead");
       const c = ctx.client;
+      // a luta de treino não cobra nada: só abre nos passos de luta do prólogo
+      if (origin === "tutorial" && !(await require("./MeuMundoQuestService").tutorialOpen(c, idUser))) return fail("tutorial");
       const abandoned = [];
       for (const old of await Store.openFights(c, idUser)) {
         abandoned.push(await settleFight(s, ctx, idUser, old, { win: false, abandoned: true, activeSteps: 0 }));
