@@ -7,11 +7,15 @@ const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout
 const { avatarBody } = require("../utils/meuMundoSkins");
 const { lookFor } = require("../utils/meuMundoColors");
 const { CLAN_BODIES, ARTIFACT, clanBody } = require("../utils/meuMundoClans");
+// Monstros com corpo de avatar (2026-11-02: o Brutamontes), também skin de teste de
+// administrador. Como os das classes, o corpo sai da skin e nunca é gravado em
+// tb_mm_avatar_pref.body (setBody só grava a condição física) — fora do CHECK.
+const MOB_BODIES = Object.freeze(["brutamontes"]);
 
 // mm3d-30: "female" = skin "feminina"; "ekaterina" = skin "ekaterina".
 // mm3d-50 (mig 313): os deuses — corpo = id da skin.
 // mm3d-58: os corpos das classes (calculados, nunca gravados em avatar_pref).
-const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES];
+const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES, ...MOB_BODIES];
 
 // Uma chave só para TODA alocação de residência. É ela que impede dois
 // pedidos simultâneos de pegarem a mesma casa e — o caso mais sutil — de cada
@@ -33,6 +37,10 @@ const RESIDENCE_SELECT = `
 class MeuMundoStorage {
   static get BODIES() {
     return BODIES;
+  }
+
+  static get MOB_BODIES() {
+    return MOB_BODIES;
   }
 
   static async getActiveResidence(db, idUser) {

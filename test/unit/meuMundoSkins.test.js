@@ -56,7 +56,8 @@ test("espelho do cliente: features/meu-mundo/skins.ts tem os mesmos ids", () => 
   const godIds = new Set(Skins.GODS.map(([id]) => id));
   const classes = fs.readFileSync(path.join(path.dirname(f), "classes.ts"), "utf8");
   for (const s of Skins.CATALOG) {
-    if (s.adminOnly) assert.match(classes, new RegExp(`"${s.id}"`), s.id);
+    // skins de teste: as das classes em classes.ts; o Brutamontes (monstro) em skins.ts
+    if (s.adminOnly) assert.match(classes + src, new RegExp(`"${s.id}"`), s.id);
     else if (godIds.has(s.id)) assert.match(gods, new RegExp(`"${s.id}"`), s.id);
     else assert.match(src, new RegExp(`id: "${s.id}"`), s.id);
   }
@@ -71,5 +72,6 @@ test("deuses (mm3d-50): skin e corpo com o mesmo id, todos na sala", () => {
   const sql = fs.readFileSync(path.join(__dirname, "../../src/databases/migrations/314_meu_mundo_skins_grandes.sql"), "utf8");
   // mm3d-58: corpo de classe sai da classe e nunca é gravado em avatar_pref.
   const clans = new Set(require("../../src/utils/meuMundoClans").CLAN_BODIES);
-  for (const b of MeuMundoStorage.BODIES.filter((x) => !clans.has(x))) assert.match(sql, new RegExp(`'${b}'`), b);
+  // 2026-11-02: corpo de monstro (Brutamontes) também nunca é gravado.
+  for (const b of MeuMundoStorage.BODIES.filter((x) => !clans.has(x) && !MeuMundoStorage.MOB_BODIES.includes(x))) assert.match(sql, new RegExp(`'${b}'`), b);
 });

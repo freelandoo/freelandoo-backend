@@ -35,7 +35,7 @@ test("corpos pintados = todos os da sala menos Sergio, Ekaterina e os deuses", (
   const gods = new Set(require("../../src/utils/meuMundoSkins").GODS.map(([id]) => id));
   // mm3d-58: os corpos das classes também têm visual próprio.
   const clans = new Set(require("../../src/utils/meuMundoClans").CLAN_BODIES);
-  const want = MeuMundoStorage.BODIES.filter((b) => b !== "sergio" && b !== "ekaterina" && !gods.has(b) && !clans.has(b)).sort();
+  const want = MeuMundoStorage.BODIES.filter((b) => b !== "sergio" && b !== "ekaterina" && !gods.has(b) && !clans.has(b) && !MeuMundoStorage.MOB_BODIES.includes(b)).sort();
   assert.deepEqual([...C.COLORABLE_BODIES].sort(), want);
   assert.equal(C.roomLook("sergio", "1111"), "");
   assert.equal(C.roomLook("female", "1111"), "1111");

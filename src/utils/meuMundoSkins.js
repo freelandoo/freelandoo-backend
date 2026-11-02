@@ -66,6 +66,8 @@ const CATALOG = Object.freeze([
   // graça); a regra da lore (3 meses em 1º ou compra) entra com o ranking.
   ...GODS.map(([id, name]) => Object.freeze({ id, kind: "skin", name, price: 5000, currency: "coins", body: id })),
   ...CLAN_SKINS.map(([id, body]) => Object.freeze({ id, kind: "skin", name: CLAN_SKIN_NAMES[body], price: 0, currency: "coins", body, adminOnly: true })),
+  // 2026-11-02: o Brutamontes (monstro da Arena das Lâminas, 4 m) — skin de teste, só admin.
+  Object.freeze({ id: "brutamontes", kind: "skin", name: "Brutamontes", price: 0, currency: "coins", body: "brutamontes", adminOnly: true }),
 ]);
 
 const BY_ID = new Map(CATALOG.map((s) => [s.id, s]));

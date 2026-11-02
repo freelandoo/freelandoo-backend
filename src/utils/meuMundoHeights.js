@@ -29,6 +29,7 @@ const HEIGHT = Object.freeze({
   cavaleiro: 2.0,
   golem: 4.0,
   garras: 2.0,
+  brutamontes: 4.0,
 });
 
 /** Altura de referência das velocidades de MOTION (os avatares do bairro). */
