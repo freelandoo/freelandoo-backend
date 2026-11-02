@@ -149,6 +149,18 @@ async function lifeActivity(req, res) {
   return reply(res, await MeuMundoLifeService.setActivity(req.user.id_user, req.body?.activity, req.body?.hours, req.body?.place));
 }
 
+// mm3d-59: aventura (XP, recibos) e luta conferida pelo servidor.
+const adventure = () => require("../services/MeuMundoAdventureService");
+async function adventureGet(req, res) {
+  return reply(res, await adventure().get(req.user.id_user));
+}
+async function fightStart(req, res) {
+  return reply(res, await adventure().fightStart(req.user.id_user, req.body || {}));
+}
+async function fightFinish(req, res) {
+  return reply(res, await adventure().fightFinish(req.user.id_user, req.body || {}));
+}
+
 async function lifeConsume(req, res) {
   return reply(res, await MeuMundoLifeService.consume(req.user.id_user, req.body?.item));
 }
@@ -289,6 +301,9 @@ module.exports = {
   hospital,
   lifeActivity,
   lifeConsume,
+  adventureGet,
+  fightStart,
+  fightFinish,
   lifeBuy,
   lifeOrder,
   shopCatalog,

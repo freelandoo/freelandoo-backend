@@ -915,17 +915,33 @@ class BairroRoom extends Room {
     }
     if (now - (s.mobAt || 0) < 3000) return;
     s.mobAt = now;
-    if (msg.r !== 1) {
-      this.mobDirector.release(Number(msg.id), client.sessionId, now, msg.b === 1);
-      return;
-    }
-    const m = this.mobDirector.claim(Number(msg.id), s.body.x, s.body.z, client.sessionId);
-    if (!m) return;
-    const p = this.state.players.get(client.sessionId);
+    // mm3d-59: a VITÓRIA não vem mais do aparelho — quem decide é o servidor,
+    // re-simulando a luta (MeuMundoAdventureService.fightFinish → mobVerdict).
+    // Aqui só a desistência/ocupado (r 0) solta o monstro.
+    if (msg.r !== 1) this.mobDirector.release(Number(msg.id), client.sessionId, now, msg.b === 1);
+  }
+
+  /** Sessão (nesta sala) do usuário, ou null. */
+  sidOf(userId) {
+    for (const [sid, s] of this.sim) if (s.userId === userId) return sid;
+    return null;
+  }
+
+  /** mm3d-59: a luta que o servidor conferiu acabou (vitória tira o monstro da cidade). */
+  mobVerdict(userId, mobId, win) {
+    const sid = this.sidOf(userId);
+    if (!sid) return false;
+    const s = this.sim.get(sid);
+    const now = Date.now();
+    if (!win) return this.mobDirector.release(Number(mobId), sid, now, false);
+    const m = this.mobDirector.claim(Number(mobId), s.body.x, s.body.z, sid);
+    if (!m) return false;
+    const p = this.state.players.get(sid);
     this.broadcast("mobwin", { id: m.id, kind: m.kind, name: p ? p.name : "" });
     this.mobSentAt = now;
     this.broadcast("mobs", { l: this.mobDirector.list() });
     log.info("mob_win", { roomId: this.roomId, kind: m.kind });
+    return true;
   }
 }
 
@@ -2147,6 +2163,32 @@ function atCenterPlace(userId, placeId) {
   return false;
 }
 
+/** mm3d-59: salas com monstros (bairros e centros). */
+function* mobRooms() {
+  for (const r of roomsByNeighborhood.values()) yield r;
+  for (const r of centerRooms.values()) yield r;
+}
+
+/** O monstro `mobId` está em luta com este usuário (ele foi alcançado ou apertou "Lutar")? Devolve { kind } ou null. */
+function mobEngaged(userId, mobId) {
+  for (const room of mobRooms()) {
+    if (!room.mobDirector) continue;
+    const sid = room.sidOf(userId);
+    if (!sid) continue;
+    const m = room.mobDirector.get(Number(mobId));
+    if (m && m.mode === "fight" && m.target === sid) return { kind: m.kind };
+  }
+  return null;
+}
+
+/** mm3d-59: o veredito da luta conferida chega à sala onde a pessoa está. */
+function mobVerdict(userId, mobId, win) {
+  for (const room of mobRooms()) {
+    if (room.mobDirector && room.sidOf(userId)) return room.mobVerdict(userId, mobId, win);
+  }
+  return false;
+}
+
 function positionIn(scene, id, userId) {
   const room = scene === "nb" ? roomsByNeighborhood.get(id) : scene === "center" ? centerRooms.get(id) : roomsByHouse.get(id);
   return room ? room.positionOf(userId) : null;
@@ -2199,6 +2241,8 @@ module.exports = {
   dropFromHouse,
   positionIn,
   atCenterPlace,
+  mobEngaged,
+  mobVerdict,
   applyCarPaint,
   applyLife,
   pushNotice,

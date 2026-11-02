@@ -63,6 +63,10 @@ router.get("/life", ...admin, asyncHandler(MeuMundoController.life));
 router.get("/hospital", ...admin, asyncHandler(MeuMundoController.hospital));
 router.post("/life/activity", ...admin, asyncHandler(MeuMundoController.lifeActivity));
 router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsume));
+// mm3d-59: aventura e luta conferida (o servidor sorteia a semente e re-simula a gravação).
+router.get("/adventure", ...admin, asyncHandler(MeuMundoController.adventureGet));
+router.post("/fight/start", ...admin, asyncHandler(MeuMundoController.fightStart));
+router.post("/fight/finish", ...admin, asyncHandler(MeuMundoController.fightFinish));
 // Mercado → geladeira (mig 301). Comer da geladeira é pela sala da casa (mensagem "fridge").
 router.post("/life/buy", ...admin, asyncHandler(MeuMundoController.lifeBuy));
 // Pedido no balcão da pizzaria/hamburgueria (mm3d-37c): come na hora, lá dentro.

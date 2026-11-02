@@ -41,7 +41,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
@@ -65,6 +65,12 @@ async function bootstrap(pool) {
     "308_meu_mundo_lugar_atividade.sql",
     "309_meu_mundo_vendedor.sql",
     "311_meu_mundo_boxe.sql",
+    "313_meu_mundo_deuses.sql",
+    "314_meu_mundo_skins_grandes.sql",
+    "317_meu_mundo_growth.sql",
+    "318_meu_mundo_clans.sql",
+    "319_meu_mundo_clan_skin.sql",
+    "320_meu_mundo_reforma_progresso.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);

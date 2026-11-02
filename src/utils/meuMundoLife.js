@@ -203,10 +203,22 @@ const ATTR = Object.freeze({
   USEFUL_H: { studying: 5, training: 4 },
   OVER_FACTOR: 0.05,
   REGAIN: 2,
-  FLOOR: { intelligence: 0.9, strength: 0.6, speed: 0.6 },
-  DECAY_DAY: { intelligence: 0.3, strength: 1, speed: 1 },
+  FLOOR: { intelligence: 0.9, strength: 0.6, speed: 0.6, dexterity: 0.6 },
+  // mm3d-59: destreza não decai nesta primeira versão (pedido do Alex).
+  DECAY_DAY: { intelligence: 0.3, strength: 1, speed: 1, dexterity: 0 },
+  // mm3d-59: ORÇAMENTO DIÁRIO (pontos-base, ANTES da curva, dia de Brasília).
+  // Todas as fontes do mesmo atributo (academia, universidade, minijogos,
+  // lutas) gastam o mesmo saldo; os multiplicadores (disciplina, suplementos,
+  // anabolizante, universidade) aumentam o base e por isso batem o teto antes,
+  // nunca passam dele. Trocar de jogo/classe/skin ou reconectar não reinicia.
+  BUDGET: { strength: 12, intelligence: 12, dexterity: 12, speed: 8 },
 });
+/** Os três que crescem com o adulto (+20%) e entram na régua do crescer. */
 const TRAINED = Object.freeze(["intelligence", "strength", "speed"]);
+/** Os quatro atributos de prática (mm3d-59: + destreza). */
+const ATTRS = Object.freeze(["strength", "intelligence", "dexterity", "speed"]);
+/** Destreza de quem nasce (e o backfill da mig 320): pela semente, sem sortear de novo. */
+const birthDexterity = (seed) => 15 + (Math.abs(Number(seed) || 0) % 16);
 
 // ═══ CRESCER (mm3d-58; regra nova do Alex em 2026-11-02) ═══ — o hóspede
 // nasce JOVEM e vira ADULTO pelo que ele CONQUISTA, não só pelo tempo:
@@ -359,6 +371,7 @@ function applyUnwell(s) {
   s.stress = Math.max(s.stress, Math.min(U.STRESS_MAX, U.STRESS_FLOOR * u));
 }
 const r2 = (v) => Math.round(v * 100) / 100;
+const r4 = (v) => Math.round(v * 10000) / 10000;
 
 /** PRNG determinístico (mulberry32) — personalidade sai da semente. */
 function rng(seed) {
@@ -467,6 +480,10 @@ function normalize(s) {
     s.meals = { log };
   }
   if (!s.exposure) s.exposure = { hunger: 0, sleep: 0, stress: 0, health: 0 };
+  // mm3d-59: destreza (mig 320) e o orçamento do dia.
+  if (!(s.dexterity >= 0)) s.dexterity = birthDexterity(s.seed);
+  if (s.peaks && !(s.peaks.dexterity >= 0)) s.peaks.dexterity = s.dexterity;
+  if (!s.budget || typeof s.budget !== "object" || !s.budget.days) s.budget = { days: {} };
   if (!(s.wearDays >= 0)) s.wearDays = 0;
   // mm3d-58: hóspede de antes começa a contar pelos dias já vividos.
   if (!s.growth) s.growth = { stage: "young", days: s.wearDays };
@@ -556,7 +573,9 @@ function birth(seed, t) {
     diedAt: null,
     simAt: t,
   };
-  s.peaks = { intelligence: s.intelligence, strength: s.strength, speed: s.speed };
+  s.dexterity = birthDexterity(seed);
+  s.peaks = { intelligence: s.intelligence, strength: s.strength, speed: s.speed, dexterity: s.dexterity };
+  s.budget = { days: {} };
   return s;
 }
 
@@ -576,14 +595,15 @@ function afterlife(s) {
   return {
     natural,
     funeral: { coins: AFTERLIFE.FUNERAL_COINS, paidBy: natural ? "freelandoo" : "player" },
-    inherit: natural ? Object.fromEntries(TRAINED.map((k) => [k, r2(AFTERLIFE.INHERIT * peak(k))])) : null,
+    inherit: natural ? Object.fromEntries(ATTRS.map((k) => [k, r2(AFTERLIFE.INHERIT * peak(k))])) : null,
   };
 }
 
 /** Novo hóspede com a herança: nunca abaixo do que ele já nasceria; vira o piso dele. */
 function applyInheritance(n, inherit) {
   if (!inherit) return n;
-  for (const k of TRAINED) {
+  for (const k of ATTRS) {
+    if (inherit[k] == null) continue;
     const v = Math.min(ATTR.MAX, Math.max(n[k], inherit[k] || 0));
     n[k] = v;
     n.peaks[k] = Math.max(n.peaks[k], v);
@@ -630,14 +650,51 @@ function usefulHours(s, kind, dt) {
   return full + (dt - full) * ATTR.OVER_FACTOR;
 }
 
-/** Soma `base` pontos já escalados pela curva; abaixo do pico, REGAIN×. */
-function gain(s, k, base) {
-  if (base <= 0) return;
-  const v = s[k];
-  const curve = Math.pow(Math.max(0, 1 - v / ATTR.CURVE_AT), 2);
-  const regain = v < s.peaks[k] - 0.5 ? ATTR.REGAIN : 1;
-  s[k] = clamp(v + base * curve * regain, 0, ATTR.MAX);
-  if (s[k] > s.peaks[k]) s.peaks[k] = s[k];
+/** Quanto do orçamento de `k` ainda resta no dia (Brasília) de `t`. */
+function budgetLeft(s, k, t) {
+  if (!s.budget || !s.budget.days) s.budget = { days: {} };
+  const day = localParts(t).day;
+  const used = (s.budget.days[day] && s.budget.days[day][k]) || 0;
+  return Math.max(0, ATTR.BUDGET[k] - used);
+}
+
+/** Gasta `base` do orçamento de `k` no dia de `t` (só o que couber); devolve o gasto. */
+function spendBudget(s, k, base, t) {
+  const day = localParts(t).day;
+  const take = Math.min(base, budgetLeft(s, k, t));
+  if (take <= 0) return 0;
+  const d = (s.budget.days[day] = s.budget.days[day] || {});
+  d[k] = r4((d[k] || 0) + take);
+  // guarda só hoje e ontem (uma partida que atravessou a meia-noite reparte entre os dois)
+  const keep = Object.keys(s.budget.days).sort().slice(-2);
+  for (const key of Object.keys(s.budget.days)) if (!keep.includes(key)) delete s.budget.days[key];
+  return take;
+}
+
+/**
+ * Soma `base` pontos-base (mm3d-59): primeiro passa pelo ORÇAMENTO do dia,
+ * depois pela curva (uma vez); a memória (REGAIN×) vale só até o pico
+ * anterior — o que passa do pico cresce no ritmo normal. Devolve o ganho real.
+ */
+function gain(s, k, base, t = s.simAt) {
+  if (!(base > 0)) return 0;
+  const b = t == null ? base : spendBudget(s, k, base, t);
+  if (b <= 0) return 0;
+  const v0 = s[k];
+  const curve = Math.pow(Math.max(0, 1 - v0 / ATTR.CURVE_AT), 2);
+  let raw = b * curve;
+  let v = v0;
+  const peak = s.peaks[k] ?? v0;
+  if (v < peak - 0.5) {
+    const toPeak = peak - v;
+    const fast = Math.min(toPeak, raw * ATTR.REGAIN);
+    v += fast;
+    raw -= fast / ATTR.REGAIN;
+  }
+  v += Math.max(0, raw);
+  s[k] = clamp(v, 0, ATTR.MAX);
+  if (s[k] > (s.peaks[k] ?? 0)) s.peaks[k] = s[k];
+  return s[k] - v0;
 }
 
 function decay(s, k, dt) {
@@ -760,16 +817,16 @@ function stepState(s, t, dt, events, out) {
   const disc = (0.7 + 0.6 * p.discipline) * lt.discipline;
   const useful = usefulHours(s, kind, dt);
   const at = PLACE_RULES[s.activity.place]?.mul ?? 1;
-  if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * at * (stim ? 1.15 : 1));
+  if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * at * (stim ? 1.15 : 1), t);
   if (kind === "training") {
     const pre = effectOn(s, "preworkout", t) ? 1.15 : 1;
     const creat = effectOn(s, "creatine", t) ? 1.1 : 1;
     const prot = protein === 1.4 ? 1.25 : protein === 1.25 ? 1.15 : 1;
-    gain(s, "strength", ATTR.GAIN_H.trainStr * useful * disc * focus * prot * pre * creat * (anab ? 2 : 1));
-    gain(s, "speed", ATTR.GAIN_H.trainSpd * useful * disc * focus * pre);
+    gain(s, "strength", ATTR.GAIN_H.trainStr * useful * disc * focus * prot * pre * creat * (anab ? 2 : 1), t);
+    gain(s, "speed", ATTR.GAIN_H.trainSpd * useful * disc * focus * pre, t);
   }
   if (kind === "working") {
-    gain(s, "intelligence", ATTR.GAIN_H.workInt * dt * focus);
+    gain(s, "intelligence", ATTR.GAIN_H.workInt * dt * focus, t);
     const coins = RULES.WORK_COINS_H * dt * (0.6 + s.intelligence / ATTR.MAX) * focus;
     out.coins += coins;
     s.dayAcc.coins += coins;
@@ -1357,10 +1414,13 @@ function snapshot(s, t) {
       intelligence: r2(s.intelligence),
       strength: r2(s.strength),
       speed: r2(s.speed),
+      dexterity: r2(s.dexterity),
       fertility: r2(s.fertility),
       // 0–1000: maior valor já alcançado e o piso que não se perde mais.
-      peaks: Object.fromEntries(TRAINED.map((k) => [k, r2(s.peaks[k])])),
-      floors: Object.fromEntries(TRAINED.map((k) => [k, r2(attrFloor(s, k))])),
+      peaks: Object.fromEntries(ATTRS.map((k) => [k, r2(s.peaks[k])])),
+      floors: Object.fromEntries(ATTRS.map((k) => [k, r2(attrFloor(s, k))])),
+      // mm3d-59: orçamento de prática de hoje (pontos-base gastos / teto).
+      budgetToday: Object.fromEntries(ATTRS.map((k) => [k, { used: r2(ATTR.BUDGET[k] - budgetLeft(s, k, t)), cap: ATTR.BUDGET[k] }])),
       // Horas que ainda rendem hoje (estudo e treino têm teto por dia).
       usefulToday: Object.fromEntries(
         Object.entries(ATTR.USEFUL_H).map(([k, cap]) => [k, { done: r2(Math.min(cap, s.dayAcc.hours[k] || 0)), cap }])
@@ -1446,6 +1506,11 @@ function publicCatalog() {
 }
 
 module.exports = {
+  ATTRS,
+  birthDexterity,
+  gain,
+  budgetLeft,
+  localParts,
   HOUR,
   CLOCK,
   ACTIVITIES,

@@ -33,6 +33,9 @@ function rowToState(r) {
     intelligence: r.intelligence,
     strength: r.strength,
     speed: r.speed,
+    // mig 320 (mm3d-59): destreza e o orçamento de prática do dia
+    dexterity: r.dexterity,
+    budget: r.attr_budget || { days: {} },
     fertility: r.fertility,
     // mig 297: maior valor já alcançado (o piso que não se perde sai dele)
     peaks: r.attr_peaks || { intelligence: r.intelligence, strength: r.strength, speed: r.speed },
@@ -73,6 +76,7 @@ const COLS = [
   "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume", "activity_place",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
   "wear_days", "exposure", "boxing", "growth",
+  "dexterity", "attr_budget",
 ];
 
 function values(s) {
@@ -90,6 +94,7 @@ function values(s) {
     s.wearDays, JSON.stringify(s.exposure),
     s.boxing ? JSON.stringify(s.boxing) : null,
     s.growth ? JSON.stringify(s.growth) : null,
+    s.dexterity, JSON.stringify(s.budget || { days: {} }),
   ];
 }
 
