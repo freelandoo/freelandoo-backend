@@ -55,3 +55,33 @@ test("espelho do cliente: paceSpeeds e a regra de correr", (t) => {
   assert.match(motion, /intent\.run && speeds\.run > speeds\.walk && speed >/);
   assert.match(inner, /intent\.run && speeds\.run > speeds\.walk && speed >/);
 });
+
+// 2026-11-02 (pedido do Alex): corpo maior percorre mais chão no mesmo tempo.
+const { HEIGHT, bodyStride } = require("../../src/utils/meuMundoHeights");
+
+test("passada pelo tamanho: adulto 2,7 m anda 1,5×; menor que 1,8 m não fica lento", () => {
+  assert.equal(bodyStride("normal"), 1);
+  assert.equal(bodyStride("raposa"), 1);
+  assert.equal(bodyStride("vampiro_adulto"), 1.5);
+  assert.ok(Math.abs(bodyStride("golem") - 4 / 1.8) < 1e-9);
+  const big = paceSpeeds(1, bodyStride("raposa_adulta"));
+  assert.ok(Math.abs(big.walk - MOTION.WALK_SPEED * 1.5) < 1e-9);
+  assert.ok(Math.abs(big.run - MOTION.RUN_SPEED * 1.5) < 1e-9);
+  assert.ok(walkFor(4, big, true).dist > walkFor(4, paceSpeeds(1), true).dist * 1.45);
+  // cansado + grande: as duas contas valem juntas; exausto segue sem correr
+  const ex = paceSpeeds(PACE.EXHAUSTED, 1.5);
+  assert.equal(ex.run, ex.walk);
+  assert.deepEqual(paceSpeeds(1, NaN), paceSpeeds(1));
+});
+
+test("espelho do cliente: tabela de alturas e a passada", (t) => {
+  const dir = path.join(__dirname, "../../../freelandoo frontend/freelandoo-website-main/features/meu-mundo");
+  if (!fs.existsSync(dir)) return t.skip("frontend não está ao lado");
+  const heights = fs.readFileSync(path.join(dir, "heights.ts"), "utf8");
+  for (const [body, h] of Object.entries(HEIGHT)) {
+    assert.match(heights, new RegExp(`\\s${body}: ${String(h).replace(".", "\\.")}(\\.0)?,`), body);
+  }
+  assert.match(heights, /export const bodyStride = \(b: BodyId\): number => Math\.max\(1, bodyHeight\(b\) \/ BASE_HEIGHT\)/);
+  const motion = fs.readFileSync(path.join(dir, "engine/motion.ts"), "utf8");
+  assert.match(motion, /export function paceSpeeds\(pace = 1, base = \{ walk: MOTION\.WALK_SPEED, run: MOTION\.RUN_SPEED \}, stride = 1\)/);
+});

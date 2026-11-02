@@ -27,11 +27,14 @@ const MOTION = Object.freeze({
  * Velocidades a pé pelo RITMO do corpo (mm3d-13, meuMundoLife.pace): 1 =
  * normal, 0,7 = cansado, 0,42 = exausto. Espelho: paceSpeeds em
  * features/meu-mundo/engine/motion.ts.
+ * `stride` (2026-11-02): passada pelo tamanho do corpo (bodyStride em
+ * meuMundoHeights.js) — corpo maior anda e corre mais rápido.
  */
-function paceSpeeds(pace = 1) {
+function paceSpeeds(pace = 1, stride = 1) {
   const p = Number.isFinite(pace) && pace > 0 ? Math.min(1, pace) : 1;
-  const walk = MOTION.WALK_SPEED * p;
-  return { walk, run: p >= MOTION.PACE_RUN_MIN ? MOTION.RUN_SPEED * p : walk };
+  const k = Number.isFinite(stride) && stride > 0 ? stride : 1;
+  const walk = MOTION.WALK_SPEED * p * k;
+  return { walk, run: p >= MOTION.PACE_RUN_MIN ? MOTION.RUN_SPEED * p * k : walk };
 }
 
 function toLocal(b, px, pz) {

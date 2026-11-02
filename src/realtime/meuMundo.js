@@ -63,6 +63,7 @@ const {
   levelDef,
 } = require("../utils/meuMundoLayout");
 const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds, freshStamina, setStamina, staminaIntent } = require("../utils/meuMundoMotion");
+const { bodyStride } = require("../utils/meuMundoHeights");
 const { publicCatalog } = require("../utils/meuMundoLife");
 const { roomLook } = require("../utils/meuMundoColors");
 /** Cores de quem entra (mm3d-36): lidas do banco pela conta; falha = textura original. */
@@ -108,10 +109,10 @@ const LAST_POS_TTL = 10 * 60 * 1000;
 const MAX_VISITORS = 20; // um visitante por titular (20 casas)
 const LIFE_REFRESH_MS = 60 * 1000; // ritmo e cama acompanham a vida simulada
 
-/** Perfil de `step` a pé com o ritmo do corpo (null = velocidades normais). */
-function paceProfile(pace) {
-  if (!(pace < 1)) return null;
-  const sp = paceSpeeds(pace);
+/** Perfil de `step` a pé com o ritmo e o tamanho do corpo (null = velocidades normais). */
+function paceProfile(pace, stride = 1) {
+  if (!(pace < 1) && stride === 1) return null;
+  const sp = paceSpeeds(pace, stride);
   return { walk: sp.walk, run: sp.run, accel: MOTION.ACCEL, radius: MOTION.RADIUS };
 }
 
@@ -864,7 +865,7 @@ class BairroRoom extends Room {
         continue;
       }
       const st = s.stam || (s.stam = freshStamina());
-      const move = step(s.body, staminaIntent(st, s.intent, dt), dt, boxes, this.limit, paceProfile(s.pace));
+      const move = step(s.body, staminaIntent(st, s.intent, dt), dt, boxes, this.limit, paceProfile(s.pace, bodyStride(p?.body)));
       if (!p) continue;
       p.x = s.body.x;
       p.z = s.body.z;
@@ -1404,8 +1405,8 @@ class CasaRoom extends Room {
       if (s.seat || s.bed) continue;
       expireIntent(s, now);
       const st = s.stam || (s.stam = freshStamina());
-      const move = stepInterior(s.body, staminaIntent(st, s.intent, dt), dt, this.def, paceSpeeds(s.pace));
       const p = this.state.players.get(sid);
+      const move = stepInterior(s.body, staminaIntent(st, s.intent, dt), dt, this.def, paceSpeeds(s.pace, bodyStride(p?.body)));
       if (!p) continue;
       p.st = Math.round((20 * st.left) / st.maxS) * 5;
       p.wd = st.winded;
