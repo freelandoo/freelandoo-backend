@@ -67,6 +67,13 @@ router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsu
 router.get("/adventure", ...admin, asyncHandler(MeuMundoController.adventureGet));
 router.post("/fight/start", ...admin, asyncHandler(MeuMundoController.fightStart));
 router.post("/fight/finish", ...admin, asyncHandler(MeuMundoController.fightFinish));
+// mm3d-59: equipamento — compras/forja com chave do pedido (recibo idempotente).
+router.get("/gear", ...admin, asyncHandler(MeuMundoController.gearGet));
+router.post("/gear/buy", ...admin, asyncHandler(MeuMundoController.gearBuy));
+router.post("/gear/equip", ...admin, asyncHandler(MeuMundoController.gearEquip));
+router.post("/gear/forge", ...admin, asyncHandler(MeuMundoController.gearForge));
+router.post("/gear/upgrade", ...admin, asyncHandler(MeuMundoController.gearUpgrade));
+router.post("/gear/recycle", ...admin, asyncHandler(MeuMundoController.gearRecycle));
 // Mercado → geladeira (mig 301). Comer da geladeira é pela sala da casa (mensagem "fridge").
 router.post("/life/buy", ...admin, asyncHandler(MeuMundoController.lifeBuy));
 // Pedido no balcão da pizzaria/hamburgueria (mm3d-37c): come na hora, lá dentro.

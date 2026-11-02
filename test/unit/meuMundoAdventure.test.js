@@ -116,3 +116,46 @@ test("destreza: menos fôlego e ranque com 30% do peso", () => {
   const b = F.rankOdds(0, 1000);
   assert.ok(b[3] > a[3] && b[3] < F.rankOdds(1000, 0)[3], "destreza ajuda, menos que a inteligência");
 });
+
+// ── slice 3: equipamento ──
+const Gear = require("../../src/utils/meuMundoGear");
+
+test("equipamento: catálogo com ids únicos, imagem por categoria e 24 itens novos", () => {
+  assert.equal(Gear.GEAR.length, 24);
+  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 24);
+  for (const g of Gear.GEAR) {
+    assert.ok(Gear.CATEGORIES.includes(g.category), g.id);
+    assert.ok(Gear.RARITIES.includes(g.rarity), g.id);
+  }
+  for (const r of Gear.RECIPES) for (const id of [r.out, ...Object.keys(r.needs)]) assert.ok(Gear.GEAR_BY_ID.has(id), `${r.id}: ${id}`);
+});
+
+test("equipamento: arma da classe, independente de skin; bônus somados com teto", () => {
+  assert.equal(Gear.starterOf("vampiro"), "espada_aprendiz");
+  assert.equal(Gear.starterOf("raposa"), "cajado_aprendiz");
+  const staff = Gear.GEAR_BY_ID.get("cajado_eter");
+  assert.equal(Gear.canEquip(staff, { clan: "vampiro", level: 9, owned: true }), "clan");
+  assert.equal(Gear.canEquip(staff, { clan: "raposa", level: 1, owned: true }), "level");
+  assert.equal(Gear.canEquip(staff, { clan: "raposa", level: 3, owned: true }), null);
+  const b = Gear.gearBonus({ weapon: { id: "espada_eter", level: 5 }, armor: { id: "couraca_rebitada", level: 5 }, acc1: { id: "amuleto_aurion" }, acc2: { id: "luvas_precisao" } });
+  assert.equal(b.dmg, Gear.GEAR_CAP.dmg, "dano no teto (0,10 + 5×0,02 = 0,20 → 0,18)");
+  assert.equal(b.def, Gear.GEAR_CAP.def, "defesa no teto");
+  assert.equal(b.power, Gear.GEAR_CAP.power);
+});
+
+test("drop: material comum garantido com participação; vitória aumenta; nunca vazio", () => {
+  const never = () => 0.99;
+  const always = () => 0;
+  const loss = Gear.rollLoot("forja", { win: false, activeMs: 60000 }, never);
+  assert.deepEqual(loss.map((d) => d.id), ["fragmento_lamina"]);
+  const win = Gear.rollLoot("forja", { win: true, activeMs: 60000 }, always);
+  assert.ok(win.find((d) => d.id === "fragmento_lamina").qty > loss[0].qty);
+  assert.ok(win.some((d) => d.id === "nucleo_eter") && win.some((d) => d.id === "selo_forja"));
+});
+
+test("luta com equipamento: mais dano dado, menos levado, teto do lado da regra", () => {
+  const base = new F.Fight({ kind: "golem", seed: 3 });
+  const geared = new F.Fight({ kind: "golem", seed: 3, gear: { dmg: 0.5, def: 0.12 } });
+  assert.ok(Math.abs(geared.fx.dmg / base.fx.dmg - 1.18) < 1e-9, "dano cortado em +18%");
+  assert.equal(geared.gear.def, 0.12);
+});

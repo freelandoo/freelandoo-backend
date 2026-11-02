@@ -29,7 +29,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -47,7 +47,7 @@ async function bootstrap(pool) {
   for (const f of all) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
-    if (f.startsWith("320")) await pool.query(sql); // a nova é idempotente
+    if (f >= "320") await pool.query(sql); // a nova é idempotente
   }
 }
 
@@ -129,6 +129,60 @@ async function main() {
 
   const get = await Adv.get(id);
   check("GET /adventure traz nível e recibos", get.adventure.level >= 1 && get.receipts.length >= 3);
+  check("drop garantido na luta vencida", rec.items.length >= 1 && rec.items[0].id === "fragmento_lamina", JSON.stringify(rec.items));
+
+  // ── slice 3: equipamento ──
+  const Gear = require("../src/services/MeuMundoGearService");
+  const pool2 = pool;
+  await pool2.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm') ON CONFLICT DO NOTHING`, [id]);
+  const starter = await Life.withLife(id, async (s, ctx) => ({ got: await Gear.grantStarter(id, ctx) }));
+  check("arma inicial da classe (espada) entregue e equipada", starter.got && starter.got.id === "espada_aprendiz");
+  const again2 = await Life.withLife(id, async (s, ctx) => ({ got: await Gear.grantStarter(id, ctx) }));
+  check("arma inicial não repete", again2.got === null);
+  const bag0 = (await Gear.get(id)).bag;
+  check("mochila mostra a espada equipada", bag0.equipped.weapon === "espada_aprendiz");
+
+  // nível 1 não compra a espada de latão (nível 2)
+  const k = () => crypto.randomUUID();
+  const low = await Gear.buy(id, { item: "espada_latao", key: k() });
+  check("requisito de nível no servidor", low.code === "level", JSON.stringify(low));
+  await pool2.query(`UPDATE tb_mm_adventure SET xp = 500 WHERE id_user = $1`, [id]);
+  await pool2.query(`UPDATE tb_mm_wallet SET coins = 1000 WHERE id_user = $1`, [id]);
+
+  // mesmo pedido em duas abas: cobra uma vez
+  const key1 = k();
+  const [p1, p2] = await Promise.all([Gear.buy(id, { item: "espada_latao", key: key1 }), Gear.buy(id, { item: "espada_latao", key: key1 })]);
+  check("compra repetida = mesmo recibo", p1.receipt && p2.receipt && p1.receipt.eventId === p2.receipt.eventId, JSON.stringify([p1.error, p2.error]));
+  const coinsA = Number((await pool2.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [id])).rows[0].coins);
+  check("cobrou 600 uma vez", Math.round(coinsA) === 400 || Math.round(coinsA) > 395, String(coinsA));
+
+  // duas compras DIFERENTES com saldo para uma só: nunca negativo
+  const [c1, c2] = await Promise.all([Gear.buy(id, { item: "colete_couro", key: k() }), Gear.buy(id, { item: "relogio_bolso", key: k() })]);
+  const coinsB = Number((await pool2.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [id])).rows[0].coins);
+  check("saldo nunca negativo em compras concorrentes", coinsB >= 0 && [c1, c2].filter((x) => x.code === "coins").length === 1, JSON.stringify([c1.code, c2.code, coinsB]));
+
+  // equipar: arma de outra classe recusada
+  await pool2.query(`INSERT INTO tb_mm_gear (id_user, item_id, qty) VALUES ($1, 'cajado_latao', 1)`, [id]);
+  const wrong = await Gear.equip(id, { slot: "weapon", item: "cajado_latao" });
+  check("arma de outra classe não equipa", wrong.code === "clan");
+  const ok = await Gear.equip(id, { slot: "weapon", item: "espada_latao" });
+  check("equipa a espada de latão (bônus de dano)", ok.bag && ok.bag.bonus.dmg === 0.05, JSON.stringify(ok.bag && ok.bag.bonus));
+
+  // a luta seguinte leva o bônus no ticket
+  const s5 = await Adv.fightStart(id, { origin: "laminas", kind: "soldier", level: 1 });
+  check("ticket leva o bônus do equipamento", s5.fight.setup.gear && s5.fight.setup.gear.dmg === 0.05);
+
+  // forja: sem materiais recusa; com materiais, consome e entrega
+  const nf = await Gear.forge(id, { recipe: "forjar_luvas", key: k() });
+  check("forja sem materiais recusa", nf.code === "needs" || nf.code === "coins", JSON.stringify(nf));
+  await pool2.query(`UPDATE tb_mm_wallet SET coins = 500 WHERE id_user = $1`, [id]);
+  await pool2.query(
+    `INSERT INTO tb_mm_gear (id_user, item_id, qty) VALUES ($1, 'couro_reforcado', 3), ($1, 'mola_precisao', 4)
+     ON CONFLICT (id_user, item_id) DO UPDATE SET qty = EXCLUDED.qty`,
+    [id]
+  );
+  const fg = await Gear.forge(id, { recipe: "forjar_luvas", key: k() });
+  check("forja entrega as luvas", fg.receipt && fg.bag.owned.luvas_precisao && !fg.bag.owned.mola_precisao, JSON.stringify(fg.error || fg.bag.owned));
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();

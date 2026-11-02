@@ -18,6 +18,12 @@ const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const Life = require("../utils/meuMundoLife");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
+const Gear = require("../utils/meuMundoGear");
+/** Require tardio: o serviço de equipamento também usa o withLife. */
+const GearService = () => require("./MeuMundoGearService");
+
+/** Derrota só dá o drop garantido com esta participação (tempo ativo conferido); vitória sempre dá. */
+const LOOT_MIN_ACTIVE_MS = 15000;
 
 const ORIGINS = Object.freeze(["laminas", "boxe", "mob", "tutorial"]);
 const TICKET_TTL_MS = 8 * 60 * 1000;
@@ -91,6 +97,12 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   const activity = origin === "boxe" ? "boxe" : "laminas";
   const practice = verdict.abandoned ? { attrs: {}, base: {}, activeMs: 0 } : Adv.practice(s, activity, [{ from: ctx.now - activeMs, to: ctx.now }]);
   const xpGain = verdict.abandoned ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
+  // Drop: recompensa básica GARANTIDA com participação válida; vitória aumenta.
+  const family = Adv.ACTIVITIES[activity].loot;
+  const drops =
+    verdict.abandoned || (!verdict.win && practice.activeMs < LOOT_MIN_ACTIVE_MS)
+      ? []
+      : await GearService().deliver(c, idUser, Gear.rollLoot(family, { win: verdict.win, activeMs: practice.activeMs }, GearService().R), ctx);
   const level = addXp(adv, xpGain);
   const day = Life.localParts(ctx.now).day;
   adv.losses = verdict.win ? 0 : streak + 1;
@@ -121,8 +133,9 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       // delta EFETIVO (depois dos limites 0–100)
       vitals: { energy: r2(s.energy - before.energy), stress: r2(s.stress - before.stress) },
       cost,
+      coins: drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined,
     },
-    items: [],
+    items: drops,
   });
   ctx.events.push({ at: ctx.now, kind: "fight", data: { origin, kind: setup.kind, win: verdict.win, abandoned: !!verdict.abandoned, xp: level.xp } });
   return rec;
@@ -179,6 +192,8 @@ class MeuMundoAdventureService {
         stats: fightStats(s),
         // Kit pela CLASSE (mm3d-59): raposa = maga; o ringue do Boxe é sempre de luvas.
         style: origin !== "boxe" && clan === "raposa" ? "mage" : undefined,
+        // equipamento (com teto somado); o ringue do Boxe é de luvas: sem arma
+        gear: origin === "boxe" ? undefined : await GearService().fightGear(c, idUser, clan),
         mobId,
       };
       // tutorial: o inimigo entra enfraquecido (pedido do prólogo)
@@ -188,7 +203,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, seed: setup.seed, stats: setup.stats, style: setup.style ?? null },
+          setup: { kind, level, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, gear: setup.gear ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,
@@ -214,7 +229,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, seed: setup.seed, stats: setup.stats, style: setup.style || undefined },
+        { kind: setup.kind, level: setup.level, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");

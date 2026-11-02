@@ -321,7 +321,30 @@ const MOBS                          = {
                         
                                                                   
                 
+     
+                                                                               
+                                                                            
+                                                 
+     
+                           
  
+
+                            
+             
+             
+              
+              
+               
+ 
+const NO_GEAR            = { dmg: 0, def: 0, stam: 0, warn: 0, power: 0 }
+/** Teto de segurança do lado da regra (o servidor já corta antes). */
+const GEAR_MAX            = { dmg: 0.18, def: 0.12, stam: 0.08, warn: 0.08, power: 0.12 }
+function clampGear(g                     )            {
+  const out = { ...NO_GEAR }
+  if (!g) return out
+  for (const k of Object.keys(NO_GEAR)                       ) out[k] = clamp(Number(g[k]) || 0, 0, GEAR_MAX[k])
+  return out
+}
 
 const clamp = (v        , a        , b        ) => (v < a ? a : v > b ? b : v)
 const angDiff = (a        , b        ) => {
@@ -389,6 +412,8 @@ class Fight {
           prevPower = false
   /** Só conferência (harness): força o ranque dos próximos golpes. */
   forceRank              = null
+  /** mm3d-59: bônus do equipamento (com teto). */
+           gear           
 
   constructor(setup            ) {
     this.R = rng(setup.seed ?? (Date.now() & 0x7fffffff))
@@ -397,7 +422,8 @@ class Fight {
     // O Golem de Pedra (o antigo Soldado) tem só os níveis 1 e 2 (Alex, 29/10).
     this.level = clamp(Math.round(setup.level ?? 1), 1, setup.kind === "soldier" ? 2 : 3)
     const stats = { ...BASE_STATS, ...(setup.stats ?? {}) }
-    this.fx = statEffects(stats)
+    this.gear = clampGear(setup.gear)
+    this.fx = this.withGear(statEffects(stats))
     this.me = {
       x: 0,
       z: -5,
@@ -493,8 +519,14 @@ class Fight {
   }
 
   /** Atributos da vida que chegam depois de a luta abrir (o pedido ao servidor é em paralelo). */
+  /** Os bônus do equipamento por cima do que os atributos dão. */
+          withGear(fx                                ) {
+    const g = this.gear
+    return { ...fx, dmg: fx.dmg * (1 + g.dmg), warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
+  }
+
   setStats(stats                ) {
-    this.fx = statEffects({ ...BASE_STATS, ...stats })
+    this.fx = this.withGear(statEffects({ ...BASE_STATS, ...stats }))
     this.me.rate = this.fx.rate
   }
 
@@ -765,7 +797,7 @@ class Fight {
     m.hp = Math.max(0, m.hp - dmg)
     const dead = m.hp <= 0
     this.events.push({ t: "hit", on: "mob", id: m.id, dmg, x: m.x, y: m.y, z: m.z, heavy, dead, rank })
-    if (this.me.state !== "power") this.me.power = Math.min(POWER.max, this.me.power + (heavy ? POWER.perHeavy : POWER.perHit))
+    if (this.me.state !== "power") this.me.power = Math.min(POWER.max, this.me.power + (heavy ? POWER.perHeavy : POWER.perHit) * (1 + this.gear.power))
     if (dead) {
       m.state = "dead"
       m.t = 0
@@ -933,7 +965,7 @@ class Fight {
     }
     if (!hit) return
     m.struck = true
-    const dmg = Math.round(a.dmg * m.dmgMul)
+    const dmg = Math.round(a.dmg * m.dmgMul * (1 - this.gear.def))
     p.hp = Math.max(0, p.hp - dmg)
     const heavy = !!a.heavy
     this.events.push({ t: "hit", on: "me", dmg, x: p.x, z: p.z, heavy, dead: p.hp <= 0 })

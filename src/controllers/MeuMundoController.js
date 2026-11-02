@@ -160,6 +160,26 @@ async function fightStart(req, res) {
 async function fightFinish(req, res) {
   return reply(res, await adventure().fightFinish(req.user.id_user, req.body || {}));
 }
+// mm3d-59 slice 3: equipamento (Armeiro, mochila, forja)
+const gear = () => require("../services/MeuMundoGearService");
+async function gearGet(req, res) {
+  return reply(res, await gear().get(req.user.id_user));
+}
+async function gearBuy(req, res) {
+  return reply(res, await gear().buy(req.user.id_user, req.body || {}));
+}
+async function gearEquip(req, res) {
+  return reply(res, await gear().equip(req.user.id_user, req.body || {}));
+}
+async function gearForge(req, res) {
+  return reply(res, await gear().forge(req.user.id_user, req.body || {}));
+}
+async function gearUpgrade(req, res) {
+  return reply(res, await gear().upgrade(req.user.id_user, req.body || {}));
+}
+async function gearRecycle(req, res) {
+  return reply(res, await gear().recycle(req.user.id_user, req.body || {}));
+}
 
 async function lifeConsume(req, res) {
   return reply(res, await MeuMundoLifeService.consume(req.user.id_user, req.body?.item));
@@ -304,6 +324,12 @@ module.exports = {
   adventureGet,
   fightStart,
   fightFinish,
+  gearGet,
+  gearBuy,
+  gearEquip,
+  gearForge,
+  gearUpgrade,
+  gearRecycle,
   lifeBuy,
   lifeOrder,
   shopCatalog,
