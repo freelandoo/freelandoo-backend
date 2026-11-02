@@ -265,6 +265,13 @@ class MeuMundoLifeService {
         // Avisos com retrato e fôlego de corrida (2026-10-24).
         needs: snap.needs,
         stamina: snap.stamina,
+        // HUD do personagem (mm3d-60d): saúde/energia/estresse e o teto da saúde
+        vitals: {
+          health: snap.vitals.health,
+          energy: snap.vitals.energy,
+          stress: snap.vitals.stress,
+          vitality: snap.vitals.vitality,
+        },
       });
       for (const n of notices) require("./MeuMundoInboxService").push(idUser, n);
       return out;
