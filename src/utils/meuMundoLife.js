@@ -208,19 +208,27 @@ const ATTR = Object.freeze({
 });
 const TRAINED = Object.freeze(["intelligence", "strength", "speed"]);
 
-// ═══ CRESCER (mm3d-58) ═══ — regra do Alex: o hóspede nasce JOVEM (o modelo
-// "inicial" da classe) e vira ADULTO pela idade; ir bastante à academia
-// adianta, e o anabolizante dobra o adiantamento. Virou adulto: +20% em cada
-// atributo sobre o que já tem (o pico sobe junto) e saúde 100.
-//  • Só o tempo: ADULT_DAYS dias (~6 meses de jogo).
-//  • Cada hora ÚTIL de treino (o teto diário de ATTR.USEFUL_H) soma TRAIN_DAYS
-//    dias: 4 h por dia ≈ 7× mais rápido (~26 dias); com anabolizante ≈ 13×.
+// ═══ CRESCER (mm3d-58; regra nova do Alex em 2026-11-02) ═══ — o hóspede
+// nasce JOVEM e vira ADULTO pelo que ele CONQUISTA, não só pelo tempo:
+//  • idade mínima MIN_DAYS (1 mês de jogo: é quando o jovem termina de
+//    crescer — 1,40 m → 1,70/1,65, ver meuMundoHeights.js GROW);
+//  • e FORÇA e INTELIGÊNCIA subiram TARGET desde que nasceu (pelo pico: uma
+//    semana parado não desfaz o caminho).
+// O alvo é a MÉDIA entre o máximo do mês (tudo no talo: disciplina alta,
+// whey + pré-treino + creatina + anabolizante, universidade + estimulante —
+// força +502, inteligência +358) e o jogador bom sem suplemento (força +226,
+// inteligência +261): força +350, inteligência +300. No talo, vira adulto com
+// 1 mês; bom sem suplemento, ~55 dias; metade do treino, ~4 meses e meio —
+// e quem é maltratado gasta a vida mais rápido (LIFE.WEAR) e pode morrer
+// jovem. Virou adulto: +20% em cada atributo e saúde 100.
 const GROWTH = Object.freeze({
-  ADULT_DAYS: 180,
-  TRAIN_DAYS: 1.5,
-  ANABOLIC: 2,
+  MIN_DAYS: 30,
+  TARGET: Object.freeze({ strength: 350, intelligence: 300 }),
+  /** Quem nasceu antes da regra nova: o ponto de partida (o hóspede nasce com 15–30). */
+  LEGACY_BASE: 25,
   BONUS: 0.2,
 });
+const GROWN = Object.freeze(["strength", "intelligence"]);
 
 // ═══ LUGARES (mm3d-37b) ═══ — treino e estudo só dentro do prédio do centro
 // (pedido do Alex). A atividade guarda o lugar; a universidade cobra a hora de
@@ -462,6 +470,12 @@ function normalize(s) {
   if (!(s.wearDays >= 0)) s.wearDays = 0;
   // mm3d-58: hóspede de antes começa a contar pelos dias já vividos.
   if (!s.growth) s.growth = { stage: "young", days: s.wearDays };
+  // 2026-11-02: a idade conta do nascimento (from) e o caminho do jovem é medido
+  // do ponto de partida (base). Quem é de antes da regra: nascimento = born_at
+  // (ou os dias já vividos) e partida = o que o hóspede tem ao nascer.
+  const g = s.growth;
+  if (!(g.from > 0)) g.from = s.bornAt > 0 ? s.bornAt : s.simAt - (g.days || s.wearDays || 0) * 24 * HOUR;
+  if (g.stage !== "adult" && !g.base && "days" in g) g.base = Object.fromEntries(GROWN.map((k) => [k, Math.min(GROWTH.LEGACY_BASE, s.peaks ? s.peaks[k] : s[k])]));
   return s;
 }
 
@@ -534,7 +548,8 @@ function birth(seed, t) {
     meals: { log: {} },
     exposure: { hunger: 0, sleep: 0, stress: 0, health: 0 },
     wearDays: 0, // dias equivalentes de vida já gastos (LIFE)
-    growth: { stage: "young", days: 0 }, // GROWTH (mm3d-58)
+    // GROWTH: a idade conta daqui; a partida (base) é marcada no 1º passo, já com a herança
+    growth: { stage: "young", from: t },
     dayAcc: emptyDay(localParts(t).day),
     status: "alive",
     deathCause: null,
@@ -584,8 +599,23 @@ function growUp(s, t, events) {
     if (s[k] > s.peaks[k]) s.peaks[k] = s[k];
   }
   s.health = 100;
-  s.growth = { stage: "adult", days: r2(s.growth.days), at: t };
+  s.growth = { stage: "adult", from: s.growth.from, at: t };
   events.push({ at: t, kind: "adult", data: { before, after: Object.fromEntries(TRAINED.map((k) => [k, r2(s[k])])) } });
+}
+
+/**
+ * Quanto falta para virar adulto (GROWTH): idade, ganho de força e de
+ * inteligência desde a partida (pelo pico) e o total 0–1 (média das três
+ * partes, cada uma até 1 — só chega a 1 com as três completas).
+ */
+function growthProgress(s, t) {
+  const g = s.growth;
+  const ageDays = Math.max(0, (t - (g.from || t)) / (24 * HOUR));
+  const base = g.base || {};
+  const gained = Object.fromEntries(GROWN.map((k) => [k, Math.max(0, (s.peaks[k] || 0) - (base[k] ?? s.peaks[k] ?? 0))]));
+  const parts = [Math.min(1, ageDays / GROWTH.MIN_DAYS), ...GROWN.map((k) => Math.min(1, gained[k] / GROWTH.TARGET[k]))];
+  const pct = parts.reduce((a, b) => a + b, 0) / parts.length;
+  return { ageDays, gained, pct, ready: g.stage !== "adult" && parts.every((p) => p >= 1) };
 }
 
 // ═══ ATRIBUTOS ═══
@@ -745,8 +775,8 @@ function stepState(s, t, dt, events, out) {
     s.dayAcc.coins += coins;
   }
   if (s.growth.stage !== "adult") {
-    s.growth.days += dt / 24 + (kind === "training" ? GROWTH.TRAIN_DAYS * useful * (anab ? GROWTH.ANABOLIC : 1) : 0);
-    if (s.growth.days >= GROWTH.ADULT_DAYS) growUp(s, t, events);
+    if (!s.growth.base) s.growth.base = Object.fromEntries(GROWN.map((k) => [k, r2(s.peaks[k])]));
+    if (growthProgress(s, t).ready) growUp(s, t, events);
   }
   // Sem praticar, cai devagar — nunca abaixo do piso (fração do pico).
   if (kind !== "studying" && kind !== "working") decay(s, "intelligence", dt);
@@ -1378,12 +1408,19 @@ function snapshot(s, t) {
       wearRate: r2(EXPOSURE.KEYS.reduce((n, k) => n + LIFE.WEAR[k] * severity(s)[k], 1)),
     },
     // mm3d-58: jovem → adulto (o modelo da classe muda; ver GROWTH).
-    growth: {
-      stage: s.growth.stage,
-      days: r2(s.growth.days),
-      adultDays: GROWTH.ADULT_DAYS,
-      pct: s.growth.stage === "adult" ? 100 : r2(Math.min(100, (100 * s.growth.days) / GROWTH.ADULT_DAYS)),
-    },
+    growth: (() => {
+      const g = growthProgress(s, t);
+      return {
+        stage: s.growth.stage,
+        from: new Date(s.growth.from).toISOString(),
+        at: s.growth.at ? new Date(s.growth.at).toISOString() : null,
+        ageDays: r2(g.ageDays),
+        minDays: GROWTH.MIN_DAYS,
+        target: GROWTH.TARGET,
+        gained: Object.fromEntries(GROWN.map((k) => [k, r2(g.gained[k])])),
+        pct: s.growth.stage === "adult" ? 100 : r2(100 * g.pct),
+      };
+    })(),
     stamina: stamina(s),
     needs: needs(s, t),
     today: { ...dayCondition(s.dayAcc), day: s.dayAcc.day, hours: Object.fromEntries(Object.entries(s.dayAcc.hours).map(([k, v]) => [k, r2(v)])) },

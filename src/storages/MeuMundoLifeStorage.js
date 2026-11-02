@@ -54,6 +54,8 @@ function rowToState(r) {
     boxing: r.boxing || null,
     // mig 317: jovem/adulto (mm3d-58); NULL = de antes (normalize completa)
     growth: r.growth || null,
+    // nascimento (só leitura): a idade do crescimento conta daqui (2026-11-02)
+    bornAt: ms(r.born_at),
     wearDays: r.wear_days != null ? r.wear_days : Math.max(0, (ms(r.sim_at) - ms(r.born_at)) / 86400000),
     dayAcc: r.day_acc,
     status: r.status,

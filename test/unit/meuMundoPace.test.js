@@ -81,7 +81,7 @@ test("espelho do cliente: tabela de alturas e a passada", (t) => {
   for (const [body, h] of Object.entries(HEIGHT)) {
     assert.match(heights, new RegExp(`\\s${body}: ${String(h).replace(".", "\\.")}(\\.0)?,`), body);
   }
-  assert.match(heights, /export const bodyStride = \(b: BodyId\): number => Math\.max\(1, bodyHeight\(b\) \/ BASE_HEIGHT\)/);
+  assert.match(heights, /export const bodyStride = \(b: BodyId, h = 0\): number => Math\.max\(1, \(h > 0 \? h : bodyHeight\(b\)\) \/ BASE_HEIGHT\)/);
   const motion = fs.readFileSync(path.join(dir, "engine/motion.ts"), "utf8");
   assert.match(motion, /export function paceSpeeds\(pace = 1, base = \{ walk: MOTION\.WALK_SPEED, run: MOTION\.RUN_SPEED \}, stride = 1\)/);
 });

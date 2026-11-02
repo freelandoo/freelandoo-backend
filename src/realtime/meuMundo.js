@@ -134,6 +134,8 @@ const Player = schema(
     body: t.string(),
     // Cores (mm3d-36, mig 304): código look; "" = visual próprio.
     look: t.string(),
+    // Altura de agora em cm (2026-11-02, o jovem cresce); 0 = a do modelo.
+    h: t.uint16(),
     x: t.float32(),
     z: t.float32(),
     facing: t.float32(),
@@ -216,6 +218,8 @@ const HousePlayer = schema(
     body: t.string(),
     // Cores (mm3d-36, mig 304): código look; "" = visual próprio.
     look: t.string(),
+    // Altura de agora em cm (2026-11-02, o jovem cresce); 0 = a do modelo.
+    h: t.uint16(),
     host: t.boolean(),
     x: t.float32(),
     z: t.float32(),
@@ -490,6 +494,7 @@ class BairroRoom extends Room {
     p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
     if (typeof life.look === "string") p.look = roomLook(p.body, life.look);
+    if (life.height > 0) p.h = Math.round(life.height * 100);
   }
 
   onLeave(client) {
@@ -865,7 +870,7 @@ class BairroRoom extends Room {
         continue;
       }
       const st = s.stam || (s.stam = freshStamina());
-      const move = step(s.body, staminaIntent(st, s.intent, dt), dt, boxes, this.limit, paceProfile(s.pace, bodyStride(p?.body)));
+      const move = step(s.body, staminaIntent(st, s.intent, dt), dt, boxes, this.limit, paceProfile(s.pace, bodyStride(p?.body, p?.h / 100)));
       if (!p) continue;
       p.x = s.body.x;
       p.z = s.body.z;
@@ -1359,6 +1364,7 @@ class CasaRoom extends Room {
     p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
     if (typeof life.look === "string") p.look = roomLook(p.body, life.look);
+    if (life.height > 0) p.h = Math.round(life.height * 100);
     if (s.bedPending) return;
     const resting = life.status === "alive" && (life.activity === "lying" || life.activity === "sleeping");
     const here = resting && life.bed && life.bed.houseId === this.houseId ? this.def.beds.find((b) => b.id === life.bed.bedId) : null;
@@ -1406,7 +1412,7 @@ class CasaRoom extends Room {
       expireIntent(s, now);
       const st = s.stam || (s.stam = freshStamina());
       const p = this.state.players.get(sid);
-      const move = stepInterior(s.body, staminaIntent(st, s.intent, dt), dt, this.def, paceSpeeds(s.pace, bodyStride(p?.body)));
+      const move = stepInterior(s.body, staminaIntent(st, s.intent, dt), dt, this.def, paceSpeeds(s.pace, bodyStride(p?.body, p?.h / 100)));
       if (!p) continue;
       p.st = Math.round((20 * st.left) / st.maxS) * 5;
       p.wd = st.winded;
@@ -2092,7 +2098,7 @@ function applyLife(userId, life) {
   if (!p || !p.room.applyLife) return false;
   p.room.applyLife(p.sessionId, life);
   // Avisos (needs) vão junto: o cliente fala com o retrato sem pedir nada (mm3d-28).
-  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, until: life.until ?? null, body: life.body, look: life.look ?? "", needs: life.needs || [], stamina: life.stamina || null });
+  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, until: life.until ?? null, body: life.body, look: life.look ?? "", height: life.height || 0, needs: life.needs || [], stamina: life.stamina || null });
   return true;
 }
 

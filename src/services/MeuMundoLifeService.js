@@ -25,6 +25,7 @@ const PolenStorage = require("../storages/PolenStorage");
 const { rowToState } = require("../storages/MeuMundoLifeStorage");
 const Cars = require("../utils/meuMundoCars");
 const Life = require("../utils/meuMundoLife");
+const { grownHeight } = require("../utils/meuMundoHeights");
 const Skins = require("../utils/meuMundoSkins");
 const Colors = require("../utils/meuMundoColors");
 const { createLogger } = require("../utils/logger");
@@ -235,9 +236,12 @@ class MeuMundoLifeService {
         ...Life.snapshot(state, now),
       };
       const snap = admin ? Life.adminView(snap0) : snap0;
+      // Altura de agora (2026-11-02): o corpo desenhado + o crescimento da vida.
+      const height = grownHeight(avatar, state.growth, now);
       const out = {
         now: new Date(now).toISOString(),
         character: snap,
+        height,
         wallet: { coins: Math.floor(Math.max(0, ctx.coins)), ...(ctx.polens != null ? { polens: ctx.polens } : {}) },
         avatar,
         look,
@@ -257,6 +261,7 @@ class MeuMundoLifeService {
         bed: state.activity.bed,
         body: avatar,
         look,
+        height,
         // Avisos com retrato e fôlego de corrida (2026-10-24).
         needs: snap.needs,
         stamina: snap.stamina,
