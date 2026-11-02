@@ -30,6 +30,7 @@ const { Match, PARTY, TUNING } = require("../utils/meuMundoJetpack");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.jetpack");
+const { PracticeMeter } = require("./meuMundoPractice");
 
 const JETPACK_ROOM = "jetpack";
 const CLOSE = { REPLACED: 4009, FORBIDDEN: 4003, ABUSE: 4029 };
@@ -196,6 +197,7 @@ class JetpackRoom extends Room {
       r.online = false;
       s.held = false;
       s.inputs.length = 0;
+      if (this.meter) this.meter.settle(s.userId);
       return;
     }
     this.sim.delete(client.sessionId);
@@ -306,6 +308,7 @@ class JetpackRoom extends Room {
     if (!s || !this.takeToken(client, s) || !this.match || (phase !== "running" && phase !== "countdown")) return;
     const T = this.match.ticks + 1;
     const k = Math.floor(Number(msg && msg.k));
+    if (this.meter && phase === "running") this.meter.pose(s.userId, { k, h: msg && msg.h ? 1 : 0 });
     if (!Number.isFinite(k) || k > T + INPUT_EARLY) return;
     // Atrasada além da janela (aba que voltou do segundo plano, mm3d-27): vale
     // agora. Descartar deixava o botão preso no último valor — "segurando" sem
@@ -353,6 +356,8 @@ class JetpackRoom extends Room {
     }
     const seed = crypto.randomBytes(4).readUInt32LE(0) || 1;
     this.match = new Match(seed, slots, TUNING);
+    // mm3d-59: prática medida pela sala (entrada é esparsa: segurar conta, buraco de 6 s fecha)
+    this.meter = new PracticeMeter("jetpack", `jetpack:${this.roomId}:${seed}:${Date.now()}`, log, 6000);
     this.acc = 0;
     this.state.seed = seed;
     this.state.tick = 0;
@@ -465,6 +470,12 @@ class JetpackRoom extends Room {
 
   finish() {
     const places = new Map(this.match.placements().map((p) => [p.slot, p.place]));
+    if (this.meter) {
+      const wins = new Set();
+      for (const s of this.sim.values()) if (places.get(s.slot) === 1) wins.add(s.userId);
+      this.meter.settle(null, wins);
+      this.meter = null;
+    }
     for (const r of this.state.runners.values()) {
       if (r.inMatch) r.place = places.get(r.slot) || 0;
       // "Jogar de novo" apertado nos resultados vale para a próxima espera.

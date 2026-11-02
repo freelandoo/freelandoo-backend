@@ -198,7 +198,8 @@ async function main() {
   const r1 = await qa();
   const r1b = await Quest.advance(nu, { action: "ack" });
   check("passo 1 entregue; o seguinte ainda não", r1.receipt && r1b.code === "pending", JSON.stringify([r1.error, r1b.code]));
-  await Life.consume(nu, "agua_coco");
+  const ate = await Life.consume(nu, "agua_coco");
+  if (ate.error) console.log("consume:", JSON.stringify(ate));
   check("passo 2 (comer) conferido pelo evento", (await qa()).receipt);
   const pend = await qa();
   check("passo 3 sem treino = pendente", pend.code === "pending");
@@ -261,6 +262,23 @@ async function main() {
   check("subidas de nível vêm em recibos (para a celebração)", lvUps >= 1, String(lvUps));
   const dup = await Quest.advance(nu, { action: "ack" });
   check("missão concluída não concede de novo", dup.code === "done");
+
+  // ── slice 4: crédito de minijogo medido pela sala ──
+  const now = Date.now();
+  const segs = [{ from: now - 9 * 60000, to: now - 60000 }]; // 8 min ativos
+  const [m1, m2] = await Promise.all([
+    Adv.creditMinigame(nu, { activity: "gincana", actionKey: "gincana:r1:1", segments: segs, win: true }),
+    Adv.creditMinigame(nu, { activity: "gincana", actionKey: "gincana:r1:1", segments: segs, win: true }),
+  ]);
+  check("minijogo: mesma partida = mesmo recibo", m1.receipt && m2.receipt && m1.receipt.eventId === m2.receipt.eventId);
+  const mr = m1.receipt;
+  check("minijogo: janela máxima (Gincana 6 min) no tempo ativo", mr.activeMs === 6 * 60000, String(mr.activeMs));
+  check("minijogo: destreza principal e velocidade secundária", mr.deltas.attrs.dexterity > 0 && mr.deltas.attrs.speed > 0, JSON.stringify(mr.deltas.attrs));
+  check("minijogo: material da família (molas)", mr.items.some((i) => i.id === "mola_precisao"), JSON.stringify(mr.items));
+  const afk = await Adv.creditMinigame(nu, { activity: "paint", actionKey: "paint:r2:1", segments: [] });
+  check("minijogo sem tempo ativo não gera recibo", afk.receipt === null);
+  const future = await Adv.creditMinigame(nu, { activity: "paint", actionKey: "paint:r3:1", segments: [{ from: now + 60000, to: now + 600000 }] });
+  check("tempo no futuro não conta", future.receipt === null);
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();

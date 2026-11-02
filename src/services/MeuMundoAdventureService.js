@@ -142,7 +142,55 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   return rec;
 }
 
+/** Minijogo: participação mínima (tempo ativo conferido pela sala) para o drop garantido. */
+const MINIGAME_LOOT_MIN_MS = 60000;
+
 class MeuMundoAdventureService {
+  /**
+   * Crédito de um MINIJOGO medido pela sala (mm3d-59 slice 4). A sala é quem
+   * mede o tempo ativo (segmentos em epoch ms) — o aparelho não diz nada.
+   * `actionKey` = sala + partida + pessoa: repetir não credita de novo.
+   * Prática (orçamento do dia, janela máxima por partida), XP e o material da
+   * família. Sem custo de energia (a vida já cobra o tempo acordado).
+   */
+  static async creditMinigame(idUser, { activity, actionKey, segments, win = false }) {
+    const def = Adv.ACTIVITIES[activity];
+    if (!def || !actionKey) return fail("origin");
+    const source = `minigame:${activity}`;
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      const same = await Store.findReceipt(c, ctx.row.id_character, source, String(actionKey));
+      if (same) return { receipt: same, replay: true };
+      if (s.status !== "alive") return fail("dead");
+      // segmentos só do passado e de no máximo 1 dia atrás (relógio do servidor)
+      const segs = (segments || [])
+        .map((g) => ({ from: Math.max(Number(g.from), ctx.now - 24 * 3600 * 1000), to: Math.min(Number(g.to), ctx.now) }))
+        .filter((g) => g.to > g.from);
+      const practice = Adv.practice(s, activity, segs);
+      if (practice.activeMs <= 0) return { receipt: null, replay: false };
+      const adv = await Store.lockAdventure(c, idUser);
+      const level = addXp(adv, Adv.minigameXp(practice.activeMs) + (win ? 5 : 0));
+      await Store.saveAdventure(c, idUser, { xp: adv.xp, level: adv.level, losses: adv.losses, lossesDay: adv.losses_day });
+      const drops =
+        practice.activeMs >= MINIGAME_LOOT_MIN_MS
+          ? await GearService().deliver(c, idUser, Gear.rollLoot(def.loot, { win, activeMs: practice.activeMs }, GearService().R), ctx)
+          : [];
+      const receipt = await Store.insertReceipt(c, {
+        idUser,
+        idCharacter: ctx.row.id_character,
+        source,
+        actionKey: String(actionKey),
+        rules: Adv.RULES_VERSION,
+        activeMs: practice.activeMs,
+        result: { activity, win: !!win },
+        deltas: { xp: level, attrs: practice.attrs, coins: drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
+        items: drops,
+      });
+      ctx.events.push({ at: ctx.now, kind: "minigame", data: { activity, activeMs: practice.activeMs } });
+      return { receipt, replay: false };
+    });
+  }
+
   /** GET /adventure — nível, XP e os últimos recibos. */
   static async get(idUser) {
     const pool = require("../databases");

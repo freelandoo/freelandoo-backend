@@ -29,6 +29,7 @@ const G = require("../utils/meuMundoGincana");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.gincana");
+const { PracticeMeter } = require("./meuMundoPractice");
 
 const GINCANA_ROOM = "gincana";
 const SEATS = 8;
@@ -137,6 +138,7 @@ class GincanaRoom extends Room {
       // na prova: fica com o que tinha, como "saiu"
       p.online = false;
       this.markGone(s);
+      if (this.meter) this.meter.settle(s.userId);
       if (!this.clients.length) this.disconnect();
       return;
     }
@@ -250,6 +252,7 @@ class GincanaRoom extends Room {
     const s = this.seats.get(client.sessionId);
     if (!s || s.gone || !this.race || this.state.phase !== "run" || !msg || !this.takeToken(client, s)) return;
     this.accept(s, msg);
+    if (this.meter) this.meter.pose(s.userId, msg);
   }
 
   onPing(client, msg) {
@@ -281,6 +284,8 @@ class GincanaRoom extends Room {
       this.bots.add(slot);
       seats.push({ slot, name, body: BOT_BODIES[slot % BOT_BODIES.length], look, bot: true });
     }
+    // mm3d-59: a sala mede a prática de cada pessoa (tempo ativo de verdade)
+    this.meter = new PracticeMeter("gincana", `gincana:${this.roomId}:${Date.now()}`, log);
     this.race = new G.GincanaRace(
       seed,
       seats.map((s) => ({ slot: s.slot, ctl: s.bot ? "bot" : "remote" })),
@@ -344,6 +349,11 @@ class GincanaRoom extends Room {
     this.state.phase = "end";
     this.state.until = Date.now() + timing.closeMs;
     log.info("gincana.end", { roomId: this.roomId, people: this.seats.size, first: rows[0] ? rows[0].slot : -1 });
+    // prática de quem jogou (vitória = chegou em 1º)
+    if (this.meter) {
+      const first = rows[0] && rows[0].fin >= 0 && !rows[0].bot ? [...this.seats.values()].find((s) => s.slot === rows[0].slot) : null;
+      this.meter.settle(null, new Set(first ? [first.userId] : []));
+    }
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }
 }

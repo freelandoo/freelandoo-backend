@@ -33,6 +33,7 @@ const { PaintMatch, PAINT_MODES, modeCapacity, modeTeams } = require("../utils/m
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.paint");
+const { PracticeMeter } = require("./meuMundoPractice");
 
 const PAINT_ROOM = "paint";
 const CLOSE = { REPLACED: 4009, FORBIDDEN: 4003, ABUSE: 4029 };
@@ -204,6 +205,7 @@ class PaintRoom extends Room {
       // Na partida: o jogador fica (parado, fora dos alvos); pode voltar pela reserva.
       p.online = false;
       this.match.setOnline(s.slot, false);
+      if (this.meter) this.meter.settle(s.userId);
       if (!this.clients.length) this.disconnect();
       return;
     }
@@ -306,6 +308,7 @@ class PaintRoom extends Room {
     const s = this.playing(client);
     if (!s || !msg) return;
     this.match.pose(s.slot, { x: num(msg.x), y: num(msg.y), z: num(msg.z), facing: num(msg.f), ground: !!msg.g, gy: num(msg.gy), e: Math.floor(num(msg.e)) });
+    if (this.meter && this.state.phase === "play") this.meter.pose(s.userId, { x: msg.x, y: msg.y, z: msg.z, f: msg.f });
   }
 
   onFire(client, msg) {
@@ -338,6 +341,8 @@ class PaintRoom extends Room {
       if (s) seats.push({ slot: s.slot, team: p.team, sit: p.sit });
     }
     this.match = new PaintMatch(this.mode, seats);
+    // mm3d-59: prática medida pela sala
+    this.meter = new PracticeMeter("paint", `paint:${this.roomId}:${Date.now()}`, log);
     this.state.phase = "countdown";
     this.state.bossHp = this.match.bossHp;
     void this.lock();
@@ -458,6 +463,16 @@ class PaintRoom extends Room {
   finish() {
     this.state.phase = "end";
     this.state.result = JSON.stringify(this.match.result);
+    if (this.meter) {
+      // vitória = estar no time vencedor
+      const wt = this.match.result && this.match.result.winnerTeam;
+      const wins = new Set();
+      for (const [sid, s] of this.seats) {
+        const p = this.state.players.get(sid);
+        if (p && wt != null && p.team === wt) wins.add(s.userId);
+      }
+      this.meter.settle(null, wins);
+    }
     this.state.until = Date.now() + timing.closeMs;
     log.info("paint.end", { roomId: this.roomId, mode: this.mode, winnerTeam: this.match.result.winnerTeam });
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);

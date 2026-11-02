@@ -49,7 +49,7 @@ test("orçamento: academia e minijogo dividem a mesma força", () => {
   const s = fresh();
   for (let i = 0; i < 8; i++) A.practice(s, "laminas", [{ from: NOON + i * 10 * MIN, to: NOON + i * 10 * MIN + 6 * MIN }]);
   const used = 12 - L.budgetLeft(s, "strength", NOON);
-  assert.ok(Math.abs(used - 4.8) < 1e-6, `8 lutas de 6 min = 4,8 base (usou ${used})`);
+  assert.ok(Math.abs(used - 3.2) < 1e-6, `8 lutas de 6 min, janela de 4 min = 3,2 base (usou ${used})`);
   // a vida (academia) gasta do mesmo saldo
   const got = L.gain(s, "strength", 50, NOON);
   assert.ok(got > 0);
@@ -158,4 +158,31 @@ test("luta com equipamento: mais dano dado, menos levado, teto do lado da regra"
   const geared = new F.Fight({ kind: "golem", seed: 3, gear: { dmg: 0.5, def: 0.12 } });
   assert.ok(Math.abs(geared.fx.dmg / base.fx.dmg - 1.18) < 1e-9, "dano cortado em +18%");
   assert.equal(geared.gear.def, 0.12);
+});
+
+// ── slice 4: medidor de prática das salas ──
+const { PracticeMeter } = require("../../src/realtime/meuMundoPractice");
+
+test("medidor: parado não conta, buraco fecha o trecho, entrega uma vez", () => {
+  const m = new PracticeMeter("paint", "paint:t:1", null);
+  const t0 = 1_000_000;
+  for (let i = 0; i <= 100; i++) m.pose("u", { x: i * 0.1, z: 0 }, t0 + i * 50); // 5 s andando
+  assert.equal(m.activeMs("u"), 5000);
+  for (let i = 1; i <= 100; i++) m.pose("u", { x: 10, z: 0 }, t0 + 5000 + i * 50); // parado 5 s
+  assert.equal(m.activeMs("u"), 5000, "parado não soma");
+  m.pose("u", { x: 11, z: 0 }, t0 + 20000);
+  m.pose("u", { x: 12, z: 0 }, t0 + 21000);
+  assert.equal(m.activeMs("u"), 6000, "depois do buraco começa outro trecho");
+  const calls = [];
+  const Svc = require("../../src/services/MeuMundoAdventureService");
+  const orig = Svc.creditMinigame;
+  Svc.creditMinigame = async (id, o) => (calls.push([id, o.actionKey]), { receipt: null });
+  try {
+    m.settle("u");
+    m.settle("u");
+    m.settle();
+  } finally {
+    Svc.creditMinigame = orig;
+  }
+  assert.deepEqual(calls, [["u", "paint:t:1:u"]]);
 });

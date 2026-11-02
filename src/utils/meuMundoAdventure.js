@@ -44,8 +44,8 @@ const UNLOCKS = Object.freeze({
 // São sete minijogos (Corrida e Antigravidade são o mesmo jogo) + academia e
 // universidade (essas rendem pela VIDA, por hora útil — meuMundoLife.js).
 const ACTIVITIES = Object.freeze({
-  laminas: { main: "strength", sec: "dexterity", maxMin: 6, loot: "forja" },
-  boxe: { main: "strength", sec: "dexterity", maxMin: 6, loot: "couro" },
+  laminas: { main: "strength", sec: "dexterity", maxMin: 4, loot: "forja" },
+  boxe: { main: "strength", sec: "dexterity", maxMin: 4, loot: "couro" },
   paint: { main: "dexterity", sec: "intelligence", maxMin: 12, loot: "pigmento" },
   gincana: { main: "dexterity", sec: "speed", maxMin: 6, loot: "mola" },
   jetpack: { main: "dexterity", sec: "intelligence", maxMin: 8, loot: "vapor" },

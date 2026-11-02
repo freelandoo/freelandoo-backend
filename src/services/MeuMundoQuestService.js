@@ -33,7 +33,9 @@ async function lockQuest(c, idUser, questId) {
 
 /** O objetivo do passo está cumprido? (só leitura) */
 async function satisfied(c, idUser, idCharacter, step, row) {
-  const since = row.step_at;
+  // folga de 2 s: eventos da vida usam o relógio do Node, recibos o do banco
+  // (no Windows os dois diferem em ~15 ms) — comer logo depois de abrir o passo vale.
+  const since = new Date(new Date(row.step_at).getTime() - 2000);
   const q1 = async (sql, args) => (await c.query(sql, args)).rows.length > 0;
   switch (step.check) {
     case "ack":
@@ -130,9 +132,9 @@ class MeuMundoQuestService {
       const items = step.items ? await GearService().deliver(c, idUser, step.items.map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id).rarity })), ctx) : [];
       const last = row.step + 1 >= quest.steps.length;
       await c.query(
-        `UPDATE tb_mm_quest SET step = $3, step_at = NOW(), done_at = CASE WHEN $4 THEN NOW() ELSE NULL END,
+        `UPDATE tb_mm_quest SET step = $3, step_at = $5, done_at = CASE WHEN $4 THEN $5::timestamptz ELSE NULL END,
                 tracked = NOT $4 WHERE id_user = $1 AND quest_id = $2`,
-        [idUser, quest.id, row.step + 1, last]
+        [idUser, quest.id, row.step + 1, last, new Date(ctx.now).toISOString()]
       );
       const receipt = await AdvStore.insertReceipt(c, {
         idUser,

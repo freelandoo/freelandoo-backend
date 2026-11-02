@@ -31,6 +31,7 @@ const { Race, TUNING, BAIA, SHIPS, buildTrack, shipOf } = require("../utils/meuM
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.corrida");
+const { PracticeMeter } = require("./meuMundoPractice");
 
 const CORRIDA_ROOM = "corrida";
 const CARS = 6;
@@ -134,6 +135,7 @@ class CorridaRoom extends Room {
       // Na corrida: a nave sai da pista e fica como "não terminou".
       p.online = false;
       if (this.race.phase !== "end") this.race.markGone(s.car);
+      if (this.meter) this.meter.settle(s.userId);
       if (!this.clients.length) this.disconnect();
       return;
     }
@@ -203,6 +205,7 @@ class CorridaRoom extends Room {
     if (!s || !msg || this.race.phase !== "race") return;
     const c = this.race.cars[s.car];
     if (!c || c.gone) return;
+    if (this.meter) this.meter.pose(s.userId, msg);
     const r = {
       dist: num(msg.d),
       u: num(msg.u),
@@ -265,6 +268,8 @@ class CorridaRoom extends Room {
     const spare = [...SHIPS.filter((x) => !taken.has(x.id)), ...SHIPS].map((x) => x.id);
     for (let i = 0; seats.length < CARS; i++) seats.push({ name: "", kind: "bot", ship: spare[i % spare.length] });
     this.race = new Race({ track: TRACK, seats, me: -1, seed: (Date.now() & 0xffff) | 1 });
+    // mm3d-59: prática medida pela sala
+    this.meter = new PracticeMeter("corrida", `corrida:${this.roomId}:${Date.now()}`, log);
     const pub = this.race.cars.map((c) => ({ name: c.name, human: c.kind !== "bot", ship: c.ship }));
     this.state.seats = JSON.stringify(pub);
     this.state.phase = "countdown";
@@ -326,6 +331,10 @@ class CorridaRoom extends Room {
     this.state.phase = "end";
     this.state.until = Date.now() + timing.closeMs;
     log.info("corrida.end", { roomId: this.roomId, winnerHuman: !!(rows[0] && rows[0].human) });
+    if (this.meter) {
+      const win = rows[0] && rows[0].human ? [...this.seats.values()].find((s) => s.car === rows[0].car) : null;
+      this.meter.settle(null, new Set(win ? [win.userId] : []));
+    }
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }
 }

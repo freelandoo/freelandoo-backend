@@ -26,6 +26,7 @@ const { roomLook } = require("../utils/meuMundoColors");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.noturno");
+const { PracticeMeter } = require("./meuMundoPractice");
 
 const NOTURNO_ROOM = "noturno";
 const SEATS = 6;
@@ -145,6 +146,7 @@ class NoturnoRoom extends Room {
       // No rolê: fica com o que tinha, como "saiu".
       p.online = false;
       if (s.run.alive) Object.assign(s.run, { alive: false, gone: true });
+      if (this.meter) this.meter.settle(s.userId);
       if (!this.clients.length) this.disconnect();
       return;
     }
@@ -236,6 +238,7 @@ class NoturnoRoom extends Room {
     const s = this.running(client);
     if (!s || !msg) return;
     this.accept(s, msg);
+    if (this.meter) this.meter.pose(s.userId, msg);
   }
 
   /** Caiu (o aparelho manda o fim dele: distância, pontos, moedas, manobras e o que derrubou). */
@@ -269,6 +272,8 @@ class NoturnoRoom extends Room {
         return { slot: s.slot, name: p ? p.name : "", ride: s.ride, body: s.body, look: s.look };
       });
     this.startedAt = Date.now();
+    // mm3d-59: prática medida pela sala (morto não manda pose = não conta)
+    this.meter = new PracticeMeter("noturno", `noturno:${this.roomId}:${this.startedAt}`, log);
     this.state.phase = "countdown";
     this.state.time = -COUNTDOWN_S;
     this.state.until = 0;
@@ -312,6 +317,11 @@ class NoturnoRoom extends Room {
   }
 
   finish() {
+    if (this.meter) {
+      // vitória = maior pontuação entre as pessoas
+      const best = [...this.seats.values()].filter((s) => s.run).sort((a, b) => b.run.score - a.run.score)[0];
+      this.meter.settle(null, new Set(best ? [best.userId] : []));
+    }
     const rows = [...this.seats.values()]
       .map((s) => {
         const p = [...this.state.players.values()].find((q) => q.slot === s.slot);
