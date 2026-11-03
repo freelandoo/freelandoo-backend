@@ -923,3 +923,32 @@ test("paint mm3d-62 — muro empurra na ilha do guardião também; todos fora = 
   assert.ok(ev.find((e) => e.type === "end" && e.reason === "wiped"));
   assert.equal(m.phase, "end");
 });
+
+test("paint mm3d-62b — mirando o LADO de uma ilha mais alta: o muro sobe para o topo se a borda está perto, senão fica na lateral", () => {
+  const m = duel();
+  const a = m.players.get(0);
+  const base = m.map.islands[m.map.bases[0].island];
+  place(m, 0, base.x, 0, base.z, 0);
+  a.ammo[PAINT.WALL] = 5;
+  const o = P.muzzleOf(a.pose, 0);
+  let hitInfo = null;
+  for (const isl of m.map.islands) {
+    const d = Math.hypot(isl.x - base.x, isl.z - base.z);
+    if (isl.y < 2 || d < 12 || d > 40) continue;
+    const dir = { x: isl.x - o.x, y: isl.y - 0.3 - o.y, z: isl.z - o.z };
+    const l = Math.hypot(dir.x, dir.y, dir.z);
+    const hit = P.raycast(m.solids(), o, { x: dir.x / l, y: dir.y / l, z: dir.z / l }, 60);
+    if (hit && Math.abs(hit.normal.y) < 0.3 && Math.hypot(hit.point.x - base.x, hit.point.z - base.z) > 10) {
+      hitInfo = { isl, dir, hit };
+      break;
+    }
+  }
+  assert.ok(hitInfo, "nenhum lado de ilha alta à vista");
+  a.pose.facing = Math.atan2(hitInfo.dir.x, hitInfo.dir.z);
+  m.fire(0, PAINT.WALL, P.muzzleOf(a.pose, a.pose.facing), hitInfo.dir, 1);
+  const blob = m.drain().find((e) => e.type === "blob");
+  assert.ok(blob, "o muro não nasceu");
+  const far = Math.hypot(blob.blob.x - base.x, blob.blob.z - base.z);
+  assert.ok(far > 10, `nasceu a ${far.toFixed(1)} m (devia ir lá longe)`);
+  assert.ok(blob.blob.y0 > 0.5, "subiu para a altura da ilha de cima");
+});

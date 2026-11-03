@@ -69,7 +69,7 @@ const TUNING = {
   /** Custo em munição de cada tiro (índice = cor). */
   cost: [1, 1, 2, 1]                     ,
   /** Alcance (m) do raio de cada cor. */
-  range: [13, 24, 9, 16]                     ,
+  range: [13, 24, 9, 48]                     ,
 
   /** Ponte (laranja): disco achatado. */
   bridgeR: 1.25,
@@ -90,7 +90,7 @@ const TUNING = {
   wallLen: 2,
   wallT: 0.36,
   wallH: 3.2,
-  wallReach: 14,
+  wallReach: 46, // mm3d-62b: o muro vai longe (ilha de cima, do outro lado do vão)
   /** Tiros pretos do outro time até o muro cair. */
   wallHits: 3,
   wallStart: 0,
@@ -1063,9 +1063,24 @@ function resolveShot(world           , s         , c            , o      , dir  
       near = { kind: "shove", slot: b.slot, point: { x: o.x + d.x * t, y: o.y + d.y * t, z: o.z + d.z * t }, blob: wallOf(b.x - hx * back, b.z - hz * back, b.y - 0.4, a) }
     }
     if (near) return near
-    if (hit && hit.normal.y > 0.5) {
+    if (hit) {
       const far = Math.hypot(hit.point.x - s.x, hit.point.z - s.z)
-      if (far <= T.wallReach && far > T.bodyR + T.wallT) return { kind: "blob", blob: wallOf(hit.point.x, hit.point.z, hit.point.y, a) }
+      if (far <= T.wallReach && far > T.bodyR + T.wallT) {
+        // mm3d-62b (Alex: "mirei na ilha de cima e fez pertinho de mim"):
+        // longe também — no chão onde a mira bate…
+        if (hit.normal.y > 0.5) return { kind: "blob", blob: wallOf(hit.point.x, hit.point.z, hit.point.y, a) }
+        // …e mirando o LADO de uma ilha/sólido: em cima dele, se o topo está
+        // perto; senão o muro fica preso ali na lateral (barra quem passar)
+        const bx = hit.point.x - hx * 0.6
+        const bz = hit.point.z - hz * 0.6
+        const topX = hit.point.x + hx * 0.8
+        const topZ = hit.point.z + hz * 0.8
+        const top = supportAt(world.solids, topX, topZ, hit.point.y + 3.2, 0.05)
+        if (top > hit.point.y - 0.5 && top <= hit.point.y + 3.2) return { kind: "blob", blob: wallOf(topX, topZ, top, a) }
+        const below = supportAt(world.solids, bx, bz, hit.point.y + 0.1, 0.05)
+        const y0 = below > hit.point.y - T.wallH * 0.75 ? below : hit.point.y - T.wallH / 2
+        return { kind: "blob", blob: wallOf(bx, bz, y0, a) }
+      }
     }
     // logo à frente: no chão de lá, ou na altura do pé (em cima do vão também)
     const fx = s.x + hx * 2.2
