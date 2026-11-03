@@ -111,15 +111,55 @@ const CHAIN_AFTER = 0.05
 const DODGE = { dur: 0.46, iframeFrom: 0.04, iframeTo: 0.36, speed: 8.2, stam: 24 }
 const PLAYER = { hp: 100, walk: 3.4, run: 5.6, stam: 100, stamRegen: 30, attackStam: 9, hurt: 0.32, heavyHurt: 0.7 }
 
-                                                                                         
+                                                                                                   
 
 /**
  * PODER (pedido do Alex em 2026-11-01: "poderes que brilham desde o chão"):
  * a barra enche com os acertos; cheia, o poder da classe. Durante ele quem
  * joga não leva dano. Maga = explosão de fogo em volta (área); lâmina =
  * golpe de sangue à frente que devolve vida.
+ * 2026-11-03 (combate premium): carga mais longa (1,6 s, dispara em 0,85 s)
+ * e recarga de SKILLS.ult.cd depois de usar.
  */
-const POWER = { max: 100, perHit: 14, perHeavy: 22, dur: 1.3, fireAt: 0.6, mageR: 4.6, mageDmg: 46, bladeRange: 4.8, bladeArc: 2.0, bladeDmg: 42, heal: 22 }
+const POWER = { max: 100, perHit: 14, perHeavy: 22, dur: 1.6, fireAt: 0.85, mageR: 4.6, mageDmg: 46, bladeRange: 4.8, bladeArc: 2.0, bladeDmg: 42, heal: 22 }
+
+/**
+ * HABILIDADES (pedido do Alex, 2026-11-03 — "combate mobile RPG premium"):
+ * números num lugar só. Todas contam no servidor (a gravação re-simula).
+ *  - slash  CORTE MÁGICO: lâmina de luz curva que sai à frente, atravessa e
+ *           acerta cada inimigo uma vez no caminho;
+ *  - dash   INVESTIDA RELÂMPAGO: avanço rápido na direção do joystick (sem
+ *           direção = para o alvo), sem levar golpe, acerta quem encostar;
+ *  - shield ESCUDO DE LUZ: cúpula por `dur` s que corta `cut` do dano e
+ *           impede a queda (não trava o movimento);
+ *  - ult    recarga do PODER depois de usar (a barra continua enchendo).
+ */
+const SKILLS = {
+  slash: { cd: 8, dur: 0.55, fireAt: 0.22, speed: 17, range: 7.5, width: 1.7, dmg: 30 },
+  dash: { cd: 6, dur: 0.3, dist: 5.4, width: 0.9, dmg: 14 },
+  shield: { cd: 18, dur: 4, cut: 0.7 },
+  ult: { cd: 12 },
+}
+                                                 
+/** Recarga restante de cada habilidade (s). */
+                            
+               
+              
+                
+             
+ 
+/** Lâmina do Corte Mágico no ar. */
+                       
+            
+           
+           
+            
+            
+              
+             
+                                              
+               
+ 
                              
            
            
@@ -148,6 +188,13 @@ const POWER = { max: 100, perHit: 14, perHeavy: 22, dur: 1.3, fireAt: 0.6, mageR
                                                                     
             
                
+                                              
+                       
+               
+                                                    
+                     
+                                  
+                   
  
 
 // ── os inimigos ────────────────────────────────────────────────────────────
@@ -288,8 +335,8 @@ const MOBS                          = {
 
                         
                                              
-                                                                                                                                
-                                                                                            
+                                                                                                                                                       
+                                                                                                              
                               
                                              
                                                
@@ -304,6 +351,15 @@ const MOBS                          = {
                                                                              
                                                         
                                                                           
+                                            
+                                                                     
+                                               
+                             
+                                                      
+                         
+                      
+                                                  
+                                        
 
                         
                                              
@@ -314,6 +370,10 @@ const MOBS                          = {
                 
                                       
                  
+                                                       
+                 
+                
+                  
  
 
 /** Uma luta: quem entra e com que força. `level` (1–60; o Soldado só 1–2) multiplica vida, dano e firmeza. */
@@ -457,6 +517,10 @@ class Fight {
           prevAttack = false
           prevDodge = false
           prevPower = false
+          prevSkill = { slash: false, dash: false, shield: false }
+  /** Lâminas do Corte Mágico no ar. */
+           waves         = []
+          waveSeq = 0
   /** Só conferência (harness): força o ranque dos próximos golpes. */
   forceRank              = null
   /** mm3d-59: bônus do equipamento (com teto). */
@@ -499,6 +563,10 @@ class Fight {
       power: 0,
       rank: 0,
       chain: 0,
+      skill: null,
+      cd: { slash: 0, dash: 0, shield: 0, ult: 0 },
+      shieldUntil: 0,
+      dashHit: [],
     }
     const def = MOBS[setup.kind]
     const lv = mobLevelScale(this.level)
@@ -554,13 +622,27 @@ class Fight {
     this.prevDodge = inp.dodge
     const powerPressed = !!inp.power && !this.prevPower
     this.prevPower = !!inp.power
+    const skillPressed                 =
+      inp.slash && !this.prevSkill.slash ? "slash" : inp.dash && !this.prevSkill.dash ? "dash" : inp.shield && !this.prevSkill.shield ? "shield" : null
+    this.prevSkill = { slash: !!inp.slash, dash: !!inp.dash, shield: !!inp.shield }
     if (this.over) {
       this.stepPlayerIdle()
       return
     }
+    const cd = this.me.cd
+    cd.slash = Math.max(0, cd.slash - DT)
+    cd.dash = Math.max(0, cd.dash - DT)
+    cd.shield = Math.max(0, cd.shield - DT)
+    cd.ult = Math.max(0, cd.ult - DT)
+    if (this.me.shieldUntil > 0 && this.time >= this.me.shieldUntil) {
+      this.me.shieldUntil = 0
+      this.events.push({ t: "shieldEnd" })
+    }
     this.stepPower(powerPressed)
+    if (skillPressed) this.startSkill(skillPressed, inp)
     this.stepPlayer(inp, attackPressed, dodgePressed)
     this.stepShots()
+    this.stepWaves()
     this.pickToken()
     for (const m of this.mobs) this.stepMob(m)
     this.separate()
@@ -590,8 +672,11 @@ class Fight {
   /** Poder: começa com a barra cheia (parado ou golpeando); dispara em fireAt. */
           stepPower(pressed         ) {
     const p = this.me
-    if (pressed && p.power >= POWER.max && (p.state === "idle" || p.state === "attack")) {
+    if (pressed && (p.power < POWER.max || p.cd.ult > 0)) this.events.push({ t: "denied", id: "ult" })
+    else if (pressed && (p.state === "idle" || p.state === "attack")) {
       p.power = 0
+      // a recarga começa quando o poder termina
+      p.cd.ult = SKILLS.ult.cd + POWER.dur
       p.vx = 0
       p.vz = 0
       this.faceNearest()
@@ -618,6 +703,65 @@ class Fight {
     }
   }
 
+  /** Toque numa habilidade: recarga, estado permitido e o começo de cada uma. */
+          startSkill(id         , inp       ) {
+    const p = this.me
+    if (p.cd[id] > 0) {
+      this.events.push({ t: "denied", id })
+      return
+    }
+    // escudo: a qualquer hora em pé (também levando pancada); as outras: parado ou na volta do golpe
+    const free = p.state === "idle" || (p.state === "attack" && p.struck)
+    if (id === "shield" ? p.state === "down" || p.state === "win" || p.state === "power" : !free) return
+    p.cd[id] = SKILLS[id].cd
+    if (id === "shield") {
+      p.shieldUntil = this.time + SKILLS.shield.dur
+      this.events.push({ t: "skill", id, x: p.x, z: p.z, facing: p.facing })
+      return
+    }
+    if (id === "dash") {
+      let dx = inp.mx
+      let dz = inp.mz
+      if (Math.hypot(dx, dz) < 0.2) {
+        this.faceNearest()
+        dx = Math.sin(p.facing)
+        dz = Math.cos(p.facing)
+      }
+      const l = Math.hypot(dx, dz) || 1
+      p.dodgeX = dx / l
+      p.dodgeZ = dz / l
+      p.facing = Math.atan2(p.dodgeX, p.dodgeZ)
+      p.dashHit = []
+    } else this.faceNearest()
+    p.vx = 0
+    p.vz = 0
+    p.struck = false
+    p.queued = false
+    this.setPlayer("skill")
+    p.skill = id
+    this.events.push({ t: "skill", id, x: p.x, z: p.z, facing: p.facing })
+  }
+
+          stepWaves() {
+    const S = SKILLS.slash
+    for (let i = this.waves.length - 1; i >= 0; i--) {
+      const w = this.waves[i]
+      const step = S.speed * DT
+      w.x += w.dx * step
+      w.z += w.dz * step
+      w.left -= step
+      for (const m of this.mobs) {
+        if (m.state === "dead" || m.state === "spawn" || m.y > 1.6 || w.hit.includes(m.id)) continue
+        if (Math.hypot(m.x - w.x, m.z - w.z) > S.width / 2 + MOBS[m.kind].radius) continue
+        w.hit.push(m.id)
+        this.damageMob(m, w.dmg, true, w.dx, w.dz, 3, "skill")
+      }
+      if (w.left > 0 && Math.hypot(w.x, w.z) <= ARENA_R + 0.5) continue
+      this.waves.splice(i, 1)
+      this.events.push({ t: "waveEnd", id: w.id, x: w.x, z: w.z })
+    }
+  }
+
           firePower() {
     const p = this.me
     const mage = this.combo === MAGE_COMBO
@@ -629,10 +773,10 @@ class Fight {
       const d = Math.hypot(dx, dz) - MOBS[m.kind].radius
       if (mage) {
         if (d > POWER.mageR) continue
-        this.damageMob(m, Math.round(POWER.mageDmg * this.fx.dmg), true, dx, dz)
+        this.damageMob(m, Math.round(POWER.mageDmg * this.fx.dmg), true, dx, dz, 3, "ult")
       } else {
         if (d > POWER.bladeRange || Math.abs(angDiff(Math.atan2(dx, dz), p.facing)) > POWER.bladeArc / 2) continue
-        this.damageMob(m, Math.round(POWER.bladeDmg * this.fx.dmg), true, dx, dz)
+        this.damageMob(m, Math.round(POWER.bladeDmg * this.fx.dmg), true, dx, dz, 3, "ult")
         healed = POWER.heal
       }
     }
@@ -741,6 +885,35 @@ class Fight {
         p.vz = 0
         if (p.t >= POWER.dur) this.setPlayer("idle")
         break
+      case "skill":
+        if (p.skill === "slash") {
+          p.vx = 0
+          p.vz = 0
+          if (!p.struck && p.t >= SKILLS.slash.fireAt) {
+            p.struck = true
+            this.castWave()
+          }
+          if (p.t >= SKILLS.slash.dur) this.endSkill()
+        } else {
+          const D = SKILLS.dash
+          const sp = D.dist / D.dur
+          p.vx = p.dodgeX * sp
+          p.vz = p.dodgeZ * sp
+          for (const m of this.mobs) {
+            if (m.state === "dead" || m.state === "spawn" || m.y > 1.6 || p.dashHit.includes(m.id)) continue
+            const dx = m.x - p.x
+            const dz = m.z - p.z
+            if (Math.hypot(dx, dz) > MOBS[m.kind].radius + PLAYER_R + D.width) continue
+            p.dashHit.push(m.id)
+            this.damageMob(m, Math.round(D.dmg * this.fx.dmg), false, dx, dz, 3, "skill")
+          }
+          if (p.t >= D.dur) {
+            p.vx *= 0.25
+            p.vz *= 0.25
+            this.endSkill()
+          }
+        }
+        break
     }
     p.x += p.vx * DT
     p.z += p.vz * DT
@@ -750,6 +923,20 @@ class Fight {
       p.x *= max / r
       p.z *= max / r
     }
+  }
+
+          endSkill() {
+    this.me.skill = null
+    this.setPlayer("idle")
+  }
+
+  /** Corte Mágico: a lâmina de luz sai à frente de quem joga. */
+          castWave() {
+    const p = this.me
+    const S = SKILLS.slash
+    const w       = { id: ++this.waveSeq, x: p.x + Math.sin(p.facing) * 0.8, z: p.z + Math.cos(p.facing) * 0.8, dx: Math.sin(p.facing), dz: Math.cos(p.facing), left: S.range, dmg: Math.round(S.dmg * this.fx.dmg), hit: [] }
+    this.waves.push(w)
+    this.events.push({ t: "wave", id: w.id })
   }
 
   /** Golpe novo: o ranque é sorteado (inteligência puxa para os fortes). `chain` = quantos já seguidos. */
@@ -848,13 +1035,13 @@ class Fight {
   }
 
   /** Dano num inimigo (corte ou bola de fogo); (dx, dz) = de onde veio, para o empurrão. */
-          damageMob(m     , base        , heavy         , dx        , dz        , rank       = 3) {
+          damageMob(m     , base        , heavy         , dx        , dz        , rank       = 3, src                  ) {
     // Pancada na brecha (logo depois do golpe dele) dói mais.
     const opening = m.state === "recover" ? 1.25 : 1
     const dmg = Math.round(base * opening)
     m.hp = Math.max(0, m.hp - dmg)
     const dead = m.hp <= 0
-    this.events.push({ t: "hit", on: "mob", id: m.id, dmg, x: m.x, y: m.y, z: m.z, heavy, dead, rank })
+    this.events.push({ t: "hit", on: "mob", id: m.id, dmg, x: m.x, y: m.y, z: m.z, heavy, dead, rank, src })
     if (this.me.state !== "power") this.me.power = Math.min(POWER.max, this.me.power + (heavy ? POWER.perHeavy : POWER.perHit) * (1 + this.gear.power))
     if (dead) {
       m.state = "dead"
@@ -1008,7 +1195,7 @@ class Fight {
           mobHit(m     , a           ) {
     const p = this.me
     if (p.state === "dodge" && p.t >= DODGE.iframeFrom && p.t <= DODGE.iframeTo) return
-    if (p.state === "down" || p.state === "power") return
+    if (p.state === "down" || p.state === "power" || (p.state === "skill" && p.skill === "dash")) return
     let hit = false
     if (a.area) {
       // Área: só no primeiro quadro do ativo.
@@ -1023,12 +1210,19 @@ class Fight {
     }
     if (!hit) return
     m.struck = true
-    const dmg = Math.max(1, Math.round(a.dmg * m.dmgMul * (1 - this.def)))
+    // Escudo de luz: corta o dano e segura de pé (sem queda nem pancada)
+    const shield = p.shieldUntil > this.time
+    const dmg = Math.max(1, Math.round(a.dmg * m.dmgMul * (1 - this.def) * (shield ? 1 - SKILLS.shield.cut : 1)))
     p.hp = Math.max(0, p.hp - dmg)
     const heavy = !!a.heavy
-    this.events.push({ t: "hit", on: "me", dmg, x: p.x, z: p.z, heavy, dead: p.hp <= 0 })
+    this.events.push({ t: "hit", on: "me", dmg, x: p.x, z: p.z, heavy, dead: p.hp <= 0, shield })
     // Empurrão para longe de quem bateu.
     const l = Math.hypot(p.x - m.x, p.z - m.z) || 1
+    if (shield && p.hp > 0) {
+      p.x += ((p.x - m.x) / l) * 0.3
+      p.z += ((p.z - m.z) / l) * 0.3
+      return
+    }
     const push = heavy ? 1.4 : 0.6
     p.x += ((p.x - m.x) / l) * push
     p.z += ((p.z - m.z) / l) * push
@@ -1108,6 +1302,11 @@ const BTN_RUN = 1
 const BTN_ATTACK = 2
 const BTN_DODGE = 4
 const BTN_POWER = 8
+/** 2026-11-03: as habilidades (Corte Mágico, Investida, Escudo). */
+const BTN_SLASH = 16
+const BTN_DASH = 32
+const BTN_SHIELD = 64
+const BTN_ALL = 127
 
 /** Um bloco: [quantos passos, mx (−127…127), mz (−127…127), botões]. */
                                                             
@@ -1123,14 +1322,21 @@ const q127 = (v        ) => Math.max(-127, Math.min(127, Math.round((Number(v) |
 function quantizeInput(inp       )        {
   const mx = q127(inp.mx) / 127
   const mz = q127(inp.mz) / 127
-  return { mx, mz, run: !!inp.run, attack: !!inp.attack, dodge: !!inp.dodge, power: !!inp.power }
+  return { mx, mz, run: !!inp.run, attack: !!inp.attack, dodge: !!inp.dodge, power: !!inp.power, slash: !!inp.slash, dash: !!inp.dash, shield: !!inp.shield }
 }
 
 /** Grava um passo (já quantizado) no fim da lista. */
 function pushFrame(frames             , inp       ) {
   const mx = q127(inp.mx)
   const mz = q127(inp.mz)
-  const b = (inp.run ? BTN_RUN : 0) | (inp.attack ? BTN_ATTACK : 0) | (inp.dodge ? BTN_DODGE : 0) | (inp.power ? BTN_POWER : 0)
+  const b =
+    (inp.run ? BTN_RUN : 0) |
+    (inp.attack ? BTN_ATTACK : 0) |
+    (inp.dodge ? BTN_DODGE : 0) |
+    (inp.power ? BTN_POWER : 0) |
+    (inp.slash ? BTN_SLASH : 0) |
+    (inp.dash ? BTN_DASH : 0) |
+    (inp.shield ? BTN_SHIELD : 0)
   const last = frames[frames.length - 1]
   if (last && last[1] === mx && last[2] === mz && last[3] === b && last[0] < 65535) last[0]++
   else frames.push([1, mx, mz, b])
@@ -1159,7 +1365,7 @@ function replayFight(setup            , frames         )               {
     if (!Array.isArray(f) || f.length !== 4) return fail("frames")
     const [n, mx, mz, b] = f            
     if (!Number.isInteger(n) || n < 1 || n > 65535 || !Number.isInteger(mx) || !Number.isInteger(mz) || !Number.isInteger(b)) return fail("frames")
-    if (Math.abs(mx) > 127 || Math.abs(mz) > 127 || b < 0 || b > 15) return fail("frames")
+    if (Math.abs(mx) > 127 || Math.abs(mz) > 127 || b < 0 || b > BTN_ALL) return fail("frames")
     total += n
   }
   if (total > REPLAY_MAX_STEPS) return fail("long")
@@ -1172,7 +1378,7 @@ function replayFight(setup            , frames         )               {
   let hits = 0
   let hitsTaken = 0
   for (const [n, mx, mz, b] of frames              ) {
-    const inp        = { mx: mx / 127, mz: mz / 127, run: !!(b & BTN_RUN), attack: !!(b & BTN_ATTACK), dodge: !!(b & BTN_DODGE), power: !!(b & BTN_POWER) }
+    const inp        = { mx: mx / 127, mz: mz / 127, run: !!(b & BTN_RUN), attack: !!(b & BTN_ATTACK), dodge: !!(b & BTN_DODGE), power: !!(b & BTN_POWER), slash: !!(b & BTN_SLASH), dash: !!(b & BTN_DASH), shield: !!(b & BTN_SHIELD) }
     const sig = (mx & 0xff) | ((mz & 0xff) << 8) | (b << 16)
     for (let i = 0; i < n; i++) {
       if (fight.over) break
@@ -1195,4 +1401,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
