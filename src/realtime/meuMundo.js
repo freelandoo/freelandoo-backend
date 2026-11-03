@@ -2176,7 +2176,15 @@ function mobEngaged(userId, mobId) {
     const sid = room.sidOf(userId);
     if (!sid) continue;
     const m = room.mobDirector.get(Number(mobId));
-    if (m && m.mode === "fight" && m.target === sid) return { kind: m.kind };
+    // mm3d-60m: o nível é sorteado uma vez por monstro (quem abre a luta grava)
+    if (m && m.mode === "fight" && m.target === sid)
+      return {
+        kind: m.kind,
+        level: m.level || null,
+        setLevel: (l) => {
+          m.level = l;
+        },
+      };
   }
   return null;
 }
