@@ -191,7 +191,7 @@ test("paint — cama elástica: pisou, é lançado ~4 m; no ar ainda pula mais u
     top = Math.max(top, b.y);
     if (b.vy < 0) break;
   }
-  assert.ok(top > 4.2 && top < 5, `altura do quique ${top}`);
+  assert.ok(top > 4.4 && top < 5.4, `altura do quique ${top}`);
   P.stepBody(b, { mx: 0, mz: 0, run: false, jump: true }, solids);
   assert.ok(b.vy > 6 && b.jumps === 2, "sem o pulo no ar depois do quique");
 });
@@ -780,7 +780,7 @@ test("paint mm3d-46 — muro: começa sem munição, o ícone dá 10, nasce em p
   // atira no chão à frente: muro em pé, de frente para quem atirou
   place(m, 0, base.x, 0, base.z - 3, 0);
   const o2 = P.muzzleOf(p.pose, 0);
-  m.fire(0, PAINT.WALL, o2, { x: 0, y: -0.25, z: 1 }, 2);
+  m.fire(0, PAINT.WALL, o2, { x: 0, y: -1.25, z: 5 }, 2); // mm3d-62c: o comprimento = distância da mira (bate no chão)
   const blob = m.drain().find((e) => e.type === "blob");
   assert.ok(blob && blob.blob.c === PAINT.WALL, "o muro não nasceu");
   assert.equal(p.ammo[PAINT.WALL], T.wallGive - 1);
@@ -951,4 +951,30 @@ test("paint mm3d-62b — mirando o LADO de uma ilha mais alta: o muro sobe para 
   const far = Math.hypot(blob.blob.x - base.x, blob.blob.z - base.z);
   assert.ok(far > 10, `nasceu a ${far.toFixed(1)} m (devia ir lá longe)`);
   assert.ok(blob.blob.y0 > 0.5, "subiu para a altura da ilha de cima");
+});
+
+test("paint mm3d-62c — muro fica NO AR onde a mira aponta; ponte e cama elástica são quadradas do mesmo tamanho", () => {
+  const m = duel();
+  const a = m.players.get(0);
+  const base = m.map.islands[m.map.bases[0].island];
+  place(m, 0, base.x, 0, base.z, 0);
+  a.ammo[PAINT.WALL] = 5;
+  const o = P.muzzleOf(a.pose, 0);
+  // mira 6 m à frente, 2 m acima da boca (no ar, nada no caminho)
+  m.fire(0, PAINT.WALL, o, { x: 0, y: 2, z: 6 }, 1);
+  const w = m.drain().find((e) => e.type === "blob");
+  assert.ok(w && w.blob.c === PAINT.WALL);
+  const cy = (w.blob.y0 + w.blob.y1) / 2;
+  assert.ok(Math.abs(cy - (o.y + 2)) < 0.05, `centro do muro em y ${cy}`);
+  assert.ok(Math.abs(w.blob.z - (o.z + 6)) < 0.05, "no ponto mirado");
+  assert.ok(w.blob.y0 > 0.5, "não encostou no chão");
+  // as três placas: mesmo lado (2,5 m)
+  const step = P.resolveShot({ solids: m.solids(), bodies: [], boss: null }, { slot: 0, team: 0, x: base.x, y: 0, z: base.z, ground: true, gy: 0, facing: 0 }, PAINT.STEP, o, { x: 0, y: -0.3, z: 1 });
+  const bridge = P.resolveShot({ solids: m.solids(), bodies: [], boss: null }, { slot: 0, team: 0, x: base.x, y: 0, z: base.z, ground: true, gy: 0, facing: 0 }, PAINT.BRIDGE, o, { x: 0, y: -0.3, z: 1 });
+  for (const r of [step, bridge]) assert.equal(r.blob.r * 2, 2.5);
+  assert.equal(w.blob.r * 2, 2.5);
+  assert.equal(w.blob.y1 - w.blob.y0, 2.5);
+  const s = P.blobSolid(step.blob, 99, 0);
+  assert.equal(s.k, 2);
+  assert.equal(s.hx, s.hz, "cama elástica quadrada");
 });

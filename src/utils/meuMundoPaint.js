@@ -71,25 +71,29 @@ const TUNING = {
   /** Alcance (m) do raio de cada cor. */
   range: [13, 24, 9, 48]                     ,
 
-  /** Ponte (laranja): disco achatado. */
+  /**
+   * Ponte (laranja): placa QUADRADA (mm3d-62c, pedido do Alex: laranja,
+   * vermelha e turquesa quadradas e do mesmo tamanho — a laranja de base com
+   * as pontas completas). `bridgeR` = meio lado; gira para a mira.
+   */
   bridgeR: 1.25,
   bridgeH: 0.34,
   /** A ponte cresce até esta distância horizontal de quem atira. */
   bridgeReach: 12,
   /** Cama elástica (amarelo, mm3d-35e): almofada baixa (dá para entrar andando) que lança para cima. */
-  stepR: 1.0,
-  stepH: 0.4,
+  stepR: 1.25,
+  stepH: 0.34,
   /** Velocidade do lançamento: ~4,6 m de altura (+ o pulo no ar; o topo pede 5,2 m). */
-  bounceV: 14.2,
+  bounceV: 14.6, // mm3d-62c: a placa ficou 6 cm mais baixa — ~4,85 m
   /**
    * Muro (mm3d-46): placa em pé atravessada na mira, nasce no chão onde ela
    * bate (ou logo à frente). Comprimento, espessura e altura (o pulo duplo
    * não passa por cima; a cama elástica passa). Começa sem munição: o ícone
    * da Freelandoo dá `wallGive`.
    */
-  wallLen: 2,
-  wallT: 0.36,
-  wallH: 3.2,
+  wallLen: 2.5,
+  wallT: 0.34,
+  wallH: 2.5,
   wallReach: 46, // mm3d-62b: o muro vai longe (ilha de cima, do outro lado do vão)
   /** Tiros pretos do outro time até o muro cair. */
   wallHits: 3,
@@ -636,7 +640,7 @@ function pushOut(
         p.x += w.x
         p.z += w.z
         hit = true
-        if (wall && s.b !== undefined) {
+        if (wall && s.b !== undefined && s.c === 3) {
           const wl = Math.hypot(w.x, w.z) || 1
           wall.nx = w.x / wl
           wall.nz = w.z / wl
@@ -878,7 +882,7 @@ function stepBody(b           , it            , solids                  , dt = T
   if (b.vy <= 0 && fs && b.y <= floor + (wasGround ? 0.06 : 0)) {
     b.y = floor
     b.gy = floor
-    if (fs.k === 0 && fs.c === PAINT.STEP) {
+    if (fs.k !== 1 && fs.c === PAINT.STEP && fs.b !== undefined) {
       // cama elástica (mm3d-35e): lança para cima; no ar ainda tem um pulo
       b.vy = T.bounceV
       b.ground = false
@@ -957,6 +961,8 @@ function liftOnto(b           , x        , z        , r        , top        ) {
 //  - TURQUESA (muro): placa em pé atravessada na mira, no chão onde a mira
 //    bate (perto) ou logo à frente; mirando o topo de um muro, empilha. Barra
 //    o corpo e o tiro (é sólido como a ilha) e EMPURRA quem bate (mm3d-62).
+//    mm3d-62c: fica NO AR onde a mira aponta (não sobe do chão); ponte,
+//    cama elástica e muro são placas QUADRADAS do mesmo tamanho (2,5 m).
 //    Pegou um adversário em cheio: nasce na frente dele e ele voa para trás.
 
 /** Mancha nova (sem id: quem guarda dá). No muro `r` é meio comprimento e `a` para onde olha. */
@@ -987,10 +993,18 @@ function muzzleOf(s                                     , yaw        )       {
 
 const r3 = (v        ) => Math.round(v * 1000) / 1000
 
-function blobOf(c            , x        , z        , y0        )          {
+/** Placa quadrada (ponte/cama elástica, mm3d-62c) girada para `a`. */
+function blobOf(c            , x        , z        , y0        , a        )          {
   const r = c === PAINT.STEP ? TUNING.stepR : TUNING.bridgeR
   const h = c === PAINT.STEP ? TUNING.stepH : TUNING.bridgeH
-  return { c, x: r3(x), z: r3(z), y0: r3(y0), y1: r3(y0 + h), r }
+  return { c, x: r3(x), z: r3(z), y0: r3(y0), y1: r3(y0 + h), r, a: r3(a) }
+}
+
+/** Para onde a mira olha no chão (ou o corpo, mirando reto para cima/baixo). */
+function yawOf(d      , s         ) {
+  const hl = Math.hypot(d.x, d.z)
+  if (hl < 0.2) return { hx: Math.sin(s.facing), hz: Math.cos(s.facing), a: s.facing }
+  return { hx: d.x / hl, hz: d.z / hl, a: Math.atan2(d.x, d.z) }
 }
 
 function wallOf(x        , z        , y0        , a        )          {
@@ -1009,6 +1023,7 @@ function unit(d      )       {
 function resolveShot(world           , s         , c            , o      , dir      )             {
   const d = unit(dir)
   const T = TUNING
+  const { a: yaw } = yawOf(d, s)
   if (c === PAINT.HARM) {
     const range = T.range[PAINT.HARM]
     const wall = raycast(world.solids, o, d, range)
@@ -1063,30 +1078,38 @@ function resolveShot(world           , s         , c            , o      , dir  
       near = { kind: "shove", slot: b.slot, point: { x: o.x + d.x * t, y: o.y + d.y * t, z: o.z + d.z * t }, blob: wallOf(b.x - hx * back, b.z - hz * back, b.y - 0.4, a) }
     }
     if (near) return near
-    if (hit) {
-      const far = Math.hypot(hit.point.x - s.x, hit.point.z - s.z)
-      if (far <= T.wallReach && far > T.bodyR + T.wallT) {
-        // mm3d-62b (Alex: "mirei na ilha de cima e fez pertinho de mim"):
-        // longe também — no chão onde a mira bate…
-        if (hit.normal.y > 0.5) return { kind: "blob", blob: wallOf(hit.point.x, hit.point.z, hit.point.y, a) }
-        // …e mirando o LADO de uma ilha/sólido: em cima dele, se o topo está
-        // perto; senão o muro fica preso ali na lateral (barra quem passar)
-        const bx = hit.point.x - hx * 0.6
-        const bz = hit.point.z - hz * 0.6
-        const topX = hit.point.x + hx * 0.8
-        const topZ = hit.point.z + hz * 0.8
-        const top = supportAt(world.solids, topX, topZ, hit.point.y + 3.2, 0.05)
-        if (top > hit.point.y - 0.5 && top <= hit.point.y + 3.2) return { kind: "blob", blob: wallOf(topX, topZ, top, a) }
-        const below = supportAt(world.solids, bx, bz, hit.point.y + 0.1, 0.05)
-        const y0 = below > hit.point.y - T.wallH * 0.75 ? below : hit.point.y - T.wallH / 2
-        return { kind: "blob", blob: wallOf(bx, bz, y0, a) }
+    // mm3d-62c (pedido do Alex): o muro não nasce do chão — fica NO AR, bem
+    // onde a mira aponta. O comprimento de `dir` é a distância da mira (o
+    // aparelho manda boca → ponto mirado); bateu em algo antes, fica ali.
+    const L = Math.max(1.6, Math.min(T.wallReach, Math.hypot(dir.x, dir.y, dir.z)))
+    let cx = o.x + d.x * L
+    let cy = o.y + d.y * L
+    let cz = o.z + d.z * L
+    let y0                = null
+    if (hit && hit.t <= L + 0.5) {
+      if (hit.normal.y > 0.5) {
+        // mirou um chão: em pé em cima dele
+        cx = hit.point.x
+        cz = hit.point.z
+        y0 = hit.point.y
+      } else {
+        // mirou um lado (ilha, outro muro): encostado, do lado de quem atirou
+        const back = T.wallT / 2 + 0.05
+        cx = hit.point.x + hit.normal.x * back
+        cy = hit.point.y
+        cz = hit.point.z + hit.normal.z * back
       }
     }
-    // logo à frente: no chão de lá, ou na altura do pé (em cima do vão também)
-    const fx = s.x + hx * 2.2
-    const fz = s.z + hz * 2.2
-    const floor = supportAt(world.solids, fx, fz, s.y + 0.3, 0.05)
-    return { kind: "blob", blob: wallOf(fx, fz, floor > s.y - 2 ? floor : s.y, a) }
+    // nunca em cima de quem atira (senão empurra o próprio dono)
+    const min = T.bodyR + T.wallT / 2 + 0.35
+    const ox = cx - s.x
+    const oz = cz - s.z
+    const along = ox * hx + oz * hz
+    if (along < min) {
+      cx += hx * (min - along)
+      cz += hz * (min - along)
+    }
+    return { kind: "blob", blob: wallOf(cx, cz, y0 ?? cy - T.wallH / 2, a) }
   }
 
   if (c === PAINT.STEP) {
@@ -1095,23 +1118,23 @@ function resolveShot(world           , s         , c            , o      , dir  
       // logo abaixo da sola (é assim que se sobe empilhando).
       const below = supportAt(world.solids, s.x, s.z, s.y + 0.05, 0.05)
       const y0 = below > s.y - T.stepH - 0.02 ? below : s.y - T.stepH - 0.02
-      return { kind: "blob", blob: blobOf(c, s.x, s.z, y0) }
+      return { kind: "blob", blob: blobOf(c, s.x, s.z, y0, yaw) }
     }
     const hit = raycast(world.solids, o, d, T.range[PAINT.STEP])
     if (hit && hit.normal.y > 0.5 && Math.hypot(hit.point.x - s.x, hit.point.z - s.z) > T.stepR + T.bodyR * 0.6) {
-      return { kind: "blob", blob: blobOf(c, hit.point.x, hit.point.z, hit.point.y) }
+      return { kind: "blob", blob: blobOf(c, hit.point.x, hit.point.z, hit.point.y, yaw) }
     }
     // Logo à frente, no chão em que está.
-    const fx = s.x + Math.sin(s.facing) * 1.35
-    const fz = s.z + Math.cos(s.facing) * 1.35
+    const fx = s.x + Math.sin(s.facing) * 1.6
+    const fz = s.z + Math.cos(s.facing) * 1.6
     const floor = supportAt(world.solids, fx, fz, s.y + 0.3, 0.05)
-    return { kind: "blob", blob: blobOf(c, fx, fz, floor > s.y - 1.5 ? floor : s.gy) }
+    return { kind: "blob", blob: blobOf(c, fx, fz, floor > s.y - 1.5 ? floor : s.gy, yaw) }
   }
 
   // PONTE
   const hit = raycast(world.solids, o, d, T.range[PAINT.BRIDGE])
   if (hit && hit.normal.y > 0.5 && Math.hypot(hit.point.x - s.x, hit.point.z - s.z) <= T.bridgeReach) {
-    return { kind: "blob", blob: blobOf(c, hit.point.x, hit.point.z, hit.point.y - T.bridgeH * 0.5) }
+    return { kind: "blob", blob: blobOf(c, hit.point.x, hit.point.z, hit.point.y - T.bridgeH * 0.5, yaw) }
   }
   // Crescer: a borda na direção da mira, na altura do pé (no ar também: pulou, a ponte sai lá em cima).
   let hx = d.x
@@ -1131,16 +1154,17 @@ function resolveShot(world           , s         , c            , o      , dir  
     const sup = supportAt(world.solids, px, pz, footY + 0.3, 0.02)
     if (sup < footY - 0.6) {
       const ahead = k + T.bridgeR * 0.55
-      return { kind: "blob", blob: blobOf(c, s.x + hx * ahead, s.z + hz * ahead, footY - T.bridgeH) }
+      return { kind: "blob", blob: blobOf(c, s.x + hx * ahead, s.z + hz * ahead, footY - T.bridgeH, yaw) }
     }
   }
   return { kind: "miss" }
 }
 
 /** Tiro conta como mancha nova em `solids` (cilindro, ou muro girado, com id, cor e time). */
-function blobSolid(b         , id        , team        )                       {
-  if (b.c === PAINT.WALL) return { k: 2, x: b.x, z: b.z, y0: b.y0, y1: b.y1, hx: b.r, hz: TUNING.wallT / 2, a: b.a ?? 0, b: id, c: b.c, team }
-  return { k: 0, x: b.x, z: b.z, y0: b.y0, y1: b.y1, r: b.r, b: id, c: b.c, team }
+function blobSolid(b         , id        , team        )            {
+  // mm3d-62c: tudo caixa girada — o muro em pé (fino), ponte e cama elástica deitadas (quadradas)
+  const hz = b.c === PAINT.WALL ? TUNING.wallT / 2 : b.r
+  return { k: 2, x: b.x, z: b.z, y0: b.y0, y1: b.y1, hx: b.r, hz, a: b.a ?? 0, b: id, c: b.c, team }
 }
 
 /** Quem o soco pega: na frente (cone), perto, na mesma altura; do outro time. */
