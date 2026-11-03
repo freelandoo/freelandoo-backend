@@ -1,5 +1,5 @@
 {
-  "version": "centro-v11-31dc87c3",
+  "version": "centro-v12-80059309",
   "basePath": "/meu-mundo/centro/",
   "places": {
     "pizzaria": "centro-pizzaria-7bafa2b4.glb",
@@ -20,8 +20,8 @@
     "igreja": "centro-igreja-64f81633.glb",
     "delegacia": "centro-delegacia-a3aebab8.glb",
     "hospital": "centro-hospital-ec4c91e6.glb",
-    "forja": "centro-forja-d7910160.glb",
-    "arsenal": "centro-arsenal-5f49c531.glb"
+    "forja": "centro-forja-10b7bcfd.glb",
+    "arsenal": "centro-arsenal-7d809c75.glb"
   },
   "props": {
     "ambulancia": "centro-ambulancia-2c0ec75c.glb"
@@ -427,20 +427,25 @@
     "forja": {
       "gears": [
         [
-          -2.7,
-          5.85,
-          -0.06,
-          0.56,
+          0,
+          10.75,
+          0.48,
+          1.15,
           0.12,
-          0.4,
+          0.35,
           2
         ]
       ],
       "vents": [
         [
-          -2.7,
-          11.85,
-          10.7
+          -2.4,
+          14.15,
+          10.9
+        ],
+        [
+          2.0,
+          12.15,
+          8.1
         ]
       ]
     },
@@ -448,9 +453,9 @@
       "gears": [
         [
           0,
-          8.45,
-          -0.11,
-          0.5,
+          10.15,
+          0.48,
+          1.1,
           0.12,
           -0.3,
           2

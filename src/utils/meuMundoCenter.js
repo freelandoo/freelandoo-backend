@@ -72,8 +72,8 @@ const PLACE_DEFS = [
   // para a rua de pedra (z 31–35) que chega do anel pelo vão entre a
   // universidade e a corrida e sobe pela lateral leste. O vão de 1,5 m entre
   // as duas é técnico, não é uma passagem.
-  { id: "forja", zone: "comercial", rect: [33, 42.5, 36, 49], h: 7.2, peak: 12, front: "s", door: 37.75, doorW: 2.4 },
-  { id: "arsenal", zone: "comercial", rect: [44, 53.5, 36, 49], h: 7, peak: 10.5, front: "s", door: 48.75, doorW: 2.4 },
+  { id: "forja", zone: "comercial", rect: [33, 42.5, 36, 49], h: 7.4, peak: 14, front: "s", door: 37.75, doorW: 2.4 },
+  { id: "arsenal", zone: "comercial", rect: [44, 53.5, 36, 49], h: 7, peak: 12, front: "s", door: 48.75, doorW: 2.4 },
   // game: o local abre um minijogo no cliente em vez de um interior (mm3d-20).
   // party: o minijogo aceita até N na mesma partida (sala JetpackRoom, mm3d-21).
   { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack", party: 4 },
