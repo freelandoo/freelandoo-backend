@@ -97,6 +97,9 @@ const inFront = (m, dist, back = false) => {
 
 test("quem fica de frente é perseguido, alcançado e a luta abre; de costas, não", () => {
   const d = make(5);
+  // nasce no meio da avenida (aberta em volta): o teste não depende do sorteio
+  // do lugar, que muda com a planta (mm3d-60q)
+  d.spots = () => [{ x: -44, z: 0 }];
   const m = d.forceSpawn(0, []);
   d.tick(100, [], 0.1);
   const behind = { sid: "b", ...inFront(m, 6, true) };
