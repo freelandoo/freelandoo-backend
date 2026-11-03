@@ -75,8 +75,8 @@ const PLACE_DEFS = [
   { id: "forja", zone: "comercial", rect: [33, 42.5, 36, 49], h: 7.4, peak: 14, front: "s", door: 37.75, doorW: 2.4 },
   { id: "arsenal", zone: "comercial", rect: [44, 53.5, 36, 49], h: 7, peak: 12, front: "s", door: 48.75, doorW: 2.4 },
   // game: o local abre um minijogo no cliente em vez de um interior (mm3d-20).
-  // party: o minijogo aceita até N na mesma partida (sala JetpackRoom, mm3d-21).
-  { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack", party: 4 },
+  // party: o minijogo aceita até N na mesma partida (jetpack no túnel: 6, mm3d-63).
+  { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack", party: 6 },
   // Paint (mm3d-35): torre estreita no vão entre a academia e o jetpack, no eixo
   // da travessia sul (sai da praça e dá de frente com a porta). 0,4 m de folga
   // de cada lado: ninguém passa entre os prédios.

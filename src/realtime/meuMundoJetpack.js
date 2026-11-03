@@ -1,275 +1,173 @@
-// src/realtime/meuMundoJetpack.js — MEU MUNDO 3D: jetpack em grupo (mm3d-21)
+// src/realtime/meuMundoJetpack.js — MEU MUNDO 3D: jetpack no túnel (mm3d-63)
 //
-// Uma sala por grupo de até 4 pessoas do MESMO centro (filterBy centerRoomId,
-// a mais cheia primeiro). Quem entra cai na JANELA DE ESPERA: "Começar" deixa
-// pronto; "Entrar sozinho" é do cliente (sai da sala e joga o single-player
-// local). A partida em grupo (2 a 4) começa quando todos os presentes estão
-// prontos, ou PARTY.lobbyMs depois de o 2º chegar com ≥ 2 prontos — sozinho na
-// espera nunca começa sozinho. Contagem → a sala tranca → corrida → resultados
-// → de volta à espera (revanche na mesma sala).
+// Redesenho total do jetpack (pedido do Alex): o personagem voa sem parar por
+// um túnel subterrâneo steampunk, desviando de prensas que se mexem e pegando
+// galões de combustível. A regra fica SÓ no front (features/meu-mundo/jetpack/
+// sim/flight.ts): o túnel inteiro sai de uma SEMENTE, então em grupo todos
+// voam o MESMO túnel e cada aparelho roda o seu voo — o molde do Rolê Noturno.
 //
-// O servidor é a autoridade: roda a MESMA simulação do navegador
-// (utils/meuMundoJetpack.js, gerado do TS) a 120 Hz. O cliente manda só a
-// mudança de "segurando" com o passo em que ela aconteceu nele; chegando
-// antes, vale no mesmo passo aqui (a sim é determinística, então o que ele viu
-// é o que acontece); atrasada, vale no passo atual.
+// Uma sala por largada, do MESMO centro (filterBy centerRoomId + solo, a mais
+// cheia primeiro): em GRUPO espera até LOBBY_MS desde que abriu (ou larga na
+// hora com 6) → tranca → contagem → voo → resultado quando o último bate →
+// fecha. SOZINHO também é uma sala (só a pessoa, larga na hora): é ela que
+// mede a prática (o aparelho não diz quanto jogou).
 //
-// A pessoa continua presente no centro (o avatar fica parado na porta): esta
-// sala NÃO toma a presença. Uma sessão por usuário entre todas as salas do
-// jetpack (a nova substitui a antiga).
+// A sala só repassa as poses (~20 Hz), recusa o impossível (andar mais do que
+// a velocidade máxima, sair do túnel) e monta a classificação pela distância.
+// Quem sai no meio fica com o que tinha ("saiu"). A pessoa continua presente
+// no centro (como no Paint/corrida/Rolê).
 
 const { Room, ServerError, matchMaker } = require("@colyseus/core");
 const { schema, t } = require("@colyseus/schema");
-const crypto = require("crypto");
 const pool = require("../databases");
-const MeuMundoStorage = require("../storages/MeuMundoStorage");
-const { roomLook } = require("../utils/meuMundoColors");
 const AuthStorage = require("../storages/AuthStorage");
+const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const presence = require("./meuMundoPresence");
-const { Match, PARTY, TUNING } = require("../utils/meuMundoJetpack");
+const { roomLook } = require("../utils/meuMundoColors");
 const { createLogger } = require("../utils/logger");
-
-const log = createLogger("meuMundo.jetpack");
 const { PracticeMeter } = require("./meuMundoPractice");
 
+const log = createLogger("meuMundo.jetpack");
+
 const JETPACK_ROOM = "jetpack";
+const SEATS = 6;
 const CLOSE = { REPLACED: 4009, FORBIDDEN: 4003, ABUSE: 4029 };
-const SIM_MS = 25; // 3 passos de 1/120 s por volta
-const PATCH_MS = 50; // 20 Hz de estado
-const MAX_MSG_PER_SEC = 30;
-const ABUSE_DROPS = 200;
-/** Janela do passo de uma entrada: até 0,5 s adiantada; mais de 1 s atrasada vale agora (mm3d-27). */
-const INPUT_LATE = 120;
-const INPUT_EARLY = 60;
-/** Estado do jogador como número (cliente e servidor). */
-const STATE_CODE = { ready: 0, flying: 1, falling: 2, out_of_fuel: 3, dead: 4 };
+const TICK_MS = 50; // 20 Hz
+const MAX_MSG_PER_SEC = 45;
+const ABUSE_DROPS = 300;
+const COUNTDOWN_S = 3;
+/** Túnel (o mesmo de sim/flight.ts): x ∈ [−W/2, W/2], y ∈ [0, H]. */
+const TUNNEL = { W: 10, H: 8 };
+/** Mais rápido possível (vMax da regra, 46 m/s) com folga. */
+const MAX_V = 46 * 1.25;
+/** Pontos: metros + 25 por galão (no máximo um galão a cada ~3 m). */
+const CAN_POINTS = 25;
+const MAX_RUN_S = 1800;
+const SILENT_S = 8;
 
 /** Prazos (a suíte e2e encurta). */
-const timing = {
-  lobbyMs: PARTY.lobbyMs,
-  countdownMs: PARTY.countdownMs,
-  resultsMs: PARTY.resultsMs,
-  emptyMs: 0,
-};
+const timing = { lobbyMs: 60000, closeMs: 20000 };
 
-const JpRunner = schema(
+const JtPlayer = schema(
   {
     slot: t.uint8(),
     name: t.string(),
-    body: t.string(),
-    // Cores do personagem (mm3d-36): código look; "" = textura original.
-    look: t.string(),
-    ready: t.boolean(),
-    inMatch: t.boolean(),
     online: t.boolean(),
-    // estado da sim (precisão total: o cliente restaura daqui)
-    st: t.uint8(),
-    x: t.float64(),
-    y: t.float64(),
-    vy: t.float64(),
-    fuel: t.float64(),
-    held: t.boolean(),
-    thr: t.boolean(),
-    pw: t.float64(), // fim do turbo (s de jogo)
-    pf: t.boolean(), // turbo ainda não avisado como acabado
-    tow: t.boolean(),
-    grace: t.float64(),
-    pid: t.uint32(), // maior id de obstáculo ultrapassado
-    pass: t.uint16(),
-    ph: t.uint8(),
-    fc: t.float64(), // combustível coletado
-    got: t.uint16(), // cápsulas
-    sm: t.uint16(), // peças quebradas
-    dieAt: t.uint32(),
-    place: t.uint8(),
   },
-  "JPRunner"
+  "JTPlayer"
 );
 
-const JpState = schema(
+const JtState = schema(
   {
-    phase: t.string(), // "lobby" | "countdown" | "running" | "results"
-    seed: t.uint32(),
-    tick: t.uint32(), // passo da partida a que os valores dos jogadores se referem
-    until: t.float64(), // ms (epoch): fim da espera em grupo / da contagem / dos resultados (0 = sem prazo)
-    runners: t.map(JpRunner),
-    taken: t.map("uint8"), // id da cápsula → vaga de quem pegou
-    broken: t.map("uint8"), // id do obstáculo → peças quebradas (bits)
-    vulcans: t.array("float64"),
+    phase: t.string(), // "lobby" | "countdown" | "run" | "end"
+    until: t.float64(),
+    time: t.float32(),
+    players: t.map(JtPlayer),
+    result: t.string(),
   },
-  "JPState"
+  "JTState"
 );
 
-/** userId → { room, sessionId } (uma sessão por pessoa em todas as salas do jetpack). */
+/** userId → { room, sessionId } (uma sessão por pessoa entre as salas do jetpack). */
 const byUser = new Map();
 /** roomId → sala viva. */
 const rooms = new Map();
 
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : NaN);
+const r2 = (v) => Math.round(v * 100) / 100;
+const r3 = (v) => Math.round(v * 1000) / 1000;
+
 class JetpackRoom extends Room {
   async onCreate(options) {
     this.centerRoomId = String(options.centerRoomId || "");
-    this.maxClients = PARTY.max;
-    this.patchRate = PATCH_MS;
+    this.solo = !!options.solo;
+    this.maxClients = this.solo ? 1 : SEATS;
+    this.patchRate = 100;
     this.seatReservationTimeout = 15;
-    this.setState(new JpState());
+    this.setState(new JtState());
     this.state.phase = "lobby";
-    /** sessionId → { userId, slot, bucket... , inputs: [{k,h}], held } */
-    this.sim = new Map();
-    this.match = null;
-    this.acc = 0;
-    /** Quando o 2º chegou à espera (prazo do grupo). */
-    this.groupSince = 0;
-    this.phaseTimer = null;
+    this.state.until = Date.now() + (this.solo ? 0 : timing.lobbyMs);
+    /** sessionId → { userId, slot, body, look, run, bucket, ... } */
+    this.seats = new Map();
+    this.startedAt = 0;
+    this.closeTimer = null;
+    this.meter = null;
     rooms.set(this.roomId, this);
-    this.onMessage("ready", (client, msg) => this.onReady(client, msg));
-    this.onMessage("h", (client, msg) => this.onInput(client, msg));
+    this.onMessage("p", (client, msg) => this.onPose(client, msg));
+    this.onMessage("x", (client, msg) => this.onCrash(client, msg));
     this.onMessage("ping", (client, msg) => this.onPing(client, msg));
-    this.setSimulationInterval((dt) => this.loop(dt), SIM_MS);
-    log.info("jetpack.create", { roomId: this.roomId });
+    this.setSimulationInterval(() => this.loop(), TICK_MS);
+    log.info("jetpack.create", { roomId: this.roomId, solo: this.solo });
   }
 
   async onJoin(client, options) {
     const userId = options.userId;
-    const body = String(options.body || "normal").slice(0, 16);
-    // Cores (mm3d-36): lidas do banco pela conta; falha = textura original.
-    const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
     const here = userId ? presence.get(userId) : null;
     const admin = userId && (await AuthStorage.isAdmin(pool, userId));
     const sameCenter = here && here.scene === "center" && here.id === this.centerRoomId;
-    const back = this.runnerOf(userId);
-    if (!admin || !sameCenter || (this.state.phase !== "lobby" && !back)) {
+    if (!admin || !sameCenter || this.state.phase !== "lobby") {
       log.warn("jetpack.join_denied", { roomId: this.roomId });
       throw new ServerError(CLOSE.FORBIDDEN, "acesso negado ao jetpack");
     }
-    // Uma sessão por pessoa: a anterior (outra aba, outra sala) sai.
     const prev = byUser.get(userId);
-    if (prev && !(prev.room === this && prev.sessionId === client.sessionId)) prev.room.replace(prev.sessionId, prev.room === this);
-    let slot;
-    if (back) {
-      // Volta (reconexão / outra aba): o mesmo jogador, na mesma vaga.
-      slot = back.s.slot;
-      this.sim.delete(back.sid);
-      const r = this.state.runners.get(back.sid);
-      this.state.runners.delete(back.sid);
-      r.online = true;
-      this.state.runners.set(client.sessionId, r);
-    } else {
-      slot = this.freeSlot();
-      const r = new JpRunner({
-        slot,
-        name: String(options.name || "morador").slice(0, 24),
-        body,
-        look,
-        ready: false,
-        inMatch: false,
-        online: true,
-      });
-      this.state.runners.set(client.sessionId, r);
-    }
-    this.sim.set(client.sessionId, {
-      userId,
-      slot,
-      inputs: back ? back.s.inputs : [],
-      held: back ? back.s.held : false,
-      bucket: MAX_MSG_PER_SEC,
-      lastRefill: Date.now(),
-      drops: 0,
-      dropsSince: Date.now(),
-    });
+    if (prev && !(prev.room === this && prev.sessionId === client.sessionId)) prev.room.replace(prev.sessionId);
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
+    const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
+    const slot = this.freeSlot();
+    this.state.players.set(client.sessionId, new JtPlayer({ slot, name: String(options.name || "piloto").slice(0, 24), online: true }));
+    this.seats.set(client.sessionId, { userId, slot, body, look, run: null, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now() });
     byUser.set(userId, { room: this, sessionId: client.sessionId });
-    client.send("welcome", { slot, step: TUNING.step });
-    this.lobbyCheck();
-    log.info("jetpack.join", { roomId: this.roomId, people: this.sim.size, slot, back: !!back });
+    client.send("welcome", { slot, left: Math.max(0, this.state.until - Date.now()) });
+    if (this.solo || this.seats.size >= SEATS) this.start();
+    log.info("jetpack.join", { roomId: this.roomId, people: this.seats.size, slot, solo: this.solo });
   }
 
   onLeave(client) {
-    const s = this.sim.get(client.sessionId);
-    const r = this.state.runners.get(client.sessionId);
-    if (!s || !r) {
-      // Sessão já substituída (outra aba voltou no lugar dela).
-      this.syncLock();
-      return;
-    }
+    const s = this.seats.get(client.sessionId);
+    const p = this.state.players.get(client.sessionId);
+    if (!s || !p) return;
     const mine = byUser.get(s.userId);
     if (mine && mine.room === this && mine.sessionId === client.sessionId) byUser.delete(s.userId);
-    if (this.match && r.inMatch && (this.state.phase === "running" || this.state.phase === "countdown")) {
-      // Na partida: o jogador fica (solto, ele cai); pode voltar pela reserva.
-      r.online = false;
-      s.held = false;
-      s.inputs.length = 0;
+    if (s.run) {
+      p.online = false;
+      if (s.run.alive) Object.assign(s.run, { alive: false, gone: true, time: this.state.time });
       if (this.meter) this.meter.settle(s.userId);
+      if (!this.clients.length) this.disconnect();
       return;
     }
-    this.sim.delete(client.sessionId);
-    this.state.runners.delete(client.sessionId);
-    this.syncLock();
-    this.lobbyCheck();
+    this.seats.delete(client.sessionId);
+    this.state.players.delete(client.sessionId);
   }
 
   onDispose() {
     rooms.delete(this.roomId);
-    for (const s of this.sim.values()) {
+    for (const s of this.seats.values()) {
       const mine = byUser.get(s.userId);
       if (mine && mine.room === this) byUser.delete(s.userId);
     }
-    if (this.phaseTimer) this.phaseTimer.clear();
+    if (this.closeTimer) this.closeTimer.clear();
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  runnerOf(userId) {
-    for (const [sid, s] of this.sim) if (s.userId === userId) return { sid, s };
-    return null;
-  }
-
   freeSlot() {
-    const used = new Set([...this.sim.values()].map((s) => s.slot));
-    for (let i = 0; i < PARTY.max; i++) if (!used.has(i)) return i;
+    const used = new Set([...this.seats.values()].map((s) => s.slot));
+    for (let i = 0; i < SEATS; i++) if (!used.has(i)) return i;
     return 0;
   }
 
-  /**
-   * A trava é só explícita: tranca na contagem e destrava na espera quando há
-   * vaga (a trava automática do Colyseus não volta sozinha depois de lock()).
-   */
-  syncLock() {
-    if (this.state.phase === "lobby" && this.locked && !this.hasReachedMaxClients()) void this.unlock();
-  }
-
-  /**
-   * Volta (outra aba, reconexão): a vaga é a mesma, então passa do limite só
-   * nesta reserva, com a sala trancada para ninguém entrar no meio. A sessão
-   * antiga sai no onJoin.
-   */
-  async reserveBack(options) {
-    await this.lock();
-    this.maxClients = PARTY.max + 1;
-    try {
-      return await matchMaker.reserveSeatFor(this._listing, options).catch(() => null);
-    } finally {
-      this.maxClients = PARTY.max;
-      this.syncLock();
-    }
-  }
-
-  /** Outra sessão da mesma pessoa assumiu: avisa e derruba esta. */
-  replace(sessionId, sameRoom) {
+  replace(sessionId) {
     const client = this.clients.find((c) => c.sessionId === sessionId);
-    if (!sameRoom) {
-      // Mudou de sala: o jogador some daqui (na corrida, cai).
-      const r = this.state.runners.get(sessionId);
-      const s = this.sim.get(sessionId);
-      if (r && s && this.match && r.inMatch && this.state.phase === "running") {
-        r.online = false;
-        s.held = false;
-      } else {
-        this.sim.delete(sessionId);
-        this.state.runners.delete(sessionId);
-      }
-    }
     if (client) {
       client.send("replaced", {});
       client.leave(CLOSE.REPLACED);
+    } else {
+      const s = this.seats.get(sessionId);
+      if (s && s.run) Object.assign(s.run, { alive: false, gone: true });
+      else {
+        this.seats.delete(sessionId);
+        this.state.players.delete(sessionId);
+      }
     }
   }
 
@@ -290,219 +188,134 @@ class JetpackRoom extends Room {
     return false;
   }
 
-  // ── mensagens ──────────────────────────────────────────────────────────────
-
-  onReady(client, msg) {
-    const s = this.sim.get(client.sessionId);
-    const r = this.state.runners.get(client.sessionId);
-    if (!s || !r || !this.takeToken(client, s)) return;
-    if (this.state.phase !== "lobby" && this.state.phase !== "results") return;
-    r.ready = !!(msg && msg.r);
-    this.lobbyCheck();
+  running(client) {
+    const s = this.seats.get(client.sessionId);
+    if (!s || !s.run || !s.run.alive || this.state.phase !== "run" || !this.takeToken(client, s)) return null;
+    return s;
   }
 
-  onInput(client, msg) {
-    const s = this.sim.get(client.sessionId);
-    // Na contagem também: quem já está segurando no "vai" larga segurando (passo 1).
-    const phase = this.state.phase;
-    if (!s || !this.takeToken(client, s) || !this.match || (phase !== "running" && phase !== "countdown")) return;
-    const T = this.match.ticks + 1;
-    const k = Math.floor(Number(msg && msg.k));
-    if (this.meter && phase === "running") this.meter.pose(s.userId, { k, h: msg && msg.h ? 1 : 0 });
-    if (!Number.isFinite(k) || k > T + INPUT_EARLY) return;
-    // Atrasada além da janela (aba que voltou do segundo plano, mm3d-27): vale
-    // agora. Descartar deixava o botão preso no último valor — "segurando" sem
-    // ninguém segurar, até a próxima mudança.
-    if (k < T - INPUT_LATE) s.inputs.length = 0;
-    s.inputs.push({ k: Math.max(k, T), h: !!(msg && msg.h) });
-    if (s.inputs.length > 64) s.inputs.splice(0, s.inputs.length - 64);
+  /** Só o possível: z não volta nem passa da velocidade máxima; dentro do túnel; pontos com teto pela distância. */
+  accept(s, msg) {
+    const r = s.run;
+    const now = Date.now();
+    const dt = r.at ? Math.min(3, (now - r.at) / 1000) : 0.5;
+    let z = num(msg.z);
+    if (!Number.isFinite(z)) return false;
+    z = Math.max(r.z - 2, Math.min(r.z + MAX_V * dt + 20, z));
+    r.z = Math.max(0, z);
+    r.at = now;
+    const x = num(msg.x);
+    const y = num(msg.y);
+    r.x = Number.isFinite(x) ? Math.max(-TUNNEL.W / 2, Math.min(TUNNEL.W / 2, x)) : r.x;
+    r.y = Number.isFinite(y) ? Math.max(0, Math.min(TUNNEL.H, y)) : r.y;
+    r.f = Math.max(0, Math.min(255, Math.floor(num(msg.f) || 0)));
+    const cans = Math.max(0, Math.floor(num(msg.c) || 0));
+    r.cans = Math.max(r.cans, Math.min(cans, Math.floor(r.z / 3)));
+    const sc = Math.floor(num(msg.s) || 0);
+    r.score = Math.max(r.score, Math.min(sc, Math.floor(r.z) + r.cans * CAN_POINTS));
+    return true;
+  }
+
+  // ── mensagens ──────────────────────────────────────────────────────────────
+
+  onPose(client, msg) {
+    const s = this.running(client);
+    if (!s || !msg) return;
+    this.accept(s, msg);
+    if (this.meter) this.meter.pose(s.userId, msg);
+  }
+
+  /** Bateu (o aparelho manda o fim: distância, pontos, galões e no que bateu). */
+  onCrash(client, msg) {
+    const s = this.running(client);
+    if (!s || !msg) return;
+    this.accept(s, msg);
+    s.run.alive = false;
+    s.run.by = typeof msg.by === "string" ? msg.by.slice(0, 12) : "";
+    s.run.time = this.state.time;
+    log.info("jetpack.crash", { roomId: this.roomId, slot: s.slot, dist: Math.floor(s.run.z) });
   }
 
   onPing(client, msg) {
-    const s = this.sim.get(client.sessionId);
+    const s = this.seats.get(client.sessionId);
     if (!s || !this.takeToken(client, s)) return;
-    client.send("pong", { c: Number(msg && msg.c) || 0, k: this.match ? this.match.ticks : 0 });
+    client.send("pong", { c: Number(msg && msg.c) || 0, t: this.state.time });
   }
 
-  // ── espera e contagem ──────────────────────────────────────────────────────
+  // ── partida ────────────────────────────────────────────────────────────────
 
-  /** Regra da espera (lobby/resultados) depois de qualquer mudança. */
-  lobbyCheck() {
-    if (this.state.phase !== "lobby") return;
-    const people = [...this.state.runners.values()];
-    const ready = people.filter((r) => r.ready).length;
-    if (people.length < 2) {
-      this.groupSince = 0;
-      this.state.until = 0;
-      return;
-    }
-    if (!this.groupSince) {
-      this.groupSince = Date.now();
-      this.state.until = this.groupSince + timing.lobbyMs;
-    }
-    if (ready === people.length || (ready >= 2 && Date.now() >= this.state.until)) this.beginCountdown();
-  }
-
-  beginCountdown() {
-    const slots = [];
-    for (const [sid, r] of this.state.runners) {
-      r.inMatch = r.ready;
-      if (r.inMatch) slots.push(r.slot);
-      const s = this.sim.get(sid);
-      if (s) {
-        s.inputs.length = 0;
-        s.held = false;
-      }
-    }
-    const seed = crypto.randomBytes(4).readUInt32LE(0) || 1;
-    this.match = new Match(seed, slots, TUNING);
-    // mm3d-59: prática medida pela sala (entrada é esparsa: segurar conta, buraco de 6 s fecha)
-    this.meter = new PracticeMeter("jetpack", `jetpack:${this.roomId}:${seed}:${Date.now()}`, log, 6000);
-    this.acc = 0;
-    this.state.seed = seed;
-    this.state.tick = 0;
-    this.state.taken.clear();
-    this.state.broken.clear();
-    this.state.vulcans.clear();
-    for (const r of this.state.runners.values()) {
-      r.place = 0;
-      r.dieAt = 0;
-    }
-    this.mirror();
+  start() {
+    if (this.startedAt) return;
+    const seed = (Math.floor(Math.random() * 0x7fffffff) | 1) >>> 0;
+    const seats = [...this.seats.values()]
+      .sort((a, b) => a.slot - b.slot)
+      .map((s) => {
+        const p = [...this.state.players.values()].find((q) => q.slot === s.slot);
+        s.run = { z: 0, x: 0, y: 4, f: 0, score: 0, cans: 0, alive: true, gone: false, by: "", time: 0, at: 0 };
+        return { slot: s.slot, name: p ? p.name : "", body: s.body, look: s.look };
+      });
+    this.startedAt = Date.now();
+    // prática medida pela sala (quem bateu não manda pose = não conta)
+    this.meter = new PracticeMeter("jetpack", `jetpack:${this.roomId}:${this.startedAt}`, log);
     this.state.phase = "countdown";
-    this.state.until = Date.now() + timing.countdownMs;
-    void this.lock();
-    this.after(timing.countdownMs, () => this.beginRun());
-    log.info("jetpack.countdown", { roomId: this.roomId, players: slots.length });
-  }
-
-  beginRun() {
-    if (!this.match) return;
-    this.match.start();
-    this.state.phase = "running";
+    this.state.time = -COUNTDOWN_S;
     this.state.until = 0;
-    this.acc = 0;
+    void this.lock();
+    for (const client of this.clients) {
+      const s = this.seats.get(client.sessionId);
+      if (s) client.send("start", { me: s.slot, seed, countdown: COUNTDOWN_S, seats, solo: this.solo });
+    }
+    log.info("jetpack.start", { roomId: this.roomId, people: seats.length, solo: this.solo });
   }
 
-  after(ms, fn) {
-    if (this.phaseTimer) this.phaseTimer.clear();
-    this.phaseTimer = this.clock.setTimeout(() => {
-      this.phaseTimer = null;
-      fn();
-    }, ms);
-  }
-
-  // ── corrida ────────────────────────────────────────────────────────────────
-
-  loop(dtMs) {
-    if (this.state.phase === "lobby") {
-      if (this.state.until && Date.now() >= this.state.until) this.lobbyCheck();
+  loop() {
+    if (!this.startedAt) {
+      if (this.state.phase === "lobby" && Date.now() >= this.state.until && this.seats.size > 0) this.start();
       return;
     }
-    if (this.state.phase !== "running" || !this.match) return;
-    this.acc += dtMs / 1000;
-    const stepS = TUNING.step;
-    let n = 0;
-    const held = [false, false, false, false];
-    while (this.acc >= stepS && n < 12) {
-      this.acc -= stepS;
-      n++;
-      const T = this.match.ticks + 1;
-      for (const s of this.sim.values()) {
-        // aplica, em ordem, as mudanças marcadas até este passo
-        while (s.inputs.length && s.inputs[0].k <= T) s.held = s.inputs.shift().h;
-        held[s.slot] = s.held;
-      }
-      this.match.step(held);
-      for (const e of this.match.drain()) {
-        if (e.type === "pickup") this.state.taken.set(String(e.id), e.slot);
-        else if (e.type === "smash") this.state.broken.set(String(e.obstacle), (this.state.broken.get(String(e.obstacle)) || 0) | (1 << e.piece));
-        else if (e.type === "dead") log.info("jetpack.dead", { roomId: this.roomId, slot: e.slot, cause: e.cause, tick: this.match.ticks });
-      }
-      if (!this.match.aliveCount()) break;
+    if (this.state.phase === "end") return;
+    this.state.time = (Date.now() - this.startedAt) / 1000 - COUNTDOWN_S;
+    if (this.state.phase === "countdown" && this.state.time >= 0) this.state.phase = "run";
+    if (this.state.phase !== "run") return;
+    const now = Date.now();
+    for (const s of this.seats.values()) {
+      const r = s.run;
+      const since = r.at || this.startedAt + COUNTDOWN_S * 1000;
+      if (r.alive && now - since > SILENT_S * 1000) Object.assign(r, { alive: false, gone: true, time: this.state.time });
     }
-    if (n === 12) this.acc = 0; // servidor engasgou: não acumula atraso
-    this.mirror();
-    if (!this.match.aliveCount()) this.finish();
+    this.snapshot();
+    const anyAlive = [...this.seats.values()].some((s) => s.run.alive);
+    if (!anyAlive || this.state.time > MAX_RUN_S) this.finish();
   }
 
-  /** Estado da partida → schema (valores do passo `tick`). */
-  mirror() {
-    const m = this.match;
-    if (!m) return;
-    this.state.tick = m.ticks;
-    for (const [sid, r] of this.state.runners) {
-      const run = r.inMatch ? m.runners[r.slot] : null;
-      if (!run) continue;
-      const s = this.sim.get(sid);
-      r.st = STATE_CODE[run.state];
-      r.x = run.x;
-      r.y = run.y;
-      r.vy = run.vy;
-      r.fuel = run.fuel.value;
-      r.held = !!(s && s.held);
-      r.thr = run.thrusting;
-      r.pw = run.powerUntil;
-      r.pf = run.snapshot().powered;
-      r.tow = run.towed;
-      r.grace = run.graceUntil;
-      r.pid = run.passedId;
-      r.pass = run.passed;
-      r.ph = run.phase;
-      r.fc = run.fuelCollected;
-      r.got = run.pickupsTaken;
-      r.sm = run.smashed;
-      r.dieAt = run.deathTick;
+  /** Todos a 20 Hz: [slot, z, x, y, bandeiras, pontos, vivo] por pessoa. */
+  snapshot() {
+    if (this.solo) return; // sozinho: ninguém para ver
+    const c = [];
+    for (const s of this.seats.values()) {
+      const r = s.run;
+      c.push(s.slot, r2(r.z), r3(r.x), r3(r.y), r.f, r.score, r.alive ? 1 : r.gone ? 2 : 0);
     }
-    // vulcans só cresce na partida
-    const v = m.track.vulcans;
-    for (let i = this.state.vulcans.length; i < v.length; i++) this.state.vulcans.push(v[i]);
-    // poda o que ficou para trás (fora da pista viva)
-    if (this.state.taken.size > 24) {
-      const live = new Set(m.track.pickups.map((p) => String(p.id)));
-      for (const id of [...this.state.taken.keys()]) if (!live.has(id)) this.state.taken.delete(id);
-    }
-    if (this.state.broken.size > 24) {
-      const live = new Set(m.track.obstacles.map((o) => String(o.id)));
-      for (const id of [...this.state.broken.keys()]) if (!live.has(id)) this.state.broken.delete(id);
-    }
+    this.broadcast("s", { t: r3(this.state.time), c });
   }
 
   finish() {
-    const places = new Map(this.match.placements().map((p) => [p.slot, p.place]));
     if (this.meter) {
-      const wins = new Set();
-      for (const s of this.sim.values()) if (places.get(s.slot) === 1) wins.add(s.userId);
-      this.meter.settle(null, wins);
-      this.meter = null;
+      // vitória = quem foi mais longe (sozinho não tem vitória)
+      const best = this.solo ? null : [...this.seats.values()].filter((s) => s.run).sort((a, b) => b.run.z - a.run.z)[0];
+      this.meter.settle(null, new Set(best ? [best.userId] : []));
     }
-    for (const r of this.state.runners.values()) {
-      if (r.inMatch) r.place = places.get(r.slot) || 0;
-      // "Jogar de novo" apertado nos resultados vale para a próxima espera.
-      r.ready = false;
-    }
-    this.state.phase = "results";
-    this.state.until = Date.now() + timing.resultsMs;
-    log.info("jetpack.results", { roomId: this.roomId, players: places.size });
-    this.after(timing.resultsMs, () => this.backToLobby());
-  }
-
-  backToLobby() {
-    // Quem caiu durante a partida e não voltou sai agora.
-    for (const [sid, r] of [...this.state.runners]) {
-      if (!r.online) {
-        this.state.runners.delete(sid);
-        this.sim.delete(sid);
-      }
-    }
-    for (const r of this.state.runners.values()) r.inMatch = false;
-    this.match = null;
-    this.state.phase = "lobby";
-    this.state.until = 0;
-    this.groupSince = 0;
-    this.syncLock();
-    if (!this.clients.length) this.disconnect();
-    else this.lobbyCheck();
+    const rows = [...this.seats.values()]
+      .map((s) => {
+        const p = [...this.state.players.values()].find((q) => q.slot === s.slot);
+        return { slot: s.slot, name: p ? p.name : "", score: s.run.score, dist: Math.floor(s.run.z), cans: s.run.cans, by: s.run.by, gone: s.run.gone };
+      })
+      .sort((a, b) => b.dist - a.dist || b.score - a.score);
+    this.state.result = JSON.stringify({ rows });
+    this.state.phase = "end";
+    this.state.until = Date.now() + timing.closeMs;
+    log.info("jetpack.end", { roomId: this.roomId, people: rows.length, best: rows[0] ? rows[0].dist : 0 });
+    this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }
 }
 
@@ -510,32 +323,22 @@ class JetpackRoom extends Room {
 
 let ready = false;
 function define(gameServer) {
-  gameServer.define(JETPACK_ROOM, JetpackRoom).filterBy(["centerRoomId"]).sortBy({ clients: -1 });
+  gameServer.define(JETPACK_ROOM, JetpackRoom).filterBy(["centerRoomId", "solo"]).sortBy({ clients: -1 });
   ready = true;
 }
 
-/**
- * Reserva o lugar na sala do jetpack do centro em que a pessoa está. Quem
- * chama já conferiu papel, centro e porta. `roomId` = estava numa sala há
- * pouco (reconexão): volta para o MESMO jogador, se ainda existir.
- */
-async function reserveJetpackSeat({ userId, name, body, centerRoomId, roomId = null }) {
+/** Reserva o lugar (quem chama já conferiu papel, centro e porta). `solo` = sala só da pessoa, larga na hora. */
+async function reserveJetpackSeat({ userId, name, body, centerRoomId, solo = false }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name, body };
-  if (roomId) {
-    const room = rooms.get(roomId);
-    if (room && room.runnerOf(userId)) {
-      const seat = await room.reserveBack(options);
-      if (seat) return seat;
-    }
-  }
+  const options = { centerRoomId, userId, name, body, solo: !!solo };
+  if (solo) return matchMaker.create(JETPACK_ROOM, options);
   let last = null;
   for (let i = 0; i < 4; i++) {
     try {
       return await matchMaker.joinOrCreate(JETPACK_ROOM, options);
     } catch (err) {
       last = err;
-      if (!/full|SeatReservation/i.test(String(err && err.name + err.message))) throw err;
+      if (!/full|SeatReservation|locked/i.test(String(err && err.name + err.message))) throw err;
     }
   }
   throw last;
@@ -546,7 +349,7 @@ function leaveJetpack(userId) {
   const mine = byUser.get(userId);
   if (!mine) return;
   byUser.delete(userId);
-  mine.room.replace(mine.sessionId, false);
+  mine.room.replace(mine.sessionId);
 }
 
 async function jetpackStatus() {
@@ -560,7 +363,7 @@ module.exports = {
   leaveJetpack,
   jetpackStatus,
   JETPACK_ROOM,
-  STATE_CODE,
+  SEATS,
   // só para a suíte e2e
   _jetpackRooms: () => [...rooms.values()],
   _jetpackTiming: timing,

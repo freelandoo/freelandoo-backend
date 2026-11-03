@@ -37,7 +37,7 @@ router.post("/house/exit", ...admin, asyncHandler(MeuMundoController.houseExit))
 // Centro da cidade (mm3d-17): ir e voltar para casa (o bairro de casa é o da residência do token).
 router.post("/center/enter", ...admin, asyncHandler(MeuMundoController.centerEnter));
 router.post("/center/leave", ...admin, asyncHandler(MeuMundoController.centerLeave));
-// Jetpack em grupo (mm3d-21): sala do centro em que você está, perto da porta.
+// Jetpack no túnel (mm3d-63): sala do centro em que você está, perto da porta (sozinho ou grupo).
 router.post("/center/jetpack", ...admin, asyncHandler(MeuMundoController.jetpackJoin));
 // Paint (mm3d-35): treino, 1×1, 2×2 ou 3×3, perto da porta.
 router.post("/center/paint", ...admin, asyncHandler(MeuMundoController.paintJoin));

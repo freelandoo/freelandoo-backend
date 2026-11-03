@@ -55,7 +55,7 @@ test("registro de destinos: cada local tem entrada, interação, retorno, destin
     if (p.id === "jetpack") {
       assert.equal(p.destination, "game:jetpack");
       assert.equal(p.available, true, "o jetpack abre o minijogo (mm3d-20)");
-      assert.equal(p.party, 4, "até 4 na mesma partida (mm3d-21)");
+      assert.equal(p.party, 6, "até 6 no mesmo túnel (mm3d-63)");
     } else if (p.id === "paint") {
       assert.equal(p.destination, "game:paint");
       assert.equal(p.available, true, "o Paint abre o minijogo (mm3d-35)");

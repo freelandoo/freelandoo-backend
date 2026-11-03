@@ -47,7 +47,6 @@ const { VISIT_RULES } = require("../utils/meuMundoVisits");
 const { MOTION } = require("../utils/meuMundoMotion");
 const { kindOfId, spotFor } = require("../utils/meuMundoCars");
 const { buildCenterPayload, PLACES: CENTER_PLACES } = require("../utils/meuMundoCenter");
-const { PARTY } = require("../utils/meuMundoJetpack");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const Inbox = require("../storages/MeuMundoInboxStorage");
@@ -547,14 +546,14 @@ class MeuMundoService {
     return MeuMundoService.enter(idUser);
   }
 
-  // ── Jetpack em grupo (mm3d-21) ────────────────────────────────────────────
+  // ── Jetpack no túnel (mm3d-63) ────────────────────────────────────────────
   /**
-   * Lugar na sala do jetpack (até 4) do centro em que a pessoa está, só perto
-   * da porta. A pessoa continua no centro (o avatar fica na porta). `roomId` =
-   * estava numa sala do jetpack há pouco (reconexão): volta ao mesmo jogador.
-   * Sem reserva, o cliente joga sozinho (single-player local).
+   * Lugar numa sala do jetpack do centro em que a pessoa está, só perto da
+   * porta. `solo` = sala só dela (larga na hora; a sala mede a prática); sem
+   * ele, a próxima largada em grupo (até 6). A pessoa continua no centro. O
+   * corpo é o da conta (skin vestida ou condição), nunca o que o aparelho diz.
    */
-  static async joinJetpack(idUser, { roomId = null } = {}) {
+  static async joinJetpack(idUser, { solo = false } = {}) {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
@@ -564,12 +563,12 @@ class MeuMundoService {
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
     let reservation;
     try {
-      reservation = await reserveJetpackSeat({ userId: idUser, name, body, centerRoomId: here.id, roomId: typeof roomId === "string" ? roomId : null });
+      reservation = await reserveJetpackSeat({ userId: idUser, name, body, centerRoomId: here.id, solo: solo === true });
     } catch (err) {
       log.error("jetpack.reserve_fail", { message: err.message });
-      return { error: "O jetpack em grupo não abriu agora.", statusCode: 503 };
+      return { error: "O jetpack não abriu agora.", statusCode: 503 };
     }
-    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation }, party: { max: PARTY.max } };
+    return { multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation } };
   }
 
   // ── Paint (mm3d-35) ───────────────────────────────────────────────────────
