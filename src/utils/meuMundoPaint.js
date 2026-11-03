@@ -1086,7 +1086,9 @@ function resolveShot(world           , s         , c            , o      , dir  
     let cy = o.y + d.y * L
     let cz = o.z + d.z * L
     let y0                = null
-    if (hit && hit.t <= L + 0.5) {
+    // só conta o que a arma bate PERTO do ponto mirado (a superfície que a mira
+    // viu); algo no meio do caminho da arma não desvia o muro (mm3d-62d)
+    if (hit && hit.t >= L - 0.6 && hit.t <= L + 0.5) {
       if (hit.normal.y > 0.5) {
         // mirou um chão: em pé em cima dele
         cx = hit.point.x
