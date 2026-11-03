@@ -69,6 +69,7 @@ const PtPlayer = schema(
     dmg: t.uint16(),
     ko: t.float32(), // nocaute até (s de partida); 0 = de pé
     boss: t.boolean(),
+    out: t.boolean(), // mm3d-62: perdeu para o guardião (fora da partida)
   },
   "PTPlayer"
 );
@@ -457,6 +458,7 @@ class PaintRoom extends Room {
       p.dmg = Math.round(mp.dmg);
       p.ko = mp.ko;
       p.boss = mp.inBoss;
+      p.out = !!mp.out;
     }
   }
 

@@ -473,13 +473,19 @@ test("paint — na ilha do chefão: jogador não machuca jogador e ninguém perd
   m.fire(0, PAINT.HARM, o, { x: 0, y: 0, z: 1 }, 1);
   assert.equal(m.drain().filter((e) => e.type === "hit").length, 0);
   assert.equal(v.hp, T.hpMax);
-  // caiu da ilha do chefão: volta lá em cima, com os gatinhos
+  // mm3d-62: caiu da ilha do guardião = perdeu para ele (fora), sem perder gatinho
   place(m, 1, h.x, h.y - 40, h.z);
   m.tick(0.02);
   const ev = m.drain();
-  assert.ok(ev.find((e) => e.type === "respawn" && e.slot === 1 && e.inBoss));
+  assert.ok(ev.find((e) => e.type === "out" && e.slot === 1 && e.why === "fell"));
+  assert.ok(!ev.find((e) => e.type === "respawn" && e.slot === 1));
   assert.ok(!ev.find((e) => e.type === "drop"));
   assert.equal(v.cats, 7);
+  assert.equal(v.out, true);
+  // quem está fora não atira nem volta
+  m.tick(T.koTime + 1);
+  assert.ok(!m.drain().find((e) => e.type === "respawn"));
+  assert.notEqual(m.phase, "end", "o outro ainda está de pé");
 });
 
 test("paint — chefão: ruge quando o primeiro chega, persegue, dá patada e tapa no chão; não sai da ilha", () => {
@@ -513,6 +519,7 @@ test("paint — chefão: ruge quando o primeiro chega, persegue, dá patada e ta
     if (p.ko) {
       p.ko = 0;
       p.hp = T.hpMax;
+      p.out = false; // mm3d-62: o nocaute do guardião tira da partida; o teste devolve
     }
     p.shield = 0;
   }
@@ -542,7 +549,7 @@ test("paint — chefão: ruge quando o primeiro chega, persegue, dá patada e ta
   assert.ok(Math.hypot(m.boss.x - h.x, m.boss.z - h.z) <= T.bossLeash + 1e-6);
 });
 
-test("paint — chefão derruba: ko sem ladrão, volta lá em cima; metade da vida = novo rugido", () => {
+test("paint — chefão derruba: ko sem ladrão e FORA da partida (mm3d-62); metade da vida = novo rugido", () => {
   const m = duel();
   const p = m.players.get(0);
   const h = m.map.boss;
@@ -559,9 +566,14 @@ test("paint — chefão derruba: ko sem ladrão, volta lá em cima; metade da vi
   }
   assert.ok(ko && ko.slot === 0 && ko.by === -1);
   assert.equal(p.cats, 4);
+  assert.equal(p.out, true);
   m.tick(T.koTime + 0.1);
-  const rs = m.drain().find((e) => e.type === "respawn");
-  assert.ok(rs && rs.inBoss);
+  const after = m.drain();
+  assert.ok(!after.find((e) => e.type === "respawn"), "perdeu para o guardião não volta");
+  // devolve para conferir o rugido da metade da vida
+  p.out = false;
+  p.ko = 0;
+  p.hp = T.hpMax;
   // metade da vida: ruge de novo (uma vez)
   m.bossHp = T.bossHp / 2;
   m.boss.act = "idle";
@@ -843,4 +855,71 @@ test("paint mm3d-46 — mirando o topo de um muro, o próximo empilha em cima", 
   m.fire(0, PAINT.WALL, o, { x: w.x - o.x, y: w.y1 - o.y, z: w.z - o.z }, 2);
   const top = m.drain().find((e) => e.type === "blob");
   assert.ok(top && Math.abs(top.blob.y0 - w.y1) < 1e-3, `não empilhou (${top && top.blob.y0})`);
+});
+
+test("paint mm3d-62 — muro turquesa: quem anda nele é jogado para trás", () => {
+  const m = duel();
+  const a = m.players.get(0);
+  const base = m.map.islands[m.map.bases[0].island];
+  place(m, 0, base.x, 0, base.z, 0);
+  a.ammo[PAINT.WALL] = 5;
+  const o = P.muzzleOf(a.pose, 0);
+  m.fire(0, PAINT.WALL, o, { x: 0, y: -0.25, z: 1 }, 1);
+  const blob = m.drain().find((e) => e.type === "blob");
+  assert.ok(blob && blob.blob.c === PAINT.WALL);
+  // anda reto contra o muro: encosta e volta voando para trás
+  const b = P.newBody(base.x, 0, base.z, 0);
+  let shoved = null;
+  for (let i = 0; i < 120 && shoved === null; i++) {
+    P.stepBody(b, { mx: 0, mz: 1, run: true, jump: false }, m.solids());
+    if (b.shove !== null) shoved = { vz: b.vz, vy: b.vy, id: b.shove };
+  }
+  assert.ok(shoved, "não bateu no muro");
+  assert.equal(shoved.id, blob.id);
+  assert.ok(shoved.vz < -T.wallBounce * 0.9, `vz ${shoved.vz}`);
+  assert.ok(shoved.vy >= T.wallBounceLift - 1, `vy ${shoved.vy}`);
+});
+
+test("paint mm3d-62 — tiro do muro no adversário pulando: muro na frente dele e ele voa para longe", () => {
+  const m = duel();
+  const a = m.players.get(0);
+  const v = m.players.get(1);
+  const base = m.map.islands[m.map.bases[0].island];
+  place(m, 0, base.x, 0, base.z, 0);
+  place(m, 1, base.x, 0, base.z + 6, Math.PI);
+  v.pose.y = 1.2;
+  v.pose.ground = false;
+  a.ammo[PAINT.WALL] = 5;
+  const o = P.muzzleOf(a.pose, 0);
+  m.fire(0, PAINT.WALL, o, { x: 0, y: (v.pose.y + 1 - o.y) / 6, z: 1 }, 1);
+  const ev = m.drain();
+  const hit = ev.find((e) => e.type === "hit" && e.slot === 1);
+  assert.ok(hit, "não empurrou");
+  assert.equal(hit.how, "wall");
+  assert.equal(hit.hp, T.hpMax, "muro não tira sangue");
+  assert.ok(hit.kz > T.wallShove * 0.9, `kz ${hit.kz}`);
+  const blob = ev.find((e) => e.type === "blob");
+  assert.ok(blob && blob.blob.z < v.pose.z, "muro nasce entre quem atirou e o alvo");
+});
+
+test("paint mm3d-62 — muro empurra na ilha do guardião também; todos fora = fim", () => {
+  const m = duel();
+  const a = m.players.get(0);
+  const v = m.players.get(1);
+  a.inBoss = v.inBoss = true;
+  const h = m.map.boss;
+  place(m, 0, h.x - 12, h.y, h.z - 8, 0);
+  place(m, 1, h.x - 12, h.y, h.z - 2, Math.PI);
+  a.ammo[PAINT.WALL] = 5;
+  const o = P.muzzleOf(a.pose, 0);
+  m.fire(0, PAINT.WALL, o, { x: 0, y: (v.pose.y + 1 - o.y) / 6, z: 1 }, 1);
+  assert.ok(m.drain().find((e) => e.type === "hit" && e.slot === 1 && e.how === "wall"));
+  // os dois caem da ilha: acabou ("wiped")
+  place(m, 0, h.x, h.y - 40, h.z);
+  place(m, 1, h.x, h.y - 40, h.z);
+  m.tick(0.02);
+  const ev = m.drain();
+  assert.equal(ev.filter((e) => e.type === "out").length, 2);
+  assert.ok(ev.find((e) => e.type === "end" && e.reason === "wiped"));
+  assert.equal(m.phase, "end");
 });

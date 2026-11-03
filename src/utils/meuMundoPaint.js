@@ -23,12 +23,16 @@ const PAINT = {
   HARM: 1,
   /** Vermelho: cama elástica (mm3d-35e: quem pisa é lançado para cima). */
   STEP: 2,
-  /** Amarelo (holograma): muro em pé, de frente para a mira — barra quem passa e o tiro preto. */
+  /**
+   * Turquesa (mm3d-62, pedido do Alex): muro de gelatina em pé, igual à cama
+   * elástica vermelha — quem bate nele é EMPURRADO para trás. Jogado num
+   * adversário (de preferência no ar) ele voa longe.
+   */
   WALL: 3,
 }         
                                       
 
-const PAINT_COLORS = ["#FF7A1A", "#1A161D", "#E5222E", "#FFD21F"]         
+const PAINT_COLORS = ["#FF7A1A", "#1A161D", "#E5222E", "#16D6C4"]         
 
 const TUNING = {
   /** Passo fixo da física do corpo. */
@@ -55,9 +59,9 @@ const TUNING = {
   coyote: 0.12,
 
   /** Munição por cor: começa, máximo, recarga da cápsula. */
-  ammoStart: 24,
-  ammoMax: 40,
-  capsuleGive: 20,
+  ammoStart: 45,
+  ammoMax: 90,
+  capsuleGive: 35,
   capsuleRespawn: 10,
   capsuleR: 1.1,
   /** Tiros por segundo segurando o botão (índice = cor). */
@@ -90,8 +94,17 @@ const TUNING = {
   /** Tiros pretos do outro time até o muro cair. */
   wallHits: 3,
   wallStart: 0,
-  wallGive: 10,
-  wallMax: 20,
+  wallGive: 15,
+  wallMax: 30,
+  /**
+   * Empurrão do muro (mm3d-62): quem encosta sai para trás (horizontal) e um
+   * pouco para cima; o tiro do muro que pega o adversário em cheio empurra
+   * para longe de quem atirou (no ar quase não há controle: cai da ilha).
+   */
+  wallBounce: 11,
+  wallBounceLift: 5,
+  wallShove: 12.5,
+  wallShoveLift: 6,
   /** O ícone volta depois de (s). */
   logoRespawn: 18,
   /** Tinta some depois de (s) e cada jogador tem no máximo N manchas. */
@@ -587,7 +600,15 @@ function supportIndex(solids                  , x        , z        , maxY      
  * ele não consegue subir (topo acima de `y + up`). Mexe em `p` e devolve se
  * encostou em algo.
  */
-function pushOut(solids                  , p                                     , r        , h        , up        ) {
+function pushOut(
+  solids                  ,
+  p                                     ,
+  r        ,
+  h        ,
+  up        ,
+  /** mm3d-62: encostou num muro de tinta → para onde ele empurrou (unitário) e o id da mancha. */
+  wall                                        ,
+) {
   let hit = false
   for (let pass = 0; pass < 2; pass++) {
     for (const s of solids) {
@@ -615,6 +636,12 @@ function pushOut(solids                  , p                                    
         p.x += w.x
         p.z += w.z
         hit = true
+        if (wall && s.b !== undefined) {
+          const wl = Math.hypot(w.x, w.z) || 1
+          wall.nx = w.x / wl
+          wall.nz = w.z / wl
+          wall.b = s.b
+        }
       } else {
         const ox = s.hx + r - Math.abs(p.x - s.x)
         const oz = s.hz + r - Math.abs(p.z - s.z)
@@ -770,7 +797,7 @@ function rayBody(o      , d      , b                                     , r    
 // aqui para os dois lados concordarem sobre o que dá e o que não dá.
 
 function newBody(x        , y        , z        , facing        )            {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, ground: true, air: 0, gy: y, facing, jumps: 0, bounce: null }
+  return { x, y, z, vx: 0, vy: 0, vz: 0, ground: true, air: 0, gy: y, facing, jumps: 0, bounce: null, shove: null }
 }
 
 /** Movimento para a animação: 0 parado, 1 andando, 2 correndo, 5 no ar. */
@@ -779,6 +806,7 @@ function newBody(x        , y        , z        , facing        )            {
 function stepBody(b           , it            , solids                  , dt = TUNING.step)           {
   const T = TUNING
   b.bounce = null
+  b.shove = null
   let mx = it.mx
   let mz = it.mz
   const m = Math.hypot(mx, mz)
@@ -818,7 +846,17 @@ function stepBody(b           , it            , solids                  , dt = T
   // horizontal + empurrão de lado
   b.x += b.vx * dt
   b.z += b.vz * dt
-  pushOut(solids, b, T.bodyR, T.bodyH, T.stepUp)
+  const wall = { nx: 0, nz: 0, b: NaN }
+  pushOut(solids, b, T.bodyR, T.bodyH, T.stepUp, wall)
+  if (!Number.isNaN(wall.b) && b.vx * wall.nx + b.vz * wall.nz < T.wallBounce * 0.5) {
+    // muro de gelatina (mm3d-62): quem bate é jogado para trás e para cima
+    b.vx = wall.nx * T.wallBounce
+    b.vz = wall.nz * T.wallBounce
+    b.vy = Math.max(b.vy, T.wallBounceLift)
+    b.ground = false
+    b.air = T.coyote
+    b.shove = wall.b
+  }
 
   // vertical
   const wasGround = b.ground
@@ -918,7 +956,8 @@ function liftOnto(b           , x        , z        , r        , top        ) {
 //    no chão vira só respingo.
 //  - TURQUESA (muro): placa em pé atravessada na mira, no chão onde a mira
 //    bate (perto) ou logo à frente; mirando o topo de um muro, empilha. Barra
-//    o corpo e o tiro (é sólido como a ilha).
+//    o corpo e o tiro (é sólido como a ilha) e EMPURRA quem bate (mm3d-62).
+//    Pegou um adversário em cheio: nasce na frente dele e ele voa para trás.
 
 /** Mancha nova (sem id: quem guarda dá). No muro `r` é meio comprimento e `a` para onde olha. */
                           
@@ -934,6 +973,8 @@ function liftOnto(b           , x        , z        , r        , top        ) {
                         
                                    
                                                  
+                                                                                                         
+                                                               
                                  
                                                 
                                                 
@@ -1009,6 +1050,19 @@ function resolveShot(world           , s         , c            , o      , dir  
     }
     const a = Math.atan2(hx, hz)
     const hit = raycast(world.solids, o, d, T.range[PAINT.WALL])
+    // adversário na mira antes da parede/chão: o muro nasce colado na frente
+    // dele (do lado de quem atirou) e ele é empurrado para longe
+    let near                    = null
+    let nearT = hit ? hit.t : T.range[PAINT.WALL]
+    for (const b of world.bodies) {
+      if (b.slot === s.slot || b.team === s.team) continue
+      const t = rayBody(o, d, b, T.hitR, T.bodyH, nearT)
+      if (t === null || t >= nearT) continue
+      nearT = t
+      const back = T.bodyR + T.wallT / 2 + 0.08
+      near = { kind: "shove", slot: b.slot, point: { x: o.x + d.x * t, y: o.y + d.y * t, z: o.z + d.z * t }, blob: wallOf(b.x - hx * back, b.z - hz * back, b.y - 0.4, a) }
+    }
+    if (near) return near
     if (hit && hit.normal.y > 0.5) {
       const far = Math.hypot(hit.point.x - s.x, hit.point.z - s.z)
       if (far <= T.wallReach && far > T.bodyR + T.wallT) return { kind: "blob", blob: wallOf(hit.point.x, hit.point.z, hit.point.y, a) }
@@ -1118,6 +1172,11 @@ function punchReachesBoss(a                                     , boss          
 // Depois de um renascimento a época sobe: pose de época velha é ignorada (é
 // do caminho de antes do teleporte).
 //
+// mm3d-62 (pedido do Alex): o muro virou gelatina TURQUESA que empurra quem
+// bate; o tiro dele num adversário o joga longe (na ilha do guardião também).
+// Perder para o guardião (nocaute dele ou cair da ilha dele) tira a pessoa da
+// partida; ninguém mais de pé = fim ("wiped").
+//
 // mm3d-46: quarta cor, o MURO — começa sem munição, o ícone da Freelandoo
 // (cápsula da cor 3) dá 10; o tiro preto do outro time derruba o muro no
 // terceiro acerto. O mapa sai do modo (2×2 e 3×3 com mais gatinhos).
@@ -1211,6 +1270,7 @@ class PaintMatch {
         ko: 0,
         shield: 0,
         inBoss: false,
+        out: false,
         epoch: 0,
         pose: { x: sp.x, y: sp.y, z: sp.z, facing: sp.facing, ground: true, gy: sp.y, e: 0 },
         nextFire: [0, 0, 0, 0],
@@ -1250,7 +1310,7 @@ class PaintMatch {
   }
 
           standing(p             ) {
-    return this.phase === "play" && !p.ko
+    return this.phase === "play" && !p.ko && !p.out
   }
 
   /** Corpos alvo (de pé, na arena). Na ilha do chefão jogador não atinge jogador. */
@@ -1258,7 +1318,17 @@ class PaintMatch {
     const out                   = []
     if (inBoss) return out
     for (const p of this.players.values()) {
-      if (p.ko || p.inBoss !== inBoss || !p.online) continue
+      if (p.ko || p.out || p.inBoss !== inBoss || !p.online) continue
+      out.push({ slot: p.slot, team: p.team, x: p.pose.x, y: p.pose.y, z: p.pose.z })
+    }
+    return out
+  }
+
+  /** Quem o muro pode empurrar: de pé, no mesmo lugar (na ilha do guardião também — mm3d-62). */
+          shoveBodies(inBoss         )                   {
+    const out                   = []
+    for (const p of this.players.values()) {
+      if (p.ko || p.out || p.inBoss !== inBoss || !p.online) continue
       out.push({ slot: p.slot, team: p.team, x: p.pose.x, y: p.pose.y, z: p.pose.z })
     }
     return out
@@ -1310,14 +1380,14 @@ class PaintMatch {
     p.ammo[c] -= cost
     p.nextFire[c] = Math.max(p.nextFire[c], this.time) + 1 / TUNING.fireRate[c]
     const res = resolveShot(
-      { solids: this.solids(), bodies: this.bodies(p.inBoss), boss: p.inBoss && this.bossAlive() ? this.bossBody() : null },
+      { solids: this.solids(), bodies: c === PAINT.WALL ? this.shoveBodies(p.inBoss) : this.bodies(p.inBoss), boss: p.inBoss && this.bossAlive() ? this.bossBody() : null },
       { slot, team: p.team, x: p.pose.x, y: p.pose.y, z: p.pose.z, ground: p.pose.ground, gy: p.pose.gy, facing: p.pose.facing },
       c,
       o,
       dir,
     )
     let to       = { x: o.x + dir.x * 6, y: o.y + dir.y * 6, z: o.z + dir.z * 6 }
-    if (res.kind === "blob") {
+    if (res.kind === "blob" || res.kind === "shove") {
       const id = this.blobSeq++
       const solid = blobSolid(res.blob, id, p.team)
       this.blobs.set(id, { id, owner: slot, team: p.team, born: this.time, solid, blob: res.blob })
@@ -1326,6 +1396,11 @@ class PaintMatch {
       while (p.blobs.length > TUNING.blobsPerPlayer) this.removeBlob(p.blobs[0])
       to = { x: res.blob.x, y: res.blob.y1, z: res.blob.z }
       this.emit({ type: "blob", id, owner: slot, team: p.team, blob: res.blob, q })
+      if (res.kind === "shove") {
+        to = res.point
+        const l = Math.hypot(dir.x, dir.z) || 1
+        this.shove(res.slot, dir.x / l, dir.z / l, slot)
+      }
     } else {
       if (q) this.emit({ type: "deny", slot, q }) // não virou tinta: o aparelho apaga a prevista, se houver
       if (res.kind === "player") {
@@ -1333,7 +1408,7 @@ class PaintMatch {
         this.damage(res.slot, slot, "harm")
       } else if (res.kind === "boss") {
         to = res.point
-        this.hitBoss(slot, TUNING.bossHarm)
+        this.hitBoss(slot, TUNING.bossHarm, res.point)
       } else if (res.kind === "erase") {
         to = res.point
         const wall = this.blobs.get(res.blob)
@@ -1363,7 +1438,14 @@ class PaintMatch {
     this.emit({ type: "punch", slot })
     const a = { slot, team: p.team, x: p.pose.x, y: p.pose.y, z: p.pose.z, facing: p.pose.facing }
     for (const t of punchTargets(a, this.bodies(p.inBoss))) this.damage(t.slot, slot, "punch", t.kx, t.kz)
-    if (p.inBoss && this.bossAlive() && punchReachesBoss(a, this.bossBody())) this.hitBoss(slot, TUNING.bossPunch)
+    if (p.inBoss && this.bossAlive() && punchReachesBoss(a, this.bossBody())) {
+      // o clarão nasce na pele do chefão, do lado de quem bateu
+      const b = this.boss
+      const dx = p.pose.x - b.x
+      const dz = p.pose.z - b.z
+      const d = Math.hypot(dx, dz) || 1
+      this.hitBoss(slot, TUNING.bossPunch, { x: b.x + (dx / d) * TUNING.bossR, y: p.pose.y + 1.3, z: b.z + (dz / d) * TUNING.bossR })
+    }
   }
 
           damage(slot        , by        , how                  , kx = 0, kz = 0) {
@@ -1386,15 +1468,36 @@ class PaintMatch {
     }
   }
 
-  /** Golpe do chefão: lá em cima ninguém perde gatinho, só cai e volta. */
+  /**
+   * O muro pegou `slot` em cheio (mm3d-62): sem dano, voa na direção do tiro.
+   * Vale na ilha do guardião também — jogar o outro para cima dele é o jogo.
+   */
+          shove(slot        , ux        , uz        , by        ) {
+    const v = this.players.get(slot)
+    if (!v || v.ko || v.out) return
+    const T = TUNING
+    this.emit({ type: "hit", slot, by, hp: v.hp, kx: ux * T.wallShove, ky: T.wallShoveLift, kz: uz * T.wallShove, how: "wall" })
+  }
+
+  /** Golpe do chefão: lá em cima ninguém perde gatinho; nocaute dele = fora da partida (mm3d-62). */
           bossDamage(v             , dmg        , kx        , ky        , kz        ) {
-    if (v.ko || this.time < v.shield) return
+    if (v.ko || v.out || this.time < v.shield) return
     v.hp = Math.max(0, v.hp - dmg)
     this.emit({ type: "hit", slot: v.slot, by: -1, hp: v.hp, kx, ky, kz, how: "boss" })
     if (v.hp === 0) {
       v.ko = this.time + TUNING.koTime
       this.emit({ type: "ko", slot: v.slot, by: -1 })
+      this.eliminate(v, "boss")
     }
+  }
+
+  /** Perdeu para o guardião: fora; se não sobrou ninguém de pé, a partida acaba. */
+          eliminate(v             , why                 ) {
+    if (v.out) return
+    v.out = true
+    this.emit({ type: "out", slot: v.slot, why })
+    for (const p of this.players.values()) if (p.online && !p.out) return
+    this.finish("wiped")
   }
 
   /**
@@ -1418,13 +1521,14 @@ class PaintMatch {
     }
   }
 
-          hitBoss(slot        , dmg        ) {
+          hitBoss(slot        , dmg        , at      ) {
     const p = this.players.get(slot)
     if (!p || !this.bossAlive()) return
     const real = Math.min(dmg, this.bossHp)
     this.bossHp -= real
     p.dmg += real
-    this.emit({ type: "boss", slot, dmg: real, hp: this.bossHp })
+    const r2 = (v        ) => Math.round(v * 100) / 100
+    this.emit({ type: "boss", slot, dmg: real, hp: this.bossHp, x: r2(at.x), y: r2(at.y), z: r2(at.z) })
     if (!this.bossAlive()) this.finish("boss")
   }
 
@@ -1454,7 +1558,7 @@ class PaintMatch {
   /** Quem está lá em cima e pode apanhar. */
           bossVictims() {
     const out                = []
-    for (const p of this.players.values()) if (p.inBoss && !p.ko && p.online) out.push(p)
+    for (const p of this.players.values()) if (p.inBoss && !p.ko && !p.out && p.online) out.push(p)
     return out
   }
 
@@ -1618,12 +1722,19 @@ class PaintMatch {
       }
     }
     for (const p of this.players.values()) {
+      if (p.out) continue
       if (p.ko) {
         if (this.time >= p.ko) this.respawn(p)
         continue
       }
       const q = p.pose
       if (fellOut(q.y, p.inBoss)) {
+        // caiu da ilha do guardião: perdeu para ele (mm3d-62)
+        if (p.inBoss) {
+          this.eliminate(p, "fell")
+          if (this.result) return // era o último de pé: acabou
+          continue
+        }
         this.dropCats(p)
         this.respawn(p)
         continue
@@ -1663,7 +1774,7 @@ class PaintMatch {
     if (this.time >= T.matchTime) this.finish("time")
   }
 
-  finish(reason                 ) {
+  finish(reason                           ) {
     if (this.phase === "end") return
     this.phase = "end"
     const rows = [...this.players.values()].map((p) => ({ slot: p.slot, team: p.team, dmg: p.dmg, cats: p.cats }))
