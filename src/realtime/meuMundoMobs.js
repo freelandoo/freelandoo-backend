@@ -45,6 +45,8 @@ const MOBS = Object.freeze({
   FAR_FROM_MOB: 20,
   CLAIM_REACH: 25,
   SIGHT: 12,
+  /** mm3d-60p: distância em que o jogador VÊ o monstro (o nível nasce aí). */
+  SEEN_R: 45,
   /** Metade do cone de visão (rad): ±50°. */
   SIGHT_HALF: (50 * Math.PI) / 180,
   CHASE_V: 3.2,
@@ -153,6 +155,27 @@ class MobDirector {
     this.wasNight = night;
     for (const [sid, until] of this.calm) if (until <= now) this.calm.delete(sid);
     const bySid = new Map(players.map((p) => [p.sid, p]));
+    // mm3d-60p (regra do Alex): o monstro nasce SEM nível; o PRIMEIRO jogador
+    // que o vê (dentro de SEEN_R) define — sorteio em volta do nível de
+    // aventura dele — e o nível fica para todo mundo da sala (bairro/centro).
+    for (const m of this.mobs.values()) {
+      if (m.level) continue;
+      let first = null;
+      let bd = MOBS.SEEN_R;
+      for (const p of players) {
+        if (!(p.lv > 0)) continue;
+        const d = Math.hypot(p.x - m.x, p.z - m.z);
+        if (d < bd) {
+          bd = d;
+          first = p;
+        }
+      }
+      if (first) {
+        m.level = rollMobLevel(first.lv, this.rng);
+        m.seenBy = first.sid;
+        changed = true;
+      }
+    }
 
     for (const m of this.mobs.values()) {
       if (m.mode === "fight") {
@@ -230,10 +253,6 @@ class MobDirector {
   }
 
   spawn(now, players, kind = null) {
-    // mm3d-60o: o NÍVEL é sorteado quando o monstro nasce (para aparecer em cima
-    // dele na rua), em volta do nível de aventura médio de quem está na sala.
-    const lvs = players.map((p) => p.lv).filter((l) => l > 0);
-    const around = lvs.length ? lvs.reduce((a, b) => a + b, 0) / lvs.length : 1;
     const ok = this.spots().filter(
       (p) =>
         players.every((q) => Math.hypot(q.x - p.x, q.z - p.z) >= MOBS.FAR_FROM_PLAYER) &&
@@ -245,7 +264,7 @@ class MobDirector {
     const m = {
       id: ++this.seq,
       kind: kind || this.pickKind(),
-      level: rollMobLevel(around, this.rng),
+      level: 0,
       cx: at.x,
       cz: at.z,
       a,
@@ -262,9 +281,9 @@ class MobDirector {
     return m;
   }
 
-  /** Lista que vai para a rede: [id, tipo, x, z, rumo, nível]. */
+  /** Lista que vai para a rede: [id, tipo, x, z, rumo, nível] (nível 0 = ninguém viu ainda). */
   list() {
-    return [...this.mobs.values()].map((m) => [m.id, m.kind, r2(m.x), r2(m.z), r2(m.facing), m.level || 1]);
+    return [...this.mobs.values()].map((m) => [m.id, m.kind, r2(m.x), r2(m.z), r2(m.facing), m.level || 0]);
   }
 
   get(id) {

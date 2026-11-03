@@ -45,19 +45,28 @@ test("sorteio: às vezes abaixo, quase sempre perto, às vezes muito acima", () 
   assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(58, r)).every((l) => l <= 60));
 });
 
-test("monstro nasce com nível em volta de quem está na sala e manda o nível na lista", () => {
-  const { MobDirector } = require("../../src/realtime/meuMundoMobs");
+test("monstro nasce sem nível; o PRIMEIRO que o vê define e fica para a sala", () => {
+  const { MobDirector, MOBS } = require("../../src/realtime/meuMundoMobs");
   const d = new MobDirector({ isFree: () => true, collide: (x, z) => ({ x, z }), span: 60, test: false });
   d.spots = () => [{ x: 40, z: 40 }];
-  const lv = [];
-  for (let i = 0; i < 300; i++) {
-    d.mobs.clear();
-    const m = d.spawn(Date.now(), [{ sid: "a", x: 0, z: 0, lv: 30 }, { sid: "b", x: 1, z: 0, lv: 10 }]);
-    lv.push(m.level);
-  }
-  assert.ok(lv.every((l) => l >= 15 && l <= 40), JSON.stringify([Math.min(...lv), Math.max(...lv)]));
-  assert.equal(d.list()[0].length, 6);
-  assert.equal(d.list()[0][5], d.mobs.values().next().value.level);
-  d.mobs.clear();
-  assert.ok(d.spawn(Date.now(), [{ sid: "a", x: 0, z: 0 }]).level >= 1);
+  const m = d.spawn(Date.now(), [{ sid: "a", x: 0, z: 0, lv: 30 }]);
+  assert.equal(m.level, 0);
+  assert.equal(d.list()[0][5], 0); // ninguém viu ainda: sem placa
+  // longe demais: ninguém viu
+  d.tick(Date.now(), [{ sid: "far", x: m.x + MOBS.SEEN_R + 5, z: m.z, lv: 50 }], 0.05);
+  assert.equal(m.level, 0);
+  // o primeiro que chega perto (nv 10) define; quem chega depois (nv 50) não muda
+  d.tick(Date.now(), [{ sid: "b", x: m.x + 10, z: m.z, lv: 10 }, { sid: "c", x: m.x + 30, z: m.z, lv: 50 }], 0.05);
+  const lv = m.level;
+  assert.equal(m.seenBy, "b");
+  assert.ok(lv >= 5 && lv <= 30, String(lv));
+  d.tick(Date.now(), [{ sid: "c", x: m.x + 2, z: m.z, lv: 50 }], 0.05);
+  assert.equal(m.level, lv);
+  assert.equal(d.list()[0][5], lv);
+  // nível ainda não carregado (lv 0) não define
+  const d2 = new MobDirector({ isFree: () => true, collide: (x, z) => ({ x, z }), span: 60, test: false });
+  d2.spots = () => [{ x: 40, z: 40 }];
+  const m2 = d2.spawn(Date.now(), []);
+  d2.tick(Date.now(), [{ sid: "x", x: m2.x + 3, z: m2.z, lv: 0 }], 0.05);
+  assert.equal(m2.level, 0);
 });
