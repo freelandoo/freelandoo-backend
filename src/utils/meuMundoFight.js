@@ -338,7 +338,7 @@ const MOBS                          = {
  
 const NO_GEAR            = { dmg: 0, def: 0, stam: 0, warn: 0, power: 0 }
 /** Teto de segurança do lado da regra (o servidor já corta antes). */
-const GEAR_MAX            = { dmg: 0.18, def: 0.12, stam: 0.08, warn: 0.08, power: 0.12 }
+const GEAR_MAX            = { dmg: 0.35, def: 0.25, stam: 0.12, warn: 0.12, power: 0.18 }
 function clampGear(g                     )            {
   const out = { ...NO_GEAR }
   if (!g) return out

@@ -120,9 +120,9 @@ test("destreza: menos fôlego e ranque com 30% do peso", () => {
 // ── slice 3: equipamento ──
 const Gear = require("../../src/utils/meuMundoGear");
 
-test("equipamento: catálogo com ids únicos, imagem por categoria e 24 itens novos", () => {
-  assert.equal(Gear.GEAR.length, 24);
-  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 24);
+test("equipamento: catálogo com ids únicos e os 63 itens da forja", () => {
+  assert.equal(Gear.GEAR.length, 63);
+  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 63);
   for (const g of Gear.GEAR) {
     assert.ok(Gear.CATEGORIES.includes(g.category), g.id);
     assert.ok(Gear.RARITIES.includes(g.rarity), g.id);
@@ -138,9 +138,9 @@ test("equipamento: arma da classe, independente de skin; bônus somados com teto
   assert.equal(Gear.canEquip(staff, { clan: "raposa", level: 1, owned: true }), "level");
   assert.equal(Gear.canEquip(staff, { clan: "raposa", level: 3, owned: true }), null);
   const b = Gear.gearBonus({ weapon: { id: "espada_eter", level: 5 }, armor: { id: "couraca_rebitada", level: 5 }, acc1: { id: "amuleto_aurion" }, acc2: { id: "luvas_precisao" } });
-  assert.equal(b.dmg, Gear.GEAR_CAP.dmg, "dano no teto (0,10 + 5×0,02 = 0,20 → 0,18)");
-  assert.equal(b.def, Gear.GEAR_CAP.def, "defesa no teto");
-  assert.equal(b.power, Gear.GEAR_CAP.power);
+  assert.equal(b.dmg, 0.2, "preserva a soma 0,10 + 5×0,02 dentro do novo teto");
+  assert.equal(b.def, 0.155, "proteção mantém o bônus anterior e o refinamento");
+  assert.equal(b.power, 0.15);
 });
 
 test("drop: material comum garantido com participação; vitória aumenta; nunca vazio", () => {
@@ -156,7 +156,7 @@ test("drop: material comum garantido com participação; vitória aumenta; nunca
 test("luta com equipamento: mais dano dado, menos levado, teto do lado da regra", () => {
   const base = new F.Fight({ kind: "golem", seed: 3 });
   const geared = new F.Fight({ kind: "golem", seed: 3, gear: { dmg: 0.5, def: 0.12 } });
-  assert.ok(Math.abs(geared.fx.dmg / base.fx.dmg - 1.18) < 1e-9, "dano cortado em +18%");
+  assert.ok(Math.abs(geared.fx.dmg / base.fx.dmg - 1.35) < 1e-9, "dano cortado no novo teto de +35%");
   assert.equal(geared.gear.def, 0.12);
 });
 

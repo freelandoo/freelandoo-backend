@@ -29,7 +29,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -144,19 +144,22 @@ async function main() {
   const bag0 = (await Gear.get(id)).bag;
   check("mochila mostra a espada equipada", bag0.equipped.weapon === "espada_aprendiz");
 
-  // nível 1 não compra a espada de latão (nível 2)
+  // Armas compostas agora são montadas, não compradas inteiras.
   const k = () => crypto.randomUUID();
-  const low = await Gear.buy(id, { item: "espada_latao", key: k() });
+  const noWeaponShortcut = await Gear.buy(id, { item: "espada_latao", key: k() });
+  check("arma composta não tem atalho de compra", noWeaponShortcut.code === "forsale");
+  // nível 1 não compra a couraça rebitada (nível 3)
+  const low = await Gear.buy(id, { item: "couraca_rebitada", key: k() });
   check("requisito de nível no servidor", low.code === "level", JSON.stringify(low));
   await pool2.query(`UPDATE tb_mm_adventure SET xp = 500 WHERE id_user = $1`, [id]);
   await pool2.query(`UPDATE tb_mm_wallet SET coins = 1000 WHERE id_user = $1`, [id]);
 
   // mesmo pedido em duas abas: cobra uma vez
   const key1 = k();
-  const [p1, p2] = await Promise.all([Gear.buy(id, { item: "espada_latao", key: key1 }), Gear.buy(id, { item: "espada_latao", key: key1 })]);
+  const [p1, p2] = await Promise.all([Gear.buy(id, { item: "couraca_rebitada", key: key1 }), Gear.buy(id, { item: "couraca_rebitada", key: key1 })]);
   check("compra repetida = mesmo recibo", p1.receipt && p2.receipt && p1.receipt.eventId === p2.receipt.eventId, JSON.stringify([p1.error, p2.error]));
   const coinsA = Number((await pool2.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [id])).rows[0].coins);
-  check("cobrou 600 uma vez", Math.round(coinsA) === 400 || Math.round(coinsA) > 395, String(coinsA));
+  check("cobrou 700 uma vez", Math.round(coinsA) === 300, String(coinsA));
 
   // duas compras DIFERENTES com saldo para uma só: nunca negativo
   const [c1, c2] = await Promise.all([Gear.buy(id, { item: "colete_couro", key: k() }), Gear.buy(id, { item: "relogio_bolso", key: k() })]);
@@ -164,6 +167,8 @@ async function main() {
   check("saldo nunca negativo em compras concorrentes", coinsB >= 0 && [c1, c2].filter((x) => x.code === "coins").length === 1, JSON.stringify([c1.code, c2.code, coinsB]));
 
   // equipar: arma de outra classe recusada
+  // Uma arma antiga permanece válida depois da introdução da montagem.
+  await pool2.query(`INSERT INTO tb_mm_gear (id_user, item_id, qty) VALUES ($1, 'espada_latao', 1)`, [id]);
   await pool2.query(`INSERT INTO tb_mm_gear (id_user, item_id, qty) VALUES ($1, 'cajado_latao', 1)`, [id]);
   const wrong = await Gear.equip(id, { slot: "weapon", item: "cajado_latao" });
   check("arma de outra classe não equipa", wrong.code === "clan");

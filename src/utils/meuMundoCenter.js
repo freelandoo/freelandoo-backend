@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 10; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (2 = hospital, mm3d-26; 3 = Paint, mm3d-35; 4 = praça aberta ao carro, mm3d-37f; 5 = Corrida antigravidade, mm3d-39; 6 = Rolê Noturno, mm3d-40; 7 = Arena de Boxe, mm3d-43; 8 = Gincana, mm3d-47; 9 = Arena das Lâminas e Salão do Hall da Fama, mm3d-48; 10 = Morkhan na praça, mm3d-50)
+const CENTER_VERSION = 11; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -66,6 +66,11 @@ const PLACE_DEFS = [
   { id: "escola", zone: "educacional", rect: [FRONT, FRONT + 16, -55, -39], h: 6.5, peak: 9.5, front: "w", door: -47, doorW: 2.4 },
   // Sul — atividades (fachadas viradas para o norte, z = -FRONT)
   { id: "academia", zone: "atividades", rect: [-22, -2, -FRONT - 16, -FRONT], h: 7, peak: 9.5, front: "n", door: -12, doorW: 3.4 },
+  // Oficinas atrás da academia. O corredor norte tem 3 m (z -49 a -46),
+  // ligado ao caminho a oeste da academia: não ocupa vias, vagas ou o hospital.
+  // O vão de 1 m entre as oficinas é técnico, não é uma passagem pública.
+  { id: "forja", zone: "comercial", rect: [-22, -12.5, -62, -49], h: 7.2, peak: 12, front: "n", door: -17.25, doorW: 2.4 },
+  { id: "arsenal", zone: "comercial", rect: [-11.5, -2, -62, -49], h: 7, peak: 10.5, front: "n", door: -6.75, doorW: 2.4 },
   // game: o local abre um minijogo no cliente em vez de um interior (mm3d-20).
   // party: o minijogo aceita até N na mesma partida (sala JetpackRoom, mm3d-21).
   { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack", party: 4 },
@@ -293,6 +298,8 @@ const GROUNDS = Object.freeze([
   hospitalPad("walk", 0.5, 3, 6.5, 19),
   hospitalPad("mark", -7.6, -7.4, 0.3, 7),
   hospitalPad("mark", -3.6, -3.4, 0.3, 7),
+  // Caminho das oficinas: fica no corredor livre, fora dos dois prédios.
+  Object.freeze({ kind: "walk", x: -12.25, z: -47.5, w: 24.5, d: 2.2, rot: 0 }),
 ]);
 // Ambulância estacionada na baia, de bico para a praça (pronta para sair).
 const AMBULANCE = Object.freeze({ id: "ambulancia", ...hospitalAt(-5.5, 3.7), facing: round(HOSPITAL.rotationY - Math.PI), half: Object.freeze({ x: 1.08, z: 2.8 }), h: 2.9 });

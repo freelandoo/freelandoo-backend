@@ -484,7 +484,60 @@ function hall() {
   };
 }
 
-const PLANS = { pizzaria, hamburgueria, supermercado, universidade, biblioteca, escola, academia, igreja, delegacia, hall };
+// Oficinas de 9,5 × 13 m: corredor central contínuo da entrada aos balcões.
+// O javali Mestre de Armas permanece personagem planejado; não há asset dele
+// nesta entrega. Os atendentes usam corpos não humanos já presentes no jogo.
+function forja() {
+  return {
+    level: 0,
+    version: "centro-forja-v1",
+    name: "Forja de Lúmen",
+    theme: "forja",
+    door: D(0, 0, 2.2),
+    floors: [{
+      rooms: [R("oficina", "Oficina", "stone", -4.35, 0, 4.35, 12.4)],
+      furniture: [
+        ["forge_anvil", -1.7, 6.3, 0],
+        ["refining_bench", 2.9, 6.9, 90],
+        ["forge_furnace", 0, 11.2, 0],
+        ["shelf", -3.92, 9.4, -90],
+        ["cabinet", 3.7, 10.6, 0],
+        ["weapon_rack", -3.8, 3.0, -90],
+        ["lamp", -3.8, 0.65, 0],
+        ["lamp", 3.8, 0.65, 0],
+      ],
+    }],
+    npcs: [{ role: "forjador", x: -1.7, z: 7.9, r: 0 }],
+  };
+}
+
+function arsenal() {
+  return {
+    level: 0,
+    version: "centro-arsenal-v1",
+    name: "Arsenal de Lúmen",
+    theme: "arsenal",
+    door: D(0, 0, 2.2),
+    floors: [{
+      rooms: [R("vitrine", "Arsenal", "wood", -4.35, 0, 4.35, 12.4)],
+      furniture: [
+        ["armory_counter", 0, 8.7, 0],
+        ["weapon_rack", -3.7, 3.4, -90],
+        ["weapon_rack", 3.7, 3.4, 90],
+        ["weapon_rack", -3.7, 6.7, -90],
+        ["weapon_rack", 3.7, 6.7, 90],
+        ["cabinet", -2.7, 11.75, 0],
+        ["cabinet", 2.7, 11.75, 0],
+        ["rug", 0, 4.4, 0, { w: 1.9, d: 5.8 }],
+        ["lamp", -3.8, 0.65, 0],
+        ["lamp", 3.8, 0.65, 0],
+      ],
+    }],
+    npcs: [{ role: "armeira", x: 0, z: 10.2, r: 0 }],
+  };
+}
+
+const PLANS = { pizzaria, hamburgueria, supermercado, universidade, biblioteca, escola, academia, igreja, delegacia, hall, forja, arsenal };
 
 const CENTER_INTERIORS = Object.freeze(Object.fromEntries(Object.entries(PLANS).map(([id, f]) => [id, Object.freeze(buildInterior(f()))])));
 

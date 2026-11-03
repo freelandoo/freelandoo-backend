@@ -10,8 +10,8 @@ const { isFreeSpot } = require("../../src/utils/meuMundoInteriorMotion");
 const uses = (d) => [...d.seats.map((s) => s.use), ...d.spots.map((s) => s.use)].filter(Boolean);
 const count = (d, u) => uses(d).filter((x) => x === u).length;
 
-test("os dez prédios montam sem problema, com entrada livre e saída pela porta", () => {
-  assert.deepEqual(Object.keys(I).sort(), ["academia", "biblioteca", "delegacia", "escola", "hall", "hamburgueria", "igreja", "pizzaria", "supermercado", "universidade"]);
+test("os doze prédios montam sem problema, com entrada livre e saída pela porta", () => {
+  assert.deepEqual(Object.keys(I).sort(), ["academia", "arsenal", "biblioteca", "delegacia", "escola", "forja", "hall", "hamburgueria", "igreja", "pizzaria", "supermercado", "universidade"]);
   for (const [id, d] of Object.entries(I)) {
     assert.deepEqual(d.problems, [], id);
     assert.ok(isFreeSpot(d, 0, d.entry.x, d.entry.z), `${id}: entrada livre`);
@@ -29,6 +29,31 @@ test("cada prédio tem o seu uso", () => {
   assert.equal(count(I.supermercado, "market"), 2, "dois caixas");
   assert.equal(count(I.supermercado, "seller"), 1, "a cadeira em frente ao vendedor");
   assert.equal(count(I.delegacia, "police"), 1, "o balcão da delegacia");
+  assert.equal(count(I.forja, "forge"), 1, "a bigorna abre a forja");
+  assert.equal(count(I.forja, "refine"), 1, "a bancada abre o refinamento");
+  assert.equal(count(I.arsenal, "armory"), 1, "o balcão abre o arsenal");
+});
+
+test("oficinas: cada bancada é alcançável da entrada sem atravessar móveis ou NPCs", () => {
+  const cell = 0.2;
+  for (const id of ["forja", "arsenal"]) {
+    const d = I[id];
+    const key = (x, z) => `${Math.round(x / cell)},${Math.round(z / cell)}`;
+    const q = [[d.entry.x, d.entry.z + 1.6]];
+    const seen = new Set([key(...q[0])]);
+    while (q.length) {
+      const [x, z] = q.pop();
+      for (const [dx, dz] of [[cell, 0], [-cell, 0], [0, cell], [0, -cell]]) {
+        const nx = Math.round((x + dx) * 1000) / 1000;
+        const nz = Math.round((z + dz) * 1000) / 1000;
+        const k = key(nx, nz);
+        if (seen.has(k) || !isFreeSpot(d, 0, nx, nz)) continue;
+        seen.add(k);
+        q.push([nx, nz]);
+      }
+    }
+    for (const spot of d.spots) assert.ok(seen.has(key(spot.x, spot.z)), `${id}: ${spot.use} alcançável`);
+  }
 });
 
 test("o vendedor fica sentado e a cadeira dele não é oferecida a ninguém", () => {

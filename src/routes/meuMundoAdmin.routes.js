@@ -73,6 +73,9 @@ router.post("/gear/buy", ...admin, asyncHandler(MeuMundoController.gearBuy));
 router.post("/gear/equip", ...admin, asyncHandler(MeuMundoController.gearEquip));
 router.post("/gear/forge", ...admin, asyncHandler(MeuMundoController.gearForge));
 router.post("/gear/upgrade", ...admin, asyncHandler(MeuMundoController.gearUpgrade));
+router.post("/gear/refine", ...admin, rateLimit.checkout, asyncHandler(MeuMundoController.gearRefine));
+router.post("/gear/refine/resolve", ...admin, rateLimit.checkout, asyncHandler(MeuMundoController.gearRefineResolve));
+router.post("/gear/use", ...admin, asyncHandler(MeuMundoController.gearUse));
 router.post("/gear/recycle", ...admin, asyncHandler(MeuMundoController.gearRecycle));
 // mm3d-59: missões — o servidor confere cada objetivo; recompensa por recibo único.
 router.get("/quest", ...admin, asyncHandler(MeuMundoController.questGet));

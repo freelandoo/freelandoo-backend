@@ -277,6 +277,7 @@ class MeuMundoAdventureService {
         style: origin !== "boxe" && clan === "raposa" ? "mage" : undefined,
         // equipamento (com teto somado); o ringue do Boxe é de luvas: sem arma
         gear: origin === "boxe" ? undefined : await GearService().fightGear(c, idUser, clan),
+        appearance: origin === "boxe" ? undefined : await GearService().fightAppearance(c, idUser, clan),
         mobId,
       };
       // tutorial: o inimigo entra enfraquecido (pedido do prólogo)
@@ -286,7 +287,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, gear: setup.gear ?? null },
+          setup: { kind, level, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,

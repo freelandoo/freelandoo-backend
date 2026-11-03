@@ -134,6 +134,12 @@ const FURNITURE = Object.freeze({
   hero_statue: { w: 1.6, d: 1.6, h: 3.4 },
   honor_wall: { w: 10.0, d: 0.5, h: 3.4 },
   empty_base: { w: 1.2, d: 1.2, h: 1.1 },
+  // Oficinas: a posição de uso é calculada e validada como nos outros balcões.
+  forge_anvil: { w: 1.8, d: 1.1, h: 1.05, use: "forge" },
+  refining_bench: { w: 2.3, d: 0.9, h: 1.3, use: "refine" },
+  armory_counter: { w: 3.0, d: 0.8, h: 1.05, use: "armory" },
+  forge_furnace: { w: 2.0, d: 1.4, h: 2.7 },
+  weapon_rack: { w: 1.8, d: 0.45, h: 2.0 },
 });
 
 const DEG = Math.PI / 180;

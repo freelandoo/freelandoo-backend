@@ -177,6 +177,15 @@ async function gearForge(req, res) {
 async function gearUpgrade(req, res) {
   return reply(res, await gear().upgrade(req.user.id_user, req.body || {}));
 }
+async function gearRefine(req, res) {
+  return reply(res, await gear().refine(req.user.id_user, req.body || {}));
+}
+async function gearRefineResolve(req, res) {
+  return reply(res, await gear().resolveRefine(req.user.id_user, req.body || {}));
+}
+async function gearUse(req, res) {
+  return reply(res, await gear().use(req.user.id_user, req.body || {}));
+}
 // mm3d-59 slice 5: missões (o prólogo)
 const quest = () => require("../services/MeuMundoQuestService");
 async function questGet(req, res) {
@@ -337,6 +346,9 @@ module.exports = {
   gearEquip,
   gearForge,
   gearUpgrade,
+  gearRefine,
+  gearRefineResolve,
+  gearUse,
   gearRecycle,
   questGet,
   questAdvance,
