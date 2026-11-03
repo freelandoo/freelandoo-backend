@@ -19,6 +19,9 @@ const Life = require("../utils/meuMundoLife");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
 const Gear = require("../utils/meuMundoGear");
+const { CLAN_BODIES } = require("../utils/meuMundoClans");
+/** Classe do corpo vestido (raposa/vampiro) ou null se não é corpo de classe. */
+const clanOfBody = (b) => (CLAN_BODIES.includes(b) ? (String(b).startsWith("raposa") ? "raposa" : "vampiro") : null);
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
 
@@ -258,7 +261,12 @@ class MeuMundoAdventureService {
     }
     if (!FightSim.MOB_KINDS.includes(kind)) return fail("kind");
     if (kind === "soldier") level = Math.min(level, 2);
-    const clan = (await MeuMundoStorage.getClan(require("../databases"), idUser)).clan;
+    // Kit da luta (2026-11-03, Alex: "a raposa está com espada e golpes de vampira"):
+    // vestindo o personagem de uma classe (skin de classe, hoje só de admin), a
+    // luta é a DELE — arma, golpes e equipamento; senão, a classe da conta.
+    const db = require("../databases");
+    const worn = await MeuMundoStorage.getBody(db, idUser);
+    const clan = clanOfBody(worn) ?? (await MeuMundoStorage.getClan(db, idUser)).clan;
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       if (s.status !== "alive") return fail("dead");
       const c = ctx.client;
