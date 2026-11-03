@@ -25,6 +25,7 @@
 // Nada aqui sabe de Colyseus: a sala chama `tick`, `list`, `engage`, `claim`,
 // `release` e `drop`.
 
+const { rollMobLevel } = require("../utils/meuMundoAdventure");
 const KINDS = Object.freeze([
   ["wolf", 35],
   ["golem", 25],
@@ -229,6 +230,10 @@ class MobDirector {
   }
 
   spawn(now, players, kind = null) {
+    // mm3d-60o: o NÍVEL é sorteado quando o monstro nasce (para aparecer em cima
+    // dele na rua), em volta do nível de aventura médio de quem está na sala.
+    const lvs = players.map((p) => p.lv).filter((l) => l > 0);
+    const around = lvs.length ? lvs.reduce((a, b) => a + b, 0) / lvs.length : 1;
     const ok = this.spots().filter(
       (p) =>
         players.every((q) => Math.hypot(q.x - p.x, q.z - p.z) >= MOBS.FAR_FROM_PLAYER) &&
@@ -240,6 +245,7 @@ class MobDirector {
     const m = {
       id: ++this.seq,
       kind: kind || this.pickKind(),
+      level: rollMobLevel(around, this.rng),
       cx: at.x,
       cz: at.z,
       a,
@@ -256,9 +262,9 @@ class MobDirector {
     return m;
   }
 
-  /** Lista que vai para a rede: [id, tipo, x, z, rumo]. */
+  /** Lista que vai para a rede: [id, tipo, x, z, rumo, nível]. */
   list() {
-    return [...this.mobs.values()].map((m) => [m.id, m.kind, r2(m.x), r2(m.z), r2(m.facing)]);
+    return [...this.mobs.values()].map((m) => [m.id, m.kind, r2(m.x), r2(m.z), r2(m.facing), m.level || 1]);
   }
 
   get(id) {

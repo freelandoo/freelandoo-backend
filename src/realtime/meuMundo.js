@@ -479,6 +479,7 @@ class BairroRoom extends Room {
     presence.setPlacement(userId, { scene: "nb", nbId: this.neighborhoodId });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: residence.lot_number, visitor });
     client.send("mobs", { l: this.mobDirector.list() });
+    this.loadAdv(client.sessionId, userId);
     refreshLife(userId);
     log.info("join", { roomId: this.roomId, online: this.state.players.size, visitor });
   }
@@ -889,7 +890,7 @@ class BairroRoom extends Room {
   // recebe "mcatch" e a luta abre sozinha no aparelho.
   tickMobs(now, dt) {
     const players = [];
-    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z });
+    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z, lv: s.adv || 0 });
     const { changed, caught } = this.mobDirector.tick(now, players, dt);
     for (const c of caught) {
       const client = this.clients.find((k) => k.sessionId === c.sid);
@@ -921,6 +922,18 @@ class BairroRoom extends Room {
     if (msg.r !== 1) this.mobDirector.release(Number(msg.id), client.sessionId, now, msg.b === 1);
   }
 
+  /** mm3d-60o: nível de aventura de quem está na sala (o monstro nasce em volta dele). */
+  loadAdv(sid, userId) {
+    const AdvStore = require("../storages/MeuMundoAdventureStorage");
+    const { levelOf } = require("../utils/meuMundoAdventure");
+    AdvStore.getAdventure(pool, userId)
+      .then((a) => {
+        const s = this.sim.get(sid);
+        if (s) s.adv = levelOf(Number(a.xp)).level;
+      })
+      .catch(() => {});
+  }
+
   /** Sessão (nesta sala) do usuário, ou null. */
   sidOf(userId) {
     for (const [sid, s] of this.sim) if (s.userId === userId) return sid;
@@ -933,6 +946,8 @@ class BairroRoom extends Room {
     if (!sid) return false;
     const s = this.sim.get(sid);
     const now = Date.now();
+    // a luta pode ter subido o nível de aventura
+    this.loadAdv(sid, userId);
     if (!win) return this.mobDirector.release(Number(mobId), sid, now, false);
     const m = this.mobDirector.claim(Number(mobId), s.body.x, s.body.z, sid);
     if (!m) return false;
@@ -1571,6 +1586,7 @@ class CentroRoom extends BairroRoom {
     presence.setPlacement(userId, { scene: "center", roomId: this.roomId, from: pl.from || null });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: slot, visitor: false });
     client.send("mobs", { l: this.mobDirector.list() });
+    this.loadAdv(client.sessionId, userId);
     refreshLife(userId);
     this.syncLockSoon();
     log.info("center.join", { roomId: this.roomId, online: this.state.players.size, slot, held: !!back });
