@@ -29,7 +29,8 @@ test("status do monstro crescem com o nível e param no 60", () => {
   const f = new F.Fight({ kind: "wolf", level: 20, seed: 3 });
   assert.equal(f.level, 20);
   assert.equal(f.mobs[0].hpMax, Math.round(F.MOBS.wolf.hp * F.mobLevelScale(20).hp));
-  assert.equal(new F.Fight({ kind: "soldier", level: 9, seed: 3 }).level, 2);
+  // 2026-11-03: o Golem de Pedra da rua tem nível sorteado (o corte 1–2 do menu é do servidor)
+  assert.equal(new F.Fight({ kind: "soldier", level: 9, seed: 3 }).level, 9);
 });
 
 test("sorteio: às vezes abaixo, quase sempre perto, às vezes muito acima", () => {

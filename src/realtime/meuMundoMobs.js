@@ -26,11 +26,13 @@
 // `release` e `drop`.
 
 const { rollMobLevel } = require("../utils/meuMundoAdventure");
+// 2026-11-03 (Alex): o Golem de Pedra ("soldier" na regra) também anda na rua.
 const KINDS = Object.freeze([
-  ["wolf", 35],
-  ["golem", 25],
-  ["harpy", 20],
-  ["brute", 20],
+  ["wolf", 30],
+  ["soldier", 20],
+  ["golem", 20],
+  ["harpy", 15],
+  ["brute", 15],
 ]);
 
 const MOBS = Object.freeze({

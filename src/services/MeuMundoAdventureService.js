@@ -260,7 +260,8 @@ class MeuMundoAdventureService {
       level = 1;
     }
     if (!FightSim.MOB_KINDS.includes(kind)) return fail("kind");
-    if (kind === "soldier") level = Math.min(level, 2);
+    // o Golem de Pedra do menu da Arena tem só os níveis 1 e 2; o da rua vem com o nível sorteado
+    if (kind === "soldier" && origin !== "mob") level = Math.min(level, 2);
     // Kit da luta (2026-11-03, Alex: "a raposa está com espada e golpes de vampira"):
     // vestindo o personagem de uma classe (skin de classe, hoje só de admin), a
     // luta é a DELE — arma, golpes e equipamento; senão, a classe da conta.

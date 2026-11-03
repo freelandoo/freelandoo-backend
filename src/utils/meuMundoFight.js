@@ -535,8 +535,9 @@ class Fight {
     this.R = rng(setup.seed ?? (Date.now() & 0x7fffffff))
     this.kind = setup.kind
     this.combo = setup.style === "mage" ? MAGE_COMBO : COMBO
-    // O Golem de Pedra (o antigo Soldado) tem só os níveis 1 e 2 (Alex, 29/10).
-    this.level = clamp(Math.round(setup.level ?? 1), 1, setup.kind === "soldier" ? 2 : MOB_LEVEL_MAX)
+    // O Golem de Pedra do menu tem só os níveis 1 e 2 (Alex, 29/10) — quem corta é o
+    // servidor (e o menu); na rua (2026-11-03) ele vem com o nível sorteado, até 60.
+    this.level = clamp(Math.round(setup.level ?? 1), 1, MOB_LEVEL_MAX)
     const stats = { ...BASE_STATS, ...(setup.stats ?? {}) }
     this.gear = clampGear(setup.gear)
     this.heroLevel = clamp(Math.round(Number(setup.hero) || 1), 1, HERO_LEVEL_MAX)
