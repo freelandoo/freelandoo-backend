@@ -232,7 +232,8 @@ const MOBS                          = {
     engage: 4.5,
     poise: 2,
     rest: [1.2, 2.2],
-    flies: true,
+    // 2026-11-03 (Alex: "deixa a dama sem ficar voando"): luta NO CHÃO — sem
+    // altura, sempre pode levar golpe; o "dive" virou um bote rasteiro.
     attacks: [
       { id: "dive", windup: 1.0, active: 0.45, recover: 1.2, range: 1.6, arc: 1.6, dmg: 16, lunge: 11, weight: 3, minD: 2.5, maxD: 8, heavy: true },
       { id: "claw", windup: 0.55, active: 0.2, recover: 0.6, range: 1.8, arc: 1.5, dmg: 9, lunge: 1.5, weight: 2, minD: 0, maxD: 2.2 },
@@ -968,7 +969,7 @@ class Fight {
         const a = def.attacks[m.atk]
         // Durante o aviso acompanha o jogador devagar (o golpe de área marca o ponto no fim).
         m.facing = turnTo(m.facing, toMe, (a.area ? 2.5 : 1.6) * DT)
-        if (a.id === "dive") m.y += (3.4 - m.y) * Math.min(1, 4 * DT)
+        if (a.id === "dive" && def.flies) m.y += (3.4 - m.y) * Math.min(1, 4 * DT)
         if (m.t >= m.windup) {
           const reach = a.reach ?? 0
           m.aimX = m.x + Math.sin(m.facing) * reach
