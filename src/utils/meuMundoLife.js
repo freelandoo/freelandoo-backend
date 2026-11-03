@@ -204,8 +204,12 @@ const ATTR = Object.freeze({
   OVER_FACTOR: 0.05,
   REGAIN: 2,
   FLOOR: { intelligence: 0.9, strength: 0.6, speed: 0.6, dexterity: 0.6 },
-  // mm3d-59: destreza não decai nesta primeira versão (pedido do Alex).
-  DECAY_DAY: { intelligence: 0.3, strength: 1, speed: 1, dexterity: 0 },
+  // Sem praticar, cai por dia (2026-11-03, pedido do Alex): força, velocidade
+  // e destreza 5 pontos (até 60% do pico); inteligência 1 (até 90%). Só cai
+  // depois de DECAY_AFTER_H sem praticar aquele atributo — quem treina todo
+  // dia não perde nas horas em que não está treinando.
+  DECAY_DAY: { intelligence: 1, strength: 5, speed: 5, dexterity: 5 },
+  DECAY_AFTER_H: 24,
   // mm3d-59: ORÇAMENTO DIÁRIO (pontos-base, ANTES da curva, dia de Brasília).
   // Todas as fontes do mesmo atributo (academia, universidade, minijogos,
   // lutas) gastam o mesmo saldo; os multiplicadores (disciplina, suplementos,
@@ -676,8 +680,16 @@ function spendBudget(s, k, base, t) {
  * depois pela curva (uma vez); a memória (REGAIN×) vale só até o pico
  * anterior — o que passa do pico cresce no ritmo normal. Devolve o ganho real.
  */
+/** Marca que o atributo foi praticado agora (zera a contagem para começar a cair). */
+function practiced(s, k, t) {
+  if (t == null) return;
+  if (!s.practiced) s.practiced = {};
+  s.practiced[k] = t;
+}
+
 function gain(s, k, base, t = s.simAt) {
   if (!(base > 0)) return 0;
+  practiced(s, k, t);
   const b = t == null ? base : spendBudget(s, k, base, t);
   if (b <= 0) return 0;
   const v0 = s[k];
@@ -704,6 +716,7 @@ function gain(s, k, base, t = s.simAt) {
  */
 function dropAttr(s, k, pts) {
   if (!(pts > 0) || !ATTRS.includes(k)) return 0;
+  practiced(s, k, s.simAt);
   const v0 = s[k];
   s[k] = clamp(v0 + pts, 0, ATTR.MAX);
   if (s[k] > (s.peaks[k] ?? 0)) s.peaks[k] = s[k];
@@ -716,7 +729,11 @@ function lifeStage(s, t) {
   return { ageDays: g.ageDays, adult: !!(s.growth && s.growth.stage === "adult") };
 }
 
-function decay(s, k, dt) {
+function decay(s, k, dt, t) {
+  if (!s.practiced) s.practiced = {};
+  // sem registro (personagem de antes desta regra): a contagem começa agora
+  if (!(s.practiced[k] > 0)) s.practiced[k] = t;
+  if (t - s.practiced[k] < ATTR.DECAY_AFTER_H * HOUR) return;
   const floor = attrFloor(s, k);
   if (s[k] <= floor) return;
   s[k] = Math.max(floor, s[k] - (ATTR.DECAY_DAY[k] / 24) * dt);
@@ -855,11 +872,17 @@ function stepState(s, t, dt, events, out) {
     if (growthProgress(s, t).ready) growUp(s, t, events);
   }
   // Sem praticar, cai devagar — nunca abaixo do piso (fração do pico).
-  if (kind !== "studying" && kind !== "working") decay(s, "intelligence", dt);
-  if (kind !== "training") {
-    decay(s, "strength", dt);
-    decay(s, "speed", dt);
+  if (kind === "studying" || kind === "working") practiced(s, "intelligence", t);
+  else decay(s, "intelligence", dt, t);
+  if (kind === "training") {
+    practiced(s, "strength", t);
+    practiced(s, "speed", t);
+  } else {
+    decay(s, "strength", dt, t);
+    decay(s, "speed", dt, t);
   }
+  // destreza sobe nos minijogos e nas lutas (recibos marcam a prática)
+  decay(s, "dexterity", dt, t);
 
   // Estresse
   let ds = rate.stress;
