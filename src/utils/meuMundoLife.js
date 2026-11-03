@@ -697,6 +697,25 @@ function gain(s, k, base, t = s.simAt) {
   return s[k] - v0;
 }
 
+/**
+ * mm3d-60k — DROP de atributo da luta (regra do Alex): o número que caiu É o
+ * ganho. Não passa pelo orçamento do dia nem pela curva (quem limita é a
+ * energia que a luta gasta). Atualiza o pico. Devolve o ganho real.
+ */
+function dropAttr(s, k, pts) {
+  if (!(pts > 0) || !ATTRS.includes(k)) return 0;
+  const v0 = s[k];
+  s[k] = clamp(v0 + pts, 0, ATTR.MAX);
+  if (s[k] > (s.peaks[k] ?? 0)) s.peaks[k] = s[k];
+  return s[k] - v0;
+}
+
+/** Idade (dias) desde o nascimento do hóspede e se já é adulto. */
+function lifeStage(s, t) {
+  const g = growthProgress(s, t);
+  return { ageDays: g.ageDays, adult: !!(s.growth && s.growth.stage === "adult") };
+}
+
 function decay(s, k, dt) {
   const floor = attrFloor(s, k);
   if (s[k] <= floor) return;
@@ -1509,6 +1528,8 @@ module.exports = {
   ATTRS,
   birthDexterity,
   gain,
+  dropAttr,
+  lifeStage,
   budgetLeft,
   localParts,
   HOUR,

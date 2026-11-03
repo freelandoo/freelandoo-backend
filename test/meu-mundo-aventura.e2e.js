@@ -106,10 +106,12 @@ async function main() {
   check("vitória decidida pelo servidor", rec.result.win === fight.over.win);
   const adv = (await pool.query(`SELECT xp FROM tb_mm_adventure WHERE id_user = $1`, [id])).rows[0];
   check("XP gravado uma vez", Number(adv.xp) === rec.deltas.xp.xp && rec.deltas.xp.xp > 0, JSON.stringify([adv, rec.deltas.xp]));
-  check("força e destreza praticadas", rec.deltas.attrs.strength > 0 && rec.deltas.attrs.dexterity > 0, JSON.stringify(rec.deltas.attrs));
+  // mm3d-60k: atributo da luta = DROP (pontos inteiros nos 4 atributos) + moedas
+  check("luta dropa atributo", Object.values(rec.deltas.attrs).reduce((x, y) => x + y, 0) > 0 && Object.keys(rec.deltas.attrs).every((k) => ["strength", "dexterity", "speed", "intelligence"].includes(k)), JSON.stringify(rec.deltas.attrs));
+  check("luta dropa moedas", rec.deltas.coins > 0, JSON.stringify(rec.deltas));
   check("custo de energia efetivo no recibo", rec.deltas.vitals.energy <= 0 && rec.deltas.vitals.energy >= -5, JSON.stringify(rec.deltas.vitals));
   const life1 = (await Life.peek(id)).character;
-  check("snapshot mostra destreza e orçamento de hoje", life1.attributes.dexterity > 0 && life1.attributes.budgetToday.strength.used > 0, JSON.stringify(life1.attributes.budgetToday));
+  check("snapshot mostra destreza; a luta não gasta o orçamento do dia", life1.attributes.dexterity > 0 && life1.attributes.budgetToday.strength.used === 0, JSON.stringify(life1.attributes.budgetToday));
   check("energia caiu (vida passiva + luta)", life1.vitals.energy < life0.energy + 0.01);
 
   // reenvio depois (resposta perdida): mesmo recibo
@@ -275,6 +277,7 @@ async function main() {
   check("minijogo: janela máxima (Gincana 6 min) no tempo ativo", mr.activeMs === 6 * 60000, String(mr.activeMs));
   check("minijogo: destreza principal e velocidade secundária", mr.deltas.attrs.dexterity > 0 && mr.deltas.attrs.speed > 0, JSON.stringify(mr.deltas.attrs));
   check("minijogo: material da família (molas)", mr.items.some((i) => i.id === "mola_precisao"), JSON.stringify(mr.items));
+  check("minijogo: dropa moedas", mr.deltas.coins > 0, JSON.stringify(mr.deltas));
   const afk = await Adv.creditMinigame(nu, { activity: "paint", actionKey: "paint:r2:1", segments: [] });
   check("minijogo sem tempo ativo não gera recibo", afk.receipt === null);
   const future = await Adv.creditMinigame(nu, { activity: "paint", actionKey: "paint:r3:1", segments: [{ from: now + 60000, to: now + 600000 }] });

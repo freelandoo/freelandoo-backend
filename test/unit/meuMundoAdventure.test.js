@@ -209,3 +209,41 @@ test("mm3d-60b: custo — vitória cansa pouco e alivia; derrota cansa e estress
   assert.deepEqual(A.applyFightCost(s, true, 0), { energy: -4, stress: -3 });
   assert.deepEqual(A.applyFightCost(s, false, 0), { energy: -10, stress: 6 });
 });
+
+// ── mm3d-60k: drop de atributo da luta e moedas ──
+function seq(seed) {
+  let x = seed >>> 0
+  return () => ((x = (x * 1664525 + 1013904223) >>> 0) / 2 ** 32)
+}
+const avgDrop = (o) => {
+  const r = seq(7)
+  let t = 0
+  for (let i = 0; i < 6000; i++) t += Object.values(A.rollFightDrop(o, r)).reduce((a, b) => a + b, 0)
+  return t / 6000
+}
+test("drop da luta: média 3 / 5 / 9 / 15 pela idade (vitória, saúde cheia, sem estresse)", () => {
+  const base = { win: true, health: 100, vitality: 100, stress: 0 }
+  assert.ok(Math.abs(avgDrop({ ...base, ageDays: 2, adult: false }) - 3) < 0.15)
+  assert.ok(Math.abs(avgDrop({ ...base, ageDays: 8, adult: false }) - 5) < 0.2)
+  assert.ok(Math.abs(avgDrop({ ...base, ageDays: 31, adult: false }) - 9) < 0.3)
+  assert.ok(Math.abs(avgDrop({ ...base, ageDays: 0, adult: true }) - 15) < 0.4)
+})
+test("drop da luta: saúde baixa, estresse e derrota derrubam menos", () => {
+  const full = avgDrop({ ageDays: 40, adult: true, win: true, health: 100, vitality: 100, stress: 0 })
+  assert.ok(avgDrop({ ageDays: 40, adult: true, win: true, health: 40, vitality: 100, stress: 0 }) < full * 0.5)
+  assert.ok(avgDrop({ ageDays: 40, adult: true, win: true, health: 100, vitality: 100, stress: 100 }) < full * 0.5)
+  assert.ok(avgDrop({ ageDays: 40, adult: true, win: false, health: 100, vitality: 100, stress: 0 }) < full * 0.4)
+  const o = A.rollFightDrop({ ageDays: 40, adult: true, win: true, health: 100, vitality: 100, stress: 0 }, seq(3))
+  for (const [k, n] of Object.entries(o)) {
+    assert.ok(["strength", "dexterity", "speed", "intelligence"].includes(k))
+    assert.ok(Number.isInteger(n) && n > 0)
+  }
+})
+test("moedas: luta e minijogo sempre dropam (vitória mais que derrota)", () => {
+  const r = seq(11)
+  assert.ok(A.fightCoins("soldier", 1, true, r) >= 7)
+  assert.ok(A.fightCoins("brute", 3, true, r) > A.fightCoins("soldier", 1, true, r))
+  assert.ok(A.fightCoins("wolf", 1, false, r) >= 2)
+  assert.ok(A.minigameCoins(8 * 60000, false, r) >= 15)
+  assert.equal(A.minigameCoins(0, true, r), 0)
+})

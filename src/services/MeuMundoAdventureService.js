@@ -90,7 +90,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   const origin = fight.origin;
   const tutorial = origin === "tutorial";
   const adv = await Store.lockAdventure(c, idUser);
-  const before = { energy: s.energy, stress: s.stress };
+  const before = { energy: s.energy, stress: s.stress, health: s.health, vitality: s.vitality };
   const streak = lossesToday(adv, ctx.now);
   // resultado × disposição (energia/estresse de ANTES da luta) — mm3d-60b
   const mult = Adv.fightGainMult(verdict.win, before.energy, before.stress);
@@ -98,7 +98,21 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   // Prática: tempo ATIVO conferido, terminando agora (a luta acabou agora).
   const activeMs = Math.round(verdict.activeSteps * FightSim.DT * 1000);
   const activity = origin === "boxe" ? "boxe" : "laminas";
-  const practice = verdict.abandoned ? { attrs: {}, base: {}, activeMs: 0 } : Adv.practice(s, activity, [{ from: ctx.now - activeMs, to: ctx.now }], mult);
+  // mm3d-60k: o atributo da luta é um DROP (média pelo estágio da vida ×
+  // saúde × estresse de ANTES da luta), fora do orçamento do dia.
+  const R = GearService().R;
+  const stage = Life.lifeStage(s, ctx.now);
+  const drop = verdict.abandoned
+    ? {}
+    : Adv.rollFightDrop({ ageDays: stage.ageDays, adult: stage.adult, win: verdict.win, health: before.health, vitality: before.vitality, stress: before.stress }, R);
+  const gained = {};
+  for (const [k, n] of Object.entries(drop)) {
+    const got = Life.dropAttr(s, k, n);
+    if (got > 0) gained[k] = r2(got);
+  }
+  const practice = { attrs: gained, activeMs: verdict.abandoned ? 0 : activeMs };
+  const coins = verdict.abandoned ? 0 : Adv.fightCoins(setup.kind, setup.level, verdict.win, R);
+  ctx.coins += coins;
   const xpGain = verdict.abandoned ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
   // Drop: recompensa básica GARANTIDA com participação válida; vitória aumenta.
   const family = Adv.ACTIVITIES[activity].loot;
@@ -131,6 +145,8 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       mobId: setup.mobId ?? null,
       gainMult: mult,
       condition: Adv.conditionFactor(before.energy, before.stress),
+      dropCondition: Adv.dropCondition(before.health, before.vitality, before.stress),
+      dropAvg: Adv.fightDropAvg(stage.ageDays, stage.adult),
     },
     deltas: {
       xp: level,
@@ -138,7 +154,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       // delta EFETIVO (depois dos limites 0–100)
       vitals: { energy: r2(s.energy - before.energy), stress: r2(s.stress - before.stress) },
       cost,
-      coins: drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined,
+      coins: coins + drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined,
     },
     items: drops,
   });
@@ -181,6 +197,9 @@ class MeuMundoAdventureService {
         practice.activeMs >= MINIGAME_LOOT_MIN_MS
           ? await GearService().deliver(c, idUser, Gear.rollLoot(def.loot, { win, activeMs: practice.activeMs }, GearService().R), ctx)
           : [];
+      // mm3d-60k: o minijogo também DROPA moedas (pelo tempo ativo conferido)
+      const coins = Adv.minigameCoins(practice.activeMs, win, GearService().R);
+      ctx.coins += coins;
       const receipt = await Store.insertReceipt(c, {
         idUser,
         idCharacter: ctx.row.id_character,
@@ -189,7 +208,7 @@ class MeuMundoAdventureService {
         rules: Adv.RULES_VERSION,
         activeMs: practice.activeMs,
         result: { activity, win: !!win, condition },
-        deltas: { xp: level, attrs: practice.attrs, coins: drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
+        deltas: { xp: level, attrs: practice.attrs, coins: coins + drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
         items: drops,
       });
       ctx.events.push({ at: ctx.now, kind: "minigame", data: { activity, activeMs: practice.activeMs } });

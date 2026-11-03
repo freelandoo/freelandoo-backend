@@ -12,7 +12,7 @@
 
 const Life = require("./meuMundoLife");
 
-const RULES_VERSION = "R2";
+const RULES_VERSION = "R3";
 
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,
@@ -74,6 +74,8 @@ const FIGHT_COST = Object.freeze({
   calmAfter: 3,
 });
 
+const MIN_MS = 60000;
+
 // ═══ RESULTADO E DISPOSIÇÃO (mm3d-60b, pedido do Alex) ═══
 // "Quando perde ganha pouco, quando é vitória ganha mais status; com bastante
 // energia e pouco estresse o drop de status é maior; quanto mais energia
@@ -83,6 +85,98 @@ const FIGHT_COST = Object.freeze({
 const OUTCOME = Object.freeze({ win: 1.5, loss: 0.35 });
 /** Disposição = 0,6 × energia + 0,4 × (100 − estresse), levada para [min, max]. */
 const CONDITION = Object.freeze({ energyW: 0.6, stressW: 0.4, min: 0.3, max: 1.3 });
+
+// ═══ DROP DE ATRIBUTO DA LUTA (mm3d-60k, regra do Alex) ═══
+// "A média de drop por luta é 3 quando tem menos de 1 semana de vida, 5 com
+// mais de uma semana, 9 quando bate um mês e, adulto, 15 — mas depende da
+// saúde e do estresse." A média é o TOTAL de pontos de uma VITÓRIA com saúde
+// cheia e sem estresse, repartido entre os 4 atributos (a luta puxa força e
+// destreza). Derrota = um terço. Pontos inteiros, sorteados em volta da média.
+const FIGHT_DROP = Object.freeze({
+  stages: Object.freeze([
+    { minDays: 0, avg: 3 },
+    { minDays: 7, avg: 5 },
+    { minDays: 30, avg: 9 },
+  ]),
+  adult: 15,
+  loss: 1 / 3,
+  /** Sorteio em volta da média (×0,6 … ×1,4). */
+  spread: 0.4,
+  /** Peso de cada atributo no drop da luta. */
+  weights: Object.freeze({ strength: 0.45, dexterity: 0.3, speed: 0.15, intelligence: 0.1 }),
+  /** Estresse 100 tira 60% do drop. */
+  stressW: 0.6,
+});
+
+/** Média do drop pelo estágio da vida (antes da saúde/estresse). */
+function fightDropAvg(ageDays, adult) {
+  if (adult) return FIGHT_DROP.adult;
+  let avg = FIGHT_DROP.stages[0].avg;
+  for (const st of FIGHT_DROP.stages) if (ageDays >= st.minDays) avg = st.avg;
+  return avg;
+}
+
+/** Saúde × estresse: saúde/vitalidade × (1 − 0,6 × estresse/100). */
+function dropCondition(health, vitality, stress) {
+  const h = Math.max(0, Math.min(1, Number(health) / Math.max(1, Number(vitality) || 100) || 0));
+  const st = Math.max(0, Math.min(1, Number(stress) / 100 || 0));
+  return Math.round(h * (1 - FIGHT_DROP.stressW * st) * 1000) / 1000;
+}
+
+/**
+ * Os pontos que a luta derruba: { strength: n, ... } (inteiros, só os > 0).
+ * `rand` = () => [0,1). Determinístico com o mesmo rand.
+ */
+function rollFightDrop({ ageDays, adult, win, health, vitality, stress }, rand) {
+  const mean = fightDropAvg(ageDays, adult) * (win ? 1 : FIGHT_DROP.loss) * dropCondition(health, vitality, stress);
+  const total = Math.max(0, Math.round(mean * (1 - FIGHT_DROP.spread + 2 * FIGHT_DROP.spread * rand())));
+  const out = {};
+  const keys = Object.keys(FIGHT_DROP.weights);
+  for (let i = 0; i < total; i++) {
+    let r = rand();
+    let k = keys[keys.length - 1];
+    for (const key of keys) {
+      r -= FIGHT_DROP.weights[key];
+      if (r < 0) {
+        k = key;
+        break;
+      }
+    }
+    out[k] = (out[k] || 0) + 1;
+  }
+  return out;
+}
+
+// ═══ MOEDAS (mm3d-60k, pedido do Alex) ═══ — luta e minijogo DROPAM moedas
+// para comprar comida e coisas. Régua: o prato feito custa 18 e o trabalho
+// rende ~14/h; uma vitória rende uma refeição barata, um minijogo inteiro
+// (o tempo máximo da atividade) um pouco mais.
+const COINS = Object.freeze({
+  fightWin: Object.freeze({ soldier: 10, wolf: 13, golem: 14, harpy: 15, brute: 20 }),
+  /** +40% por nível do inimigo acima do 1. */
+  fightLevelMul: 0.4,
+  fightLoss: 3,
+  /** Minijogo: por minuto ativo (×1,5 vencendo). */
+  minigamePerMin: 2.5,
+  minigameWin: 1.5,
+  spread: 0.25,
+});
+
+function jitter(v, rand) {
+  return Math.max(0, Math.round(v * (1 - COINS.spread + 2 * COINS.spread * rand())));
+}
+
+/** Moedas de uma luta (abandonada = 0). */
+function fightCoins(kind, level, win, rand) {
+  if (!win) return jitter(COINS.fightLoss, rand);
+  const b = COINS.fightWin[kind] || 10;
+  return jitter(b * (1 + COINS.fightLevelMul * (Math.max(1, level) - 1)), rand);
+}
+
+/** Moedas de um minijogo pelo tempo ativo elegível. */
+function minigameCoins(activeMs, win, rand) {
+  return jitter(COINS.minigamePerMin * (activeMs / MIN_MS) * (win ? COINS.minigameWin : 1), rand);
+}
 
 /** Fator da disposição pela energia/estresse de ANTES da atividade: 0,3 (exausto e estressado) a 1,3 (descansado e calmo). */
 function conditionFactor(energy, stress) {
@@ -97,7 +191,6 @@ function fightGainMult(win, energy, stress) {
   return Math.round((win ? OUTCOME.win : OUTCOME.loss) * conditionFactor(energy, stress) * 1000) / 1000;
 }
 
-const MIN_MS = 60000;
 
 /**
  * Reparte o tempo ativo pelos dias de Brasília. `segments` = [{ from, to }]
@@ -211,4 +304,11 @@ module.exports = {
   minigameXp,
   fightXp,
   applyFightCost,
+  FIGHT_DROP,
+  fightDropAvg,
+  dropCondition,
+  rollFightDrop,
+  COINS,
+  fightCoins,
+  minigameCoins,
 };
