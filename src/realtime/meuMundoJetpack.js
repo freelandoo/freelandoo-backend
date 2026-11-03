@@ -38,8 +38,16 @@ const ABUSE_DROPS = 300;
 const COUNTDOWN_S = 3;
 /** Túnel (o mesmo de sim/flight.ts): x ∈ [−W/2, W/2], y ∈ [0, H]. */
 const TUNNEL = { W: 10, H: 8 };
-/** Mais rápido possível (vMax da regra, 46 m/s) com folga. */
-const MAX_V = 46 * 1.25;
+/**
+ * Fator de velocidade pelo ATRIBUTO velocidade do personagem (0–1000): 0,85×
+ * até 1,35×. A MESMA conta de speedFactor em sim/flight.ts do front.
+ */
+function speedFactor(attr) {
+  const a = Number.isFinite(Number(attr)) ? Math.max(0, Math.min(1000, Number(attr))) : 0;
+  return Math.round((0.85 + 0.5 * (a / 1000)) * 1000) / 1000;
+}
+/** Mais rápido possível (vMax da regra, 46 m/s × o maior fator) com folga. */
+const MAX_V = 46 * 1.35 * 1.25;
 /** Pontos: metros + 25 por galão (no máximo um galão a cada ~3 m). */
 const CAN_POINTS = 25;
 const MAX_RUN_S = 1800;
@@ -115,7 +123,8 @@ class JetpackRoom extends Room {
     const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
     const slot = this.freeSlot();
     this.state.players.set(client.sessionId, new JtPlayer({ slot, name: String(options.name || "piloto").slice(0, 24), online: true }));
-    this.seats.set(client.sessionId, { userId, slot, body, look, run: null, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now() });
+    const k = speedFactor(options.speed);
+    this.seats.set(client.sessionId, { userId, slot, body, look, k, run: null, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now() });
     byUser.set(userId, { room: this, sessionId: client.sessionId });
     client.send("welcome", { slot, left: Math.max(0, this.state.until - Date.now()) });
     if (this.solo || this.seats.size >= SEATS) this.start();
@@ -252,7 +261,7 @@ class JetpackRoom extends Room {
       .map((s) => {
         const p = [...this.state.players.values()].find((q) => q.slot === s.slot);
         s.run = { z: 0, x: 0, y: 4, f: 0, score: 0, cans: 0, alive: true, gone: false, by: "", time: 0, at: 0 };
-        return { slot: s.slot, name: p ? p.name : "", body: s.body, look: s.look };
+        return { slot: s.slot, name: p ? p.name : "", body: s.body, look: s.look, k: s.k };
       });
     this.startedAt = Date.now();
     // prática medida pela sala (quem bateu não manda pose = não conta)
@@ -328,9 +337,9 @@ function define(gameServer) {
 }
 
 /** Reserva o lugar (quem chama já conferiu papel, centro e porta). `solo` = sala só da pessoa, larga na hora. */
-async function reserveJetpackSeat({ userId, name, body, centerRoomId, solo = false }) {
+async function reserveJetpackSeat({ userId, name, body, centerRoomId, solo = false, speed = 0 }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name, body, solo: !!solo };
+  const options = { centerRoomId, userId, name, body, solo: !!solo, speed: Number(speed) || 0 };
   if (solo) return matchMaker.create(JETPACK_ROOM, options);
   let last = null;
   for (let i = 0; i < 4; i++) {
@@ -364,6 +373,7 @@ module.exports = {
   jetpackStatus,
   JETPACK_ROOM,
   SEATS,
+  speedFactor,
   // só para a suíte e2e
   _jetpackRooms: () => [...rooms.values()],
   _jetpackTiming: timing,

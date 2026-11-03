@@ -563,7 +563,10 @@ class MeuMundoService {
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
     let reservation;
     try {
-      reservation = await reserveJetpackSeat({ userId: idUser, name, body, centerRoomId: here.id, solo: solo === true });
+      // a velocidade do voo sai do atributo VELOCIDADE do personagem (regra do Alex)
+      const life = await MeuMundoLifeService.peek(idUser).catch(() => null);
+      const speed = Number(life && life.character && life.character.attributes && life.character.attributes.speed) || 0;
+      reservation = await reserveJetpackSeat({ userId: idUser, name, body, centerRoomId: here.id, solo: solo === true, speed });
     } catch (err) {
       log.error("jetpack.reserve_fail", { message: err.message });
       return { error: "O jetpack não abriu agora.", statusCode: 503 };

@@ -160,6 +160,11 @@ async function mkUser(pool, tag) {
     `${S.start.seats[0].body} × ${bodyNow}`
   );
 
+  const Life = require("../src/services/MeuMundoLifeService");
+  const spd = (await Life.peek(users[8])).character.attributes.speed;
+  check("…com o fator de velocidade do ATRIBUTO velocidade", S.start.seats[0].k === jet.speedFactor(spd) && S.start.seats[0].k >= 0.85 && S.start.seats[0].k <= 1.35, `${S.start.seats[0].k} (vel ${spd})`);
+  check("fator: 0 → 0,85; 1000 → 1,35; 500 → 1,1", jet.speedFactor(0) === 0.85 && jet.speedFactor(1000) === 1.35 && jet.speedFactor(500) === 1.1 && jet.speedFactor(5000) === 1.35);
+
   // ── Grupo: espera de 1 minuto (encurtada) ─────────────────────────────────
   const A = await join(users[0]);
   check("grupo: o 1º fica esperando, com o prazo", A.room.state.phase === "lobby" && A.welcome.left > 0);
