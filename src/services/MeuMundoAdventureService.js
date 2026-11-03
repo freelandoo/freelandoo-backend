@@ -268,9 +268,12 @@ class MeuMundoAdventureService {
       for (const old of await Store.openFights(c, idUser)) {
         abandoned.push(await settleFight(s, ctx, idUser, old, { win: false, abandoned: true, activeSteps: 0 }));
       }
+      // nível de AVENTURA de quem joga: vida, defesa, ataque e atributos crescem com ele
+      const hero = Adv.levelOf(Number((await Store.getAdventure(c, idUser)).xp)).level;
       const setup = {
         kind,
         level,
+        hero,
         seed: crypto.randomInt(1, 2 ** 31 - 1),
         stats: fightStats(s),
         // Kit pela CLASSE (mm3d-59): raposa = maga; o ringue do Boxe é sempre de luvas.
@@ -287,7 +290,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
+          setup: { kind, level, hero, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,
@@ -313,7 +316,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");

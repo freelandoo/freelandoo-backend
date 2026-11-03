@@ -143,6 +143,8 @@ const POWER = { max: 100, perHit: 14, perHeavy: 22, dur: 1.3, fireAt: 0.6, mageR
               
                                       
                
+                                                                       
+               
                                                                     
             
                
@@ -327,6 +329,11 @@ const MOBS                          = {
                                                  
      
                            
+     
+                                                                            
+                                                                                    
+     
+               
  
 
                             
@@ -359,6 +366,33 @@ function mobLevelScale(level        )                                           
   const over = Math.max(0, l - 3)
   return { hp: 1 + 0.45 * low + 0.25 * over, dmg: 1 + 0.3 * low + 0.08 * over, poise: 2 * low + 0.25 * over }
 }
+// ═══ NÍVEL DE QUEM JOGA (pedido do Alex, 2026-11-03) ═══ — "todo level up tem
+// um aumento de status geral". Nível 1 = como sempre foi (100 de vida, sem
+// defesa). Cada nível: +9 de vida, +0,5% de defesa (teto 30%), +22% de ataque
+// e +3 pontos em força/velocidade/inteligência/destreza (só na luta; a vida
+// guarda os atributos sem o bônus). Desenhado contra mobLevelScale: lutar com
+// um monstro do MESMO nível dá quase o mesmo número de golpes que no nível 1.
+// Espelho para a tela: meuMundoAdventure.js heroLevelScale (o unit confere).
+const HERO_LEVEL_MAX = 60
+const HERO_LEVEL = { hp: 9, def: 0.005, defMax: 0.3, dmg: 0.22, attr: 3 }
+/** Defesa total (nível + equipamento) nunca passa disto. */
+const DEF_MAX = 0.6
+function heroLevelScale(level        )                                                         {
+  const n = clamp(Math.round(Number(level) || 1), 1, HERO_LEVEL_MAX) - 1
+  return {
+    hp: PLAYER.hp + HERO_LEVEL.hp * n,
+    def: Math.min(HERO_LEVEL.defMax, Math.round(HERO_LEVEL.def * n * 1000) / 1000),
+    dmg: Math.round((1 + HERO_LEVEL.dmg * n) * 100) / 100,
+    attr: HERO_LEVEL.attr * n,
+  }
+}
+/** Atributos de luta = os da vida + o bônus do nível (teto 1000). */
+function heroStats(stats       , level        )        {
+  const a = heroLevelScale(level).attr
+  const up = (v        ) => clamp(v + a, 0, 1000)
+  return { strength: up(stats.strength), speed: up(stats.speed), intelligence: up(stats.intelligence), dexterity: up(stats.dexterity ?? 300) }
+}
+
 const angDiff = (a        , b        ) => {
   let d = a - b
   while (d > Math.PI) d -= 2 * Math.PI
@@ -426,6 +460,11 @@ class Fight {
   forceRank              = null
   /** mm3d-59: bônus do equipamento (com teto). */
            gear           
+  /** Nível de aventura de quem joga e o que ele dá. */
+           heroLevel        
+           hero                                   
+  /** Defesa total (nível + equipamento, com teto). */
+           def        
 
   constructor(setup            ) {
     this.R = rng(setup.seed ?? (Date.now() & 0x7fffffff))
@@ -435,14 +474,18 @@ class Fight {
     this.level = clamp(Math.round(setup.level ?? 1), 1, setup.kind === "soldier" ? 2 : MOB_LEVEL_MAX)
     const stats = { ...BASE_STATS, ...(setup.stats ?? {}) }
     this.gear = clampGear(setup.gear)
-    this.fx = this.withGear(statEffects(stats))
+    this.heroLevel = clamp(Math.round(Number(setup.hero) || 1), 1, HERO_LEVEL_MAX)
+    this.hero = heroLevelScale(this.heroLevel)
+    this.def = clamp(this.gear.def + this.hero.def, 0, DEF_MAX)
+    this.fx = this.withGear(statEffects(heroStats(stats, this.heroLevel)))
     this.me = {
       x: 0,
       z: -5,
       vx: 0,
       vz: 0,
       facing: 0,
-      hp: PLAYER.hp,
+      hp: this.hero.hp,
+      hpMax: this.hero.hp,
       stam: PLAYER.stam,
       state: "idle",
       t: 0,
@@ -535,11 +578,11 @@ class Fight {
   /** Os bônus do equipamento por cima do que os atributos dão. */
           withGear(fx                                ) {
     const g = this.gear
-    return { ...fx, dmg: fx.dmg * (1 + g.dmg), warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
+    return { ...fx, dmg: fx.dmg * (1 + g.dmg) * this.hero.dmg, warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
   }
 
   setStats(stats                ) {
-    this.fx = this.withGear(statEffects({ ...BASE_STATS, ...stats }))
+    this.fx = this.withGear(statEffects(heroStats({ ...BASE_STATS, ...stats }, this.heroLevel)))
     this.me.rate = this.fx.rate
   }
 
@@ -592,7 +635,8 @@ class Fight {
         healed = POWER.heal
       }
     }
-    if (healed) p.hp = Math.min(PLAYER.hp, p.hp + healed)
+    // a cura do poder cresce junto com a vida máxima
+    if (healed) p.hp = Math.min(p.hpMax, p.hp + Math.round((healed * p.hpMax) / PLAYER.hp))
     this.events.push({ t: "powerFire", x: p.x, z: p.z, facing: p.facing, heal: healed })
   }
 
@@ -978,7 +1022,7 @@ class Fight {
     }
     if (!hit) return
     m.struck = true
-    const dmg = Math.round(a.dmg * m.dmgMul * (1 - this.gear.def))
+    const dmg = Math.max(1, Math.round(a.dmg * m.dmgMul * (1 - this.def)))
     p.hp = Math.max(0, p.hp - dmg)
     const heavy = !!a.heavy
     this.events.push({ t: "hit", on: "me", dmg, x: p.x, z: p.z, heavy, dead: p.hp <= 0 })
@@ -1150,4 +1194,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, MOBS, MOB_LEVEL_MAX, mobLevelScale, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
