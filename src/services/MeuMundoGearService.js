@@ -99,11 +99,11 @@ async function wornClan(c, idUser) {
 }
 
 /**
- * Arma que o personagem vestido não usa. Espada da loja é de guerreiro; arma
+ * Arma que o personagem vestido não usa. Espada e escudo da loja são de guerreiro; arma
  * pesada é das skins de martelo, e essas skins só usam arma pesada.
  */
 function weaponBlocked(it, body) {
-  if (it.shop === "weapons") return !usesSword(body);
+  if (it.shop === "weapons" || it.shop === "shields") return !usesSword(body);
   if (it.shop === "hammers") return !usesHammer(body);
   return it.category === "weapon" && usesHammer(body);
 }
@@ -426,9 +426,9 @@ class MeuMundoGearService {
 MeuMundoGearService.fightGear = async (c, idUser, clan) => Gear.gearBonus(await equippedFull(c, idUser, clan));
 /** Aparência só visual, congelada no ticket; não altera a simulação da luta. */
 MeuMundoGearService.fightAppearance = async (c, idUser, clan) => {
-  const weapon = (await equippedFull(c, idUser, clan)).weapon;
+  const { weapon, shield } = await equippedFull(c, idUser, clan);
   const cosmetic = (await GearStore.unlocks(c, idUser)).find((u) => u.kind === "cosmetic" && u.active);
-  return { weaponId: weapon?.id || null, level: weapon?.level || 0, cosmetic: cosmetic?.item_id || null };
+  return { weaponId: weapon?.id || null, level: weapon?.level || 0, shieldId: shield?.id || null, cosmetic: cosmetic?.item_id || null };
 };
 /** Entrega uma lista de drops (respeita a pilha; o excedente vira moedas). */
 MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {

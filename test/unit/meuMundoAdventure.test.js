@@ -120,9 +120,9 @@ test("destreza: menos fôlego e ranque com 30% do peso", () => {
 // ── slice 3: equipamento ──
 const Gear = require("../../src/utils/meuMundoGear");
 
-test("equipamento: catálogo com ids únicos e os 97 itens da forja", () => {
-  assert.equal(Gear.GEAR.length, 97);
-  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 97);
+test("equipamento: catálogo com ids únicos e os 113 itens da forja", () => {
+  assert.equal(Gear.GEAR.length, 113);
+  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 113);
   for (const g of Gear.GEAR) {
     assert.ok(Gear.CATEGORIES.includes(g.category), g.id);
     assert.ok(Gear.RARITIES.includes(g.rarity), g.id);

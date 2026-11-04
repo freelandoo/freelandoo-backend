@@ -20,8 +20,8 @@
 
 const Forge = require("./meuMundoForge");
 
-const SLOTS = Object.freeze(["weapon", "armor", "acc1", "acc2"]);
-const CATEGORIES = Object.freeze(["weapon", "armor", "accessory", "material", "recipe", "quest", "cosmetic"]);
+const SLOTS = Object.freeze(["weapon", "shield", "armor", "acc1", "acc2"]);
+const CATEGORIES = Object.freeze(["weapon", "shield", "armor", "accessory", "material", "recipe", "quest", "cosmetic"]);
 const RARITIES = Object.freeze(["common", "uncommon", "rare", "epic", "legendary"]);
 
 /** Teto dos bônus SOMADOS de tudo que está equipado (frações). */
@@ -40,7 +40,7 @@ const LORE = Object.freeze({
   chave_subestacao: "Uma chave antiga marcada com uma engrenagem e o número oito. A origem da subestação continua desconhecida. Examinar a inscrição registra a descoberta na coleção.",
 });
 const cosmeticEffect = (id) => ({ pintura_arma_eter: "ether_paint", rastro_eter: "ether_trail", emote_saudacao: "lumen_salute" })[id] || null;
-const useFor = (category, id) => category === "recipe" ? "learn_recipe" : category === "quest" ? "inspect_quest" : category === "cosmetic" ? (id === "emote_saudacao" ? "unlock_emote" : "apply_weapon_cosmetic") : ["weapon", "armor", "accessory"].includes(category) ? "equip" : null;
+const useFor = (category, id) => category === "recipe" ? "learn_recipe" : category === "quest" ? "inspect_quest" : category === "cosmetic" ? (id === "emote_saudacao" ? "unlock_emote" : "apply_weapon_cosmetic") : ["weapon", "shield", "armor", "accessory"].includes(category) ? "equip" : null;
 const G = (id, category, name, rarity, o = {}) => Object.freeze({
   id, category, name, rarity, price: null, level: 1, clan: null, bonus: null,
   family: null, sell: 0, stack: category === "material" || category === "quest", component: false,
@@ -52,6 +52,9 @@ const S = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarit
 
 /** Arma pesada da aba Hammers: sem classe, quem decide é a skin vestida. */
 const H = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "hammers" });
+
+/** Escudo da loja (mm3d-68): de quem usa espada; quem decide é a skin vestida. */
+const E = (id, name, rarity, level, price, bonus) => G(id, "shield", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "shields" });
 
 const GEAR = Object.freeze([
   // ── armas (uma por classe em cada degrau) ──
@@ -99,6 +102,23 @@ const GEAR = Object.freeze([
   H("pesada_espinhos", "Foice de espinhos", "legendary", 9, 10500, { dmg: 0.11, power: 0.09 }),
   H("pesada_praga", "Machado da praga", "legendary", 9, 12500, { dmg: 0.12, power: 0.08 }),
   H("pesada_neon", "Machado do abismo azul", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
+  // ── escudos da Loja de Armas (mm3d-68): todos que usam espada ──
+  E("escudo_ferro", "Escudo de ferro de Lúmen", "common", 1, 350, { def: 0.01 }),
+  E("escudo_rebites", "Escudo rebitado", "common", 1, 500, { def: 0.01, stam: 0.01 }),
+  E("escudo_azul", "Escudo de aço azul", "uncommon", 2, 900, { def: 0.02 }),
+  E("escudo_cravos", "Pavês de cravos", "uncommon", 2, 1100, { def: 0.02, dmg: 0.01 }),
+  E("escudo_sol", "Escudo do sol de ferro", "uncommon", 3, 1500, { def: 0.02, warn: 0.02 }),
+  E("escudo_prata", "Escudo de prata cinzelada", "rare", 3, 2200, { def: 0.03, warn: 0.01 }),
+  E("escudo_filigrana", "Égide de filigrana", "rare", 4, 2800, { def: 0.03, power: 0.02 }),
+  E("escudo_bosque", "Escudo do bosque", "rare", 4, 3300, { def: 0.03, stam: 0.03 }),
+  E("escudo_ametista", "Escudo de ametista", "rare", 5, 4200, { def: 0.04, power: 0.02 }),
+  E("escudo_caveira", "Muralha da caveira", "epic", 6, 5500, { def: 0.04, dmg: 0.02 }),
+  E("escudo_lava", "Escudo de escamas de lava", "epic", 6, 6000, { def: 0.05, power: 0.03 }),
+  E("escudo_lanterna", "Escudo da lanterna", "epic", 7, 7000, { def: 0.05, warn: 0.03 }),
+  E("escudo_demonio", "Escudo do demônio cornudo", "epic", 8, 8500, { def: 0.05, power: 0.04 }),
+  E("escudo_alvorada", "Égide da alvorada", "legendary", 9, 10000, { def: 0.06, power: 0.04 }),
+  E("escudo_fe", "Escudo da fé", "legendary", 9, 12000, { def: 0.06, warn: 0.04 }),
+  E("escudo_fera", "Escudo da fera violeta", "legendary", 10, 15000, { def: 0.07, power: 0.06 }),
   // ── proteção ──
   G("colete_couro", "armor", "Colete de couro", "common", { price: 250, bonus: { def: 0.05 }, sell: 35 }),
   G("couraca_rebitada", "armor", "Couraça rebitada", "uncommon", { price: 700, level: 3, bonus: { def: 0.08 }, sell: 100 }),
@@ -217,6 +237,22 @@ const DESCRIPTIONS = Object.freeze({
   pesada_espinhos: "Lâmina curva de espinhos e tiras vermelhas, torta como um galho morto.",
   pesada_praga: "Machado rubro de correntes e farpas. Dizem que a ferrugem dele nunca para de crescer.",
   pesada_neon: "Cristal azul que brilha por dentro, em duas lâminas que ninguém sabe quem forjou.",
+  escudo_ferro: "Chapa de ferro com bossa no meio: o primeiro escudo de todo guerreiro da cidade.",
+  escudo_rebites: "Liso e cheio de rebites, sem enfeite nenhum. Pesa menos no braço do que parece.",
+  escudo_azul: "Aço temperado até ficar azul, em linhas retas e secas.",
+  escudo_cravos: "Pavês estreito e curvo, cheio de pontas: quem bate nele também sai ferido.",
+  escudo_sol: "Redondo, de madeira velha, com um sol de ferro no centro. Atrai o olho e avisa o golpe.",
+  escudo_prata: "Prata trabalhada à mão, com uma cruz florida no meio e rebites na borda.",
+  escudo_filigrana: "Latão dourado em volutas e pedras cor de âmbar. Cada bloqueio aquece as pedras.",
+  escudo_bosque: "Madeira clara com uma árvore de prata e folhas de esmeralda. Quase não cansa o braço.",
+  escudo_ametista: "Ferro escuro em arabescos, com ametistas engastadas que guardam um pouco de éter.",
+  escudo_caveira: "Placa alta de ferro negro com caveira e farpas. Serve de parede e de arma.",
+  escudo_lava: "Escamas de bronze sobre um coração de lava que ainda não esfriou.",
+  escudo_lanterna: "Grade de ferro com uma luz âmbar por dentro, das rondas noturnas de Lúmen.",
+  escudo_demonio: "Um rosto de chifres em ferro velho, com olhos de esmeralda que parecem seguir o inimigo.",
+  escudo_alvorada: "Ouro e marfim em raios, como a primeira luz de Aurion sobre Lúmen.",
+  escudo_fe: "A cruz de luz nunca apagou. Quem o carrega sente o golpe antes de ele sair.",
+  escudo_fera: "Uma fera de éter presa na chapa, com veios que pulsam. Ninguém sabe o que acontece se ela acordar.",
   colete_couro: "Proteção de couro com defesa adicional; ocupa o slot de proteção.",
   couraca_rebitada: "Proteção reforçada com rebites; pode ser refinada e preserva seu aprimoramento anterior.",
   relogio_bolso: "Acessório que amplia o aviso dos ataques inimigos nas lutas de aventura.",
@@ -298,6 +334,7 @@ const starterOf = (clan) => (clan === "raposa" ? "cajado_aprendiz" : clan === "v
 function slotsFor(item) {
   if (!item) return [];
   if (item.category === "weapon") return ["weapon"];
+  if (item.category === "shield") return ["shield"];
   if (item.category === "armor") return ["armor"];
   if (item.category === "accessory") return ["acc1", "acc2"];
   return [];

@@ -77,3 +77,20 @@ test("Arsenal tem dois balcões e dois vendedores", () => {
   assert.ok(uses.includes("weapons") && uses.includes("armory"), uses.join());
   assert.deepEqual(a.npcs.map((n) => n.role).sort(), ["armeira", "armeiro"]);
 });
+
+test("escudos: 16 à venda, preço crescente, sem classe, slot próprio e dentro do teto", () => {
+  const shields = Gear.GEAR.filter((g) => g.shop === "shields");
+  assert.equal(shields.length, 16);
+  shields.forEach((s, i) => {
+    assert.ok(s.id.startsWith("escudo_") && s.clan === null && s.category === "shield", s.id);
+    assert.deepEqual(Gear.slotsFor(s), ["shield"]);
+    assert.equal(s.use, "equip");
+    assert.ok(s.bonus.def > 0, s.id);
+    assert.ok(Gear.itemDetails(s).description, s.id);
+    assert.equal(Gear.upgradeCost(s, 0), null, "escudo não refina");
+    if (i) assert.ok(s.price > shields[i - 1].price && s.level >= shields[i - 1].level, s.id);
+  });
+  const top = Gear.gearBonus({ weapon: { id: "espada_morkhan", level: 10 }, shield: { id: "escudo_fera", level: 0 }, armor: { id: "couraca_rebitada", level: 10 } });
+  for (const [k, v] of Object.entries(top)) assert.ok(v <= Gear.GEAR_CAP[k], k);
+  assert.ok(Gear.gearBonus({ shield: { id: "escudo_fera", level: 0 } }).def > 0, "o slot soma no bônus");
+});
