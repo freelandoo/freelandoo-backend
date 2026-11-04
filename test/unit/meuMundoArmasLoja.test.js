@@ -94,3 +94,21 @@ test("escudos: 16 à venda, preço crescente, sem classe, slot próprio e dentro
   for (const [k, v] of Object.entries(top)) assert.ok(v <= Gear.GEAR_CAP[k], k);
   assert.ok(Gear.gearBonus({ shield: { id: "escudo_fera", level: 0 } }).def > 0, "o slot soma no bônus");
 });
+
+test("arcos: 19 à venda, preço crescente, sem classe e dentro do teto; só Íris e Aeryn", () => {
+  const { usesBow } = require("../../src/utils/meuMundoClans");
+  const bows = Gear.GEAR.filter((g) => g.shop === "bows");
+  assert.equal(bows.length, 19);
+  bows.forEach((b, i) => {
+    assert.ok(b.id.startsWith("arco_") && b.clan === null && b.category === "weapon", b.id);
+    assert.ok(Gear.itemDetails(b).description, b.id);
+    if (i) assert.ok(b.price > bows[i - 1].price && b.level >= bows[i - 1].level, b.id);
+    const g = Gear.gearBonus({ weapon: { id: b.id, level: 10 } });
+    for (const [k, v] of Object.entries(g)) assert.ok(v <= Gear.GEAR_CAP[k], `${b.id} ${k}`);
+  });
+  for (const b of ["iris", "aeryn"]) {
+    assert.ok(usesBow(b), b);
+    assert.ok(!usesSword(b) && !usesHammer(b), b);
+  }
+  for (const b of ["vampiro", "raposa", "aurion", "maru", "noctis"]) assert.ok(!usesBow(b), b);
+});

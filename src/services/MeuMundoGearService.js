@@ -17,7 +17,7 @@ const Adv = require("../utils/meuMundoAdventure");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const AdvStore = require("../storages/MeuMundoAdventureStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
-const { clanOfBody, usesSword, usesHammer } = require("../utils/meuMundoClans");
+const { clanOfBody, usesSword, usesHammer, usesBow } = require("../utils/meuMundoClans");
 
 const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ERRORS = {
@@ -105,7 +105,8 @@ async function wornClan(c, idUser) {
 function weaponBlocked(it, body) {
   if (it.shop === "weapons" || it.shop === "shields") return !usesSword(body);
   if (it.shop === "hammers") return !usesHammer(body);
-  return it.category === "weapon" && usesHammer(body);
+  if (it.shop === "bows") return !usesBow(body);
+  return it.category === "weapon" && (usesHammer(body) || usesBow(body));
 }
 
 /** Equipado como a regra quer: { slot: { id, level } } (arma de outra classe não vale). */
@@ -142,7 +143,7 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   }
   const unlocks = await GearStore.unlocks(c, idUser);
   const body = await MeuMundoStorage.getBody(c, idUser);
-  return { clan, warrior: usesSword(body), hammer: usesHammer(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full), refinement,
+  return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full), refinement,
     pendingProposals: pending.map(publicProposal),
     learnedRecipes: unlocks.filter((u) => u.kind === "recipe").map((u) => u.item_id),
     unlockedEmotes: unlocks.filter((u) => u.kind === "emote").map((u) => u.item_id),

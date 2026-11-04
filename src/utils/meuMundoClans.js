@@ -30,6 +30,10 @@ const SWORD_SKINS = Object.freeze(["aurion", "morkhan", "zephyra"]);
 // O Brutamontes (skin de teste) é o dono desses golpes e entra na mesma lista.
 const HAMMER_SKINS = Object.freeze(["golem", "maru", "kragor", "brutamontes"]);
 
+// mm3d-69 (regra do Alex): Íris e Aeryn são as arqueiras: usam só os arcos da loja e
+// atiram flechas de luz (a regra do tiro é a da maga; o desenho é outro).
+const ARCHER_SKINS = Object.freeze(["iris", "aeryn"]);
+
 const ARTIFACT = Object.freeze({ KIND: "troca_classe", COOLDOWN_DAYS: 30 });
 
 const isClan = (v) => CLANS.includes(v);
@@ -53,4 +57,7 @@ const usesSword = (body) => clanOfBody(body) === "vampiro";
 /** Quem luta com armas pesadas (kit do Brutamontes) e compra na aba Hammers. */
 const usesHammer = (body) => HAMMER_SKINS.includes(body);
 
-module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, HAMMER_SKINS, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword, usesHammer };
+/** Quem atira com arco e compra na aba Arcos. */
+const usesBow = (body) => ARCHER_SKINS.includes(body);
+
+module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, HAMMER_SKINS, ARCHER_SKINS, usesBow, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword, usesHammer };

@@ -53,6 +53,9 @@ const S = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarit
 /** Arma pesada da aba Hammers: sem classe, quem decide é a skin vestida. */
 const H = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "hammers" });
 
+/** Arco da aba Arcos (mm3d-69): sem classe, quem decide é a skin vestida. */
+const B = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "bows" });
+
 /** Escudo da loja (mm3d-68): de quem usa espada; quem decide é a skin vestida. */
 const E = (id, name, rarity, level, price, bonus) => G(id, "shield", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "shields" });
 
@@ -102,6 +105,26 @@ const GEAR = Object.freeze([
   H("pesada_espinhos", "Foice de espinhos", "legendary", 9, 10500, { dmg: 0.11, power: 0.09 }),
   H("pesada_praga", "Machado da praga", "legendary", 9, 12500, { dmg: 0.12, power: 0.08 }),
   H("pesada_neon", "Machado do abismo azul", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
+  // ── aba Arcos da Loja de Armas (mm3d-69): Íris e Aeryn ──
+  B("arco_caca", "Arco de caça", "common", 1, 400, { dmg: 0.02 }),
+  B("arco_teixo", "Arco de teixo", "common", 1, 550, { dmg: 0.02, stam: 0.01 }),
+  B("arco_ronda", "Arco de ronda", "uncommon", 2, 900, { dmg: 0.03, warn: 0.02 }),
+  B("arco_cobre", "Arco de cobre lavrado", "uncommon", 2, 1100, { dmg: 0.04 }),
+  B("arco_aco_negro", "Arco de aço negro", "uncommon", 3, 1500, { dmg: 0.05 }),
+  B("arco_sentinela", "Arco da sentinela", "rare", 3, 2200, { dmg: 0.06, warn: 0.02 }),
+  B("arco_galhos", "Arco de galhos dourados", "rare", 4, 2800, { dmg: 0.07, stam: 0.02 }),
+  B("arco_safira", "Arco de safira", "rare", 4, 3100, { dmg: 0.07, power: 0.02 }),
+  B("arco_lua", "Arco da lua negra", "rare", 5, 3600, { dmg: 0.08, power: 0.03 }),
+  B("arco_mares", "Arco das marés", "rare", 5, 4200, { dmg: 0.08, stam: 0.03 }),
+  B("arco_celeste", "Arco celeste", "epic", 6, 5500, { dmg: 0.09, power: 0.05 }),
+  B("arco_eclipse", "Arco do eclipse", "epic", 6, 6000, { dmg: 0.1, warn: 0.04 }),
+  B("arco_laminas", "Arco de lâminas", "epic", 7, 7000, { dmg: 0.1, power: 0.05 }),
+  B("arco_asa_branca", "Arco da asa branca", "epic", 7, 8000, { dmg: 0.11, power: 0.05 }),
+  B("arco_ametista", "Arco de ametista", "epic", 8, 9000, { dmg: 0.11, power: 0.06 }),
+  B("arco_plumas", "Arco de plumas", "epic", 8, 9500, { dmg: 0.11, power: 0.07 }),
+  B("arco_estrelas", "Arco da noite estrelada", "legendary", 9, 10500, { dmg: 0.11, power: 0.09 }),
+  B("arco_dragao", "Arco do dragão rubro", "legendary", 9, 12500, { dmg: 0.12, power: 0.08 }),
+  B("arco_rubro", "Arco da lua rubra", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
   // ── escudos da Loja de Armas (mm3d-68): todos que usam espada ──
   E("escudo_ferro", "Escudo de ferro de Lúmen", "common", 1, 350, { def: 0.01 }),
   E("escudo_rebites", "Escudo rebitado", "common", 1, 500, { def: 0.01, stam: 0.01 }),
@@ -253,6 +276,25 @@ const DESCRIPTIONS = Object.freeze({
   escudo_alvorada: "Ouro e marfim em raios, como a primeira luz de Aurion sobre Lúmen.",
   escudo_fe: "A cruz de luz nunca apagou. Quem o carrega sente o golpe antes de ele sair.",
   escudo_fera: "Uma fera de éter presa na chapa, com veios que pulsam. Ninguém sabe o que acontece se ela acordar.",
+  arco_caca: "Madeira curva e corda simples: o primeiro arco de quem aprende a mirar em Lúmen.",
+  arco_teixo: "Teixo envelhecido com empunhadura de couro. Puxa leve e cansa pouco.",
+  arco_ronda: "Arco curto de aço e madeira das patrulhas de Lúmen. Quem vigia vê o golpe antes.",
+  arco_cobre: "Cobre trabalhado à mão do punho às pontas. Pesa no braço e acerta forte.",
+  arco_aco_negro: "Duas lâminas de aço escuro unidas no punho, feitas para durar mais do que quem as usa.",
+  arco_sentinela: "Arco verde-musgo das torres de vigia. A corda vibra antes de o inimigo se mexer.",
+  arco_galhos: "Galhos de ouro trançados em volta do punho, leves como madeira viva.",
+  arco_safira: "Duas safiras presas nos braços do arco guardam um pouco de cada disparo.",
+  arco_lua: "Lâminas finas em meia-lua, com uma estrela de prata no punho.",
+  arco_mares: "Vinhas verde-mar enroladas no arco. Atirar com ele é como respirar.",
+  arco_celeste: "Bronze claro com veios azuis que acendem quando a corda estica.",
+  arco_eclipse: "Um disco dourado preso entre dois braços negros, como o sol encoberto.",
+  arco_laminas: "Cada braço é uma fileira de lâminas. Ninguém chega perto de quem o carrega.",
+  arco_asa_branca: "Asas de marfim e ouro que parecem abrir a cada disparo.",
+  arco_ametista: "Pontas de ametista nos dois braços, com éter preso dentro da pedra.",
+  arco_plumas: "Plumas de bronze claro em fileira. Solta a flecha sem fazer nenhum som.",
+  arco_estrelas: "Arco longo de aço-noite cravejado de luz. Dizem que aponta sempre para o norte.",
+  arco_dragao: "Osso e escama rubra, com a cabeça do dragão no punho. Cada flecha sai rosnando.",
+  arco_rubro: "Lâminas negras e rubras em volta de um sol de sangue. Foi tirado de um campeão dos Jogos Eternos.",
   colete_couro: "Proteção de couro com defesa adicional; ocupa o slot de proteção.",
   couraca_rebitada: "Proteção reforçada com rebites; pode ser refinada e preserva seu aprimoramento anterior.",
   relogio_bolso: "Acessório que amplia o aviso dos ataques inimigos nas lutas de aventura.",
