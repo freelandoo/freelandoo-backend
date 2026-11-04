@@ -34,6 +34,10 @@ const HAMMER_SKINS = Object.freeze(["golem", "maru", "kragor", "brutamontes"]);
 // atiram flechas de luz (a regra do tiro é a da maga; o desenho é outro).
 const ARCHER_SKINS = Object.freeze(["iris", "aeryn"]);
 
+// mm3d-70 (regra do Alex): Ciborgue e Noctis usam só as armas de fogo da aba Guns e
+// atiram luz (a regra do tiro é a da maga; o desenho é outro).
+const GUN_SKINS = Object.freeze(["ciborgue", "noctis"]);
+
 const ARTIFACT = Object.freeze({ KIND: "troca_classe", COOLDOWN_DAYS: 30 });
 
 const isClan = (v) => CLANS.includes(v);
@@ -60,4 +64,7 @@ const usesHammer = (body) => HAMMER_SKINS.includes(body);
 /** Quem atira com arco e compra na aba Arcos. */
 const usesBow = (body) => ARCHER_SKINS.includes(body);
 
-module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, HAMMER_SKINS, ARCHER_SKINS, usesBow, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword, usesHammer };
+/** Quem atira com arma de fogo e compra na aba Guns. */
+const usesGun = (body) => GUN_SKINS.includes(body);
+
+module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, HAMMER_SKINS, ARCHER_SKINS, GUN_SKINS, usesBow, usesGun, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword, usesHammer };

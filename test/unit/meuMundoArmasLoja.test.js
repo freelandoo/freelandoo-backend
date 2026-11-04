@@ -112,3 +112,21 @@ test("arcos: 19 à venda, preço crescente, sem classe e dentro do teto; só Ír
   }
   for (const b of ["vampiro", "raposa", "aurion", "maru", "noctis"]) assert.ok(!usesBow(b), b);
 });
+
+test("guns: 17 à venda, preço crescente, sem classe e dentro do teto; só Ciborgue e Noctis", () => {
+  const { usesBow, usesGun } = require("../../src/utils/meuMundoClans");
+  const guns = Gear.GEAR.filter((g) => g.shop === "guns");
+  assert.equal(guns.length, 17);
+  guns.forEach((b, i) => {
+    assert.ok(b.id.startsWith("fogo_") && b.clan === null && b.category === "weapon", b.id);
+    assert.ok(Gear.itemDetails(b).description, b.id);
+    if (i) assert.ok(b.price > guns[i - 1].price && b.level >= guns[i - 1].level, b.id);
+    const g = Gear.gearBonus({ weapon: { id: b.id, level: 10 } });
+    for (const [k, v] of Object.entries(g)) assert.ok(v <= Gear.GEAR_CAP[k], `${b.id} ${k}`);
+  });
+  for (const b of ["ciborgue", "noctis"]) {
+    assert.ok(usesGun(b), b);
+    assert.ok(!usesSword(b) && !usesHammer(b) && !usesBow(b), b);
+  }
+  for (const b of ["vampiro", "raposa", "aurion", "maru", "iris"]) assert.ok(!usesGun(b), b);
+});

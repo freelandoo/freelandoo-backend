@@ -14,10 +14,10 @@ const legacyIds = [
   "mola_precisao", "injetor_vapor", "capacitor", "rolamento", "receita_eter", "cristal_morkhan", "pintura_arma_eter",
 ];
 
-test("catálogo preserva os 24 IDs e define 132 itens com fonte e uso reais", () => {
+test("catálogo preserva os 24 IDs e define 149 itens com fonte e uso reais", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 132);
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 132);
+  assert.equal(pub.items.length, 149);
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 149);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);

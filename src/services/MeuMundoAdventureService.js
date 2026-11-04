@@ -19,7 +19,7 @@ const Life = require("../utils/meuMundoLife");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
 const Gear = require("../utils/meuMundoGear");
-const { clanOfBody, usesHammer, usesBow } = require("../utils/meuMundoClans");
+const { clanOfBody, usesHammer, usesBow, usesGun } = require("../utils/meuMundoClans");
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
 
@@ -279,6 +279,7 @@ class MeuMundoAdventureService {
       const hero = Adv.levelOf(Number((await Store.getAdventure(c, idUser)).xp)).level;
       const hammer = usesHammer(worn);
       const bow = usesBow(worn);
+      const gun = usesGun(worn);
       const setup = {
         kind,
         level,
@@ -286,10 +287,10 @@ class MeuMundoAdventureService {
         seed: crypto.randomInt(1, 2 ** 31 - 1),
         stats: fightStats(s),
         // Kit pela CLASSE (mm3d-59): raposa = maga; o ringue do Boxe é sempre de luvas.
-        // a arqueira atira como a maga: a regra é a mesma, o desenho é o da flecha de luz
-        style: origin !== "boxe" && !hammer && (bow || clan === "raposa") ? "mage" : undefined,
+        // arqueira e atirador atiram como a maga: a regra é a mesma, muda o desenho
+        style: origin !== "boxe" && !hammer && (bow || gun || clan === "raposa") ? "mage" : undefined,
         // desenho da luta: golpes do Brutamontes (a regra é a do corpo a corpo)
-        kit: origin === "boxe" ? undefined : hammer ? "hammer" : bow ? "bow" : undefined,
+        kit: origin === "boxe" ? undefined : hammer ? "hammer" : bow ? "bow" : gun ? "gun" : undefined,
         // equipamento (com teto somado); o ringue do Boxe é de luvas: sem arma
         gear: origin === "boxe" ? undefined : await GearService().fightGear(c, idUser, clan),
         appearance: origin === "boxe" ? undefined : await GearService().fightAppearance(c, idUser, clan),

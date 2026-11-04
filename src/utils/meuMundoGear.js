@@ -56,6 +56,9 @@ const H = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarit
 /** Arco da aba Arcos (mm3d-69): sem classe, quem decide é a skin vestida. */
 const B = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "bows" });
 
+/** Arma de fogo da aba Guns (mm3d-70): sem classe, quem decide é a skin vestida. */
+const F = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "guns" });
+
 /** Escudo da loja (mm3d-68): de quem usa espada; quem decide é a skin vestida. */
 const E = (id, name, rarity, level, price, bonus) => G(id, "shield", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "shields" });
 
@@ -125,6 +128,24 @@ const GEAR = Object.freeze([
   B("arco_estrelas", "Arco da noite estrelada", "legendary", 9, 10500, { dmg: 0.11, power: 0.09 }),
   B("arco_dragao", "Arco do dragão rubro", "legendary", 9, 12500, { dmg: 0.12, power: 0.08 }),
   B("arco_rubro", "Arco da lua rubra", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
+  // ── aba Guns da Loja de Armas (mm3d-70): Ciborgue e Noctis ──
+  F("fogo_sucata", "Fuzil de sucata", "common", 1, 400, { dmg: 0.02 }),
+  F("fogo_revolver", "Revólver de Lúmen", "common", 1, 550, { dmg: 0.02, stam: 0.01 }),
+  F("fogo_patrulha", "Carabina de patrulha", "uncommon", 2, 900, { dmg: 0.03, warn: 0.02 }),
+  F("fogo_dupla", "Escopeta dupla", "uncommon", 2, 1100, { dmg: 0.04 }),
+  F("fogo_pistola", "Pistola rubra", "uncommon", 3, 1500, { dmg: 0.05 }),
+  F("fogo_mira", "Fuzil de mira", "rare", 3, 2200, { dmg: 0.06, warn: 0.02 }),
+  F("fogo_trabuco", "Trabuco de latão", "rare", 4, 2800, { dmg: 0.07, stam: 0.02 }),
+  F("fogo_raios", "Pistola de raios", "rare", 4, 3100, { dmg: 0.07, power: 0.02 }),
+  F("fogo_tambor", "Canhão de mão", "rare", 5, 3600, { dmg: 0.08, power: 0.03 }),
+  F("fogo_garra", "Garra de vapor", "rare", 5, 4200, { dmg: 0.08, stam: 0.03 }),
+  F("fogo_rubro", "Canhão rubro", "epic", 6, 5500, { dmg: 0.09, power: 0.05 }),
+  F("fogo_neon", "Fuzil neon", "epic", 6, 6000, { dmg: 0.1, warn: 0.04 }),
+  F("fogo_pinca", "Pinça de plasma", "epic", 7, 7000, { dmg: 0.1, power: 0.05 }),
+  F("fogo_rosa", "Lançador rosa", "epic", 7, 8000, { dmg: 0.11, power: 0.05 }),
+  F("fogo_serpente", "Fuzil da serpente", "epic", 8, 9000, { dmg: 0.11, power: 0.06 }),
+  F("fogo_assalto", "Canhão de assalto", "legendary", 9, 11000, { dmg: 0.12, power: 0.08 }),
+  F("fogo_sombra", "Canhão de sombra", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
   // ── escudos da Loja de Armas (mm3d-68): todos que usam espada ──
   E("escudo_ferro", "Escudo de ferro de Lúmen", "common", 1, 350, { def: 0.01 }),
   E("escudo_rebites", "Escudo rebitado", "common", 1, 500, { def: 0.01, stam: 0.01 }),
@@ -295,6 +316,23 @@ const DESCRIPTIONS = Object.freeze({
   arco_estrelas: "Arco longo de aço-noite cravejado de luz. Dizem que aponta sempre para o norte.",
   arco_dragao: "Osso e escama rubra, com a cabeça do dragão no punho. Cada flecha sai rosnando.",
   arco_rubro: "Lâminas negras e rubras em volta de um sol de sangue. Foi tirado de um campeão dos Jogos Eternos.",
+  fogo_sucata: "Montado com peças do ferro-velho de Lúmen. Enferrujado, mas ainda atira reto.",
+  fogo_revolver: "Seis câmaras e um cano curto: leve na mão e fácil de carregar.",
+  fogo_patrulha: "A carabina cinza dos guardas de Lúmen. O visor avisa quem se aproxima.",
+  fogo_dupla: "Dois canos curtos e um coice honesto. Sem delicadeza nenhuma.",
+  fogo_pistola: "Pistola pesada de chapa preta e vermelha, feita para acertar de primeira.",
+  fogo_mira: "A luneta azul enxerga o movimento antes do olho.",
+  fogo_trabuco: "Madeira, latão e um tambor de éter. Uma relíquia que ainda funciona.",
+  fogo_raios: "Bobinas de cobre dentro de vidro: cada disparo guarda um pouco de carga.",
+  fogo_tambor: "Pequeno demais para ser canhão, pesado demais para ser pistola.",
+  fogo_garra: "Uma esfera de fogo presa em garras de latão, com manômetro no cano.",
+  fogo_rubro: "Chapa vermelha gasta de batalha e um cano longo que nunca esfria.",
+  fogo_neon: "Branco, rosa e ciano: a arma mais vistosa do Arsenal, e a mais atenta.",
+  fogo_pinca: "Duas garras de metal seguram o plasma até o gatilho soltar.",
+  fogo_rosa: "Cápsulas de energia rosa em volta do cano. Faz mais barulho do que parece.",
+  fogo_serpente: "Corpo de escamas negras e vermelhas, com a coronha em forma de cauda.",
+  fogo_assalto: "Longo, preto e aceso por dentro. Foi feito para derrubar portões.",
+  fogo_sombra: "Encaixa no braço como uma fera de ferro. Ninguém ouve o disparo.",
   colete_couro: "Proteção de couro com defesa adicional; ocupa o slot de proteção.",
   couraca_rebitada: "Proteção reforçada com rebites; pode ser refinada e preserva seu aprimoramento anterior.",
   relogio_bolso: "Acessório que amplia o aviso dos ataques inimigos nas lutas de aventura.",
