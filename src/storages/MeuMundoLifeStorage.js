@@ -57,6 +57,9 @@ function rowToState(r) {
     boxing: r.boxing || null,
     // mig 317: jovem/adulto (mm3d-58); NULL = de antes (normalize completa)
     growth: r.growth || null,
+    // mig 324: como estava ao deitar e o que o sono rendeu, até a pessoa ver
+    ...(r.sleep_note && r.sleep_note.from ? { sleepFrom: r.sleep_note.from } : {}),
+    ...(r.sleep_note && r.sleep_note.woke ? { woke: r.sleep_note.woke } : {}),
     // nascimento (só leitura): a idade do crescimento conta daqui (2026-11-02)
     bornAt: ms(r.born_at),
     wearDays: r.wear_days != null ? r.wear_days : Math.max(0, (ms(r.sim_at) - ms(r.born_at)) / 86400000),
@@ -76,7 +79,7 @@ const COLS = [
   "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume", "activity_place",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
   "wear_days", "exposure", "boxing", "growth",
-  "dexterity", "attr_budget",
+  "dexterity", "attr_budget", "sleep_note",
 ];
 
 function values(s) {
@@ -95,6 +98,7 @@ function values(s) {
     s.boxing ? JSON.stringify(s.boxing) : null,
     s.growth ? JSON.stringify(s.growth) : null,
     s.dexterity, JSON.stringify(s.budget || { days: {} }),
+    s.sleepFrom || s.woke ? JSON.stringify({ from: s.sleepFrom || null, woke: s.woke || null }) : null,
   ];
 }
 

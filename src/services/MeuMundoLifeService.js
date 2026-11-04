@@ -29,6 +29,7 @@ const { grownHeight } = require("../utils/meuMundoHeights");
 const Skins = require("../utils/meuMundoSkins");
 const Colors = require("../utils/meuMundoColors");
 const { createLogger } = require("../utils/logger");
+const presence = require("../realtime/meuMundoPresence");
 
 const log = createLogger("meuMundo.life");
 
@@ -153,6 +154,16 @@ async function charge(ctx, idUser, { currency, amount, ref, what }) {
   }
 }
 
+/**
+ * Recibo só de tela (2026-11-03): comeu, tomou remédio ou acordou — o aparelho
+ * sobe o brilho e os números. Não credita nada: a mudança já está na vida.
+ */
+function careReceipt(action, at, felt) {
+  const vitals = {};
+  for (const [k, v] of Object.entries(felt)) if (Math.round(v)) vitals[k] = Math.round(v);
+  return { eventId: `care:${action}`, source: "care", actionKey: action, rules: "", activeMs: 0, result: {}, deltas: { vitals }, items: [], at: new Date(at).toISOString() };
+}
+
 /** Avisa a sala (ritmo, cama) depois do COMMIT. Require tardio: a sala também usa este serviço. */
 function notifyRoom(idUser, snap) {
   try {
@@ -206,6 +217,14 @@ class MeuMundoLifeService {
       }
       const idCharacter = ctx.newRow ? ctx.newRow.id_character : row.id_character;
       const state = ctx.newState || s;
+      Life.noteSleep(s, now);
+      const care = ctx.felt ? [careReceipt(`${idCharacter}:eat:${now}`, now, ctx.felt)] : [];
+      // Acordou: fica guardado até a pessoa estar no jogo para ver.
+      if (s.woke && presence.get(idUser)) {
+        const { at, ...felt } = s.woke;
+        care.push(careReceipt(`${idCharacter}:woke:${at}`, at, felt));
+        delete s.woke;
+      }
       const notices = await recordNotices(c, idUser, row.id_character, Life.snapshot(state, now).needs, [
         ...events,
         ...(ctx.newEvents || []),
@@ -274,6 +293,7 @@ class MeuMundoLifeService {
         },
       });
       for (const n of notices) require("./MeuMundoInboxService").push(idUser, n);
+      for (const r of care) presence.send(idUser, "receipt", r);
       return out;
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});
@@ -351,6 +371,7 @@ class MeuMundoLifeService {
       if (!r.ok) return fail(r.code);
       ctx.coins -= item.price;
       ctx.events.push(...r.events);
+      ctx.felt = r.felt;
       return { consumed: { item: item.id, price: item.price } };
     });
   }
@@ -442,6 +463,7 @@ class MeuMundoLifeService {
       if (!r.ok) return fail(r.code);
       ctx.pantry[item.id] -= 1;
       ctx.events.push(...r.events);
+      ctx.felt = r.felt;
       const ate = { item: item.id, meal: r.meal };
       await MeuMundoLifeStorage.saveConsumeKey(ctx.client, idUser, key, ate);
       return { ate, replay: false };

@@ -1120,6 +1120,7 @@ function atBoundary(s, t, events, out) {
     for (const id of Object.keys(s.meals.log)) if (id.slice(0, 10) < keep) delete s.meals.log[id];
   }
   routine(s, t, events, out);
+  noteSleep(s, t);
 }
 
 /**
@@ -1226,6 +1227,7 @@ function consume(s, itemId, t) {
   if (s.activity.kind === "sleeping") return fail("sleeping");
   if ((it.kind === "food" || it.kind === "drink") && it.sat > 0 && s.satiety > RULES.FULL_SATIETY) return fail("full");
   const events = [];
+  const before = { satiety: s.satiety, energy: s.energy, stress: s.stress, health: s.health };
   s.satiety = clamp(s.satiety + it.sat);
   s.fatKg = clamp(s.fatKg + it.kcal / RULES.KCAL_PER_KG, 2, 140);
   if (it.kind === "food" || it.kind === "drink" || it.kind === "supplement") s.diet = clamp(s.diet * 0.85 + it.nutri * 10 * 0.15, -100, 100);
@@ -1269,7 +1271,42 @@ function consume(s, itemId, t) {
     }
   }
   events.push({ at: t, kind: "consume", data: { item: it.id } });
-  return { ok: true, item: it, events, meal };
+  return { ok: true, item: it, events, meal, felt: feltOf(s, it, before) };
+}
+
+/**
+ * O que o item mudou de verdade (o número que sobe na tela, 2026-11-03).
+ * Admin vive com energia 100 e estresse 0: nele vale o número do item, senão
+ * nada apareceria. Humor é o valor do item (ele chega aos poucos, pelo efeito).
+ */
+function feltOf(s, it, before) {
+  const felt = { satiety: s.satiety - before.satiety, mood: it.mood || 0 };
+  felt.energy = s._admin ? it.energy : s.energy - before.energy;
+  felt.stress = s._admin ? it.stress : s.stress - before.stress;
+  felt.health = s._admin ? it.heal || 0 : s.health - before.health;
+  return felt;
+}
+
+/**
+ * Acordou (2026-11-03, regra do Alex: sobe o brilho e o estresse que saiu).
+ * Marca o começo do sono e, ao sair dele por qualquer caminho (hora marcada,
+ * levantar, rotina), guarda em `s.woke` o que o sono rendeu até a pessoa ver —
+ * dormir com o jogo fechado também conta. Cochilo de menos de 15 min não conta.
+ */
+function noteSleep(s, t) {
+  if (s.status === "alive" && s.activity.kind === "sleeping") {
+    if (!s.sleepFrom) s.sleepFrom = { at: t, stress: s.stress, energy: s.energy };
+    return;
+  }
+  const from = s.sleepFrom;
+  if (!from) return;
+  delete s.sleepFrom;
+  const h = (t - from.at) / HOUR;
+  if (s.status !== "alive" || h < 0.25) return;
+  // admin não tem o que recuperar: mostra o que o sono renderia
+  const stress = s._admin ? Math.max(-100, RATES.sleeping.stress * h) : s.stress - from.stress;
+  const energy = s._admin ? Math.min(100, RATES.sleeping.energy * h) : s.energy - from.energy;
+  s.woke = { at: t, stress: Math.min(0, stress), energy: Math.max(0, energy) };
 }
 
 /**
@@ -1548,6 +1585,7 @@ function publicCatalog() {
 }
 
 module.exports = {
+  noteSleep,
   ATTRS,
   birthDexterity,
   gain,
