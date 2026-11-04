@@ -138,6 +138,7 @@ const FURNITURE = Object.freeze({
   forge_anvil: { w: 1.8, d: 1.1, h: 1.05, use: "forge" },
   refining_bench: { w: 2.3, d: 0.9, h: 1.3, use: "refine" },
   armory_counter: { w: 3.0, d: 0.8, h: 1.05, use: "armory" },
+  weapons_counter: { w: 3.0, d: 0.8, h: 1.05, use: "weapons" },
   forge_furnace: { w: 2.0, d: 1.4, h: 2.7 },
   weapon_rack: { w: 1.8, d: 0.45, h: 2.0 },
 });

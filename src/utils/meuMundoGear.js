@@ -10,6 +10,10 @@
 //    decide o kit (raposa = maga com cajado, vampiro = lâmina com espada); a
 //    arma só soma bônus pequenos e PRECISA ser da classe; sexo/fase/skin
 //    nunca mudam kit, atributos ou habilidades.
+//  • mm3d-66 (regra do Alex): os golpes vêm do PERSONAGEM (skin vestida), nunca
+//    da arma. Espada é de guerreiro (vampiros, Aurion, Morkhan e Zéphyra —
+//    usesSword em meuMundoClans.js): os outros não compram nem equipam. A espada
+//    da loja muda só o modelo na mão e o bônus.
 //  • Bônus de equipamento têm TETO somado (não se multiplicam sem limite).
 //  • Moeda: as moedas do jogo (tb_mm_wallet) — sem carteira nova.
 "use strict";
@@ -43,6 +47,9 @@ const G = (id, category, name, rarity, o = {}) => Object.freeze({
   use: useFor(category, id), action: useFor(category, id), cosmeticEffect: cosmeticEffect(id), lore: LORE[id] || null, ...o,
 });
 
+/** Espada da loja: de guerreiro (classe vampiro), recicla por ~12% do preço. */
+const S = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { clan: "vampiro", level, price, bonus, sell: Math.round(price * 0.12), shop: "weapons" });
+
 const GEAR = Object.freeze([
   // ── armas (uma por classe em cada degrau) ──
   G("espada_aprendiz", "weapon", "Espada de aprendiz", "common", { clan: "vampiro", bonus: { dmg: 0 }, starter: true, sell: 10 }),
@@ -53,6 +60,23 @@ const GEAR = Object.freeze([
   G("cajado_eter", "weapon", "Cajado de éter", "rare", { clan: "raposa", level: 3, bonus: { dmg: 0.1, power: 0.05 }, sell: 200 }),
   G("espada_solar", "weapon", "Lâmina solar", "legendary", { clan: "vampiro", level: 8, bonus: { dmg: 0.12, power: 0.08 }, sell: 500 }),
   G("cajado_solar", "weapon", "Cajado solar", "legendary", { clan: "raposa", level: 8, bonus: { dmg: 0.12, power: 0.08 }, sell: 500 }),
+  // ── Loja de Armas do Arsenal de Lúmen (mm3d-66): só guerreiros ──
+  S("espada_aco", "Espada de aço de Lúmen", "common", 1, 400, { dmg: 0.02 }),
+  S("espada_viajante", "Sabre do viajante", "common", 1, 500, { dmg: 0.01, stam: 0.02 }),
+  S("espada_prata", "Agulha de prata", "uncommon", 2, 900, { dmg: 0.03, warn: 0.02 }),
+  S("espada_vigia", "Espada do vigia", "uncommon", 2, 1100, { dmg: 0.04 }),
+  S("espada_cutelo", "Cutelo de ferro negro", "uncommon", 3, 1400, { dmg: 0.05 }),
+  S("espada_silencio", "Katana do silêncio", "rare", 3, 2200, { dmg: 0.06, stam: 0.03 }),
+  S("espada_carmesim", "Lâmina carmesim", "rare", 4, 2800, { dmg: 0.07, power: 0.03 }),
+  S("espada_muralha", "Montante da muralha", "rare", 5, 3400, { dmg: 0.08, def: 0.02 }),
+  S("espada_chama", "Serpente de chamas", "rare", 5, 4200, { dmg: 0.08, power: 0.04 }),
+  S("espada_brasa", "Katana de brasa", "epic", 6, 5500, { dmg: 0.09, power: 0.05 }),
+  S("espada_meia_noite", "Cruz da meia-noite", "epic", 6, 6000, { dmg: 0.1, warn: 0.04 }),
+  S("espada_celeste", "Presa celeste", "epic", 7, 7500, { dmg: 0.1, power: 0.06 }),
+  S("espada_ceifadora", "Ceifadora rubra", "epic", 8, 8500, { dmg: 0.11, power: 0.05 }),
+  S("espada_abismo", "Coroa do abismo", "legendary", 9, 10000, { dmg: 0.11, power: 0.09 }),
+  S("espada_alvorada", "Alvorada dourada", "legendary", 9, 12000, { dmg: 0.12, power: 0.08 }),
+  S("espada_morkhan", "Fenda de Morkhan", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
   // ── proteção ──
   G("colete_couro", "armor", "Colete de couro", "common", { price: 250, bonus: { def: 0.05 }, sell: 35 }),
   G("couraca_rebitada", "armor", "Couraça rebitada", "uncommon", { price: 700, level: 3, bonus: { def: 0.08 }, sell: 100 }),
@@ -137,6 +161,22 @@ const DESCRIPTIONS = Object.freeze({
   cajado_eter: "Cajado intermediário: doze peças diferentes e projeto de éter aprendido.",
   espada_solar: "Lâmina avançada: quinze peças diferentes, projeto de éter e nível de aventura oito.",
   cajado_solar: "Cajado avançado: quinze peças diferentes, projeto de éter e nível de aventura oito.",
+  espada_aco: "A lâmina de todo guerreiro que começa em Lúmen: reta, honesta e fácil de manter.",
+  espada_viajante: "Sabre leve de quem cruza a cidade a pé. Cansa menos no braço do que corta.",
+  espada_prata: "Lâmina fina de duelista, com guarda longa. Avisa o golpe que vem com um instante de folga.",
+  espada_vigia: "Espada de ronda dos vigias de Lúmen, com guarda de ferro trabalhado.",
+  espada_cutelo: "Um bloco de ferro negro com cabo de corda. Sem delicadeza nenhuma.",
+  espada_silencio: "Katana de fio longo com borla vermelha. Golpes econômicos, quase sem ruído.",
+  espada_carmesim: "Lâmina branca com veios carmesim que acendem a cada acerto.",
+  espada_muralha: "Espada larga de quem segura a linha: protege quase tanto quanto corta.",
+  espada_brasa: "Katana de fio alaranjado, forjada ainda quente. Carrega o poder mais depressa.",
+  espada_meia_noite: "Cruz de aço negro das rondas noturnas. Quem a usa enxerga o golpe antes.",
+  espada_celeste: "Presa azul de guarda em chifres, relíquia ornamentada dos Jogos Eternos.",
+  espada_chama: "Lâmina curva que serpenteia como fogo vivo. Alimenta o poder a cada corte.",
+  espada_ceifadora: "Montante de osso e ferro rubro, com rasgos abertos na lâmina. Foi feita para assustar antes de cortar.",
+  espada_abismo: "Lâmina violeta coroada de garras, com veios de éter que correm até a ponta.",
+  espada_alvorada: "Lâmina dourada que lembra a primeira luz de Aurion sobre Lúmen.",
+  espada_morkhan: "Fragmento violeta rachado pela mesma luz do cristal de Morkhan, o Sem-Nome.",
   colete_couro: "Proteção de couro com defesa adicional; ocupa o slot de proteção.",
   couraca_rebitada: "Proteção reforçada com rebites; pode ser refinada e preserva seu aprimoramento anterior.",
   relogio_bolso: "Acessório que amplia o aviso dos ataques inimigos nas lutas de aventura.",
@@ -195,7 +235,7 @@ function itemDetails(item) {
   const assembly = Forge.ASSEMBLIES.find((r) => r.out === item.id);
   const source = [];
   if (item.starter) source.push("Prólogo: arma inicial gratuita da classe.");
-  if (item.price != null) source.push(`Loja de equipamentos: ${item.price} moedas.`);
+  if (item.price != null) source.push(`${item.shop === "weapons" ? "Loja de Armas do Arsenal" : "Loja de equipamentos"}: ${item.price} moedas.`);
   if (LOOT_SOURCE[item.id]) source.push(LOOT_SOURCE[item.id]);
   for (const r of producing) source.push(`Ferreiro: ${r.kind === "assembly" ? "montar" : r.kind === "part" ? "fabricar uma peça de" : "produzir"} ${item.name} (${r.coins} moedas e ingredientes da receita).`);
   const uses = [];
@@ -285,7 +325,7 @@ function publicGear() {
     slots: SLOTS,
     cap: GEAR_CAP,
     upgrade: { max: UPGRADE.MAX, dmg: UPGRADE.DMG, def: UPGRADE.DEF, secondary: UPGRADE.SECONDARY, rulesVersion: Forge.RULES_VERSION },
-    items: GEAR.map((g) => ({ id: g.id, category: g.category, name: g.name, rarity: g.rarity, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
+    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, name: g.name, rarity: g.rarity, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
     recipes: RECIPES,
   };
 }

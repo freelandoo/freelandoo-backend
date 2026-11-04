@@ -17,6 +17,7 @@ const Adv = require("../utils/meuMundoAdventure");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const AdvStore = require("../storages/MeuMundoAdventureStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
+const { clanOfBody, usesSword } = require("../utils/meuMundoClans");
 
 const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ERRORS = {
@@ -88,14 +89,27 @@ async function hasPending(c, idUser, items, now) {
   return pending.some((p) => ids.has(p.item_id));
 }
 
+/**
+ * A classe que VALE agora: a do personagem vestido; sem skin de classe, a da
+ * conta. É a mesma conta da luta (fightStart): loja, mochila e luta nunca
+ * discordam sobre quem é guerreiro (mm3d-66).
+ */
+async function wornClan(c, idUser) {
+  return clanOfBody(await MeuMundoStorage.getBody(c, idUser)) ?? (await MeuMundoStorage.getClan(c, idUser)).clan;
+}
+
+/** Espada da loja nas mãos de quem não é guerreiro não vale. */
+const swordBlocked = (it, warrior) => it.shop === "weapons" && !warrior;
+
 /** Equipado como a regra quer: { slot: { id, level } } (arma de outra classe não vale). */
 async function equippedFull(c, idUser, clan) {
   const eq = await GearStore.equipped(c, idUser);
   const owned = await GearStore.owned(c, idUser);
+  const warrior = usesSword(await MeuMundoStorage.getBody(c, idUser));
   const out = {};
   for (const [slot, id] of Object.entries(eq)) {
     const it = Gear.GEAR_BY_ID.get(id);
-    if (!it || !owned[id] || (it.clan && it.clan !== clan)) continue;
+    if (!it || !owned[id] || (it.clan && it.clan !== clan) || swordBlocked(it, warrior)) continue;
     out[slot] = { id, level: owned[id].level };
   }
   return out;
@@ -104,7 +118,7 @@ async function equippedFull(c, idUser, clan) {
 /** O estado da mochila (posse, equipado, nível, classe, moedas). */
 async function bagState(c, idUser, coins, now = Date.now()) {
   await GearStore.expireProposals(c, idUser, now);
-  const clan = (await MeuMundoStorage.getClan(c, idUser)).clan;
+  const clan = await wornClan(c, idUser);
   const owned = await GearStore.owned(c, idUser);
   const equipped = await GearStore.equipped(c, idUser);
   const level = await levelOf(c, idUser);
@@ -120,7 +134,8 @@ async function bagState(c, idUser, coins, now = Date.now()) {
     };
   }
   const unlocks = await GearStore.unlocks(c, idUser);
-  return { clan, level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full), refinement,
+  const warrior = usesSword(await MeuMundoStorage.getBody(c, idUser));
+  return { clan, warrior, level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full), refinement,
     pendingProposals: pending.map(publicProposal),
     learnedRecipes: unlocks.filter((u) => u.kind === "recipe").map((u) => u.item_id),
     unlockedEmotes: unlocks.filter((u) => u.kind === "emote").map((u) => u.item_id),
@@ -196,6 +211,7 @@ class MeuMundoGearService {
     return withReceipt(idUser, "shop", body.key, async (s, ctx) => {
       const c = ctx.client;
       if ((await levelOf(c, idUser)) < it.level) return fail("level");
+      if (swordBlocked(it, usesSword(await MeuMundoStorage.getBody(c, idUser)))) return fail("clan");
       const owned = await GearStore.owned(c, idUser);
       if (!it.stack && owned[it.id]) return fail("max");
       if (ctx.coins < it.price) return fail("coins");
@@ -222,10 +238,11 @@ class MeuMundoGearService {
       const it = Gear.GEAR_BY_ID.get(id);
       if (!it) return fail("item");
       if (!Gear.slotsFor(it).includes(slot)) return fail("slot");
-      const clan = (await MeuMundoStorage.getClan(c, idUser)).clan;
+      const clan = await wornClan(c, idUser);
       const owned = await GearStore.owned(c, idUser);
       const why = Gear.canEquip(it, { clan, level: await levelOf(c, idUser), owned: !!owned[id] });
       if (why) return fail(why);
+      if (swordBlocked(it, usesSword(await MeuMundoStorage.getBody(c, idUser)))) return fail("clan");
       // o mesmo acessório não ocupa os dois slots
       for (const [other, oid] of Object.entries(eq)) if (other !== slot && oid === id) await GearStore.unequip(c, idUser, other);
       await GearStore.equip(c, idUser, slot, id);

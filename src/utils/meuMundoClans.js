@@ -21,6 +21,10 @@ const CLAN_BODIES = Object.freeze(
   CLANS.flatMap((c) => SEXES.flatMap((s) => [BODY[c][s].young, BODY[c][s].adult]))
 );
 
+// mm3d-66 (regra do Alex): as skins que usam espada, além dos vampiros — elas
+// lutam com o kit de espada (a pasta de golpes do vampiro) em qualquer conta.
+const SWORD_SKINS = Object.freeze(["aurion", "morkhan", "zephyra"]);
+
 const ARTIFACT = Object.freeze({ KIND: "troca_classe", COOLDOWN_DAYS: 30 });
 
 const isClan = (v) => CLANS.includes(v);
@@ -32,4 +36,13 @@ function clanBody(clan, sex, stage) {
   return BODY[clan][isSex(sex) ? sex : "m"][stage === "adult" ? "adult" : "young"];
 }
 
-module.exports = { CLANS, SEXES, CLAN_BODIES, ARTIFACT, isClan, isSex, clanBody };
+/** O kit que o corpo vestido impõe (raposa/vampiro); null = o corpo não decide. */
+function clanOfBody(body) {
+  if (CLAN_BODIES.includes(body)) return String(body).startsWith("raposa") ? "raposa" : "vampiro";
+  return SWORD_SKINS.includes(body) ? "vampiro" : null;
+}
+
+/** Guerreiro = quem veste vampiro ou uma skin de espada. Só ele compra e usa as espadas da loja. */
+const usesSword = (body) => clanOfBody(body) === "vampiro";
+
+module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword };

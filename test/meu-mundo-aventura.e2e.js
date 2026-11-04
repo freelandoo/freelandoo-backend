@@ -288,6 +288,31 @@ async function main() {
   const future = await Adv.creditMinigame(nu, { activity: "paint", actionKey: "paint:r3:1", segments: [{ from: now + 60000, to: now + 600000 }] });
   check("tempo no futuro não conta", future.receipt === null);
 
+  // ── mm3d-66: Loja de Armas — espada é de guerreiro, os golpes são da skin ──
+  const su = crypto.randomUUID();
+  await pool.query(`INSERT INTO tb_user VALUES ($1, 'mms', 'mms@mm.test')`, [su]);
+  await Life.peek(su);
+  await pool.query(`INSERT INTO tb_mm_wallet (id_user, coins) VALUES ($1, 100000) ON CONFLICT (id_user) DO UPDATE SET coins = 100000`, [su]);
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f') ON CONFLICT DO NOTHING`, [su]);
+  const wear = (skin) => pool.query(`INSERT INTO tb_mm_avatar_pref (id_user, body, skin) VALUES ($1, 'normal', $2) ON CONFLICT (id_user) DO UPDATE SET skin = $2`, [su, skin]);
+  const fightKit = async () => (await Adv.fightStart(su, { origin: "laminas", kind: "soldier", level: 1 })).fight.setup;
+  const fox = await Gear.buy(su, { item: "espada_aco", key: k() });
+  check("raposa não compra espada", fox.code === "clan", JSON.stringify(fox));
+  check("mochila da raposa: não é guerreira", (await Gear.get(su)).bag.warrior === false);
+  check("raposa segue maga na luta", (await fightKit()).style === "mage");
+  await wear("aurion");
+  const aurion = await Gear.buy(su, { item: "espada_aco", key: k() });
+  check("conta raposa vestindo Aurion compra espada", !aurion.error, JSON.stringify(aurion));
+  const auEq = await Gear.equip(su, { slot: "weapon", item: "espada_aco" });
+  check("Aurion equipa a espada da loja (+2% dano)", auEq.bag && auEq.bag.warrior === true && auEq.bag.bonus.dmg === 0.02, JSON.stringify(auEq.bag && auEq.bag.bonus));
+  const auKit = await fightKit();
+  check("Aurion luta com kit de espada e a espada comprada", !auKit.style && auKit.appearance.weaponId === "espada_aco", JSON.stringify(auKit.appearance));
+  await wear("iris");
+  const iris = await Gear.buy(su, { item: "espada_viajante", key: k() });
+  check("skin que não é guerreira não compra espada", iris.code === "clan", JSON.stringify(iris));
+  const irisKit = await fightKit();
+  check("a espada equipada não vale fora do guerreiro", irisKit.appearance.weaponId === null && irisKit.style === "mage", JSON.stringify(irisKit.appearance));
+
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();
   process.exit(FAIL ? 1 : 0);

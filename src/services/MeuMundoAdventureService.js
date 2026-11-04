@@ -19,9 +19,7 @@ const Life = require("../utils/meuMundoLife");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
 const Gear = require("../utils/meuMundoGear");
-const { CLAN_BODIES } = require("../utils/meuMundoClans");
-/** Classe do corpo vestido (raposa/vampiro) ou null se não é corpo de classe. */
-const clanOfBody = (b) => (CLAN_BODIES.includes(b) ? (String(b).startsWith("raposa") ? "raposa" : "vampiro") : null);
+const { clanOfBody } = require("../utils/meuMundoClans");
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
 

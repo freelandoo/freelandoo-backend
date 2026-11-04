@@ -514,14 +514,16 @@ function forja() {
 function arsenal() {
   return {
     level: 0,
-    version: "centro-arsenal-v1",
+    version: "centro-arsenal-v2",
     name: "Arsenal de Lúmen",
     theme: "arsenal",
     door: D(0, 0, 2.2),
     floors: [{
       rooms: [R("vitrine", "Arsenal", "wood", -4.35, 0, 4.35, 12.4)],
       furniture: [
-        ["armory_counter", 0, 8.7, 0],
+        // dois balcões (mm3d-66): armas à esquerda de quem entra, proteções à direita
+        ["weapons_counter", -1.9, 8.7, 0],
+        ["armory_counter", 1.9, 8.7, 0],
         ["weapon_rack", -3.7, 3.4, -90],
         ["weapon_rack", 3.7, 3.4, 90],
         ["weapon_rack", -3.7, 6.7, -90],
@@ -533,7 +535,7 @@ function arsenal() {
         ["lamp", 3.8, 0.65, 0],
       ],
     }],
-    npcs: [{ role: "armeira", x: 0, z: 10.2, r: 0 }],
+    npcs: [{ role: "armeiro", x: -1.9, z: 10.2, r: 0 }, { role: "armeira", x: 1.9, z: 10.2, r: 0 }],
   };
 }
 
