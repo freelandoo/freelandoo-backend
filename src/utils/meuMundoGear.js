@@ -50,6 +50,9 @@ const G = (id, category, name, rarity, o = {}) => Object.freeze({
 /** Espada da loja: de guerreiro (classe vampiro), recicla por ~12% do preço. */
 const S = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { clan: "vampiro", level, price, bonus, sell: Math.round(price * 0.12), shop: "weapons" });
 
+/** Arma pesada da aba Hammers: sem classe, quem decide é a skin vestida. */
+const H = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "hammers" });
+
 const GEAR = Object.freeze([
   // ── armas (uma por classe em cada degrau) ──
   G("espada_aprendiz", "weapon", "Espada de aprendiz", "common", { clan: "vampiro", bonus: { dmg: 0 }, starter: true, sell: 10 }),
@@ -77,6 +80,25 @@ const GEAR = Object.freeze([
   S("espada_abismo", "Coroa do abismo", "legendary", 9, 10000, { dmg: 0.11, power: 0.09 }),
   S("espada_alvorada", "Alvorada dourada", "legendary", 9, 12000, { dmg: 0.12, power: 0.08 }),
   S("espada_morkhan", "Fenda de Morkhan", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
+  // ── aba Hammers da Loja de Armas (mm3d-67): Soldado de Pedra, Marú e Kragor ──
+  H("pesada_ferreiro", "Machado do ferreiro", "common", 1, 400, { dmg: 0.02 }),
+  H("pesada_lenhador", "Machado duplo do lenhador", "common", 1, 550, { dmg: 0.02, stam: 0.01 }),
+  H("pesada_caveira", "Martelo da caveira alada", "uncommon", 2, 900, { dmg: 0.03, warn: 0.02 }),
+  H("pesada_lava", "Martelo de lava", "uncommon", 2, 1100, { dmg: 0.04 }),
+  H("pesada_noite", "Alabarda negra", "uncommon", 3, 1500, { dmg: 0.05 }),
+  H("pesada_lanca", "Lança-tridente de aço", "rare", 3, 2200, { dmg: 0.06, warn: 0.02 }),
+  H("pesada_bigorna", "Martelo bigorna", "rare", 4, 2800, { dmg: 0.07, def: 0.01 }),
+  H("pesada_cravos", "Clava de cravos", "rare", 4, 3100, { dmg: 0.07, power: 0.02 }),
+  H("pesada_gume", "Machado gume de gelo", "rare", 5, 3600, { dmg: 0.08, power: 0.03 }),
+  H("pesada_coral", "Tridente de coral", "rare", 5, 4200, { dmg: 0.08, stam: 0.03 }),
+  H("pesada_caldeira", "Martelo-caldeira", "epic", 6, 5500, { dmg: 0.09, power: 0.05 }),
+  H("pesada_mares", "Tridente dos mares", "epic", 6, 6000, { dmg: 0.1, warn: 0.04 }),
+  H("pesada_ornada", "Machado do juramento", "epic", 7, 7000, { dmg: 0.1, power: 0.05 }),
+  H("pesada_eter", "Machado de éter", "epic", 7, 8000, { dmg: 0.11, power: 0.05 }),
+  H("pesada_mitica", "Martelo rubro-negro", "epic", 8, 9000, { dmg: 0.11, power: 0.06 }),
+  H("pesada_espinhos", "Foice de espinhos", "legendary", 9, 10500, { dmg: 0.11, power: 0.09 }),
+  H("pesada_praga", "Machado da praga", "legendary", 9, 12500, { dmg: 0.12, power: 0.08 }),
+  H("pesada_neon", "Machado do abismo azul", "legendary", 10, 15000, { dmg: 0.13, power: 0.09 }),
   // ── proteção ──
   G("colete_couro", "armor", "Colete de couro", "common", { price: 250, bonus: { def: 0.05 }, sell: 35 }),
   G("couraca_rebitada", "armor", "Couraça rebitada", "uncommon", { price: 700, level: 3, bonus: { def: 0.08 }, sell: 100 }),
@@ -177,6 +199,24 @@ const DESCRIPTIONS = Object.freeze({
   espada_abismo: "Lâmina violeta coroada de garras, com veios de éter que correm até a ponta.",
   espada_alvorada: "Lâmina dourada que lembra a primeira luz de Aurion sobre Lúmen.",
   espada_morkhan: "Fragmento violeta rachado pela mesma luz do cristal de Morkhan, o Sem-Nome.",
+  pesada_ferreiro: "Machado de oficina com cabo enfaixado. Foi feito para rachar lenha e serve para rachar o resto.",
+  pesada_lenhador: "Duas lâminas gastas num cabo de madeira: pesa menos do que parece.",
+  pesada_caveira: "Martelo de latão com caveira alada na cabeça. Sua sombra avisa o golpe que vem.",
+  pesada_lava: "A cabeça ainda guarda o calor da forja, entre placas de cobre.",
+  pesada_noite: "Alabarda negra de cabo fino e lâmina larga, das guardas noturnas.",
+  pesada_lanca: "Lança de três pontas e cabo enfaixado: mantém o inimigo longe.",
+  pesada_bigorna: "Uma bigorna num cabo. Protege só por ocupar tanto espaço.",
+  pesada_cravos: "Clava de ferro cravejada, com fitas gastas de batalhas antigas.",
+  pesada_gume: "Machado de lâmina dupla com gume azulado, frio ao toque.",
+  pesada_coral: "Tridente vermelho e leve, polido como coral. Quase não cansa.",
+  pesada_caldeira: "Uma caldeira inteira presa num cabo, com pistões e rebites. Acumula pressão a cada golpe.",
+  pesada_mares: "Tridente antigo de ferro escuro. Quem o segura sente a onda antes de ela quebrar.",
+  pesada_ornada: "Machado de lâminas gravadas, feito para quem jurou não recuar.",
+  pesada_eter: "Lâmina de energia azul presa num núcleo de éter que nunca apaga.",
+  pesada_mitica: "Cabeça de pedra negra rachada em vermelho, com fitas de guerra.",
+  pesada_espinhos: "Lâmina curva de espinhos e tiras vermelhas, torta como um galho morto.",
+  pesada_praga: "Machado rubro de correntes e farpas. Dizem que a ferrugem dele nunca para de crescer.",
+  pesada_neon: "Cristal azul que brilha por dentro, em duas lâminas que ninguém sabe quem forjou.",
   colete_couro: "Proteção de couro com defesa adicional; ocupa o slot de proteção.",
   couraca_rebitada: "Proteção reforçada com rebites; pode ser refinada e preserva seu aprimoramento anterior.",
   relogio_bolso: "Acessório que amplia o aviso dos ataques inimigos nas lutas de aventura.",
@@ -235,7 +275,7 @@ function itemDetails(item) {
   const assembly = Forge.ASSEMBLIES.find((r) => r.out === item.id);
   const source = [];
   if (item.starter) source.push("Prólogo: arma inicial gratuita da classe.");
-  if (item.price != null) source.push(`${item.shop === "weapons" ? "Loja de Armas do Arsenal" : "Loja de equipamentos"}: ${item.price} moedas.`);
+  if (item.price != null) source.push(`${item.shop ? "Loja de Armas do Arsenal" : "Loja de equipamentos"}: ${item.price} moedas.`);
   if (LOOT_SOURCE[item.id]) source.push(LOOT_SOURCE[item.id]);
   for (const r of producing) source.push(`Ferreiro: ${r.kind === "assembly" ? "montar" : r.kind === "part" ? "fabricar uma peça de" : "produzir"} ${item.name} (${r.coins} moedas e ingredientes da receita).`);
   const uses = [];

@@ -19,7 +19,7 @@ const Life = require("../utils/meuMundoLife");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
 const Gear = require("../utils/meuMundoGear");
-const { clanOfBody } = require("../utils/meuMundoClans");
+const { clanOfBody, usesHammer } = require("../utils/meuMundoClans");
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
 
@@ -277,6 +277,7 @@ class MeuMundoAdventureService {
       }
       // nível de AVENTURA de quem joga: vida, defesa, ataque e atributos crescem com ele
       const hero = Adv.levelOf(Number((await Store.getAdventure(c, idUser)).xp)).level;
+      const hammer = usesHammer(worn);
       const setup = {
         kind,
         level,
@@ -284,7 +285,9 @@ class MeuMundoAdventureService {
         seed: crypto.randomInt(1, 2 ** 31 - 1),
         stats: fightStats(s),
         // Kit pela CLASSE (mm3d-59): raposa = maga; o ringue do Boxe é sempre de luvas.
-        style: origin !== "boxe" && clan === "raposa" ? "mage" : undefined,
+        style: origin !== "boxe" && !hammer && clan === "raposa" ? "mage" : undefined,
+        // desenho da luta: golpes do Brutamontes (a regra é a do corpo a corpo)
+        kit: origin !== "boxe" && hammer ? "hammer" : undefined,
         // equipamento (com teto somado); o ringue do Boxe é de luvas: sem arma
         gear: origin === "boxe" ? undefined : await GearService().fightGear(c, idUser, clan),
         appearance: origin === "boxe" ? undefined : await GearService().fightAppearance(c, idUser, clan),
@@ -297,7 +300,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, hero, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
+          setup: { kind, level, hero, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,

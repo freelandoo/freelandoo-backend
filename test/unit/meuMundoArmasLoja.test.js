@@ -4,7 +4,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const Gear = require("../../src/utils/meuMundoGear");
-const { clanOfBody, usesSword } = require("../../src/utils/meuMundoClans");
+const { clanOfBody, usesSword, usesHammer } = require("../../src/utils/meuMundoClans");
 const { CENTER_INTERIORS } = require("../../src/utils/meuMundoCenterInteriors");
 
 const swords = Gear.GEAR.filter((g) => g.shop === "weapons");
@@ -49,6 +49,26 @@ test("preço e nível sobem juntos; bônus respeita o teto", () => {
 
 test("as espadas da loja podem ser refinadas como as outras armas", () => {
   for (const s of swords) assert.ok(Gear.upgradeCost(s, 0), s.id);
+});
+
+test("aba Hammers: 18 armas, preço crescente, sem classe e dentro do teto", () => {
+  const heavy = Gear.GEAR.filter((g) => g.shop === "hammers");
+  assert.equal(heavy.length, 18);
+  heavy.forEach((h, i) => {
+    assert.ok(h.id.startsWith("pesada_") && h.clan === null, h.id);
+    assert.ok(Gear.itemDetails(h).description, h.id);
+    if (i) assert.ok(h.price > heavy[i - 1].price && h.level >= heavy[i - 1].level, h.id);
+    const b = Gear.gearBonus({ weapon: { id: h.id, level: 10 } });
+    for (const [k, v] of Object.entries(b)) assert.ok(v <= Gear.GEAR_CAP[k], `${h.id} ${k}`);
+  });
+});
+
+test("Soldado de Pedra, Marú e Kragor usam arma pesada, e nem espada nem kit de maga", () => {
+  for (const b of ["golem", "maru", "kragor", "brutamontes"]) {
+    assert.ok(usesHammer(b), b);
+    assert.ok(!usesSword(b), b);
+  }
+  for (const b of ["vampiro", "raposa", "aurion", "iris", "ciborgue"]) assert.ok(!usesHammer(b), b);
 });
 
 test("Arsenal tem dois balcões e dois vendedores", () => {

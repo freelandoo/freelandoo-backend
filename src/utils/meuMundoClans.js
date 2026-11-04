@@ -25,6 +25,11 @@ const CLAN_BODIES = Object.freeze(
 // lutam com o kit de espada (a pasta de golpes do vampiro) em qualquer conta.
 const SWORD_SKINS = Object.freeze(["aurion", "morkhan", "zephyra"]);
 
+// mm3d-67 (regra do Alex): Soldado de Pedra (corpo golem), Marú e Kragor lutam com
+// os golpes do Brutamontes e usam os machados, martelos e tridentes da aba Hammers.
+// O Brutamontes (skin de teste) é o dono desses golpes e entra na mesma lista.
+const HAMMER_SKINS = Object.freeze(["golem", "maru", "kragor", "brutamontes"]);
+
 const ARTIFACT = Object.freeze({ KIND: "troca_classe", COOLDOWN_DAYS: 30 });
 
 const isClan = (v) => CLANS.includes(v);
@@ -45,4 +50,7 @@ function clanOfBody(body) {
 /** Guerreiro = quem veste vampiro ou uma skin de espada. Só ele compra e usa as espadas da loja. */
 const usesSword = (body) => clanOfBody(body) === "vampiro";
 
-module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword };
+/** Quem luta com armas pesadas (kit do Brutamontes) e compra na aba Hammers. */
+const usesHammer = (body) => HAMMER_SKINS.includes(body);
+
+module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, HAMMER_SKINS, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword, usesHammer };

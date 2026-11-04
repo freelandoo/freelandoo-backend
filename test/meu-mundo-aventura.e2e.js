@@ -313,6 +313,22 @@ async function main() {
   const irisKit = await fightKit();
   check("a espada equipada não vale fora do guerreiro", irisKit.appearance.weaponId === null && irisKit.style === "mage", JSON.stringify(irisKit.appearance));
 
+  // ── mm3d-67: aba Hammers — Soldado de Pedra, Marú e Kragor ──
+  const irisHam = await Gear.buy(su, { item: "pesada_ferreiro", key: k() });
+  check("quem não é das skins de martelo não compra arma pesada", irisHam.code === "clan", JSON.stringify(irisHam));
+  await wear("kragor");
+  const krBuy = await Gear.buy(su, { item: "pesada_ferreiro", key: k() });
+  check("conta raposa vestindo Kragor compra arma pesada", !krBuy.error, JSON.stringify(krBuy));
+  const krSword = await Gear.equip(su, { slot: "weapon", item: "espada_aco" });
+  check("Kragor não equipa espada", krSword.code === "clan", JSON.stringify(krSword));
+  const krEq = await Gear.equip(su, { slot: "weapon", item: "pesada_ferreiro" });
+  check("Kragor equipa o machado (+2% dano)", krEq.bag && krEq.bag.hammer === true && krEq.bag.bonus.dmg === 0.02, JSON.stringify(krEq.bag && krEq.bag.bonus));
+  const krKit = await fightKit();
+  check("Kragor luta com o kit do Brutamontes e a arma comprada", krKit.kit === "hammer" && !krKit.style && krKit.appearance.weaponId === "pesada_ferreiro", JSON.stringify(krKit));
+  await wear("aurion");
+  const auHam = await fightKit();
+  check("a arma pesada equipada não vale no Aurion", auHam.appearance.weaponId === null && auHam.kit === null, JSON.stringify(auHam.appearance));
+
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();
   process.exit(FAIL ? 1 : 0);
