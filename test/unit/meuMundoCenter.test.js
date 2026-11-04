@@ -255,3 +255,12 @@ test("hospital por dentro: seis leitos na enfermaria, cada um com ponto de levan
   assert.equal(I.floors.length, 1);
   assert.ok(Math.hypot(I.exit.x - I.door.x, I.exit.z - I.door.z) < 1, "saída junto da porta");
 });
+
+test("vão entre o supermercado e a corrida: cabe um golem do anel até a Rua dos Ofícios", () => {
+  const r = 1.3;
+  for (let i = 0; i <= 40; i++) {
+    const z = 27 + (i / 40) * 7; // da frente da corrida até a rua de pedra
+    const p = resolveCircle(31.5, z, r, C.OBSTACLES);
+    assert.ok(Math.abs(p.x - 31.5) < 1e-6 && Math.abs(p.z - z) < 1e-6, `vão fechado em z ${z}`);
+  }
+});

@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 12; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 13; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -82,8 +82,10 @@ const PLACE_DEFS = [
   // de cada lado: ninguém passa entre os prédios.
   { id: "paint", zone: "atividades", rect: [-1.6, 5.6, -FRONT - 14, -FRONT], h: 13, peak: 17, front: "n", door: 2, doorW: 2.4, game: "paint", party: 6 },
   // Corrida antigravidade (mm3d-39): hangar no canto nordeste, ao norte da
-  // universidade, de frente para a curva nordeste do anel.
-  { id: "corrida", zone: "atividades", rect: [FRONT, FRONT + 22, 19, 30], h: 8, peak: 14, front: "w", door: 24.5, doorW: 3.4, game: "corrida" },
+  // universidade, de frente para a curva nordeste do anel. Recuado 3 m da linha
+  // das fachadas: o vão com a quina do supermercado (x 30–33) é a passagem da
+  // calçada do anel direto para a Rua dos Ofícios (cabe um golem).
+  { id: "corrida", zone: "atividades", rect: [FRONT + 3, FRONT + 25, 19, 30], h: 8, peak: 14, front: "w", door: 24.5, doorW: 3.4, game: "corrida" },
   // Rolê Noturno (mm3d-40): skate shop no quarteirão noroeste, atrás da igreja,
   // de frente para o sul. Chega-se pelo corredor oeste (da avenida, entre a
   // igreja e a cerca) ou pela quina do anel entre a igreja e a pizzaria.
@@ -308,9 +310,11 @@ const GROUNDS = Object.freeze([
   ...[
     // Rua dos Ofícios: do anel (calçada leste) pelo vão universidade × corrida,
     // sobe pela lateral leste e vira a rua de pedra em frente às oficinas.
-    { kind: "walk", x: 41, z: 17.5, w: 27, d: 2.6 },
-    { kind: "pave", x: 56.5, z: 24.25, w: 5, d: 16.5 },
-    { kind: "pave", x: 46, z: 33, w: 30, d: 4 },
+    { kind: "walk", x: 41.5, z: 17.5, w: 28, d: 2.6 },
+    { kind: "pave", x: 57.5, z: 24.25, w: 5, d: 16.5 },
+    { kind: "pave", x: 45.5, z: 32.5, w: 31, d: 5 },
+    // Atalho: frente da corrida e vão com o supermercado até a rua de pedra.
+    { kind: "pave", x: 30.5, z: 25, w: 5, d: 12.4 },
     { kind: "walk", x: 37.75, z: 35.5, w: 3, d: 1.2 },
     { kind: "walk", x: 48.75, z: 35.5, w: 3, d: 1.2 },
     // Boxe e Hall: vão hamburgueria × supermercado até o largo entre os dois.
@@ -338,7 +342,7 @@ const HOSPITAL_PILLARS = Object.freeze([-2.1, 2.1].map((X) => Object.freeze(hosp
 // três do caminho do hospital fazem a vez.
 const HOSPITAL_LAMPS = [hospitalAt(3.4, 12), hospitalAt(-3.3, 12), hospitalAt(3.4, 16.5)].map((p) => [p.x, p.z]);
 // mm3d-60q: lampiões ao longo dos caminhos novos (na borda, fora da passagem).
-const PATH_LAMPS = [[40, 19.2], [59.4, 22], [36, 30.6], [46, 30.6], [56, 30.6], [3.1, 36], [-56.3, 14], [-56.3, 26], [38, -13.6], [27.8, -38]];
+const PATH_LAMPS = [[40, 19.2], [60.4, 22], [36, 30.6], [46, 30.6], [54, 30.6], [3.1, 36], [-56.3, 14], [-56.3, 26], [38, -13.6], [27.8, -38]];
 const STREET_LAMPS = Object.freeze([[24.6, 24.6], [-24.6, 24.6], [24.6, -24.6], [-40, 5.6], [-47, -5.6], ...HOSPITAL_LAMPS, ...PATH_LAMPS].map((p) => Object.freeze(p)));
 // Árvores fora das quadras (colidem), sem tapar porta nem caminho. (A de
 // [−44, −46] saiu: é o miolo do hospital. mm3d-40: [−40, 46] e [−38, 36]
