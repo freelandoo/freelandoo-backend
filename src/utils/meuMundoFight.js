@@ -402,9 +402,13 @@ const MOBS                          = {
      
                
      
-                                                                                  
-                                                                                
+                                                                                 
+                                          
      
+               
+                                                                                                 
+                           
+                                                               
                
  
 
@@ -465,24 +469,70 @@ function heroStats(stats       , level        )        {
   return { strength: up(stats.strength), speed: up(stats.speed), intelligence: up(stats.intelligence), dexterity: up(stats.dexterity ?? 300) }
 }
 
-// ═══ ADVERSÁRIO À ALTURA (regra do Alex, 2026-11-05) ═══ — no Boxe, na Arena e na
-// rua o adversário tem a vida, o dano médio e a defesa de quem joga; o Campeão
-// (Brutamontes) tem 20% a mais. A velocidade e os golpes seguem os de cada monstro;
-// o bando divide a vida entre si.
+// ═══ ADVERSÁRIO À ALTURA (regra do Alex, 2026-11-05) ═══ — no ringue do Boxe o
+// adversário copia os status de quem joga; o Campeão tem 20% a mais.
 const PEER_ELITE = 1.2
 function peerOf(kind         )         {
   return kind === "brute" ? PEER_ELITE : 1
 }
 
-// ═══ ACERTO, ESQUIVA E DANO (regra do Alex, 2026-11-06) ═══ — vale nas lutas com
-// adversário à altura, para os dois lados. A acuracidade (o antigo atributo força)
+// ═══ FICHAS (regra do Alex, 2026-11-06) ═══ — cada personagem nasce com os seus
+// status: vida, ataque, defesa, acuracidade, velocidade. Quem não está aqui nasce
+// com 100 em tudo. Nível, treino e equipamento somam por cima.
+                                                                     
+const BASE_SHEET        = [100, 100, 100, 100, 100]
+const BODY_SHEETS                        = {
+  aurion: [160, 140, 150, 140, 120],
+  morkhan: [130, 180, 90, 150, 130],
+  kragor: [220, 150, 160, 100, 70],
+  zephyra: [100, 120, 80, 120, 200],
+  maru: [180, 100, 100, 90, 120],
+  iris: [90, 120, 80, 200, 110],
+  noctis: [100, 130, 90, 150, 170],
+  aeryn: [90, 110, 90, 180, 150],
+  cavaleiro: [140, 110, 180, 110, 80],
+  golem: [160, 110, 150, 80, 50],
+  ciborgue: [130, 130, 130, 150, 70],
+  garras: [90, 120, 80, 160, 140],
+  brutamontes: [200, 160, 140, 120, 90],
+}
+/** Monstros: ficha sobre os status normais do nível. `stone` = o Golem de Pedra da rua; o bando divide a vida. */
+const MOB_SHEETS                                   = {
+  soldier: [130, 100, 130, 90, 70],
+  stone: BODY_SHEETS.golem,
+  wolf: [120, 70, 70, 110, 160],
+  golem: BODY_SHEETS.ciborgue,
+  harpy: BODY_SHEETS.garras,
+  brute: BODY_SHEETS.brutamontes,
+}
+/** O que o nível soma em ataque, defesa e, nos monstros, acuracidade e velocidade (0 no 1, 900 no 60). */
+const levelRate = (level        ) => (900 * (clamp(Math.round(Number(level) || 1), 1, HERO_LEVEL_MAX) - 1)) / (HERO_LEVEL_MAX - 1)
+/** Equipamento no teto soma isto em ataque e em defesa. */
+const GEAR_RATE = 150
+/** Status de luta de quem joga: nascença + nível + treino + equipamento. */
+function heroSheet(body                           , level        , stats                                                   , gear                     ) {
+  const [hp, atk, def, acc, spd] = BODY_SHEETS[body ?? ""] ?? BASE_SHEET
+  const h = heroLevelScale(level)
+  const f = heroStats({ ...stats, dexterity: stats.dexterity ?? 0 }, level)
+  const g = clampGear(gear)
+  return {
+    hp: hp + h.hp - PLAYER.hp,
+    atk: atk + levelRate(level) + (g.dmg / GEAR_MAX.dmg) * GEAR_RATE,
+    def: def + levelRate(level) + (g.def / GEAR_MAX.def) * GEAR_RATE,
+    acc: Math.min(1000, acc + f.strength),
+    spd: Math.min(1000, spd + f.speed),
+  }
+}
+
+// ═══ ACERTO, ESQUIVA E DANO (regra do Alex, 2026-11-06) ═══ — vale para os dois
+// lados. A acuracidade (o antigo atributo força)
 // disputa com a velocidade: 100 contra 1000 acerta 10%, 1000 contra 100 sempre acerta.
 // Quem não aperta esquivar escapa sozinho do que sobra (90% no exemplo). Apertar
 // esquivar escapa na razão inversa, até 90%: no empate funciona e, contra 1000 de
 // acuracidade com 100 de velocidade, quase nunca. Quem tem menos de 50% não acerta 2
 // seguidos. O dano segue a mesma conta, em porcentagem pura: um golpe de 200 com
-// ataque 50 tira 100 em defesa 100 e 10 em defesa 1000. Ataque e defesa nascem em 100
-// (sem isso, no nível 1 seria 0 contra 0) e vão a 1000.
+// ataque 50 tira 100 em defesa 100 e 10 em defesa 1000; ataque 100 contra defesa 50
+// tira 400. Em luta igual o golpe médio tira a mesma fatia da vida em todo nível.
                             
              
              
@@ -490,16 +540,6 @@ function peerOf(kind         )         {
              
  
 const DODGE_MAX = 0.9
-const RATE_BASE = 100
-const rateOf = (f        ) => RATE_BASE + (1000 - RATE_BASE) * clamp(f, 0, 1)
-/** Ataque na escala 0–1000; `dmg` = multiplicador de dano (nível e equipamento). */
-function attackRate(dmg        ) {
-  return rateOf((dmg - 1) / (heroLevelScale(HERO_LEVEL_MAX).dmg - 1))
-}
-/** Defesa na escala 0–1000; `def` = fração (nível e equipamento). */
-function defenseRate(def        ) {
-  return rateOf(def / DEF_MAX)
-}
 function hitChance(acc        , spd        ) {
   return clamp(acc / Math.max(1, spd), 0, 1)
 }
@@ -507,7 +547,7 @@ function dodgeChance(acc        , spd        ) {
   return Math.max(1 - hitChance(acc, spd), Math.min(DODGE_MAX, spd / Math.max(1, acc)))
 }
 function damageRatio(atk        , def        ) {
-  return clamp(atk / Math.max(1, def), 0, 1)
+  return Math.max(0, atk) / Math.max(1, def)
 }
 
 const angDiff = (a        , b        ) => {
@@ -605,18 +645,19 @@ class Fight {
     this.hero = heroLevelScale(this.heroLevel)
     this.def = clamp(this.gear.def + this.hero.def, 0, DEF_MAX)
     const peer = clamp(Number(setup.peer) || 0, 0, 2)
-    this.rated = peer > 0
-    const fought = heroStats(stats, this.heroLevel)
-    this.fx = this.withGear(statEffects(fought))
-    this.rate = { acc: Math.max(1, fought.strength), spd: Math.max(1, fought.speed), atk: attackRate(this.fx.dmg), def: defenseRate(this.def) }
+    this.rated = peer > 0 || !!setup.tier
+    this.fx = this.withGear(statEffects(heroStats(stats, this.heroLevel)))
+    const sheet = heroSheet(setup.body, this.heroLevel, stats, this.gear)
+    this.rate = { acc: Math.max(1, sheet.acc), spd: Math.max(1, sheet.spd), atk: sheet.atk, def: sheet.def }
+    const hpMax = this.rated ? sheet.hp : this.hero.hp
     this.me = {
       x: 0,
       z: -5,
       vx: 0,
       vz: 0,
       facing: 0,
-      hp: this.hero.hp,
-      hpMax: this.hero.hp,
+      hp: hpMax,
+      hpMax,
       stam: PLAYER.stam,
       state: "idle",
       t: 0,
@@ -638,8 +679,15 @@ class Fight {
     const lv = mobLevelScale(this.level)
     const spots = spawnList(setup.kind)
     const mean = (list          ) => list.reduce((a, b) => a + b, 0) / list.length
-    const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : def.hp * lv.hp)
-    const dmgMul = peer ? (mean(this.combo.map((c) => c.dmg)) * this.fx.dmg * peer) / mean(def.attacks.map((a) => a.dmg)) : lv.dmg
+    const foeLevel = setup.tier === "street" ? this.level : this.heroLevel
+    const normal = heroLevelScale(foeLevel).hp
+    const rated = 100 + levelRate(foeLevel)
+    const ms = MOB_SHEETS[setup.tier === "street" && setup.kind === "soldier" ? "stone" : setup.kind]
+    const foe            = peer
+      ? { acc: this.rate.acc * peer, spd: this.rate.spd * peer, atk: this.rate.atk * peer, def: this.rate.def * peer }
+      : { acc: (rated * ms[3]) / 100, spd: (rated * ms[4]) / 100, atk: (rated * ms[1]) / 100, def: (rated * ms[2]) / 100 }
+    const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : setup.tier ? (normal * ms[0]) / 100 / spots.length : def.hp * lv.hp)
+    const dmgMul = this.rated ? (mean(this.combo.map((c) => c.dmg)) * (normal / PLAYER.hp)) / mean(def.attacks.map((a) => a.dmg)) : lv.dmg
     spots.forEach((p, i) =>
       this.mobs.push({
         id: i + 1,
@@ -662,8 +710,8 @@ class Fight {
         side: i % 2 ? 1 : -1,
         dmgMul,
         armorUntil: 0,
-        poise: peer ? def.poise : def.poise + lv.poise,
-        rate: { acc: this.rate.acc * peer, spd: this.rate.spd * peer, atk: this.rate.atk * peer, def: this.rate.def * peer },
+        poise: this.rated ? def.poise : def.poise + lv.poise,
+        rate: { ...foe },
         landed: false,
       }),
     )
@@ -732,8 +780,8 @@ class Fight {
   /** Os bônus do equipamento por cima do que os atributos dão. */
           withGear(fx                                ) {
     const g = this.gear
-    // com adversário à altura o dano vem do ataque (nível e equipamento), não da acuracidade
-    return { ...fx, dmg: (this.rated ? 1 : fx.dmg) * (1 + g.dmg) * this.hero.dmg, warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
+    // nas lutas por status o golpe acompanha a vida do nível; quem pesa é ataque contra defesa
+    return { ...fx, dmg: this.rated ? this.hero.hp / PLAYER.hp : fx.dmg * (1 + g.dmg) * this.hero.dmg, warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
   }
 
   setStats(stats                ) {
@@ -1494,4 +1542,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, DODGE_MAX, attackRate, defenseRate, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

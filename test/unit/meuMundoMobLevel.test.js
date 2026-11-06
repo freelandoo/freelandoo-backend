@@ -51,7 +51,7 @@ test("adversário à altura: vida, dano e defesa de quem joga; Campeão com 20% 
       const total = f.mobs.reduce((a, m) => a + m.hpMax, 0);
       assert.ok(Math.abs(total - f.me.hpMax * k) <= f.mobs.length, `${kind} vida ${total}`);
       const foe = mean(F.MOBS[kind].attacks.map((a) => a.dmg)) * f.mobs[0].dmgMul;
-      assert.ok(Math.abs(foe - mean(F.COMBO.map((c) => c.dmg)) * f.fx.dmg * k) < 1e-6, `${kind} dano`);
+      assert.ok(Math.abs(foe - mean(F.COMBO.map((c) => c.dmg)) * f.fx.dmg) < 1e-6, `${kind} dano`);
       for (const s of ["acc", "spd", "atk", "def"]) assert.ok(Math.abs(f.mobs[0].rate[s] - f.rate[s] * k) < 1e-9, `${kind} ${s}`);
     }
   }
@@ -73,7 +73,8 @@ test("acuracidade contra velocidade, ataque contra defesa", () => {
   assert.equal(F.dodgeChance(1000, 100), 0.1);
   assert.equal(F.dodgeChance(500, 500), 0.9);
   assert.equal(F.damageRatio(100, 1000), 0.1);
-  assert.equal(F.damageRatio(1000, 100), 1);
+  assert.equal(F.damageRatio(1000, 100), 10);
+  assert.equal(200 * F.damageRatio(100, 50), 400);
   // o exemplo do Alex: golpe de 200
   assert.equal(200 * F.damageRatio(50, 100), 100);
   assert.equal(200 * F.damageRatio(50, 1000), 10);
@@ -82,8 +83,30 @@ test("acuracidade contra velocidade, ataque contra defesa", () => {
   const f = new F.Fight({ kind: "soldier", seed: 1, peer: 1, stats: { strength: 50, speed: 30 } });
   assert.equal(f.rate.atk, 100);
   assert.equal(f.rate.def, 100);
-  assert.equal(f.rate.acc, 50);
-  assert.equal(f.rate.spd, 30);
+  assert.equal(f.rate.acc, 150);
+  assert.equal(f.rate.spd, 130);
+});
+
+test("cada personagem nasce com a própria ficha", () => {
+  const s = F.heroSheet("aeryn", 1, { strength: 0, speed: 0, intelligence: 0, dexterity: 0 });
+  assert.deepEqual([s.hp, s.atk, s.def, s.acc, s.spd], [90, 110, 90, 180, 150]);
+  const p = F.heroSheet("normal", 1, { strength: 0, speed: 0, intelligence: 0, dexterity: 0 });
+  assert.deepEqual([p.hp, p.atk, p.def, p.acc, p.spd], [100, 100, 100, 100, 100]);
+  const f = new F.Fight({ kind: "wolf", seed: 2, tier: "arena", body: "kragor" });
+  assert.equal(f.me.hpMax, 220);
+});
+
+test("monstros pela ficha: o da rua no nível dele, o da Arena no de quem joga", () => {
+  const stone = new F.Fight({ kind: "soldier", level: 1, seed: 2, tier: "street" }).mobs[0];
+  assert.equal(stone.hpMax, 160);
+  assert.equal(stone.rate.def, 150);
+  assert.equal(stone.rate.spd, 50);
+  assert.equal(new F.Fight({ kind: "soldier", seed: 2, tier: "arena" }).mobs[0].hpMax, 130);
+  const wolves = new F.Fight({ kind: "wolf", seed: 2, tier: "arena" }).mobs;
+  assert.equal(wolves.reduce((a, m) => a + m.hpMax, 0), 120);
+  const l = new F.Fight({ kind: "brute", level: 60, hero: 1, seed: 2, tier: "street" }).mobs[0];
+  assert.equal(l.rate.atk, 1600);
+  assert.equal(new F.Fight({ kind: "brute", level: 60, hero: 1, seed: 2, tier: "arena" }).mobs[0].rate.atk, 160);
 });
 
 test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", () => {

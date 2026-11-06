@@ -284,8 +284,11 @@ class MeuMundoAdventureService {
         kind,
         level,
         hero,
-        // adversário à altura: status de quem joga (o Campeão, 20% a mais); o prólogo fica de fora
-        peer: origin === "tutorial" ? undefined : FightSim.peerOf(kind),
+        // ringue: o adversário copia quem joga; Arena e rua: ficha do monstro; o prólogo fica de fora
+        peer: origin === "boxe" ? FightSim.peerOf(kind) : undefined,
+        tier: origin === "mob" ? "street" : origin === "laminas" ? "arena" : undefined,
+        // o corpo vestido dá os status de nascença
+        body: worn,
         seed: crypto.randomInt(1, 2 ** 31 - 1),
         stats: fightStats(s),
         // Kit pela CLASSE (mm3d-59): raposa = maga; o ringue do Boxe é sempre de luvas.
@@ -305,7 +308,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, hero, peer: setup.peer ?? null, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
+          setup: { kind, level, hero, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,
@@ -331,7 +334,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");
