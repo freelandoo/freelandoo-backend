@@ -17,7 +17,7 @@ const RULES_VERSION = "R3";
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,
 // 5→6 = 1314, 10→11 = 3981. O prólogo soma ≥ 420 → garante o nível 3.
-const XP = Object.freeze({ BASE: 100, EXP: 1.6, MAX_LEVEL: 60 });
+const XP = Object.freeze({ BASE: 100, EXP: 1.6 });
 
 const xpToNext = (n) => Math.round(XP.BASE * Math.pow(n, XP.EXP));
 
@@ -25,11 +25,11 @@ const xpToNext = (n) => Math.round(XP.BASE * Math.pow(n, XP.EXP));
 function levelOf(total) {
   let xp = Math.max(0, Math.floor(Number(total) || 0));
   let level = 1;
-  while (level < XP.MAX_LEVEL && xp >= xpToNext(level)) {
+  while (xp >= xpToNext(level)) {
     xp -= xpToNext(level);
     level += 1;
   }
-  return { level, into: xp, need: level >= XP.MAX_LEVEL ? 0 : xpToNext(level), total: Math.max(0, Math.floor(Number(total) || 0)) };
+  return { level, into: xp, need: xpToNext(level), total: Math.max(0, Math.floor(Number(total) || 0)) };
 }
 
 /** O que cada nível destrava (só informação; quem confere é cada serviço). */
@@ -181,13 +181,12 @@ function minigameCoins(activeMs, win, rand) {
 // ═══ NÍVEL DO MONSTRO DA RUA (regra do Alex, 2026-11-06) ═══ — sorteado a partir
 // do nível de quem o viu primeiro: 20% igual, 30% +3 ou +4, 20% +6 a +10, 20% +12 e
 // 10% +20. Os status dele saem desse nível (MOB_SHEETS).
-const MOB_LEVEL_MAX = 60; // = FightSim.MOB_LEVEL_MAX
 const MOB_LEVEL_BANDS = Object.freeze([[0.2, 0, 0], [0.5, 3, 4], [0.7, 6, 10], [0.9, 12, 12], [1, 20, 20]]);
 function rollMobLevel(playerLevel, rand) {
   const L = Math.max(1, Math.round(Number(playerLevel) || 1));
   const r = rand();
   const [, lo, hi] = MOB_LEVEL_BANDS.find(([p]) => r < p) || MOB_LEVEL_BANDS[MOB_LEVEL_BANDS.length - 1];
-  return Math.min(MOB_LEVEL_MAX, L + lo + Math.floor(rand() * (hi - lo + 1)));
+  return L + lo + Math.floor(rand() * (hi - lo + 1));
 }
 
 /** Fator da disposição pela energia/estresse de ANTES da atividade: 0,3 (exausto e estressado) a 1,3 (descansado e calmo). */

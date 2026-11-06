@@ -331,7 +331,7 @@ const MOBS                          = {
                     
                                             
                
-                                                                                           
+                                                                     
                  
                                                                                                        
                  
@@ -435,9 +435,8 @@ const clamp = (v        , a        , b        ) => (v < a ? a : v > b ? b : v)
 // nível sorteado (pode vir bem acima ou abaixo do seu) e os status crescem
 // com ele. Base = o nível 1 de hoje; 1–3 ficam EXATAMENTE como antes (a Arena
 // usa); do 3 em diante cada nível soma +0,25× vida, +0,08× dano, +0,25 firmeza.
-const MOB_LEVEL_MAX = 60
 function mobLevelScale(level        )                                             {
-  const l = clamp(Math.round(level), 1, MOB_LEVEL_MAX)
+  const l = Math.max(1, Math.round(level))
   const low = Math.min(l, 3) - 1
   const over = Math.max(0, l - 3)
   return { hp: 1 + 0.45 * low + 0.25 * over, dmg: 1 + 0.3 * low + 0.08 * over, poise: 2 * low + 0.25 * over }
@@ -449,12 +448,11 @@ function mobLevelScale(level        )                                           
 // guarda os atributos sem o bônus). Desenhado contra mobLevelScale: lutar com
 // um monstro do MESMO nível dá quase o mesmo número de golpes que no nível 1.
 // Espelho para a tela: meuMundoAdventure.js heroLevelScale (o unit confere).
-const HERO_LEVEL_MAX = 60
 const HERO_LEVEL = { hp: 9, def: 0.005, defMax: 0.3, dmg: 0.22, attr: 3 }
 /** Defesa total (nível + equipamento) nunca passa disto. */
 const DEF_MAX = 0.6
 function heroLevelScale(level        )                                                         {
-  const n = clamp(Math.round(Number(level) || 1), 1, HERO_LEVEL_MAX) - 1
+  const n = Math.max(1, Math.round(Number(level) || 1)) - 1
   return {
     hp: PLAYER.hp + HERO_LEVEL.hp * n,
     def: Math.min(HERO_LEVEL.defMax, Math.round(HERO_LEVEL.def * n * 1000) / 1000),
@@ -462,10 +460,10 @@ function heroLevelScale(level        )                                          
     attr: HERO_LEVEL.attr * n,
   }
 }
-/** Atributos de luta = os da vida + o bônus do nível (teto 1000). */
+/** Atributos de luta = os da vida + o bônus do nível (sem teto). */
 function heroStats(stats       , level        )        {
   const a = heroLevelScale(level).attr
-  const up = (v        ) => clamp(v + a, 0, 1000)
+  const up = (v        ) => Math.max(0, v + a)
   return { strength: up(stats.strength), speed: up(stats.speed), intelligence: up(stats.intelligence), dexterity: up(stats.dexterity ?? 300) }
 }
 
@@ -517,8 +515,8 @@ const MOB_SHEETS                                   = {
   harpy: BODY_SHEETS.garras,
   brute: BODY_SHEETS.brutamontes,
 }
-/** O que o nível soma em ataque, defesa e, nos monstros, acuracidade e velocidade (0 no 1, 900 no 60). */
-const levelRate = (level        ) => (900 * (clamp(Math.round(Number(level) || 1), 1, HERO_LEVEL_MAX) - 1)) / (HERO_LEVEL_MAX - 1)
+/** O que o nível soma em ataque, defesa e, nos monstros, acuracidade e velocidade (0 no 1, 900 no 60, e segue). */
+const levelRate = (level        ) => (900 * (Math.max(1, Math.round(Number(level) || 1)) - 1)) / 59
 /** Equipamento no teto soma isto em ataque e em defesa. */
 const GEAR_RATE = 150
 /** Status de luta de quem joga: (100 + nível + treino + equipamento) × peso do personagem. */
@@ -584,18 +582,18 @@ function rng(seed        ) {
 
 /** O que os atributos valem na luta (com teto de vantagem). */
 function statEffects(s       ) {
-  const k = (v        ) => clamp(v / 1000, 0, 1)
+  const k = (v        ) => Math.max(0, v / 1000)
   return {
     dmg: 0.85 + 0.5 * k(s.strength),
     rate: 0.92 + 0.3 * k(s.speed),
     move: 0.95 + 0.2 * k(s.speed),
     warn: 1 + 0.35 * k(s.intelligence),
-    intelligence: clamp(s.intelligence, 0, 1000),
-    dexterity: clamp(s.dexterity ?? 300, 0, 1000),
+    intelligence: Math.max(0, s.intelligence),
+    dexterity: Math.max(0, s.dexterity ?? 300),
     /** Fôlego gasto (ataque e esquiva): até −15%. */
-    stamK: 1 - 0.15 * k(s.dexterity ?? 300),
+    stamK: Math.max(0.1, 1 - 0.15 * k(s.dexterity ?? 300)),
     /** Recuperação depois do corte: até −10%. */
-    recoverK: 1 - 0.1 * k(s.dexterity ?? 300),
+    recoverK: Math.max(0.2, 1 - 0.1 * k(s.dexterity ?? 300)),
   }
 }
 
@@ -650,10 +648,10 @@ class Fight {
     this.combo = setup.style === "mage" ? MAGE_COMBO : COMBO
     // O Golem de Pedra do menu tem só os níveis 1 e 2 (Alex, 29/10) — quem corta é o
     // servidor (e o menu); na rua (2026-11-03) ele vem com o nível sorteado, até 60.
-    this.level = clamp(Math.round(setup.level ?? 1), 1, MOB_LEVEL_MAX)
+    this.level = Math.max(1, Math.round(setup.level ?? 1))
     const stats = { ...BASE_STATS, ...(setup.stats ?? {}) }
     this.gear = clampGear(setup.gear)
-    this.heroLevel = clamp(Math.round(Number(setup.hero) || 1), 1, HERO_LEVEL_MAX)
+    this.heroLevel = Math.max(1, Math.round(Number(setup.hero) || 1))
     this.hero = heroLevelScale(this.heroLevel)
     this.def = clamp(this.gear.def + this.hero.def, 0, DEF_MAX)
     const peer = clamp(Number(setup.peer) || 0, 0, 2)
@@ -1554,4 +1552,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

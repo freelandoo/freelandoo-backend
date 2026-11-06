@@ -188,17 +188,20 @@ const BODY = Object.freeze({
   STRONG_STRENGTH: 600,
 });
 
-// ═══ ATRIBUTOS (0–1000) ═══ — progressão longa (pedido do Alex, 2026-10-20):
+// ═══ ATRIBUTOS (sem teto, regra do Alex em 2026-11-06) ═══ — progressão longa:
 // com o ritmo máximo de todo dia, 800 leva ~1 ano e 900 ~2 anos.
-//  • Ganho por hora ÚTIL = base × (1 − v/CURVE_AT)² × multiplicadores.
+//  • Ganho por hora ÚTIL = base × (1 − v/CURVE_AT)² × multiplicadores, nunca menos
+//    que CURVE_MIN do base: depois de ~950 sobe devagar, mas não para.
 //  • Só as primeiras USEFUL_H horas do dia rendem (o músculo/a cabeça precisa
 //    recuperar); passando disso, OVER_FACTOR.
 //  • Permanência: cada atributo guarda o maior valor já alcançado (`peaks`) e
 //    nunca cai abaixo de FLOOR × pico; abaixo do pico ganha REGAIN× (memória).
 //  • O hóspede nasce na casa das dezenas (15–35) — mig 298.
 const ATTR = Object.freeze({
+  // MAX é só a escala (salário, faixa da barra): não é teto
   MAX: 1000,
   CURVE_AT: 1100,
+  CURVE_MIN: 0.02,
   GAIN_H: { studyInt: 1.6, trainStr: 2.0, trainSpd: 1.4, workInt: 0.2 },
   USEFUL_H: { studying: 5, training: 4 },
   OVER_FACTOR: 0.05,
@@ -608,7 +611,7 @@ function applyInheritance(n, inherit) {
   if (!inherit) return n;
   for (const k of ATTRS) {
     if (inherit[k] == null) continue;
-    const v = Math.min(ATTR.MAX, Math.max(n[k], inherit[k] || 0));
+    const v = Math.max(n[k], inherit[k] || 0);
     n[k] = v;
     n.peaks[k] = Math.max(n.peaks[k], v);
   }
@@ -619,7 +622,7 @@ function applyInheritance(n, inherit) {
 function growUp(s, t, events) {
   const before = Object.fromEntries(TRAINED.map((k) => [k, r2(s[k])]));
   for (const k of TRAINED) {
-    s[k] = Math.min(ATTR.MAX, s[k] * (1 + GROWTH.BONUS));
+    s[k] = s[k] * (1 + GROWTH.BONUS);
     if (s[k] > s.peaks[k]) s.peaks[k] = s[k];
   }
   s.health = 100;
@@ -693,7 +696,7 @@ function gain(s, k, base, t = s.simAt) {
   const b = t == null ? base : spendBudget(s, k, base, t);
   if (b <= 0) return 0;
   const v0 = s[k];
-  const curve = Math.pow(Math.max(0, 1 - v0 / ATTR.CURVE_AT), 2);
+  const curve = Math.max(ATTR.CURVE_MIN, Math.pow(Math.max(0, 1 - v0 / ATTR.CURVE_AT), 2));
   let raw = b * curve;
   let v = v0;
   const peak = s.peaks[k] ?? v0;
@@ -704,7 +707,7 @@ function gain(s, k, base, t = s.simAt) {
     raw -= fast / ATTR.REGAIN;
   }
   v += Math.max(0, raw);
-  s[k] = clamp(v, 0, ATTR.MAX);
+  s[k] = Math.max(0, v);
   if (s[k] > (s.peaks[k] ?? 0)) s.peaks[k] = s[k];
   return s[k] - v0;
 }
@@ -718,7 +721,7 @@ function dropAttr(s, k, pts) {
   if (!(pts > 0) || !ATTRS.includes(k)) return 0;
   practiced(s, k, s.simAt);
   const v0 = s[k];
-  s[k] = clamp(v0 + pts, 0, ATTR.MAX);
+  s[k] = Math.max(0, v0 + pts);
   if (s[k] > (s.peaks[k] ?? 0)) s.peaks[k] = s[k];
   return s[k] - v0;
 }

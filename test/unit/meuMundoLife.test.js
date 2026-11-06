@@ -20,7 +20,7 @@ function inRange(s) {
     assert.ok(s[k] >= 0 && s[k] <= 100, `${k} fora de 0–100: ${s[k]}`);
   }
   for (const k of ["intelligence", "strength", "speed"]) {
-    assert.ok(s[k] >= 0 && s[k] <= L.ATTR.MAX, `${k} fora de 0–1000: ${s[k]}`);
+    assert.ok(s[k] >= 0, `${k} negativo: ${s[k]}`);
     assert.ok(s[k] >= L.ATTR.FLOOR[k] * s.peaks[k] - 1e-9, `${k} abaixo do piso`);
   }
 }

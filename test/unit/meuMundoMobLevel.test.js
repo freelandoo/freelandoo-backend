@@ -18,14 +18,14 @@ test("níveis 1–3 iguais aos de antes (a Arena usa)", () => {
   }
 });
 
-test("status do monstro crescem com o nível e param no 60", () => {
+test("status do monstro crescem com o nível, sem teto", () => {
   let prev = F.mobLevelScale(3);
   for (const l of [4, 10, 30, 60]) {
     const s = F.mobLevelScale(l);
     assert.ok(s.hp > prev.hp && s.dmg > prev.dmg && s.poise > prev.poise);
     prev = s;
   }
-  assert.deepEqual(F.mobLevelScale(99), F.mobLevelScale(60));
+  assert.ok(F.mobLevelScale(99).hp > F.mobLevelScale(60).hp);
   const f = new F.Fight({ kind: "wolf", level: 20, seed: 3 });
   assert.equal(f.level, 20);
   assert.equal(f.mobs[0].hpMax, Math.round(F.MOBS.wolf.hp * F.mobLevelScale(20).hp));
@@ -44,9 +44,21 @@ test("sorteio: 20% igual, 30% +3/+4, 20% +6 a +10, 20% +12, 10% +20", () => {
   near(share((o) => o === 12), 0.2);
   near(share((o) => o === 20), 0.1);
   assert.ok(offs.every((o) => [0, 3, 4, 6, 7, 8, 9, 10, 12, 20].includes(o)));
-  // nunca abaixo do meu nível nem acima de 60
+  // nunca abaixo do meu nível; acima de 60 vale
   assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(1, r)).every((l) => l >= 1));
-  assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(58, r)).every((l) => l <= 60));
+  assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(58, r)).some((l) => l > 60));
+});
+
+test("status sem teto: atributo, nível e luta passam de 1000 e de 60", () => {
+  const L = require("../../src/utils/meuMundoLife");
+  const s = F.heroSheet("normal", 80, { strength: 5000, speed: 5000 });
+  assert.equal(s.acc, 100 + 5000 + 3 * 79);
+  assert.ok(s.atk > 1000 && s.hp > 631);
+  assert.ok(A.levelOf(1e9).level > 60);
+  const f = new F.Fight({ kind: "soldier", seed: 3, hero: 80, peer: 1, stats: { strength: 5000, speed: 5000, intelligence: 5000, dexterity: 9000 } });
+  assert.ok(f.fx.stamK > 0 && f.fx.recoverK > 0);
+  assert.ok(Math.abs(F.rankOdds(5000, 9000).reduce((a, b) => a + b, 0) - 1) < 1e-9);
+  assert.ok(L.ATTR.CURVE_MIN > 0, "treino nunca para de render");
 });
 
 test("adversário à altura: vida, dano e defesa de quem joga; Campeão com 20% a mais", () => {

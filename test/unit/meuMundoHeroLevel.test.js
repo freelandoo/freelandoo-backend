@@ -11,7 +11,7 @@ test("nível 1 é exatamente como era (100 de vida, sem defesa, sem bônus)", ()
   assert.equal(f.def, 0);
 });
 
-test("todo level up aumenta vida, defesa, ataque e atributos (até o 60)", () => {
+test("todo level up aumenta vida, defesa, ataque e atributos", () => {
   let prev = F.heroLevelScale(1);
   for (let l = 2; l <= 60; l++) {
     const s = F.heroLevelScale(l);
@@ -19,7 +19,7 @@ test("todo level up aumenta vida, defesa, ataque e atributos (até o 60)", () =>
     assert.ok(s.def >= prev.def && s.def <= F.HERO_LEVEL.defMax);
     prev = s;
   }
-  assert.deepEqual(F.heroLevelScale(99), F.heroLevelScale(60));
+  assert.ok(F.heroLevelScale(99).hp > F.heroLevelScale(60).hp, "o nível não tem teto");
   assert.equal(F.heroLevelScale(10).hp, 181);
 });
 
