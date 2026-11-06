@@ -15,6 +15,8 @@ module.exports = {
         -- CPF (mig 188): nunca devolvido inteiro. O gate do onboarding só
         -- precisa saber se existe; a máscara é pra o dono se reconhecer.
         (tu.cpf IS NOT NULL) AS has_cpf,
+        -- Dispensa dos admins (mig 326): adia o gate, não vale como CPF.
+        COALESCE(tu.cpf_waived_until > NOW(), FALSE) AS cpf_waived,
         CASE WHEN tu.cpf IS NULL THEN NULL ELSE
           SUBSTRING(tu.cpf, 1, 3) || '.***.**' || SUBSTRING(tu.cpf, 9, 1)
             || '-' || SUBSTRING(tu.cpf, 10, 2)
