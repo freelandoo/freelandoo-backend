@@ -219,6 +219,16 @@ const SKILLS = {
               
               
                  
+                                                                                            
+                
+                                                                        
+               
+                                                                                        
+               
+                                                             
+               
+                                                                
+              
  
                          
             
@@ -233,8 +243,8 @@ const SKILLS = {
                         
                                      
                  
-                                                                                                              
-                                                
+                                                                                                               
+                                                  
  
 
 const MOBS                          = {
@@ -249,6 +259,18 @@ const MOBS                          = {
       { id: "cut", windup: 0.7, active: 0.2, recover: 0.7, range: 2.0, arc: 1.4, dmg: 10, lunge: 1.5, weight: 3, minD: 0, maxD: 2.4 },
       { id: "thrust", windup: 0.85, active: 0.25, recover: 0.9, range: 2.6, arc: 0.7, dmg: 14, lunge: 4, weight: 1, minD: 1.4, maxD: 3.2 },
     ],
+    // regra do Alex (2026-11-06): o Golem salta para perto e dá socos de boxe; as duas pedras atrás
+    // dos ombros soltam raio verde, e o golpe máximo é o raio das duas juntas, em fluxo contínuo
+    arena: {
+      engage: 2.2,
+      attacks: [
+        { id: "jab", windup: 0.5, active: 0.16, recover: 0.45, range: 2.4, arc: 1.6, dmg: 9, lunge: 1.2, weight: 3, minD: 0, maxD: 3.0 },
+        { id: "hook", windup: 0.75, active: 0.2, recover: 0.7, range: 2.7, arc: 1.9, dmg: 14, lunge: 1.5, weight: 2, minD: 0, maxD: 3.2 },
+        { id: "leap", windup: 0.9, active: 0.6, recover: 0.8, range: 2.2, arc: 2.2, dmg: 18, lunge: 9, leap: true, weight: 3, minD: 3.4, maxD: 22, heavy: true },
+        { id: "zap", windup: 0.7, active: 0.14, recover: 0.6, range: 10, arc: 0, line: 0.35, dmg: 9, lunge: 0, weight: 2, minD: 3.4, maxD: 10 },
+        { id: "max", windup: 1.3, active: 2.4, recover: 1.0, range: 14, arc: 0, line: 0.75, flow: 0.3, dmg: 5, lunge: 0, weight: 12, minD: 0, maxD: 22, max: 11 },
+      ],
+    },
   },
   wolf: {
     hp: 34,
@@ -261,6 +283,17 @@ const MOBS                          = {
       { id: "bite", windup: 0.5, active: 0.18, recover: 0.6, range: 1.5, arc: 1.2, dmg: 7, lunge: 2, weight: 2, minD: 0, maxD: 1.9 },
       { id: "pounce", windup: 0.6, active: 0.35, recover: 0.9, range: 1.4, arc: 1.4, dmg: 10, lunge: 9, weight: 3, minD: 2.2, maxD: 4.6 },
     ],
+    // pedido do Alex (2026-11-06): raio roxo pela boca; o golpe máximo é a investida brilhando,
+    // que leva quem joga no peito
+    arena: {
+      engage: 4,
+      attacks: [
+        { id: "bite", windup: 0.5, active: 0.18, recover: 0.6, range: 1.5, arc: 1.2, dmg: 7, lunge: 2, weight: 2, minD: 0, maxD: 1.9 },
+        { id: "pounce", windup: 0.6, active: 0.35, recover: 0.9, range: 1.4, arc: 1.4, dmg: 10, lunge: 9, weight: 3, minD: 2.2, maxD: 4.6 },
+        { id: "breath", windup: 0.7, active: 0.16, recover: 0.6, range: 9, arc: 0, line: 0.35, dmg: 8, lunge: 0, weight: 3, minD: 3, maxD: 9.5 },
+        { id: "rush", windup: 0.8, active: 0.7, recover: 0.9, range: 1.7, arc: 1.8, dmg: 12, lunge: 15, ram: true, weight: 12, minD: 2.5, maxD: 12, heavy: true, max: 10 },
+      ],
+    },
   },
   golem: {
     hp: 220,
@@ -274,7 +307,7 @@ const MOBS                          = {
       { id: "slam", windup: 1.3, active: 0.2, recover: 1.5, range: 0, arc: 0, area: 2.6, reach: 2.2, dmg: 28, lunge: 0, weight: 2, minD: 0, maxD: 4.4, heavy: true },
     ],
     // regra do Alex (2026-11-06): o Ciborgue encontrado é o da skin: atira, reto, de longe
-    gun: {
+    arena: {
       engage: 6,
       attacks: [
         { id: "shot", windup: 0.75, active: 0.12, recover: 0.7, range: 9.5, arc: 0.35, dmg: 16, lunge: 0, weight: 3, minD: 0, maxD: 10 },
@@ -286,14 +319,15 @@ const MOBS                          = {
     hp: 80,
     radius: 0.55,
     speed: 3.2,
-    engage: 4.5,
+    engage: 2.6,
     poise: 2,
-    rest: [1.2, 2.2],
-    // 2026-11-03 (Alex: "deixa a dama sem ficar voando"): luta NO CHÃO — sem
-    // altura, sempre pode levar golpe; o "dive" virou um bote rasteiro.
+    rest: [0.9, 1.7],
+    // 2026-11-03 (Alex: "deixa a dama sem ficar voando"): luta NO CHÃO, sempre pode levar golpe.
+    // 2026-11-06 (Alex): garras abertas, salta para perto como o Brutamontes.
     attacks: [
-      { id: "dive", windup: 1.0, active: 0.45, recover: 1.2, range: 1.6, arc: 1.6, dmg: 16, lunge: 11, weight: 3, minD: 2.5, maxD: 8, heavy: true },
-      { id: "claw", windup: 0.55, active: 0.2, recover: 0.6, range: 1.8, arc: 1.5, dmg: 9, lunge: 1.5, weight: 2, minD: 0, maxD: 2.2 },
+      { id: "claw", windup: 0.45, active: 0.2, recover: 0.5, range: 2.0, arc: 1.7, dmg: 9, lunge: 2, weight: 3, minD: 0, maxD: 2.6 },
+      { id: "rake", windup: 0.6, active: 0.3, recover: 0.6, range: 2.2, arc: 2.2, dmg: 13, lunge: 3, weight: 2, minD: 0, maxD: 3 },
+      { id: "leap", windup: 0.75, active: 0.5, recover: 0.7, range: 2, arc: 2.2, dmg: 16, lunge: 11, leap: true, weight: 4, minD: 3, maxD: 22, heavy: true },
     ],
   },
   brute: {
@@ -348,6 +382,14 @@ const MOBS                          = {
                  
                                                                                                        
                  
+                                     
+                 
+                                                                   
+               
+                                              
+                  
+                                                
+                  
  
 
                         
@@ -724,7 +766,7 @@ class Fight {
       ? { acc: this.rate.acc * peer, spd: this.rate.spd * peer, atk: this.rate.atk * peer, def: this.rate.def * peer }
       : { acc: (rated * ms[3]) / 100, spd: (rated * ms[4]) / 100, atk: (rated * ms[1]) / 100, def: (rated * ms[2]) / 100 }
     const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : setup.tier ? (normal * ms[0]) / 100 / spots.length : def.hp * lv.hp)
-    const moves = setup.tier && def.gun ? def.gun : def
+    const moves = setup.tier && def.arena ? def.arena : def
     const dmgMul = this.rated ? (mean(this.combo.map((c) => c.dmg)) * (normal / PLAYER.hp)) / mean(moves.attacks.map((a) => a.dmg)) : lv.dmg
     spots.forEach((p, i) =>
       this.mobs.push({
@@ -753,6 +795,10 @@ class Fight {
         poise: this.rated ? def.poise : def.poise + lv.poise,
         rate: { ...foe },
         landed: false,
+        maxLeft: 6 + 3 * i,
+        leapV: 0,
+        flowLeft: 0,
+        ramming: false,
       }),
     )
   }
@@ -1262,6 +1308,7 @@ class Fight {
     const dist = Math.hypot(dx, dz)
     const toMe = Math.atan2(dx, dz)
     const speed = def.speed
+    m.maxLeft -= DT
     switch (m.state) {
       case "spawn":
         if (m.t >= 0.9) this.setMob(m, def.flies ? "fly" : "chase")
@@ -1280,7 +1327,7 @@ class Fight {
         const myTurn = this.kind !== "wolf" || this.token === m.id
         // Escolhe golpe quando descansou e está no alcance de algum.
         if (myTurn && m.restLeft <= 0 && p.state !== "down") {
-          const opts = m.attacks.map((a, i) => ({ a, i })).filter(({ a }) => dist >= a.minD && dist <= a.maxD)
+          const opts = m.attacks.map((a, i) => ({ a, i })).filter(({ a }) => dist >= a.minD && dist <= a.maxD && (!a.max || m.maxLeft <= 0))
           if (opts.length) {
             let sum = opts.reduce((s, o) => s + o.a.weight, 0) * this.R()
             let pick = opts[0]
@@ -1292,6 +1339,7 @@ class Fight {
               }
             }
             m.atk = pick.i
+            if (pick.a.max) m.maxLeft = pick.a.max
             m.windup = pick.a.windup * this.fx.warn
             m.struck = false
             m.facing = toMe
@@ -1331,6 +1379,12 @@ class Fight {
           const reach = a.reach ?? 0
           m.aimX = m.x + Math.sin(m.facing) * reach
           m.aimZ = m.z + Math.cos(m.facing) * reach
+          if (a.leap) {
+            // o salto vai até a distância de luta, em linha com a mira do fim do aviso
+            m.leapV = Math.max(0, dist - def.radius - PLAYER_R - 0.5) / a.active
+          }
+          m.flowLeft = 0
+          m.ramming = false
           this.setMob(m, "strike")
           this.events.push({ t: "strike", id: m.id, attack: a.id })
         }
@@ -1338,10 +1392,29 @@ class Fight {
       }
       case "strike": {
         const a = m.attacks[m.atk]
-        m.x += Math.sin(m.facing) * a.lunge * DT
-        m.z += Math.cos(m.facing) * a.lunge * DT
-        if (a.id === "dive") m.y = Math.max(0, m.y - 9 * DT)
-        if (!m.struck) this.mobHit(m, a)
+        const v = a.leap ? m.leapV : a.lunge
+        // o raio contínuo segue quem joga devagar: dá para sair da linha andando
+        if (a.flow) m.facing = turnTo(m.facing, toMe, 0.8 * DT)
+        m.x += Math.sin(m.facing) * v * DT
+        m.z += Math.cos(m.facing) * v * DT
+        if (m.ramming) {
+          p.x += Math.sin(m.facing) * v * DT
+          p.z += Math.cos(m.facing) * v * DT
+          const r = Math.hypot(p.x, p.z)
+          const edge = ARENA_R - PLAYER_R
+          if (r > edge) {
+            p.x *= edge / r
+            p.z *= edge / r
+          }
+        }
+        if (a.flow) {
+          m.flowLeft -= DT
+          if (m.flowLeft <= 0) {
+            m.flowLeft = a.flow
+            m.struck = false
+            this.mobHit(m, a)
+          }
+        } else if (!m.struck && (!a.leap || m.t >= a.active * 0.75)) this.mobHit(m, a)
         if (m.t >= a.active) {
           this.setMob(m, "recover")
           if (!m.struck) this.events.push({ t: "evade", id: m.id })
@@ -1377,7 +1450,11 @@ class Fight {
       const dx = p.x - m.x
       const dz = p.z - m.z
       const d = Math.hypot(dx, dz) - PLAYER_R
-      hit = d <= a.range && Math.abs(angDiff(Math.atan2(dx, dz), m.facing)) <= a.arc / 2 + 0.2
+      if (a.line) {
+        const along = dx * Math.sin(m.facing) + dz * Math.cos(m.facing)
+        const off = Math.abs(dx * Math.cos(m.facing) - dz * Math.sin(m.facing))
+        hit = along > 0 && d <= a.range && off <= a.line + PLAYER_R
+      } else hit = d <= a.range && Math.abs(angDiff(Math.atan2(dx, dz), m.facing)) <= a.arc / 2 + 0.2
     }
     if (!hit) return
     m.struck = true
@@ -1397,8 +1474,15 @@ class Fight {
     p.hp = Math.max(0, p.hp - dmg)
     const heavy = !!a.heavy
     this.events.push({ t: "hit", on: "me", dmg, x: p.x, z: p.z, heavy, dead: p.hp <= 0, shield })
-    // Empurrão para longe de quem bateu.
+    // O raio contínuo queima sem derrubar: cada pancada só empurra um pouco.
     const l = Math.hypot(p.x - m.x, p.z - m.z) || 1
+    if (a.flow && p.hp > 0) {
+      p.x += ((p.x - m.x) / l) * 0.12
+      p.z += ((p.z - m.z) / l) * 0.12
+      return
+    }
+    if (a.ram && !shield) m.ramming = true
+    // Empurrão para longe de quem bateu.
     if (shield && p.hp > 0) {
       p.x += ((p.x - m.x) / l) * 0.3
       p.z += ((p.z - m.z) / l) * 0.3
