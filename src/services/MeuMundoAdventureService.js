@@ -244,11 +244,11 @@ class MeuMundoAdventureService {
       const m = require("../realtime/meuMundo").mobEngaged(idUser, mobId);
       if (!m) return fail("mob");
       kind = m.kind;
-      // mm3d-60m: nível sorteado em volta do meu nível de aventura (uma vez por monstro)
+      // o nível do monstro é o de quem o viu primeiro (uma vez por monstro)
       let lv = m.level;
       if (!lv) {
         const adv = await Store.getAdventure(require("../databases"), idUser);
-        lv = Adv.rollMobLevel(Adv.levelOf(Number(adv.xp)).level, GearService().R);
+        lv = Adv.rollMobLevel(Adv.levelOf(Number(adv.xp)).level);
         m.setLevel(lv);
       }
       level = lv;
@@ -258,8 +258,8 @@ class MeuMundoAdventureService {
       level = 1;
     }
     if (!FightSim.MOB_KINDS.includes(kind)) return fail("kind");
-    // o Golem de Pedra do menu da Arena tem só os níveis 1 e 2; o da rua vem com o nível sorteado
-    if (kind === "soldier" && origin !== "mob") level = Math.min(level, 2);
+    // no menu todos entram com os status de quem joga: o nível só pesa no prêmio, e fica no 1
+    if (origin === "boxe" || origin === "laminas") level = 1;
     // Kit da luta (2026-11-03, Alex: "a raposa está com espada e golpes de vampira"):
     // vestindo o personagem de uma classe (skin de classe, hoje só de admin), a
     // luta é a DELE — arma, golpes e equipamento; senão, a classe da conta.
@@ -284,6 +284,8 @@ class MeuMundoAdventureService {
         kind,
         level,
         hero,
+        // adversário à altura: status de quem joga (o Campeão, 20% a mais); o prólogo fica de fora
+        peer: origin === "tutorial" ? undefined : FightSim.peerOf(kind),
         seed: crypto.randomInt(1, 2 ** 31 - 1),
         stats: fightStats(s),
         // Kit pela CLASSE (mm3d-59): raposa = maga; o ringue do Boxe é sempre de luvas.
@@ -303,7 +305,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, hero, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
+          setup: { kind, level, hero, peer: setup.peer ?? null, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,
@@ -329,7 +331,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");

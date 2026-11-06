@@ -178,18 +178,12 @@ function minigameCoins(activeMs, win, rand) {
   return jitter(COINS.minigamePerMin * (activeMs / MIN_MS) * (win ? COINS.minigameWin : 1), rand);
 }
 
-// ═══ NÍVEL DO MONSTRO DA RUA (mm3d-60m, regra do Alex) ═══ — sorteio em
-// volta do nível de aventura de quem ele pegou: pode vir mais fraco ou MUITO
-// mais forte. 15% abaixo (−1…−5), 50% perto (−1…+1), 25% acima (+2…+6),
-// 10% muito acima (+7…+20). Teto = FightSim.MOB_LEVEL_MAX.
-const MOB_LEVEL = Object.freeze({ max: 60, bands: Object.freeze([[0.15, -5, -1], [0.65, -1, 1], [0.9, 2, 6], [1, 7, 20]]) });
-function rollMobLevel(playerLevel, rand) {
-  const L = Math.max(1, Math.round(Number(playerLevel) || 1));
-  const r = rand();
-  const band = MOB_LEVEL.bands.find(([p]) => r < p) || MOB_LEVEL.bands[MOB_LEVEL.bands.length - 1];
-  const [, lo, hi] = band;
-  const off = lo + Math.floor(rand() * (hi - lo + 1));
-  return Math.max(1, Math.min(MOB_LEVEL.max, L + off));
+// ═══ NÍVEL DO MONSTRO DA RUA (regra do Alex, 2026-11-05) ═══ — o do jogador que
+// o viu primeiro. Antes era sorteado, mas agora os status saem de quem luta
+// (FightSim.peerOf): o nível vale para a placa e para o prêmio.
+const MOB_LEVEL_MAX = 60; // = FightSim.MOB_LEVEL_MAX
+function rollMobLevel(playerLevel) {
+  return Math.max(1, Math.min(MOB_LEVEL_MAX, Math.round(Number(playerLevel) || 1)));
 }
 
 /** Fator da disposição pela energia/estresse de ANTES da atividade: 0,3 (exausto e estressado) a 1,3 (descansado e calmo). */
@@ -324,7 +318,6 @@ module.exports = {
   rollFightDrop,
   COINS,
   fightCoins,
-  MOB_LEVEL,
   rollMobLevel,
   minigameCoins,
 };

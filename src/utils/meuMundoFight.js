@@ -331,6 +331,8 @@ const MOBS                          = {
                     
                                             
                
+                                                             
+               
  
 
                         
@@ -395,6 +397,11 @@ const MOBS                          = {
                                                                                     
      
                
+     
+                                                                                  
+                                                                                
+     
+               
  
 
                             
@@ -452,6 +459,15 @@ function heroStats(stats       , level        )        {
   const a = heroLevelScale(level).attr
   const up = (v        ) => clamp(v + a, 0, 1000)
   return { strength: up(stats.strength), speed: up(stats.speed), intelligence: up(stats.intelligence), dexterity: up(stats.dexterity ?? 300) }
+}
+
+// ═══ ADVERSÁRIO À ALTURA (regra do Alex, 2026-11-05) ═══ — no Boxe, na Arena e na
+// rua o adversário tem a vida, o dano médio e a defesa de quem joga; o Campeão
+// (Brutamontes) tem 20% a mais. A velocidade e os golpes seguem os de cada monstro;
+// o bando divide a vida entre si.
+const PEER_ELITE = 1.2
+function peerOf(kind         )         {
+  return kind === "brute" ? PEER_ELITE : 1
 }
 
 const angDiff = (a        , b        ) => {
@@ -571,8 +587,12 @@ class Fight {
     }
     const def = MOBS[setup.kind]
     const lv = mobLevelScale(this.level)
-    const scale = lv.hp
-    spawnList(setup.kind).forEach((p, i) =>
+    const spots = spawnList(setup.kind)
+    const peer = clamp(Number(setup.peer) || 0, 0, 2)
+    const mean = (list          ) => list.reduce((a, b) => a + b, 0) / list.length
+    const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : def.hp * lv.hp)
+    const dmgMul = peer ? (mean(this.combo.map((c) => c.dmg)) * this.fx.dmg * peer) / mean(def.attacks.map((a) => a.dmg)) : lv.dmg
+    spots.forEach((p, i) =>
       this.mobs.push({
         id: i + 1,
         kind: setup.kind,
@@ -580,8 +600,8 @@ class Fight {
         z: p.z,
         y: 0,
         facing: Math.PI,
-        hp: Math.round(def.hp * scale),
-        hpMax: Math.round(def.hp * scale),
+        hp,
+        hpMax: hp,
         state: "spawn",
         t: -0.35 * i,
         atk: 0,
@@ -592,9 +612,10 @@ class Fight {
         hits: 0,
         restLeft: 0.6 + 0.5 * i,
         side: i % 2 ? 1 : -1,
-        dmgMul: lv.dmg,
+        dmgMul,
         armorUntil: 0,
-        poise: def.poise + lv.poise,
+        poise: peer ? def.poise : def.poise + lv.poise,
+        armor: peer ? Math.min(DEF_MAX, this.def * peer) : 0,
       }),
     )
   }
@@ -1039,7 +1060,7 @@ class Fight {
           damageMob(m     , base        , heavy         , dx        , dz        , rank       = 3, src                  ) {
     // Pancada na brecha (logo depois do golpe dele) dói mais.
     const opening = m.state === "recover" ? 1.25 : 1
-    const dmg = Math.round(base * opening)
+    const dmg = Math.max(1, Math.round(base * opening * (1 - m.armor)))
     m.hp = Math.max(0, m.hp - dmg)
     const dead = m.hp <= 0
     this.events.push({ t: "hit", on: "mob", id: m.id, dmg, x: m.x, y: m.y, z: m.z, heavy, dead, rank, src })
@@ -1402,4 +1423,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

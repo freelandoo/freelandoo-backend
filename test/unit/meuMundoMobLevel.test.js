@@ -33,17 +33,34 @@ test("status do monstro crescem com o nível e param no 60", () => {
   assert.equal(new F.Fight({ kind: "soldier", level: 9, seed: 3 }).level, 9);
 });
 
-test("sorteio: às vezes abaixo, quase sempre perto, às vezes muito acima", () => {
-  const r = seq(42);
-  const offs = Array.from({ length: 8000 }, () => A.rollMobLevel(20, r) - 20);
-  const share = (fn) => offs.filter(fn).length / offs.length;
-  assert.ok(Math.min(...offs) >= -5 && Math.max(...offs) <= 20);
-  assert.ok(Math.abs(share((o) => o <= -2) - 0.15 * 0.8) < 0.04);
-  assert.ok(share((o) => o >= 7) > 0.07 && share((o) => o >= 7) < 0.13);
-  assert.ok(share((o) => Math.abs(o) <= 1) > 0.5);
-  // nunca abaixo de 1 nem acima de 60
-  assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(1, r)).every((l) => l >= 1));
-  assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(58, r)).every((l) => l <= 60));
+test("o monstro da rua tem o nível de quem o viu", () => {
+  assert.equal(A.rollMobLevel(20), 20);
+  assert.equal(A.rollMobLevel(0), 1);
+  assert.equal(A.rollMobLevel(99), 60);
+});
+
+test("adversário à altura: vida, dano e defesa de quem joga; Campeão com 20% a mais", () => {
+  const stats = { strength: 700, speed: 400, intelligence: 500, dexterity: 300 };
+  const gear = { dmg: 0.1, def: 0.1 };
+  const mean = (l) => l.reduce((a, b) => a + b, 0) / l.length;
+  for (const hero of [1, 12, 60]) {
+    for (const kind of F.MOB_KINDS) {
+      const k = F.peerOf(kind);
+      assert.equal(k, kind === "brute" ? 1.2 : 1);
+      const f = new F.Fight({ kind, level: 1, hero, seed: 9, stats, gear, peer: k });
+      const total = f.mobs.reduce((a, m) => a + m.hpMax, 0);
+      assert.ok(Math.abs(total - f.me.hpMax * k) <= f.mobs.length, `${kind} vida ${total}`);
+      const foe = mean(F.MOBS[kind].attacks.map((a) => a.dmg)) * f.mobs[0].dmgMul;
+      assert.ok(Math.abs(foe - mean(F.COMBO.map((c) => c.dmg)) * f.fx.dmg * k) < 1e-6, `${kind} dano`);
+      assert.ok(Math.abs(f.mobs[0].armor - Math.min(F.DEF_MAX, f.def * k)) < 1e-9, `${kind} defesa`);
+    }
+  }
+});
+
+test("sem peer (prólogo), o monstro segue pelo nível", () => {
+  const f = new F.Fight({ kind: "soldier", level: 1, hero: 30, seed: 3 });
+  assert.equal(f.mobs[0].hpMax, F.MOBS.soldier.hp);
+  assert.equal(f.mobs[0].armor, 0);
 });
 
 test("monstro nasce sem nível; o PRIMEIRO que o vê define e fica para a sala", () => {
