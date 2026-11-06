@@ -132,15 +132,30 @@ test("cada personagem nasce com a própria ficha", () => {
 
 test("monstros pela ficha: o da rua no nível dele, o da Arena no de quem joga", () => {
   const stone = new F.Fight({ kind: "soldier", level: 1, seed: 2, tier: "street" }).mobs[0];
-  assert.equal(stone.hpMax, 160);
-  assert.equal(stone.rate.def, 150);
-  assert.equal(stone.rate.spd, 50);
-  assert.equal(new F.Fight({ kind: "soldier", seed: 2, tier: "arena" }).mobs[0].hpMax, 130);
+  assert.equal(stone.hpMax, 175);
+  assert.equal(stone.rate.def, 165);
+  assert.equal(stone.rate.spd, 60);
+  assert.equal(new F.Fight({ kind: "soldier", seed: 2, tier: "arena" }).mobs[0].hpMax, 170);
   const wolves = new F.Fight({ kind: "wolf", seed: 2, tier: "arena" }).mobs;
-  assert.equal(wolves.reduce((a, m) => a + m.hpMax, 0), 120);
+  assert.equal(wolves.reduce((a, m) => a + m.hpMax, 0), 225);
   const l = new F.Fight({ kind: "brute", level: 60, hero: 1, seed: 2, tier: "street" }).mobs[0];
-  assert.equal(l.rate.atk, 1600);
+  assert.ok(Math.abs(l.rate.atk - 2834.3) < 0.1);
   assert.equal(new F.Fight({ kind: "brute", level: 60, hero: 1, seed: 2, tier: "arena" }).mobs[0].rate.atk, 160);
+});
+
+test("Brutamontes do nível 15 = a referência do Alex; a ficha da skin não anda junto", () => {
+  const m = new F.Fight({ kind: "brute", level: 15, seed: 2, tier: "street" }).mobs[0];
+  assert.equal(m.hpMax, 668);
+  assert.deepEqual([m.rate.atk, m.rate.def, m.rate.acc, m.rate.spd].map(Math.round), [795, 695, 596, 447]);
+  assert.deepEqual(F.BODY_SHEETS.ciborgue, [130, 130, 130, 150, 70]);
+  assert.deepEqual(F.BODY_SHEETS.garras, [90, 120, 80, 160, 140]);
+  assert.deepEqual(F.BODY_SHEETS.golem, [160, 110, 150, 80, 50]);
+});
+
+test("ringue não usa a curva dos monstros: o adversário segue espelho", () => {
+  const f = new F.Fight({ kind: "soldier", hero: 15, seed: 2, peer: 1 });
+  assert.equal(f.mobs[0].hpMax, f.me.hpMax);
+  assert.equal(f.mobs[0].rate.atk, f.rate.atk);
 });
 
 test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", () => {
