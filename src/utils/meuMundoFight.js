@@ -233,6 +233,8 @@ const SKILLS = {
                         
                                      
                  
+                                                                                                              
+                                                
  
 
 const MOBS                          = {
@@ -271,6 +273,14 @@ const MOBS                          = {
       { id: "swipe", windup: 0.95, active: 0.3, recover: 1.0, range: 3.0, arc: 2.2, dmg: 18, lunge: 0.8, weight: 2, minD: 0, maxD: 3.3, heavy: true },
       { id: "slam", windup: 1.3, active: 0.2, recover: 1.5, range: 0, arc: 0, area: 2.6, reach: 2.2, dmg: 28, lunge: 0, weight: 2, minD: 0, maxD: 4.4, heavy: true },
     ],
+    // regra do Alex (2026-11-06): o Ciborgue encontrado é o da skin: atira, reto, de longe
+    gun: {
+      engage: 6,
+      attacks: [
+        { id: "shot", windup: 0.75, active: 0.12, recover: 0.7, range: 9.5, arc: 0.35, dmg: 16, lunge: 0, weight: 3, minD: 0, maxD: 10 },
+        { id: "blast", windup: 1.15, active: 0.14, recover: 1.1, range: 10.5, arc: 0.6, dmg: 26, lunge: 0, weight: 2, minD: 2.5, maxD: 11, heavy: true },
+      ],
+    },
   },
   harpy: {
     hp: 80,
@@ -314,7 +324,10 @@ const MOBS                          = {
                
                  
            
-                                                        
+                                                                                              
+                      
+                
+                                               
              
                                                                            
                 
@@ -516,7 +529,7 @@ const MOB_SHEETS                                   = {
   soldier: [170, 130, 170, 90, 70],
   stone: [175, 120, 165, 95, 60],
   wolf: [225, 125, 125, 75, 100],
-  golem: [145, 185, 145, 205, 80],
+  golem: [180, 170, 150, 180, 80],
   harpy: [115, 180, 120, 155, 135],
   brute: [200, 160, 140, 120, 90],
 }
@@ -711,7 +724,8 @@ class Fight {
       ? { acc: this.rate.acc * peer, spd: this.rate.spd * peer, atk: this.rate.atk * peer, def: this.rate.def * peer }
       : { acc: (rated * ms[3]) / 100, spd: (rated * ms[4]) / 100, atk: (rated * ms[1]) / 100, def: (rated * ms[2]) / 100 }
     const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : setup.tier ? (normal * ms[0]) / 100 / spots.length : def.hp * lv.hp)
-    const dmgMul = this.rated ? (mean(this.combo.map((c) => c.dmg)) * (normal / PLAYER.hp)) / mean(def.attacks.map((a) => a.dmg)) : lv.dmg
+    const moves = setup.tier && def.gun ? def.gun : def
+    const dmgMul = this.rated ? (mean(this.combo.map((c) => c.dmg)) * (normal / PLAYER.hp)) / mean(moves.attacks.map((a) => a.dmg)) : lv.dmg
     spots.forEach((p, i) =>
       this.mobs.push({
         id: i + 1,
@@ -724,6 +738,8 @@ class Fight {
         hpMax: hp,
         state: "spawn",
         t: -0.35 * i,
+        attacks: moves.attacks,
+        engage: moves.engage,
         atk: 0,
         windup: 0,
         aimX: 0,
@@ -1264,7 +1280,7 @@ class Fight {
         const myTurn = this.kind !== "wolf" || this.token === m.id
         // Escolhe golpe quando descansou e está no alcance de algum.
         if (myTurn && m.restLeft <= 0 && p.state !== "down") {
-          const opts = def.attacks.map((a, i) => ({ a, i })).filter(({ a }) => dist >= a.minD && dist <= a.maxD)
+          const opts = m.attacks.map((a, i) => ({ a, i })).filter(({ a }) => dist >= a.minD && dist <= a.maxD)
           if (opts.length) {
             let sum = opts.reduce((s, o) => s + o.a.weight, 0) * this.R()
             let pick = opts[0]
@@ -1287,7 +1303,7 @@ class Fight {
         // Anda: chega na distância de luta; quem não tem a vez rodeia.
         let vx = 0
         let vz = 0
-        const want = myTurn ? def.engage : def.engage + 1.6
+        const want = myTurn ? m.engage : m.engage + 1.6
         if (dist > want + 0.3) {
           vx = (dx / dist) * speed
           vz = (dz / dist) * speed
@@ -1307,7 +1323,7 @@ class Fight {
         return
       }
       case "windup": {
-        const a = def.attacks[m.atk]
+        const a = m.attacks[m.atk]
         // Durante o aviso acompanha o jogador devagar (o golpe de área marca o ponto no fim).
         m.facing = turnTo(m.facing, toMe, (a.area ? 2.5 : 1.6) * DT)
         if (a.id === "dive" && def.flies) m.y += (3.4 - m.y) * Math.min(1, 4 * DT)
@@ -1321,7 +1337,7 @@ class Fight {
         return
       }
       case "strike": {
-        const a = def.attacks[m.atk]
+        const a = m.attacks[m.atk]
         m.x += Math.sin(m.facing) * a.lunge * DT
         m.z += Math.cos(m.facing) * a.lunge * DT
         if (a.id === "dive") m.y = Math.max(0, m.y - 9 * DT)
@@ -1333,7 +1349,7 @@ class Fight {
         return
       }
       case "recover": {
-        const a = def.attacks[m.atk]
+        const a = m.attacks[m.atk]
         if (def.flies) m.y = Math.max(0, m.y - 4 * DT)
         if (m.t >= a.recover) {
           m.restLeft = def.rest[0] + (def.rest[1] - def.rest[0]) * this.R()
@@ -1449,7 +1465,7 @@ function faceTargetSmooth(p            , m     ) {
 /** Golpe atual do inimigo (para desenhar o aviso). */
 function mobAttack(m     )                   {
   if (m.state !== "windup" && m.state !== "strike") return null
-  return MOBS[m.kind].attacks[m.atk] ?? null
+  return m.attacks[m.atk] ?? null
 }
 
 // ── sim/replay.ts ────────────────────────────────────────────────────────────

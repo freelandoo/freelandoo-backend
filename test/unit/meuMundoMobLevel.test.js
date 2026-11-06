@@ -152,6 +152,23 @@ test("Brutamontes do nível 15 = a referência do Alex; a ficha da skin não and
   assert.deepEqual(F.BODY_SHEETS.golem, [160, 110, 150, 80, 50]);
 });
 
+test("Ciborgue atira na Arena e na rua, como a skin; no ringue segue no soco", () => {
+  const ids = (f) => f.mobs[0].attacks.map((x) => x.id);
+  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "arena" })), ["shot", "blast"]);
+  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "street" })), ["shot", "blast"]);
+  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, peer: 1 })), ["swipe", "slam"]);
+  assert.equal(new F.Fight({ kind: "golem", seed: 2, tier: "arena" }).mobs[0].engage, 6);
+});
+
+test("o tiro é por distância: longe do alcance das mãos ele ainda pega", () => {
+  const f = new F.Fight({ kind: "golem", seed: 3, tier: "arena", stats: { strength: 0, speed: 0, intelligence: 0, dexterity: 0 } });
+  const idle = { mx: 0, mz: 0, run: false, attack: false, dodge: false };
+  const start = f.me.hp;
+  for (let i = 0; i < 60 * 8 && !f.over; i++) f.step(idle);
+  assert.ok(f.me.hp < start);
+  assert.ok(Math.hypot(f.mobs[0].x - f.me.x, f.mobs[0].z - f.me.z) > 3.3);
+});
+
 test("ringue não usa a curva dos monstros: o adversário segue espelho", () => {
   const f = new F.Fight({ kind: "soldier", hero: 15, seed: 2, peer: 1 });
   assert.equal(f.mobs[0].hpMax, f.me.hpMax);
