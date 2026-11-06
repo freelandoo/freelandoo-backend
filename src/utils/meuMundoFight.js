@@ -480,25 +480,34 @@ function peerOf(kind         )         {
 // Quem não aperta esquivar escapa sozinho do que sobra (90% no exemplo). Apertar
 // esquivar escapa na razão inversa, até 90%: no empate funciona e, contra 1000 de
 // acuracidade com 100 de velocidade, quase nunca. Quem tem menos de 50% não acerta 2
-// seguidos. O dano segue a mesma conta: ataque contra defesa.
+// seguidos. O dano segue a mesma conta, em porcentagem pura: um golpe de 200 com
+// ataque 50 tira 100 em defesa 100 e 10 em defesa 1000. Ataque e defesa nascem em 100
+// (sem isso, no nível 1 seria 0 contra 0) e vão a 1000.
                             
              
              
              
              
  
-const RATE_FLOOR = 100
-const HIT_MIN = 0.05
 const DODGE_MAX = 0.9
-const DMG_MIN = 0.1
+const RATE_BASE = 100
+const rateOf = (f        ) => RATE_BASE + (1000 - RATE_BASE) * clamp(f, 0, 1)
+/** Ataque na escala 0–1000; `dmg` = multiplicador de dano (nível e equipamento). */
+function attackRate(dmg        ) {
+  return rateOf((dmg - 1) / (heroLevelScale(HERO_LEVEL_MAX).dmg - 1))
+}
+/** Defesa na escala 0–1000; `def` = fração (nível e equipamento). */
+function defenseRate(def        ) {
+  return rateOf(def / DEF_MAX)
+}
 function hitChance(acc        , spd        ) {
-  return clamp(acc / Math.max(1, spd), HIT_MIN, 1)
+  return clamp(acc / Math.max(1, spd), 0, 1)
 }
 function dodgeChance(acc        , spd        ) {
   return Math.max(1 - hitChance(acc, spd), Math.min(DODGE_MAX, spd / Math.max(1, acc)))
 }
 function damageRatio(atk        , def        ) {
-  return clamp(atk / Math.max(1, def), DMG_MIN, 1)
+  return clamp(atk / Math.max(1, def), 0, 1)
 }
 
 const angDiff = (a        , b        ) => {
@@ -599,13 +608,7 @@ class Fight {
     this.rated = peer > 0
     const fought = heroStats(stats, this.heroLevel)
     this.fx = this.withGear(statEffects(fought))
-    const atkTop = heroLevelScale(HERO_LEVEL_MAX).dmg - 1
-    this.rate = {
-      acc: Math.max(RATE_FLOOR, fought.strength),
-      spd: Math.max(RATE_FLOOR, fought.speed),
-      atk: clamp(((this.fx.dmg - 1) / atkTop) * 1000, RATE_FLOOR, 1000),
-      def: clamp((this.def / DEF_MAX) * 1000, RATE_FLOOR, 1000),
-    }
+    this.rate = { acc: Math.max(1, fought.strength), spd: Math.max(1, fought.speed), atk: attackRate(this.fx.dmg), def: defenseRate(this.def) }
     this.me = {
       x: 0,
       z: -5,
@@ -1491,4 +1494,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, HIT_MIN, DODGE_MAX, DMG_MIN, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, DODGE_MAX, attackRate, defenseRate, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

@@ -74,6 +74,16 @@ test("acuracidade contra velocidade, ataque contra defesa", () => {
   assert.equal(F.dodgeChance(500, 500), 0.9);
   assert.equal(F.damageRatio(100, 1000), 0.1);
   assert.equal(F.damageRatio(1000, 100), 1);
+  // o exemplo do Alex: golpe de 200
+  assert.equal(200 * F.damageRatio(50, 100), 100);
+  assert.equal(200 * F.damageRatio(50, 1000), 10);
+  assert.equal(F.hitChance(10, 1000), 0.01);
+  // nível 1 sem equipamento: 100 contra 100; status baixos ficam como são
+  const f = new F.Fight({ kind: "soldier", seed: 1, peer: 1, stats: { strength: 50, speed: 30 } });
+  assert.equal(f.rate.atk, 100);
+  assert.equal(f.rate.def, 100);
+  assert.equal(f.rate.acc, 50);
+  assert.equal(f.rate.spd, 30);
 });
 
 test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", () => {
