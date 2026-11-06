@@ -572,15 +572,16 @@ const MOB_SHEETS                                   = {
   stone: [175, 120, 165, 95, 60],
   wolf: [225, 125, 125, 75, 100],
   golem: [180, 170, 150, 180, 80],
-  harpy: [115, 180, 120, 155, 135],
+  harpy: [125, 150, 110, 120, 130],
   brute: [200, 160, 140, 120, 90],
 }
 /**
- * Status normais de um monstro do nível (regra do Alex, 2026-11-06): o nível 15 vale o que o 27
- * valia (Brutamontes do 15 = 668/795/695/596/447). O nível 1 não muda; segue nesse passo, sem teto.
+ * Status normais de um monstro do nível (regra do Alex, 2026-11-06): o nível 15 vale o que o 18
+ * valia (Brutamontes do 15 = 506/575/503/431/323). Valer o 27 ficou impossível de ganhar. O nível
+ * 1 não muda; segue nesse passo, sem teto.
  */
 function mobBase(level        )                               {
-  const n = ((Math.max(1, Math.round(Number(level) || 1)) - 1) * 26) / 14
+  const n = ((Math.max(1, Math.round(Number(level) || 1)) - 1) * 17) / 14
   return { hp: PLAYER.hp + HERO_LEVEL.hp * n, rate: 100 + (900 * n) / 59 }
 }
 /** O que o nível soma em ataque, defesa e, nos monstros, acuracidade e velocidade (0 no 1, 900 no 60, e segue). */

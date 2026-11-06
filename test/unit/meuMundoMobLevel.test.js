@@ -139,14 +139,14 @@ test("monstros pela ficha: o da rua no nível dele, o da Arena no de quem joga",
   const wolves = new F.Fight({ kind: "wolf", seed: 2, tier: "arena" }).mobs;
   assert.equal(wolves.reduce((a, m) => a + m.hpMax, 0), 225);
   const l = new F.Fight({ kind: "brute", level: 60, hero: 1, seed: 2, tier: "street" }).mobs[0];
-  assert.ok(Math.abs(l.rate.atk - 2834.3) < 0.1);
+  assert.ok(Math.abs(l.rate.atk - 1908.6) < 0.1);
   assert.equal(new F.Fight({ kind: "brute", level: 60, hero: 1, seed: 2, tier: "arena" }).mobs[0].rate.atk, 160);
 });
 
 test("Brutamontes do nível 15 = a referência do Alex; a ficha da skin não anda junto", () => {
   const m = new F.Fight({ kind: "brute", level: 15, seed: 2, tier: "street" }).mobs[0];
-  assert.equal(m.hpMax, 668);
-  assert.deepEqual([m.rate.atk, m.rate.def, m.rate.acc, m.rate.spd].map(Math.round), [795, 695, 596, 447]);
+  assert.equal(m.hpMax, 506);
+  assert.deepEqual([m.rate.atk, m.rate.def, m.rate.acc, m.rate.spd].map(Math.round), [575, 503, 431, 323]);
   assert.deepEqual(F.BODY_SHEETS.ciborgue, [130, 130, 130, 150, 70]);
   assert.deepEqual(F.BODY_SHEETS.garras, [90, 120, 80, 160, 140]);
   assert.deepEqual(F.BODY_SHEETS.golem, [160, 110, 150, 80, 50]);
