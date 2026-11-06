@@ -33,10 +33,20 @@ test("status do monstro crescem com o nível e param no 60", () => {
   assert.equal(new F.Fight({ kind: "soldier", level: 9, seed: 3 }).level, 9);
 });
 
-test("o monstro da rua tem o nível de quem o viu", () => {
-  assert.equal(A.rollMobLevel(20), 20);
-  assert.equal(A.rollMobLevel(0), 1);
-  assert.equal(A.rollMobLevel(99), 60);
+test("sorteio: 20% igual, 30% +3/+4, 20% +6 a +10, 20% +12, 10% +20", () => {
+  const r = seq(42);
+  const offs = Array.from({ length: 20000 }, () => A.rollMobLevel(20, r) - 20);
+  const share = (fn) => offs.filter(fn).length / offs.length;
+  const near = (v, p) => assert.ok(Math.abs(v - p) < 0.02, `${v} perto de ${p}`);
+  near(share((o) => o === 0), 0.2);
+  near(share((o) => o === 3 || o === 4), 0.3);
+  near(share((o) => o >= 6 && o <= 10), 0.2);
+  near(share((o) => o === 12), 0.2);
+  near(share((o) => o === 20), 0.1);
+  assert.ok(offs.every((o) => [0, 3, 4, 6, 7, 8, 9, 10, 12, 20].includes(o)));
+  // nunca abaixo do meu nível nem acima de 60
+  assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(1, r)).every((l) => l >= 1));
+  assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(58, r)).every((l) => l <= 60));
 });
 
 test("adversário à altura: vida, dano e defesa de quem joga; Campeão com 20% a mais", () => {

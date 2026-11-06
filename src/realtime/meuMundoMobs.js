@@ -173,7 +173,7 @@ class MobDirector {
         }
       }
       if (first) {
-        m.level = rollMobLevel(first.lv);
+        m.level = rollMobLevel(first.lv, this.rng);
         m.seenBy = first.sid;
         changed = true;
       }

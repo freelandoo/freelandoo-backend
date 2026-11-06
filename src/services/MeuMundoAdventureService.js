@@ -244,11 +244,11 @@ class MeuMundoAdventureService {
       const m = require("../realtime/meuMundo").mobEngaged(idUser, mobId);
       if (!m) return fail("mob");
       kind = m.kind;
-      // o nível do monstro é o de quem o viu primeiro (uma vez por monstro)
+      // nível sorteado a partir do meu nível de aventura (uma vez por monstro)
       let lv = m.level;
       if (!lv) {
         const adv = await Store.getAdventure(require("../databases"), idUser);
-        lv = Adv.rollMobLevel(Adv.levelOf(Number(adv.xp)).level);
+        lv = Adv.rollMobLevel(Adv.levelOf(Number(adv.xp)).level, GearService().R);
         m.setLevel(lv);
       }
       level = lv;
