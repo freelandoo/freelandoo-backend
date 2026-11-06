@@ -331,8 +331,10 @@ const MOBS                          = {
                     
                                             
                
-                                                             
-               
+                                                                                           
+                 
+                                                                                                       
+                 
  
 
                         
@@ -343,6 +345,8 @@ const MOBS                          = {
                                              
                                                
                   
+                                                                                 
+                                                                                   
                               
                                 
                               
@@ -470,6 +474,33 @@ function peerOf(kind         )         {
   return kind === "brute" ? PEER_ELITE : 1
 }
 
+// ═══ ACERTO, ESQUIVA E DANO (regra do Alex, 2026-11-06) ═══ — vale nas lutas com
+// adversário à altura, para os dois lados. A acuracidade (o antigo atributo força)
+// disputa com a velocidade: 100 contra 1000 acerta 10%, 1000 contra 100 sempre acerta.
+// Quem não aperta esquivar escapa sozinho do que sobra (90% no exemplo). Apertar
+// esquivar escapa na razão inversa, até 90%: no empate funciona e, contra 1000 de
+// acuracidade com 100 de velocidade, quase nunca. Quem tem menos de 50% não acerta 2
+// seguidos. O dano segue a mesma conta: ataque contra defesa.
+                            
+             
+             
+             
+             
+ 
+const RATE_FLOOR = 100
+const HIT_MIN = 0.05
+const DODGE_MAX = 0.9
+const DMG_MIN = 0.1
+function hitChance(acc        , spd        ) {
+  return clamp(acc / Math.max(1, spd), HIT_MIN, 1)
+}
+function dodgeChance(acc        , spd        ) {
+  return Math.max(1 - hitChance(acc, spd), Math.min(DODGE_MAX, spd / Math.max(1, acc)))
+}
+function damageRatio(atk        , def        ) {
+  return clamp(atk / Math.max(1, def), DMG_MIN, 1)
+}
+
 const angDiff = (a        , b        ) => {
   let d = a - b
   while (d > Math.PI) d -= 2 * Math.PI
@@ -529,6 +560,8 @@ class Fight {
   /** Bolas de fogo no ar (maga). */
            shots         = []
           shotSeq = 0
+  /** Monstros em que meu último golpe pegou. */
+                   meLanded = new Set        ()
            combo         
           prevAttack = false
           prevDodge = false
@@ -544,6 +577,9 @@ class Fight {
   /** Nível de aventura de quem joga e o que ele dá. */
            heroLevel        
            hero                                   
+  /** Luta com acerto e esquiva por status (adversário à altura). */
+           rated         
+           rate           
   /** Defesa total (nível + equipamento, com teto). */
            def        
 
@@ -559,7 +595,17 @@ class Fight {
     this.heroLevel = clamp(Math.round(Number(setup.hero) || 1), 1, HERO_LEVEL_MAX)
     this.hero = heroLevelScale(this.heroLevel)
     this.def = clamp(this.gear.def + this.hero.def, 0, DEF_MAX)
-    this.fx = this.withGear(statEffects(heroStats(stats, this.heroLevel)))
+    const peer = clamp(Number(setup.peer) || 0, 0, 2)
+    this.rated = peer > 0
+    const fought = heroStats(stats, this.heroLevel)
+    this.fx = this.withGear(statEffects(fought))
+    const atkTop = heroLevelScale(HERO_LEVEL_MAX).dmg - 1
+    this.rate = {
+      acc: Math.max(RATE_FLOOR, fought.strength),
+      spd: Math.max(RATE_FLOOR, fought.speed),
+      atk: clamp(((this.fx.dmg - 1) / atkTop) * 1000, RATE_FLOOR, 1000),
+      def: clamp((this.def / DEF_MAX) * 1000, RATE_FLOOR, 1000),
+    }
     this.me = {
       x: 0,
       z: -5,
@@ -588,7 +634,6 @@ class Fight {
     const def = MOBS[setup.kind]
     const lv = mobLevelScale(this.level)
     const spots = spawnList(setup.kind)
-    const peer = clamp(Number(setup.peer) || 0, 0, 2)
     const mean = (list          ) => list.reduce((a, b) => a + b, 0) / list.length
     const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : def.hp * lv.hp)
     const dmgMul = peer ? (mean(this.combo.map((c) => c.dmg)) * this.fx.dmg * peer) / mean(def.attacks.map((a) => a.dmg)) : lv.dmg
@@ -615,7 +660,8 @@ class Fight {
         dmgMul,
         armorUntil: 0,
         poise: peer ? def.poise : def.poise + lv.poise,
-        armor: peer ? Math.min(DEF_MAX, this.def * peer) : 0,
+        rate: { acc: this.rate.acc * peer, spd: this.rate.spd * peer, atk: this.rate.atk * peer, def: this.rate.def * peer },
+        landed: false,
       }),
     )
   }
@@ -683,7 +729,8 @@ class Fight {
   /** Os bônus do equipamento por cima do que os atributos dão. */
           withGear(fx                                ) {
     const g = this.gear
-    return { ...fx, dmg: fx.dmg * (1 + g.dmg) * this.hero.dmg, warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
+    // com adversário à altura o dano vem do ataque (nível e equipamento), não da acuracidade
+    return { ...fx, dmg: (this.rated ? 1 : fx.dmg) * (1 + g.dmg) * this.hero.dmg, warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
   }
 
   setStats(stats                ) {
@@ -1058,9 +1105,19 @@ class Fight {
 
   /** Dano num inimigo (corte ou bola de fogo); (dx, dz) = de onde veio, para o empurrão. */
           damageMob(m     , base        , heavy         , dx        , dz        , rank       = 3, src                  ) {
+    if (this.rated && src !== "ult") {
+      const chance = hitChance(this.rate.acc, m.rate.spd)
+      const miss = (chance < 0.5 && this.meLanded.has(m.id)) || this.R() >= chance
+      if (miss) {
+        this.meLanded.delete(m.id)
+        this.events.push({ t: "miss", on: "mob", x: m.x, y: m.y, z: m.z, auto: true })
+        return
+      }
+      this.meLanded.add(m.id)
+    }
     // Pancada na brecha (logo depois do golpe dele) dói mais.
     const opening = m.state === "recover" ? 1.25 : 1
-    const dmg = Math.max(1, Math.round(base * opening * (1 - m.armor)))
+    const dmg = Math.max(1, Math.round(base * opening * (this.rated ? damageRatio(this.rate.atk, m.rate.def) : 1)))
     m.hp = Math.max(0, m.hp - dmg)
     const dead = m.hp <= 0
     this.events.push({ t: "hit", on: "mob", id: m.id, dmg, x: m.x, y: m.y, z: m.z, heavy, dead, rank, src })
@@ -1216,7 +1273,8 @@ class Fight {
   /** O golpe do inimigo acerta? (cone à frente ou área marcada; esquiva na hora certa passa). */
           mobHit(m     , a           ) {
     const p = this.me
-    if (p.state === "dodge" && p.t >= DODGE.iframeFrom && p.t <= DODGE.iframeTo) return
+    const dodging = p.state === "dodge" && p.t >= DODGE.iframeFrom && p.t <= DODGE.iframeTo
+    if (dodging && !this.rated) return
     if (p.state === "down" || p.state === "power" || (p.state === "skill" && p.skill === "dash")) return
     let hit = false
     if (a.area) {
@@ -1232,9 +1290,19 @@ class Fight {
     }
     if (!hit) return
     m.struck = true
+    if (this.rated) {
+      const chance = hitChance(m.rate.acc, this.rate.spd)
+      const evaded = (chance < 0.5 && m.landed) || this.R() < (dodging ? dodgeChance(m.rate.acc, this.rate.spd) : 1 - chance)
+      m.landed = !evaded
+      if (evaded) {
+        this.events.push({ t: "miss", on: "me", x: p.x, y: 0, z: p.z, auto: !dodging })
+        return
+      }
+    }
     // Escudo de luz: corta o dano e segura de pé (sem queda nem pancada)
     const shield = p.shieldUntil > this.time
-    const dmg = Math.max(1, Math.round(a.dmg * m.dmgMul * (1 - this.def) * (shield ? 1 - SKILLS.shield.cut : 1)))
+    const cut = this.rated ? damageRatio(m.rate.atk, this.rate.def) : 1 - this.def
+    const dmg = Math.max(1, Math.round(a.dmg * m.dmgMul * cut * (shield ? 1 - SKILLS.shield.cut : 1)))
     p.hp = Math.max(0, p.hp - dmg)
     const heavy = !!a.heavy
     this.events.push({ t: "hit", on: "me", dmg, x: p.x, z: p.z, heavy, dead: p.hp <= 0, shield })
@@ -1423,4 +1491,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, MOB_LEVEL_MAX, mobLevelScale, HERO_LEVEL_MAX, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, HIT_MIN, DODGE_MAX, DMG_MIN, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

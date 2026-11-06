@@ -52,7 +52,7 @@ test("adversário à altura: vida, dano e defesa de quem joga; Campeão com 20% 
       assert.ok(Math.abs(total - f.me.hpMax * k) <= f.mobs.length, `${kind} vida ${total}`);
       const foe = mean(F.MOBS[kind].attacks.map((a) => a.dmg)) * f.mobs[0].dmgMul;
       assert.ok(Math.abs(foe - mean(F.COMBO.map((c) => c.dmg)) * f.fx.dmg * k) < 1e-6, `${kind} dano`);
-      assert.ok(Math.abs(f.mobs[0].armor - Math.min(F.DEF_MAX, f.def * k)) < 1e-9, `${kind} defesa`);
+      for (const s of ["acc", "spd", "atk", "def"]) assert.ok(Math.abs(f.mobs[0].rate[s] - f.rate[s] * k) < 1e-9, `${kind} ${s}`);
     }
   }
 });
@@ -60,7 +60,47 @@ test("adversário à altura: vida, dano e defesa de quem joga; Campeão com 20% 
 test("sem peer (prólogo), o monstro segue pelo nível", () => {
   const f = new F.Fight({ kind: "soldier", level: 1, hero: 30, seed: 3 });
   assert.equal(f.mobs[0].hpMax, F.MOBS.soldier.hp);
-  assert.equal(f.mobs[0].armor, 0);
+  assert.equal(f.rated, false);
+});
+
+test("acuracidade contra velocidade, ataque contra defesa", () => {
+  assert.equal(F.hitChance(100, 1000), 0.1);
+  assert.equal(F.hitChance(1000, 100), 1);
+  assert.equal(F.hitChance(500, 500), 1);
+  assert.equal(F.hitChance(500, 1000) * 2, F.hitChance(1000, 1000));
+  // apertar esquivar: 90% com muita velocidade, quase nada contra muita acuracidade
+  assert.equal(F.dodgeChance(100, 1000), 0.9);
+  assert.equal(F.dodgeChance(1000, 100), 0.1);
+  assert.equal(F.dodgeChance(500, 500), 0.9);
+  assert.equal(F.damageRatio(100, 1000), 0.1);
+  assert.equal(F.damageRatio(1000, 100), 1);
+});
+
+test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", () => {
+  const f = new F.Fight({ kind: "soldier", seed: 11, peer: 1, stats: { strength: 1000, speed: 1000 } });
+  const m = f.mobs[0];
+  m.rate.acc = 100;
+  const a = F.MOBS.soldier.attacks[0];
+  let landed = 0;
+  let row = 0;
+  let twice = 0;
+  for (let i = 0; i < 4000; i++) {
+    m.struck = false;
+    m.x = f.me.x;
+    m.z = f.me.z + 1;
+    m.facing = Math.PI;
+    m.t = 0;
+    f.me.state = "idle";
+    f.me.hp = f.me.hpMax;
+    const before = f.me.hp;
+    f.mobHit(m, a);
+    const hit = f.me.hp < before;
+    if (hit) landed++;
+    if (hit && row) twice++;
+    row = hit ? 1 : 0;
+  }
+  assert.equal(twice, 0);
+  assert.ok(landed / 4000 > 0.05 && landed / 4000 < 0.12, `pegou ${landed}`);
 });
 
 test("monstro nasce sem nível; o PRIMEIRO que o vê define e fica para a sala", () => {
