@@ -408,7 +408,7 @@ const MOBS                          = {
                
                                                                                                  
                            
-                                                               
+                                                                         
                
  
 
@@ -476,9 +476,10 @@ function peerOf(kind         )         {
   return kind === "brute" ? PEER_ELITE : 1
 }
 
-// ═══ FICHAS (regra do Alex, 2026-11-06) ═══ — cada personagem nasce com os seus
-// status: vida, ataque, defesa, acuracidade, velocidade. Quem não está aqui nasce
-// com 100 em tudo. Nível, treino e equipamento somam por cima.
+// ═══ FICHAS (regra do Alex, 2026-11-06) ═══ — os pesos de cada personagem: vida,
+// ataque, defesa, acuracidade, velocidade, em %. Multiplicam os status de quem veste:
+// com tudo em 200, o Aurion fica com 320 de vida. O personagem padrão (normal, magro,
+// gordo, forte) não está aqui: pesa 100 em tudo.
                                                                      
 const BASE_SHEET        = [100, 100, 100, 100, 100]
 const BODY_SHEETS                        = {
@@ -495,6 +496,17 @@ const BODY_SHEETS                        = {
   ciborgue: [130, 130, 130, 150, 70],
   garras: [90, 120, 80, 160, 140],
   brutamontes: [200, 160, 140, 120, 90],
+  sergio: [110, 130, 100, 100, 110],
+  ekaterina: [100, 110, 90, 130, 120],
+  female: [90, 100, 90, 110, 110],
+  raposa: [90, 110, 90, 130, 110],
+  raposa_f: [90, 105, 90, 135, 115],
+  raposa_adulto: [110, 130, 100, 150, 120],
+  raposa_adulta: [105, 125, 100, 155, 125],
+  vampiro: [100, 120, 90, 100, 130],
+  vampira: [95, 115, 90, 105, 135],
+  vampiro_adulto: [130, 150, 110, 110, 140],
+  vampira_adulta: [120, 145, 105, 115, 150],
 }
 /** Monstros: ficha sobre os status normais do nível. `stone` = o Golem de Pedra da rua; o bando divide a vida. */
 const MOB_SHEETS                                   = {
@@ -509,18 +521,18 @@ const MOB_SHEETS                                   = {
 const levelRate = (level        ) => (900 * (clamp(Math.round(Number(level) || 1), 1, HERO_LEVEL_MAX) - 1)) / (HERO_LEVEL_MAX - 1)
 /** Equipamento no teto soma isto em ataque e em defesa. */
 const GEAR_RATE = 150
-/** Status de luta de quem joga: nascença + nível + treino + equipamento. */
+/** Status de luta de quem joga: (100 + nível + treino + equipamento) × peso do personagem. */
 function heroSheet(body                           , level        , stats                                                   , gear                     ) {
   const [hp, atk, def, acc, spd] = BODY_SHEETS[body ?? ""] ?? BASE_SHEET
   const h = heroLevelScale(level)
   const f = heroStats({ ...stats, dexterity: stats.dexterity ?? 0 }, level)
   const g = clampGear(gear)
   return {
-    hp: hp + h.hp - PLAYER.hp,
-    atk: atk + levelRate(level) + (g.dmg / GEAR_MAX.dmg) * GEAR_RATE,
-    def: def + levelRate(level) + (g.def / GEAR_MAX.def) * GEAR_RATE,
-    acc: Math.min(1000, acc + f.strength),
-    spd: Math.min(1000, spd + f.speed),
+    hp: Math.round((h.hp * hp) / 100),
+    atk: ((100 + levelRate(level) + (g.dmg / GEAR_MAX.dmg) * GEAR_RATE) * atk) / 100,
+    def: ((100 + levelRate(level) + (g.def / GEAR_MAX.def) * GEAR_RATE) * def) / 100,
+    acc: ((100 + f.strength) * acc) / 100,
+    spd: ((100 + f.speed) * spd) / 100,
   }
 }
 

@@ -287,7 +287,7 @@ class MeuMundoAdventureService {
         // ringue: o adversário copia quem joga; Arena e rua: ficha do monstro; o prólogo fica de fora
         peer: origin === "boxe" ? FightSim.peerOf(kind) : undefined,
         tier: origin === "mob" ? "street" : origin === "laminas" ? "arena" : undefined,
-        // o corpo vestido dá os status de nascença
+        // o corpo vestido multiplica os status (pesos em BODY_SHEETS)
         body: worn,
         seed: crypto.randomInt(1, 2 ** 31 - 1),
         stats: fightStats(s),

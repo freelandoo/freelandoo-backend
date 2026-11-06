@@ -87,6 +87,18 @@ test("acuracidade contra velocidade, ataque contra defesa", () => {
   assert.equal(f.rate.spd, 130);
 });
 
+test("o peso multiplica os status: com tudo em 200, o Aurion fica com 320 de vida", () => {
+  const s = F.heroSheet("aurion", 1, { strength: 100, speed: 100, intelligence: 0, dexterity: 0 });
+  assert.equal(s.acc, 280);
+  assert.equal(s.spd, 240);
+  const p = F.heroSheet("normal", 1, { strength: 100, speed: 100, intelligence: 0, dexterity: 0 });
+  assert.equal(p.acc, 200);
+  assert.equal(p.spd, 200);
+  assert.equal(F.heroSheet("aurion", 13, { strength: 0, speed: 0 }).hp, Math.round(F.heroLevelScale(13).hp * 1.6));
+  for (const b of ["sergio", "ekaterina", "female", "raposa", "raposa_f", "raposa_adulto", "raposa_adulta", "vampiro", "vampira", "vampiro_adulto", "vampira_adulta"]) assert.ok(F.BODY_SHEETS[b], b);
+  for (const b of ["normal", "slim", "fat", "strong"]) assert.equal(F.BODY_SHEETS[b], undefined);
+});
+
 test("cada personagem nasce com a própria ficha", () => {
   const s = F.heroSheet("aeryn", 1, { strength: 0, speed: 0, intelligence: 0, dexterity: 0 });
   assert.deepEqual([s.hp, s.atk, s.def, s.acc, s.spd], [90, 110, 90, 180, 150]);
