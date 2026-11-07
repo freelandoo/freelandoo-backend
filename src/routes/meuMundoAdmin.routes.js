@@ -67,6 +67,7 @@ router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsu
 router.get("/adventure", ...admin, asyncHandler(MeuMundoController.adventureGet));
 router.post("/fight/start", ...admin, asyncHandler(MeuMundoController.fightStart));
 router.post("/fight/finish", ...admin, asyncHandler(MeuMundoController.fightFinish));
+router.post("/client-report", ...admin, asyncHandler(MeuMundoController.clientReport));
 // mm3d-59: equipamento — compras/forja com chave do pedido (recibo idempotente).
 router.get("/gear", ...admin, asyncHandler(MeuMundoController.gearGet));
 router.post("/gear/buy", ...admin, asyncHandler(MeuMundoController.gearBuy));

@@ -160,6 +160,24 @@ async function fightStart(req, res) {
 async function fightFinish(req, res) {
   return reply(res, await adventure().fightFinish(req.user.id_user, req.body || {}));
 }
+// Sonda de queda (2026-11-07): a luta que não fechou no aparelho vai para o log, campo a campo.
+const clientLog = require("../utils/logger").createLogger("meuMundo.client");
+async function clientReport(req, res) {
+  const b = req.body || {};
+  const text = (v, n) => String(v ?? "").slice(0, n);
+  clientLog.warn("fight_lost", {
+    id_user: req.user.id_user,
+    what: text(b.what, 40),
+    step: text(b.step, 20),
+    left: !!b.left,
+    notes: (Array.isArray(b.notes) ? b.notes : []).slice(0, 4).map((n) => text(n, 140)),
+    ageMs: Number(b.ageMs) || 0,
+    memory: Number(b.memory) || null,
+    screen: text(b.screen, 30),
+    ua: text(b.ua, 200),
+  });
+  return reply(res, { ok: true });
+}
 // mm3d-59 slice 3: equipamento (Armeiro, mochila, forja)
 const gear = () => require("../services/MeuMundoGearService");
 async function gearGet(req, res) {
@@ -341,6 +359,7 @@ module.exports = {
   adventureGet,
   fightStart,
   fightFinish,
+  clientReport,
   gearGet,
   gearBuy,
   gearEquip,
