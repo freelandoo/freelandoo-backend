@@ -173,6 +173,8 @@ async function clientReport(req, res) {
     notes: (Array.isArray(b.notes) ? b.notes : []).slice(0, 4).map((n) => text(n, 140)),
     ageMs: Number(b.ageMs) || 0,
     memory: Number(b.memory) || null,
+    heapMB: Number(b.heapMB) || null,
+    limitMB: Number(b.limitMB) || null,
     screen: text(b.screen, 30),
     ua: text(b.ua, 200),
   });
