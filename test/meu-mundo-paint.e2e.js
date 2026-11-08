@@ -354,7 +354,7 @@ async function mkUser(pool, tag) {
   }).length;
   check("…os computadores andam pela física da sala", moved >= 2, String(moved));
   await bye(lone.room);
-  paint._paintTiming.lobbyMs = 60000;
+  paint._paintTiming.lobbyMs = 20000;
 
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);
   await pool.end().catch(() => {});

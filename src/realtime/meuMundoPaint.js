@@ -49,7 +49,7 @@ const MAX_MSG_PER_SEC = 45;
 const ABUSE_DROPS = 300;
 
 /** Prazos (a suíte e2e encurta). */
-const timing = { closeMs: 20000, lobbyMs: 60000 };
+const timing = { closeMs: 20000, lobbyMs: 20000 }; // espera de 20 s (regra do Alex 2026-11-08; antes 1 min)
 
 // ── COMPUTADORES (regra do Alex, 2026-11-08) ── 1×1, 2×2 e 3×3 esperam até 1 minuto; na largada
 // as vagas vazias viram computadores (corpo próprio na sala, a mesma física do aparelho e o
