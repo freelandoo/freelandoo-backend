@@ -1,0 +1,133 @@
+// test/meu-mundo-personagens.e2e.js — MEU MUNDO 3D B3 (mig 340): personagens no lugar das
+// skins. Conversão das skins em personagens (idempotente), cápsula (trocar congela e
+// descongela), vagas, fusão de dois adultos e o certificado público.
+//
+// Roda: TEST_DATABASE_URL=postgres://postgres:test@127.0.0.1:55432/b3 npm run test:meu-mundo-personagens
+// Só Postgres LOCAL e descartável (derruba e recria as tabelas do Meu Mundo).
+
+const url = process.env.TEST_DATABASE_URL;
+if (!url || !/@(localhost|127\.0\.0\.1)[:/]/.test(url)) {
+  console.error("TEST_DATABASE_URL precisa apontar para um Postgres LOCAL e descartável.");
+  process.exit(2);
+}
+process.env.DATABASE_URL = url;
+process.env.DATABASE_SSL = "false";
+
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+let PASS = 0;
+let FAIL = 0;
+function check(label, cond, extra = "") {
+  if (cond) {
+    PASS++;
+    console.log(`✓ ${label}`);
+  } else {
+    FAIL++;
+    console.log(`✗ ${label}${extra ? " — " + extra : ""}`);
+  }
+}
+
+const MIG = path.join(__dirname, "../src/databases/migrations");
+
+async function bootstrap(pool) {
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_character_grant, tb_mm_character_owner, tb_mm_player, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight,
+                    tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned,
+                    tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail, tb_mm_visit, tb_mm_avatar_pref,
+                    tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_profile, tb_user_role, tb_role, tb_user CASCADE`);
+  await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT, is_minor BOOLEAN NOT NULL DEFAULT FALSE)`);
+  await pool.query(`CREATE TABLE tb_profile (id_profile UUID PRIMARY KEY DEFAULT gen_random_uuid(), id_user UUID, display_name TEXT,
+                    avatar_url TEXT, is_user_account BOOLEAN DEFAULT FALSE, deleted_at TIMESTAMPTZ NULL)`);
+  await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
+  await require("./helpers/mmPolens").polenTables(pool);
+  const all = fs
+    .readdirSync(MIG)
+    .filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f))
+    .sort();
+  for (const f of all) await pool.query(fs.readFileSync(path.join(MIG, f), "utf8"));
+}
+
+async function main() {
+  const pool = require("../src/databases");
+  await bootstrap(pool);
+  const Life = require("../src/services/MeuMundoLifeService");
+  Life.adminPerks = false;
+  const Chars = require("../src/services/MeuMundoCharacterService");
+
+  const A = crypto.randomUUID();
+  await pool.query(`INSERT INTO tb_user VALUES ($1, 'ana', 'ana@mm.test', FALSE)`, [A]);
+  await pool.query(`INSERT INTO tb_user_role (id_user, id_role) VALUES ($1, 1)`, [A]);
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f') ON CONFLICT DO NOTHING`, [A]);
+
+  // ── conversão das skins: quem tinha skin ganha o personagem (idempotente)
+  await Life.peek(A);
+  await pool.query(`INSERT INTO tb_mm_skin_owned (id_user, skin) VALUES ($1, 'aurion'), ($1, 'vampira-adulta'), ($1, 'feminina') ON CONFLICT DO NOTHING`, [A]);
+  const m340 = fs.readFileSync(path.join(MIG, "340_meu_mundo_personagens.sql"), "utf8");
+  await pool.query(m340);
+  await pool.query(m340); // de novo: não duplica
+  const l0 = await Chars.list(A);
+  const caps = l0.characters.list.filter((c) => c.status === "capsule");
+  check("skins viram personagens na cápsula (feminina fica de fora)", caps.length === 2 && caps.some((c) => c.species === "aurion") && caps.some((c) => c.species === "vampiro" && c.sex === "f"), JSON.stringify(caps.map((c) => [c.species, c.sex])));
+  check("o hóspede de antes é o ativo", l0.characters.list[0].status === "alive" && l0.characters.list[0].species === "raposa");
+  check("vagas: 2 de 5", l0.characters.capsule.used === 2 && l0.characters.capsule.slots === 5);
+  check("nasce com 1 m", caps.every((c) => c.height === 1), JSON.stringify(caps.map((c) => c.height)));
+  check("número de série e código do certificado", caps.every((c) => /^MM-\d{6}$/.test(c.serialText) && /^[0-9a-f]{12}$/.test(c.certCode)));
+
+  // ── trocar: o ativo congela, o outro descongela
+  const active0 = l0.characters.list[0];
+  const aur = caps.find((c) => c.species === "aurion");
+  await pool.query(`UPDATE tb_mm_character SET strength = 400 WHERE id_character = $1`, [active0.id]);
+  const sw = await Chars.use(A, aur.id);
+  check("troca: Aurion vira o ativo", !sw.error && sw.characters.list[0].id === aur.id && sw.characters.list[0].status === "alive", JSON.stringify(sw.error || sw.swapped));
+  check("troca: o antigo vai para a cápsula", sw.characters.list.some((c) => c.id === active0.id && c.status === "capsule"));
+  const alive = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'`, [A])).rows[0].count);
+  check("um vivo por pessoa", alive === 1);
+  // 30 dias guardado não muda nada
+  await pool.query(`UPDATE tb_mm_character SET sim_at = sim_at - INTERVAL '30 days', frozen_at = frozen_at - INTERVAL '30 days' WHERE id_character = $1`, [active0.id]);
+  const back = await Chars.use(A, active0.id);
+  const r0 = back.characters.list.find((c) => c.id === active0.id);
+  check("volta da cápsula com o mesmo atributo (congelado não perde)", r0 && r0.status === "alive" && r0.attrs.strength === 400, JSON.stringify(r0 && r0.attrs));
+  check("volta da cápsula com a mesma idade ativa", r0 && r0.activeDays === active0.activeDays, `${r0 && r0.activeDays} vs ${active0.activeDays}`);
+  check("trocar com quem não está na cápsula é recusado", (await Chars.use(A, active0.id)).code === "notCapsule");
+
+  // ── vagas: até 5 na cápsula pelo grant de teste
+  for (let i = 0; i < 4; i++) await Chars.testGrant(A, { species: "golem" });
+  const full = await Chars.testGrant(A, { species: "golem" });
+  check("cápsula cheia recusa (5 vagas)", full.code === "full", JSON.stringify(full));
+
+  // ── fusão: só adultos; 20% do maior pico; espécie entre as dos pais
+  const notAdult = await Chars.fuse(A, { a: active0.id, b: aur.id, species: "aurion" });
+  check("fusão de jovens é recusada", notAdult.code === "adult", JSON.stringify(notAdult));
+  const adult = JSON.stringify({ stage: "adult", from: Date.now() - 100 * 86400000, at: Date.now() - 50 * 86400000 });
+  await pool.query(`UPDATE tb_mm_character SET growth = $2::jsonb WHERE id_character = ANY($1::uuid[])`, [[active0.id, aur.id], adult]);
+  await pool.query(`UPDATE tb_mm_character SET intelligence = 900, attr_peaks = attr_peaks || '{"intelligence": 900}'::jsonb WHERE id_character = $1`, [aur.id]);
+  const bad = await Chars.fuse(A, { a: active0.id, b: aur.id, species: "golem" });
+  check("espécie fora das dos pais é recusada", bad.code === "species");
+  const fz = await Chars.fuse(A, { a: active0.id, b: aur.id, species: "aurion" });
+  check("fusão gera o filho", !fz.error && fz.fused && fz.fused.species === "aurion", JSON.stringify(fz.error || fz.fused));
+  check("filho herda 20% do maior pico", fz.fused && fz.fused.inherited.intelligence === 180 && fz.fused.inherited.strength === 80, JSON.stringify(fz.fused && fz.fused.inherited));
+  const kids = fz.characters ? fz.characters.list : [];
+  const kid = kids.find((c) => c.id === fz.fused.child);
+  check("o ativo era pai: o filho vira o ativo, com 1 m", kid && kid.status === "alive" && kid.height === 1 && kid.lineage === 2, JSON.stringify(kid && [kid.status, kid.height, kid.lineage]));
+  const fused = (await pool.query(`SELECT status FROM tb_mm_character WHERE id_character = ANY($1::uuid[])`, [[active0.id, aur.id]])).rows;
+  check("os pais ficam como histórico (fused)", fused.length === 2 && fused.every((r) => r.status === "fused"));
+
+  // ── certificado público
+  const cert = await Chars.certificate(kid.certCode);
+  const c = cert.certificate;
+  check("certificado: série, espécie, genética e pais", c && c.serialText === kid.serialText && c.species === "aurion" && c.genetics && c.genetics.seed > 0 && c.parents.length === 2, JSON.stringify(c && { s: c.serialText, p: c.parents.length }));
+  check("certificado sem dados do dono além do apelido", c && !("id_user" in c) && !("email" in c) && !JSON.stringify(cert).includes(A));
+  check("código inválido = não encontrado", (await Chars.certificate("zzz")).code === "notFound");
+
+  console.log(`\n${PASS} ok, ${FAIL} falha(s)`);
+  await pool.end();
+  process.exit(FAIL ? 1 : 0);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -4,7 +4,7 @@
 // patrimônio da Freelandoo: são dados do ambiente em desenvolvimento.
 
 const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout");
-const { avatarBody } = require("../utils/meuMundoSkins");
+const { characterBody } = require("../utils/meuMundoSpecies");
 const { lookFor } = require("../utils/meuMundoColors");
 const { CLAN_BODIES, ARTIFACT, clanBody } = require("../utils/meuMundoClans");
 // Monstros com corpo de avatar (2026-11-02: o Brutamontes), também skin de teste de
@@ -23,6 +23,16 @@ const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterin
 // etapa (administradores) cabe folgada numa fila única; os índices únicos da
 // mig 291 continuam valendo como última barreira.
 const ALLOC_LOCK = "meu_mundo:alocacao";
+
+/**
+ * B3: o personagem ATIVO de uma pessoa (o vivo; sem vivo, o último morto) — espécie,
+ * sexo e fase da vida. Para LATERAL JOIN; `idUserExpr` é a coluna/parâmetro da pessoa.
+ */
+const ACTIVE_CHARACTER_SQL = (idUserExpr) => `
+  SELECT ch.species, ch.sex, ch.growth->>'stage' AS stage
+    FROM tb_mm_character ch
+   WHERE ch.id_user = ${idUserExpr} AND ch.status IN ('alive', 'dead')
+   ORDER BY (ch.status = 'alive') DESC, ch.generation DESC LIMIT 1`;
 
 const RESIDENCE_SELECT = `
   SELECT r.id_residence, r.id_user, r.started_at,
@@ -188,9 +198,8 @@ class MeuMundoStorage {
       }
       await c.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, $2, $3)`, [idUser, clan, sex]);
       await MeuMundoStorage.moveToClan(c, idUser, clan);
-      // Escolheu a classe = é esse personagem que aparece (skin vestida volta
-      // ao padrão; as compradas continuam no vestuário).
-      await MeuMundoStorage.setSkin(c, idUser, "standard");
+      // B3: o personagem que ainda não tinha espécie vira a da classe escolhida.
+      await c.query(`UPDATE tb_mm_character SET species = $2, sex = $3 WHERE id_user = $1 AND species IS NULL`, [idUser, clan, sex]);
       await c.query("COMMIT");
       return { ok: true };
     } catch (err) {
@@ -342,30 +351,30 @@ class MeuMundoStorage {
   }
 
   /**
-   * Corpo que a sala desenha: a skin comprada vestida (mig 300), o corpo da
-   * classe (mm3d-58: classe + sexo + fase da vida) ou a condição física.
+   * Corpo que a sala desenha (B3): o do personagem ATIVO — a espécie dele (com o sexo e a
+   * fase da vida); sem espécie, o corpo da classe (mm3d-58) ou a condição física. O
+   * vestuário (skins, mig 300) saiu do jogo: as skins viraram espécies de personagem.
    */
   static async getBody(db, idUser) {
     const r = await db.query(
-      `SELECT p.body, p.skin, k.clan, k.sex,
-              (SELECT ch.growth->>'stage' FROM tb_mm_character ch
-                WHERE ch.id_user = u.id_user ORDER BY ch.generation DESC LIMIT 1) AS stage
+      `SELECT p.body, k.clan, k.sex AS clan_sex, a.species, a.sex, a.stage
          FROM (SELECT $1::uuid AS id_user) u
          LEFT JOIN tb_mm_avatar_pref p ON p.id_user = u.id_user
-         LEFT JOIN tb_mm_clan k ON k.id_user = u.id_user`,
+         LEFT JOIN tb_mm_clan k ON k.id_user = u.id_user
+         LEFT JOIN LATERAL (${ACTIVE_CHARACTER_SQL("u.id_user")}) a ON TRUE`,
       [idUser]
     );
     const row = r.rows[0] || {};
-    return avatarBody(row.body || "normal", row.skin, clanBody(row.clan, row.sex, row.stage));
+    return characterBody({ species: row.species, sex: row.sex, stage: row.stage, clan: row.clan, clanSex: row.clan_sex, condition: row.body || "normal" });
   }
 
-  /** Corpo da classe agora (classe + sexo + fase da vida); null sem classe. */
+  /** Corpo da classe agora (classe + sexo + fase do personagem ativo); null sem classe. */
   static async getClanBody(db, idUser) {
     const r = await db.query(
-      `SELECT k.clan, k.sex,
-              (SELECT ch.growth->>'stage' FROM tb_mm_character ch
-                WHERE ch.id_user = k.id_user ORDER BY ch.generation DESC LIMIT 1) AS stage
-         FROM tb_mm_clan k WHERE k.id_user = $1`,
+      `SELECT k.clan, k.sex, a.stage
+         FROM tb_mm_clan k
+         LEFT JOIN LATERAL (${ACTIVE_CHARACTER_SQL("k.id_user")}) a ON TRUE
+        WHERE k.id_user = $1`,
       [idUser]
     );
     const row = r.rows[0];
@@ -393,19 +402,6 @@ class MeuMundoStorage {
     );
   }
 
-  /** Vestuário (mig 300): skin vestida + compradas. */
-  static async getWardrobe(db, idUser) {
-    const [pref, owned] = await Promise.all([
-      db.query(`SELECT body, skin FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser]),
-      db.query(`SELECT skin FROM tb_mm_skin_owned WHERE id_user = $1`, [idUser]),
-    ]);
-    return {
-      condition: pref.rows[0]?.body || "normal",
-      equipped: pref.rows[0]?.skin || "standard",
-      owned: owned.rows.map((r) => r.skin),
-    };
-  }
-
   /** Administrador adquire skin de graça (mesma regra do roleMiddleware). */
   static async isAdmin(db, idUser) {
     const r = await db.query(
@@ -415,16 +411,6 @@ class MeuMundoStorage {
       [idUser]
     );
     return r.rows.length > 0;
-  }
-
-  /** Compra (idempotente: já tinha = false, nada muda). */
-  static async addSkin(db, idUser, skin, price) {
-    const r = await db.query(
-      `INSERT INTO tb_mm_skin_owned (id_user, skin, price) VALUES ($1, $2, $3)
-       ON CONFLICT (id_user, skin) DO NOTHING`,
-      [idUser, skin, price]
-    );
-    return r.rowCount > 0;
   }
 
   static async setSkin(db, idUser, skin) {
@@ -488,3 +474,4 @@ class MeuMundoStorage {
 }
 
 module.exports = MeuMundoStorage;
+module.exports.ACTIVE_CHARACTER_SQL = ACTIVE_CHARACTER_SQL;

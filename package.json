@@ -60,6 +60,7 @@
     "test:meu-mundo-vida": "node test/meu-mundo-vida.e2e.js",
     "test:meu-mundo-aventura": "node test/meu-mundo-aventura.e2e.js",
     "test:meu-mundo-poder": "node test/meu-mundo-poder.e2e.js",
+    "test:meu-mundo-personagens": "node test/meu-mundo-personagens.e2e.js",
     "test:meu-mundo-centro": "node test/meu-mundo-centro.e2e.js",
     "test:meu-mundo-jetpack": "node test/meu-mundo-jetpack.e2e.js",
     "test:meu-mundo-paint": "node test/meu-mundo-paint.e2e.js",

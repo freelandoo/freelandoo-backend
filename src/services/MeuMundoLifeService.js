@@ -27,15 +27,16 @@ const { rowToState } = require("../storages/MeuMundoLifeStorage");
 const Cars = require("../utils/meuMundoCars");
 const Life = require("../utils/meuMundoLife");
 const Soul = require("../utils/meuMundoSoul");
-const { grownHeight } = require("../utils/meuMundoHeights");
-const Skins = require("../utils/meuMundoSkins");
-const Colors = require("../utils/meuMundoColors");
+const { characterHeight, speciesOf } = require("../utils/meuMundoSpecies");
+const Chars = require("../utils/meuMundoCharacters");
 const { createLogger } = require("../utils/logger");
 const presence = require("../realtime/meuMundoPresence");
 
 const log = createLogger("meuMundo.life");
 /** Require tardio: o serviço do poder lê o equipamento, que usa o withLife. */
 const MeuMundoPowerService = () => require("./MeuMundoPowerService");
+/** B3: personagens (cápsula, grants, genética) — require tardio, ele usa o withLife. */
+const CharacterService = () => require("./MeuMundoCharacterService");
 
 const REST_ROUTE_KINDS = ["idle", "studying", "training", "working", "praying"];
 
@@ -51,9 +52,6 @@ const ERRORS = {
   bed: ["Para deitar ou dormir, vá até uma cama", 409],
   stimulated: ["Com estimulante no corpo ele não consegue dormir", 409],
   coins: ["Moedas insuficientes", 402],
-  skin: ["Skin não encontrada", 404],
-  notOwned: ["Você ainda não tem essa skin", 409],
-  noColors: ["Este personagem tem visual próprio", 400],
   alive: ["Seu hóspede está vivo", 409],
   empty: ["Acabou na geladeira", 409],
   stack: ["A geladeira não cabe mais desse item", 409],
@@ -283,11 +281,19 @@ class MeuMundoLifeService {
         for (const [id, n] of Object.entries(Life.FRIDGE.STARTER)) pantry[id] = Math.min(Life.FRIDGE.MAX_STACK, (pantry[id] || 0) + n);
       }
       const events = [];
+      // B3: a classe do jogador dá a espécie de quem não tem (e do primeiro personagem).
+      const clan0 = (await c.query(`SELECT clan, sex FROM tb_mm_clan WHERE id_user = $1`, [idUser])).rows[0] || { clan: null, sex: null };
       if (!row) {
         const s0 = Life.birth(crypto.randomInt(1, 2 ** 31 - 1), now);
-        row = await MeuMundoLifeStorage.insert(c, idUser, 1, s0);
-        events.push({ at: now, kind: "born", data: { generation: 1 } });
+        row = await MeuMundoLifeStorage.insert(c, idUser, await MeuMundoLifeStorage.nextGeneration(c, idUser), s0, {
+          species: clan0.clan || null,
+          sex: clan0.sex || null,
+          genetics: CharacterService().geneticsOf(s0),
+        });
+        events.push({ at: now, kind: "born", data: { generation: row.generation } });
       }
+      // B3: personagens a entregar (conversão das skins, prêmios, presentes) vão para a cápsula.
+      await CharacterService().claimGrants(c, idUser, now);
       const s = rowToState(row);
       // mm3d-72: a alma antes da simulação (o comilão tem o apetite do corpo no alto)
       Soul.soulOf(s);
@@ -343,7 +349,7 @@ class MeuMundoLifeService {
       // O tipo físico do avatar É o corpo da vida (não se escolhe desde
       // 2026-10-21): gravado só quando muda — é o que as entradas leem.
       await MeuMundoStorage.setBody(c, idUser, Life.bodyHint(state));
-      // O que a sala desenha: a skin vestida ou a condição (mig 300).
+      // O que a sala desenha (B3): o corpo da espécie do personagem ativo (ou a condição).
       const avatar = await MeuMundoStorage.getBody(c, idUser);
       // Cores da skin vestida (mm3d-36, mig 304): "" = visual próprio.
       const look = await MeuMundoStorage.getLook(c, idUser);
@@ -354,6 +360,17 @@ class MeuMundoLifeService {
       const cur = ctx.newRow || row;
       const snap0 = {
         generation: cur.generation,
+        // B3: quem é este personagem (certificado, espécie, linhagem)
+        identity: {
+          id: cur.id_character,
+          serial: Number(cur.serial) || null,
+          serialText: Chars.serialText(cur.serial),
+          certCode: cur.cert_code || null,
+          species: speciesOf(cur.species, clan0.clan),
+          sex: Chars.speciesSex(speciesOf(cur.species, clan0.clan), cur.sex || clan0.sex),
+          lineage: cur.lineage_gen || 1,
+          origin: cur.origin || "hospede",
+        },
         bornAt: new Date(cur.born_at).toISOString(),
         deathSeen: !!cur.death_seen_at || !!ctx.deathSeen,
         ...Life.snapshot(state, now),
@@ -363,8 +380,9 @@ class MeuMundoLifeService {
         power,
       };
       const snap = admin ? Life.adminView(snap0) : snap0;
-      // Altura de agora (2026-11-02): o corpo desenhado + o crescimento da vida.
-      const height = grownHeight(avatar, state.growth, now);
+      // Altura de agora (B3): 1 m ao nascer → jovem em 30 dias de vida ativa → adulto até a
+      // altura final da espécie (utils/meuMundoCharacters.js speciesHeight).
+      const height = characterHeight({ species: cur.species, sex: cur.sex, clan: clan0.clan, clanSex: clan0.sex, growth: state.growth }, now);
       const out = {
         now: new Date(now).toISOString(),
         character: snap,
@@ -604,9 +622,13 @@ class MeuMundoLifeService {
         if (have + g.qty > Life.FRIDGE.MAX_STACK) return fail("stack");
         ctx.pantry[g.id] = have + g.qty;
         result = { type: "item", id: g.id, qty: g.qty, where: "fridge" };
-      } else if (g.type === "skin") {
-        const added = await MeuMundoStorage.addSkin(ctx.client, idUser, g.id, 0);
-        result = { type: "skin", id: g.id, qty: 1, where: "wardrobe", alreadyOwned: !added };
+      } else if (g.type === "character" || g.type === "skin") {
+        // B3: presente de personagem (e skin de correio antigo → a espécie dela) vai para a cápsula.
+        const sp = g.type === "skin" ? Chars.SKIN_SPECIES[g.id] : { species: g.id, sex: Chars.speciesSex(g.id, g.sex) };
+        if (!sp || !Chars.speciesById(sp.species)) return fail("mail");
+        await MeuMundoLifeStorage.addGrant(ctx.client, idUser, { species: sp.species, sex: sp.sex, source: "gift", ref: `mail:${mail.id}` });
+        const created = await CharacterService().claimGrants(ctx.client, idUser, ctx.now);
+        result = { type: "character", id: sp.species, qty: 1, where: "capsule", character: created[0] || null };
       } else if (g.type === "coins") {
         ctx.coins += g.qty;
         result = { type: "coins", id: "coins", qty: g.qty, where: "wallet" };
@@ -621,13 +643,12 @@ class MeuMundoLifeService {
   /**
    * Aba Itens: o inventário REAL, lido das fontes que já existem — geladeira
    * (tb_mm_pantry, depois da simulação até agora: a rotina pode ter comido),
-   * vestuário (tb_mm_skin_owned), veículos e casa da residência. Sem estoque
+   * veículos e casa da residência (B3: o vestuário saiu; personagens estão na cápsula). Sem estoque
    * paralelo: a geladeira e esta aba leem a mesma linha.
    */
   static async inventory(idUser) {
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       const c = ctx.client;
-      const wardrobe = await MeuMundoLifeService.wardrobeOf(c, idUser);
       const residence = await MeuMundoStorage.getActiveResidence(c, idUser);
       const recentGifts = await Inbox.recentClaims(c, idUser);
       let vehicles = [];
@@ -641,7 +662,7 @@ class MeuMundoLifeService {
           return { kind, where: !row ? "spot" : row.houseId ? "house" : "street" };
         });
       }
-      return { items: Life.publicCatalog().items, inventory: { wardrobe, vehicles, house, recentGifts } };
+      return { items: Life.publicCatalog().items, inventory: { vehicles, house, recentGifts } };
     });
   }
 
@@ -656,89 +677,6 @@ class MeuMundoLifeService {
       log.warn("polens_wallet_fail", { message: err.message });
     }
     return { wallet: { coins: out.wallet.coins, polens } };
-  }
-
-  // ═══ VESTUÁRIO (mm3d-16, mig 300) ═══
-  // Comprar e vestir passam pelo núcleo da vida: a carteira é a mesma (trava,
-  // simula até agora, cobra) e a sala recebe o corpo novo no fim, como recebe
-  // a mudança de condição física.
-
-  static async wardrobeOf(db, idUser) {
-    const [w, admin, colors, clanBody] = await Promise.all([
-      MeuMundoStorage.getWardrobe(db, idUser),
-      MeuMundoStorage.isAdmin(db, idUser),
-      MeuMundoStorage.getColors(db, idUser),
-      MeuMundoStorage.getClanBody(db, idUser),
-    ]);
-    // Cores de cada skin colorível (mm3d-36): o código de cada uma, já validado.
-    const looks = Object.fromEntries([...Colors.COLORABLE_SKINS].map((id) => [id, Colors.lookFor(colors, id)]));
-    // mm3d-58: o "Padrão" do vestuário é o personagem da classe.
-    return { condition: w.condition, clanBody, admin, skins: Skins.publicCatalog(w.owned, w.equipped, admin), colors: looks };
-  }
-
-  /** GET /skins — catálogo com posse e o que está vestido + moedas. */
-  static async skins(idUser) {
-    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => ({
-      wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser),
-    }));
-  }
-
-  /** Adquirir uma skin: moedas do jogo, de graça para administrador (já tinha = não cobra de novo). */
-  static async buySkin(idUser, rawSkin) {
-    const skin = Skins.skinById(rawSkin);
-    if (!skin || skin.kind !== "skin") return fail("skin");
-    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
-      if (skin.adminOnly && !(await MeuMundoStorage.isAdmin(ctx.client, idUser))) return fail("skin");
-      const w = await MeuMundoStorage.getWardrobe(ctx.client, idUser);
-      let bought = false;
-      if (!w.owned.includes(skin.id)) {
-        const cost = Skins.costFor(skin, await MeuMundoStorage.isAdmin(ctx.client, idUser));
-        // Posse conferida sob o lock da pessoa: uma skin, um débito (ref fixa por pessoa + skin).
-        const err = await charge(ctx, idUser, {
-          currency: skin.currency,
-          amount: cost,
-          ref: `skin:${idUser}:${skin.id}`,
-          what: { skin: skin.id },
-        });
-        if (err) return err;
-        bought = await MeuMundoStorage.addSkin(ctx.client, idUser, skin.id, cost);
-        if (bought) ctx.events.push({ at: ctx.now, kind: "skin_bought", data: { skin: skin.id, price: cost, currency: skin.currency } });
-      }
-      return { bought, wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
-    });
-  }
-
-  /** Vestir uma skin que já é sua, ou voltar ao padrão ('standard'). */
-  static async equipSkin(idUser, rawSkin) {
-    const skin = Skins.skinById(rawSkin);
-    if (!skin) return fail("skin");
-    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
-      if (skin.adminOnly) {
-        // mm3d-58: skin de teste das classes — só administrador, sem compra.
-        if (!(await MeuMundoStorage.isAdmin(ctx.client, idUser))) return fail("skin");
-      } else if (skin.kind === "skin") {
-        const w = await MeuMundoStorage.getWardrobe(ctx.client, idUser);
-        if (!w.owned.includes(skin.id)) return fail("notOwned");
-      }
-      await MeuMundoStorage.setSkin(ctx.client, idUser, skin.id);
-      return { wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
-    });
-  }
-
-  /**
-   * Cores do personagem (mm3d-36, mig 304): de graça, quantas vezes quiser,
-   * só no padrão e na feminina. Passa pelo núcleo da vida como vestir: no fim
-   * a sala recebe o look novo (todos veem).
-   */
-  static async setSkinColors(idUser, rawSkin, rawLook) {
-    const skin = Skins.skinById(rawSkin);
-    if (!skin) return fail("skin");
-    if (!Colors.COLORABLE_SKINS.has(skin.id)) return fail("noColors");
-    const look = Colors.normalizeLook(rawLook);
-    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
-      await MeuMundoStorage.setColors(ctx.client, idUser, skin.id, look);
-      return { look, wardrobe: await MeuMundoLifeService.wardrobeOf(ctx.client, idUser) };
-    });
   }
 
   /**
@@ -777,12 +715,20 @@ class MeuMundoLifeService {
         ctx.coins -= funeral.coins;
       }
       const n = Life.applyInheritance(Life.birth(crypto.randomInt(1, 2 ** 31 - 1), ctx.now), after.inherit);
-      ctx.newRow = await MeuMundoLifeStorage.insert(ctx.client, idUser, ctx.row.generation + 1, n);
+      // B3: o herdeiro é da mesma espécie, filho de quem morreu (linhagem do certificado).
+      ctx.newRow = await MeuMundoLifeStorage.insert(ctx.client, idUser, await MeuMundoLifeStorage.nextGeneration(ctx.client, idUser), n, {
+        species: ctx.row.species || null,
+        sex: ctx.row.sex || null,
+        lineageGen: (ctx.row.lineage_gen || 1) + 1,
+        parentA: ctx.row.id_character,
+        origin: "heir",
+        genetics: CharacterService().geneticsOf(n, after.inherit ? { inherited: after.inherit } : {}),
+      });
       ctx.newState = n;
       // O funeral é do hóspede que se foi (fica no histórico dele).
       ctx.events.push({ at: ctx.now, kind: "funeral", data: { ...funeral, cause: s.deathCause } });
       ctx.newEvents = [
-        { at: ctx.now, kind: "born", data: { generation: ctx.row.generation + 1, ...(after.inherit ? { inherited: after.inherit } : {}) } },
+        { at: ctx.now, kind: "born", data: { generation: ctx.newRow.generation, ...(after.inherit ? { inherited: after.inherit } : {}) } },
       ];
       return { newcomer: true, funeral, inherited: after.inherit };
     });

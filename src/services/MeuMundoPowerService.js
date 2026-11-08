@@ -65,10 +65,10 @@ class MeuMundoPowerService {
     return power;
   }
 
-  /** Poder gravado do hóspede atual (última geração) de cada conta. */
+  /** Poder gravado do personagem ATIVO da conta (B3: o vivo; sem vivo, o último morto). */
   static async ofUser(db, idUser) {
     const r = await db.query(
-      `SELECT power FROM tb_mm_character WHERE id_user = $1 ORDER BY generation DESC LIMIT 1`,
+      `SELECT power FROM tb_mm_character WHERE id_user = $1 AND status IN ('alive', 'dead') ORDER BY (status = 'alive') DESC, generation DESC LIMIT 1`,
       [idUser]
     );
     const v = r.rows[0]?.power;

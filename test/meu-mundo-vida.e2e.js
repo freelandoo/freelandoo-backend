@@ -442,59 +442,9 @@ async function mkUser(pool, tag) {
   await sleep(150);
   check("o aviso de vida leva as necessidades e o fôlego", got("life").some((x) => Array.isArray(x.m.needs) && x.m.stamina && x.m.stamina.maxS > 0));
 
-  // ── Vestuário (mig 300): condição física ≠ skin ─────────────────────────────
+  // ── B3 (mig 340): o vestuário saiu do jogo; o corpo é o do personagem ativo ──
   const cond = (await Life.peek(host)).character.body.bodyHint;
-  const w0 = await Life.skins(host);
-  const sk = (w, id) => w.wardrobe.skins.find((x) => x.id === id);
-  check("skins: padrão vestido e seu, Sergio à venda", sk(w0, "standard").equipped && sk(w0, "standard").owned && !sk(w0, "sergio").owned && sk(w0, "sergio").price > 0);
-  check("skins: a condição vem junto", w0.wardrobe.condition === cond);
-  check("vestir skin que não é sua: 409", (await Life.equipSkin(host, "sergio")).code === "notOwned");
-  check("skin inexistente: 404", (await Life.buySkin(host, "nada")).statusCode === 404 && (await Life.equipSkin(host, "nada")).statusCode === 404);
-  check("o padrão não se compra", (await Life.buySkin(host, "standard")).statusCode === 404);
-  check("admin: Sergio custa 0 para ele", w0.wardrobe.admin === true && sk(w0, "sergio").cost === 0);
-  // Admin adquire de graça (outro admin, para o caminho pago seguir com o anfitrião).
-  const adm = await mkUser(pool, "adm");
-  await Life.peek(adm);
-  await setCoins(adm, 3);
-  const free = await Life.buySkin(adm, "sergio");
-  const admCoins = await coins(adm);
-  const paid = (await pool.query(`SELECT price FROM tb_mm_skin_owned WHERE id_user = $1`, [adm])).rows[0]?.price;
-  check("admin adquire de graça: é dele, carteira intacta, pago 0", free.bought === true && sk(free, "sergio").owned && Math.floor(admCoins) === 3 && paid === 0, JSON.stringify([free.error, admCoins, paid]));
-  // Quem não é admin paga: o anfitrião perde o papel durante o caminho pago.
-  await pool.query(`UPDATE tb_user_role SET is_active = FALSE WHERE id_user = $1`, [host]);
-  check("sem papel: Sergio custa o preço", sk(await Life.skins(host), "sergio").cost === sk(w0, "sergio").price);
-  await setCoins(host, 10);
-  const poor = await Life.buySkin(host, "sergio");
-  check("sem moedas: 402 e nada muda", poor.statusCode === 402 && (await coins()) === 10 && !(await Life.skins(host)).wardrobe.skins.find((x) => x.id === "sergio").owned);
-  await setCoins(host, 5000);
-  const price = sk(w0, "sergio").price;
-  const [b1, b2] = await Promise.all([Life.buySkin(host, "sergio"), Life.buySkin(host, "sergio")]);
-  check("duas compras simultâneas cobram UMA vez", [b1, b2].filter((b) => b.bought).length === 1 && Math.floor(await coins()) === 5000 - price, String(await coins()));
-  await pool.query(`UPDATE tb_user_role SET is_active = TRUE WHERE id_user = $1`, [host]);
-  check("comprar não veste", sk(b2, "sergio").owned && !sk(b2, "sergio").equipped && sk(b2, "standard").equipped);
-  box.length = 0;
-  const eq = await Life.equipSkin(host, "sergio");
-  await sleep(150);
-  check("vestir: sala desenha o Sergio e o cliente é avisado", eq.avatar === "sergio" && H().p.body === "sergio" && got("life").some((x) => x.m.body === "sergio"));
-  check("vestido: a condição continua a do corpo", eq.character.body.bodyHint === cond && (await Storage.getBody(pool, host)) === "sergio");
-  await Life.peek(host);
-  await sleep(100);
-  check("ler a vida não tira a skin", H().p.body === "sergio");
-  const back2 = await Life.equipSkin(host, "standard");
-  await sleep(150);
-  check("tirar a skin: volta a condição", back2.avatar === cond && H().p.body === cond);
-
-  // ═══ Cores do personagem (mm3d-36, mig 304) ═══
-  check("cores: começa nas de sempre", back2.look === "0032" && H().p.look === "0032" && back2.wardrobe.colors.standard === "0032");
-  box.length = 0;
-  const c1 = await Life.setSkinColors(host, "standard", "6478");
-  await sleep(150);
-  check("cores: grava, a sala pinta e o cliente é avisado", c1.look === "6478" && H().p.look === "6478" && got("life").some((x) => x.m.look === "6478"));
-  check("cores: cada skin guarda as suas", c1.wardrobe.colors.standard === "6478" && c1.wardrobe.colors.feminina === "0032");
-  check("cores: Sergio tem visual próprio", (await Life.setSkinColors(host, "sergio", "6478")).code === "noColors");
-  check("cores: código inválido vira o padrão", (await Life.setSkinColors(host, "standard", "zz!")).look === "0032");
-  await Life.setSkinColors(host, "standard", "b97b");
-  check("cores: são da conta (lidas de novo)", (await Storage.getLook(pool, host)) === "b97b");
+  check("sem classe nem espécie: o corpo é a condição física", (await Storage.getBody(pool, host)) === cond);
 
   // ═══ A alma do hóspede (mm3d-72, mig 327) ═══
   const so1 = (await Life.peek(host)).character.soul;
