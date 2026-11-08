@@ -225,14 +225,38 @@ class PortfolioFeedService {
         const ordered = orderByReachBands(candidates, rng);
 
         const slice = ordered.slice(startIndex, startIndex + limit);
+        let nextSeed = seed;
+        let nextIndex = startIndex + slice.length;
+        // FEED INFINITO (regra do Alex): acabou a volta, começa outra com semente
+        // nova — mesma regra (faixas de alcance + mix 60/25/15), outra ordem. A
+        // página curta do fim é completada pelo começo da volta nova, sem repetir
+        // post dentro da mesma página.
+        if (ordered.length > 0 && nextIndex >= ordered.length) {
+          nextSeed = generateSeed();
+          nextIndex = 0;
+          if (slice.length < limit) {
+            const seen = new Set(slice.map((r) => r.post_id));
+            const again = orderByReachBands(candidates, makeRng(nextSeed));
+            while (slice.length < limit && nextIndex < again.length) {
+              const row = again[nextIndex++];
+              if (!seen.has(row.post_id)) {
+                seen.add(row.post_id);
+                slice.push(row);
+              }
+            }
+            if (nextIndex >= again.length) {
+              nextSeed = generateSeed();
+              nextIndex = 0;
+            }
+          }
+        }
         // Cópia rasa: as linhas do pool são compartilhadas entre requisições
         // dentro do mix, então marcar direto vazaria estado entre chamadas.
         const items = slice.map((row) =>
           shapeRow({ ...row, hot_tier: hotTiers.get(row.post_id) || null })
         );
-        const nextIndex = startIndex + slice.length;
-        const has_more = nextIndex < ordered.length;
-        const next_cursor = has_more ? `${seed}:${nextIndex}` : null;
+        const has_more = ordered.length > 0;
+        const next_cursor = has_more ? `${nextSeed}:${nextIndex}` : null;
 
         return { items, next_cursor, has_more };
       }

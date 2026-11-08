@@ -325,9 +325,23 @@ async function main() {
     const again = await PortfolioFeedService.getFeed({ db: pool, filters: {}, pagination: { limit: 4, cursor: `${seed}:0` }, viewer: { id_user: maua.id_user } });
     assert.deepStrictEqual(again.items.map((i) => i.post_id), p1.items.map((i) => i.post_id));
     const p2 = await PortfolioFeedService.getFeed({ db: pool, filters: {}, pagination: { limit: 24, cursor: p1.next_cursor }, viewer: { id_user: maua.id_user } });
-    const ids = [...p1.items, ...p2.items].map((i) => i.post_id);
+    // feed infinito: p2 traz o resto da volta e completa com a volta seguinte
+    const ids = [...p1.items, ...p2.items.slice(0, all.length - p1.items.length)].map((i) => i.post_id);
     assert.strictEqual(new Set(ids).size, ids.length);
     assert.strictEqual(ids.length, all.length);
+    assert.deepStrictEqual(new Set(ids), new Set(all));
+  });
+  await check("feed infinito: acabou a volta, começa outra (sem repetir dentro da página)", async () => {
+    const all = (await feed({ id_user: maua.id_user })).items.map((i) => i.post_id);
+    const p1 = await PortfolioFeedService.getFeed({ db: pool, filters: {}, pagination: { limit: 24 }, viewer: { id_user: maua.id_user } });
+    assert.strictEqual(p1.has_more, true);
+    assert.ok(p1.next_cursor);
+    const p2 = await PortfolioFeedService.getFeed({ db: pool, filters: {}, pagination: { limit: 24, cursor: p1.next_cursor }, viewer: { id_user: maua.id_user } });
+    const ids = p2.items.map((i) => i.post_id);
+    assert.ok(ids.length > 0, "a volta seguinte veio vazia");
+    assert.strictEqual(new Set(ids).size, ids.length);
+    for (const id of ids) assert.ok(all.includes(id));
+    assert.strictEqual(p2.has_more, true);
   });
   await check("anônimo: o nacional primeiro, depois o resto", async () => {
     const r = await feed(null);
