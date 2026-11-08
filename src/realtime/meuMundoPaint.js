@@ -21,6 +21,13 @@
 //
 // A pessoa continua presente no centro (como no jetpack): esta sala NÃO toma
 // a presença. Uma sessão por usuário entre todas as salas do Paint.
+//
+// mm3d-76 (pedido do Alex): seis MAPAS. Cada um entra votando no mapa que
+// escolheu no cartão (`options.map`) e pode trocar o voto na espera
+// (mensagem `vote`); na largada a sala apura (mais votado; empate = sorteio
+// AQUI, entre os empatados) e grava `map` + `mv` (versão da regra do mapa) no
+// estado — todos jogam o mesmo, e o aparelho com outra versão sabe que está
+// desatualizado. No treino vale o mapa escolhido. O cliente não muda o mapa.
 
 const { Room, ServerError, matchMaker } = require("@colyseus/core");
 const { schema, t } = require("@colyseus/schema");
@@ -29,7 +36,7 @@ const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const { roomLook } = require("../utils/meuMundoColors");
 const AuthStorage = require("../storages/AuthStorage");
 const presence = require("./meuMundoPresence");
-const { PaintMatch, PAINT_MODES, modeCapacity, modeTeams } = require("../utils/meuMundoPaint");
+const { PaintMatch, PAINT_MODES, modeCapacity, modeTeams, buildPaintMap, paintMapId, paintMapVersion, tallyPaintVotes } = require("../utils/meuMundoPaint");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.paint");
@@ -70,6 +77,7 @@ const PtPlayer = schema(
     ko: t.float32(), // nocaute até (s de partida); 0 = de pé
     boss: t.boolean(),
     out: t.boolean(), // mm3d-62: perdeu para o guardião (fora da partida)
+    vote: t.string(), // mm3d-76: mapa em que votou (espera)
   },
   "PTPlayer"
 );
@@ -112,6 +120,8 @@ const PtState = schema(
     players: t.map(PtPlayer),
     blobs: t.map(PtBlob),
     result: t.string(), // JSON do resultado (fim)
+    map: t.string(), // mm3d-76: mapa da partida ("" na espera)
+    mv: t.uint8(), // versão da regra do mapa
   },
   "PTState"
 );
@@ -146,6 +156,7 @@ class PaintRoom extends Room {
     this.onMessage("f", (client, msg) => this.onFire(client, msg));
     this.onMessage("u", (client) => this.onPunch(client));
     this.onMessage("ping", (client, msg) => this.onPing(client, msg));
+    this.onMessage("vote", (client, msg) => this.onVote(client, msg));
     this.setSimulationInterval((dt) => this.loop(dt), TICK_MS);
     log.info("paint.create", { roomId: this.roomId, mode });
   }
@@ -186,6 +197,7 @@ class PaintRoom extends Room {
         body,
         look,
         online: true,
+        vote: paintMapId(options.map),
       });
       this.state.players.set(client.sessionId, p);
     }
@@ -327,6 +339,14 @@ class PaintRoom extends Room {
     if (s) this.match.punch(s.slot);
   }
 
+  /** Troca o voto do mapa (só na espera). */
+  onVote(client, msg) {
+    const s = this.seats.get(client.sessionId);
+    const p = this.state.players.get(client.sessionId);
+    if (!s || !p || this.state.phase !== "lobby" || !this.takeToken(client, s)) return;
+    p.vote = paintMapId(msg && msg.map);
+  }
+
   onPing(client, msg) {
     const s = this.seats.get(client.sessionId);
     if (!s || !this.takeToken(client, s)) return;
@@ -341,14 +361,20 @@ class PaintRoom extends Room {
       const s = this.seats.get(sid);
       if (s) seats.push({ slot: s.slot, team: p.team, sit: p.sit });
     }
-    this.match = new PaintMatch(this.mode, seats);
+    // mm3d-76: apuração dos votos (o sorteio do empate é daqui, nunca do aparelho)
+    const votes = [...this.state.players.values()].map((p) => p.vote);
+    const mapId = tallyPaintVotes(votes, Math.random());
+    this.mapId = mapId;
+    this.state.map = mapId;
+    this.state.mv = paintMapVersion(mapId);
+    this.match = new PaintMatch(this.mode, seats, buildPaintMap(this.mode, mapId));
     // mm3d-59: prática medida pela sala
     this.meter = new PracticeMeter("paint", `paint:${this.roomId}:${Date.now()}`, log);
     this.state.phase = "countdown";
     this.state.bossHp = this.match.bossHp;
     void this.lock();
     this.mirror();
-    log.info("paint.start", { roomId: this.roomId, mode: this.mode, players: seats.length });
+    log.info("paint.start", { roomId: this.roomId, mode: this.mode, players: seats.length, map: mapId, votes });
   }
 
   loop(dtMs) {
@@ -476,7 +502,7 @@ class PaintRoom extends Room {
       this.meter.settle(null, wins);
     }
     this.state.until = Date.now() + timing.closeMs;
-    log.info("paint.end", { roomId: this.roomId, mode: this.mode, winnerTeam: this.match.result.winnerTeam });
+    log.info("paint.end", { roomId: this.roomId, mode: this.mode, map: this.mapId, winnerTeam: this.match.result.winnerTeam });
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }
 }
@@ -494,9 +520,10 @@ function define(gameServer) {
  * pedido. Quem chama já conferiu papel, centro e porta. `roomId` = estava
  * numa sala há pouco (reconexão): volta para o MESMO jogador, se existir.
  */
-async function reservePaintSeat({ userId, name, body, centerRoomId, mode, roomId = null }) {
+async function reservePaintSeat({ userId, name, body, centerRoomId, mode, map, roomId = null }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, mode, userId, name, body };
+  // mm3d-76: `map` = o voto de quem entra (a sala é do modo; o mapa sai da votação)
+  const options = { centerRoomId, mode, userId, name, body, map: paintMapId(map) };
   if (roomId) {
     const room = rooms.get(roomId);
     if (room && room.seatOf(userId)) {

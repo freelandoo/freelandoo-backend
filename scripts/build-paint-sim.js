@@ -16,7 +16,7 @@ const { stripTypeScriptTypes } = require("node:module");
 const SIM = path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/paint/sim");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoPaint.js");
 // Ordem de dependência (cada um só usa os de cima).
-const MODULES = ["tuning", "map", "collide", "body", "paint", "match"];
+const MODULES = ["tuning", "map", "maps", "collide", "body", "paint", "match"];
 
 function build() {
   const exported = [];

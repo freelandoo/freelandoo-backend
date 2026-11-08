@@ -74,7 +74,7 @@ async function jetpackJoin(req, res) {
 
 // Paint (mm3d-35): lugar numa sala do centro em que a pessoa está, no modo pedido.
 async function paintJoin(req, res) {
-  return reply(res, await MeuMundoService.joinPaint(req.user.id_user, { mode: req.body?.mode, roomId: req.body?.roomId }));
+  return reply(res, await MeuMundoService.joinPaint(req.user.id_user, { mode: req.body?.mode, roomId: req.body?.roomId, map: req.body?.map }));
 }
 
 // Corrida em grupo (mm3d-39b): lugar na próxima largada do centro em que a pessoa está (com a nave da garagem, mm3d-49).

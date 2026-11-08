@@ -55,24 +55,8 @@ async function until(fn, ms = 4000) {
   return false;
 }
 
-const MIGS = [
-  "291_meu_mundo_bairros",
-  "292_meu_mundo_house_levels",
-  "293_meu_mundo_visits",
-  "294_meu_mundo_body_sergio",
-  "295_meu_mundo_vida",
-  "297_meu_mundo_atributos_1000",
-  "298_meu_mundo_atributos_inicio_baixo",
-  "299_meu_mundo_vehicles",
-  "300_meu_mundo_skins",
-  "301_meu_mundo_geladeira",
-  "302_meu_mundo_inbox",
-  "304_meu_mundo_avatar_colors",
-  "308_meu_mundo_lugar_atividade",
-  "309_meu_mundo_vendedor",
-  "311_meu_mundo_boxe",
-];
-const TABLES = `tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
+const TABLES = `tb_mm_player, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  tb_mm_notice, tb_mm_mail, tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
   tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user`;
 async function bootstrap(pool) {
   await pool.query(`DROP TABLE IF EXISTS ${TABLES} CASCADE`);
@@ -81,13 +65,22 @@ async function bootstrap(pool) {
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
   await require("./helpers/mmPolens").polenTables(pool);
-  for (const m of MIGS) await pool.query(fs.readFileSync(path.join(__dirname, `../src/databases/migrations/${m}.sql`), "utf8"));
+  // mm3d-76: todas as do Meu Mundo (como a corrida e o jetpack) — a lista fixa
+  // parou antes das classes (318) e a suíte não subia mais. Chat (303) e salão
+  // (312) dependem de tabelas de fora.
+  const all = fs
+    .readdirSync(path.join(__dirname, "../src/databases/migrations"))
+    .filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f))
+    .sort();
+  for (const f of all) await pool.query(fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8"));
 }
 
 async function mkUser(pool, tag) {
   const id = crypto.randomUUID();
   await pool.query(`INSERT INTO tb_user VALUES ($1, $2, $3)`, [id, `mmtest_${tag}`, `${id}@mm.test`]);
   await pool.query(`INSERT INTO tb_user_role (id_user, id_role) VALUES ($1, 1)`, [id]);
+  // classes (mm3d-58): sem classe o bairro pede a escolha (409 needs_clan)
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm')`, [id]);
   return id;
 }
 
@@ -134,8 +127,8 @@ async function mkUser(pool, tag) {
     const s = [...room.sim.values()].find((x) => x.userId === u);
     Object.assign(s.body, { x: DOOR.x + dx, z: DOOR.z });
   }
-  async function join(u, mode, roomId = null) {
-    const out = await Service.joinPaint(u, { mode, roomId });
+  async function join(u, mode, roomId = null, map = null) {
+    const out = await Service.joinPaint(u, { mode, roomId, map });
     if (out.error) return { out };
     const room = await consume(out);
     const box = { out, room, welcome: null, replaced: false, code: null, ev: [] };
@@ -166,23 +159,28 @@ async function mkUser(pool, tag) {
 
   // ── Treino ───────────────────────────────────────────────────────────────
   const solo = await join(users[0], "solo");
-  const solo2 = await join(users[1], "solo");
+  const solo2 = await join(users[1], "solo", null, "forja");
   check("treino: sala só sua", solo.room && solo2.room && solo.room.roomId !== solo2.room.roomId);
   check("treino começa na hora (contagem)", await until(() => solo.room.state.phase === "countdown" || solo.room.state.phase === "play"));
   check("welcome traz vaga e modo", solo.welcome.slot === 0 && solo.welcome.mode === "solo");
+  // mm3d-76: sem mapa = a Cidade; com mapa = o escolhido (no estado, com a versão, e na regra da sala)
+  check("treino sem mapa: Cidade Suspensa", solo.room.state.map === "cidade" && roomOf(solo.room.roomId).match.map.id === "cidade");
+  check("treino com mapa: a Forja, com a versão da regra", await until(() => solo2.room.state.map === "forja") && solo2.room.state.mv === P.paintMapVersion("forja") && roomOf(solo2.room.roomId).match.map.id === "forja");
   await bye(solo.room);
   await bye(solo2.room);
 
   // ── 1×1 ──────────────────────────────────────────────────────────────────
-  const A = await join(users[2], "1v1");
+  const A = await join(users[2], "1v1", null, "templo");
   check("1×1: sozinho fica esperando", A.room.state.phase === "lobby");
-  const B = await join(users[3], "1v1");
+  check("1×1: o voto de quem entrou aparece na espera, mapa ainda sem apurar", (await until(() => playerOf(A, A.welcome.slot) && playerOf(A, A.welcome.slot).vote === "templo")) && !A.room.state.map);
+  const B = await join(users[3], "1v1", null, "fabrica");
   check("1×1: o 2º entra na mesma sala", B.room.roomId === A.room.roomId);
   check("1×1: começa cheio", await until(() => A.room.state.phase === "countdown"));
   await until(() => A.room.state.players.size === 2);
   const pa = playerOf(A, A.welcome.slot);
   const pb = playerOf(A, B.welcome.slot);
   check("1×1: times diferentes", pa && pb && pa.team !== pb.team, `${pa && pa.team} ${pb && pb.team}`);
+  check("1×1: empate na votação = um dos dois votados (sorteio da sala), igual para os dois", ["templo", "fabrica"].includes(A.room.state.map) && B.room.state.map === A.room.state.map && roomOf(A.room.roomId).match.map.id === A.room.state.map);
   const C = await join(users[4], "1v1");
   check("1×1 cheio e trancado: o 3º vai para outra sala", C.room && C.room.roomId !== A.room.roomId);
   await bye(C.room);
@@ -306,8 +304,20 @@ async function mkUser(pool, tag) {
   check("…e a sala fecha", await until(() => !roomOf(A.room.roomId), 3000));
 
   // ── 3×3 ──────────────────────────────────────────────────────────────────
+  // mm3d-76: votação — 4 na Floresta (um troca o voto na espera), 2 no Jardim
   const six = [];
-  for (let i = 4; i < 10; i++) six.push(await join(users[i], "3v3"));
+  const votes6 = ["cidade", "floresta", "jardim", "floresta", "jardim", "floresta"];
+  for (let i = 4; i < 10; i++) {
+    six.push(await join(users[i], "3v3", null, votes6[i - 4]));
+    if (i === 4) {
+      six[0].room.send("vote", { map: "floresta" });
+      check("3×3: trocar o voto na espera", await until(() => playerOf(six[0], six[0].welcome.slot).vote === "floresta"));
+      six[0].room.send("vote", { map: "lixo" });
+      check("…mapa desconhecido vira a Cidade", await until(() => playerOf(six[0], six[0].welcome.slot).vote === "cidade"));
+      six[0].room.send("vote", { map: "floresta" });
+      await until(() => playerOf(six[0], six[0].welcome.slot).vote === "floresta");
+    }
+  }
   check("3×3: os seis na mesma sala", six.every((b) => b.room && b.room.roomId === six[0].room.roomId));
   await until(() => six[0].room.state.players.size === 6 && six[0].room.state.phase === "countdown");
   const teams = [0, 0];
@@ -315,6 +325,8 @@ async function mkUser(pool, tag) {
   check("3×3: 3 e 3, começa cheio", teams[0] === 3 && teams[1] === 3 && six[0].room.state.phase === "countdown", JSON.stringify(teams));
   const sits = [...six[0].room.state.players.values()].map((p) => `${p.team}:${p.sit}`).sort();
   check("3×3: lugares na base distintos por time", new Set(sits).size === 6);
+  check("3×3: o mais votado vence (Floresta), para todos", six.every((b) => b.room.state.map === "floresta") && roomOf(six[0].room.roomId).match.map.id === "floresta");
+  check("3×3: com a partida já valendo, trocar o voto não muda o mapa", (six[1].room.send("vote", { map: "jardim" }), await sleep(150), six[0].room.state.map === "floresta"));
 
   // voltar para casa tira do Paint
   const home = await Service.returnHome(users[4]);

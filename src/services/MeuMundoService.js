@@ -578,9 +578,10 @@ class MeuMundoService {
   /**
    * Lugar numa sala do Paint do centro em que a pessoa está, perto da porta:
    * treino (sala só sua), 1×1, 2×2 ou 3×3. A pessoa continua no centro.
-   * `roomId` = estava numa sala do Paint há pouco (reconexão).
+   * `roomId` = estava numa sala do Paint há pouco (reconexão). `map` (mm3d-76)
+   * = o mapa em que a pessoa vota (no treino, o mapa da partida).
    */
-  static async joinPaint(idUser, { mode = "solo", roomId = null } = {}) {
+  static async joinPaint(idUser, { mode = "solo", roomId = null, map = null } = {}) {
     if (!Object.prototype.hasOwnProperty.call(PAINT_MODES, mode)) return { error: "Modo inválido", statusCode: 400 };
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
@@ -591,7 +592,7 @@ class MeuMundoService {
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
     let reservation;
     try {
-      reservation = await reservePaintSeat({ userId: idUser, name, body, centerRoomId: here.id, mode, roomId: typeof roomId === "string" ? roomId : null });
+      reservation = await reservePaintSeat({ userId: idUser, name, body, centerRoomId: here.id, mode, map: typeof map === "string" ? map.slice(0, 24) : null, roomId: typeof roomId === "string" ? roomId : null });
     } catch (err) {
       log.error("paint.reserve_fail", { message: err.message });
       return { error: "O Paint não abriu agora.", statusCode: 503 };
