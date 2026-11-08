@@ -95,11 +95,11 @@ router.get("/shop", ...admin, asyncHandler(MeuMundoController.shopCatalog));
 router.post("/shop/house", ...admin, asyncHandler(MeuMundoController.shopHouse));
 router.post("/shop/paint", ...admin, asyncHandler(MeuMundoController.shopPaint));
 router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewcomer));
-// Vestuário (mig 300): catálogo de skins, comprar (moedas do jogo) e vestir.
-router.get("/skins", ...admin, asyncHandler(MeuMundoController.skins));
-router.post("/skins/:id/buy", ...admin, asyncHandler(MeuMundoController.skinBuy));
-router.post("/skins/:id/equip", ...admin, asyncHandler(MeuMundoController.skinEquip));
-router.post("/skins/:id/colors", ...admin, asyncHandler(MeuMundoController.skinColors));
+// B3 (mig 340): personagens no lugar das skins — o ativo + a cápsula, trocar e fundir.
+router.get("/characters", ...admin, asyncHandler(MeuMundoController.characters));
+router.post("/characters/fuse", ...admin, asyncHandler(MeuMundoController.characterFuse));
+router.post("/characters/test-grant", ...admin, asyncHandler(MeuMundoController.characterTestGrant));
+router.post("/characters/:id/use", ...admin, asyncHandler(MeuMundoController.characterUse));
 // Sino e correio interno (mig 302, mm3d-30): histórico, leitura, presentes.
 router.get("/notices", ...admin, asyncHandler(MeuMundoController.notices));
 router.get("/notices/summary", ...admin, asyncHandler(MeuMundoController.noticesSummary));

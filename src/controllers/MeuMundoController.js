@@ -1,6 +1,7 @@
 const MeuMundoService = require("../services/MeuMundoService");
 const MeuMundoLifeService = require("../services/MeuMundoLifeService");
 const MeuMundoInboxService = require("../services/MeuMundoInboxService");
+const MeuMundoCharacterService = require("../services/MeuMundoCharacterService");
 const { HOSPITAL_INTERIOR, bedFor } = require("../utils/meuMundoHospital");
 const { CENTER_INTERIORS } = require("../utils/meuMundoCenterInteriors");
 const MeuMundoShopService = require("../services/MeuMundoShopService");
@@ -319,22 +320,30 @@ async function lifeNewcomer(req, res) {
   return reply(res, await MeuMundoLifeService.newcomer(req.user.id_user));
 }
 
-// Vestuário (mig 300): skins compradas com as moedas do jogo.
-async function skins(req, res) {
-  return reply(res, await MeuMundoLifeService.skins(req.user.id_user));
+// B3 (mig 340): personagens — o ativo e a cápsula, trocar, fundir, certificado.
+async function characters(req, res) {
+  return reply(res, await MeuMundoCharacterService.list(req.user.id_user));
 }
 
-async function skinBuy(req, res) {
-  return reply(res, await MeuMundoLifeService.buySkin(req.user.id_user, req.params.id));
+async function characterUse(req, res) {
+  return reply(res, await MeuMundoCharacterService.use(req.user.id_user, req.params.id));
 }
 
-async function skinEquip(req, res) {
-  return reply(res, await MeuMundoLifeService.equipSkin(req.user.id_user, req.params.id));
+async function characterFuse(req, res) {
+  return reply(res, await MeuMundoCharacterService.fuse(req.user.id_user, req.body || {}));
 }
 
-// Cores do personagem (mm3d-36): { look } = 4 dígitos base36.
-async function skinColors(req, res) {
-  return reply(res, await MeuMundoLifeService.setSkinColors(req.user.id_user, req.params.id, req.body?.look));
+// TESTE (hoje só admin joga): ganha um personagem da espécie na cápsula.
+async function characterTestGrant(req, res) {
+  return reply(res, await MeuMundoCharacterService.testGrant(req.user.id_user, req.body || {}));
+}
+
+// Público (sem login): certificado do personagem pelo código da página.
+async function certificate(req, res) {
+  const out = await MeuMundoCharacterService.certificate(req.params.code);
+  if (out && out.error) return reply(res, out);
+  res.set("Cache-Control", "public, max-age=60");
+  return res.json(out);
 }
 
 async function adminStatus(_req, res) {
@@ -413,8 +422,9 @@ module.exports = {
   chatReport,
   chatDirect,
   lifeNewcomer,
-  skins,
-  skinBuy,
-  skinEquip,
-  skinColors,
+  characters,
+  characterUse,
+  characterFuse,
+  characterTestGrant,
+  certificate,
 };

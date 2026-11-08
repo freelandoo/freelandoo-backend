@@ -1236,6 +1236,59 @@ function simulate(s, to, wallet = null, pantry = null) {
   return { events, days: out.days, coins: out.coins, earned: out.earned };
 }
 
+// ═══ CÁPSULA (B3, 2026-11-08) ═══
+// Regra do Alex: o personagem na cápsula fica CONGELADO — não envelhece, não perde
+// atributo, não tem fome, sono nem efeitos. Como a vida é preguiçosa (só anda quando
+// alguém simula), congelar = simular até agora e parar de simular; descongelar =
+// empurrar TODO instante gravado pelo tempo que ele ficou guardado, e `simAt` volta a
+// contar de agora. Assim a idade (growth.from), o fim dos efeitos, o desejo da alma e a
+// contagem de prática continuam exatamente de onde pararam. A morte por velhice usa
+// `wearDays` (só cresce simulando), então conta só a vida ativa.
+
+/** Guarda na cápsula (o estado já foi simulado até `t`). Interrompe o que estiver fazendo. */
+function freeze(s, t) {
+  normalize(s);
+  s.activity = { kind: "idle", startedAt: t, until: null, bed: null, resume: null };
+  delete s.sleepFrom;
+  s.simAt = t;
+  return s;
+}
+
+/**
+ * Tira da cápsula em `t`: desloca todo instante pelo tempo guardado (t − simAt).
+ * Devolve o deslocamento em ms. Dia novo no relógio do jogo: o diário recomeça vazio
+ * (o dia antigo já foi gravado ao guardar).
+ */
+function thaw(s, t) {
+  normalize(s);
+  const d = Math.max(0, t - s.simAt);
+  const sh = (v) => (typeof v === "number" && v > 0 ? v + d : v);
+  if (d > 0) {
+    const a = s.activity;
+    a.startedAt = sh(a.startedAt);
+    a.until = sh(a.until);
+    if (a.resume && a.resume.until) a.resume = { ...a.resume, until: sh(a.resume.until) };
+    s.effects = (s.effects || []).map((e) => ({ ...e, until: sh(e.until), ...(e.at ? { at: sh(e.at) } : {}) }));
+    if (s.growth) {
+      s.growth.from = sh(s.growth.from);
+      if (s.growth.at) s.growth.at = sh(s.growth.at);
+    }
+    if (s.practiced) for (const k of Object.keys(s.practiced)) s.practiced[k] = sh(s.practiced[k]);
+    if (s.bornAt) s.bornAt = sh(s.bornAt);
+    const so = s.soul;
+    if (so) {
+      if (so.zeroSince) so.zeroSince = sh(so.zeroSince);
+      if (so.nextWishAt) so.nextWishAt = sh(so.nextWishAt);
+      if (so.wish) so.wish = { ...so.wish, at: sh(so.wish.at), until: sh(so.wish.until) };
+    }
+    if (s.woke && s.woke.at) s.woke = { ...s.woke, at: sh(s.woke.at) };
+  }
+  const { day } = localParts(t);
+  if (!s.dayAcc || s.dayAcc.day !== day) s.dayAcc = emptyDay(day);
+  s.simAt = t;
+  return d;
+}
+
 // ═══ AÇÕES ═══ (sempre depois de simular até `t`)
 const fail = (code) => ({ ok: false, code });
 
@@ -1644,6 +1697,8 @@ module.exports = {
   AFTERLIFE,
   afterlife,
   applyInheritance,
+  freeze,
+  thaw,
   ITEMS,
   ITEM_BY_ID,
   birth,

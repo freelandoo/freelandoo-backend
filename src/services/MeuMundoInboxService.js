@@ -15,7 +15,7 @@ const pool = require("../databases");
 const Inbox = require("../storages/MeuMundoInboxStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const Life = require("../utils/meuMundoLife");
-const Skins = require("../utils/meuMundoSkins");
+const Chars = require("../utils/meuMundoCharacters");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.inbox");
@@ -59,10 +59,11 @@ function normalizeGift(raw) {
     if (!it || !Number.isInteger(qty) || qty < 1 || qty > Life.FRIDGE.MAX_STACK) return null;
     return { type: "item", id: it.id, qty };
   }
-  if (raw.type === "skin") {
-    const sk = Skins.skinById(raw.id);
-    if (!sk || sk.kind !== "skin") return null;
-    return { type: "skin", id: sk.id, qty: 1 };
+  // B3: presente de personagem (espécie); "skin" de antes vira a espécie dela.
+  if (raw.type === "character" || raw.type === "skin") {
+    const sp = raw.type === "skin" ? Chars.SKIN_SPECIES[String(raw.id || "")] : Chars.speciesById(String(raw.id || "")) && { species: String(raw.id) };
+    if (!sp) return null;
+    return { type: "character", id: sp.species, qty: 1 };
   }
   if (raw.type === "coins") {
     if (!Number.isInteger(qty) || qty < 1 || qty > 100000) return null;

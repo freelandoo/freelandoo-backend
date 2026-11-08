@@ -124,25 +124,148 @@ class MeuMundoLifeStorage {
     );
   }
 
-  /** O hóspede mais recente do usuário (vivo ou morto), travado. */
+  /**
+   * O personagem ATIVO do usuário, travado (B3): o vivo; sem vivo, o último morto
+   * (tela de morte → novo hóspede). Os da cápsula e os fundidos não entram.
+   */
   static async lockLatest(c, idUser) {
     const r = await c.query(
-      `SELECT * FROM tb_mm_character WHERE id_user = $1 ORDER BY generation DESC LIMIT 1 FOR UPDATE`,
+      `SELECT * FROM tb_mm_character
+        WHERE id_user = $1 AND status IN ('alive', 'dead')
+        ORDER BY (status = 'alive') DESC, generation DESC LIMIT 1 FOR UPDATE`,
       [idUser]
     );
     return r.rows[0] || null;
   }
 
-  static async insert(c, idUser, generation, s) {
-    const cols = ["id_user", "generation", "seed", "personality", "height_m", "born_at", ...COLS];
-    const vals = [idUser, generation, s.seed, JSON.stringify(s.personality), s.heightM, iso(s.simAt), ...values(s)];
+  /** Próximo número de personagem da conta (generation é único por pessoa). */
+  static async nextGeneration(c, idUser) {
+    const r = await c.query(`SELECT COALESCE(MAX(generation), 0) + 1 AS n FROM tb_mm_character WHERE id_user = $1`, [idUser]);
+    return Number(r.rows[0].n);
+  }
+
+  /**
+   * Personagem novo. `meta` (B3): espécie, sexo, linhagem, pais, origem e genética de
+   * nascença; o status vem do estado ('alive' ou 'capsule'). Abre o histórico de dono.
+   */
+  static async insert(c, idUser, generation, s, meta = {}) {
+    const cols = [
+      "id_user", "generation", "seed", "personality", "height_m", "born_at",
+      "species", "sex", "lineage_gen", "parent_a", "parent_b", "origin", "genetics", "frozen_at",
+      ...COLS,
+    ];
+    const vals = [
+      idUser, generation, s.seed, JSON.stringify(s.personality), s.heightM, iso(s.simAt),
+      meta.species || null, meta.sex || null, meta.lineageGen || 1, meta.parentA || null, meta.parentB || null,
+      meta.origin || "hospede", meta.genetics ? JSON.stringify(meta.genetics) : null,
+      s.status === "capsule" ? iso(s.simAt) : null,
+      ...values(s),
+    ];
     const r = await c.query(
       `INSERT INTO tb_mm_character (${cols.join(", ")})
-       VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})
+       VALUES (${cols.map((_, i) => `${i + 1}`).join(", ")})
        RETURNING *`,
       vals
     );
-    return r.rows[0];
+    const row = r.rows[0];
+    await c.query(
+      `INSERT INTO tb_mm_character_owner (id_character, id_user, since, reason) VALUES ($1, $2, $3, $4)`,
+      [row.id_character, idUser, iso(s.simAt), meta.ownerReason || "origin"]
+    );
+    return row;
+  }
+
+  // ═══ PERSONAGENS E CÁPSULA (B3, mig 340) ═══
+
+  /** Um personagem da pessoa, travado (qualquer status). */
+  static async lockCharacter(c, idUser, idCharacter) {
+    const r = await c.query(`SELECT * FROM tb_mm_character WHERE id_character = $1 AND id_user = $2 FOR UPDATE`, [
+      idCharacter,
+      idUser,
+    ]);
+    return r.rows[0] || null;
+  }
+
+  /** Quantos estão na cápsula. */
+  static async capsuleCount(c, idUser) {
+    const r = await c.query(`SELECT COUNT(*)::int AS n FROM tb_mm_character WHERE id_user = $1 AND status = 'capsule'`, [idUser]);
+    return r.rows[0].n;
+  }
+
+  /** Os personagens da pessoa que existem (ativo + cápsula), o ativo primeiro. */
+  static async listMine(db, idUser) {
+    const r = await db.query(
+      `SELECT * FROM tb_mm_character
+        WHERE id_user = $1 AND status IN ('alive', 'capsule', 'dead')
+        ORDER BY (status = 'alive') DESC, (status = 'capsule') DESC, generation DESC`,
+      [idUser]
+    );
+    return r.rows;
+  }
+
+  /** Guardado na cápsula / tirado dela (o resto do estado vai pelo save). */
+  static async markFrozen(c, idCharacter, at) {
+    await c.query(`UPDATE tb_mm_character SET frozen_at = $2 WHERE id_character = $1`, [idCharacter, iso(at)]);
+  }
+
+  static async markThawed(c, idCharacter) {
+    await c.query(`UPDATE tb_mm_character SET frozen_at = NULL WHERE id_character = $1`, [idCharacter]);
+  }
+
+  static async markFused(c, idCharacter, into, at) {
+    await c.query(`UPDATE tb_mm_character SET fused_at = $3, fused_into = $2, frozen_at = NULL WHERE id_character = $1`, [
+      idCharacter,
+      into,
+      iso(at),
+    ]);
+  }
+
+  /** Espécie e sexo de quem ainda não tinha (escolheu a classe depois). */
+  static async fillSpecies(c, idUser, species, sex) {
+    await c.query(`UPDATE tb_mm_character SET species = $2, sex = $3 WHERE id_user = $1 AND species IS NULL`, [idUser, species, sex]);
+  }
+
+  /** Personagem a entregar (conversão de skin, prêmio, presente). Idempotente pela referência. */
+  static async addGrant(c, idUser, { species, sex, source, ref }) {
+    const r = await c.query(
+      `INSERT INTO tb_mm_character_grant (id_user, species, sex, source, ref) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id_user, source, ref) DO NOTHING RETURNING id_grant`,
+      [idUser, species, sex, source, ref]
+    );
+    return r.rows[0] ? r.rows[0].id_grant : null;
+  }
+
+  /** Entregas pendentes, travadas (quem chama já serializou a pessoa). */
+  static async openGrants(c, idUser) {
+    const r = await c.query(
+      `SELECT * FROM tb_mm_character_grant WHERE id_user = $1 AND claimed_at IS NULL ORDER BY created_at, id_grant FOR UPDATE`,
+      [idUser]
+    );
+    return r.rows;
+  }
+
+  static async claimGrant(c, idGrant, idCharacter) {
+    await c.query(`UPDATE tb_mm_character_grant SET claimed_at = NOW(), id_character = $2 WHERE id_grant = $1`, [idGrant, idCharacter]);
+  }
+
+  /** Certificado público: o personagem pelo código, sem dados do dono além do apelido do jogo. */
+  static async certificate(db, code) {
+    const r = await db.query(
+      `SELECT ch.*, pl.nickname
+         FROM tb_mm_character ch
+         LEFT JOIN tb_mm_player pl ON pl.id_user = ch.id_user
+        WHERE ch.cert_code = $1`,
+      [code]
+    );
+    return r.rows[0] || null;
+  }
+
+  /** Linhas de personagens por id (pais e avós do certificado). */
+  static async byIds(db, ids) {
+    const list = [...new Set(ids.filter(Boolean))];
+    if (!list.length) return [];
+    const r = await db.query(`SELECT * FROM tb_mm_character WHERE id_character = ANY($1::uuid[])`, [list]);
+    return r.rows;
   }
 
   static async save(c, idCharacter, s) {
