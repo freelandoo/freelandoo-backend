@@ -73,10 +73,14 @@ class ReachStorage {
    * Soma `delta` aos pontos (nunca abaixo de 0) e promove o degrau se os
    * pontos passaram o limiar do post. Só sobe. Devolve o estado novo.
    */
-  static async addPoints(client, kind, id, delta) {
+  static async addPoints(client, kind, id, delta, actor = null) {
     const t = target(kind);
     const d = Number(delta) || 0;
     if (!d) return null;
+    // A7: pontos que OUTRA conta deu viram Esmeralda para o dono (1 a cada 10).
+    if (actor && d > 0) {
+      await require("../services/EngagementEmerald").owner(client, { kind, id, actor, points: d });
+    }
     const { rows } = await client.query(
       `UPDATE ${t.table}
           SET reach_points = GREATEST(reach_points + $2::numeric, 0)
@@ -146,7 +150,12 @@ class ReachStorage {
       );
       pts = sharePoints(recent.rows[0]?.n || 1);
     }
-    const state = await ReachStorage.addPoints(client, kind, id, pts);
+    const actor = viewer?.id_user || null;
+    const state = await ReachStorage.addPoints(client, kind, id, pts, actor);
+    // A7: compartilhar rende Esmeralda a quem compartilhou (uma vez por post).
+    if (action === "share" && actor) {
+      await require("../services/EngagementEmerald").actor(client, { kind, id, actor, action: "share" });
+    }
     return { counted: true, points_added: pts, ...(state || {}) };
   }
 
@@ -158,10 +167,19 @@ class ReachStorage {
   }
 
   // Curtida/salvo/comentário: delta já com sinal (+1 = fez, −1 = desfez).
-  static async addWeighted(client, kind, id, weightKey, sign = 1) {
+  // `who` ({ actor, ref, chars }) = quem fez (A7: Esmeralda por engajamento).
+  static async addWeighted(client, kind, id, weightKey, sign = 1, who = null) {
     const w = REACH_WEIGHTS[weightKey];
     if (!w) return null;
-    return ReachStorage.addPoints(client, kind, id, w * (sign < 0 ? -1 : 1));
+    const s = sign < 0 ? -1 : 1;
+    const actor = who?.actor || null;
+    const out = await ReachStorage.addPoints(client, kind, id, w * s, actor);
+    if (actor && ["like", "save", "comment"].includes(weightKey)) {
+      await require("../services/EngagementEmerald").actor(client, {
+        kind, id, actor, action: weightKey, sign: s, ref: who.ref || null, chars: who.chars ?? null,
+      });
+    }
+    return out;
   }
 
   /**

@@ -96,14 +96,15 @@ const PortfolioCommentStorage = {
 
   // Chamado na transação de criar/remover comentário: o alcance (±10 por
   // comentário, mig 328) entra junto com o contador.
-  async bumpItemCounter(db, id_portfolio_item, delta) {
+  // `who` ({ actor, ref, chars }) = autor do comentário (A7: Esmeralda).
+  async bumpItemCounter(db, id_portfolio_item, delta, who = null) {
     await db.query(
       `UPDATE public.tb_profile_portfolio_item
           SET comments_count = GREATEST(0, comments_count + $2)
         WHERE id_portfolio_item = $1`,
       [id_portfolio_item, delta]
     );
-    await require("./ReachStorage").addWeighted(db, "post", id_portfolio_item, "comment", delta);
+    await require("./ReachStorage").addWeighted(db, "post", id_portfolio_item, "comment", delta, who);
   },
 
   async getEnrichedById(db, id_portfolio_comment, viewer_id_user = null) {

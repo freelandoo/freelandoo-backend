@@ -76,4 +76,89 @@ add("cupom: caminhos antigos por código e afiliado não enxergam cupom Gold", a
   assert.equal(await Checkout.getCouponByCode(pool, rows[0].code), null);
 });
 
+// ── Esmeralda por engajamento (slice 6) ─────────────────────────────────────
+async function post(pool, ownerId) {
+  const cat = (await pool.query(`SELECT id_category FROM tb_category ORDER BY id_category LIMIT 1`)).rows[0]?.id_category ?? null;
+  let prof = (await pool.query(`SELECT id_profile FROM tb_profile WHERE id_user = $1 LIMIT 1`, [ownerId])).rows[0];
+  if (!prof) {
+    prof = (await pool.query(
+      `INSERT INTO tb_profile (id_user, display_name, sub_profile_slug, id_category, is_user_account, is_visible, is_active)
+       VALUES ($1, 'dono', $2, $3, TRUE, FALSE, TRUE) RETURNING id_profile`,
+      [ownerId, `dono-${crypto.randomUUID().slice(0, 8)}`, cat]
+    )).rows[0];
+  }
+  const r = await pool.query(
+    `INSERT INTO tb_profile_portfolio_item (id_profile, feed_kind, description) VALUES ($1, 'recado', 'oi') RETURNING id_portfolio_item, id_profile`,
+    [prof.id_profile]
+  );
+  return r.rows[0];
+}
+const emerald = async (pool, u) => Number((await pool.query(`SELECT COALESCE(SUM(balance),0) b FROM emerald_wallets WHERE user_id = $1`, [u])).rows[0].b);
+
+add("engajamento: curtir rende 1, descurtir estorna, recurtir não paga de novo", async ({ pool, users }) => {
+  const Ranking = require("../../src/storages/RankingStorage");
+  const p = await post(pool, users[0]);
+  const fan = users[2];
+  const e0 = await emerald(pool, fan);
+  const args = { id_portfolio_item: p.id_portfolio_item, id_profile: p.id_profile, id_user: fan };
+  await Ranking.toggleLike(pool, args);
+  assert.equal(await emerald(pool, fan), e0 + 1);
+  await Ranking.toggleLike(pool, args);
+  assert.equal(await emerald(pool, fan), e0);
+  await Ranking.toggleLike(pool, args);
+  assert.equal(await emerald(pool, fan), e0, "recurtir não paga");
+});
+
+add("engajamento: nada pelo próprio post", async ({ pool, users }) => {
+  const Ranking = require("../../src/storages/RankingStorage");
+  const p = await post(pool, users[0]);
+  const e0 = await emerald(pool, users[0]);
+  await Ranking.toggleLike(pool, { id_portfolio_item: p.id_portfolio_item, id_profile: p.id_profile, id_user: users[0] });
+  assert.equal(await emerald(pool, users[0]), e0);
+});
+
+add("engajamento: salvar 2, comentar 3 só com 10+ caracteres, apagar estorna", async ({ pool, users }) => {
+  const Reach = require("../../src/storages/ReachStorage");
+  const p = await post(pool, users[0]);
+  const fan = users[3];
+  const e0 = await emerald(pool, fan);
+  await Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", p.id_portfolio_item, "save", 1, { actor: fan }));
+  assert.equal(await emerald(pool, fan), e0 + 2);
+  await Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", p.id_portfolio_item, "comment", 1, { actor: fan, ref: "c1", chars: 4 }));
+  assert.equal(await emerald(pool, fan), e0 + 2, "comentário curto não rende");
+  await Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", p.id_portfolio_item, "comment", 1, { actor: fan, ref: "c2", chars: 25 }));
+  assert.equal(await emerald(pool, fan), e0 + 5);
+  await Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", p.id_portfolio_item, "comment", -1, { actor: fan, ref: "c2" }));
+  assert.equal(await emerald(pool, fan), e0 + 2);
+});
+
+add("engajamento: dono ganha 1 a cada 10 pontos de alcance de outras contas", async ({ pool, users }) => {
+  const Reach = require("../../src/storages/ReachStorage");
+  const p = await post(pool, users[1]);
+  const e0 = await emerald(pool, users[1]);
+  // salvar = 30 pontos de alcance → 3 Esmeraldas ao dono
+  await Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", p.id_portfolio_item, "save", 1, { actor: users[2] }));
+  assert.equal(await emerald(pool, users[1]), e0 + 3);
+  // anônimo (sem conta) não conta
+  await Reach.inTx(pool, (c) => Reach.recordUnique(c, "post", p.id_portfolio_item, { session_id: "anon-1" }, "share"));
+  assert.equal(await emerald(pool, users[1]), e0 + 3);
+});
+
+add("engajamento: teto diário (500) somando ator e dono", async ({ pool, users }) => {
+  const Reach = require("../../src/storages/ReachStorage");
+  await pool.query(`UPDATE emerald_settings SET engagement_daily_cap = 4`);
+  const fan = await (async () => {
+    const r = await pool.query(`INSERT INTO tb_user (nome, email, senha, username, ativo, data_nascimento) VALUES ('cap', $1, 'x', $2, TRUE, '1990-01-01') RETURNING id_user`, [`cap${Date.now()}@ex.com`, `cap${Date.now()}`]);
+    return r.rows[0].id_user;
+  })();
+  for (let i = 0; i < 4; i++) {
+    const p = await post(pool, users[0]);
+    await Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", p.id_portfolio_item, "save", 1, { actor: fan }));
+  }
+  assert.equal(await emerald(pool, fan), 4, "2 + 2 e depois para no teto");
+  await pool.query(`UPDATE emerald_settings SET engagement_daily_cap = 500`);
+  const s = await pool.query(`SELECT engagement_daily_cap FROM emerald_settings`);
+  assert.equal(s.rows[0].engagement_daily_cap, 500);
+});
+
 module.exports = { checks };
