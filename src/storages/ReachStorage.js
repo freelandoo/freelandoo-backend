@@ -12,6 +12,7 @@ const {
   retentionPoints,
   nextReachLevel,
 } = require("../utils/feedReach");
+const { momentumNowSql } = require("../utils/beeLife");
 
 const TARGETS = Object.freeze({
   post: {
@@ -81,9 +82,15 @@ class ReachStorage {
     if (actor && d > 0) {
       await require("../services/EngagementEmerald").owner(client, { kind, id, actor, points: d });
     }
+    // Bee: o mesmo ponto alimenta o EMBALO (vida do bee, utils/beeLife.js).
+    const embalo = kind === "bee"
+      ? `, momentum = GREATEST(${momentumNowSql("tb_story")} + $2::numeric, 0),
+             momentum_peak = GREATEST(momentum_peak, ${momentumNowSql("tb_story")} + $2::numeric),
+             momentum_at = NOW()`
+      : "";
     const { rows } = await client.query(
       `UPDATE ${t.table}
-          SET reach_points = GREATEST(reach_points + $2::numeric, 0)
+          SET reach_points = GREATEST(reach_points + $2::numeric, 0)${embalo}
         WHERE ${t.id} = $1
         RETURNING ${t.id} AS id, reach_points, reach_level,
                   reach_area_id, reach_region_id, reach_uf`,

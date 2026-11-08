@@ -12,16 +12,10 @@ const SCORE_SQL = `
 + GREATEST(shares_count, 0)   * 3
 `;
 
-// Visibilidade efetiva do bee: 24h base + 1h por ponto de score, teto 7 dias.
-// Funciona também pra linhas legadas trampo/rest (score 0 → 24h, idêntico).
+// Visibilidade efetiva do bee: pelo EMBALO (mig 420, regra em utils/beeLife.js) —
+// 24 h de carência e depois fica enquanto continua crescendo, sem teto.
 // Inclui o deleted_at — substitui o par "deleted_at IS NULL AND expires_at > NOW()".
-const BEE_ALIVE_SQL = `
-  s.deleted_at IS NULL
-  AND NOW() < LEAST(
-    s.created_at + INTERVAL '7 days',
-    s.created_at + INTERVAL '24 hours' + (s.engagement_score * INTERVAL '1 hour')
-  )
-`;
+const { BEE_ALIVE_SQL } = require("../utils/beeLife");
 
 const SHARE_DEDUP_INTERVAL = "30 minutes";
 

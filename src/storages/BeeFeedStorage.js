@@ -4,6 +4,7 @@
 // StoryStorage + PortfolioFeedStorage (buildProfileUrl precisa de
 // profession_slug/municipio/username/sub_profile_slug).
 const { BEE_ALIVE_SQL } = require("./BeeEngagementStorage");
+const { BEE_EXPIRES_SQL } = require("../utils/beeLife");
 const { reachBandSql, reachBandParams } = require("../utils/feedReach");
 
 const BEE_SELECT = `
@@ -15,10 +16,7 @@ const BEE_SELECT = `
   s.engagement_score, s.created_at,
   s.reach_level, s.reach_city_name, s.reach_uf,
   ar.name AS reach_area_name, rg.name AS reach_region_name,
-  LEAST(
-    s.created_at + INTERVAL '7 days',
-    s.created_at + INTERVAL '24 hours' + (s.engagement_score * INTERVAL '1 hour')
-  ) AS effective_expires_at,
+  ${BEE_EXPIRES_SQL} AS effective_expires_at,
   s.created_at AS published_at,
   p.display_name, p.avatar_url, p.is_clan, p.sub_profile_slug,
   p.municipio, p.estado,

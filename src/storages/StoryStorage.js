@@ -126,7 +126,7 @@ class StoryStorage {
 
   /**
    * A faixa de bees de uma comunidade. Usa a MESMA regra de vida do resto do
-   * sistema (BEE_ALIVE_SQL: 24h + 1h por ponto de engajamento, teto 7 dias) —
+   * sistema (BEE_ALIVE_SQL: pelo embalo, utils/beeLife.js) —
    * duplicar a fórmula aqui faria o bee sumir do mural em uma hora diferente da
    * que ele some do /bees, e ninguém entenderia por quê.
    */

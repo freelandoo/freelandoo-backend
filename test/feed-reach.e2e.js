@@ -433,6 +433,46 @@ async function main() {
     assert.strictEqual(r.items.find((i) => i.id_story === bBh.id_story).viewer_has_disliked, true);
   });
 
+  console.log("\n━━━ 8. vida do bee pelo embalo (mig 420) ━━━");
+  const { beeAlive, BEE_ALIVE_SQL } = require("../src/utils/beeLife");
+  await check("ponto de alcance alimenta o embalo e o pico", async () => {
+    const r = (await db.query(`SELECT momentum, momentum_peak, momentum_at FROM tb_story WHERE id_story=$1`, [bBh.id_story])).rows[0];
+    // view +1 e curtida +5 subiram o pico a 6; o "não gostei" depois tirou a curtida e −2 (embalo nunca negativo)
+    assert.ok(r.momentum_at, JSON.stringify(r));
+    assert.ok(Math.abs(Number(r.momentum_peak) - 6) < 0.01, JSON.stringify(r));
+    assert.ok(Number(r.momentum) >= 0 && Number(r.momentum) < Number(r.momentum_peak));
+  });
+  await check("SQL da vida = regra do JS (carência, crescendo, esfriou, apagado)", async () => {
+    const cases = [
+      ["2 h, sem ponto", "NOW() - INTERVAL '2 hours'", 0, null, 0, null],
+      ["2 dias, sem ponto", "NOW() - INTERVAL '2 days'", 0, null, 0, null],
+      ["30 dias, crescendo", "NOW() - INTERVAL '30 days'", 400, "NOW() - INTERVAL '1 hour'", 600, null],
+      ["5 dias, esfriou", "NOW() - INTERVAL '5 days'", 1000, "NOW() - INTERVAL '34 hours'", 1000, null],
+      ["5 dias, quase", "NOW() - INTERVAL '5 days'", 1000, "NOW() - INTERVAL '32 hours'", 1000, null],
+      ["apagado", "NOW() - INTERVAL '1 hour'", 0, null, 0, "NOW()"],
+    ];
+    for (const [name, created, m, at, peak, del] of cases) {
+      const ins = await db.query(
+        `INSERT INTO tb_story (id_profile, id_user, kind, video_url, duration_seconds, caption, expires_at, created_at, momentum, momentum_at, momentum_peak, deleted_at)
+         VALUES ($1, (SELECT id_user FROM tb_profile WHERE id_profile=$1), 'bee', 'https://x/v.mp4', 10, $2, NOW(), ${created}, $3, ${at || "NULL"}, $4, ${del || "NULL"})
+         RETURNING *`,
+        [bh.id_profile, "vida " + name, m, peak]
+      );
+      const row = ins.rows[0];
+      const sql = (await db.query(`SELECT (${BEE_ALIVE_SQL}) AS alive FROM tb_story s WHERE id_story=$1`, [row.id_story])).rows[0].alive;
+      assert.strictEqual(sql, beeAlive(row), name);
+      await db.query(`DELETE FROM tb_story WHERE id_story=$1`, [row.id_story]);
+    }
+  });
+  await check("timeline dos bees infinita + cor do patamar para todos", async () => {
+    const p1 = await BeeFeedService.getTimeline({ id_user: maua.id_user }, { limit: 24 });
+    assert.strictEqual(p1.has_more, true);
+    const p2 = await BeeFeedService.getTimeline({ id_user: maua.id_user }, { limit: 24, cursor: p1.next_cursor });
+    assert.ok(p2.items.length > 0);
+    assert.strictEqual(new Set(p2.items.map((i) => i.id_story)).size, p2.items.length);
+    for (const i of p1.items) assert.ok(Number.isInteger(i.reach_tier) && i.reach_tier >= 0 && i.reach_tier <= 4);
+  });
+
   await db.end();
   await pool.end();
   const failed = results.filter((r) => !r.ok);

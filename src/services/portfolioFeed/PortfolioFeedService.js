@@ -128,8 +128,11 @@ function shapeRow(row) {
     viewer_has_liked: !!row.viewer_has_liked,
     viewer_has_bookmarked: !!row.viewer_has_bookmarked,
     viewer_has_disliked: !!row.viewer_has_disliked,
-    // Até onde o post chegou — SÓ para o dono (o número de "não gostei" e os
-    // pontos nunca saem; o degrau dos outros também não).
+    // Patamar do alcance (0 cidade … 4 Brasil) = a COR do post para todos (regra
+    // do Alex 2026-11-08, substitui "o degrau dos outros não sai"). Pontos e
+    // "não gostei" continuam sem sair.
+    reach_tier: Math.min(4, Math.max(0, Number(row.reach_level) || 0)),
+    // Até onde o post chegou, com o nome do lugar — SÓ para o dono.
     my_reach: row.viewer_is_owner && row.reach_level != null ? reachLabel(row) : null,
     public_profile_url,
     whatsapp_url,

@@ -93,7 +93,10 @@ function shapeBee(row) {
     viewer_has_liked: !!row.viewer_has_liked,
     viewer_has_bookmarked: !!row.viewer_has_bookmarked,
     viewer_has_disliked: !!row.viewer_has_disliked,
-    // Até onde o bee chegou — só para o dono (mig 328).
+    // Patamar do alcance (0 cidade … 4 Brasil) = a COR do bee para todos (regra
+    // do Alex 2026-11-08: a pessoa vê que está crescendo). Pontos nunca saem.
+    reach_tier: Math.min(4, Math.max(0, Number(row.reach_level) || 0)),
+    // Até onde o bee chegou, com o nome do lugar — só para o dono (mig 328).
     my_reach: row.viewer_is_owner && row.reach_level != null ? reachLabel(row) : null,
     public_profile_url,
   };
@@ -134,10 +137,32 @@ class BeeFeedService {
         const ordered = feedMix.orderByReachBands(candidates, rng);
 
         const slice = ordered.slice(startIndex, startIndex + limit);
+        let nextSeed = seed;
+        let nextIndex = startIndex + slice.length;
+        // INFINITO como o feed (regra do Alex): acabou a volta, começa outra com
+        // semente nova; a página curta do fim é completada sem repetir bee nela.
+        if (ordered.length > 0 && nextIndex >= ordered.length) {
+          nextSeed = feedMix.generateSeed();
+          nextIndex = 0;
+          if (slice.length < limit) {
+            const seen = new Set(slice.map((r) => r.post_id));
+            const again = feedMix.orderByReachBands(candidates, feedMix.makeRng(nextSeed));
+            while (slice.length < limit && nextIndex < again.length) {
+              const row = again[nextIndex++];
+              if (!seen.has(row.post_id)) {
+                seen.add(row.post_id);
+                slice.push(row);
+              }
+            }
+            if (nextIndex >= again.length) {
+              nextSeed = feedMix.generateSeed();
+              nextIndex = 0;
+            }
+          }
+        }
         const items = slice.map(shapeBee);
-        const nextIndex = startIndex + slice.length;
-        const has_more = nextIndex < ordered.length;
-        return { items, next_cursor: has_more ? `${seed}:${nextIndex}` : null, has_more, scope };
+        const has_more = ordered.length > 0;
+        return { items, next_cursor: has_more ? `${nextSeed}:${nextIndex}` : null, has_more, scope };
       });
   }
 
