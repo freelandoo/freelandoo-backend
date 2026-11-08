@@ -64,7 +64,7 @@ const MAX_RUN_S = 1800;
 const SILENT_S = 8;
 
 /** Prazos (a suíte e2e encurta). */
-const timing = { lobbyMs: 60000, closeMs: 20000 };
+const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os minijogos (Alex, 2026-11-08; antes 1 min)
 
 // ── COMPUTADORES (regra do Alex, 2026-11-08) ── sem "sozinho": toda largada espera até 1 minuto
 // e as vagas vazias viram computadores, rodados AQUI com a regra gerada do voo.

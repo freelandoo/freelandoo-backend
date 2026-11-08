@@ -236,7 +236,7 @@ async function mkUser(pool, tag) {
   await bye(A.room);
 
   // ── 6 pessoas largam na hora ───────────────────────────────────────────────
-  noturno._noturnoTiming.lobbyMs = 60000;
+  noturno._noturnoTiming.lobbyMs = 20000;
   const six = [];
   for (let i = 2; i < 8; i++) six.push(await join(users[i], ["bike", "skate", "skates"][i % 3]));
   check(

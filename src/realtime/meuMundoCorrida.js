@@ -44,7 +44,7 @@ const ABUSE_DROPS = 300;
 const MAX_RACE_S = 420;
 
 /** Prazos (a suíte e2e encurta). */
-const timing = { lobbyMs: 60000, closeMs: 20000 };
+const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os minijogos (Alex, 2026-11-08; antes 1 min)
 
 // mm3d-74: cada sala corre UM circuito (o que a pessoa escolheu; filtro do matchMaker)
 

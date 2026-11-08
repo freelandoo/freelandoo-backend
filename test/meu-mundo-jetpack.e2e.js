@@ -246,7 +246,7 @@ async function mkUser(pool, tag) {
   await bye(S.room);
 
   // ── 4 pessoas largam na hora (sempre 4 no túnel) ─────────────────────────
-  jet._jetpackTiming.lobbyMs = 60000;
+  jet._jetpackTiming.lobbyMs = 20000;
   const six = [];
   for (let i = 2; i < 6; i++) six.push(await join(users[i]));
   check(

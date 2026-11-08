@@ -248,7 +248,7 @@ async function mkUser(pool, tag) {
   check("…e a sala fecha", await until(() => !roomOf(A.room.roomId), 3000));
 
   // ── 6 pessoas largam na hora ───────────────────────────────────────────────
-  corrida._corridaTiming.lobbyMs = 60000;
+  corrida._corridaTiming.lobbyMs = 20000;
   const six = [];
   for (let i = 2; i < 8; i++) six.push(await join(users[i]));
   check(

@@ -241,7 +241,7 @@ async function mkUser(pool, tag) {
   await bye(A.room);
 
   // ── 8 pessoas largam na hora, sem computador ───────────────────────────────
-  gincana._gincanaTiming.lobbyMs = 60000;
+  gincana._gincanaTiming.lobbyMs = 20000;
   const eight = [];
   for (let i = 0; i < 8; i++) eight.push(await join(users[i]));
   check(

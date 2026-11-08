@@ -50,7 +50,7 @@ const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha"
 const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
 
 /** Prazos (a suíte e2e encurta). */
-const timing = { lobbyMs: 60000, closeMs: 20000 };
+const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os minijogos (Alex, 2026-11-08; antes 1 min)
 
 const GnPlayer = schema(
   {
