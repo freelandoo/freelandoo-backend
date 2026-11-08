@@ -218,7 +218,10 @@ class MeuMundoHallService {
     let seatWon = null;
     if (win) {
       const before = await seatsMap(c, true);
-      const after = Ladder.afterWin(before, h.challenger, h.defender, h.target_seat == null ? null : Number(h.target_seat));
+      // onde o desafiante aparecia no top 10 sem cadeira (vencer nunca faz perder posição)
+      const { ten } = await ladderOf(c);
+      const shown = ten.find((e) => e.user === h.challenger && !e.seated)?.pos ?? null;
+      const after = Ladder.afterWin(before, h.challenger, h.defender, h.target_seat == null ? null : Number(h.target_seat), shown);
       seatWon = after.seatWon;
       if (seatWon != null) {
         // regrava só as cadeiras que mudaram (DELETE + INSERT: id_user é único)

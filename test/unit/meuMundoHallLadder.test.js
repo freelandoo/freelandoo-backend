@@ -56,3 +56,24 @@ test("vencer quem aparece numa vaga do top 10: fica com aquela cadeira (até a 1
   assert.equal(L.afterWin(new Map([[1, "me"]]), "me", "x", 4).seatWon, null);
   assert.equal(L.afterWin(new Map([[1, "a"]]), "me", "x", 1).seatWon, 2);
 });
+
+// Regra do Alex (2026-11-08): vencer nunca faz perder posição.
+test("hall — quem aparecia em 1º só pelo Poder vence o 2º e fica em 1º (a posição vira cadeira)", () => {
+  // ninguém sentado: eu (1º pelo Poder) desafio o 2º, que aparecia na vaga 2
+  const r = L.afterWin(new Map(), "me", "bispo", 2, 1);
+  assert.equal(r.seatWon, 1);
+  assert.equal(r.seats.get(1), "me");
+  assert.equal(r.seats.has(2), false);
+});
+test("hall — aparecia acima de um sentado mais abaixo: vence e garante a própria posição", () => {
+  const r = L.afterWin(new Map([[5, "x"]]), "me", "x", null, 2);
+  assert.equal(r.seatWon, 2);
+  assert.equal(r.seats.get(5), "x");
+});
+test("hall — aparecia abaixo de quem venceu: sobe para a cadeira dele (como antes)", () => {
+  const r = L.afterWin(new Map([[1, "a"]]), "me", "a", null, 3);
+  assert.equal(r.seatWon, 1);
+  assert.equal(r.seats.get(1), "me");
+  const t = L.afterWin(new Map(), "me", "b", 1, 4);
+  assert.equal(t.seatWon, 1);
+});

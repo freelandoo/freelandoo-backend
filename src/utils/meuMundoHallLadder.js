@@ -34,9 +34,14 @@ function topTen(seats, byPower) {
 /**
  * O Hall depois da vitória do desafiante. `seats` = Map(cadeira → id_user).
  * `target` = a cadeira vazia que o defensor de fora ocupava no top 10 (topTen).
+ * `shown` = a posição em que o desafiante APARECIA no top 10 sem cadeira (pelo Poder).
  * Devolve { seats, seatWon } (seatWon = cadeira nova do desafiante; null = nada mudou).
+ *
+ * Regra do Alex (2026-11-08): VENCER NUNCA FAZ PERDER POSIÇÃO. Quem aparecia acima de
+ * quem desafiou e vence fica onde estava — e, se aparecia só pelo Poder, a posição vira
+ * cadeira dele (antes ele levava a cadeira do vencido, que podia ser pior).
  */
-function afterWin(seats, challenger, defender, target = null) {
+function afterWin(seats, challenger, defender, target = null, shown = null) {
   const out = new Map(seats);
   const seatOf = (u) => {
     for (const [k, v] of out) if (v === u) return k;
@@ -44,6 +49,14 @@ function afterWin(seats, challenger, defender, target = null) {
   };
   const mine = seatOf(challenger);
   const theirs = seatOf(defender);
+  // aparecia (sem cadeira) acima de quem venceu, ou o vencido nem está no top 10: garante a posição
+  if (mine == null && shown != null && shown >= 1 && shown <= SEATS && !out.has(shown)) {
+    const q = theirs ?? (target != null && target >= 1 && target <= SEATS && !out.has(target) ? target : null);
+    if (q == null || shown < q) {
+      out.set(shown, challenger);
+      return { seats: out, seatWon: shown };
+    }
+  }
   if (theirs != null) {
     // já estou acima: venci, mas o Hall fica
     if (mine != null && mine < theirs) return { seats: out, seatWon: null };
