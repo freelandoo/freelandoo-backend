@@ -166,3 +166,80 @@ test("corrida — garagem: sem nave na vaga, cada lugar pega uma (o servidor man
     C.SHIPS.map((s) => s.id),
   );
 });
+
+// ── mm3d-74: o catálogo de circuitos (loops, quedas presas, túneis) ─────────
+test("circuitos — 6 pistas, a Baía é a padrão e continua igual", () => {
+  assert.equal(C.TRACK_DEFS.length, 6);
+  assert.equal(C.DEFAULT_TRACK, "baia-suspensa");
+  assert.equal(C.trackDefOf("nao-existe").id, "baia-suspensa");
+  // a Baía de antes: mesmo comprimento e mesmos vãos (o loop/queda não mexe nela)
+  assert.equal(track.length, 2080);
+  assert.equal(C.trackOf("baia-suspensa").length, track.length);
+  const ids = new Set(C.TRACK_DEFS.map((d) => d.id));
+  assert.equal(ids.size, 6);
+});
+
+test("circuitos — cada pista fecha, tem 2+ km e os destaques que prometem", () => {
+  const want = {
+    "abismo-vermelho": { loops: 0, tunnels: 1, gaps: 1, drop: true },
+    "floresta-espectral": { loops: 0, tunnels: 1, gaps: 0, drop: true },
+    "neon-overdrive": { loops: 1, tunnels: 1, gaps: 0, drop: true },
+    "tempestade-oceanica": { loops: 0, tunnels: 2, gaps: 1, drop: false },
+    "forja-infinita": { loops: 1, tunnels: 2, gaps: 1, drop: true },
+  };
+  for (const [id, w] of Object.entries(want)) {
+    const t = C.trackOf(id);
+    assert.ok(t.length > 1900 && t.length < 3200, `${id} ${t.length}`);
+    assert.equal(t.loops.length, w.loops, `${id} loops`);
+    assert.ok(t.tunnels.length >= w.tunnels, `${id} túneis`);
+    assert.equal(t.gaps.length, w.gaps, `${id} vãos`);
+    assert.equal(t.flag.includes(4), w.drop, `${id} queda presa`);
+    // o fecho automático é curto (a tartaruga termina perto da largada)
+    const pieces = C.trackDefOf(id).pieces.reduce((a, p) => a + p.len, 0);
+    assert.ok(t.length - pieces < 500, `${id} fecho ${t.length - pieces}`);
+  }
+});
+
+test("circuitos — no loop a nave dá a volta inteira presa à pista (não decola nem cai)", () => {
+  for (const id of ["neon-overdrive", "forja-infinita"]) {
+    const t = C.trackOf(id);
+    const L = t.loops[0];
+    const race = new C.Race({ track: t, rivals: 0 });
+    race.time = 0;
+    race.phase = "race";
+    const c = race.player;
+    const p = C.trackAt(t, L.s0 - 30);
+    Object.assign(c, { dist: L.s0 - 30, v: 45, u: 0, yaw: p.yaw, Y: p.y });
+    const ev = [];
+    const pose = {};
+    let maxTh = 0;
+    let topY = -Infinity;
+    for (let k = 0; k < 120 * 6 && c.dist < L.s1 + 20; k++) {
+      race.step({ ...IDLE, throttle: 1 }, ev);
+      for (const e of ev) assert.ok(e.type !== "fell" && e.type !== "takeoff", `${id}: ${e.type} no loop`);
+      ev.length = 0;
+      C.carPose(race, c, pose);
+      maxTh = Math.max(maxTh, Math.abs(pose.pitch));
+      topY = Math.max(topY, c.Y);
+    }
+    assert.ok(c.dist > L.s1, `${id}: não saiu do loop`);
+    assert.ok(maxTh > 3, `${id}: girou ${maxTh.toFixed(2)} rad`);
+    assert.ok(topY > p.y + L.r * 1.6, `${id}: alto do loop ${topY.toFixed(1)}`);
+  }
+});
+
+test("circuitos — 6 computadores completam as 3 voltas em todas as pistas, sem cair", () => {
+  for (const d of C.TRACK_DEFS) {
+    const t = C.trackOf(d.id);
+    const race = new C.Race({ track: t, seats: Array.from({ length: 6 }, () => ({ name: "", kind: "bot" })), seed: 5 });
+    const ev = [];
+    let fell = 0;
+    for (let k = 0; k < 120 * 420 && race.cars.some((c) => c.finished === null); k++) {
+      race.step(IDLE, ev);
+      for (const e of ev) if (e.type === "fell") fell++;
+      ev.length = 0;
+    }
+    assert.equal(race.cars.filter((c) => c.finished !== null).length, 6, `${d.id}: nem todos terminaram`);
+    assert.equal(fell, 0, `${d.id}: ${fell} quedas`);
+  }
+});

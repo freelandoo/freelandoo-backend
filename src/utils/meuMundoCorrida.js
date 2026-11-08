@@ -23,7 +23,12 @@ const STEP = 2
 const BANK_MAX = 0.52
 const BANK_K = 46
 
-                                               
+/**
+ * mm3d-74: "loop" = volta vertical inteira (360°) com um deslocamento de lado
+ * (`side`), a nave fica PRESA à pista; "drop" = estrada (descida/subida
+ * íngreme, espiral) em que a nave não decola — a antigravidade segura.
+ */
+                                                                 
 
                         
              
@@ -37,6 +42,10 @@ const BANK_K = 46
                                                                  
                            
                                                     
+                  
+                                                                              
+               
+                                                       
                   
  
 
@@ -70,6 +79,12 @@ const BANK_K = 46
               
  
 
+/** Trecho (início e fim em s). */
+                       
+            
+            
+ 
+
                         
             
                
@@ -86,8 +101,13 @@ const BANK_K = 46
                     
                                                        
                     
-                                       
+                                                                                             
                   
+                                                                                                               
+                    
+                                                        
+                 
+                                 
                 
              
              
@@ -107,6 +127,11 @@ const BANK_K = 46
               
               
                
+                                                                
+               
+                                 
+              
+                 
  
 
 const DEG = Math.PI / 180
@@ -129,6 +154,10 @@ function wrapS(t       , s        )         {
            
            
               
+                                                                       
+              
+                                 
+            
  
 
 function buildTrack(def          )        {
@@ -150,6 +179,29 @@ function buildTrack(def          )        {
     const turn = (p.turn ?? 0) * DEG
     const dy = p.dy ?? 0
     const y0 = y
+    if (kind === "loop") {
+      // volta vertical: frente R·senθ, cima R·(1−cosθ), de lado suave até `side`
+      const R = p.len / (2 * Math.PI)
+      const side = p.side ?? 22
+      const x0 = x
+      const z0 = z
+      const fx = Math.sin(yaw)
+      const fz = Math.cos(yaw)
+      const rx = Math.cos(yaw)
+      const rz = -Math.sin(yaw)
+      for (let k = 0; k < n; k++) {
+        const tt = (k + 1) / n
+        const th = 2 * Math.PI * tt
+        const lat = side * smooth(tt)
+        x = x0 + fx * R * Math.sin(th) + rx * lat
+        z = z0 + fz * R * Math.sin(th) + rz * lat
+        y = y0 + R * (1 - Math.cos(th))
+        dense.push({ x, z, y, flag: 3, head: yaw, la: wrapAngle(th) })
+      }
+      y = y0
+      run += n * fine
+      return
+    }
     for (let k = 0; k < n; k++) {
       yaw += turn / n
       x += Math.sin(yaw) * fine
@@ -158,7 +210,7 @@ function buildTrack(def          )        {
       // estrada: sobe/desce suave (inclinação zero nas pontas); rampa: cada vez mais
       // íngreme (decola no fim); vão: linha reta até o pouso (só para referência).
       y = kind === "ramp" ? y0 + dy * tt * tt : kind === "gap" ? y0 + dy * tt : y0 + dy * smooth(tt)
-      dense.push({ x, z, y, flag: kind === "gap" ? 1 : kind === "ramp" ? 2 : 0 })
+      dense.push({ x, z, y, flag: kind === "gap" ? 1 : kind === "ramp" ? 2 : kind === "drop" ? 4 : 0, head: yaw, la: 0 })
     }
     run += n * fine
   })
@@ -183,6 +235,11 @@ function buildTrack(def          )        {
         z: h00 * ez + h10 * t0.z + h11 * t1.z,
         y: ey + (def.startY - ey) * smooth(t),
         flag: 0,
+        head: Math.atan2(
+          (6 * t * t - 6 * t) * ex + (3 * t * t - 4 * t + 1) * t0.x + (3 * t * t - 2 * t) * t1.x,
+          (6 * t * t - 6 * t) * ez + (3 * t * t - 4 * t + 1) * t0.z + (3 * t * t - 2 * t) * t1.z,
+        ),
+        la: 0,
       })
     }
   }
@@ -190,11 +247,14 @@ function buildTrack(def          )        {
   const cum = new Float64Array(dense.length + 1)
   let px = 0
   let pz = 0
+  let py = def.startY
   for (let i = 0; i < dense.length; i++) {
     const d = dense[i]
-    cum[i + 1] = cum[i] + Math.hypot(d.x - px, d.z - pz)
+    // no loop o comprimento é o de verdade (a pista sobe na vertical)
+    cum[i + 1] = cum[i] + (d.flag === 3 ? Math.hypot(d.x - px, d.z - pz, d.y - py) : Math.hypot(d.x - px, d.z - pz))
     px = d.x
     pz = d.z
+    py = d.y
   }
   const total = cum[dense.length]
   const n = Math.round(total / STEP)
@@ -213,6 +273,9 @@ function buildTrack(def          )        {
     bank: new Float32Array(n),
     curv: new Float32Array(n),
     flag: new Uint8Array(n),
+    loop: new Float32Array(n),
+    tunnels: [],
+    loops: [],
     startS: def.startS,
     pads: [],
     orbs: [],
@@ -223,10 +286,11 @@ function buildTrack(def          )        {
   /** Posição na volta (m) de uma distância da tartaruga (antes da reamostragem). */
   const toS = (d        ) => Math.min(length - STEP, d / scale)
   let j = 0
+  const head = new Float32Array(n)
   for (let i = 0; i < n; i++) {
     const want = i * STEP * scale
     while (j < dense.length - 1 && cum[j + 1] < want) j++
-    const a = j === 0 ? { x: 0, z: 0, y: def.startY, flag: dense[0].flag } : dense[j - 1]
+    const a = j === 0 ? { x: 0, z: 0, y: def.startY, flag: dense[0].flag, head: 0, la: 0 } : dense[j - 1]
     const b = dense[j]
     const span = cum[j + 1] - cum[j] || 1
     const f = Math.min(1, Math.max(0, (want - cum[j]) / span))
@@ -234,6 +298,8 @@ function buildTrack(def          )        {
     T.z[i] = a.z + (b.z - a.z) * f
     T.y[i] = a.y + (b.y - a.y) * f
     T.flag[i] = b.flag
+    head[i] = a.head + wrapAngle(b.head - a.head) * f
+    T.loop[i] = b.flag === 3 ? a.la + wrapAngle(b.la - a.la) * f : 0
   }
   // rumo, inclinação e curvatura por diferenças centradas
   for (let i = 0; i < n; i++) {
@@ -242,6 +308,17 @@ function buildTrack(def          )        {
     T.yaw[i] = Math.atan2(T.x[q] - T.x[p], T.z[q] - T.z[p])
     T.slope[i] = (T.y[q] - T.y[p]) / (2 * STEP)
   }
+  // mm3d-74: no loop (e encostado nele) o rumo é o da tartaruga — a tangente
+  // vira para trás no alto — e a inclinação "da estrada" não existe
+  const nearLoop = (i        , m        ) => {
+    for (let k = -m; k <= m; k++) if (T.flag[(i + k + n) % n] === 3) return true
+    return false
+  }
+  for (let i = 0; i < n; i++)
+    if (nearLoop(i, 2)) {
+      T.yaw[i] = head[i]
+      if (T.flag[i] === 3) T.slope[i] = 0
+    }
   // na ponta da rampa a diferença é para trás (a da frente já é o vão) e, no
   // vão, a inclinação "da pista" é a da rampa que acabou (o voo é balístico)
   for (let i = 0; i < n; i++) {
@@ -271,6 +348,12 @@ function buildTrack(def          )        {
     for (let k = -win2; k <= win2; k++) c += raw[(i + k + n) % n]
     T.bank[i] = c / (2 * win2 + 1)
   }
+  // o loop é reto (sem inclinação lateral); some aos poucos na entrada e na saída
+  for (let i = 0; i < n; i++) {
+    let d = 99
+    for (let k = -15; k <= 15; k++) if (T.flag[(i + k + n) % n] === 3) d = Math.min(d, Math.abs(k))
+    if (d < 99) T.bank[i] *= Math.min(1, d / 15)
+  }
   for (let i = 0; i < n; i++) {
     const b = T.bounds
     b.x0 = Math.min(b.x0, T.x[i])
@@ -293,6 +376,8 @@ function buildTrack(def          )        {
     }
     for (const [at, u] of p.orbs ?? []) T.orbs.push({ id: orbId++, s: toS(base + at), u })
     for (const at of p.gates ?? []) T.gates.push(toS(base + at))
+    if (p.tunnel) T.tunnels.push({ s0: toS(base), s1: toS(base + p.len) })
+    if (p.kind === "loop") T.loops.push({ s0: toS(base), s1: toS(base + p.len), r: p.len / (2 * Math.PI) })
     if (p.kind === "gap") {
       const prev = def.pieces[m.i - 1]
       const ramp = prev && prev.kind === "ramp" ? prev.len : 0
@@ -321,6 +406,9 @@ function trackAt(t       , s        , out             )             {
   // vão: só quando as duas amostras são vão (as bordas ainda têm chão)
   o.gap = t.flag[i] === 1 && t.flag[k] === 1
   o.ramp = t.flag[i] === 2
+  o.inLoop = t.flag[i] === 3 || t.flag[k] === 3
+  o.glue = o.inLoop || t.flag[i] === 4 || t.flag[k] === 4
+  o.loop = o.inLoop ? t.loop[i] + wrapAngle(t.loop[k] - t.loop[i]) * f : 0
   return o
 }
 
@@ -361,6 +449,155 @@ const BAIA           = {
     { len: 110, dy: 10, orbs: [[40, -5], [40, 5]] },
     { len: 150, turn: 50 },
   ],
+}
+
+// ── sim/circuits.ts ──────────────────────────────────────────────────────────
+// features/meu-mundo/corrida/sim/circuits.ts — CORRIDA (mm3d-74): o CATÁLOGO de circuitos.
+//
+// Pedido do Alex (prompt da expansão + referências em Downloads/PISTAS): 6
+// pistas — a Baía Suspensa de sempre e mais 5, com quedas grandes, loops,
+// túneis holográficos, espirais e saltos. Aqui só a REGRA de cada uma (peças
+// da tartaruga de track.ts); nome, ambiente, cores e cartão ficam no desenho
+// (engine/circuit-art.ts). O servidor roda este mesmo arquivo (gerado por
+// scripts/build-corrida-sim.js no back): mudou → regerar e commitar os dois.
+//
+// Todas com 18 m de largura e as mesmas regras de nave. Curvas com raio ≥ ~55
+// m onde se passa rápido; loop sempre depois de reta (a nave entra alinhada).
+
+/** Abismo Vermelho — cânion: curvas na borda, túnel suspenso, a grande descida e o salto. */
+const ABISMO           = {
+  id: "abismo-vermelho",
+  width: 18,
+  startY: 70,
+  startS: 40,
+  pieces: [
+    { len: 170, pads: [[110, 0]], gates: [40], orbs: [[75, -5], [75, 5]] },
+    { len: 270, turn: 117 },
+    { len: 70, turn: -48, orbs: [[35, -4]] },
+    { len: 120, turn: 95, orbs: [[60, 4]] },
+    { len: 120, tunnel: true, pads: [[60, 0]] },
+    { len: 100, tunnel: true, gates: [50] },
+    { len: 230, dy: -62, kind: "drop", orbs: [[120, 0]] },
+    { len: 90, pads: [[20, -1], [20, 1]] },
+    { len: 55, dy: 9, kind: "ramp" },
+    { len: 125, dy: -14, kind: "gap" },
+    { len: 90, gates: [45] },
+    { len: 155, turn: 125, dy: 30, pads: [[110, 0]] },
+    { len: 310, dy: 26, orbs: [[150, -5], [150, 5]] },
+    { len: 360, turn: 71, dy: 12 },
+  ],
+}
+
+/** Floresta Espectral — túnel largo entre as árvores, pontes no alto e a espiral que desce. */
+const FLORESTA           = {
+  id: "floresta-espectral",
+  width: 18,
+  startY: 46,
+  startS: 40,
+  pieces: [
+    { len: 160, pads: [[100, 0]], gates: [40], orbs: [[70, -5], [70, 5]] },
+    { len: 116, turn: -92 },
+    { len: 170, tunnel: true, orbs: [[85, 0]] },
+    { len: 72, tunnel: true, turn: -49 },
+    { len: 140, dy: 18, gates: [70] },
+    { len: 85, turn: 5, orbs: [[40, 4]] },
+    // a espiral: uma volta inteira descendo (a pista passa por baixo dela mesma)
+    { len: 480, turn: -360, dy: -44, kind: "drop", pads: [[240, 0]] },
+    { len: 110, orbs: [[55, -4], [55, 4]] },
+    { len: 170, dy: -26, kind: "drop" },
+    { len: 217, turn: -115, pads: [[120, -1]] },
+    { len: 324, dy: 22, orbs: [[160, 0]] },
+    { len: 426, turn: -109, dy: 30 },
+  ],
+}
+
+/** Neon Overdrive — megacidade: o loop entre os prédios, túnel e a descida rumo ao centro. */
+const NEON           = {
+  id: "neon-overdrive",
+  width: 18,
+  startY: 80,
+  startS: 40,
+  pieces: [
+    { len: 190, pads: [[120, 0]], gates: [40], orbs: [[80, -5], [80, 5]] },
+    { len: 170, turn: 85 },
+    { len: 110, pads: [[30, 0]] },
+    { len: 150, kind: "loop", side: 22 },
+    { len: 110, tunnel: true, orbs: [[55, 0]] },
+    { len: 160, turn: 80, tunnel: true },
+    { len: 240, dy: -58, kind: "drop", pads: [[170, 0]] },
+    { len: 140, gates: [70], orbs: [[60, -5], [60, 5]] },
+    { len: 160, turn: 90 },
+    { len: 230, dy: 48, orbs: [[110, 0]] },
+    { len: 200, turn: 95, dy: 10 },
+  ],
+}
+
+/** Tempestade Oceânica — longas curvas sobre o mar, plataformas ligadas por saltos, túnel. */
+const TEMPESTADE           = {
+  id: "tempestade-oceanica",
+  width: 18,
+  startY: 26,
+  startS: 40,
+  pieces: [
+    { len: 170, pads: [[110, 0]], gates: [40], orbs: [[75, -5], [75, 5]] },
+    // a grande curva inclinada exposta ao mar
+    { len: 330, turn: 175, dy: 8, orbs: [[165, 4]] },
+    { len: 140, tunnel: true, pads: [[70, 0]] },
+    { len: 120, turn: -50 },
+    { len: 120, turn: 50, orbs: [[60, -4]] },
+    { len: 70, pads: [[10, -1], [10, 1]] },
+    { len: 45, dy: 6, kind: "ramp" },
+    { len: 75, dy: -10, kind: "gap" },
+    { len: 90, gates: [45] },
+    { len: 180, turn: 90, dy: -4 },
+    { len: 150, tunnel: true, orbs: [[75, 0]] },
+    { len: 180, turn: 92 },
+  ],
+}
+
+/** Forja Infinita — dentro da máquina: túnel interno, o loop gigante, subida e a queda. */
+const FORJA           = {
+  id: "forja-infinita",
+  width: 18,
+  startY: 56,
+  startS: 40,
+  pieces: [
+    { len: 160, pads: [[100, 0]], gates: [40], orbs: [[70, -5], [70, 5]] },
+    { len: 160, turn: -85, tunnel: true },
+    { len: 130, tunnel: true, pads: [[90, 0]] },
+    { len: 200, kind: "loop", side: -24 },
+    { len: 100, gates: [50], orbs: [[50, 0]] },
+    { len: 180, dy: 40 },
+    { len: 170, turn: -90 },
+    { len: 210, dy: -66, kind: "drop", pads: [[150, 0]] },
+    { len: 110, orbs: [[55, -5], [55, 5]] },
+    { len: 170, turn: -85, tunnel: true },
+    { len: 60, pads: [[10, 0]] },
+    { len: 50, dy: 8, kind: "ramp" },
+    { len: 90, dy: -12, kind: "gap" },
+    { len: 200, turn: -95, dy: 10 },
+  ],
+}
+
+/** As 6 pistas na ordem do cardápio. A primeira é a padrão (a Baía Suspensa). */
+const TRACK_DEFS                      = [BAIA, ABISMO, FLORESTA, NEON, TEMPESTADE, FORJA]
+const DEFAULT_TRACK = BAIA.id
+
+/** Definição pelo id (desconhecido = a padrão). */
+function trackDefOf(id                           )           {
+  return TRACK_DEFS.find((d) => d.id === id) ?? BAIA
+}
+
+const builtTracks = new Map               ()
+/** Pista montada (uma vez por id). */
+function trackOf(id                           )        {
+  const def = trackDefOf(id)
+  let t = builtTracks.get(def.id)
+  if (!t) {
+    t = buildTrack(def)
+    builtTracks.set(def.id, t)
+  }
+  return t
 }
 
 // ── sim/race.ts ──────────────────────────────────────────────────────────────
@@ -757,8 +994,9 @@ class Race {
       const g = inp.throttle > 0 ? TUNING.glideGravity : TUNING.gravity
       c.vy -= g * dt
       c.Y += c.vy * dt
-      if (!q.gap && c.Y <= ground) {
-        if (c.Y < ground - 2.2) {
+      // mm3d-74: entrar no ar num trecho preso (loop, queda) = a pista puxa a nave
+      if (!q.gap && (c.Y <= ground || q.glue)) {
+        if (!q.glue && c.Y < ground - 2.2) {
           this.fall(c, out) // passou por baixo da pista
           return
         }
@@ -781,7 +1019,7 @@ class Race {
       const vy = c.v * p.slope
       const bankDrop = surfaceY(q, c.u) - q.y - (surfaceY(p, uFrom) - p.y)
       const next = c.Y + vy * dt - 0.5 * TUNING.gravity * dt * dt + Math.min(0, bankDrop)
-      if (q.gap || next > ground + 0.04) {
+      if (!q.glue && (q.gap || next > ground + 0.04)) {
         c.air = true
         c.vy = vy
         c.Y = next
@@ -1052,9 +1290,10 @@ function carPose(race      , c     , out         )          {
   out.z = w.z
   out.y = c.Y
   out.yaw = c.yaw
-  out.pitch = c.air ? Math.max(-0.45, Math.min(0.35, Math.atan2(c.vy, Math.max(8, c.v)) * 0.7)) : Math.atan(p.slope)
+  // mm3d-74: no loop a nave gira junto com a pista (nariz para cima até a volta inteira)
+  out.pitch = p.inLoop ? p.loop : c.air ? Math.max(-0.45, Math.min(0.35, Math.atan2(c.vy, Math.max(8, c.v)) * 0.7)) : Math.atan(p.slope)
   out.roll = (c.air ? 0 : p.bank) + c.steerNow * Math.min(1, c.v / 30) * 0.16
   return out
 }
 
-module.exports = { STEP, BANK_MAX, BANK_K, wrapAngle, wrapS, buildTrack, trackAt, surfaceY, worldAt, BAIA, TUNING, SHIPS, DEFAULT_SHIP, shipOf, CAR_COLORS, Race, carPose };
+module.exports = { STEP, BANK_MAX, BANK_K, wrapAngle, wrapS, buildTrack, trackAt, surfaceY, worldAt, BAIA, ABISMO, FLORESTA, NEON, TEMPESTADE, FORJA, TRACK_DEFS, DEFAULT_TRACK, trackDefOf, trackOf, TUNING, SHIPS, DEFAULT_SHIP, shipOf, CAR_COLORS, Race, carPose };

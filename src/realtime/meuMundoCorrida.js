@@ -27,7 +27,7 @@ const { schema, t } = require("@colyseus/schema");
 const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const presence = require("./meuMundoPresence");
-const { Race, TUNING, BAIA, SHIPS, buildTrack, shipOf } = require("../utils/meuMundoCorrida");
+const { Race, TUNING, SHIPS, shipOf, trackOf, trackDefOf } = require("../utils/meuMundoCorrida");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.corrida");
@@ -46,7 +46,7 @@ const MAX_RACE_S = 420;
 /** Prazos (a suíte e2e encurta). */
 const timing = { lobbyMs: 60000, closeMs: 20000 };
 
-const TRACK = buildTrack(BAIA);
+// mm3d-74: cada sala corre UM circuito (o que a pessoa escolheu; filtro do matchMaker)
 
 const CrPlayer = schema(
   {
@@ -83,6 +83,8 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 class CorridaRoom extends Room {
   async onCreate(options) {
     this.centerRoomId = String(options.centerRoomId || "");
+    this.trackId = trackDefOf(options.track).id;
+    this.track = trackOf(this.trackId);
     this.maxClients = CARS;
     this.patchRate = 50;
     this.seatReservationTimeout = 15;
@@ -101,7 +103,7 @@ class CorridaRoom extends Room {
     this.onMessage("o", (client, msg) => this.onOrb(client, msg));
     this.onMessage("ping", (client, msg) => this.onPing(client, msg));
     this.setSimulationInterval((dt) => this.loop(dt), TICK_MS);
-    log.info("corrida.create", { roomId: this.roomId });
+    log.info("corrida.create", { roomId: this.roomId, track: this.trackId });
   }
 
   async onJoin(client, options) {
@@ -228,7 +230,7 @@ class CorridaRoom extends Room {
     const maxAdv = TUNING.boostMax * 1.6 * dt + 230;
     if (r.dist > c.dist + maxAdv) r.dist = c.dist + maxAdv;
     if (r.dist < c.dist - 40) r.dist = c.dist - 40;
-    const half = TRACK.width / 2;
+    const half = this.track.width / 2;
     r.u = Math.max(-half, Math.min(half, r.u));
     r.Y = Math.max(-120, Math.min(200, r.Y));
     r.v = Math.max(0, Math.min(TUNING.boostMax * 1.2, r.v));
@@ -267,7 +269,7 @@ class CorridaRoom extends Room {
     const taken = new Set(seats.map((x) => x.ship));
     const spare = [...SHIPS.filter((x) => !taken.has(x.id)), ...SHIPS].map((x) => x.id);
     for (let i = 0; seats.length < CARS; i++) seats.push({ name: "", kind: "bot", ship: spare[i % spare.length] });
-    this.race = new Race({ track: TRACK, seats, me: -1, seed: (Date.now() & 0xffff) | 1 });
+    this.race = new Race({ track: this.track, seats, me: -1, seed: (Date.now() & 0xffff) | 1 });
     // mm3d-59: prática medida pela sala
     this.meter = new PracticeMeter("corrida", `corrida:${this.roomId}:${Date.now()}`, log);
     const pub = this.race.cars.map((c) => ({ name: c.name, human: c.kind !== "bot", ship: c.ship }));
@@ -278,7 +280,7 @@ class CorridaRoom extends Room {
     void this.lock();
     for (const client of this.clients) {
       const s = this.seats.get(client.sessionId);
-      if (s) client.send("start", { me: s.car, seats: pub });
+      if (s) client.send("start", { me: s.car, seats: pub, track: this.trackId });
     }
     log.info("corrida.start", { roomId: this.roomId, people: people.length });
   }
@@ -343,14 +345,14 @@ class CorridaRoom extends Room {
 
 let ready = false;
 function define(gameServer) {
-  gameServer.define(CORRIDA_ROOM, CorridaRoom).filterBy(["centerRoomId"]).sortBy({ clients: -1 });
+  gameServer.define(CORRIDA_ROOM, CorridaRoom).filterBy(["centerRoomId", "track"]).sortBy({ clients: -1 });
   ready = true;
 }
 
 /** Reserva o lugar numa largada do centro em que a pessoa está (quem chama já conferiu papel, centro e porta). */
-async function reserveCorridaSeat({ userId, name, centerRoomId, ship }) {
+async function reserveCorridaSeat({ userId, name, centerRoomId, ship, track }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name, ship: shipOf(ship).id };
+  const options = { centerRoomId, userId, name, ship: shipOf(ship).id, track: trackDefOf(track).id };
   let last = null;
   for (let i = 0; i < 4; i++) {
     try {

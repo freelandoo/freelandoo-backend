@@ -79,7 +79,7 @@ async function paintJoin(req, res) {
 
 // Corrida em grupo (mm3d-39b): lugar na próxima largada do centro em que a pessoa está (com a nave da garagem, mm3d-49).
 async function corridaJoin(req, res) {
-  return reply(res, await MeuMundoService.joinCorrida(req.user.id_user, { ship: req.body?.ship }));
+  return reply(res, await MeuMundoService.joinCorrida(req.user.id_user, { ship: req.body?.ship, track: req.body?.track }));
 }
 
 // Rolê Noturno em grupo (mm3d-42): lugar na próxima largada, com o veículo escolhido.

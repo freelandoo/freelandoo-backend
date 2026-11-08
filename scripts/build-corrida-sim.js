@@ -16,7 +16,7 @@ const { stripTypeScriptTypes } = require("node:module");
 const SIM = path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/corrida/sim");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoCorrida.js");
 // Ordem de dependência (cada um só usa os de cima).
-const MODULES = ["track", "race"];
+const MODULES = ["track", "circuits", "race"];
 
 function build() {
   const exported = [];

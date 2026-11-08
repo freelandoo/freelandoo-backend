@@ -122,8 +122,8 @@ async function mkUser(pool, tag) {
     const s = [...room.sim.values()].find((x) => x.userId === u);
     Object.assign(s.body, { x: DOOR.x + dx, z: DOOR.z });
   }
-  async function join(u, ship) {
-    const out = await Service.joinCorrida(u, { ship });
+  async function join(u, ship, track) {
+    const out = await Service.joinCorrida(u, { ship, track });
     if (out.error) return { out };
     const room = await consume(out);
     const box = { out, room, welcome: null, start: null, snaps: 0, last: null, deny: [], replaced: false, code: null };
@@ -169,6 +169,19 @@ async function mkUser(pool, tag) {
   check("trancada: quem chega depois vai para outra largada", Cx.room && Cx.room.roomId !== A.room.roomId && Cx.room.state.phase === "lobby");
   check("sozinho depois do prazo: 1 pessoa + 5 computadores", (await until(() => Cx.start, 4000)) && Cx.start.seats.filter((s) => !s.human).length === 5);
   await bye(Cx.room);
+
+  // ── mm3d-74: cada circuito tem a sua largada ───────────────────────────────
+  const N1 = await join(users[3], undefined, "neon-overdrive");
+  const N2 = await join(users[4], undefined, "neon-overdrive");
+  const Bx = await join(users[5], undefined, "pista-que-nao-existe");
+  check("circuito: quem escolhe a mesma pista cai na mesma largada", N1.room && N2.room && N1.room.roomId === N2.room.roomId);
+  check("…pista diferente = outra largada (desconhecida vira a Baía)", Bx.room && Bx.room.roomId !== N1.room.roomId && roomOf(Bx.room.roomId).trackId === "baia-suspensa");
+  check("…a sala corre a pista escolhida", roomOf(N1.room.roomId).trackId === "neon-overdrive");
+  check(
+    "…e a largada diz a pista (o servidor monta a corrida nela)",
+    (await until(() => N1.start && Bx.start, 4000)) && N1.start.track === "neon-overdrive" && Bx.start.track === "baia-suspensa" && roomOf(N1.room.roomId).race.track.id === "neon-overdrive"
+  );
+  for (const b of [N1, N2, Bx]) await bye(b.room);
 
   const r = roomOf(A.room.roomId);
   r.race.time = -0.01; // pula a contagem
