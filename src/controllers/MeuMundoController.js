@@ -147,7 +147,7 @@ async function life(req, res) {
 }
 
 async function lifeActivity(req, res) {
-  return reply(res, await MeuMundoLifeService.setActivity(req.user.id_user, req.body?.activity, req.body?.hours, req.body?.place));
+  return reply(res, await MeuMundoLifeService.setActivity(req.user.id_user, req.body?.activity, req.body?.hours, req.body?.place, req.body?.station));
 }
 
 // mm3d-59: aventura (XP, recibos) e luta conferida pelo servidor.

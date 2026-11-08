@@ -207,7 +207,8 @@ const ATTR = Object.freeze({
   MAX: 1000,
   CURVE_AT: 1100,
   CURVE_MIN: 0.02,
-  GAIN_H: { studyInt: 1.6, trainStr: 2.0, trainSpd: 1.4, workInt: 0.2 },
+  // B10: trainAcc = o saco de pancada treina a acurácia (B7).
+  GAIN_H: { studyInt: 1.6, trainStr: 2.0, trainSpd: 1.4, workInt: 0.2, trainAcc: 1.6 },
   USEFUL_H: { studying: 5, training: 4 },
   OVER_FACTOR: 0.05,
   REGAIN: 2,
@@ -277,6 +278,44 @@ const PLACE_RULES = Object.freeze({
   escola: Object.freeze({ mul: 1, feeH: 0 }),
   igreja: Object.freeze({ mul: 1, feeH: 0 }),
 });
+// ═══ APARELHOS E CURSOS POR NÍVEL (B10, 2026-11-08; decisão pela recomendação da FILA) ═══
+// Dentro do prédio a pessoa escolhe ONDE treina/estuda. Cada aparelho tem níveis
+// travados pelo próprio atributo (só pega o nível com o mínimo) e rende mais por hora
+// quanto mais alto (`mul` multiplica o ganho-base; o orçamento do dia continua igual,
+// então quem treina pesado bate o teto antes — nunca passa dele).
+//  • pesos   → força         · esteira → velocidade (velocidade máxima travada pela velocidade)
+//  • saco    → velocidade + acurácia (um nível só; o atributo novo do B7)
+//  • curso (universidade) e livro (biblioteca/escola) → inteligência; a escola vai até o nível 2
+// Sem aparelho (servidor/tela antigos) = o treino de sempre (força + velocidade).
+const TIER_MIN = Object.freeze([0, 150, 300, 500, 750]);
+const TIER_MUL = Object.freeze([1, 1.15, 1.3, 1.45, 1.6]);
+const STATIONS = Object.freeze({
+  weights: Object.freeze({ kind: "training", attr: "strength", places: Object.freeze(["academia"]), maxTier: 5 }),
+  treadmill: Object.freeze({ kind: "training", attr: "speed", places: Object.freeze(["academia"]), maxTier: 5 }),
+  bag: Object.freeze({ kind: "training", attr: null, places: Object.freeze(["academia"]), maxTier: 1 }),
+  course: Object.freeze({ kind: "studying", attr: "intelligence", places: Object.freeze(["universidade"]), maxTier: 5 }),
+  book: Object.freeze({ kind: "studying", attr: "intelligence", places: Object.freeze(["biblioteca", "escola"]), maxTier: 5, placeMax: Object.freeze({ escola: 2 }) }),
+});
+/** "weights:3" → { id, tier }; inválido = null. */
+function parseStation(raw) {
+  const m = /^([a-z]+)(?::([1-9]))?$/.exec(String(raw || ""));
+  if (!m || !STATIONS[m[1]]) return null;
+  return { id: m[1], tier: m[2] ? Number(m[2]) : 1 };
+}
+/** Pode usar o aparelho/curso? Devolve o código do erro ou null. */
+function stationBlock(s, kind, place, raw) {
+  if (raw == null || raw === "") return null;
+  const st = parseStation(raw);
+  if (!st) return "station";
+  const def = STATIONS[st.id];
+  if (def.kind !== kind || !def.places.includes(place)) return "station";
+  const max = Math.min(def.maxTier, (def.placeMax && def.placeMax[place]) || def.maxTier);
+  if (st.tier > max) return "station";
+  if (def.attr && (Number(s[def.attr]) || 0) < TIER_MIN[st.tier - 1]) return "tier";
+  return null;
+}
+const stationMul = (st) => TIER_MUL[(st ? st.tier : 1) - 1] || 1;
+
 // Cardápio dos restaurantes do centro (mm3d-37c): pede no balcão e come na
 // hora (vale a refeição como qualquer prato). Comprar para a geladeira é só
 // no supermercado.
@@ -871,13 +910,21 @@ function stepState(s, t, dt, events, out) {
   const disc = (0.7 + 0.6 * p.discipline) * lt.discipline;
   const useful = usefulHours(s, kind, dt);
   const at = PLACE_RULES[s.activity.place]?.mul ?? 1;
-  if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * at * (stim ? 1.15 : 1), t);
+  // B10: o aparelho/curso escolhido (sem = o de sempre) e o rendimento do nível
+  const station = s.activity.station ? parseStation(s.activity.station) : null;
+  const sm = stationMul(station);
+  if (kind === "studying") gain(s, "intelligence", ATTR.GAIN_H.studyInt * useful * disc * focus * at * (stim ? 1.15 : 1) * sm, t);
   if (kind === "training") {
     const pre = effectOn(s, "preworkout", t) ? 1.15 : 1;
     const creat = effectOn(s, "creatine", t) ? 1.1 : 1;
     const prot = protein === 1.4 ? 1.25 : protein === 1.25 ? 1.15 : 1;
-    gain(s, "strength", ATTR.GAIN_H.trainStr * useful * disc * focus * prot * pre * creat * (anab ? 2 : 1), t);
-    gain(s, "speed", ATTR.GAIN_H.trainSpd * useful * disc * focus * pre, t);
+    const sid = station ? station.id : null;
+    if (!sid || sid === "weights") gain(s, "strength", ATTR.GAIN_H.trainStr * useful * disc * focus * prot * pre * creat * (anab ? 2 : 1) * sm, t);
+    if (!sid || sid === "treadmill") gain(s, "speed", ATTR.GAIN_H.trainSpd * useful * disc * focus * pre * sm, t);
+    if (sid === "bag") {
+      gain(s, "speed", ATTR.GAIN_H.trainSpd * 0.6 * useful * disc * focus * pre, t);
+      gain(s, "accuracy", ATTR.GAIN_H.trainAcc * useful * disc * focus, t);
+    }
   }
   if (kind === "working") {
     gain(s, "intelligence", ATTR.GAIN_H.workInt * dt * focus, t);
@@ -1116,7 +1163,7 @@ function atBoundary(s, t, events, out) {
   const a = s.activity;
   if (a.until && a.until <= t) {
     if ((a.kind === "sleeping" || a.kind === "lying") && a.resume && a.resume.until > t) {
-      s.activity = { kind: a.resume.kind, startedAt: t, until: a.resume.until, bed: null, resume: null, place: a.resume.place || null };
+      s.activity = { kind: a.resume.kind, startedAt: t, until: a.resume.until, bed: null, resume: null, place: a.resume.place || null, station: a.resume.station || null };
     } else {
       s.activity = { kind: "idle", startedAt: t, until: null, bed: null, resume: null };
     }
@@ -1181,7 +1228,7 @@ function routine(s, t, events, out) {
   if (leftH < ROUTINE.MIN_LEFT_H) return;
   const pause = (kind, h, reason) => {
     const until = t + Math.min(h, leftH) * HOUR;
-    s.activity = { kind, startedAt: t, until, bed: null, resume: { kind: a.kind, until: a.until, place: a.place || null } };
+    s.activity = { kind, startedAt: t, until, bed: null, resume: { kind: a.kind, until: a.until, place: a.place || null, station: a.station || null } };
     if (kind === "sleeping") s.zeroEnergyH = 0;
     events.push({ at: t, kind: "routine_pause", data: { during: a.kind, pause: kind, reason, hours: r2(Math.min(h, leftH)) } });
   };
@@ -1390,7 +1437,7 @@ function noteSleep(s, t) {
  * o jogo fechado). Deitar e dormir pedem `bed` (a sala da casa confere a
  * cama); sem cama, o serviço recusa antes de chegar aqui.
  */
-function startActivity(s, kind, hours, t, bed = null, place = null) {
+function startActivity(s, kind, hours, t, bed = null, place = null, station = null) {
   if (!ACTIVITIES.includes(kind) || kind === "hospital" || kind === "jail") return fail("activity");
   if (s.status !== "alive") return fail("dead");
   if (s.activity.kind === "hospital") return fail("hospital");
@@ -1404,13 +1451,17 @@ function startActivity(s, kind, hours, t, bed = null, place = null) {
   // Treino e estudo só no prédio (mm3d-37b): o serviço confere que a pessoa está lá.
   if (PLACES[kind] && !PLACES[kind].includes(place)) return fail("place");
   if (kind === "sleeping" && effectOn(s, "stim", t)) return fail("stimulated");
+  // B10: aparelho/curso escolhido (travado pelo atributo)
+  const blocked = PLACES[kind] ? stationBlock(s, kind, place, station) : null;
+  if (blocked) return fail(blocked);
   const range = ACTIVITY_HOURS[kind];
   let h = hours == null && kind === "lying" ? range[1] : Number(hours);
   if (!Number.isFinite(h) || h < range[0] || h > range[1]) return fail("hours");
   h = Math.round(h * 4) / 4;
-  s.activity = { kind, startedAt: t, until: t + h * HOUR, bed, resume: null, place: PLACES[kind] ? place : null };
+  const stationId = PLACES[kind] && station ? String(station) : null;
+  s.activity = { kind, startedAt: t, until: t + h * HOUR, bed, resume: null, place: PLACES[kind] ? place : null, station: stationId };
   if (kind === "sleeping") s.zeroEnergyH = 0;
-  return { ok: true, hours: h, events: [{ at: t, kind: "activity", data: { kind, hours: h, ...(PLACES[kind] ? { place } : {}) } }] };
+  return { ok: true, hours: h, events: [{ at: t, kind: "activity", data: { kind, hours: h, ...(PLACES[kind] ? { place } : {}), ...(stationId ? { station: stationId } : {}) } }] };
 }
 
 /**
@@ -1603,7 +1654,8 @@ function snapshot(s, t) {
       remainingH: a.until ? r2(Math.max(0, (a.until - t) / HOUR)) : null,
       inBed: !!a.bed,
       place: a.place || null,
-      resume: a.resume ? { kind: a.resume.kind, until: new Date(a.resume.until).toISOString(), place: a.resume.place || null } : null,
+      station: a.station || null,
+      resume: a.resume ? { kind: a.resume.kind, until: new Date(a.resume.until).toISOString(), place: a.resume.place || null, station: a.resume.station || null } : null,
     },
     effects: s.effects
       .filter((e) => e.until > t && e.id !== "pleasure")
@@ -1649,6 +1701,10 @@ function publicCatalog() {
   return {
     items: ITEMS.map((it) => ({ ...it, effect: it.effect ? { id: it.effect[0], hours: it.effect[1] } : null })),
     activityHours: ACTIVITY_HOURS,
+    // B10: aparelhos e cursos por nível (a tela escolhe; o servidor confere)
+    stations: Object.fromEntries(
+      Object.entries(STATIONS).map(([id, d]) => [id, { kind: d.kind, attr: d.attr, places: d.places, maxTier: d.maxTier, placeMax: d.placeMax || null, min: TIER_MIN.slice(0, d.maxTier), mul: TIER_MUL.slice(0, d.maxTier) }])
+    ),
     // Onde treinar e estudar (mm3d-37b), rendimento e hora de aula.
     places: { ...PLACES, rules: PLACE_RULES },
     // Cardápios (mm3d-37c) e onde se compra para a geladeira.
@@ -1689,6 +1745,11 @@ module.exports = {
   PACE,
   PLACES,
   PLACE_RULES,
+  STATIONS,
+  TIER_MIN,
+  TIER_MUL,
+  parseStation,
+  stationBlock,
   placeFee,
   MENUS,
   MARKET_PLACE,
