@@ -421,6 +421,8 @@ class MeuMundoLifeService {
           stress: snap.vitals.stress,
           vitality: snap.vitals.vitality,
         },
+        // O PODER (B7) no HUD, no lugar da barra de saúde (pedido do Alex)
+        power: power ?? null,
       });
       for (const n of notices) require("./MeuMundoInboxService").push(idUser, n);
       for (const r of care) presence.send(idUser, "receipt", r);
