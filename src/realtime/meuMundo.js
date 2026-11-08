@@ -496,6 +496,8 @@ class BairroRoom extends Room {
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
     if (typeof life.look === "string") p.look = roomLook(p.body, life.look);
     if (life.height > 0) p.h = Math.round(life.height * 100);
+    // mm3d-72: a personalidade e o afeto (o psicopata puxa briga com monstro na rua)
+    if (life.soul && typeof life.soul.temper === "string") s.soul = { temper: life.soul.temper, aff: Number(life.soul.affection) || 0 };
   }
 
   onLeave(client) {
@@ -890,11 +892,11 @@ class BairroRoom extends Room {
   // recebe "mcatch" e a luta abre sozinha no aparelho.
   tickMobs(now, dt) {
     const players = [];
-    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z, lv: s.adv || 0 });
+    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z, lv: s.adv || 0, soul: s.soul || null });
     const { changed, caught } = this.mobDirector.tick(now, players, dt);
     for (const c of caught) {
       const client = this.clients.find((k) => k.sessionId === c.sid);
-      if (client) client.send("mcatch", { id: c.id, kind: c.kind });
+      if (client) client.send("mcatch", { id: c.id, kind: c.kind, ...(c.psycho ? { psycho: true } : {}) });
     }
     if (changed || (this.mobDirector.mobs.size && now - this.mobSentAt >= 500)) {
       this.mobSentAt = now;

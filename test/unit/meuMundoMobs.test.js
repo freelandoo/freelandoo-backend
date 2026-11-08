@@ -171,3 +171,56 @@ test("vitória: vale para quem luta ou está perto; depois o monstro sai da list
   assert.equal(d.claim(n.id, n.x, n.z, "b"), null, "venceu a luta de outro");
   assert.equal(d.claim(n.id, n.x + 40, n.z, "a").id, n.id);
 });
+
+// mm3d-72: o psicopata puxa briga sozinho ao passar perto (sorteio por monstro; menos com afeto alto)
+function psychoTrial(seed, soul, dist) {
+  const d = make(seed);
+  let t = 0;
+  while (!d.mobs.size && t < 200_000) d.tick((t += 1000), [], 1);
+  const m = [...d.mobs.values()][0];
+  if (!m) return null;
+  // jogador de COSTAS para o monstro (fora do cone de visão): só a personalidade puxa briga
+  const p = { sid: "a", x: m.x + Math.sin(m.facing + Math.PI) * dist, z: m.z + Math.cos(m.facing + Math.PI) * dist, lv: 1, soul };
+  let caught = null;
+  for (let i = 0; i < 5 && !caught; i++) {
+    const r = d.tick((t += 50), [p], 0.05);
+    caught = r.caught.find((c) => c.sid === "a") || null;
+  }
+  return { caught, rolled: m.psychoRolled ? m.psychoRolled.size : 0 };
+}
+
+test("psicopata perto do monstro às vezes puxa briga (um sorteio por monstro); longe ou outra personalidade, não", () => {
+  let fights = 0;
+  let n = 0;
+  for (let seed = 1; seed <= 80; seed++) {
+    const r = psychoTrial(seed, { temper: "psicopata", aff: 0 }, 5);
+    if (!r) continue;
+    n++;
+    assert.ok(r.rolled <= 1, "um sorteio só por monstro e pessoa");
+    if (r.caught) {
+      fights++;
+      assert.equal(r.caught.psycho, true);
+    }
+  }
+  assert.ok(fights > 0 && fights < n, `${fights}/${n}`);
+  for (let seed = 1; seed <= 30; seed++) {
+    const far = psychoTrial(seed, { temper: "psicopata", aff: 0 }, MOBS.PSYCHO_R + 3);
+    if (far) assert.ok(!far.caught || !far.caught.psycho);
+    const calm = psychoTrial(seed, { temper: "bondoso", aff: 0 }, 5);
+    if (calm) assert.ok(!calm.caught || !calm.caught.psycho);
+  }
+});
+
+test("psicopata que gosta muito do dono quase nunca puxa briga", () => {
+  const count = (aff) => {
+    let f = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const r = psychoTrial(seed, { temper: "psicopata", aff }, 5);
+      if (r && r.caught && r.caught.psycho) f++;
+    }
+    return f;
+  };
+  const cold = count(0);
+  const warm = count(500);
+  assert.ok(warm < cold / 3, `${warm} vs ${cold}`);
+});

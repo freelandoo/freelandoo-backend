@@ -64,7 +64,20 @@ const MOBS = Object.freeze({
   SPAN: 56,
   NIGHT_FROM: 18,
   NIGHT_TO: 6,
+  /**
+   * mm3d-72 (regra do Alex): o PSICOPATA, ao passar perto de um monstro, às vezes
+   * puxa briga sozinho ("ah, vamos dar uma porrada naquele trouxa"). Um sorteio por
+   * monstro e pessoa; quanto mais ele gosta do dono, menor a chance.
+   */
+  PSYCHO_R: 8,
+  PSYCHO_P: 0.35,
+  PSYCHO_AFF_HALF: 50,
 });
+
+/** Chance do psicopata puxar briga com este afeto. */
+function psychoChance(aff) {
+  return MOBS.PSYCHO_P / (1 + Math.max(0, Number(aff) || 0) / MOBS.PSYCHO_AFF_HALF);
+}
 
 const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -218,6 +231,29 @@ class MobDirector {
       m.z = c.z;
       // rumo = a tangente da volta
       m.facing = m.a + (m.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      // mm3d-72: o psicopata que passa perto às vezes começa a briga (a luta abre na hora)
+      let psycho = null;
+      for (const p of players) {
+        if (!p.soul || p.soul.temper !== "psicopata" || this.calm.has(p.sid) || this.isEngaged(p.sid)) continue;
+        if (Math.hypot(p.x - m.x, p.z - m.z) > MOBS.PSYCHO_R) continue;
+        const key = p.sid;
+        if (!m.psychoRolled) m.psychoRolled = new Set();
+        if (m.psychoRolled.has(key)) continue;
+        m.psychoRolled.add(key);
+        if (this.rng() < psychoChance(p.soul.aff)) {
+          psycho = p;
+          break;
+        }
+      }
+      if (psycho) {
+        m.mode = "fight";
+        m.fightAt = now;
+        m.target = psycho.sid;
+        m.facing = Math.atan2(psycho.x - m.x, psycho.z - m.z);
+        caught.push({ sid: psycho.sid, id: m.id, kind: m.kind, psycho: true });
+        changed = true;
+        continue;
+      }
       // Alguém de frente para ele? Persegue o mais perto.
       let best = null;
       let bestD = MOBS.SIGHT;
