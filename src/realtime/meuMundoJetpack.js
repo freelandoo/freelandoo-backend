@@ -36,7 +36,8 @@ const { PracticeMeter } = require("./meuMundoPractice");
 const log = createLogger("meuMundo.jetpack");
 
 const JETPACK_ROOM = "jetpack";
-const SEATS = 6;
+// Regra do Alex (2026-11-08): o túnel é SEMPRE de 4 — você e mais 3 (pessoas ou computadores).
+const SEATS = 4;
 const CLOSE = { REPLACED: 4009, FORBIDDEN: 4003, ABUSE: 4029 };
 const TICK_MS = 50; // 20 Hz
 const MAX_MSG_PER_SEC = 45;
@@ -64,6 +65,12 @@ const SILENT_S = 8;
 
 /** Prazos (a suíte e2e encurta). */
 const timing = { lobbyMs: 60000, closeMs: 20000 };
+
+// ── COMPUTADORES (regra do Alex, 2026-11-08) ── sem "sozinho": toda largada espera até 1 minuto
+// e as vagas vazias viram computadores, rodados AQUI com a regra gerada do voo.
+const { JetpackBot } = require("../utils/meuMundoJetpackBot");
+const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
+const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
 
 const JtPlayer = schema(
   {
@@ -97,7 +104,8 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 class JetpackRoom extends Room {
   async onCreate(options) {
     this.centerRoomId = String(options.centerRoomId || "");
-    this.solo = !!options.solo;
+    // 2026-11-08: não existe mais sala sozinho (o aparelho antigo que pedir cai na de grupo)
+    this.solo = false;
     this.phase = phaseOf(options.phase);
     this.maxClients = this.solo ? 1 : SEATS;
     this.patchRate = 100;
@@ -266,13 +274,26 @@ class JetpackRoom extends Room {
   start() {
     if (this.startedAt) return;
     const seed = (Math.floor(Math.random() * 0x7fffffff) | 1) >>> 0;
+    // vagas vazias = computadores (nome de doce, corpo variado, velocidade e habilidade sorteadas)
+    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+    this.bots = [];
+    for (let i = 0; this.seats.size + this.bots.length < SEATS; i++) {
+      const used = new Set([...this.seats.values()].map((x) => x.slot).concat(this.bots.map((b) => b.slot)));
+      let slot = 0;
+      while (used.has(slot)) slot++;
+      const k = Math.round((0.9 + Math.random() * 0.3) * 1000) / 1000;
+      const bot = new JetpackBot({ seed, phase: this.phase, k, skill: 0.2 + Math.random() * 0.7, luck: (Math.random() * 0x7fffffff) | 1 });
+      this.bots.push({ slot, name: names[i % names.length], body: BOT_BODIES[i % BOT_BODIES.length], k, bot, run: { z: 0, x: 0, y: 4, f: 0, score: 0, cans: 0, alive: true, gone: false, by: "", time: 0 } });
+    }
     const seats = [...this.seats.values()]
       .sort((a, b) => a.slot - b.slot)
       .map((s) => {
         const p = [...this.state.players.values()].find((q) => q.slot === s.slot);
         s.run = { z: 0, x: 0, y: 4, f: 0, score: 0, cans: 0, alive: true, gone: false, by: "", time: 0, at: 0 };
         return { slot: s.slot, name: p ? p.name : "", body: s.body, look: s.look, k: s.k };
-      });
+      })
+      .concat(this.bots.map((b) => ({ slot: b.slot, name: b.name, body: b.body, look: "", k: b.k, bot: true })))
+      .sort((a, b) => a.slot - b.slot);
     this.startedAt = Date.now();
     // prática medida pela sala (quem bateu não manda pose = não conta)
     this.meter = new PracticeMeter("jetpack", `jetpack:${this.roomId}:${this.startedAt}`, log);
@@ -302,6 +323,14 @@ class JetpackRoom extends Room {
       const since = r.at || this.startedAt + COUNTDOWN_S * 1000;
       if (r.alive && now - since > SILENT_S * 1000) Object.assign(r, { alive: false, gone: true, time: this.state.time });
     }
+    // os computadores voam no relógio da sala
+    for (const b of this.bots || []) {
+      if (!b.run.alive) continue;
+      b.bot.advance(TICK_MS / 1000);
+      const p = b.bot.pose();
+      Object.assign(b.run, { z: p.z, x: p.x, y: p.y, f: p.f, score: p.score, cans: p.cans });
+      if (!p.alive) Object.assign(b.run, { alive: false, by: String(p.by).slice(0, 12), time: this.state.time });
+    }
     this.snapshot();
     const anyAlive = [...this.seats.values()].some((s) => s.run.alive);
     if (!anyAlive || this.state.time > MAX_RUN_S) this.finish();
@@ -309,9 +338,8 @@ class JetpackRoom extends Room {
 
   /** Todos a 20 Hz: [slot, z, x, y, bandeiras, pontos, vivo] por pessoa. */
   snapshot() {
-    if (this.solo) return; // sozinho: ninguém para ver
     const c = [];
-    for (const s of this.seats.values()) {
+    for (const s of [...this.seats.values(), ...(this.bots || [])]) {
       const r = s.run;
       c.push(s.slot, r2(r.z), r3(r.x), r3(r.y), r.f, r.score, r.alive ? 1 : r.gone ? 2 : 0);
     }
@@ -320,15 +348,16 @@ class JetpackRoom extends Room {
 
   finish() {
     if (this.meter) {
-      // vitória = quem foi mais longe (sozinho não tem vitória)
-      const best = this.solo ? null : [...this.seats.values()].filter((s) => s.run).sort((a, b) => b.run.z - a.run.z)[0];
-      this.meter.settle(null, new Set(best ? [best.userId] : []));
+      // vitória = quem foi mais longe no túnel (contando os computadores), se for uma pessoa
+      const best = [...this.seats.values(), ...(this.bots || [])].filter((s) => s.run).sort((a, b) => b.run.z - a.run.z)[0];
+      this.meter.settle(null, new Set(best && best.userId ? [best.userId] : []));
     }
     const rows = [...this.seats.values()]
       .map((s) => {
         const p = [...this.state.players.values()].find((q) => q.slot === s.slot);
         return { slot: s.slot, name: p ? p.name : "", score: s.run.score, dist: Math.floor(s.run.z), cans: s.run.cans, by: s.run.by, gone: s.run.gone };
       })
+      .concat((this.bots || []).map((b) => ({ slot: b.slot, name: b.name, score: b.run.score, dist: Math.floor(b.run.z), cans: b.run.cans, by: b.run.by, gone: false, bot: true })))
       .sort((a, b) => b.dist - a.dist || b.score - a.score);
     this.state.result = JSON.stringify({ rows, phase: this.phase });
     this.state.phase = "end";
@@ -349,8 +378,9 @@ function define(gameServer) {
 /** Reserva o lugar (quem chama já conferiu papel, centro e porta). `solo` = sala só da pessoa, larga na hora; `phase` = a fase. */
 async function reserveJetpackSeat({ userId, name, body, centerRoomId, solo = false, speed = 0, phase }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name, body, solo: !!solo, speed: Number(speed) || 0, phase: phaseOf(phase) };
-  if (solo) return matchMaker.create(JETPACK_ROOM, options);
+  // 2026-11-08: sem sala sozinho — todo mundo na largada em grupo da fase (computadores completam)
+  void solo;
+  const options = { centerRoomId, userId, name, body, solo: false, speed: Number(speed) || 0, phase: phaseOf(phase) };
   let last = null;
   for (let i = 0; i < 4; i++) {
     try {

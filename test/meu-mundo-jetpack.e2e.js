@@ -150,9 +150,9 @@ async function mkUser(pool, tag) {
   check("fora do centro: 409", street.statusCode === 409);
   for (let i = 0; i < 9; i++) nearDoor(users[i]);
 
-  // ── Sozinho: sala só sua, larga na hora ───────────────────────────────────
+  // ── 2026-11-08: não existe mais sozinho — pedir sozinho cai na espera em grupo e larga com computadores ──
   const S = await join(users[8], true);
-  check("sozinho: larga na hora (sem espera)", (await until(() => S.start, 2000)) && S.start.solo === true && S.start.seats.length === 1 && S.start.seed > 0);
+  check("pedir sozinho: espera e larga com 3 computadores (sempre 4)", (await until(() => S.start, 4000)) && S.start.solo === false && S.start.seats.length === 4 && S.start.seats.filter((x) => x.bot).length === 3 && S.start.seed > 0, JSON.stringify(S.start && S.start.seats));
   check("…sem fase pedida, voa o túnel original (mm3d-75)", S.start.phase === "industrial", String(S.start.phase));
   const bodyNow = await Storage.getBody(pool, users[8]);
   check(
@@ -175,7 +175,7 @@ async function mkUser(pool, tag) {
   check("passou o prazo: larga (contagem)", await until(() => A.room.state.phase === "countdown", 4000));
   check("start: cada um com a sua vaga", (await until(() => A.start && B.start)) && A.start.me === 0 && B.start.me === 1);
   check("…a MESMA semente para os dois, em grupo", A.start.seed === B.start.seed && A.start.seed > 0 && A.start.solo === false);
-  check("…2 vagas", A.start.seats.length === 2, JSON.stringify(A.start.seats));
+  check("…2 pessoas + 2 computadores (4 vagas)", A.start.seats.length === 4 && A.start.seats.filter((x) => x.bot).length === 2, JSON.stringify(A.start.seats));
   const Cx = await join(users[2]);
   check("trancada: quem chega depois vai para outra largada", Cx.room && Cx.room.roomId !== A.room.roomId && Cx.room.state.phase === "lobby");
   await bye(Cx.room);
@@ -193,7 +193,7 @@ async function mkUser(pool, tag) {
   const r = roomOf(A.room.roomId);
   r.startedAt -= 3000; // pula a contagem
   check("voo começa", await until(() => A.room.state.phase === "run"));
-  check("as poses chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 2 * 7);
+  check("as poses chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 4 * 7);
 
   pose(A, 30, { x: 2.5, s: 40 });
   check("pose normal: a sala acompanha", await until(() => Math.abs(seatOf(r, 0).run.z - 30) < 0.01 && seatOf(r, 0).run.x === 2.5));
@@ -227,10 +227,11 @@ async function mkUser(pool, tag) {
   const res = JSON.parse(A.room.state.result);
   check(
     "…2 linhas pela distância, quem bateu com o que pegou",
-    res.rows.length === 2 && res.rows[0].slot === 1 && res.rows[1].by === "crusher",
+    res.rows.length === 4 && res.rows.filter((x) => x.bot).length === 2 && res.rows.find((x) => x.slot === 0).by === "crusher",
     JSON.stringify(res.rows)
   );
-  check("…quem saiu está marcado", res.rows[0].gone === true);
+  check("…quem saiu está marcado", res.rows.find((x) => x.slot === 1).gone === true);
+  check("…os computadores voaram pela regra", res.rows.filter((x) => x.bot).every((x) => x.dist > 0), JSON.stringify(res.rows.filter((x) => x.bot)));
   check("…e a sala fecha", await until(() => !roomOf(A.room.roomId), 3000));
   await bye(A.room);
 
@@ -244,17 +245,17 @@ async function mkUser(pool, tag) {
   check("sozinho bateu: a sala encerra", await until(() => S.room.state.phase === "end"));
   await bye(S.room);
 
-  // ── 6 pessoas largam na hora ───────────────────────────────────────────────
+  // ── 4 pessoas largam na hora (sempre 4 no túnel) ─────────────────────────
   jet._jetpackTiming.lobbyMs = 60000;
   const six = [];
-  for (let i = 2; i < 8; i++) six.push(await join(users[i]));
+  for (let i = 2; i < 6; i++) six.push(await join(users[i]));
   check(
-    "6 pessoas: a mesma largada, sem esperar o minuto",
+    "4 pessoas: a mesma largada, sem esperar o minuto",
     six.every((b) => b.room && b.room.roomId === six[0].room.roomId) && (await until(() => six[0].room.state.phase === "countdown", 2000))
   );
   check(
-    "…as 6 com a mesma semente",
-    (await until(() => six.every((b) => b.start))) && six.every((b) => b.start.seed === six[0].start.seed && b.start.seats.length === 6)
+    "…as 4 com a mesma semente e sem computador",
+    (await until(() => six.every((b) => b.start))) && six.every((b) => b.start.seed === six[0].start.seed && b.start.seats.length === 4 && !b.start.seats.some((x) => x.bot))
   );
   for (const b of six) await bye(b.room);
 
