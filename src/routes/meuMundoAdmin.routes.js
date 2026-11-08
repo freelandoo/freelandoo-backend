@@ -69,6 +69,8 @@ router.post("/life/pet-name", ...admin, asyncHandler(MeuMundoController.lifePetN
 // mm3d-59: aventura e luta conferida (o servidor sorteia a semente e re-simula a gravação).
 router.get("/adventure", ...admin, asyncHandler(MeuMundoController.adventureGet));
 router.get("/monsters", ...admin, asyncHandler(MeuMundoController.monstersGet));
+router.get("/hall/board", ...admin, asyncHandler(MeuMundoController.hallBoard));
+router.post("/hall/challenge", ...admin, asyncHandler(MeuMundoController.hallChallenge));
 router.post("/fight/start", ...admin, asyncHandler(MeuMundoController.fightStart));
 router.post("/fight/finish", ...admin, asyncHandler(MeuMundoController.fightFinish));
 router.post("/client-report", ...admin, asyncHandler(MeuMundoController.clientReport));

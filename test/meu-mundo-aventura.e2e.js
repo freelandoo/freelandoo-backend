@@ -337,6 +337,65 @@ async function main() {
   const auHam = await fightKit();
   check("a arma pesada equipada não vale no Aurion", auHam.appearance.weaponId === null && auHam.kit === null, JSON.stringify(auHam.appearance));
 
+  // ═══ B8 (mig 375): Lâminas = Hall — desafio contra a ficha congelada ═══
+  await pool.query(`ALTER TABLE tb_user ADD COLUMN IF NOT EXISTS is_minor BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS tb_profile (id_user UUID, display_name TEXT, avatar_url TEXT, is_user_account BOOLEAN DEFAULT TRUE, deleted_at TIMESTAMPTZ)`);
+  const Hall = require("../src/services/MeuMundoHallService");
+  await pool.query(`DELETE FROM tb_mm_hall_challenge; DELETE FROM tb_mm_hall_seat`);
+  const ch = crypto.randomUUID();
+  const df = crypto.randomUUID();
+  await pool.query(`INSERT INTO tb_user VALUES ($1, 'desafiante', 'd@mm.test'), ($2, 'defensor', 'f@mm.test')`, [ch, df]);
+  await Life.peek(ch);
+  await Life.peek(df);
+  await pool.query(`UPDATE tb_mm_character SET power = 1000 WHERE id_user = $1`, [ch]);
+  await pool.query(`UPDATE tb_mm_character SET power = 1500 WHERE id_user = $1`, [df]);
+  await pool.query(`INSERT INTO tb_mm_hall_seat (seat, id_user) VALUES (1, $1)`, [df]);
+  const fromClient = await Adv.fightStart(ch, { origin: "hall" });
+  check("hall: o aparelho não abre a origem hall sozinho", fromClient.code === "origin", JSON.stringify(fromClient));
+  const outsider = await Hall.challenge(ch, { defender: crypto.randomUUID() });
+  check("hall: quem não está no Hall nem no top não é desafiável", outsider.code === "eligible", JSON.stringify(outsider));
+  const hc1 = await Hall.challenge(ch, { defender: df });
+  check("hall: abre a luta com a ficha congelada (peer 1,5, Campeão)", hc1.fight && hc1.fight.setup.peer === 1.5 && hc1.fight.setup.kind === "brute", JSON.stringify(hc1).slice(0, 300));
+  let hWon = null;
+  if (hc1.fight) {
+    const su = hc1.fight.setup;
+    const fh = new F.Fight({ kind: su.kind, level: su.level, hero: su.hero || undefined, peer: su.peer || undefined, body: su.body || undefined, seed: su.seed, stats: su.stats, style: su.style || undefined, gear: su.gear || undefined, temper: su.temper || undefined, affection: su.affection || undefined });
+    const fr = [];
+    for (let i = 0; i < 40000 && !fh.over; i++) {
+      const q = F.quantizeInput({ mx: Math.sin(i / 45) * 0.5, mz: 0.85, run: false, attack: i % 17 === 0, dodge: i % 53 === 0 });
+      F.pushFrame(fr, q);
+      fh.step(q);
+    }
+    await pool.query(`UPDATE tb_mm_fight SET started_at = NOW() - INTERVAL '30 minutes' WHERE id_fight = $1`, [hc1.fight.ticket]);
+    const done = await Adv.fightFinish(ch, { ticket: hc1.fight.ticket, frames: fr });
+    check("hall: a luta fecha pelo servidor com o desafio", done.receipt && done.receipt.hall && ["won", "lost"].includes(done.receipt.hall.status), JSON.stringify(done.error || (done.receipt && done.receipt.hall)));
+    hWon = !!(done.receipt && done.receipt.hall && done.receipt.hall.status === "won");
+  }
+  const seat1 = (await pool.query(`SELECT id_user FROM tb_mm_hall_seat WHERE seat = 1`)).rows[0];
+  check("hall: cadeira certa depois do resultado", hWon ? seat1.id_user === ch : seat1.id_user === df, JSON.stringify({ hWon, seat1 }));
+  const nt = (await pool.query(`SELECT code FROM tb_mm_notice WHERE id_user = $1 AND code LIKE 'hall_%'`, [df])).rows;
+  check("hall: o defensor recebe aviso no sino", nt.length === 1 && nt[0].code === (hWon ? "hall_lost" : "hall_defended"), JSON.stringify(nt));
+  const hAgain = await Hall.challenge(ch, { defender: df });
+  check("hall: o mesmo defensor só 1× a cada 24 h", hAgain.code === "again", JSON.stringify(hAgain).slice(0, 200));
+  const opens = [];
+  for (let i = 0; i < 3; i++) {
+    const other = crypto.randomUUID();
+    await pool.query(`INSERT INTO tb_user VALUES ($1, $2, $3)`, [other, "rival" + i, `r${i}@mm.test`]);
+    await Life.peek(other);
+    await pool.query(`UPDATE tb_mm_character SET power = 900 WHERE id_user = $1`, [other]);
+    await pool.query(`INSERT INTO tb_mm_hall_seat (seat, id_user) VALUES ($1, $2)`, [5 + i, other]);
+    opens.push(await Hall.challenge(ch, { defender: other }));
+  }
+  check("hall: 3 desafios por dia (o 4º recusa)", !opens[0].error && !opens[1].error && opens[2].code === "daily", JSON.stringify(opens.map((o) => o.code || "ok")));
+  const sts = (await pool.query(`SELECT status FROM tb_mm_hall_challenge WHERE challenger = $1 ORDER BY created_at`, [ch])).rows.map((r) => r.status);
+  check("hall: abrir outra luta fecha a anterior como derrota", sts.length === 3 && sts[1] === "lost" && sts[2] === "open", JSON.stringify(sts));
+  try {
+    const b = await Hall.board(ch);
+    check("hall: o quadro lista as cadeiras e os limites", b.hall.length >= 4 && b.me.left === 0 && b.history.length >= 3, JSON.stringify({ seats: b.hall.length, me: b.me, h: b.history.length }));
+  } catch (e) {
+    check("hall: o quadro lê sem erro", false, e.message);
+  }
+
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();
   process.exit(FAIL ? 1 : 0);

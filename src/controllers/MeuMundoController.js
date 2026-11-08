@@ -160,6 +160,15 @@ async function adventureGet(req, res) {
 async function monstersGet(req, res) {
   return reply(res, await adventure().monsters(req.user.id_user));
 }
+// B8: Lâminas = Hall (cadeiras e desafios pela vaga)
+const hall = () => require("../services/MeuMundoHallService");
+async function hallBoard(req, res) {
+  return reply(res, await hall().board(req.user.id_user));
+}
+async function hallChallenge(req, res) {
+  return reply(res, await hall().challenge(req.user.id_user, req.body || {}));
+}
+
 async function fightStart(req, res) {
   return reply(res, await adventure().fightStart(req.user.id_user, req.body || {}));
 }
@@ -404,6 +413,8 @@ module.exports = {
   adventureGet,
   monstersGet,
   fightStart,
+  hallBoard,
+  hallChallenge,
   fightFinish,
   clientReport,
   gearGet,
