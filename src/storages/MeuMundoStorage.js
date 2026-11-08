@@ -23,6 +23,8 @@ const BODIES = ["normal", "slim", "fat", "strong", "sergio", "female", "ekaterin
 // etapa (administradores) cabe folgada numa fila única; os índices únicos da
 // mig 291 continuam valendo como última barreira.
 const ALLOC_LOCK = "meu_mundo:alocacao";
+// B1: tb_profile.id_area existe? (T2, mig 336; null = ainda não conferido)
+let hasProfileArea = null;
 
 /**
  * B3: o personagem ATIVO de uma pessoa (o vivo; sem vivo, o último morto) — espécie,
@@ -58,14 +60,35 @@ class MeuMundoStorage {
     return r.rows[0] || null;
   }
 
-  static async createNeighborhood(c, clan = null) {
+  /**
+   * B1 (2026-11-08): a ÁREA do jogador (T2 — Região Imediata do IBGE, tb_profile.id_area do
+   * perfil-conta, resolvida pela cidade). null = sem cidade/área. Tolerante: base sem a
+   * coluna (testes antigos) = sem área.
+   */
+  static async areaOf(c, idUser) {
+    // dentro de transação um erro abortaria tudo: confere a coluna antes (uma vez por processo)
+    if (hasProfileArea === null) {
+      const k = await c.query(
+        `SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tb_profile' AND column_name = 'id_area'`
+      );
+      hasProfileArea = k.rowCount > 0;
+    }
+    if (!hasProfileArea) return null;
+    const r = await c.query(
+      `SELECT id_area FROM tb_profile WHERE id_user = $1 AND is_user_account = TRUE AND deleted_at IS NULL LIMIT 1`,
+      [idUser]
+    );
+    return r.rows[0] && r.rows[0].id_area != null ? Number(r.rows[0].id_area) : null;
+  }
+
+  static async createNeighborhood(c, clan = null, idArea = null) {
     const { rows } = await c.query(
       `SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM tb_mm_neighborhood`
     );
     const seq = Number(rows[0].next);
     const n = await c.query(
-      `INSERT INTO tb_mm_neighborhood (seq, name, clan) VALUES ($1, $2, $3) RETURNING id_neighborhood, seq`,
-      [seq, `Bairro ${String(seq).padStart(2, "0")}`, clan]
+      `INSERT INTO tb_mm_neighborhood (seq, name, clan, id_area) VALUES ($1, $2, $3, $4) RETURNING id_neighborhood, seq`,
+      [seq, `Bairro ${String(seq).padStart(2, "0")}`, clan, idArea]
     );
     const id = n.rows[0].id_neighborhood;
     for (let num = 1; num <= LOTS_PER_NEIGHBORHOOD; num++) {
@@ -82,10 +105,12 @@ class MeuMundoStorage {
   }
 
   /**
-   * Primeira casa livre num bairro DA CLASSE (mm3d-58); sem vaga, cria o
-   * próximo bairro dessa classe. Chamar dentro da transação com ALLOC_LOCK.
+   * Primeira casa livre num bairro DA CLASSE (mm3d-58) e DA ÁREA (B1, 2026-11-08: vizinho
+   * perto de verdade). Com área: só bairro daquela área; sem vaga, nasce o próximo bairro
+   * dessa classe e área. Sem área (sem cidade): qualquer bairro da classe com vaga, primeiro
+   * os sem área. Chamar dentro da transação com ALLOC_LOCK.
    */
-  static async freeHouseIn(c, clan) {
+  static async freeHouseIn(c, clan, idArea = null) {
     let free = await c.query(
       `SELECT h.id_house
          FROM tb_mm_house h
@@ -93,12 +118,13 @@ class MeuMundoStorage {
          JOIN tb_mm_neighborhood n ON n.id_neighborhood = l.id_neighborhood
          LEFT JOIN tb_mm_residence r ON r.id_house = h.id_house AND r.status = 'active'
         WHERE r.id_residence IS NULL AND n.clan = $1
-        ORDER BY n.seq, l.lot_number
+          AND ($2::int IS NULL OR n.id_area = $2::int)
+        ORDER BY (n.id_area IS NULL) DESC, n.seq, l.lot_number
         LIMIT 1`,
-      [clan]
+      [clan, idArea]
     );
     if (!free.rows[0]) {
-      const idNb = await MeuMundoStorage.createNeighborhood(c, clan);
+      const idNb = await MeuMundoStorage.createNeighborhood(c, clan, idArea);
       free = await c.query(
         `SELECT h.id_house FROM tb_mm_house h JOIN tb_mm_lot l ON l.id_lot = h.id_lot
           WHERE l.id_neighborhood = $1 ORDER BY l.lot_number LIMIT 1`,
@@ -118,7 +144,7 @@ class MeuMundoStorage {
   static async moveToClan(c, idUser, clan) {
     const old = await MeuMundoStorage.getActiveResidence(c, idUser);
     if (old && old.clan === clan) return false;
-    const idHouse = await MeuMundoStorage.freeHouseIn(c, clan);
+    const idHouse = await MeuMundoStorage.freeHouseIn(c, clan, await MeuMundoStorage.areaOf(c, idUser));
     if (old) {
       await c.query(
         `UPDATE tb_mm_residence SET status = 'ended', ended_at = NOW(), end_reason = 'clan' WHERE id_residence = $1`,
