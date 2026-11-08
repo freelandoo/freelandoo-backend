@@ -135,6 +135,7 @@ class ManifestationStorage {
       tag_icon = null,
       price_cents = 0,
       price_polens = 0,
+      price_emerald = null,
       duration_days = 365,
       stock = null,
       is_featured = false,
@@ -146,8 +147,8 @@ class ManifestationStorage {
          (category_id, name, description, banner_url, banner_thumb_url,
           tag_label, tag_color, tag_icon,
           price_cents, price_polens, duration_days, stock,
-          is_featured, is_active, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          is_featured, is_active, sort_order, price_emerald)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING *`,
       [
         category_id,
@@ -165,6 +166,7 @@ class ManifestationStorage {
         is_featured,
         is_active,
         sort_order,
+        price_emerald,
       ]
     );
     return rows[0];
@@ -182,6 +184,7 @@ class ManifestationStorage {
       "tag_icon",
       "price_cents",
       "price_polens",
+      "price_emerald",
       "duration_days",
       "stock",
       "is_active",
@@ -573,6 +576,7 @@ class ManifestationStorage {
     product_id,
     payment_method = "polens",
     amount_polens = null,
+    amount_emerald = null,
     amount_cents = null,
     stripe_session_id = null,
     stripe_payment_intent = null,
@@ -580,8 +584,8 @@ class ManifestationStorage {
     const { rows } = await conn.query(
       `INSERT INTO public.user_manifestations
          (user_id, product_id, acquired_at, expires_at, is_active, payment_method,
-          amount_polens, amount_cents, stripe_session_id, stripe_payment_intent)
-       VALUES ($1, $2, NOW(), NULL, FALSE, $3, $4, $5, $6, $7)
+          amount_polens, amount_cents, stripe_session_id, stripe_payment_intent, amount_emerald)
+       VALUES ($1, $2, NOW(), NULL, FALSE, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (user_id, product_id) DO NOTHING
        RETURNING *`,
       [
@@ -592,6 +596,7 @@ class ManifestationStorage {
         amount_cents,
         stripe_session_id,
         stripe_payment_intent,
+        amount_emerald,
       ]
     );
     return rows[0] || null;

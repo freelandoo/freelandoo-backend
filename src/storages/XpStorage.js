@@ -1,6 +1,6 @@
 // src/storages/XpStorage.js
 const { createLogger } = require("../utils/logger");
-const PolenStorage = require("./PolenStorage");
+const EmeraldStorage = require("./EmeraldStorage");
 
 const log = createLogger("XpStorage");
 
@@ -189,13 +189,14 @@ module.exports = {
     return row;
   },
 
-  // Credita Poléns na carteira do usuário dono por cada nível cruzado.
+  // Credita ESMERALDA (A7; antes eram Poléns) na carteira do dono por cada
+  // nível cruzado — mesmo número de antes (polens_per_level, 1.000).
   // Fire-and-forget safe — nunca derruba o recálculo de XP.
   async creditLevelUpPolens(db, { user_id, id_profile, old_level, new_level, per_level }) {
     try {
-      const wallet = await PolenStorage.getOrCreateWallet(db, user_id);
+      const wallet = await EmeraldStorage.getOrCreateWallet(db, user_id);
       for (let lvl = old_level + 1; lvl <= new_level; lvl++) {
-        await PolenStorage.credit(db, {
+        await EmeraldStorage.credit(db, {
           user_id,
           wallet_id: wallet.id,
           amount: per_level,

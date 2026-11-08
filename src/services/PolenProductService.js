@@ -167,7 +167,9 @@ class PolenProductService {
           type: "polen_purchase",
           user_id: user.id_user,
           product_id: product.id,
-          polens_amount: String(totalPolens),
+          // A7: a quantidade viaja em GOLD. Sessão antiga (antes da mig 329)
+          // trazia `polens_amount` em Pólens — o confirmador divide por 100.
+          gold_amount: String(totalPolens),
           ...(back !== RETURN_PATHS.default ? { return_to: String(body.return_to) } : {}),
           ...(body.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
         },
@@ -205,7 +207,8 @@ class PolenProductService {
         return { error: "Produto não encontrado" };
       }
 
-      const polensCredit = Number(meta.polens_amount)
+      const polensCredit = Number(meta.gold_amount)
+        || (Number(meta.polens_amount) ? Math.ceil(Number(meta.polens_amount) / 100) : 0)
         || ((Number(product.polens_amount) || 0) + (Number(product.bonus_polens) || 0));
       if (polensCredit <= 0) {
         await client.query("ROLLBACK");
@@ -284,7 +287,8 @@ class PolenProductService {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const credited = Number(purchase.polens_credited) || 0;
+      // Em Gold: compra anterior à mig 329 tem gold_credited = CEIL(Pólens/100).
+      const credited = Number(purchase.gold_credited ?? purchase.polens_credited) || 0;
       let reversal = null;
       if (credited > 0) {
         const wallet = await PolenStorage.getOrCreateWallet(client, purchase.user_id);

@@ -18,6 +18,8 @@ class PolenStorage {
       "price_post_boost",
       "price_profile_boost",
       "price_clan_highlight",
+      "emerald_price_premium_highlight",
+      "emerald_price_clan_highlight",
       "manifestation_admin_enabled",
       "manifestation_users_enabled",
       "manifestation_min_xp_level",

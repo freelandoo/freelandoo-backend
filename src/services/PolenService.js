@@ -1,6 +1,8 @@
 const crypto = require("crypto");
 const pool = require("../databases");
 const PolenStorage = require("../storages/PolenStorage");
+const EmeraldService = require("./EmeraldService");
+const { emeraldPrice, parseCurrency } = require("../utils/currency");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PolenService");
@@ -11,10 +13,11 @@ const PRODUCTS = {
     priceKey: "price_profile_activation",
     requiresTarget: true,
   },
-  premium_highlight: { tx: "spend_premium_highlight", priceKey: "price_premium_highlight" },
+  // A7: os DESTAQUES também se pagam em Esmeralda (emeraldKey: NULL = Gold × 1.000).
+  premium_highlight: { tx: "spend_premium_highlight", priceKey: "price_premium_highlight", emeraldKey: "emerald_price_premium_highlight" },
   post_boost: { tx: "spend_post_boost", priceKey: "price_post_boost" },
   profile_boost: { tx: "spend_profile_boost", priceKey: "price_profile_boost" },
-  clan_highlight: { tx: "spend_clan_highlight", priceKey: "price_clan_highlight" },
+  clan_highlight: { tx: "spend_clan_highlight", priceKey: "price_clan_highlight", emeraldKey: "emerald_price_clan_highlight" },
 };
 
 function hashValue(value) {
@@ -26,9 +29,12 @@ function minutesUntil(date) {
   return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 60000));
 }
 
-function walletPayload(wallet, settings, usage) {
+function walletPayload(wallet, settings, usage, emerald) {
   return {
+    // A7: `wallet` é a carteira de GOLD (o antigo Pólen, 1 Gold = R$ 1);
+    // `emerald` é a Verde Esmeralda (anúncio e nível pagam nela).
     wallet,
+    emerald,
     limits: {
       ads_per_day: settings.ads_per_day_per_user,
       polens_per_ad: settings.polens_per_ad,
@@ -44,6 +50,8 @@ function walletPayload(wallet, settings, usage) {
       price_post_boost: settings.price_post_boost,
       price_profile_boost: settings.price_profile_boost,
       price_clan_highlight: settings.price_clan_highlight,
+      emerald_price_premium_highlight: emeraldPrice(settings.price_premium_highlight, settings.emerald_price_premium_highlight),
+      emerald_price_clan_highlight: emeraldPrice(settings.price_clan_highlight, settings.emerald_price_clan_highlight),
     },
     manifestation: {
       admin_enabled: settings.manifestation_admin_enabled !== false,
@@ -57,12 +65,13 @@ class PolenService {
   static async getWallet(user) {
     return runWithLogs(log, "getWallet", () => ({ id_user: user?.id_user }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
-      const [settings, wallet, usage] = await Promise.all([
+      const [settings, wallet, usage, emerald] = await Promise.all([
         PolenStorage.getSettings(pool),
         PolenStorage.getOrCreateWallet(pool, user.id_user),
         PolenStorage.countRewardedToday(pool, user.id_user),
+        EmeraldService.summary(pool, user.id_user),
       ]);
-      return walletPayload(wallet, settings, usage);
+      return walletPayload(wallet, settings, usage, emerald);
     });
   }
 
@@ -120,7 +129,8 @@ class PolenService {
         reward_amount: reward,
         provider: event.provider,
         ad_unit_id: event.ad_unit_id,
-        message: `Assista a um anúncio para ganhar ${reward} Poléns.`,
+        currency: "emerald",
+        message: `Assista a um anúncio para ganhar ${reward} Esmeraldas.`,
       };
     });
   }
@@ -147,18 +157,21 @@ class PolenService {
           await client.query("ROLLBACK");
           return { error: "Evento expirado ou inválido" };
         }
-        const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
-        const result = await PolenStorage.credit(client, {
+        // A7: anúncio assistido paga ESMERALDA (mesmos limites de antes).
+        const result = await EmeraldService.grant(client, {
           user_id: user.id_user,
-          wallet_id: wallet.id,
           amount: rewarded.reward_amount,
           type: "earn_rewarded_ad",
           source: "rewarded_ad",
           source_id: rewarded.id,
           metadata: { reward_token: token, provider: rewarded.provider },
         });
+        if (!result) {
+          await client.query("ROLLBACK");
+          return { error: "Recompensa já creditada" };
+        }
         await client.query("COMMIT");
-        return { wallet: result.wallet, transaction: result.transaction, rewarded: result.transaction.amount };
+        return { emerald_wallet: result.wallet, transaction: result.transaction, rewarded: result.transaction.amount, currency: "emerald" };
       } catch (err) {
         await client.query("ROLLBACK");
         if (err?.code === "23505") return { error: "Recompensa duplicada" };
@@ -174,6 +187,11 @@ class PolenService {
       if (!user?.id_user) return { error: "Não autenticado" };
       const product = PRODUCTS[body?.product];
       if (!product) return { error: "Produto inválido" };
+      const currency = parseCurrency(body?.currency);
+      if (!currency) return { error: "Moeda inválida" };
+      if (currency === "emerald" && !product.emeraldKey) {
+        return { error: "Este produto só se paga com Gold" };
+      }
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -182,13 +200,14 @@ class PolenService {
           await client.query("ROLLBACK");
           return { error: "Sistema de Poléns inativo" };
         }
-        const amount = Number(settings[product.priceKey]) || 0;
+        const amount = currency === "emerald"
+          ? emeraldPrice(settings[product.priceKey], settings[product.emeraldKey])
+          : Number(settings[product.priceKey]) || 0;
         if (amount <= 0) {
           await client.query("ROLLBACK");
           return { error: "Produto sem preço configurado" };
         }
-        const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
-        let benefit = { status: "reserved", product: body.product };
+        let benefit = { status: "reserved", product: body.product, currency };
         if (body.product === "profile_activation") {
           if (!body.target_id) {
             await client.query("ROLLBACK");
@@ -205,21 +224,29 @@ class PolenService {
           }
           benefit = { status: "activated", product: body.product, id_subscription: sub.id_subscription };
         }
-        const result = await PolenStorage.debit(client, {
+        const debitArgs = {
           user_id: user.id_user,
-          wallet_id: wallet.id,
           amount,
           type: product.tx,
           source: "polen_store",
           source_id: `${body.product}:${body.target_id || crypto.randomUUID()}`,
           metadata: { product: body.product, target_id: body.target_id || null, benefit },
-        });
+        };
+        let result;
+        if (currency === "emerald") {
+          result = await EmeraldService.charge(client, debitArgs);
+        } else {
+          const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
+          result = await PolenStorage.debit(client, { ...debitArgs, wallet_id: wallet.id });
+        }
         if (!result) {
           await client.query("ROLLBACK");
           return { error: "Saldo insuficiente" };
         }
         await client.query("COMMIT");
-        return { wallet: result.wallet, transaction: result.transaction, benefit };
+        return currency === "emerald"
+          ? { emerald_wallet: result.wallet, transaction: result.transaction, benefit, currency }
+          : { wallet: result.wallet, transaction: result.transaction, benefit, currency };
       } catch (err) {
         await client.query("ROLLBACK");
         throw err;
@@ -246,9 +273,19 @@ class PolenService {
       "price_clan_highlight",
       "manifestation_min_xp_level",
     ];
+    // Preço em Esmeralda dos destaques: null/"" = volta à regra (Gold × 1.000).
+    const emeraldKeys = ["emerald_price_premium_highlight", "emerald_price_clan_highlight"];
     const patch = { updated_by: user?.id_user || null };
     for (const key of numeric) {
       if (body[key] != null) {
+        const n = Number(body[key]);
+        if (!Number.isFinite(n) || n < 0) return { error: `${key} inválido` };
+        patch[key] = Math.floor(n);
+      }
+    }
+    for (const key of emeraldKeys) {
+      if (body[key] === null || body[key] === "") patch[key] = null;
+      else if (body[key] != null) {
         const n = Number(body[key]);
         if (!Number.isFinite(n) || n < 0) return { error: `${key} inválido` };
         patch[key] = Math.floor(n);

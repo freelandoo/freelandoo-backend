@@ -335,7 +335,7 @@ class CommunityListingStorage {
       extra_slot_price_cents: Number(row.extra_slot_price_cents ?? 990),
       extra_slot_price_polens: Number(row.extra_slot_price_polens ?? 0),
       listing_monthly_cents: Number(row.listing_monthly_cents ?? 350),
-      listing_monthly_polens: Number(row.listing_monthly_polens ?? 350),
+      listing_monthly_polens: Number(row.listing_monthly_polens ?? 4),
     };
   }
 
