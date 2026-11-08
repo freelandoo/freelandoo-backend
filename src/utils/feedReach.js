@@ -142,9 +142,12 @@ function reachCovers(post, viewer) {
 // ao mais longe: 1 mesma área, 2 mesma região, 3 mesmo estado, 4 o resto.
 const REACH_BANDS = 5;
 
+// Nunca esconde: todo post entra em alguma faixa — o alcance só ordena.
+// Leitor sem lugar (anônimo ou sem cidade): a proximidade não se aplica, então
+// a faixa é 4 − degrau (nacional primeiro, depois estado, região, área, cidade).
 function reachBand(post, viewer) {
+  if (!viewer || !viewer.uf) return 4 - Math.min(Math.max(Number(post?.reach_level) || 0, 0), 4);
   if (reachCovers(post, viewer)) return 0;
-  if (!viewer) return 4;
   if (post.reach_area_id && post.reach_area_id === viewer.area_id) return 1;
   if (post.reach_city_key && post.reach_city_key === viewer.city_key && post.reach_uf === viewer.uf) return 1;
   if (post.reach_region_id && post.reach_region_id === viewer.region_id) return 2;
@@ -166,6 +169,7 @@ function reachBandSql(a, p) {
   )`;
   return `(CASE
       WHEN $${p.mode}::text = 'off' THEN 0
+      WHEN $${p.uf}::text IS NULL THEN 4 - LEAST(GREATEST(${a}.reach_level, 0), 4)
       WHEN ${cover} THEN 0
       WHEN ${a}.reach_area_id = $${p.area}::int THEN 1
       WHEN ${a}.reach_city_key = $${p.city}::text AND ${a}.reach_uf = $${p.uf}::text THEN 1

@@ -335,6 +335,24 @@ async function main() {
     assert.strictEqual(got[0], pBhNac.id_portfolio_item);
     assert.strictEqual(got.length, expectBand.size);
   });
+  await check("ninguém perde post: leitor de SP, de MG, sem cidade e anônimo veem o MESMO conjunto", async () => {
+    const set = async (viewer) => new Set((await feed(viewer)).items.map((i) => i.post_id))
+    const sp = await set({ id_user: maua.id_user });
+    const mg = await set({ id_user: bh.id_user });
+    const nada = await set({ id_user: semLugar.id_user });
+    const anon = await set(null);
+    assert.strictEqual(sp.size, expectBand.size);
+    for (const s of [mg, nada, anon]) assert.deepStrictEqual(s, sp);
+    // e a ordem muda: para o leitor de BH, o post de BH vem antes do de Mauá
+    const mgOrder = (await feed({ id_user: bh.id_user })).items.map((i) => i.post_id);
+    assert.ok(mgOrder.indexOf(pBh.id_portfolio_item) < mgOrder.indexOf(pMaua.id_portfolio_item));
+  });
+  await check("sem cidade: alcance maior na frente", async () => {
+    const order = (await feed({ id_user: semLugar.id_user })).items.map((i) => i.post_id);
+    assert.strictEqual(order[0], pBhNac.id_portfolio_item);
+    assert.ok(order.indexOf(pCapital.id_portfolio_item) < order.indexOf(pMaua.id_portfolio_item), "região antes de cidade");
+    assert.ok(order.indexOf(pAbc.id_portfolio_item) < order.indexOf(pMaua.id_portfolio_item), "área antes de cidade");
+  });
   await check("filtro manual de estado ignora o alcance", async () => {
     const r = await feed({ id_user: maua.id_user }, { estado: "MG" });
     const got = r.items.map((i) => i.post_id);

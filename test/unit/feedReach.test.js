@@ -111,9 +111,11 @@ test("cobertura e faixas do leitor", () => {
   assert.strictEqual(R.reachBand(outra, VIEWER_ABC), 4);
 });
 
-test("anônimo: só o nacional cobre, o resto vem depois", () => {
+test("anônimo / sem cidade: alcance maior na frente", () => {
   assert.strictEqual(R.reachBand(post({ reach_level: 4 }), null), 0);
-  assert.strictEqual(R.reachBand(post({ reach_level: 3, reach_uf: "SP" }), null), 4);
+  assert.strictEqual(R.reachBand(post({ reach_level: 3, reach_uf: "SP" }), null), 1);
+  assert.strictEqual(R.reachBand(post({ reach_level: 0, reach_uf: "SP" }), null), 4);
+  assert.strictEqual(R.reachBand(post({ reach_level: 2 }), { city_key: null, uf: null }), 2);
 });
 
 test("parâmetros da faixa em SQL: filtro manual desliga", () => {
