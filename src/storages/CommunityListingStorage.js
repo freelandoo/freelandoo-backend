@@ -318,7 +318,8 @@ class CommunityListingStorage {
               COALESCE(c.extra_slot_price_cents,  s.extra_slot_price_cents)  AS extra_slot_price_cents,
               COALESCE(c.extra_slot_price_polens, s.extra_slot_price_polens) AS extra_slot_price_polens,
               COALESCE(c.listing_monthly_cents,   s.listing_monthly_cents)   AS listing_monthly_cents,
-              COALESCE(c.listing_monthly_polens,  s.listing_monthly_polens)  AS listing_monthly_polens
+              COALESCE(c.listing_monthly_polens,  s.listing_monthly_polens)  AS listing_monthly_polens,
+              s.free_listing_months                                          AS free_listing_months
          FROM public.condo_settings s
          LEFT JOIN public.tb_condo_config c ON c.id_condo = $1
         WHERE s.id = 1
@@ -336,6 +337,8 @@ class CommunityListingStorage {
       extra_slot_price_polens: Number(row.extra_slot_price_polens ?? 0),
       listing_monthly_cents: Number(row.listing_monthly_cents ?? 350),
       listing_monthly_polens: Number(row.listing_monthly_polens ?? 4),
+      // A4 (mig 338): por quantos meses o anúncio de cortesia fica no ar.
+      free_listing_months: Number(row.free_listing_months ?? 1),
     };
   }
 
