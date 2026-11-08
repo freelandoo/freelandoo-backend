@@ -22,6 +22,7 @@ const AuthStorage = require("../storages/AuthStorage");
 const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const Inbox = require("../storages/MeuMundoInboxStorage");
 const PolenStorage = require("../storages/PolenStorage");
+const EmeraldStorage = require("../storages/EmeraldStorage");
 const { rowToState } = require("../storages/MeuMundoLifeStorage");
 const Cars = require("../utils/meuMundoCars");
 const Life = require("../utils/meuMundoLife");
@@ -167,6 +168,76 @@ async function charge(ctx, idUser, { currency, amount, ref, what }) {
 }
 
 /**
+ * A7: abre a carteira de Esmeralda da pessoa (travada) junto da linha do jogo.
+ * Jogador novo ganha as moedas de início; linha antiga ainda não migrada passa
+ * o inteiro (o mesmo que a mig 332 faz). Devolve o saldo inicial, a fração e
+ * o teto do trabalho.
+ */
+async function openEmerald(c, idUser) {
+  const mm = await MeuMundoLifeStorage.lockWallet(c, idUser);
+  let wallet = await EmeraldStorage.lockWallet(c, idUser);
+  let frac = mm.coins;
+  if (mm.fresh) {
+    const g = await EmeraldStorage.credit(c, {
+      user_id: idUser, wallet_id: wallet.id, amount: Life.RULES.START_COINS,
+      type: "earn_meu_mundo", source: "mm_start", source_id: String(idUser), metadata: { reason: "start" },
+    });
+    if (g) wallet = g.wallet;
+  } else if (!mm.migrated && Math.floor(mm.coins) > 0) {
+    const g = await EmeraldStorage.credit(c, {
+      user_id: idUser, wallet_id: wallet.id, amount: Math.floor(mm.coins),
+      type: "earn_coin_migration", source: "mm_coins", source_id: String(idUser), metadata: { rule: "mm_coins_1_1", old_coins: mm.coins },
+    });
+    if (g) wallet = g.wallet;
+    frac = mm.coins - Math.floor(mm.coins);
+  }
+  const settings = await EmeraldStorage.getSettings(c);
+  const cap = Number(settings?.work_daily_cap);
+  return {
+    wallet,
+    start: Number(wallet.balance) || 0,
+    frac: Math.max(0, Math.min(0.999999, frac)),
+    workCap: Number.isFinite(cap) && cap >= 0 ? cap : Life.RULES.WORK_COINS_DAY,
+  };
+}
+
+/**
+ * Fecha a carteira: o inteiro de `coins` é o saldo novo de Esmeralda. O que o
+ * trabalho rendeu entra como `earn_meu_mundo_work`; o resto do movimento
+ * (luta, minijogo, presente, compra, multa, funeral) é uma linha líquida
+ * `earn_meu_mundo` / `spend_meu_mundo`. Saldo nunca negativo.
+ */
+async function settleEmerald(c, idUser, purse, coins, earned, what) {
+  const balance = Math.max(0, Math.floor(coins + 1e-9));
+  const frac = Math.max(0, coins - balance);
+  const delta = balance - purse.start;
+  if (delta === 0) return { balance, frac };
+  const ref = `${idUser}:${Date.now()}:${crypto.randomUUID()}`;
+  const meta = what ? { what } : {};
+  const work = Math.max(0, Math.min(Math.floor(earned || 0), delta > 0 ? delta : Math.floor(earned || 0)));
+  if (work > 0) {
+    await EmeraldStorage.credit(c, {
+      user_id: idUser, wallet_id: purse.wallet.id, amount: work,
+      type: "earn_meu_mundo_work", source: "meu_mundo_work", source_id: ref, metadata: meta,
+    });
+  }
+  const rest = delta - work;
+  if (rest > 0) {
+    await EmeraldStorage.credit(c, {
+      user_id: idUser, wallet_id: purse.wallet.id, amount: rest,
+      type: "earn_meu_mundo", source: "meu_mundo", source_id: ref, metadata: meta,
+    });
+  } else if (rest < 0) {
+    const d = await EmeraldStorage.debit(c, {
+      user_id: idUser, wallet_id: purse.wallet.id, amount: -rest,
+      type: "spend_meu_mundo", source: "meu_mundo", source_id: ref, metadata: meta,
+    });
+    if (!d) throw new Error("Esmeralda do jogo ficaria negativa");
+  }
+  return { balance, frac };
+}
+
+/**
  * Recibo só de tela (2026-11-03): comeu, tomou remédio ou acordou — o aparelho
  * sobe o brilho e os números. Não credita nada: a mudança já está na vida.
  */
@@ -197,7 +268,11 @@ class MeuMundoLifeService {
       await c.query("BEGIN");
       await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`meu_mundo:vida:${idUser}`]);
       const now = Date.now();
-      let coins = await MeuMundoLifeStorage.lockWallet(c, idUser, Life.RULES.START_COINS);
+      // A7: as moedas do jogo SÃO a Verde Esmeralda (carteira da Freelandoo).
+      // ctx.coins = saldo de Esmeralda + a fração guardada em tb_mm_wallet; no
+      // fim, a diferença inteira vira linha no ledger (settleEmerald).
+      const purse = await openEmerald(c, idUser);
+      let coins = purse.start + purse.frac;
       let row = await MeuMundoLifeStorage.lockLatest(c, idUser);
       // Geladeira (mig 301): travada junto (a carteira já serializa a pessoa).
       const pantry0 = await MeuMundoLifeStorage.pantry(c, idUser);
@@ -218,7 +293,7 @@ class MeuMundoLifeService {
       const admin = MeuMundoLifeService.adminPerks && (await AuthStorage.isAdmin(c, idUser));
       if (admin) Life.adminTopUp(s);
       // A carteira entra na simulação: o trabalho rende e a rotina compra comida.
-      const wallet = { coins };
+      const wallet = { coins, workCap: purse.workCap };
       const sim = Life.simulate(s, now, wallet, pantry);
       events.push(...sim.events);
       if (admin) Life.adminTopUp(s);
@@ -260,7 +335,8 @@ class MeuMundoLifeService {
       if (ctx.newRow) await MeuMundoLifeStorage.upsertDay(c, idCharacter, state.dayAcc, Life.dayCondition(state.dayAcc), false);
       await MeuMundoLifeStorage.insertEvents(c, row.id_character, events);
       if (ctx.newEvents) await MeuMundoLifeStorage.insertEvents(c, idCharacter, ctx.newEvents);
-      await MeuMundoLifeStorage.setCoins(c, idUser, Math.max(0, ctx.coins));
+      const emerald = await settleEmerald(c, idUser, purse, Math.max(0, ctx.coins), sim.earned, ctx.what);
+      await MeuMundoLifeStorage.setCoins(c, idUser, emerald.frac);
       await MeuMundoLifeStorage.savePantry(c, idUser, pantry0, pantry);
       // O tipo físico do avatar É o corpo da vida (não se escolhe desde
       // 2026-10-21): gravado só quando muda — é o que as entradas leem.
@@ -287,7 +363,9 @@ class MeuMundoLifeService {
         now: new Date(now).toISOString(),
         character: snap,
         height,
-        wallet: { coins: Math.floor(Math.max(0, ctx.coins)), ...(ctx.polens != null ? { polens: ctx.polens } : {}) },
+        // `coins` = Esmeralda (nome antigo da chave mantido para o aparelho);
+        // `polens` = Gold quando a ação mexeu nele.
+        wallet: { coins: emerald.balance, emerald: emerald.balance, ...(ctx.polens != null ? { polens: ctx.polens, gold: ctx.polens } : {}) },
         avatar,
         look,
         fridge: Object.fromEntries(Object.entries(pantry).filter(([, n]) => n > 0)),

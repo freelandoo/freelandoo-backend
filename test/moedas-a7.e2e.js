@@ -94,6 +94,8 @@ async function migrateUpTo(dir, last) {
   );
   await pool.query(`INSERT INTO tb_live_gift (name, emoji, color, animation, price_polens, sort_order) VALUES ('A7 gift', 'x', '#000', 'pulse', 5, 99)`);
   const sumBefore = balances.reduce((a, b) => a + b, 0);
+  // Moedas do Meu Mundo (antes da 332): 750,6 viram 750 Esmeralda + 0,6 de fração.
+  await pool.query(`INSERT INTO tb_mm_wallet (id_user, coins) VALUES ($1, 750.6), ($2, 0.4)`, [users[0], users[1]]);
 
   // ── a 329+ ───────────────────────────────────────────────────────────────
   await runMigrations({ pool, dir: MIG_DIR });
@@ -141,6 +143,20 @@ async function migrateUpTo(dir, last) {
     await pool.query(sql);
     const { rows } = await pool.query(`SELECT balance FROM polen_wallets WHERE user_id = $1`, [users[4]]);
     assert.equal(rows[0].balance, 124);
+  });
+
+  await check("moedas do jogo viram Esmeralda 1:1 (a fração fica no jogo)", async () => {
+    const e = await pool.query(`SELECT balance FROM emerald_wallets WHERE user_id = $1`, [users[0]]);
+    assert.equal(e.rows[0].balance, 750);
+    const w = await pool.query(`SELECT coins, emerald_migrated_at FROM tb_mm_wallet WHERE id_user = $1`, [users[0]]);
+    assert.ok(Math.abs(w.rows[0].coins - 0.6) < 1e-9);
+    assert.ok(w.rows[0].emerald_migrated_at);
+    const t = await pool.query(`SELECT count(*)::int n FROM emerald_transactions WHERE user_id = $1 AND type = 'earn_coin_migration'`, [users[0]]);
+    assert.equal(t.rows[0].n, 1);
+    const sql = fs.readFileSync(path.join(MIG_DIR, "332_meu_mundo_emerald.sql"), "utf8");
+    await pool.query(sql);
+    const again = await pool.query(`SELECT balance FROM emerald_wallets WHERE user_id = $1`, [users[0]]);
+    assert.equal(again.rows[0].balance, 750, "a 332 não credita duas vezes");
   });
 
   const EmeraldService = require("../src/services/EmeraldService");
