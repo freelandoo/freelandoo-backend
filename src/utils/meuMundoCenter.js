@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 14; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 14; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -109,9 +109,8 @@ const PLACE_DEFS = [
   // Arena das Lâminas (mm3d-48): luta de espada contra a máquina, no fundo sul,
   // atrás do jetpack; a porta abre para o corredor entre o jetpack e a escola.
   { id: "laminas", zone: "atividades", rect: [4, 22, -63, -48], h: 8, peak: 13, front: "e", door: -55.5, doorW: 3.4, game: "laminas" },
-  // Salão do Hall da Fama (mm3d-48): templo de mármore no fundo norte, de frente
-  // para a porta do boxe; só entra quem ficou 3 meses seguidos em 1º (e o admin).
-  { id: "hall", zone: "civica", rect: [6, 28, 51, 63], h: 9, peak: 15, front: "w", door: 57, doorW: 3 },
+  // (2026-11-08, pedido do Alex: o Salão do Hall da Fama saiu — o Hall da Fama agora é a
+  // própria Arena das Lâminas, com o pódio e o top 10.)
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
   { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
@@ -321,7 +320,7 @@ const GROUNDS = Object.freeze([
     { kind: "pave", x: 30.5, z: 25, w: 5, d: 12.4 },
     { kind: "walk", x: 37.75, z: 35.5, w: 3, d: 1.2 },
     { kind: "walk", x: 48.75, z: 35.5, w: 3, d: 1.2 },
-    // Boxe e Hall: vão hamburgueria × supermercado até o largo entre os dois.
+    // Boxe: vão hamburgueria × supermercado até o largo em frente à porta.
     { kind: "walk", x: 1.25, z: 39, w: 3, d: 22 },
     { kind: "pave", x: 1, z: 54.5, w: 10, d: 9 },
     // Rolê Noturno: da calçada da avenida pela lateral oeste da igreja.

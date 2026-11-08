@@ -10,8 +10,8 @@ const { isFreeSpot } = require("../../src/utils/meuMundoInteriorMotion");
 const uses = (d) => [...d.seats.map((s) => s.use), ...d.spots.map((s) => s.use)].filter(Boolean);
 const count = (d, u) => uses(d).filter((x) => x === u).length;
 
-test("os treze prédios montam sem problema, com entrada livre e saída pela porta", () => {
-  assert.deepEqual(Object.keys(I).sort(), ["academia", "arsenal", "biblioteca", "criolab", "delegacia", "escola", "forja", "hall", "hamburgueria", "igreja", "pizzaria", "supermercado", "universidade"]);
+test("os doze prédios montam sem problema, com entrada livre e saída pela porta", () => {
+  assert.deepEqual(Object.keys(I).sort(), ["academia", "arsenal", "biblioteca", "criolab", "delegacia", "escola", "forja", "hamburgueria", "igreja", "pizzaria", "supermercado", "universidade"]);
   for (const [id, d] of Object.entries(I)) {
     assert.deepEqual(d.problems, [], id);
     assert.ok(isFreeSpot(d, 0, d.entry.x, d.entry.z), `${id}: entrada livre`);
@@ -95,12 +95,3 @@ test("cardápios dos restaurantes: itens do catálogo, comida e bebida (mm3d-37c
   assert.ok(I[L.MARKET_PLACE], "o supermercado tem interior");
 });
 
-test("Salão do Hall da Fama (mm3d-48): os Sete nos pedestais, a base do Oitavo e o Muro", () => {
-  const h = I.hall;
-  const heroes = h.floors[0].furniture.filter((f) => f.t === "hero_statue").map((f) => f.hero);
-  assert.deepEqual(heroes.sort(), ["aeryn", "aurion", "iris", "kragor", "maru", "noctis", "zephyra"]);
-  assert.equal(h.floors[0].furniture.filter((f) => f.t === "empty_base").length, 1);
-  assert.equal(h.floors[0].furniture.filter((f) => f.t === "honor_wall").length, 1);
-  // Do tapete dá para chegar ao pé de Aurion.
-  assert.ok(isFreeSpot(h, 0, 0, 16.4), "frente de Aurion livre");
-});

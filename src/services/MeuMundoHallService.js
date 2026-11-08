@@ -68,6 +68,13 @@ async function inTopPower(db, idUser) {
   return !!r.rows[0] && Number(r.rows[0].pos) <= Ladder.LIMITS.TOP_POWER;
 }
 
+/** O top 10 da Arena (cadeiras + vagas preenchidas pelo Poder), com o ranking do Poder lido. */
+async function ladderOf(db) {
+  const seats = await seatsMap(db);
+  const top = await PoderStore.topPower(db, Ladder.SEATS * 3);
+  return { seats, top, ten: Ladder.topTen(seats, top.map((x) => x.idUser)) };
+}
+
 class MeuMundoHallService {
   /** GET /hall/board — as cadeiras, quem dá para desafiar, os meus limites e o histórico. */
   static async board(idUser) {
@@ -81,7 +88,7 @@ class MeuMundoHallService {
     for (const x of seats.rows) info.set(x.id_user, await PoderStore.myPower(pool, x.id_user));
     const lim = await limitsOf(pool, idUser);
     const seated = new Set(seats.rows.map((x) => x.id_user));
-    const top = await PoderStore.topPower(pool, 20);
+    const { top, ten } = await ladderOf(pool);
     const row = (x) => ({ id: x.id_user, name: x.username || "—", isMe: x.id_user === idUser, cooldown: lim.recent.includes(x.id_user) });
     const history = await pool.query(
       `SELECT h.id_challenge, h.challenger, h.defender, h.status, h.seat_won, h.defender_seat, h.created_at,
@@ -93,8 +100,30 @@ class MeuMundoHallService {
         ORDER BY h.created_at DESC LIMIT 20`,
       [idUser]
     );
+    const seatRow = new Map(seats.rows.map((x) => [x.id_user, x]));
+    const powerRow = new Map(top.map((x) => [x.idUser, x]));
     return {
       seats: Ladder.SEATS,
+      // a Arena: do 1º ao 10º (pódio 1–3, lista 4–10); vaga sem ninguém = person null
+      top: ten.map((e) => {
+        if (!e.user) return { pos: e.pos, seated: false, person: null };
+        const sr = seatRow.get(e.user);
+        const pr = powerRow.get(e.user);
+        const inf = info.get(e.user);
+        return {
+          pos: e.pos,
+          seated: e.seated,
+          person: {
+            id: e.user,
+            name: (sr && sr.username) || (pr && (pr.username || pr.name)) || "—",
+            isMe: e.user === idUser,
+            cooldown: lim.recent.includes(e.user),
+            power: Number((inf && inf.value) ?? (pr && pr.value) ?? 0),
+            body: (inf && inf.body) || (pr && pr.body) || null,
+            defenses: sr ? Number(sr.defenses) : 0,
+          },
+        };
+      }),
       hall: seats.rows.map((x) => ({ seat: Number(x.seat), ...row(x), power: Number(info.get(x.id_user)?.value || 0), body: info.get(x.id_user)?.body || null, since: new Date(x.since).toISOString(), defenses: Number(x.defenses) })),
       // top do Poder que ainda não está no Hall (o B7 já filtra menor de idade)
       contenders: top
@@ -118,7 +147,10 @@ class MeuMundoHallService {
     const defender = String(body.defender || "");
     if (!UUID.test(defender)) return fail("defender");
     if (defender === idUser) return fail("self");
-    const seats = await seatsMap(pool);
+    const { seats, ten } = await ladderOf(pool);
+    // defensor de fora mostrado numa vaga do top 10: vencer dá aquela cadeira
+    const shown = ten.find((e) => e.user === defender && !e.seated);
+    const target = shown ? shown.pos : null;
     const defSeat = [...seats].find(([, u]) => u === defender)?.[0] ?? null;
     if (defSeat == null && !(await inTopPower(pool, defender))) return fail("eligible");
     const myPower = await bestPower(pool, idUser);
@@ -138,16 +170,16 @@ class MeuMundoHallService {
           if (lim.left <= 0) return fail("daily");
           if (lim.recent.includes(defender)) return fail("again");
           await c.query(
-            `INSERT INTO tb_mm_hall_challenge (id_fight, challenger, defender, challenger_seat, defender_seat, challenger_power, defender_power, peer)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [idFight, idUser, defender, mySeat, defSeat, myPower, defPower, peer]
+            `INSERT INTO tb_mm_hall_challenge (id_fight, challenger, defender, challenger_seat, defender_seat, challenger_power, defender_power, peer, target_seat)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [idFight, idUser, defender, mySeat, defSeat, myPower, defPower, peer, target]
           );
           return null;
         },
       },
     });
     if (out.error) return out;
-    return { ...out, challenge: { defender, defenderSeat: defSeat, peer, myPower, defenderPower: defPower } };
+    return { ...out, challenge: { defender, defenderSeat: defSeat, targetSeat: target, peer, myPower, defenderPower: defPower } };
   }
 
   /**
@@ -163,7 +195,7 @@ class MeuMundoHallService {
     let seatWon = null;
     if (win) {
       const before = await seatsMap(c, true);
-      const after = Ladder.afterWin(before, h.challenger, h.defender);
+      const after = Ladder.afterWin(before, h.challenger, h.defender, h.target_seat == null ? null : Number(h.target_seat));
       seatWon = after.seatWon;
       if (seatWon != null) {
         // regrava só as cadeiras que mudaram (DELETE + INSERT: id_user é único)

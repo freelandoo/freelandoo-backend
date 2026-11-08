@@ -14,10 +14,29 @@ function peerOf(challengerPower, defenderPower) {
 }
 
 /**
+ * O TOP 10 que a Arena mostra (2026-11-08, pedido do Alex: pódio do 1º ao 3º e lista do 4º
+ * ao 10º, e dá para desafiar até o 1º com pouco Poder). Posição k = quem está na cadeira k;
+ * cadeira vazia = o próximo do Poder que ainda não está sentado (`seated: false`) — vencer
+ * esse dá a cadeira k. Sem ninguém = vaga (`user: null`).
+ * `byPower` = ids em ordem de Poder (melhor primeiro).
+ */
+function topTen(seats, byPower) {
+  const sitting = new Set(seats.values());
+  const rest = byPower.filter((u) => !sitting.has(u));
+  const out = [];
+  for (let k = 1; k <= SEATS; k++) {
+    if (seats.has(k)) out.push({ pos: k, user: seats.get(k), seated: true });
+    else out.push({ pos: k, user: rest.shift() ?? null, seated: false });
+  }
+  return out;
+}
+
+/**
  * O Hall depois da vitória do desafiante. `seats` = Map(cadeira → id_user).
+ * `target` = a cadeira vazia que o defensor de fora ocupava no top 10 (topTen).
  * Devolve { seats, seatWon } (seatWon = cadeira nova do desafiante; null = nada mudou).
  */
-function afterWin(seats, challenger, defender) {
+function afterWin(seats, challenger, defender, target = null) {
   const out = new Map(seats);
   const seatOf = (u) => {
     for (const [k, v] of out) if (v === u) return k;
@@ -32,6 +51,13 @@ function afterWin(seats, challenger, defender) {
     if (mine != null) out.set(mine, defender);
     return { seats: out, seatWon: theirs };
   }
+  // defensor de fora do Hall mostrado numa cadeira vazia do top 10: fico com ela
+  if (target != null && target >= 1 && target <= SEATS && !out.has(target)) {
+    if (mine != null && mine < target) return { seats: out, seatWon: null };
+    if (mine != null) out.delete(mine);
+    out.set(target, challenger);
+    return { seats: out, seatWon: target };
+  }
   // defensor de fora do Hall (top do Poder): senta na primeira cadeira vazia
   if (mine != null) return { seats: out, seatWon: null };
   for (let k = 1; k <= SEATS; k++) {
@@ -43,4 +69,4 @@ function afterWin(seats, challenger, defender) {
   return { seats: out, seatWon: null };
 }
 
-module.exports = { SEATS, LIMITS, PEER, peerOf, afterWin };
+module.exports = { SEATS, LIMITS, PEER, peerOf, topTen, afterWin };

@@ -392,6 +392,9 @@ async function main() {
   try {
     const b = await Hall.board(ch);
     check("hall: o quadro lista as cadeiras e os limites", b.hall.length >= 4 && b.me.left === 0 && b.history.length >= 3, JSON.stringify({ seats: b.hall.length, me: b.me, h: b.history.length }));
+    // Hall da Fama na Arena (mig 425): top 10 = cadeiras + vagas pelo Poder; cada posição na sua casa
+    const seatAt = new Map(b.hall.map((x) => [x.seat, x.id]));
+    check("hall: top 10 com as cadeiras no lugar", b.top.length === 10 && b.top.every((e) => e.pos >= 1 && (!seatAt.has(e.pos) || (e.seated && e.person && e.person.id === seatAt.get(e.pos)))), JSON.stringify(b.top.map((e) => [e.pos, e.seated, e.person && e.person.name])));
   } catch (e) {
     check("hall: o quadro lê sem erro", false, e.message);
   }

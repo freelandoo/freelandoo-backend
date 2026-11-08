@@ -40,10 +40,10 @@ const walker = reach(C.ARRIVAL, MOTION.RADIUS);
 // O carro: o círculo do meio do corpo (os da frente e de trás passam onde ele passa nas retas).
 const car = reach(C.ARRIVAL_SPOTS[0], VEHICLE.COL_RADIUS);
 
-test("centro: os 21 estabelecimentos + a praça, ids estáveis e únicos", () => {
+test("centro: os 20 estabelecimentos + a praça, ids estáveis e únicos", () => {
   const ids = C.PLACES.map((p) => p.id);
-  assert.deepEqual(ids.sort(), ["academia", "arsenal", "biblioteca", "boxe", "corrida", "criolab", "delegacia", "escola", "forja", "gincana", "hall", "hamburgueria", "hospital", "igreja", "jetpack", "laminas", "noturno", "paint", "pizzaria", "supermercado", "universidade"]);
-  assert.equal(new Set(ids).size, 21);
+  assert.deepEqual(ids.sort(), ["academia", "arsenal", "biblioteca", "boxe", "corrida", "criolab", "delegacia", "escola", "forja", "gincana", "hamburgueria", "hospital", "igreja", "jetpack", "laminas", "noturno", "paint", "pizzaria", "supermercado", "universidade"]);
+  assert.equal(new Set(ids).size, 20);
   assert.equal(C.PLAZA_PLACE.id, "praca");
 });
 
@@ -182,7 +182,7 @@ test("chegada a pé e portal em lugar livre; payload sem nada de usuário", () =
   assert.ok(C.isSafeSpot(C.ARRIVAL.x, C.ARRIVAL.z, resolveCircle, MOTION.RADIUS));
   const p = C.buildCenterPayload();
   assert.equal(p.capacity, 20);
-  assert.equal(p.places.length, 21);
+  assert.equal(p.places.length, 20);
   assert.equal(p.obstacles.length, C.OBSTACLES.length);
   assert.ok(JSON.stringify(p).length < 36000, "payload pequeno, interiores das oficinas buscados só ao entrar");
   assert.ok(p.interiors.hospital && p.interiors.hospital.beds.length >= 6, "interior do hospital no payload");
