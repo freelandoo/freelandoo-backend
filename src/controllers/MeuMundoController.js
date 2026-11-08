@@ -303,6 +303,10 @@ async function wallets(req, res) {
 async function playerProfile(req, res) {
   return reply(res, await require("../services/MeuMundoPlayerService").profile(req.user.id_user, req.params.session));
 }
+// Hall da Fama (2026-11-08): o card de perfil de quem está no top 10 da Arena.
+async function hallPlayerProfile(req, res) {
+  return reply(res, await require("../services/MeuMundoPlayerService").hallProfile(req.user.id_user, req.params.id));
+}
 // Chat do jogo (mm3d-32): Global (sala meu_mundo) e abrir a conversa 1:1.
 const chat = () => require("../services/MeuMundoChatService");
 async function chatHistory(req, res) {
@@ -435,6 +439,7 @@ module.exports = {
   wallets,
   polensPurchase,
   playerProfile,
+  hallPlayerProfile,
   chatHistory,
   chatSend,
   chatReport,

@@ -75,7 +75,27 @@ async function ladderOf(db) {
   return { seats, top, ten: Ladder.topTen(seats, top.map((x) => x.idUser)) };
 }
 
+/** Foto do perfil-conta (a da Freelandoo) de cada um; conta bloqueada = sem foto. */
+async function photosOf(db, ids) {
+  const UserPublicSummaryStorage = require("../storages/UserPublicSummaryStorage");
+  const UserBlockStorage = require("../storages/UserBlockStorage");
+  const out = new Map();
+  await Promise.all(
+    ids.map(async (u) => {
+      const [state, acc] = await Promise.all([UserBlockStorage.accountState(db, u).catch(() => null), UserPublicSummaryStorage.getAccountProfile(db, u).catch(() => null)]);
+      if (state && !state.blocked_at && acc && acc.avatar_url) out.set(u, acc.avatar_url);
+    })
+  );
+  return out;
+}
+
 class MeuMundoHallService {
+  /** Os ids do top 10 agora (o card de perfil do Hall só abre para eles). */
+  static async topTenUsers() {
+    const { ten } = await ladderOf(pool);
+    return ten.map((e) => e.user).filter(Boolean);
+  }
+
   /** GET /hall/board — as cadeiras, quem dá para desafiar, os meus limites e o histórico. */
   static async board(idUser) {
     const seats = await pool.query(
@@ -101,6 +121,7 @@ class MeuMundoHallService {
       [idUser]
     );
     const seatRow = new Map(seats.rows.map((x) => [x.id_user, x]));
+    const photos = await photosOf(pool, ten.map((e) => e.user).filter(Boolean));
     const powerRow = new Map(top.map((x) => [x.idUser, x]));
     return {
       seats: Ladder.SEATS,
@@ -121,6 +142,8 @@ class MeuMundoHallService {
             power: Number((inf && inf.value) ?? (pr && pr.value) ?? 0),
             body: (inf && inf.body) || (pr && pr.body) || null,
             defenses: sr ? Number(sr.defenses) : 0,
+            // a foto do perfil da Freelandoo (toque abre o card do perfil)
+            photo: photos.get(e.user) || null,
           },
         };
       }),

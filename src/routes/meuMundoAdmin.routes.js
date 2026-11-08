@@ -128,6 +128,7 @@ router.get("/wallets", ...admin, asyncHandler(MeuMundoController.wallets));
 router.get("/polens/purchase/:session", ...admin, asyncHandler(MeuMundoController.polensPurchase));
 // Card de perfil (mm3d-31): o jogador tocado, só se estiver na sua sala agora.
 router.get("/players/:session", ...admin, asyncHandler(MeuMundoController.playerProfile));
+router.get("/hall/player/:id", ...admin, asyncHandler(MeuMundoController.hallPlayerProfile));
 // Chat (mm3d-32): Global do jogo e abrir a conversa 1:1 (histórico na Freelandoo).
 router.get("/chat/global", ...admin, asyncHandler(MeuMundoController.chatHistory));
 router.post("/chat/global", ...admin, rateLimit.chat, asyncHandler(MeuMundoController.chatSend));

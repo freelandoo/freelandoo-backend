@@ -30,16 +30,34 @@ class MeuMundoPlayerService {
     if (!found) return fail("Esse jogador não está mais aqui", "gone", 404);
     const { userId, name } = found;
     if (String(userId) === String(viewerId)) return fail("Esse é você", "self", 404);
+    return MeuMundoPlayerService.cardOf(viewerId, userId, { sessionId, name, online: true });
+  }
+
+  /**
+   * O mesmo card a partir do HALL DA FAMA (2026-11-08): tocar na foto de alguém do top 10 da
+   * Arena. Só abre para quem está no top 10 agora (o resto continua só pela sala).
+   */
+  static async hallProfile(viewerId, rawUser) {
+    const userId = String(rawUser || "");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return fail("Jogador não encontrado", "gone", 404);
+    const ten = await require("./MeuMundoHallService").topTenUsers();
+    if (!ten.includes(userId)) return fail("Jogador não encontrado", "gone", 404);
+    const u = await pool.query(`SELECT username FROM public.tb_user WHERE id_user = $1`, [userId]);
+    return MeuMundoPlayerService.cardOf(viewerId, userId, { sessionId: `hall:${userId}`, name: u.rows[0]?.username || "—", online: false });
+  }
+
+  /** Projeção pública do card (regra 14), com bloqueio = indisponível. */
+  static async cardOf(viewerId, userId, { sessionId, name, online }) {
 
     const [blocked, state] = await Promise.all([
       UserBlockStorage.eitherBlocks(pool, viewerId, userId),
       UserBlockStorage.accountState(pool, userId),
     ]);
     if (blocked || !state || state.blocked_at) {
-      return { player: { sessionId, name, online: true, unavailable: true } };
+      return { player: { sessionId, name, online, unavailable: true } };
     }
     const acc = await UserPublicSummaryStorage.getAccountProfile(pool, userId);
-    if (!acc) return { player: { sessionId, name, online: true, unavailable: true } };
+    if (!acc) return { player: { sessionId, name, online, unavailable: true } };
 
     const type = EntityFollowStorage.normalizeType("profile");
     const viewerAcc = await UserPublicSummaryStorage.getAccountProfile(pool, viewerId);
@@ -68,7 +86,7 @@ class MeuMundoPlayerService {
       player: {
         sessionId,
         name,
-        online: true,
+        online,
         unavailable: false,
         profileId: acc.id_profile,
         displayName: acc.display_name || null,
