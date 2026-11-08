@@ -16,6 +16,12 @@
 // a velocidade máxima, sair do túnel) e monta a classificação pela distância.
 // Quem sai no meio fica com o que tinha ("saiu"). A pessoa continua presente
 // no centro (como no Paint/corrida/Rolê).
+//
+// FASES (mm3d-75): o túnel que a semente gera depende da FASE escolhida
+// (features/meu-mundo/jetpack/sim/phases.ts no front). A sala é por fase
+// (filterBy centerRoomId + solo + phase) e manda a fase na largada: em grupo
+// todos voam a mesma fase com a mesma semente. A física não muda entre fases,
+// então os limites daqui (velocidade, caixa do túnel) valem para todas.
 
 const { Room, ServerError, matchMaker } = require("@colyseus/core");
 const { schema, t } = require("@colyseus/schema");
@@ -36,6 +42,9 @@ const TICK_MS = 50; // 20 Hz
 const MAX_MSG_PER_SEC = 45;
 const ABUSE_DROPS = 300;
 const COUNTDOWN_S = 3;
+/** Fases jogáveis (as mesmas de PLAYABLE_PHASES em sim/phases.ts do front); desconhecida = a original. */
+const JETPACK_PHASES = ["industrial", "canion", "orbital", "floresta", "forja", "artico"];
+const phaseOf = (p) => (JETPACK_PHASES.includes(p) ? p : JETPACK_PHASES[0]);
 /** Túnel (o mesmo de sim/flight.ts): x ∈ [−W/2, W/2], y ∈ [0, H]. */
 const TUNNEL = { W: 10, H: 8 };
 /**
@@ -89,6 +98,7 @@ class JetpackRoom extends Room {
   async onCreate(options) {
     this.centerRoomId = String(options.centerRoomId || "");
     this.solo = !!options.solo;
+    this.phase = phaseOf(options.phase);
     this.maxClients = this.solo ? 1 : SEATS;
     this.patchRate = 100;
     this.seatReservationTimeout = 15;
@@ -105,7 +115,7 @@ class JetpackRoom extends Room {
     this.onMessage("x", (client, msg) => this.onCrash(client, msg));
     this.onMessage("ping", (client, msg) => this.onPing(client, msg));
     this.setSimulationInterval(() => this.loop(), TICK_MS);
-    log.info("jetpack.create", { roomId: this.roomId, solo: this.solo });
+    log.info("jetpack.create", { roomId: this.roomId, solo: this.solo, phase: this.phase });
   }
 
   async onJoin(client, options) {
@@ -272,9 +282,9 @@ class JetpackRoom extends Room {
     void this.lock();
     for (const client of this.clients) {
       const s = this.seats.get(client.sessionId);
-      if (s) client.send("start", { me: s.slot, seed, countdown: COUNTDOWN_S, seats, solo: this.solo });
+      if (s) client.send("start", { me: s.slot, seed, countdown: COUNTDOWN_S, seats, solo: this.solo, phase: this.phase });
     }
-    log.info("jetpack.start", { roomId: this.roomId, people: seats.length, solo: this.solo });
+    log.info("jetpack.start", { roomId: this.roomId, people: seats.length, solo: this.solo, phase: this.phase });
   }
 
   loop() {
@@ -320,10 +330,10 @@ class JetpackRoom extends Room {
         return { slot: s.slot, name: p ? p.name : "", score: s.run.score, dist: Math.floor(s.run.z), cans: s.run.cans, by: s.run.by, gone: s.run.gone };
       })
       .sort((a, b) => b.dist - a.dist || b.score - a.score);
-    this.state.result = JSON.stringify({ rows });
+    this.state.result = JSON.stringify({ rows, phase: this.phase });
     this.state.phase = "end";
     this.state.until = Date.now() + timing.closeMs;
-    log.info("jetpack.end", { roomId: this.roomId, people: rows.length, best: rows[0] ? rows[0].dist : 0 });
+    log.info("jetpack.end", { roomId: this.roomId, people: rows.length, best: rows[0] ? rows[0].dist : 0, phase: this.phase });
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }
 }
@@ -332,14 +342,14 @@ class JetpackRoom extends Room {
 
 let ready = false;
 function define(gameServer) {
-  gameServer.define(JETPACK_ROOM, JetpackRoom).filterBy(["centerRoomId", "solo"]).sortBy({ clients: -1 });
+  gameServer.define(JETPACK_ROOM, JetpackRoom).filterBy(["centerRoomId", "solo", "phase"]).sortBy({ clients: -1 });
   ready = true;
 }
 
-/** Reserva o lugar (quem chama já conferiu papel, centro e porta). `solo` = sala só da pessoa, larga na hora. */
-async function reserveJetpackSeat({ userId, name, body, centerRoomId, solo = false, speed = 0 }) {
+/** Reserva o lugar (quem chama já conferiu papel, centro e porta). `solo` = sala só da pessoa, larga na hora; `phase` = a fase. */
+async function reserveJetpackSeat({ userId, name, body, centerRoomId, solo = false, speed = 0, phase }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name, body, solo: !!solo, speed: Number(speed) || 0 };
+  const options = { centerRoomId, userId, name, body, solo: !!solo, speed: Number(speed) || 0, phase: phaseOf(phase) };
   if (solo) return matchMaker.create(JETPACK_ROOM, options);
   let last = null;
   for (let i = 0; i < 4; i++) {
@@ -372,8 +382,10 @@ module.exports = {
   leaveJetpack,
   jetpackStatus,
   JETPACK_ROOM,
+  JETPACK_PHASES,
   SEATS,
   speedFactor,
+  phaseOf,
   // só para a suíte e2e
   _jetpackRooms: () => [...rooms.values()],
   _jetpackTiming: timing,

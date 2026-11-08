@@ -120,8 +120,8 @@ async function mkUser(pool, tag) {
     const s = [...room.sim.values()].find((x) => x.userId === u);
     Object.assign(s.body, { x: DOOR.x + dx, z: DOOR.z });
   }
-  async function join(u, solo = false) {
-    const out = await Service.joinJetpack(u, { solo });
+  async function join(u, solo = false, phase) {
+    const out = await Service.joinJetpack(u, { solo, phase });
     if (out.error) return { out };
     const room = await consume(out);
     const box = { out, room, welcome: null, start: null, snaps: 0, last: null, replaced: false, code: null };
@@ -153,6 +153,7 @@ async function mkUser(pool, tag) {
   // ── Sozinho: sala só sua, larga na hora ───────────────────────────────────
   const S = await join(users[8], true);
   check("sozinho: larga na hora (sem espera)", (await until(() => S.start, 2000)) && S.start.solo === true && S.start.seats.length === 1 && S.start.seed > 0);
+  check("…sem fase pedida, voa o túnel original (mm3d-75)", S.start.phase === "industrial", String(S.start.phase));
   const bodyNow = await Storage.getBody(pool, users[8]);
   check(
     "…com o corpo da conta (o da classe), nunca o do aparelho",
@@ -178,6 +179,16 @@ async function mkUser(pool, tag) {
   const Cx = await join(users[2]);
   check("trancada: quem chega depois vai para outra largada", Cx.room && Cx.room.roomId !== A.room.roomId && Cx.room.state.phase === "lobby");
   await bye(Cx.room);
+
+  // ── Fases (mm3d-75): a sala é por fase ────────────────────────────────────
+  check("fase desconhecida vira a original; as 6 jogáveis", jet.phaseOf("zzz") === "industrial" && jet.phaseOf("artico") === "artico" && jet.JETPACK_PHASES.length === 6);
+  const P1 = await join(users[2], false, "canion");
+  const P2 = await join(users[3], false, "canion");
+  check("grupo do Cânion: os dois na mesma sala, separada das outras fases", P1.room.roomId === P2.room.roomId && P1.room.roomId !== Cx.room.roomId && roomOf(P1.room.roomId).phase === "canion");
+  roomOf(P1.room.roomId).state.until = Date.now();
+  check("…a largada leva a fase e a mesma semente", (await until(() => P1.start && P2.start, 4000)) && P1.start.phase === "canion" && P2.start.phase === "canion" && P1.start.seed === P2.start.seed);
+  await bye(P1.room);
+  await bye(P2.room);
 
   const r = roomOf(A.room.roomId);
   r.startedAt -= 3000; // pula a contagem

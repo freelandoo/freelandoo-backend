@@ -552,8 +552,9 @@ class MeuMundoService {
    * porta. `solo` = sala só dela (larga na hora; a sala mede a prática); sem
    * ele, a próxima largada em grupo (até 6). A pessoa continua no centro. O
    * corpo é o da conta (skin vestida ou condição), nunca o que o aparelho diz.
+   * `phase` (mm3d-75): a fase escolhida; a sala é por fase (desconhecida = a original).
    */
-  static async joinJetpack(idUser, { solo = false } = {}) {
+  static async joinJetpack(idUser, { solo = false, phase } = {}) {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
@@ -566,7 +567,7 @@ class MeuMundoService {
       // a velocidade do voo sai do atributo VELOCIDADE do personagem (regra do Alex)
       const life = await MeuMundoLifeService.peek(idUser).catch(() => null);
       const speed = Number(life && life.character && life.character.attributes && life.character.attributes.speed) || 0;
-      reservation = await reserveJetpackSeat({ userId: idUser, name, body, centerRoomId: here.id, solo: solo === true, speed });
+      reservation = await reserveJetpackSeat({ userId: idUser, name, body, centerRoomId: here.id, solo: solo === true, speed, phase: typeof phase === "string" ? phase.slice(0, 24) : undefined });
     } catch (err) {
       log.error("jetpack.reserve_fail", { message: err.message });
       return { error: "O jetpack não abriu agora.", statusCode: 503 };
