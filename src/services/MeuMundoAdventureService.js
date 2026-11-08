@@ -161,6 +161,9 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
     items: drops,
   });
   ctx.events.push({ at: ctx.now, kind: "fight", data: { origin, kind: setup.kind, win: verdict.win, abandoned: !!verdict.abandoned, xp: level.xp } });
+  // B5: inventário de monstros (só luta de verdade; recibo repetido = já contou).
+  const trophy = Adv.trophyKind(origin, setup.kind);
+  if (rec && trophy && !verdict.abandoned) await Store.addTrophy(c, { idUser, kind: trophy, win: verdict.win, level: setup.level });
   return rec;
 }
 
@@ -226,6 +229,25 @@ class MeuMundoAdventureService {
     return {
       adventure: { ...lv, unlocks: Adv.UNLOCKS, rules: Adv.RULES_VERSION },
       receipts: await Store.recentReceipts(pool, idUser, 20),
+    };
+  }
+
+  /** B5: o inventário de monstros (todas as espécies, com zero no que nunca enfrentou). */
+  static async monsters(idUser) {
+    const pool = require("../databases");
+    const rows = new Map((await Store.trophies(pool, idUser)).map((r) => [r.kind, r]));
+    return {
+      monsters: Adv.TROPHY_KINDS.map((kind) => {
+        const r = rows.get(kind);
+        return {
+          kind,
+          wins: r ? Number(r.wins) : 0,
+          losses: r ? Number(r.losses) : 0,
+          bestLevel: r ? Number(r.best_level) : 0,
+          firstWinAt: r && r.first_win_at ? new Date(r.first_win_at).toISOString() : null,
+          lastAt: r ? new Date(r.last_at).toISOString() : null,
+        };
+      }),
     };
   }
 

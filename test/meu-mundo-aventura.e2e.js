@@ -117,12 +117,19 @@ async function main() {
   // reenvio depois (resposta perdida): mesmo recibo
   const again = await Adv.fightFinish(id, { ticket: start.fight.ticket, frames });
   check("reenvio devolve o mesmo recibo", again.replay === true && again.receipt.eventId === rec.eventId);
+  // B5 (mig 365): a luta entra UMA vez no inventário de monstros (as duas abas e o reenvio não somam)
+  const inv1 = (await Adv.monsters(id)).monsters
+  const sol = inv1.find((m) => m.kind === "soldier")
+  check("inventário: a luta da Arena conta uma vez", sol.wins + sol.losses === 1 && sol.wins === (rec.result.win ? 1 : 0), JSON.stringify(sol))
+  check("inventário: lista todas as espécies, zero no resto", inv1.length === 6 && inv1.filter((m) => m.kind !== "soldier").every((m) => m.wins === 0 && m.losses === 0))
+  check("inventário: maior nível vencido", sol.bestLevel === (rec.result.win ? 1 : 0), JSON.stringify(sol))
 
   // abandono: abre e não fecha; a próxima abre e cobra a derrota uma vez
   const s2 = await Adv.fightStart(id, { origin: "laminas", kind: "golem", level: 1 });
   const s3 = await Adv.fightStart(id, { origin: "laminas", kind: "golem", level: 1 });
   check("luta abandonada vira derrota (uma vez)", s3.abandoned.length === 1 && s3.abandoned[0].result.abandoned && s3.abandoned[0].actionKey === s2.fight.ticket);
   const s4 = await Adv.fightStart(id, { origin: "laminas", kind: "golem", level: 1 });
+  check("inventário: abandono não conta", (await Adv.monsters(id)).monsters.find((m) => m.kind === "golem").losses === 0)
   check("o abandono não é cobrado de novo", s4.abandoned.length === 1 && s4.abandoned[0].actionKey === s3.fight.ticket);
 
   // monstro da rua sem a sala ter visto: recusa
