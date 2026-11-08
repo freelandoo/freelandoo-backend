@@ -153,6 +153,7 @@ const fitnessRoutes = require("./fitness.routes");
 const workoutRoutes = require("./workout.routes");
 const functionStoreRoutes = require("./functionStore.routes");
 const functionStoreAdminRoutes = require("./functionStoreAdmin.routes");
+const classificacaoRoutes = require("./classificacao.routes");
 
 module.exports = (app) => {
   app.get("/health", (req, res) => {
@@ -367,4 +368,7 @@ module.exports = (app) => {
   app.use("/", academyRoutes);
   app.use("/fitness", fitnessRoutes);
   app.use("/workouts", workoutRoutes);
+  // A6 Classificação (migs 395/396): prova com nota 0–100 e perfil de personalidade.
+  app.use("/classificacao", classificacaoRoutes);
+  app.use("/public/classificacao", classificacaoRoutes.publicRouter);
 };
