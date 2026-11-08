@@ -13,17 +13,18 @@ const fs = require("fs");
 const path = require("path");
 const { stripTypeScriptTypes } = require("node:module");
 
-const SIM = path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/paint/sim");
+// PAINT_SIM_DIR: outra cópia do front (worktree); sem ela, a pasta irmã de sempre.
+const SIM = process.env.PAINT_SIM_DIR || path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/paint/sim");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoPaint.js");
 // Ordem de dependência (cada um só usa os de cima).
-const MODULES = ["tuning", "map", "maps", "collide", "body", "paint", "match"];
+const MODULES = ["tuning", "map", "maps", "collide", "body", "paint", "morkhan", "match"];
 
 function build() {
   const exported = [];
   const seen = new Set();
   const parts = [];
   for (const m of MODULES) {
-    let src = stripTypeScriptTypes(fs.readFileSync(path.join(SIM, `${m}.ts`), "utf8"), { mode: "strip" });
+    let src = stripTypeScriptTypes(fs.readFileSync(path.join(SIM, `${m}.ts`), "utf8").replace(/\r\n/g, "\n"), { mode: "strip" });
     // imports entre os módulos somem (tudo vira um escopo só)
     src = src.replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, "");
     src = src.replace(/^export\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];?\s*$/gm, "");

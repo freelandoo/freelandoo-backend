@@ -426,7 +426,8 @@ test("paint — nocaute por tiro: quem derrubou fica com os gatinhos de quem cai
   assert.ok(!fall.find((e) => e.type === "steal"));
   assert.equal(p0.cats, 0);
   assert.equal(m.teamCats[0], 0);
-  assert.ok(m.portalOpen[0], "portal que já abriu fica aberto");
+  // B11: quem completou os 20 (aqui pelo roubo) é o caçado do Morkhan; caiu = o portal fecha
+  assert.ok(!m.portalOpen[0] && fall.find((e) => e.type === "portalShut" && e.team === 0), "B11: o caçado caiu abaixo de 20: o portal fecha");
   const drop = fall.find((e) => e.type === "drop");
   assert.ok(drop && drop.slot === 0 && drop.n === 21);
   assert.deepEqual(fall.filter((e) => e.type === "catBack").map((e) => e.id).sort(), stolen.sort());
