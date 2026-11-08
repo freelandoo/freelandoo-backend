@@ -87,6 +87,15 @@ const server = app.listen(PORT, () => {
   const ResidenceService = require("./src/services/ResidenceService");
   ResidenceService.startSweeper();
 
+  // Meu Mundo (T3, mig 334): poder dos hóspedes que ainda não têm (power NULL).
+  // Só as linhas NULL: depois da primeira passada não faz nada. Nunca derruba o boot.
+  setTimeout(() => {
+    require("./src/services/MeuMundoPowerService")
+      .backfill()
+      .then((n) => n && console.log(`[mm-power] backfill: ${n} hóspedes`))
+      .catch((err) => console.warn("[mm-power] backfill falhou:", err.message));
+  }, 15000).unref();
+
   // "Cancelar no fim do ciclo" (mig 251) — a capacidade que só o Stripe tem
   // nativamente. Fora dele, cancelar é IMEDIATO, então a data do ciclo pago é
   // agendada e executada aqui.

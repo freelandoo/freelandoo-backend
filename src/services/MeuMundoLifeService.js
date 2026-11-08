@@ -34,6 +34,8 @@ const { createLogger } = require("../utils/logger");
 const presence = require("../realtime/meuMundoPresence");
 
 const log = createLogger("meuMundo.life");
+/** Require tardio: o serviço do poder lê o equipamento, que usa o withLife. */
+const MeuMundoPowerService = () => require("./MeuMundoPowerService");
 
 const REST_ROUTE_KINDS = ["idle", "studying", "training", "working", "praying"];
 
@@ -345,6 +347,9 @@ class MeuMundoLifeService {
       const avatar = await MeuMundoStorage.getBody(c, idUser);
       // Cores da skin vestida (mm3d-36, mig 304): "" = visual próprio.
       const look = await MeuMundoStorage.getLook(c, idUser);
+      // T3 (mig 334): o PODER do hóspede, recalculado a cada mudança da vida
+      // (regra gerada do front: src/utils/meuMundoPower.js).
+      const power = await MeuMundoPowerService().refresh(c, idUser, idCharacter, state, now);
       await c.query("COMMIT");
       const cur = ctx.newRow || row;
       const snap0 = {
@@ -355,6 +360,7 @@ class MeuMundoLifeService {
         needs: needsNow,
         // mm3d-72: personalidade, afeto, gosta/odeia, desejo e como ele chama o dono
         soul: { ...Soul.view(state, now), nickname, felt: soulRes.delta },
+        power,
       };
       const snap = admin ? Life.adminView(snap0) : snap0;
       // Altura de agora (2026-11-02): o corpo desenhado + o crescimento da vida.

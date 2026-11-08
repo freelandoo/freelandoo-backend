@@ -21,6 +21,8 @@ stub("databases", {
     if (/SELECT municipio, estado FROM public\.tb_profile/.test(sql)) return { rows: [{ municipio: "Fortaleza", estado: "CE" }] };
     if (/tb_profile_portfolio_item/.test(sql)) return { rows: [{ n: 2 }] };
     if (/profile_ratings/.test(sql)) return { rows: [{ n: 0, avg: 0 }] };
+    // T3 (mig 334): o poder gravado do hóspede
+    if (/SELECT power FROM tb_mm_character/.test(sql)) return { rows: [{ power: 4321 }] };
     throw new Error(`consulta inesperada: ${sql}`);
   },
 });
@@ -100,10 +102,11 @@ test("projeção pública é do jogador TOCADO, campo a campo", async () => {
   assert.equal(p.following, 1);
   assert.deepEqual(p.ratings, { count: 0, avg: 0 });
   assert.equal(p.isFollowing, true);
+  assert.equal(p.power, 4321);
   // Nada além do que o card mostra (xp, id da conta, dados da manifestação).
   assert.deepEqual(Object.keys(p).sort(), [
     "avatarUrl", "city", "coverUrl", "displayName", "followers", "following", "isFollowing", "name", "online",
-    "posts", "profileId", "ratings", "sessionId", "unavailable", "username", "viewerProfileId",
+    "posts", "power", "profileId", "ratings", "sessionId", "unavailable", "username", "viewerProfileId",
   ]);
   world.following = false;
 });

@@ -43,7 +43,7 @@ class MeuMundoPlayerService {
 
     const type = EntityFollowStorage.normalizeType("profile");
     const viewerAcc = await UserPublicSummaryStorage.getAccountProfile(pool, viewerId);
-    const [user, place, counts, posts, rating, banner, follow] = await Promise.all([
+    const [user, place, counts, posts, rating, banner, follow, power] = await Promise.all([
       pool.query(`SELECT username FROM public.tb_user WHERE id_user = $1`, [userId]),
       pool.query(`SELECT municipio, estado FROM public.tb_profile WHERE id_profile = $1`, [acc.id_profile]),
       EntityFollowStorage.counts(pool, { entity_type: type, entity_id: acc.id_profile }),
@@ -61,6 +61,8 @@ class MeuMundoPlayerService {
       viewerAcc
         ? EntityFollowStorage.findActive(pool, { follower_type: type, follower_id: viewerAcc.id_profile, target_type: type, target_id: acc.id_profile })
         : null,
+      // T3 (mig 334): o poder gravado do hóspede dele (null = sem hóspede/ainda não calculado)
+      require("./MeuMundoPowerService").ofUser(pool, userId).catch(() => null),
     ]);
     return {
       player: {
@@ -80,6 +82,7 @@ class MeuMundoPlayerService {
         following: Number(counts?.following_count) || 0,
         ratings: { count: rating.rows[0].n, avg: Math.round(rating.rows[0].avg * 10) / 10 },
         isFollowing: !!follow,
+        power,
         // Quem segue é o perfil-conta de quem olha (o "ator" do /entity-follows).
         viewerProfileId: viewerAcc ? viewerAcc.id_profile : null,
       },
