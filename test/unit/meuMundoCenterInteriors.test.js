@@ -10,8 +10,8 @@ const { isFreeSpot } = require("../../src/utils/meuMundoInteriorMotion");
 const uses = (d) => [...d.seats.map((s) => s.use), ...d.spots.map((s) => s.use)].filter(Boolean);
 const count = (d, u) => uses(d).filter((x) => x === u).length;
 
-test("os doze prédios montam sem problema, com entrada livre e saída pela porta", () => {
-  assert.deepEqual(Object.keys(I).sort(), ["academia", "arsenal", "biblioteca", "delegacia", "escola", "forja", "hall", "hamburgueria", "igreja", "pizzaria", "supermercado", "universidade"]);
+test("os treze prédios montam sem problema, com entrada livre e saída pela porta", () => {
+  assert.deepEqual(Object.keys(I).sort(), ["academia", "arsenal", "biblioteca", "criolab", "delegacia", "escola", "forja", "hall", "hamburgueria", "igreja", "pizzaria", "supermercado", "universidade"]);
   for (const [id, d] of Object.entries(I)) {
     assert.deepEqual(d.problems, [], id);
     assert.ok(isFreeSpot(d, 0, d.entry.x, d.entry.z), `${id}: entrada livre`);

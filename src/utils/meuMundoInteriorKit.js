@@ -141,6 +141,13 @@ const FURNITURE = Object.freeze({
   weapons_counter: { w: 3.0, d: 0.8, h: 1.05, use: "weapons" },
   forge_furnace: { w: 2.0, d: 1.4, h: 2.7 },
   weapon_rack: { w: 1.8, d: 0.45, h: 2.0 },
+  // Laboratório de Criogenia (B12): cápsulas de cena (gelo), o console da cápsula
+  // dos personagens, o balcão da criogenista, o tanque dos embriões e o acelerador.
+  cryo_pod: { w: 1.3, d: 1.1, h: 2.5 },
+  cryo_console: { w: 1.6, d: 0.7, h: 1.25, use: "cryo" },
+  lab_counter: { w: 2.6, d: 0.8, h: 1.05, use: "lab" },
+  embryo_tank: { w: 1.6, d: 0.9, h: 2.0, use: "embryo" },
+  accelerator: { w: 2.2, d: 1.6, h: 2.8, use: "accelerate" },
 });
 
 const DEG = Math.PI / 180;

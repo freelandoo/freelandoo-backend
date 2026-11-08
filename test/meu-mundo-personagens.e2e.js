@@ -122,6 +122,47 @@ async function main() {
   check("certificado sem dados do dono além do apelido", c && !("id_user" in c) && !("email" in c) && !JSON.stringify(cert).includes(A));
   check("código inválido = não encontrado", (await Chars.certificate("zzz")).code === "notFound");
 
+  // ── B12: Laboratório de Criogenia — embrião e acelerador
+  const B = crypto.randomUUID();
+  await pool.query(`INSERT INTO tb_user VALUES ($1, 'bia', 'bia@mm.test', FALSE)`, [B]);
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm') ON CONFLICT DO NOTHING`, [B]);
+  await Life.peek(B);
+  const bal = async () => Number((await pool.query(`SELECT balance FROM emerald_wallets WHERE user_id = $1`, [B])).rows[0]?.balance ?? 0);
+  const lb = await Chars.list(B);
+  const lab = lb.characters.lab;
+  check("laboratório: preço do embrião por espécie", lab && lab.embryos.find((e) => e.species === "raposa").price === 10000 && lab.embryos.find((e) => e.species === "aurion").price === 900000 && !lab.free && lab.accelPrice === 5000, JSON.stringify(lab && lab.embryos.slice(0, 3)));
+  await pool.query(`UPDATE emerald_wallets SET balance = 0 WHERE user_id = $1`, [B]);
+  const poor = await Chars.buyEmbryo(B, { species: "raposa", sex: "f", key: "pedido-0001" });
+  check("embrião sem Esmeralda é recusado", poor.code === "coins" || /Moedas/.test(poor.error || ""), JSON.stringify(poor));
+  const nGrant0 = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_character_grant WHERE id_user = $1`, [B])).rows[0].count);
+  check("recusa não deixa grant", nGrant0 === 0, String(nGrant0));
+  await pool.query(`UPDATE emerald_wallets SET balance = 20000 WHERE user_id = $1`, [B]);
+  const buy = await Chars.buyEmbryo(B, { species: "raposa", sex: "f", key: "pedido-0002" });
+  const emb = buy.characters && buy.characters.list.find((c) => c.id === (buy.granted || [])[0]);
+  check("embrião comprado entra na cápsula com 1 m e 0 dia", !buy.error && emb && emb.status === "capsule" && emb.height === 1 && emb.activeDays === 0 && emb.origin === "lab" && emb.species === "raposa" && emb.sex === "f", JSON.stringify(buy.error || emb));
+  check("cobrou 10.000 Esmeralda", (await bal()) === 10000, String(await bal()));
+  const again = await Chars.buyEmbryo(B, { species: "raposa", sex: "f", key: "pedido-0002" });
+  check("mesmo pedido de novo não compra duas vezes", !again.error && again.repeat === true && (await bal()) === 10000 && again.characters.capsule.used === 1, JSON.stringify(again.error || again.repeat) + " " + (await bal()));
+  check("embrião aceita o acelerador", emb && emb.canAccel === true);
+  const acc = await Chars.accelerate(B, emb.id);
+  const embA = acc.characters && acc.characters.list.find((c) => c.id === emb.id);
+  check("acelerador: 15 anos (fase de jovem completa) na cápsula", !acc.error && embA && embA.activeDays === 30 && embA.height === 1.65 && embA.canAccel === false, JSON.stringify(acc.error || (embA && [embA.activeDays, embA.height])));
+  check("acelerador cobrou 5.000", (await bal()) === 5000, String(await bal()));
+  check("acelerar de novo é recusado", (await Chars.accelerate(B, emb.id)).code === "accel");
+  const buy2 = await Chars.buyEmbryo(B, { species: "vampiro", key: "pedido-0003" });
+  check("sem saldo para o segundo embrião", buy2.code === "coins", JSON.stringify(buy2));
+  await pool.query(`UPDATE emerald_wallets SET balance = 20000 WHERE user_id = $1`, [B]);
+  const buy3 = await Chars.buyEmbryo(B, { species: "vampiro", key: "pedido-0004" });
+  const id3 = (buy3.granted || [])[0];
+  const sw3 = await Chars.use(B, id3);
+  check("embrião vira o ativo pela troca", !sw3.error, JSON.stringify(sw3.error));
+  const acc2 = await Chars.accelerate(B, id3);
+  const act = acc2.characters && acc2.characters.list.find((c) => c.id === id3);
+  check("acelerador no ativo: vira jovem de 15 anos", !acc2.error && act && act.status === "alive" && act.activeDays === 30 && act.height === 1.7, JSON.stringify(acc2.error || (act && [act.status, act.activeDays, act.height])));
+  const evs = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_character_event WHERE kind = 'accelerated'`)).rows[0].count);
+  check("evento 'accelerated' gravado nos dois", evs === 2, String(evs));
+  check("admin compra de graça", (await Chars.list(A)).characters.lab.free === true && (await Chars.list(A)).characters.lab.embryos[0].price === 0);
+
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);
   await pool.end();
   process.exit(FAIL ? 1 : 0);

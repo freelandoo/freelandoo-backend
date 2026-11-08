@@ -1,5 +1,5 @@
 {
-  "version": "centro-v12-80059309",
+  "version": "centro-v14-d9beb78a",
   "basePath": "/meu-mundo/centro/",
   "places": {
     "pizzaria": "centro-pizzaria-7bafa2b4.glb",
@@ -21,7 +21,8 @@
     "delegacia": "centro-delegacia-a3aebab8.glb",
     "hospital": "centro-hospital-ec4c91e6.glb",
     "forja": "centro-forja-10b7bcfd.glb",
-    "arsenal": "centro-arsenal-7d809c75.glb"
+    "arsenal": "centro-arsenal-7d809c75.glb",
+    "criolab": "centro-criolab-983db97b.glb"
   },
   "props": {
     "ambulancia": "centro-ambulancia-2c0ec75c.glb"
@@ -462,6 +463,36 @@
         ]
       ],
       "vents": []
+    },
+    "criolab": {
+      "gears": [
+        [
+          0,
+          11.25,
+          0.48,
+          1.05,
+          0.12,
+          0.25,
+          2
+        ]
+      ],
+      "vents": [
+        [
+          -5.6,
+          11.4,
+          11.6
+        ],
+        [
+          5.6,
+          11.4,
+          11.6
+        ],
+        [
+          0,
+          11.3,
+          7.366
+        ]
+      ]
     }
   }
 }

@@ -102,6 +102,9 @@ router.get("/characters", ...admin, asyncHandler(MeuMundoController.characters))
 router.post("/characters/fuse", ...admin, asyncHandler(MeuMundoController.characterFuse));
 router.post("/characters/test-grant", ...admin, asyncHandler(MeuMundoController.characterTestGrant));
 router.post("/characters/:id/use", ...admin, asyncHandler(MeuMundoController.characterUse));
+// B12 (mig 410): Laboratório de Criogenia — embrião na cápsula e acelerador (15 anos).
+router.post("/characters/embryo", ...admin, asyncHandler(MeuMundoController.characterEmbryo));
+router.post("/characters/:id/accelerate", ...admin, asyncHandler(MeuMundoController.characterAccelerate));
 // Sino e correio interno (mig 302, mm3d-30): histórico, leitura, presentes.
 router.get("/notices", ...admin, asyncHandler(MeuMundoController.notices));
 router.get("/notices/summary", ...admin, asyncHandler(MeuMundoController.noticesSummary));

@@ -539,7 +539,38 @@ function arsenal() {
   };
 }
 
-const PLANS = { pizzaria, hamburgueria, supermercado, universidade, biblioteca, escola, academia, igreja, delegacia, hall, forja, arsenal };
+// B12 — LABORATÓRIO DE CRIOGENIA (pedido do Alex, 08/11): à esquerda as cápsulas de gelo
+// e o console da cápsula dos personagens (a tela que era das skins, agora "congelada");
+// no fundo o balcão da criogenista (conversa); à direita o tanque dos embriões (comprar)
+// e o acelerador (leva o embrião aos 15 anos, a idade de jovem).
+function criolab() {
+  return {
+    level: 0,
+    version: "centro-criolab-v1",
+    name: "Laboratório de Criogenia",
+    theme: "criolab",
+    door: D(0, 0, 2.2),
+    floors: [{
+      rooms: [R("lab", "Laboratório", "tile", -6.85, 0, 6.85, 12.4)],
+      furniture: [
+        ["cryo_pod", -6.3, 2.6, -90],
+        ["cryo_pod", -6.3, 4.4, -90],
+        ["cryo_pod", -6.3, 6.2, -90],
+        ["cryo_pod", -6.3, 8.0, -90],
+        ["cryo_console", -4.0, 11.4, 0],
+        ["lab_counter", 0, 9.6, 0],
+        ["embryo_tank", 6.3, 3.6, 90],
+        ["accelerator", 5.95, 7.6, 90],
+        ["cryo_pod", 4.2, 11.75, 0],
+        ["lamp", -3.8, 0.65, 0],
+        ["lamp", 3.8, 0.65, 0],
+      ],
+    }],
+    npcs: [{ role: "criogenista", x: 0, z: 10.9, r: 0 }],
+  };
+}
+
+const PLANS = { pizzaria, hamburgueria, supermercado, universidade, biblioteca, escola, academia, igreja, delegacia, hall, forja, arsenal, criolab };
 
 const CENTER_INTERIORS = Object.freeze(Object.fromEntries(Object.entries(PLANS).map(([id, f]) => [id, Object.freeze(buildInterior(f()))])));
 

@@ -338,6 +338,15 @@ async function characterFuse(req, res) {
   return reply(res, await MeuMundoCharacterService.fuse(req.user.id_user, req.body || {}));
 }
 
+// B12: Laboratório de Criogenia — comprar embrião e usar o acelerador.
+async function characterEmbryo(req, res) {
+  return reply(res, await MeuMundoCharacterService.buyEmbryo(req.user.id_user, req.body || {}));
+}
+
+async function characterAccelerate(req, res) {
+  return reply(res, await MeuMundoCharacterService.accelerate(req.user.id_user, req.params.id));
+}
+
 // TESTE (hoje só admin joga): ganha um personagem da espécie na cápsula.
 async function characterTestGrant(req, res) {
   return reply(res, await MeuMundoCharacterService.testGrant(req.user.id_user, req.body || {}));
@@ -432,5 +441,7 @@ module.exports = {
   characterUse,
   characterFuse,
   characterTestGrant,
+  characterEmbryo,
+  characterAccelerate,
   certificate,
 };

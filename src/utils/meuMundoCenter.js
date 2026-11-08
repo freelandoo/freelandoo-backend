@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 13; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 14; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -74,6 +74,10 @@ const PLACE_DEFS = [
   // as duas é técnico, não é uma passagem.
   { id: "forja", zone: "comercial", rect: [33, 42.5, 36, 49], h: 7.4, peak: 14, front: "s", door: 37.75, doorW: 2.4 },
   { id: "arsenal", zone: "comercial", rect: [44, 53.5, 36, 49], h: 7, peak: 12, front: "s", door: 48.75, doorW: 2.4 },
+  // B12 — LABORATÓRIO DE CRIOGENIA (pedido do Alex, 08/11): os personagens da cápsula
+  // congelados, o embrião à venda e o acelerador. Atrás da academia, no fundo sul,
+  // de frente para o NORTE (para o largo que chega do anel pelo vão hospital × academia).
+  { id: "criolab", zone: "atividades", rect: [-22, -8, -63, -50], h: 8, peak: 13, front: "n", door: -15, doorW: 2.4 },
   // game: o local abre um minijogo no cliente em vez de um interior (mm3d-20).
   // party: o minijogo aceita até N na mesma partida (jetpack no túnel: 6, mm3d-63).
   { id: "jetpack", zone: "atividades", rect: [6, 22, -FRONT - 16, -FRONT], h: 12, peak: 21, front: "n", door: 14, doorW: 2.4, game: "jetpack", party: 6 },
@@ -329,6 +333,9 @@ const GROUNDS = Object.freeze([
     { kind: "walk", x: 26, z: -43, w: 3, d: 26 },
     { kind: "pave", x: 25, z: -55.5, w: 6, d: 5 },
     { kind: "walk", x: 28.75, z: -47, w: 2.5, d: 3 },
+    // Laboratório de Criogenia (B12): vão hospital × academia até o largo em frente à porta.
+    { kind: "walk", x: -24, z: -38.25, w: 3, d: 20.5 },
+    { kind: "pave", x: -15.75, z: -48.25, w: 19.5, d: 3.5 },
   ].map((g) => Object.freeze({ ...g, rot: 0 })),
 ]);
 // Ambulância estacionada na baia, de bico para a praça (pronta para sair).

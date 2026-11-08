@@ -38,13 +38,18 @@ const ERRORS = {
   full: ["A cápsula está cheia", 409],
   badSpecies: ["Espécie inválida", 400],
   admin: ["Só para administrador", 403],
+  coins: ["Moedas insuficientes", 402],
+  accel: ["Ele já tem 15 anos ou mais", 409],
+  key: ["Pedido inválido", 400],
+  gone: ["Esse personagem não está vivo nem na cápsula", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
   return { error, statusCode, code };
 };
 
-const ORIGIN_OF_SOURCE = { skin: "skin", prize: "prize", gift: "gift", admin_test: "admin_test" };
+const ORIGIN_OF_SOURCE = { skin: "skin", prize: "prize", gift: "gift", admin_test: "admin_test", lab: "lab" };
+const KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const newSeed = () => crypto.randomInt(1, 2 ** 31 - 1);
 const ms = (v) => (v == null ? null : new Date(v).getTime());
@@ -135,7 +140,7 @@ async function claimGrants(c, idUser, now) {
       sex: Chars.speciesSex(g.species, g.sex),
       origin,
       genetics: geneticsOf(n),
-      ownerReason: origin === "prize" ? "prize" : origin === "gift" ? "gift" : "origin",
+      ownerReason: origin === "prize" ? "prize" : origin === "gift" ? "gift" : origin === "lab" ? "market" : "origin",
     });
     await LS.claimGrant(c, g.id_grant, row.id_character);
     await LS.insertEvents(c, row.id_character, [{ at: now, kind: "born", data: { origin, species: g.species } }]);
@@ -165,7 +170,20 @@ class MeuMundoCharacterService {
       list.push(summary(row, st, k, condition, ctx.now));
     }
     const used = list.filter((x) => x.status === "capsule").length;
-    return { list, capsule: { used, slots: Chars.CAPSULE.SLOTS }, species: Chars.SPECIES_IDS };
+    // B12: o acelerador serve para quem ainda não chegou aos 15 anos (o congelado mede no instante em que parou)
+    for (const x of list) {
+      const row = rows.find((r) => r.id_character === x.id);
+      const st = row && row.id_character === activeId ? ctx.newState || s : row ? rowToState(row) : null;
+      x.canAccel = !!st && (x.status === "alive" || x.status === "capsule") && Chars.canAccelerate(st.growth, x.status === "alive" ? ctx.now : st.simAt);
+    }
+    const free = await MeuMundoStorage.isAdmin(c, idUser);
+    const lab = {
+      free,
+      accelPrice: free ? 0 : Chars.LAB.ACCEL_PRICE,
+      accelYears: Chars.LAB.ACCEL_YEARS,
+      embryos: Chars.SPECIES.map((d) => ({ species: d.id, kind: d.kind, sex: d.sex, price: free ? 0 : Chars.embryoPrice(d.id) })),
+    };
+    return { list, capsule: { used, slots: Chars.CAPSULE.SLOTS }, species: Chars.SPECIES_IDS, lab };
   }
 
   /**
@@ -310,6 +328,64 @@ class MeuMundoCharacterService {
       await LS.addGrant(c, idUser, { species, sex: Chars.speciesSex(species, body.sex), source: "admin_test", ref: crypto.randomUUID() });
       const created = await claimGrants(c, idUser, ctx.now);
       return { granted: created };
+    }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
+  }
+
+  /**
+   * POST /characters/embryo { species, sex?, key } — B12: compra o EMBRIÃO no Laboratório
+   * de Criogenia. Nasce na cápsula (1,00 m, 0 dia de vida ativa) pelo grant de origem
+   * 'lab'; `key` é a chave do pedido (clique duplo ou reenvio não compram duas vezes).
+   * Paga em Esmeralda (ctx.coins); admin não paga.
+   */
+  static async buyEmbryo(idUser, body = {}) {
+    const species = String(body.species || "");
+    if (!Chars.speciesById(species)) return fail("badSpecies");
+    if (body.sex != null && body.sex !== "m" && body.sex !== "f") return fail("sex");
+    const key = String(body.key || "");
+    if (!KEY_RE.test(key)) return fail("key");
+    return LifeService().withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      const id = await LS.addGrant(c, idUser, { species, sex: Chars.speciesSex(species, body.sex), source: "lab", ref: key });
+      if (!id) return { granted: [], repeat: true };
+      if ((await LS.capsuleCount(c, idUser)) >= Chars.CAPSULE.SLOTS) return fail("full");
+      const price = (await MeuMundoStorage.isAdmin(c, idUser)) ? 0 : Chars.embryoPrice(species);
+      if (ctx.coins < price) return fail("coins");
+      ctx.coins -= price;
+      ctx.what = `embryo:${species}`;
+      const created = await claimGrants(c, idUser, ctx.now);
+      return { granted: created, paid: price };
+    }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
+  }
+
+  /**
+   * POST /characters/:id/accelerate — B12: o ACELERADOR leva o personagem aos 15 anos
+   * (a fase de jovem completa: GROW.YOUNG_DAYS de vida ativa). Vale para o ativo e para
+   * quem está na cápsula; quem já passou dos 15 é recusado (não cobra duas vezes).
+   */
+  static async accelerate(idUser, rawId) {
+    if (!UUID.test(String(rawId || ""))) return fail("notFound");
+    return LifeService().withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      const active = rawId === ctx.row.id_character;
+      const row = active ? ctx.row : await LS.lockCharacter(c, idUser, rawId);
+      if (!row) return fail("notFound");
+      const st = active ? s : rowToState(row);
+      if (active ? s.status !== "alive" : row.status !== "capsule") return fail("gone");
+      const t = active ? ctx.now : st.simAt;
+      if (!Chars.canAccelerate(st.growth, t)) return fail("accel");
+      const price = (await MeuMundoStorage.isAdmin(c, idUser)) ? 0 : Chars.LAB.ACCEL_PRICE;
+      if (ctx.coins < price) return fail("coins");
+      ctx.coins -= price;
+      ctx.what = "accelerator";
+      const before = Chars.activeDays(st.growth, t);
+      st.growth = Chars.accelerated(st.growth, t);
+      const ev = { at: ctx.now, kind: "accelerated", data: { fromDays: before, years: Chars.LAB.ACCEL_YEARS } };
+      if (active) ctx.events.push(ev);
+      else {
+        await LS.save(c, row.id_character, st);
+        await LS.insertEvents(c, row.id_character, [ev]);
+      }
+      return { accelerated: { id: row.id_character, paid: price } };
     }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
   }
 
