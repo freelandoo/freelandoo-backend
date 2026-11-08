@@ -27,7 +27,8 @@ const GearService = () => require("./MeuMundoGearService");
 /** Derrota só dá o drop garantido com esta participação (tempo ativo conferido); vitória sempre dá. */
 const LOOT_MIN_ACTIVE_MS = 15000;
 
-const ORIGINS = Object.freeze(["laminas", "boxe", "mob", "tutorial"]);
+// B8: "hall" = desafio pela cadeira do Hall; só abre por dentro (MeuMundoHallService).
+const ORIGINS = Object.freeze(["laminas", "boxe", "mob", "tutorial", "hall"]);
 const TICKET_TTL_MS = 8 * 60 * 1000;
 /** Folga entre o tempo da luta gravada e o relógio do servidor (rede, carregamento). */
 const CLOCK_SLACK_MS = 3000;
@@ -161,6 +162,11 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
     items: drops,
   });
   ctx.events.push({ at: ctx.now, kind: "fight", data: { origin, kind: setup.kind, win: verdict.win, abandoned: !!verdict.abandoned, xp: level.xp } });
+  // B8: o desafio do Hall fecha na mesma transação (abandono = derrota)
+  if (origin === "hall" && rec) {
+    const hall = await require("./MeuMundoHallService").settle(c, fight.id_fight, !!verdict.win && !verdict.abandoned);
+    if (hall) rec.hall = hall;
+  }
   return rec;
 }
 
@@ -234,9 +240,11 @@ class MeuMundoAdventureService {
    * guarda o ticket. Monstro da rua só se a sala viu esse monstro pegar a pessoa.
    * Uma luta aberta antes e nunca fechada conta como abandono (derrota, uma vez).
    */
-  static async fightStart(idUser, body = {}) {
+  static async fightStart(idUser, body = {}, internal = {}) {
     const origin = String(body.origin || "");
     if (!ORIGINS.includes(origin)) return fail("origin");
+    // B8: o desafio do Hall só abre pelo serviço do Hall (a ficha congelada vem de lá)
+    if (origin === "hall" && !(internal && internal.hall)) return fail("origin");
     let kind = String(body.kind || "");
     let level = Math.max(1, Math.min(3, Math.round(Number(body.level) || 1)));
     let mobId = null;
@@ -256,6 +264,11 @@ class MeuMundoAdventureService {
     }
     if (origin === "tutorial") {
       kind = "soldier";
+      level = 1;
+    }
+    // B8: o defensor entra como o Campeão (humano), com a ficha congelada pelo `peer`
+    if (origin === "hall") {
+      kind = "brute";
       level = 1;
     }
     if (!FightSim.MOB_KINDS.includes(kind)) return fail("kind");
@@ -286,7 +299,7 @@ class MeuMundoAdventureService {
         level,
         hero,
         // ringue: o adversário copia quem joga; Arena e rua: ficha do monstro; o prólogo fica de fora
-        peer: origin === "boxe" ? FightSim.peerOf(kind) : undefined,
+        peer: origin === "boxe" ? FightSim.peerOf(kind) : origin === "hall" ? internal.hall.peer : undefined,
         tier: origin === "mob" ? "street" : origin === "laminas" ? "arena" : undefined,
         // o corpo vestido multiplica os status (pesos em BODY_SHEETS)
         body: worn,
@@ -308,6 +321,11 @@ class MeuMundoAdventureService {
       // tutorial: o inimigo entra enfraquecido (pedido do prólogo)
       if (origin === "tutorial") setup.stats = { ...setup.stats, strength: Math.max(setup.stats.strength, 400) };
       const t = await Store.insertFight(c, { idUser, idCharacter: ctx.row.id_character, origin, setup, ttlMs: TICKET_TTL_MS });
+      // B8: o desafio é gravado junto do ticket (limites conferidos com a pessoa travada)
+      if (origin === "hall") {
+        const err = await internal.hall.onOpen(c, t.id_fight);
+        if (err && err.error) return err;
+      }
       return {
         fight: {
           ticket: t.id_fight,
