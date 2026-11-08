@@ -49,7 +49,15 @@ const MAX_MSG_PER_SEC = 45;
 const ABUSE_DROPS = 300;
 
 /** Prazos (a suíte e2e encurta). */
-const timing = { closeMs: 20000 };
+const timing = { closeMs: 20000, lobbyMs: 60000 };
+
+// ── COMPUTADORES (regra do Alex, 2026-11-08) ── 1×1, 2×2 e 3×3 esperam até 1 minuto; na largada
+// as vagas vazias viram computadores (corpo próprio na sala, a mesma física do aparelho e o
+// cérebro do robô dos testes — utils/meuMundoPaintBot.js). Lotou antes: larga na hora, sem computador.
+const { PaintBot } = require("../utils/meuMundoPaintBot");
+const { TUNING: PAINT_T } = require("../utils/meuMundoPaint");
+const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
+const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
 
 const PtPlayer = schema(
   {
@@ -166,6 +174,11 @@ class PaintRoom extends Room {
     this.seats = new Map();
     this.match = null;
     this.closeTimer = null;
+    /** computadores da partida (vaga → PaintBot) e a sobra de tempo da física deles */
+    this.bots = new Map();
+    this.botAcc = 0;
+    // espera de 1 minuto (o treino continua largando na hora)
+    if (mode !== "solo") this.state.until = Date.now() + timing.lobbyMs;
     rooms.set(this.roomId, this);
     this.onMessage("p", (client, msg) => this.onPose(client, msg));
     this.onMessage("f", (client, msg) => this.onFire(client, msg));
@@ -218,7 +231,7 @@ class PaintRoom extends Room {
     }
     this.seats.set(client.sessionId, { userId, slot, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now() });
     byUser.set(userId, { room: this, sessionId: client.sessionId });
-    client.send("welcome", { slot, mode: this.mode });
+    client.send("welcome", { slot, mode: this.mode, left: this.state.phase === "lobby" ? Math.max(0, this.state.until - Date.now()) : 0 });
     if (this.state.phase === "lobby" && this.state.players.size >= this.capacity) this.start();
     log.info("paint.join", { roomId: this.roomId, people: this.seats.size, slot, back: !!back });
   }
@@ -377,12 +390,17 @@ class PaintRoom extends Room {
       if (s) seats.push({ slot: s.slot, team: p.team, sit: p.sit });
     }
     // mm3d-76: apuração dos votos (o sorteio do empate é daqui, nunca do aparelho)
-    const votes = [...this.state.players.values()].map((p) => p.vote);
+    const votes = [...this.state.players.entries()].filter(([sid]) => !String(sid).startsWith("bot:")).map(([, p]) => p.vote);
     const mapId = tallyPaintVotes(votes, Math.random());
     this.mapId = mapId;
     this.state.map = mapId;
     this.state.mv = paintMapVersion(mapId);
     this.match = new PaintMatch(this.mode, seats, buildPaintMap(this.mode, mapId));
+    for (const [sid, s] of this.seats) {
+      if (!s.bot) continue;
+      this.bots.set(s.slot, new PaintBot(this.match, s.slot, s.skill, (Math.random() * 0x7fffffff) | 1));
+      void sid;
+    }
     // mm3d-59: prática medida pela sala
     this.meter = new PracticeMeter("paint", `paint:${this.roomId}:${Date.now()}`, log);
     this.state.phase = "countdown";
@@ -392,11 +410,46 @@ class PaintRoom extends Room {
     log.info("paint.start", { roomId: this.roomId, mode: this.mode, players: seats.length, map: mapId, votes });
   }
 
+  /** Vagas vazias → computadores (nome de doce, corpo variado, habilidade sorteada). */
+  fillBots() {
+    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+    let i = 0;
+    while (this.state.players.size < this.capacity) {
+      const slot = this.freeSlot();
+      const team = this.pickTeam();
+      const sit = [...this.state.players.values()].filter((p) => p.team === team).length;
+      const sid = `bot:${slot}`;
+      this.state.players.set(sid, new PtPlayer({ slot, team, sit, name: names[i % names.length], body: BOT_BODIES[i % BOT_BODIES.length], look: "", online: true, vote: "" }));
+      this.seats.set(sid, { bot: true, userId: null, slot, skill: 0.3 + Math.random() * 0.6 });
+      i++;
+    }
+    this.rebalance();
+  }
+
   loop(dtMs) {
+    if (!this.match) {
+      // espera de 1 minuto: passou o tempo com alguém na sala → completa com computadores e larga
+      if (this.state.phase === "lobby" && this.mode !== "solo" && this.clients.length > 0 && Date.now() >= this.state.until) {
+        this.fillBots();
+        this.start();
+      }
+      return;
+    }
     const m = this.match;
-    if (!m) return;
-    if (m.phase !== "end") m.tick(Math.min(dtMs, 250) / 1000);
+    const dt = Math.min(dtMs, 250) / 1000;
+    // os computadores andam no passo da física (como o aparelho) antes da partida avançar
+    if (this.bots.size && m.phase === "play") {
+      this.botAcc += dt;
+      while (this.botAcc >= PAINT_T.step) {
+        this.botAcc -= PAINT_T.step;
+        for (const b of this.bots.values()) b.step();
+      }
+    }
+    if (m.phase !== "end") m.tick(dt);
     const events = m.drain();
+    for (const e of events) {
+      if (e.type === "respawn" && this.bots.has(e.slot)) this.bots.get(e.slot).respawn(e);
+    }
     if (events.length) this.dispatch(events);
     if (this.state.phase === "countdown" && m.phase === "play") this.state.phase = "play";
     this.mirror();
@@ -532,7 +585,7 @@ class PaintRoom extends Room {
       const wins = new Set();
       for (const [sid, s] of this.seats) {
         const p = this.state.players.get(sid);
-        if (p && wt != null && p.team === wt) wins.add(s.userId);
+        if (p && s.userId && wt != null && p.team === wt) wins.add(s.userId);
       }
       this.meter.settle(null, wins);
     }

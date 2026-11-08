@@ -334,6 +334,28 @@ async function mkUser(pool, tag) {
   check("…e sai do Paint (replaced)", await until(() => six[0].replaced));
   for (const b of six) await bye(b.room);
 
+  // ── Computadores (regra do Alex, 2026-11-08): espera de 1 minuto e as vagas vazias viram computadores ──
+  paint._paintTiming.lobbyMs = 900;
+  const lone = await join(users[9], "2v2");
+  check("2×2 sozinho: espera e avisa quanto falta", lone.room && lone.welcome && lone.welcome.left > 0 && lone.welcome.left <= 900, JSON.stringify(lone.welcome));
+  check("…passou o tempo: larga com 3 computadores (2 × 2)", await until(() => lone.room.state.phase === "countdown" && lone.room.state.players.size === 4, 4000));
+  const lr = roomOf(lone.room.roomId);
+  const botSeats = [...lr.seats.values()].filter((x) => x.bot);
+  const lteams = [0, 0];
+  for (const pl of lone.room.state.players.values()) lteams[pl.team]++;
+  check("…3 computadores e times 2 × 2", botSeats.length === 3 && lteams[0] === 2 && lteams[1] === 2, JSON.stringify(lteams));
+  check("…computador tem nome e corpo", [...lone.room.state.players.values()].filter((pl) => pl.slot !== lone.welcome.slot).every((pl) => pl.name && pl.body));
+  go(lr);
+  const start = botSeats.map((x) => ({ ...lr.match.players.get(x.slot).pose }));
+  await sleep(2500);
+  const moved = botSeats.filter((x, i) => {
+    const q = lr.match.players.get(x.slot).pose;
+    return Math.hypot(q.x - start[i].x, q.z - start[i].z) > 0.5;
+  }).length;
+  check("…os computadores andam pela física da sala", moved >= 2, String(moved));
+  await bye(lone.room);
+  paint._paintTiming.lobbyMs = 60000;
+
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);
   await pool.end().catch(() => {});
   process.exit(FAIL ? 1 : 0);
