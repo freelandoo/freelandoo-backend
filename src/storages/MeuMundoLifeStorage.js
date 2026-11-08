@@ -163,7 +163,7 @@ class MeuMundoLifeStorage {
     ];
     const r = await c.query(
       `INSERT INTO tb_mm_character (${cols.join(", ")})
-       VALUES (${cols.map((_, i) => `${i + 1}`).join(", ")})
+       VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})
        RETURNING *`,
       vals
     );

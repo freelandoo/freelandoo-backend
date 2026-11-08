@@ -294,7 +294,8 @@ async function main() {
   await Life.peek(su);
   await pool.query(`INSERT INTO emerald_wallets (user_id, balance) VALUES ($1, 100000) ON CONFLICT (user_id) DO UPDATE SET balance = 100000`, [su]); // A7: moedas do jogo = Esmeralda
   await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f') ON CONFLICT DO NOTHING`, [su]);
-  const wear = (skin) => pool.query(`INSERT INTO tb_mm_avatar_pref (id_user, body, skin) VALUES ($1, 'normal', $2) ON CONFLICT (id_user) DO UPDATE SET skin = $2`, [su, skin]);
+  // B3 (mig 340): as skins viraram ESPÉCIES de personagem — "vestir" = o personagem ativo ser daquela espécie.
+  const wear = (skin) => pool.query(`UPDATE tb_mm_character SET species = $2 WHERE id_user = $1 AND status = 'alive'`, [su, skin]);
   const fightKit = async () => (await Adv.fightStart(su, { origin: "laminas", kind: "soldier", level: 1 })).fight.setup;
   const fox = await Gear.buy(su, { item: "espada_aco", key: k() });
   check("raposa não compra espada", fox.code === "clan", JSON.stringify(fox));

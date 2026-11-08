@@ -81,7 +81,6 @@ async function mkUser(pool, tag, admin = true) {
   // mm3d-37c: comprar para a geladeira é no supermercado do centro — aqui a pessoa "está" lá.
   require("../src/realtime/meuMundo").atCenterPlace = (_u, p) => p === "supermercado";
   const Inbox = require("../src/services/MeuMundoInboxService");
-  const Skins = require("../src/utils/meuMundoSkins");
   const LifeRules = require("../src/utils/meuMundoLife");
   const Storage = require("../src/storages/MeuMundoStorage");
 
@@ -133,10 +132,11 @@ async function mkUser(pool, tag, admin = true) {
   const coins1 = (await Life.get(ana)).wallet.coins;
   check("presente de moedas soma na carteira do jogo", coins1 === coins0 + 50, `${coins0} → ${coins1}`);
   await Inbox.send(admin, { kind: "gift", to: "mmi_ana", title: "Skin", gift: { type: "skin", id: "sergio" } });
-  const skinMail = (await Inbox.mail(ana, { tab: "gift" })).items.find((m) => m.gift.type === "skin");
+  // B3 (mig 340): skin virou espécie — o presente de "skin" chega como PERSONAGEM na cápsula.
+  const skinMail = (await Inbox.mail(ana, { tab: "gift" })).items.find((m) => m.gift.type === "character");
   const sk = await Life.claimGift(ana, skinMail.id);
-  const wardrobe = await Storage.getWardrobe(pool, ana);
-  check("presente de skin vai para o vestuário", sk.claim.where === "wardrobe" && wardrobe.owned.includes("sergio"));
+  const inCapsule = (await pool.query(`SELECT species FROM tb_mm_character WHERE id_user = $1 AND status = 'capsule'`, [ana])).rows;
+  check("presente de skin vira personagem na cápsula", sk.claim && sk.claim.where === "capsule" && inCapsule.some((r) => r.species === "sergio"), JSON.stringify([sk.claim, inCapsule]));
 
   // Geladeira cheia: o presente não some — fica para depois.
   await pool.query(`UPDATE tb_mm_pantry SET qty = 99 WHERE id_user = $1 AND item_id = 'salmao_legumes'`, [ana]);
@@ -168,30 +168,9 @@ async function mkUser(pool, tag, admin = true) {
   check("necessidades não se repetem a cada leitura da vida", n2 === n1, `${n1} → ${n2}`);
 
   // ── 4. Poléns: produto exclusivo, saldo, idempotência ──────────────────
-  // Catálogo de teste: uma skin exclusiva de Poléns (o catálogo real não tem
-  // nenhuma ainda — a escolha do produto e do preço é do Alex).
-  const fake = Object.freeze({ id: "teste-polens", kind: "skin", name: "Teste", price: 300, currency: "polens", body: "normal" });
-  // CATALOG é congelado: a skin de teste entra pela busca por id.
-  const origById = Skins.skinById;
-  Skins.skinById = (id) => (id === fake.id ? fake : origById(id));
-
-  const w0 = await Life.wallets(ana);
-  check("saldos separados: moedas e Poléns (zero confirmado sem carteira)", typeof w0.wallet.coins === "number" && w0.wallet.polens === 0, JSON.stringify(w0));
-  const poor = await Life.buySkin(ana, fake.id);
-  check("sem Poléns: recusa com 402 e nada muda", poor.code === "polens" && poor.statusCode === 402);
-  const coinsBefore = (await Life.get(ana)).wallet.coins;
-  check("produto exclusivo nunca cai nas moedas", coinsBefore === (await Life.get(ana)).wallet.coins);
-  await pool.query(`INSERT INTO polen_wallets (user_id, balance) VALUES ($1, 1000) ON CONFLICT (user_id) DO UPDATE SET balance = 1000`, [ana]);
-  const [b1, b2] = await Promise.all([Life.buySkin(ana, fake.id), Life.buySkin(ana, fake.id)]);
-  const polensAfter = (await Life.wallets(ana)).wallet.polens;
-  const debits = (await pool.query(`SELECT amount FROM polen_transactions WHERE user_id = $1 AND type = 'spend_meu_mundo'`, [ana])).rows;
-  check("duas compras simultâneas: um débito só", debits.length === 1 && Number(debits[0].amount) === -300, JSON.stringify(debits));
-  check("saldo de Poléns 1000 → 700", polensAfter === 700, String(polensAfter));
-  check("a skin foi entregue", (await Storage.getWardrobe(pool, ana)).owned.includes(fake.id) && [b1, b2].some((b) => b.bought));
-  check("moedas do jogo intactas na compra em Poléns", (await Life.get(ana)).wallet.coins === coinsBefore);
-  const adminBuy = await Life.buySkin(admin, fake.id);
-  check("administrador também paga em Poléns (não é grátis)", adminBuy.code === "polens");
-  Skins.skinById = origById;
+  // B3 (mig 340): o vestuário (skins) saiu do jogo — a compra de skin em Poléns deixou de
+  // existir. Fica o item exclusivo de Poléns, com saldo próprio para o teste.
+  await pool.query(`INSERT INTO polen_wallets (user_id, balance) VALUES ($1, 700) ON CONFLICT (user_id) DO UPDATE SET balance = 700`, [ana]);
 
   // Item exclusivo de Poléns: exige chave; mesma chave não cobra 2×.
   const item = LifeRules.ITEM_BY_ID.get("salmao_legumes");
@@ -207,7 +186,7 @@ async function mkUser(pool, tag, admin = true) {
   check("mesma chave: cobra uma vez e recusa a segunda", i1.bought && i2.code === "key" && pol2 === 660, `${JSON.stringify(i2)} ${pol2}`);
   check("comer direto (consume) recusa item exclusivo", (await Life.consume(ana, fakeItem.id)).code === "currency");
   LifeRules.ITEM_BY_ID.delete(fakeItem.id);
-  check("o catálogo real continua em moedas", realCurrency === "coins" && LifeRules.ITEMS.every((it) => it.currency === "coins") && Skins.CATALOG.every((s) => s.currency === "coins"));
+  check("o catálogo real continua em moedas", realCurrency === "coins" && LifeRules.ITEMS.every((it) => it.currency === "coins"));
 
   // ── 5. Compra de Poléns: confirmador oficial + recibo uma vez ──────────
   const PolenProductService = require("../src/services/PolenProductService");

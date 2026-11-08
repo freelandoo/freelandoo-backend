@@ -1,9 +1,9 @@
 // Classes (mm3d-58): corpo da classe por sexo e fase da vida, e quem passa por
-// cima de quem (skin comprada > classe > padrão/feminina/condição).
+// cima de quem. B3 (mig 340): a skin virou ESPÉCIE do personagem — espécie > classe > condição.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const C = require("../../src/utils/meuMundoClans");
-const { avatarBody } = require("../../src/utils/meuMundoSkins");
+const { characterBody } = require("../../src/utils/meuMundoSpecies");
 const MeuMundoStorage = require("../../src/storages/MeuMundoStorage");
 
 test("corpo da classe: classe × sexo × fase", () => {
@@ -22,26 +22,13 @@ test("todo corpo de classe é aceito pela sala", () => {
   for (const b of C.CLAN_BODIES) assert.ok(MeuMundoStorage.BODIES.includes(b), b);
 });
 
-test("prioridade: skin comprada > classe > padrão/feminina/condição", () => {
-  assert.equal(avatarBody("fat", "standard", "vampira"), "vampira");
-  assert.equal(avatarBody("fat", "feminina", "raposa"), "raposa");
-  assert.equal(avatarBody("fat", "sergio", "raposa"), "sergio");
-  assert.equal(avatarBody("fat", "aurion", "raposa"), "aurion");
-  assert.equal(avatarBody("fat", "standard", null), "fat");
-  assert.equal(avatarBody("fat", "feminina", null), "female");
-});
-
-test("skins de teste das classes: só admin vê, já vêm suas, passam por cima da classe", () => {
-  const Skins = require("../../src/utils/meuMundoSkins");
-  assert.equal(Skins.CLAN_SKINS.length, 8);
-  for (const [id, body] of Skins.CLAN_SKINS) {
-    assert.match(id, /^[a-z0-9-]{1,32}$/, id); // CHECK chk_mm_avatar_skin (mig 300)
-    assert.equal(Skins.skinById(id).body, body);
-    assert.equal(avatarBody("normal", id, "raposa"), body);
-  }
-  const ids = (admin) => Skins.publicCatalog([], "standard", admin).map((s) => s.id);
-  assert.ok(!ids(false).includes("vampira-adulta"));
-  const mine = Skins.publicCatalog([], "standard", true).find((s) => s.id === "vampira-adulta");
-  assert.equal(mine.owned, true);
-  assert.equal(mine.cost, 0);
+test("prioridade (B3): espécie do personagem > classe > condição física", () => {
+  assert.equal(characterBody({ species: null, clan: "vampiro", clanSex: "f", stage: "young", condition: "fat" }), "vampira");
+  assert.equal(characterBody({ species: "sergio", clan: "raposa", condition: "fat" }), "sergio");
+  assert.equal(characterBody({ species: "aurion", clan: "raposa", condition: "fat" }), "aurion");
+  assert.equal(characterBody({ species: null, clan: null, condition: "fat" }), "fat");
+  // as classes viraram espécies: o corpo segue sexo e fase
+  assert.equal(characterBody({ species: "vampiro", sex: "f", stage: "adult" }), "vampira_adulta");
+  assert.equal(characterBody({ species: "raposa", sex: "m", stage: "adult" }), "raposa_adulto");
+  for (const b of C.CLAN_BODIES) assert.ok(MeuMundoStorage.BODIES.includes(b), b);
 });
