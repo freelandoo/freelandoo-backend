@@ -158,6 +158,42 @@ const TUNING = {
   bossSlam: { ahead: 6, r: 7.5, hit: 1.15, dur: 2.4, dmg: 45, knock: 5.5, lift: 6.5 },
   bossRoar: { dur: 2.2 },
 
+  /**
+   * B11 (cronograma 2026-11): o MORKHAN persegue quem completa os 20 gatinhos
+   * do time até a pessoa entrar no portal ou cair. Segue o RASTRO de quem ele
+   * caça (os pontos em que ela pisou): não atravessa o vazio, salta só onde
+   * ela saltou. Corre a 90% da corrida e arranca de tempos em tempos; o golpe
+   * é o empurrão do muro (`wallShove`/`wallShoveLift`), sem dano.
+   */
+  morkhan: {
+    /** s parado surgindo antes de correr (a vantagem de quem foge). */
+    rise: 1.8,
+    /** Velocidade (m/s) = 90% da corrida; na arrancada × `dashK`. */
+    speed: 5.94,
+    dashK: 1.55,
+    dashEvery: 6.5,
+    dashDur: 1.1,
+    /** Nasce este tanto (m de rastro) atrás de quem caça. */
+    behind: 14,
+    /** Rastro: um ponto a cada `trailStep` m pisados; guarda `trailKeep` de cada um. */
+    trailStep: 0.6,
+    trailKeep: 60,
+    /** Passo andando entre dois pontos (o resto é salto). */
+    walkGap: 1.5,
+    walkRise: 0.7,
+    /** Salto: velocidade horizontal e altura extra do arco. */
+    leapV: 7.5,
+    leapLift: 1.4,
+    /** Golpe: alcance para começar, para acertar, quando acerta, duração e descanso. */
+    reach: 2.4,
+    hitReach: 3.1,
+    hit: 0.42,
+    dur: 0.95,
+    rest: 1.4,
+    /** Altura do corpo (o deus de 3,2 m). */
+    h: 3.2,
+  },
+
   /** Partida. */
   matchTime: 600,
   countdown: 5,
@@ -1970,6 +2006,226 @@ function punchReachesBoss(a                                     , boss          
   return Math.hypot(a.x - boss.x, a.z - boss.z) <= boss.r + TUNING.punchRange && a.y >= boss.y - 1 && a.y <= boss.y + boss.h
 }
 
+// ── sim/morkhan.ts ───────────────────────────────────────────────────────────
+// features/meu-mundo/paint/sim/morkhan.ts — PAINT, B11 (cronograma 2026-11):
+// o MORKHAN, o Sem-Nome, persegue quem completa os 20 gatinhos do time.
+//
+// Regra única: o navegador (treino) e a sala (src/utils/meuMundoPaint.js,
+// GERADO por scripts/build-paint-sim.js) rodam este mesmo código; a partida
+// (`match.ts`) decide quando ele surge e quando some.
+//
+// Como anda: segue o RASTRO de quem ele caça — os pontos em que a pessoa
+// pisou (`morkhanTrailAdd`, um a cada `trailStep` m). Entre dois pontos
+// colados ele anda; onde a pessoa saltou (vão, cama elástica, degrau alto)
+// ele salta também, no mesmo lugar. Por isso nunca atravessa o vazio: só
+// passa onde ela passou. Corta caminho só por chão contínuo (`morkhanFlat`).
+// Corre a 90% da corrida e arranca de tempos em tempos; perto dela, golpeia
+// (empurrão do muro, sem dano — quem está na borda voa da ilha).
+
+function newMorkhan(team        )               {
+  return { team, target: -1, x: 0, y: 0, z: 0, facing: 0, act: "gone", at: 0, nextDash: 0, dashUntil: 0, nextStrike: 0, struck: false, leap: null, path: [] }
+}
+
+function morkhanActive(s              ) {
+  return s.act !== "gone" && s.target >= 0
+}
+
+/** Anota o ponto no rastro se a pessoa pisou e andou o bastante. true = entrou. */
+function morkhanTrailAdd(trail        , x        , y        , z        )          {
+  const M = TUNING.morkhan
+  const last = trail[trail.length - 1]
+  if (last && Math.hypot(x - last.x, z - last.z) < M.trailStep && Math.abs(y - last.y) < M.walkRise) return false
+  trail.push({ x, y, z })
+  if (trail.length > M.trailKeep) trail.splice(0, trail.length - M.trailKeep)
+  return true
+}
+
+/** Ângulo de `a` para `b` no plano. */
+function morkhanYaw(ax        , az        , bx        , bz        , keep        ) {
+  return Math.hypot(bx - ax, bz - az) > 0.05 ? Math.atan2(bx - ax, bz - az) : keep
+}
+
+/**
+ * Chão contínuo de `a` até `b` (cortar caminho sem cair): mesma altura (até
+ * `walkRise`) e apoio a cada 0,8 m. Não vale para a tinta da ponte que já
+ * sumiu: quem passou por ela fica no rastro, e o rastro ele segue.
+ */
+function morkhanFlat(solids                  , a      , b      ) {
+  const M = TUNING.morkhan
+  if (Math.abs(b.y - a.y) > M.walkRise) return false
+  const d = Math.hypot(b.x - a.x, b.z - a.z)
+  const n = Math.max(1, Math.ceil(d / 0.8))
+  const top = Math.max(a.y, b.y) + M.walkRise
+  const low = Math.min(a.y, b.y) - M.walkRise
+  for (let i = 1; i <= n; i++) {
+    const u = i / n
+    const g = supportAt(solids, a.x + (b.x - a.x) * u, a.z + (b.z - a.z) * u, top, 0)
+    if (g < low) return false
+  }
+  return true
+}
+
+/**
+ * Surge `behind` m de rastro atrás de quem caça (ou no começo do rastro que
+ * houver). O resto do rastro vira o caminho dele.
+ */
+function morkhanSpawn(s              , slot        , trail                 , tgt      , time        ) {
+  const M = TUNING.morkhan
+  let i = trail.length - 1
+  let walked = 0
+  let px = tgt.x
+  let pz = tgt.z
+  while (i > 0 && walked < M.behind) {
+    walked += Math.hypot(trail[i].x - px, trail[i].z - pz)
+    px = trail[i].x
+    pz = trail[i].z
+    i--
+  }
+  const at = trail.length ? trail[Math.max(0, i)] : tgt
+  s.target = slot
+  s.x = at.x
+  s.y = at.y
+  s.z = at.z
+  s.facing = morkhanYaw(at.x, at.z, tgt.x, tgt.z, 0)
+  s.act = "rise"
+  s.at = time
+  s.nextDash = time + M.rise + M.dashEvery
+  s.dashUntil = 0
+  s.nextStrike = time + M.rise
+  s.struck = false
+  s.leap = null
+  s.path = trail.slice(Math.max(0, i) + 1).map((p) => ({ x: p.x, y: p.y, z: p.z }))
+}
+
+function morkhanVanish(s              ) {
+  s.target = -1
+  s.act = "gone"
+  s.leap = null
+  s.path = []
+}
+
+function morkhanSet(s              , act            , time        ) {
+  if (s.act === act) return
+  s.act = act
+  s.at = time
+}
+
+/** Corta caminho: pula pontos do rastro que dá para alcançar por chão contínuo. */
+function morkhanPull(s              , solids                  ) {
+  const cur = { x: s.x, y: s.y, z: s.z }
+  for (let j = Math.min(s.path.length - 1, 10); j >= 1; j--) {
+    const p = s.path[j]
+    if (Math.hypot(p.x - cur.x, p.z - cur.z) > 8) continue
+    if (morkhanFlat(solids, cur, p)) {
+      s.path.splice(0, j)
+      return
+    }
+  }
+}
+
+/**
+ * Um passo do Morkhan. Devolve a direção do golpe quando ele acerta (a
+ * partida empurra a pessoa) — `null` no resto do tempo.
+ */
+function morkhanStep(s              , tgt               , solids                  , dt        , time        )                                    {
+  const M = TUNING.morkhan
+  if (!morkhanActive(s)) return null
+  if (s.act === "rise") {
+    s.facing = morkhanYaw(s.x, s.z, tgt.x, tgt.z, s.facing)
+    if (time - s.at < M.rise) return null
+    morkhanSet(s, "run", time)
+  }
+  if (s.act === "leap" && s.leap) {
+    const L = s.leap
+    const u = Math.min(1, (time - s.at) / L.dur)
+    s.x = L.x0 + (L.x1 - L.x0) * u
+    s.z = L.z0 + (L.z1 - L.z0) * u
+    s.y = L.y0 + (L.y1 - L.y0) * u + 4 * (M.leapLift + Math.abs(L.y1 - L.y0) * 0.25) * u * (1 - u)
+    if (u < 1) return null
+    s.leap = null
+    s.y = L.y1
+    morkhanSet(s, "run", time)
+  }
+  const dx = tgt.x - s.x
+  const dz = tgt.z - s.z
+  const dh = Math.hypot(dx, dz)
+  const dy = tgt.y - s.y
+  if (s.act === "strike") {
+    s.facing = morkhanYaw(s.x, s.z, tgt.x, tgt.z, s.facing)
+    const since = time - s.at
+    let hit                                    = null
+    if (!s.struck && since >= M.hit) {
+      s.struck = true
+      if (dh <= M.hitReach && dy > -1.2 && dy < 2.2) hit = dh > 0.05 ? { ux: dx / dh, uz: dz / dh } : { ux: Math.sin(s.facing), uz: Math.cos(s.facing) }
+    }
+    if (since >= M.dur) {
+      s.nextStrike = time + M.rest
+      morkhanSet(s, "run", time)
+    }
+    return hit
+  }
+  // perto o bastante: golpe
+  if (time >= s.nextStrike && dh <= M.reach && dy > -1.2 && dy < 1.8) {
+    s.facing = morkhanYaw(s.x, s.z, tgt.x, tgt.z, s.facing)
+    s.struck = false
+    s.act = "strike"
+    s.at = time
+    return null
+  }
+  // arrancada de tempos em tempos
+  if (time >= s.nextDash) {
+    s.dashUntil = time + M.dashDur
+    s.nextDash = time + M.dashEvery
+  }
+  const dashing = time < s.dashUntil
+  let budget = M.speed * (dashing ? M.dashK : 1) * dt
+  let moved = false
+  for (let guard = 0; guard < 24 && budget > 1e-4; guard++) {
+    const fromPath = s.path.length > 0
+    // sem rastro por visitar: vai direto até ela, só se ela está no chão ali do lado
+    const wp              = fromPath ? s.path[0] : tgt.ground ? { x: tgt.x, y: tgt.y, z: tgt.z } : null
+    if (!wp) break
+    const wx = wp.x - s.x
+    const wz = wp.z - s.z
+    const d = Math.hypot(wx, wz)
+    // até ela: para na distância do golpe
+    const stop = fromPath ? 0 : M.reach * 0.7
+    if (d <= stop + 1e-3) {
+      if (fromPath) s.path.shift()
+      else break
+      continue
+    }
+    const near = d <= M.walkGap && Math.abs(wp.y - s.y) <= M.walkRise
+    if (near || morkhanFlat(solids, { x: s.x, y: s.y, z: s.z }, wp)) {
+      const step = Math.min(budget, d - stop)
+      s.facing = morkhanYaw(s.x, s.z, wp.x, wp.z, s.facing)
+      const u = step / d
+      s.x += wx * u
+      s.z += wz * u
+      s.y += (wp.y - s.y) * Math.min(1, step / Math.max(1e-3, d - stop))
+      budget -= step
+      moved = true
+      if (step >= d - stop - 1e-3) {
+        if (!fromPath) break
+        s.y = wp.y
+        s.path.shift()
+        morkhanPull(s, solids)
+      }
+      continue
+    }
+    if (!fromPath) break // ela está num lugar sem chão contínuo até ele: espera o rastro
+    // salto: onde ela saltou
+    s.path.shift()
+    s.facing = morkhanYaw(s.x, s.z, wp.x, wp.z, s.facing)
+    s.leap = { x0: s.x, y0: s.y, z0: s.z, x1: wp.x, y1: wp.y, z1: wp.z, dur: Math.max(0.4, d / M.leapV + Math.max(0, wp.y - s.y) * 0.08) }
+    s.act = "leap"
+    s.at = time
+    return null
+  }
+  morkhanSet(s, moved ? (dashing ? "dash" : "run") : "wait", time)
+  return null
+}
+
 // ── sim/match.ts ─────────────────────────────────────────────────────────────
 // features/meu-mundo/paint/sim/match.ts — PAINT (mm3d-35): a partida.
 //
@@ -1998,6 +2254,9 @@ function punchReachesBoss(a                                     , boss          
 // mm3d-46: quarta cor, o MURO — começa sem munição, o ícone da Freelandoo
 // (cápsula da cor 3) dá 10; o tiro preto do outro time derruba o muro no
 // terceiro acerto. O mapa sai do modo (2×2 e 3×3 com mais gatinhos).
+
+/** B11: por que o Morkhan surgiu ("cats") ou sumiu (entrou no portal, caiu, nocaute, saiu da sala, fim). */
+                                                                           
 
 /** O chefão (a sala decide; o aparelho só desenha). `at` = s de partida em que o ato começou. */
                             
@@ -2049,6 +2308,8 @@ class PaintMatch {
            portalOpen                     = [false, false]
   bossHp         = TUNING.bossHp
            boss           
+  /** B11: o Morkhan de cada time (caça quem completou os 20 gatinhos daquele time). */
+           morkhans                               = [newMorkhan(0), newMorkhan(1)]
   result                     = null
           events               = []
           blobSeq = 1
@@ -2095,6 +2356,7 @@ class PaintMatch {
         nextPunch: 0,
         blobs: [],
         online: true,
+        trail: [],
       })
     }
   }
@@ -2283,6 +2545,7 @@ class PaintMatch {
       v.ko = this.time + TUNING.koTime
       this.emit({ type: "ko", slot, by })
       this.steal(v, a)
+      if (this.chased(v.team) === v.slot) this.endChase(v.team, "ko")
     }
   }
 
@@ -2333,10 +2596,44 @@ class PaintMatch {
     this.teamCats[v.team] = Math.max(0, this.teamCats[v.team] - n)
     this.teamCats[a.team] += n
     this.emit({ type: "steal", from: v.slot, to: a.slot, n })
-    if (!this.portalOpen[a.team] && this.teamCats[a.team] >= TUNING.catsToPortal) {
-      this.portalOpen[a.team] = true
-      this.emit({ type: "portal", team: a.team })
+    this.checkPortal(a)
+  }
+
+  /**
+   * O time de `p` chegou aos 20: o portal abre e o Morkhan surge atrás de
+   * quem completou (B11). Um Morkhan por time; já caçando, nada muda.
+   */
+          checkPortal(p             ) {
+    if (this.portalOpen[p.team] || this.teamCats[p.team] < TUNING.catsToPortal) return
+    this.portalOpen[p.team] = true
+    this.emit({ type: "portal", team: p.team })
+    const mk = this.morkhans[p.team]
+    if (morkhanActive(mk) || p.inBoss || p.out) return
+    morkhanSpawn(mk, p.slot, p.trail, p.pose, this.time)
+    this.emit({ type: "morkhan", team: p.team, slot: p.slot, on: true, why: "cats" })
+  }
+
+  /**
+   * O Morkhan some. Se quem ele caçava não chegou ao portal (caiu, foi
+   * nocauteado) e o time ficou abaixo de 20, o portal FECHA de novo: é preciso
+   * juntar os 20 outra vez — e ele volta.
+   */
+          endChase(team        , why            ) {
+    const mk = this.morkhans[team]
+    if (!morkhanActive(mk)) return
+    const slot = mk.target
+    morkhanVanish(mk)
+    this.emit({ type: "morkhan", team, slot, on: false, why })
+    if ((why === "fell" || why === "ko") && this.portalOpen[team] && this.teamCats[team] < TUNING.catsToPortal) {
+      this.portalOpen[team] = false
+      this.emit({ type: "portalShut", team })
     }
+  }
+
+  /** Quem o Morkhan deste time está caçando agora (-1 = ninguém). */
+  chased(team        ) {
+    const mk = this.morkhans[team]
+    return morkhanActive(mk) ? mk.target : -1
   }
 
           hitBoss(slot        , dmg        , at      ) {
@@ -2512,6 +2809,7 @@ class PaintMatch {
           respawn(p             ) {
     const sp = spawnPoint(this.map, p.team, p.sit, p.inBoss)
     p.epoch++
+    p.trail = [] // teleporte: o rastro velho não leva a lugar nenhum
     p.ko = 0
     p.hp = TUNING.hpMax
     p.shield = this.time + TUNING.shield
@@ -2555,7 +2853,15 @@ class PaintMatch {
         }
         this.dropCats(p)
         this.respawn(p)
+        if (this.chased(p.team) === p.slot) this.endChase(p.team, "fell")
         continue
+      }
+      // rastro (B11): onde pisou; quem o Morkhan caça alimenta o caminho dele
+      if (!p.inBoss && q.ground && morkhanTrailAdd(p.trail, q.x, q.y, q.z) && this.chased(p.team) === p.slot) {
+        const t = p.trail[p.trail.length - 1]
+        const path = this.morkhans[p.team].path
+        path.push({ x: t.x, y: t.y, z: t.z })
+        if (path.length > 900) path.shift()
       }
       // gatinhos (só na arena)
       if (!p.inBoss) {
@@ -2567,15 +2873,13 @@ class PaintMatch {
           p.catIds.push(c.id)
           this.teamCats[p.team]++
           this.emit({ type: "cat", id: c.id, slot: p.slot, team: p.team })
-          if (!this.portalOpen[p.team] && this.teamCats[p.team] >= T.catsToPortal) {
-            this.portalOpen[p.team] = true
-            this.emit({ type: "portal", team: p.team })
-          }
+          this.checkPortal(p)
         }
         const portal = this.map.portals[p.team]
         if (this.portalOpen[p.team] && Math.abs(q.y - portal.y) < 2 && Math.hypot(q.x - portal.x, q.z - portal.z) <= T.portalR) {
           p.inBoss = true
           this.respawn(p)
+          if (this.chased(p.team) === p.slot) this.endChase(p.team, "portal")
           continue
         }
       }
@@ -2588,12 +2892,32 @@ class PaintMatch {
         this.emit({ type: "capsule", id: cap.id, slot: p.slot, c: cap.c })
       }
     }
+    this.morkhanTick(dt)
     if (this.bossAlive()) this.bossTick(dt)
     if (this.time >= T.matchTime) this.finish("time")
   }
 
+  /** B11: o Morkhan de cada time corre atrás de quem caça e golpeia (empurrão do muro). */
+          morkhanTick(dt        ) {
+    for (const mk of this.morkhans) {
+      if (!morkhanActive(mk)) continue
+      const v = this.players.get(mk.target)
+      if (!v || !v.online || v.out || v.inBoss) {
+        this.endChase(mk.team, "left")
+        continue
+      }
+      const q = v.pose
+      const hit = morkhanStep(mk, { x: q.x, y: q.y, z: q.z, ground: q.ground && !v.ko }, this.solids(), dt, this.time)
+      if (hit && !v.ko) {
+        const T = TUNING
+        this.emit({ type: "hit", slot: v.slot, by: -2, hp: v.hp, kx: hit.ux * T.wallShove, ky: T.wallShoveLift, kz: hit.uz * T.wallShove, how: "morkhan" })
+      }
+    }
+  }
+
   finish(reason                           ) {
     if (this.phase === "end") return
+    for (const mk of this.morkhans) if (morkhanActive(mk)) this.endChase(mk.team, "end")
     this.phase = "end"
     const rows = [...this.players.values()].map((p) => ({ slot: p.slot, team: p.team, dmg: p.dmg, cats: p.cats }))
     let winnerSlot = -1
@@ -2642,4 +2966,4 @@ function capsuleRespawn(c            ) {
 /** Atalho para quem só precisa saber se a pose está fora (cliente). */
 const PAINT_FIRE_COLORS                        = [PAINT.BRIDGE, PAINT.HARM, PAINT.STEP, PAINT.WALL]
 
-module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, ammoCap, polyCenter, polySolid, COLLIDER_DEPTH, BOSS, round, hash01, bossIsland, staticSolids, buildCidadeMap, fellOut, spawnPoint, JARDIM, FABRICA, FLORESTA, TEMPLO, FORJA, PAINT_MAPS, paintMapId, paintMapVersion, buildPaintMap, tallyPaintVotes, PAINT_BOSS_AT, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, PaintMatch, capsuleGive, capsuleRespawn, PAINT_FIRE_COLORS };
+module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, ammoCap, polyCenter, polySolid, COLLIDER_DEPTH, BOSS, round, hash01, bossIsland, staticSolids, buildCidadeMap, fellOut, spawnPoint, JARDIM, FABRICA, FLORESTA, TEMPLO, FORJA, PAINT_MAPS, paintMapId, paintMapVersion, buildPaintMap, tallyPaintVotes, PAINT_BOSS_AT, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, newMorkhan, morkhanActive, morkhanTrailAdd, morkhanFlat, morkhanSpawn, morkhanVanish, morkhanStep, PaintMatch, capsuleGive, capsuleRespawn, PAINT_FIRE_COLORS };

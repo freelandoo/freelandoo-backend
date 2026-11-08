@@ -98,6 +98,20 @@ const PtBlob = schema(
   "PTBlob"
 );
 
+// B11: o Morkhan de cada time (quem caça, onde está, o que faz e desde quando).
+const PtMorkhan = schema(
+  {
+    tg: t.int8(), // vaga de quem ele caça (-1 = sumido)
+    x: t.float32(),
+    y: t.float32(),
+    z: t.float32(),
+    f: t.float32(),
+    a: t.string(), // "gone" | "rise" | "run" | "dash" | "wait" | "leap" | "strike"
+    t: t.float32(), // s de partida em que o ato começou
+  },
+  "PTMorkhan"
+);
+
 const PtState = schema(
   {
     phase: t.string(), // "lobby" | "countdown" | "play" | "end"
@@ -117,6 +131,7 @@ const PtState = schema(
     bf: t.float32(),
     ba: t.string(),
     bt: t.float32(),
+    mk: t.map(PtMorkhan), // B11: time → Morkhan
     players: t.map(PtPlayer),
     blobs: t.map(PtBlob),
     result: t.string(), // JSON do resultado (fim)
@@ -464,6 +479,26 @@ class PaintRoom extends Room {
     this.state.bf = m.boss.facing;
     this.state.ba = m.boss.act;
     this.state.bt = m.boss.at;
+    // B11: o Morkhan de cada time (some do estado quando some do jogo)
+    for (const mk of m.morkhans) {
+      const key = String(mk.team);
+      if (mk.target < 0 || mk.act === "gone") {
+        if (this.state.mk.has(key)) this.state.mk.delete(key);
+        continue;
+      }
+      let sm = this.state.mk.get(key);
+      if (!sm) {
+        sm = new PtMorkhan({ tg: mk.target, x: mk.x, y: mk.y, z: mk.z, f: mk.facing, a: mk.act, t: mk.at });
+        this.state.mk.set(key, sm);
+      }
+      sm.tg = mk.target;
+      sm.x = mk.x;
+      sm.y = mk.y;
+      sm.z = mk.z;
+      sm.f = mk.facing;
+      sm.a = mk.act;
+      sm.t = mk.at;
+    }
     for (const [sid, p] of this.state.players) {
       const s = this.seats.get(sid);
       const mp = s && m.players.get(s.slot);
