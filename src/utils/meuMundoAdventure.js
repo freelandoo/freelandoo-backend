@@ -295,6 +295,16 @@ function applyFightCost(s, win, lossesToday, tutorial = false) {
   return { energy: Math.round((s.energy - e0) * 100) / 100, stress: Math.round((s.stress - s0) * 100) / 100 };
 }
 
+// ═══ B5: INVENTÁRIO DE MONSTROS ═══ — que luta conta e com que nome.
+// Arena ('laminas') e rua ('mob'); o ringue do Boxe (humanos) e o prólogo não.
+// Na rua o 'soldier' é o Golem de Pedra ('stone', como MOB_SHEETS da luta).
+const TROPHY_KINDS = Object.freeze(["soldier", "stone", "wolf", "golem", "harpy", "brute"]);
+function trophyKind(origin, kind) {
+  if (origin !== "laminas" && origin !== "mob") return null;
+  const k = origin === "mob" && kind === "soldier" ? "stone" : kind;
+  return TROPHY_KINDS.includes(k) ? k : null;
+}
+
 module.exports = {
   RULES_VERSION,
   XP,
@@ -323,4 +333,6 @@ module.exports = {
   fightCoins,
   rollMobLevel,
   minigameCoins,
+  TROPHY_KINDS,
+  trophyKind,
 };

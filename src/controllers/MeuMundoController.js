@@ -155,6 +155,11 @@ const adventure = () => require("../services/MeuMundoAdventureService");
 async function adventureGet(req, res) {
   return reply(res, await adventure().get(req.user.id_user));
 }
+
+/** B5: inventário de monstros (Arena e rua). */
+async function monstersGet(req, res) {
+  return reply(res, await adventure().monsters(req.user.id_user));
+}
 async function fightStart(req, res) {
   return reply(res, await adventure().fightStart(req.user.id_user, req.body || {}));
 }
@@ -388,6 +393,7 @@ module.exports = {
   lifeNickname,
   lifePetName,
   adventureGet,
+  monstersGet,
   fightStart,
   fightFinish,
   clientReport,

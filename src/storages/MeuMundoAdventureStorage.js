@@ -97,6 +97,29 @@ class MeuMundoAdventureStorage {
     return r.rows;
   }
 
+  /** B5: soma uma luta no inventário de monstros (mig 365). */
+  static async addTrophy(c, { idUser, kind, win, level }) {
+    await c.query(
+      `INSERT INTO tb_mm_monster_trophy (id_user, kind, wins, losses, best_level, first_win_at, last_at)
+       VALUES ($1, $2, $3, $4, $5, CASE WHEN $3 > 0 THEN NOW() END, NOW())
+       ON CONFLICT (id_user, kind) DO UPDATE SET
+         wins = tb_mm_monster_trophy.wins + EXCLUDED.wins,
+         losses = tb_mm_monster_trophy.losses + EXCLUDED.losses,
+         best_level = GREATEST(tb_mm_monster_trophy.best_level, EXCLUDED.best_level),
+         first_win_at = COALESCE(tb_mm_monster_trophy.first_win_at, EXCLUDED.first_win_at),
+         last_at = NOW()`,
+      [idUser, kind, win ? 1 : 0, win ? 0 : 1, win ? Math.max(0, Math.round(Number(level) || 0)) : 0]
+    );
+  }
+
+  static async trophies(c, idUser) {
+    const r = await c.query(
+      `SELECT kind, wins, losses, best_level, first_win_at, last_at FROM tb_mm_monster_trophy WHERE id_user = $1`,
+      [idUser]
+    );
+    return r.rows;
+  }
+
   static async closeFight(c, idFight) {
     await c.query(`UPDATE tb_mm_fight SET closed_at = NOW() WHERE id_fight = $1 AND closed_at IS NULL`, [idFight]);
   }
