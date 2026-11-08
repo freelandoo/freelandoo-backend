@@ -7,7 +7,7 @@ const { emeraldPrice, parseCurrency } = require("../utils/currency");
 
 // A7: preço em Esmeralda — null/"" volta à regra (Gold × 1.000), 0 = não vende.
 function emeraldOverride(v) {
-  if (v === null || v === "") return null;
+  if (v === null || v === "" || v === "auto") return null;
   const n = Math.floor(Number(v));
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
