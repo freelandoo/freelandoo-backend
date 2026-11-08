@@ -77,13 +77,21 @@ async function bootstrap(pool) {
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
   await require("./helpers/mmPolens").polenTables(pool);
-  for (const m of MIGS) await pool.query(fs.readFileSync(path.join(__dirname, `../src/databases/migrations/${m}.sql`), "utf8"));
+  // todas as do Meu Mundo (como a suíte da aventura): a lista fixa tinha parado antes das classes (318)
+  const all = fs
+    .readdirSync(path.join(__dirname, "../src/databases/migrations"))
+    .filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f))
+    .sort();
+  for (const f of all) await pool.query(fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8"));
+  void MIGS;
 }
 
 async function mkUser(pool, tag) {
   const id = crypto.randomUUID();
   await pool.query(`INSERT INTO tb_user VALUES ($1, $2, $3)`, [id, `mmtest_${tag}`, `${id}@mm.test`]);
   await pool.query(`INSERT INTO tb_user_role (id_user, id_role) VALUES ($1, 1)`, [id]);
+  // classes (mm3d-58): sem classe o bairro pede a escolha (409 needs_clan)
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm')`, [id]);
   return id;
 }
 
@@ -158,7 +166,7 @@ async function mkUser(pool, tag) {
   check("fora do centro: 409", street.statusCode === 409);
   for (let i = 0; i < 9; i++) nearDoor(users[i]);
 
-  // ── Espera de 1 minuto (encurtada), sem computador ───────────────────────
+  // ── Espera de 1 minuto (encurtada); as vagas vazias viram COMPUTADORES (regra de 2026-11-08) ───────────────────────
   const A = await join(users[0], "bike", "female");
   check("o 1º fica esperando, com o prazo da espera", A.room.state.phase === "lobby" && A.welcome.left > 0);
   const B = await join(users[1], "foguete", "dragao");
@@ -169,20 +177,20 @@ async function mkUser(pool, tag) {
     "…a MESMA semente e a rua do grupo (bike) para os dois",
     A.start.seed === B.start.seed && A.start.seed > 0 && A.start.street === "bike" && B.start.street === "bike"
   );
-  check("…só as pessoas (2 vagas, sem computador)", A.start.seats.length === 2, JSON.stringify(A.start.seats));
+  check("…as 2 pessoas + 4 computadores (6 vagas)", A.start.seats.length === 6 && A.start.seats.filter((x) => x.bot).length === 4 && A.start.seats.filter((x) => x.bot).every((x) => x.name && x.body && x.ride), JSON.stringify(A.start.seats));
   const sa = A.start.seats.find((s) => s.slot === 0);
   const sb = A.start.seats.find((s) => s.slot === 1);
   check("…veículo e corpo de cada um", sa.ride === "bike" && sa.body === "female" && typeof sa.look === "string");
   check("…veículo/corpo desconhecidos viram skate/normal", sb.ride === "skate" && sb.body === "normal");
   const Cx = await join(users[2], "skates");
   check("trancada: quem chega depois vai para outra largada", Cx.room && Cx.room.roomId !== A.room.roomId && Cx.room.state.phase === "lobby");
-  check("sozinho depois do prazo: larga só ele", (await until(() => Cx.start, 4000)) && Cx.start.seats.length === 1);
+  check("sozinho depois do prazo: larga com 5 computadores", (await until(() => Cx.start, 4000)) && Cx.start.seats.length === 6 && Cx.start.seats.filter((x) => x.bot).length === 5);
   await bye(Cx.room);
 
   const r = roomOf(A.room.roomId);
   r.startedAt -= 3000; // pula a contagem
   check("rolê começa", await until(() => A.room.state.phase === "run"));
-  check("as poses chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 2 * 8);
+  check("as poses chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 6 * 8);
 
   // pose: normal passa, impossível é limitada, pontos com teto
   pose(A, 30, { x: 2.5, s: 40 });
@@ -219,10 +227,11 @@ async function mkUser(pool, tag) {
   const res = JSON.parse(A.room.state.result);
   check(
     "…2 linhas pelos pontos, quem caiu com o que derrubou",
-    res.rows.length === 2 && res.rows[0].slot === 0 && res.rows[0].by === "truck" && res.rows[0].tricks === 2,
+    res.rows.length === 6 && res.rows.filter((x) => x.bot).length === 4 && res.rows.find((x) => x.slot === 0).by === "truck" && res.rows.find((x) => x.slot === 0).tricks === 2,
     JSON.stringify(res.rows)
   );
-  check("…quem saiu está marcado", res.rows[1].slot === 1 && res.rows[1].gone);
+  check("…quem saiu está marcado", res.rows.find((x) => x.slot === 1).gone);
+  check("…os computadores correram pela regra (andaram e pontuaram)", res.rows.filter((x) => x.bot).every((x) => x.dist > 0 && x.score > 0), JSON.stringify(res.rows.filter((x) => x.bot)));
   check("…e a sala fecha", await until(() => !roomOf(A.room.roomId), 3000));
   await bye(A.room);
 

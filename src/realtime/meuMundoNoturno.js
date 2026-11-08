@@ -49,6 +49,12 @@ const SILENT_S = 8;
 /** Prazos (a suíte e2e encurta). */
 const timing = { lobbyMs: 60000, closeMs: 20000 };
 
+// ── COMPUTADORES (regra do Alex, 2026-11-08) ── a espera é de 1 minuto; na largada as
+// vagas vazias viram computadores, rodados AQUI com a regra gerada (como a Gincana).
+const { NoturnoBot } = require("../utils/meuMundoNoturnoBot");
+const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
+const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
+
 const NtPlayer = schema(
   {
     slot: t.uint8(), // ordem de chegada na espera
@@ -264,13 +270,28 @@ class NoturnoRoom extends Room {
   start() {
     if (this.startedAt) return;
     const seed = (Math.floor(Math.random() * 0x7fffffff) | 1) >>> 0;
+    // vagas vazias = computadores (nome de doce, corpo e veículo variados, habilidade sorteada)
+    const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
+    this.bots = [];
+    for (let i = 0; this.seats.size + this.bots.length < SEATS; i++) {
+      const slot = (() => {
+        const used = new Set([...this.seats.values()].map((x) => x.slot).concat(this.bots.map((b) => b.slot)));
+        for (let k = 0; k < SEATS; k++) if (!used.has(k)) return k;
+        return SEATS;
+      })();
+      const ride = RIDES[Math.floor(Math.random() * RIDES.length)];
+      const bot = new NoturnoBot({ ride, seed, street: STREET, skill: 0.25 + Math.random() * 0.6, luck: (Math.random() * 0x7fffffff) | 1 });
+      this.bots.push({ slot, name: names[i % names.length], ride, body: BOT_BODIES[i % BOT_BODIES.length], bot, run: { z: 0, x: 0, y: 0, f: 0, k: 0, score: 0, coins: 0, tricks: 0, alive: true, gone: false, by: "", time: 0 } });
+    }
     const seats = [...this.seats.values()]
       .sort((a, b) => a.slot - b.slot)
       .map((s) => {
         const p = [...this.state.players.values()].find((q) => q.slot === s.slot);
         s.run = { z: 0, x: 0, y: 0, f: 0, k: 0, score: 0, coins: 0, tricks: 0, alive: true, gone: false, by: "", time: 0, at: 0 };
         return { slot: s.slot, name: p ? p.name : "", ride: s.ride, body: s.body, look: s.look };
-      });
+      })
+      .concat(this.bots.map((b) => ({ slot: b.slot, name: b.name, ride: b.ride, body: b.body, look: "", bot: true })))
+      .sort((a, b) => a.slot - b.slot);
     this.startedAt = Date.now();
     // mm3d-59: prática medida pela sala (morto não manda pose = não conta)
     this.meter = new PracticeMeter("noturno", `noturno:${this.roomId}:${this.startedAt}`, log);
@@ -301,7 +322,16 @@ class NoturnoRoom extends Room {
       const since = r.at || this.startedAt + COUNTDOWN_S * 1000;
       if (r.alive && now - since > SILENT_S * 1000) Object.assign(r, { alive: false, gone: true, time: this.state.time });
     }
+    // os computadores andam no relógio da sala
+    for (const b of this.bots || []) {
+      if (!b.run.alive) continue;
+      b.bot.advance(TICK_MS / 1000);
+      const p = b.bot.pose();
+      Object.assign(b.run, { z: p.z, x: p.x, y: p.y, f: p.f, k: p.k, score: p.score, coins: p.coins, tricks: p.tricks });
+      if (!p.alive) Object.assign(b.run, { alive: false, by: String(p.by).slice(0, 12), time: this.state.time });
+    }
     this.snapshot();
+    // acaba quando as PESSOAS caíram (computador sozinho não segura a sala aberta)
     const anyAlive = [...this.seats.values()].some((s) => s.run.alive);
     if (!anyAlive || this.state.time > MAX_RUN_S) this.finish();
   }
@@ -309,7 +339,7 @@ class NoturnoRoom extends Room {
   /** Todos a 20 Hz: [slot, z, x, y, bandeiras, manobra, pontos, vivo] por pessoa. */
   snapshot() {
     const c = [];
-    for (const s of this.seats.values()) {
+    for (const s of [...this.seats.values(), ...(this.bots || [])]) {
       const r = s.run;
       c.push(s.slot, r2(r.z), r3(r.x), r3(r.y), r.f, r2(r.k), r.score, r.alive ? 1 : r.gone ? 2 : 0);
     }
@@ -318,9 +348,10 @@ class NoturnoRoom extends Room {
 
   finish() {
     if (this.meter) {
-      // vitória = maior pontuação entre as pessoas
-      const best = [...this.seats.values()].filter((s) => s.run).sort((a, b) => b.run.score - a.run.score)[0];
-      this.meter.settle(null, new Set(best ? [best.userId] : []));
+      // vitória = a maior pontuação da corrida (com os computadores), se for de uma pessoa
+      const all = [...this.seats.values(), ...(this.bots || [])].filter((s) => s.run).sort((a, b) => b.run.score - a.run.score);
+      const best = all[0];
+      this.meter.settle(null, new Set(best && best.userId ? [best.userId] : []));
     }
     const rows = [...this.seats.values()]
       .map((s) => {
@@ -337,6 +368,9 @@ class NoturnoRoom extends Room {
           gone: s.run.gone,
         };
       })
+      .concat(
+        (this.bots || []).map((b) => ({ slot: b.slot, name: b.name, ride: b.ride, score: b.run.score, dist: Math.floor(b.run.z), coins: b.run.coins, tricks: b.run.tricks, by: b.run.by, gone: false, bot: true }))
+      )
       .sort((a, b) => b.score - a.score || b.dist - a.dist);
     this.state.result = JSON.stringify({ rows });
     this.state.phase = "end";
