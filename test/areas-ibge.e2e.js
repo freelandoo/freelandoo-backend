@@ -254,7 +254,9 @@ async function main() {
     const { buildSql, loadIbge, loadOverrides } = require("../scripts/ibge-areas");
     const dir = path.join(__dirname, "..", "src", "databases", "migrations");
     const last = fs.readdirSync(dir).filter((f) => /_area_ibge_dados.sql$/.test(f)).sort().pop();
-    const mig = fs.readFileSync(path.join(dir, last), "utf8");
+    const mig = fs.readFileSync(path.join(dir, last), "utf8").replace(/
+/g, "
+");
     const body = mig.slice(mig.indexOf("-- Municípios do IBGE"));
     assert.strictEqual(body, buildSql(loadIbge(), loadOverrides()));
   });
