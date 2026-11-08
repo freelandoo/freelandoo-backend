@@ -5,6 +5,7 @@
 const pool = require("../databases");
 const BeeEngagementStorage = require("../storages/BeeEngagementStorage");
 const StoryStorage = require("../storages/StoryStorage");
+const ReachStorage = require("../storages/ReachStorage");
 const XpStorage = require("../storages/XpStorage");
 const NotificationService = require("./NotificationService");
 const ChatModerationService = require("./ChatModerationService");
@@ -81,6 +82,19 @@ class BeeEngagementService {
           }).catch(() => {});
         }
         return result;
+      });
+  }
+
+  // "Não gostei" (mig 328): um por pessoa, exclusivo com a curtida, número
+  // não público — só pesa no alcance.
+  static async toggleDislike(user, params) {
+    return runWithLogs(log, "toggleDislike",
+      () => ({ id_user: user?.id_user, id_story: params?.id_story }),
+      async () => {
+        if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
+        const bee = await getAliveBee(params?.id_story);
+        if (!bee) return { error: "Bee não encontrado", statusCode: 404 };
+        return ReachStorage.toggleDislike(pool, "bee", { id: bee.id_story, id_user: user.id_user });
       });
   }
 

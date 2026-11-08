@@ -1,6 +1,7 @@
 // src/storages/RankingStorage.js
 const pool = require("../databases");
 const XpStorage = require("./XpStorage");
+const ReachStorage = require("./ReachStorage");
 const { verifiedUserSql } = require("../utils/verifiedBadge");
 const { notPendingAcademyUserSql } = require("../utils/academyOnboarding");
 
@@ -129,6 +130,10 @@ module.exports = {
           RETURNING likes_count`,
         [id_portfolio_item, delta]
       );
+
+      // Alcance (mig 328): curtida ±5; curtir tira o "não gostei" (exclusivos).
+      await ReachStorage.addWeighted(client, "post", id_portfolio_item, "like", delta);
+      if (liked) await ReachStorage.removeDislike(client, "post", id_portfolio_item, id_user);
 
       await client.query("COMMIT");
 

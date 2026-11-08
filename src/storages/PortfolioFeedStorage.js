@@ -1,5 +1,82 @@
 const { normalizeFeedKind, feedKindMatchSql } = require("../utils/feedKind");
 const { verifiedUserSql } = require("../utils/verifiedBadge");
+const { reachBandSql, reachBandParams } = require("../utils/feedReach");
+
+// Faixa de alcance do post para ESTE leitor (mig 328): $11 cidade, $12 área,
+// $13 região, $14 UF do leitor, $15 'reach' | 'off'. 0 = o alcance do post
+// cobre o leitor; 1..4 = de fora, do mais perto ao mais longe.
+const BAND_SQL = reachBandSql("ppi", { city: 11, area: 12, region: 13, uf: 14, mode: 15 });
+
+// Elegibilidade do feed global (vale para os dois pools). Usa os aliases do
+// CTE de candidatos: ppi, pro, tu, ca, m, cfp.
+const ELIGIBILITY_SQL = `
+          ppi.status   = 'published'
+        AND ppi.is_active = TRUE
+        AND ppi.is_banned = FALSE
+        -- Post exclusivo de comunidade privada não entra no feed/bees global.
+        AND ppi.id_exclusive_community IS NULL
+        AND tu.ativo      = TRUE
+        AND pro.is_active = TRUE
+        AND (pro.is_visible = TRUE OR pro.is_user_account = TRUE)
+        AND pro.feed_visible = TRUE
+        AND pro.deleted_at IS NULL
+        AND (m.is_active IS NULL OR m.is_active = TRUE)
+
+        -- Feed é visual: só entram posts com pelo menos 1 mídia ativa.
+        -- Isentos: publicações de curso (course_feed_publications) e RECADOS
+        -- (mig 209), que são só-texto por definição.
+        -- Este gate é também o que segura item órfão de upload que falhou no
+        -- meio — por isso a isenção é pelo kind explícito, nunca por "não tem
+        -- mídia": relaxar para qualquer item sem mídia encheria o feed de post
+        -- vazio de upload interrompido.
+        AND (
+          ppi.feed_kind = 'recado'
+          OR EXISTS (
+            SELECT 1 FROM tb_profile_portfolio_media ppm2
+            WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item
+              AND ppm2.is_active = TRUE
+          )
+          OR cfp.portfolio_item_id IS NOT NULL
+        )
+
+        -- Paywall de publicação: a conta publica de graça, perfil ADICIONAL
+        -- precisa de assinatura ativa. A régua é a de utils/profilePaywall, e
+        -- quem RECUSA é a porta de publicar (PortfolioService/StoryService) —
+        -- este SELECT é a SEGUNDA linha, não a primeira. Enquanto ele foi a
+        -- única, o post do perfil sem assinatura era aceito, aparecia na
+        -- comunidade e no perfil, e sumia do /feed sem uma palavra ao autor.
+        -- Fica de pé por dois motivos: os posts que já entraram sob a regra
+        -- antiga continuam fora do feed, e porta de publicação nova que esqueça
+        -- de chamar o util não vaza conteúdo pago para cá.
+        AND (
+          pro.is_user_account = TRUE
+          OR
+          (pro.is_clan = FALSE AND EXISTS (
+            SELECT 1 FROM tb_profile_subscription psub
+            WHERE psub.id_profile = pro.id_profile
+              AND psub.status = 'active'
+          ))
+          OR
+          (pro.is_clan = TRUE AND EXISTS (
+            SELECT 1
+              FROM tb_clan_member cm
+              JOIN tb_profile_subscription psub2
+                ON psub2.id_profile = cm.id_member_profile
+             WHERE cm.id_clan_profile = pro.id_profile
+               AND cm.role = 'owner'
+               AND psub2.status = 'active'
+          ))
+        )
+
+        AND ($1::int  IS NULL OR COALESCE(ca.id_machine, pro.id_machine) = $1)
+        AND ($2::int  IS NULL OR ca.id_category = $2)
+        AND ($3::text IS NULL OR pro.estado = $3)
+        AND ($4::int IS NULL OR pro.id_region = $4)
+        AND ($5::uuid[] IS NULL OR NOT (ppi.id_portfolio_item = ANY($5::uuid[])))
+        AND ($8::int IS NULL OR pro.xp_level >= $8)
+        AND ${feedKindMatchSql("ppi.feed_kind", "$9")}
+        AND ($10::text IS NULL OR pro.country = $10)
+`;
 
 // Constrói a query base de candidatos elegíveis para o feed.
 // `mode === "new"` adiciona o filtro de novidade/sub-exposição e ordena por
@@ -17,13 +94,35 @@ function buildCandidateQuery(mode) {
           )`
       : "";
 
-  const orderClause =
+  // Primeiro a faixa de alcance, depois a régua de sempre. A ordenação (e o
+  // LIMIT) acontece no CTE só com colunas baratas — os LATERAL pesados de
+  // mídia/links/comunidade rodam só para as linhas que passaram.
+  const inner =
     mode === "new"
-      ? `ORDER BY ppi.published_at DESC, ppi.id_portfolio_item DESC`
-      : `ORDER BY ppi.engagement_score DESC, ppi.published_at DESC, ppi.id_portfolio_item DESC`;
+      ? `ORDER BY reach_band, ppi.published_at DESC, ppi.id_portfolio_item DESC`
+      : `ORDER BY reach_band, ppi.engagement_score DESC, ppi.published_at DESC, ppi.id_portfolio_item DESC`;
+  const outer =
+    mode === "new"
+      ? `ORDER BY cand.reach_band, ppi.published_at DESC, ppi.id_portfolio_item DESC`
+      : `ORDER BY cand.reach_band, ppi.engagement_score DESC, ppi.published_at DESC, ppi.id_portfolio_item DESC`;
 
   return `
+    WITH cand AS (
+      SELECT ppi.id_portfolio_item AS cid, ${BAND_SQL} AS reach_band
+        FROM tb_profile_portfolio_item ppi
+        JOIN tb_profile pro       ON pro.id_profile  = ppi.id_profile
+        JOIN tb_user    tu        ON tu.id_user      = pro.id_user
+        LEFT JOIN tb_category ca  ON ca.id_category  = pro.id_category
+        LEFT JOIN tb_machine  m   ON m.id_machine    = COALESCE(ca.id_machine, pro.id_machine)
+        LEFT JOIN course_feed_publications cfp
+          ON cfp.portfolio_item_id = ppi.id_portfolio_item
+       WHERE ${ELIGIBILITY_SQL}
+         ${newClause}
+       ${inner}
+       LIMIT $6
+    )
     SELECT
+      cand.reach_band,
       ppi.id_portfolio_item                                AS post_id,
       ppi.title,
       ppi.description,
@@ -43,6 +142,14 @@ function buildCandidateQuery(mode) {
       ppi.comments_count,
       ppi.engagement_score,
       ppi.feed_kind,
+
+      -- Alcance (mig 328). O degrau e o lugar só vão ao card do DONO (shapeRow).
+      ppi.reach_level,
+      ppi.reach_city_name,
+      ar.name                                              AS reach_area_name,
+      rg.name                                              AS reach_region_name,
+      ppi.reach_uf,
+      ($7::uuid IS NOT NULL AND tu.id_user = $7::uuid)     AS viewer_is_owner,
 
       ppi.audio_track_id,
       ppi.audio_start_ms,
@@ -95,6 +202,14 @@ function buildCandidateQuery(mode) {
         ) THEN TRUE ELSE FALSE
       END                                                  AS viewer_has_bookmarked,
 
+      CASE
+        WHEN $7::uuid IS NOT NULL AND EXISTS (
+          SELECT 1 FROM tb_portfolio_dislike pd
+          WHERE pd.id_portfolio_item = ppi.id_portfolio_item
+            AND pd.id_user = $7::uuid
+        ) THEN TRUE ELSE FALSE
+      END                                                  AS viewer_has_disliked,
+
       comm.community_id,
       comm.community_name,
       comm.community_avatar,
@@ -109,7 +224,8 @@ function buildCandidateQuery(mode) {
       vaq.vaquinha_slug,
       vaq.vaquinha_title
 
-    FROM tb_profile_portfolio_item ppi
+    FROM cand
+    JOIN tb_profile_portfolio_item ppi ON ppi.id_portfolio_item = cand.cid
     JOIN tb_profile pro       ON pro.id_profile  = ppi.id_profile
     JOIN tb_user    tu        ON tu.id_user      = pro.id_user
     LEFT JOIN tb_category ca  ON ca.id_category  = pro.id_category
@@ -119,6 +235,8 @@ function buildCandidateQuery(mode) {
     LEFT JOIN tb_audio_track aud
       ON aud.id_audio_track = ppi.audio_track_id
      AND aud.is_active = TRUE
+    LEFT JOIN tb_area   ar ON ar.id_area   = ppi.reach_area_id
+    LEFT JOIN tb_region rg ON rg.id_region = ppi.reach_region_id
 
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(
@@ -205,76 +323,7 @@ function buildCandidateQuery(mode) {
       LIMIT 1
     ) vaq ON TRUE
 
-    WHERE ppi.status   = 'published'
-      AND ppi.is_active = TRUE
-      AND ppi.is_banned = FALSE
-      -- Post exclusivo de comunidade privada não entra no feed/bees global.
-      AND ppi.id_exclusive_community IS NULL
-      AND tu.ativo      = TRUE
-      AND pro.is_active = TRUE
-      AND (pro.is_visible = TRUE OR pro.is_user_account = TRUE)
-      AND pro.feed_visible = TRUE
-      AND pro.deleted_at IS NULL
-      AND (m.is_active IS NULL OR m.is_active = TRUE)
-
-      -- Feed é visual: só entram posts com pelo menos 1 mídia ativa.
-      -- Isentos: publicações de curso (course_feed_publications) e RECADOS
-      -- (mig 209), que são só-texto por definição.
-      -- Este gate é também o que segura item órfão de upload que falhou no
-      -- meio — por isso a isenção é pelo kind explícito, nunca por "não tem
-      -- mídia": relaxar para qualquer item sem mídia encheria o feed de post
-      -- vazio de upload interrompido.
-      AND (
-        ppi.feed_kind = 'recado'
-        OR EXISTS (
-          SELECT 1 FROM tb_profile_portfolio_media ppm2
-          WHERE ppm2.id_portfolio_item = ppi.id_portfolio_item
-            AND ppm2.is_active = TRUE
-        )
-        OR cfp.portfolio_item_id IS NOT NULL
-      )
-
-      -- Paywall de publicação: a conta publica de graça, perfil ADICIONAL
-      -- precisa de assinatura ativa. A régua é a de utils/profilePaywall, e
-      -- quem RECUSA é a porta de publicar (PortfolioService/StoryService) —
-      -- este SELECT é a SEGUNDA linha, não a primeira. Enquanto ele foi a
-      -- única, o post do perfil sem assinatura era aceito, aparecia na
-      -- comunidade e no perfil, e sumia do /feed sem uma palavra ao autor.
-      -- Fica de pé por dois motivos: os posts que já entraram sob a regra
-      -- antiga continuam fora do feed, e porta de publicação nova que esqueça
-      -- de chamar o util não vaza conteúdo pago para cá.
-      AND (
-        pro.is_user_account = TRUE
-        OR
-        (pro.is_clan = FALSE AND EXISTS (
-          SELECT 1 FROM tb_profile_subscription psub
-          WHERE psub.id_profile = pro.id_profile
-            AND psub.status = 'active'
-        ))
-        OR
-        (pro.is_clan = TRUE AND EXISTS (
-          SELECT 1
-            FROM tb_clan_member cm
-            JOIN tb_profile_subscription psub2
-              ON psub2.id_profile = cm.id_member_profile
-           WHERE cm.id_clan_profile = pro.id_profile
-             AND cm.role = 'owner'
-             AND psub2.status = 'active'
-        ))
-      )
-
-      AND ($1::int  IS NULL OR COALESCE(ca.id_machine, pro.id_machine) = $1)
-      AND ($2::int  IS NULL OR ca.id_category = $2)
-      AND ($3::text IS NULL OR pro.estado = $3)
-      AND ($4::int IS NULL OR pro.id_region = $4)
-      AND ($5::uuid[] IS NULL OR NOT (ppi.id_portfolio_item = ANY($5::uuid[])))
-      AND ($8::int IS NULL OR pro.xp_level >= $8)
-      AND ${feedKindMatchSql("ppi.feed_kind", "$9")}
-      AND ($10::text IS NULL OR pro.country = $10)
-
-      ${newClause}
-    ${orderClause}
-    LIMIT $6
+    ${outer}
   `;
 }
 
@@ -292,7 +341,11 @@ function buildParams({
   feed_kind,
   country,
   limit,
+  viewer_place,
+  reach_off,
 }) {
+  // Filtro manual de região/estado do leitor ignora o alcance (como antes).
+  const off = !!reach_off || !!estado || Number.isFinite(id_region);
   return [
     Number.isFinite(id_machine) ? id_machine : null,                 // $1
     Number.isFinite(id_category) ? id_category : null,                // $2
@@ -304,6 +357,7 @@ function buildParams({
     Number.isFinite(level_min) ? level_min : null,                    // $8
     normalizeFeedKind(feed_kind),                                     // $9 (null = todos)
     country || null,                                                  // $10
+    ...reachBandParams(viewer_place, { off }),                        // $11–$15
   ];
 }
 

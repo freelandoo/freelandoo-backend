@@ -4,6 +4,7 @@
 // StoryStorage + PortfolioFeedStorage (buildProfileUrl precisa de
 // profession_slug/municipio/username/sub_profile_slug).
 const { BEE_ALIVE_SQL } = require("./BeeEngagementStorage");
+const { reachBandSql, reachBandParams } = require("../utils/feedReach");
 
 const BEE_SELECT = `
   s.id_story, s.id_profile, s.id_user, s.kind,
@@ -12,6 +13,8 @@ const BEE_SELECT = `
   s.audio_track_id, s.audio_start_ms,
   s.likes_count, s.comments_count, s.shares_count, s.impressions_count,
   s.engagement_score, s.created_at,
+  s.reach_level, s.reach_city_name, s.reach_uf,
+  ar.name AS reach_area_name, rg.name AS reach_region_name,
   LEAST(
     s.created_at + INTERVAL '7 days',
     s.created_at + INTERVAL '24 hours' + (s.engagement_score * INTERVAL '1 hour')
@@ -35,13 +38,16 @@ const BEE_JOINS = `
   LEFT JOIN public.tb_machine m ON m.id_machine = COALESCE(c.id_machine, p.id_machine)
   LEFT JOIN public.tb_audio_track at
     ON at.id_audio_track = s.audio_track_id AND at.is_active = TRUE
+  LEFT JOIN public.tb_area   ar ON ar.id_area   = s.reach_area_id
+  LEFT JOIN public.tb_region rg ON rg.id_region = s.reach_region_id
 `;
 
 // O viewer (quando presente) é SEMPRE o 1º parâmetro — o scopeClause de
 // listCandidates referencia $1 de propósito.
 function viewerColumns(params, viewer_id_user) {
   if (!viewer_id_user) {
-    return `FALSE AS viewer_has_liked, FALSE AS viewer_has_bookmarked`;
+    return `FALSE AS viewer_has_liked, FALSE AS viewer_has_bookmarked,
+            FALSE AS viewer_has_disliked, FALSE AS viewer_is_owner`;
   }
   params.push(viewer_id_user);
   const idx = params.length;
@@ -49,7 +55,10 @@ function viewerColumns(params, viewer_id_user) {
     EXISTS (SELECT 1 FROM public.tb_story_like sl
              WHERE sl.id_story = s.id_story AND sl.id_user = $${idx}) AS viewer_has_liked,
     EXISTS (SELECT 1 FROM public.tb_story_bookmark sb
-             WHERE sb.id_story = s.id_story AND sb.id_user = $${idx}) AS viewer_has_bookmarked
+             WHERE sb.id_story = s.id_story AND sb.id_user = $${idx}) AS viewer_has_bookmarked,
+    EXISTS (SELECT 1 FROM public.tb_story_dislike sd
+             WHERE sd.id_story = s.id_story AND sd.id_user = $${idx}) AS viewer_has_disliked,
+    (s.id_user = $${idx}) AS viewer_is_owner
   `;
 }
 
@@ -57,9 +66,15 @@ class BeeFeedStorage {
   // Candidatos da timeline. order 'top' = por score (pool top do mix);
   // order 'new' = por data. scope 'following' filtra por tb_user_follow do
   // viewer (+ os próprios bees do viewer).
-  static async listCandidates(conn, { viewer_id_user, scope, order, limit }) {
+  // viewer_place = lugar do leitor (ReachStorage.viewerPlace): a faixa de
+  // alcance (mig 328) vem antes da régua de sempre. No 'following' o leitor já
+  // escolheu quem ver — o alcance não se mete (faixa 0 para todos).
+  static async listCandidates(conn, { viewer_id_user, scope, order, limit, viewer_place }) {
     const params = [];
     const viewerCols = viewerColumns(params, viewer_id_user);
+    const b0 = params.length;
+    params.push(...reachBandParams(viewer_place, { off: scope === "following" }));
+    const bandSql = reachBandSql("s", { city: b0 + 1, area: b0 + 2, region: b0 + 3, uf: b0 + 4, mode: b0 + 5 });
     let scopeClause = "";
     if (scope === "following" && viewer_id_user) {
       scopeClause = `AND (
@@ -72,10 +87,10 @@ class BeeFeedStorage {
     }
     params.push(limit);
     const orderClause = order === "new"
-      ? `ORDER BY s.created_at DESC`
-      : `ORDER BY s.engagement_score DESC, s.created_at DESC`;
+      ? `ORDER BY reach_band, s.created_at DESC`
+      : `ORDER BY reach_band, s.engagement_score DESC, s.created_at DESC`;
     const { rows } = await conn.query(
-      `SELECT ${BEE_SELECT}, ${viewerCols}
+      `SELECT ${BEE_SELECT}, ${viewerCols}, ${bandSql} AS reach_band
          FROM public.tb_story s
          ${BEE_JOINS}
         WHERE s.kind = 'bee'

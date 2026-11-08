@@ -21,6 +21,16 @@ const SCORE_DELTA = {
 
 const IMPRESSION_DEDUP_INTERVAL = "30 minutes";
 
+// Alcance regional (mig 328): estes eventos valem pontos UMA vez por pessoa,
+// para sempre (a impressão acima segue a janela de 30 min, que é métrica).
+const ReachStorage = require("./ReachStorage");
+const REACH_ACTION_BY_EVENT = {
+  impression:     "view",
+  profile_click:  "profile_click",
+  whatsapp_click: "whatsapp_click",
+  share:          "share",
+};
+
 module.exports = {
   COUNTER_BY_EVENT,
 
@@ -109,8 +119,13 @@ module.exports = {
         );
       }
 
+      const reachAction = REACH_ACTION_BY_EVENT[event_type];
+      const reach = reachAction
+        ? await ReachStorage.recordUnique(client, "post", id_portfolio_item, { id_user, session_id }, reachAction)
+        : null;
+
       await client.query("COMMIT");
-      return { ok: true, counted: countsTowardCounter, id_profile };
+      return { ok: true, counted: countsTowardCounter, id_profile, reach_counted: !!reach?.counted };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
       throw err;
@@ -152,6 +167,15 @@ module.exports = {
         return { ok: true, counted: false, id_profile, seconds_delta: 0 };
       }
 
+      // Total anterior da sessão (o upsert tem teto de 3.600 s, então "novo −
+      // delta" erraria no fim): base dos pontos de retenção do alcance.
+      const prevRet = await client.query(
+        `SELECT seconds_watched FROM portfolio_content_retention
+          WHERE id_portfolio_item = $1 AND session_id = $2`,
+        [id_portfolio_item, session_id]
+      );
+      const prevSeconds = Number(prevRet.rows[0]?.seconds_watched) || 0;
+
       const upsert = await client.query(
         `INSERT INTO portfolio_content_retention (
            id_portfolio_item, id_profile, id_user, session_id,
@@ -174,6 +198,12 @@ module.exports = {
 
       const counted = upsert.rows.length > 0;
       const actualDelta = counted ? delta : 0;
+
+      // Alcance: +1 ponto a cada 10 s assistidos (pela diferença do total).
+      if (counted) {
+        const total = Number(upsert.rows[0].seconds_watched) || 0;
+        await ReachStorage.addRetention(client, "post", id_portfolio_item, prevSeconds, total);
+      }
 
       await client.query(
         `INSERT INTO tb_portfolio_event (

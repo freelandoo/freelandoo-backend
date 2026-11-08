@@ -6,6 +6,9 @@ const NotificationService = require("../services/NotificationService");
 // O like mexe no ranking de "em alta" do dia (anel no avatar do card do feed):
 // derruba o cache pra próxima carga do feed já refletir.
 const { markHeatStale } = require("../services/portfolioFeed/feedHeat");
+const ReachStorage = require("../storages/ReachStorage");
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 module.exports = {
   // POST /ranking/visit  (público, sem auth obrigatória)
@@ -42,6 +45,28 @@ module.exports = {
       }).catch(() => {});
     }
 
+    return res.json(result);
+  },
+
+  // POST /ranking/dislike  (requer auth) — "não gostei" (mig 328): um por
+  // pessoa, alternável, exclusivo com a curtida; o número não é público, só
+  // tira 2 pontos do alcance do post.
+  async toggleDislike(req, res) {
+    const id_portfolio_item = String(req.body?.id_portfolio_item || "").trim();
+    if (!UUID_RE.test(id_portfolio_item)) {
+      return res.status(400).json({ error: "id_portfolio_item inválido" });
+    }
+    const exists = await pool.query(
+      `SELECT 1 FROM tb_profile_portfolio_item
+        WHERE id_portfolio_item = $1 AND status = 'published' AND is_active = TRUE`,
+      [id_portfolio_item]
+    );
+    if (!exists.rows.length) return res.status(404).json({ error: "Post não encontrado" });
+    const result = await ReachStorage.toggleDislike(pool, "post", {
+      id: id_portfolio_item,
+      id_user: req.user.id_user,
+    });
+    markHeatStale();
     return res.json(result);
   },
 

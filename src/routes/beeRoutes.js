@@ -35,6 +35,7 @@ router.post("/admin/:id_story/resolve", [authMiddleware, roleMiddleware("Adminis
 
 // Engajamento por bee
 router.post("/:id_story/like", authMiddleware, asyncHandler(BeeController.toggleLike));
+router.post("/:id_story/dislike", authMiddleware, asyncHandler(BeeController.toggleDislike));
 router.post("/:id_story/report", authMiddleware, asyncHandler(BeeController.report));
 router.post("/:id_story/bookmark", authMiddleware, asyncHandler(BeeController.toggleBookmark));
 

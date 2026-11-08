@@ -15,6 +15,9 @@ class BeeController {
   static async toggleLike(req, res) {
     return sendServiceResult(res, await BeeEngagementService.toggleLike(req.user, req.params));
   }
+  static async toggleDislike(req, res) {
+    return sendServiceResult(res, await BeeEngagementService.toggleDislike(req.user, req.params));
+  }
   static async listComments(req, res) {
     return sendServiceResult(res, await BeeEngagementService.listComments(req.user, req.params, req.query));
   }

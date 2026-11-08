@@ -4,6 +4,8 @@
 const pool = require("../databases");
 const BeeFeedStorage = require("../storages/BeeFeedStorage");
 const feedMix = require("../utils/feedMix");
+const ReachStorage = require("../storages/ReachStorage");
+const { reachLabel } = require("../utils/feedReach");
 const { buildProfileUrl } = require("../utils/slug");
 const { publicUrl: audioPublicUrl } = require("../integrations/r2/uploadAudioTrack");
 const { assertMinorPermission } = require("../utils/supervision");
@@ -90,6 +92,9 @@ function shapeBee(row) {
     effective_expires_at: row.effective_expires_at,
     viewer_has_liked: !!row.viewer_has_liked,
     viewer_has_bookmarked: !!row.viewer_has_bookmarked,
+    viewer_has_disliked: !!row.viewer_has_disliked,
+    // Até onde o bee chegou — só para o dono (mig 328).
+    my_reach: row.viewer_is_owner && row.reach_level != null ? reachLabel(row) : null,
     public_profile_url,
   };
 }
@@ -112,12 +117,13 @@ class BeeFeedService {
         const seed = parsed.seed || feedMix.generateSeed();
         const startIndex = parsed.seed ? parsed.index : 0;
 
+        const viewer_place = await ReachStorage.viewerPlace(pool, user.id_user);
         const [topRows, newRows] = await Promise.all([
           BeeFeedStorage.listCandidates(pool, {
-            viewer_id_user: user.id_user, scope, order: "top", limit: TOP_POOL_FETCH,
+            viewer_id_user: user.id_user, scope, order: "top", limit: TOP_POOL_FETCH, viewer_place,
           }),
           BeeFeedStorage.listCandidates(pool, {
-            viewer_id_user: user.id_user, scope, order: "new", limit: NEW_POOL_FETCH,
+            viewer_id_user: user.id_user, scope, order: "new", limit: NEW_POOL_FETCH, viewer_place,
           }),
         ]);
 
@@ -125,8 +131,7 @@ class BeeFeedService {
         const annotated = [...topRows, ...newRows].map((r) => ({ ...r, post_id: r.id_story }));
         const candidates = feedMix.dedupeRows(annotated);
         const rng = feedMix.makeRng(seed);
-        const pools = feedMix.buildPools(candidates, rng);
-        const ordered = feedMix.interleave(pools);
+        const ordered = feedMix.orderByReachBands(candidates, rng);
 
         const slice = ordered.slice(startIndex, startIndex + limit);
         const items = slice.map(shapeBee);

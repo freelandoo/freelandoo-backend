@@ -184,7 +184,29 @@ function dedupeRows(rows) {
   return out;
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Alcance regional (mig 328): as linhas trazem `reach_band` (0 = o alcance
+// do post cobre o leitor; 1..4 = de fora, do mais perto ao mais longe). Cada
+// faixa passa pelo mix inteiro, na ordem; o mesmo rng segue de uma faixa para
+// a outra, então a paginação por semente continua determinística. Linha sem
+// faixa = 0 (comportamento antigo).
+// ──────────────────────────────────────────────────────────────────────────
+function orderByReachBands(rows, rng) {
+  const bands = new Map();
+  for (const row of rows) {
+    const b = Number.isFinite(Number(row?.reach_band)) ? Number(row.reach_band) : 0;
+    if (!bands.has(b)) bands.set(b, []);
+    bands.get(b).push(row);
+  }
+  const ordered = [];
+  for (const b of [...bands.keys()].sort((x, y) => x - y)) {
+    ordered.push(...interleave(buildPools(bands.get(b), rng)));
+  }
+  return ordered;
+}
+
 module.exports = {
+  orderByReachBands,
   MIX_PATTERN,
   NOVELTY_HOURS,
   BOOST_MAX,

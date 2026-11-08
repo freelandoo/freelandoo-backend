@@ -16,10 +16,14 @@ const {
   interleave,
   dedupeRows,
   computeRankInfo,
+  orderByReachBands,
 } = require("../../utils/feedMix");
 // Posts em alta hoje (líder do dia + quem está a até 10% dele) — acendem o anel
 // no avatar daquele card (ver FeedHeatStorage). Cache em processo, sem polling.
 const { getHotPostTiers } = require("./feedHeat");
+// Alcance regional (mig 328): lugar do leitor + selo do dono.
+const ReachStorage = require("../../storages/ReachStorage");
+const { reachLabel } = require("../../utils/feedReach");
 
 const log = createLogger("PortfolioFeedService");
 
@@ -123,6 +127,10 @@ function shapeRow(row) {
     feed_kind: normalizeFeedKind(row.feed_kind, "feed"),
     viewer_has_liked: !!row.viewer_has_liked,
     viewer_has_bookmarked: !!row.viewer_has_bookmarked,
+    viewer_has_disliked: !!row.viewer_has_disliked,
+    // Até onde o post chegou — SÓ para o dono (o número de "não gostei" e os
+    // pontos nunca saem; o degrau dos outros também não).
+    my_reach: row.viewer_is_owner && row.reach_level != null ? reachLabel(row) : null,
     public_profile_url,
     whatsapp_url,
     social_links: row.social_links || [],
@@ -194,6 +202,8 @@ class PortfolioFeedService {
           feed_kind: normalizeFeedKind(filters?.feed_kind),
           country: filters?.country || null,
           viewer_id_user: viewer?.id_user || null,
+          // Anônimo / sem lugar: só os nacionais cobrem; o resto vem depois.
+          viewer_place: viewer?.id_user ? await ReachStorage.viewerPlace(db, viewer.id_user) : null,
         };
 
         const [topRows, newRows, hotTiers] = await Promise.all([
@@ -210,8 +220,9 @@ class PortfolioFeedService {
 
         const candidates = dedupeRows([...topRows, ...newRows]);
         const rng = makeRng(seed);
-        const pools = buildPools(candidates, rng);
-        const ordered = interleave(pools);
+        // Faixa por faixa (alcance cobre o leitor → mesma área → região →
+        // estado → resto), cada uma com o mix 60/25/15 e a mesma semente.
+        const ordered = orderByReachBands(candidates, rng);
 
         const slice = ordered.slice(startIndex, startIndex + limit);
         // Cópia rasa: as linhas do pool são compartilhadas entre requisições

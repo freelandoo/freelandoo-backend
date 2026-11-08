@@ -56,6 +56,7 @@ router.post(
 
 // Autenticados (opcionalmente autenticado para visitas com user_id)
 router.post("/like", authMiddleware, asyncHandler(RankingController.toggleLike));
+router.post("/dislike", authMiddleware, asyncHandler(RankingController.toggleDislike));
 router.get("/likes/:id_profile", authMiddleware, asyncHandler(RankingController.getLikedItems));
 router.post("/rating", authMiddleware, asyncHandler(RankingController.upsertRating));
 router.get("/can-rate/:id_profile", authMiddleware, asyncHandler(RankingController.canRate));

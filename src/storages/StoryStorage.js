@@ -415,7 +415,14 @@ class StoryStorage {
     return rows.map((r) => r.id_story);
   }
 
-  static async markViewed(conn, { id_story, id_viewer_user }) {
+  static async markViewed(db, { id_story, id_viewer_user }) {
+    // Transação: a view e os pontos de alcance (mig 328) entram juntos.
+    return require("./ReachStorage").inTx(db, (conn) =>
+      StoryStorage._markViewedTx(conn, { id_story, id_viewer_user })
+    );
+  }
+
+  static async _markViewedTx(conn, { id_story, id_viewer_user }) {
     const { rows } = await conn.query(
       `
       INSERT INTO public.tb_story_view (id_story, id_viewer_user)
@@ -435,6 +442,10 @@ class StoryStorage {
             SET impressions_count = impressions_count + 1
           WHERE id_story = $1`,
         [id_story]
+      );
+      // Alcance: pessoa distinta que viu = 1 ponto, uma vez para sempre.
+      await require("./ReachStorage").recordUnique(
+        conn, "bee", id_story, { id_user: id_viewer_user }, "view"
       );
     }
     return inserted;

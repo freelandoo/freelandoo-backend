@@ -47,7 +47,20 @@ module.exports = {
     return r.rows[0];
   },
 
-  async toggle(db, { id_user, id_portfolio_item, id_folder }) {
+  // Salvar vale 30 no alcance (mig 328); salvar e pontos na mesma transação.
+  async toggle(pool, args) {
+    const ReachStorage = require("./ReachStorage");
+    return ReachStorage.inTx(pool, async (db) => {
+      const out = await this._toggleTx(db, args);
+      if (out.changed) {
+        await ReachStorage.addWeighted(db, "post", args.id_portfolio_item, "save", out.bookmarked ? 1 : -1);
+      }
+      delete out.changed;
+      return out;
+    });
+  },
+
+  async _toggleTx(db, { id_user, id_portfolio_item, id_folder }) {
     const existing = await db.query(
       `SELECT id_bookmark
          FROM user_bookmark_item
@@ -60,7 +73,7 @@ module.exports = {
         `DELETE FROM user_bookmark_item WHERE id_bookmark = $1`,
         [existing.rows[0].id_bookmark]
       );
-      return { bookmarked: false };
+      return { bookmarked: false, changed: true };
     }
 
     let folderId = id_folder || null;
@@ -75,7 +88,7 @@ module.exports = {
        RETURNING id_bookmark`,
       [id_user, folderId, id_portfolio_item]
     );
-    return { bookmarked: r.rows.length > 0, id_folder: folderId };
+    return { bookmarked: r.rows.length > 0, id_folder: folderId, changed: r.rows.length > 0 };
   },
 
   async status(db, { id_user, ids }) {

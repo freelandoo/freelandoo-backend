@@ -25,6 +25,11 @@ const BEE_ALIVE_SQL = `
 
 const SHARE_DEDUP_INTERVAL = "30 minutes";
 
+// Alcance regional (mig 328). require tardio nas funções: ReachStorage
+// também puxa esta classe.
+const reach = () => require("./ReachStorage");
+const REACH_BY_COUNTER = { likes_count: "like", comments_count: "comment" };
+
 class BeeEngagementStorage {
   // Incrementa um contador e recalcula o engagement_score na mesma transação.
   // counterColumn passa por whitelist antes de interpolar.
@@ -37,6 +42,10 @@ class BeeEngagementStorage {
         WHERE id_story = $1`,
       [id_story, delta]
     );
+    // Curtida ±5 e comentário ±10 no alcance, na mesma transação.
+    if (REACH_BY_COUNTER[counterColumn] && delta) {
+      await reach().addWeighted(client, "bee", id_story, REACH_BY_COUNTER[counterColumn], delta);
+    }
     const { rows } = await client.query(
       `UPDATE public.tb_story
           SET engagement_score = ${SCORE_SQL}
@@ -72,6 +81,7 @@ class BeeEngagementStorage {
       const counters = await BeeEngagementStorage._bumpCounter(
         client, id_story, "likes_count", liked ? 1 : -1
       );
+      if (liked) await reach().removeDislike(client, "bee", id_story, id_user);
       await client.query("COMMIT");
       return { liked, likes_count: counters?.likes_count ?? null };
     } catch (err) {
@@ -240,18 +250,36 @@ class BeeEngagementStorage {
   }
 
   // ── Bookmark (Salvos) ─────────────────────────────────────────────────────
-  static async toggleBookmark(conn, { id_story, id_user }) {
-    const del = await conn.query(
-      `DELETE FROM public.tb_story_bookmark WHERE id_story = $1 AND id_user = $2 RETURNING 1`,
-      [id_story, id_user]
-    );
-    if (del.rows.length > 0) return { bookmarked: false };
-    await conn.query(
-      `INSERT INTO public.tb_story_bookmark (id_story, id_user) VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [id_story, id_user]
-    );
-    return { bookmarked: true };
+  // Salvar vale 30 no alcance (desfazer devolve) — transação própria.
+  static async toggleBookmark(pool, { id_story, id_user }) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const del = await client.query(
+        `DELETE FROM public.tb_story_bookmark WHERE id_story = $1 AND id_user = $2 RETURNING 1`,
+        [id_story, id_user]
+      );
+      let bookmarked;
+      if (del.rows.length > 0) {
+        bookmarked = false;
+        await reach().addWeighted(client, "bee", id_story, "save", -1);
+      } else {
+        const ins = await client.query(
+          `INSERT INTO public.tb_story_bookmark (id_story, id_user) VALUES ($1, $2)
+           ON CONFLICT DO NOTHING RETURNING 1`,
+          [id_story, id_user]
+        );
+        bookmarked = true;
+        if (ins.rows.length) await reach().addWeighted(client, "bee", id_story, "save", 1);
+      }
+      await client.query("COMMIT");
+      return { bookmarked };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   // ── Eventos (share) — dedupe por sessão em 30min, espelho do feed ─────────
@@ -277,6 +305,10 @@ class BeeEngagementStorage {
       );
       if (counts && event_type === "share") {
         await BeeEngagementStorage._bumpCounter(client, id_story, "shares_count", 1);
+      }
+      // Alcance: compartilhamento vale uma vez por pessoa, × velocidade.
+      if (event_type === "share") {
+        await reach().recordUnique(client, "bee", id_story, { id_user, session_id }, "share");
       }
       await client.query("COMMIT");
       return { ok: true, counted: counts };
