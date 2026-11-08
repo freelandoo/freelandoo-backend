@@ -24,6 +24,7 @@
     "test:condo-residence": "node test/condo-residence.e2e.js",
     "test:recado": "node test/recado.e2e.js",
     "test:feed-reach": "node test/feed-reach.e2e.js",
+    "test:areas": "node test/areas-ibge.e2e.js",
     "test:moedas": "node test/moedas-a7.e2e.js",
     "test:listing-monthly": "node test/listing-monthly.e2e.js",
     "test:spaces": "node test/spaces.e2e.js",

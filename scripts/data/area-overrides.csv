@@ -1,0 +1,53 @@
+# Ajustes manuais das ÁREAS (T2). Base = Região Geográfica Imediata do IBGE.
+# Uma linha por município: manda-o para a área "area" (criada pelo nome se não
+# existir) ou, com "area" vazia, deixa o município SEM área.
+# Nome que não é município do IBGE (grafia antiga/variante digitada) entra como
+# apelido da área. Depois de editar: node scripts/ibge-areas.js sql NNN.
+#
+# Grande SP: a imediata "São Paulo" do IBGE são os 39 municípios da RMSP e
+# engolia o ABC. Ficam as sub-regiões da LC-SP 1.139/2011 (art. 4º) já usadas
+# pelo alcance do feed (A1, mig 328); a capital "integra todas" (§ 1º) e fica
+# sem área — o post dela pula da cidade direto para a região.
+uf;municipio;area;fonte
+SP;São Paulo;;LC-SP 1.139/2011, art. 4º, § 1º (capital sem área)
+SP;Santo André;ABC Paulista;Alex 2026-11-08 + LC-SP 1.139/2011
+SP;São Bernardo do Campo;ABC Paulista;Alex 2026-11-08 + LC-SP 1.139/2011
+SP;São Caetano do Sul;ABC Paulista;Alex 2026-11-08 + LC-SP 1.139/2011
+SP;Diadema;ABC Paulista;Alex 2026-11-08 + LC-SP 1.139/2011
+SP;Mauá;ABC Paulista;Alex 2026-11-08 + LC-SP 1.139/2011
+SP;Ribeirão Pires;ABC Paulista;Alex 2026-11-08 + LC-SP 1.139/2011
+SP;Rio Grande da Serra;ABC Paulista;Alex 2026-11-08 + LC-SP 1.139/2011
+SP;Caieiras;Norte da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Cajamar;Norte da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Francisco Morato;Norte da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Franco da Rocha;Norte da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Mairiporã;Norte da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Arujá;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Biritiba Mirim;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Biritiba-Mirim;Alto Tietê;LC-SP 1.139/2011, art. 4º (grafia variante)
+SP;Ferraz de Vasconcelos;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Guararema;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Guarulhos;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Itaquaquecetuba;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Mogi das Cruzes;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Poá;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Salesópolis;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Santa Isabel;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Suzano;Alto Tietê;LC-SP 1.139/2011, art. 4º
+SP;Cotia;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Embu das Artes;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Embu;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º (nome antigo)
+SP;Embu-Guaçu;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Embu Guaçu;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º (grafia variante)
+SP;Itapecerica da Serra;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Juquitiba;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;São Lourenço da Serra;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Taboão da Serra;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Vargem Grande Paulista;Sudoeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Barueri;Oeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Carapicuíba;Oeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Itapevi;Oeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Jandira;Oeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Osasco;Oeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Pirapora do Bom Jesus;Oeste da Grande SP;LC-SP 1.139/2011, art. 4º
+SP;Santana de Parnaíba;Oeste da Grande SP;LC-SP 1.139/2011, art. 4º

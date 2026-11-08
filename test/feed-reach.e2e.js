@@ -144,7 +144,7 @@ async function main() {
     assert.ok(r.reach_region_id);
   });
   await check("as 38 cidades das 5 sub-regiões estão na tabela", async () => {
-    const r = await db.query(`SELECT COUNT(DISTINCT a.name) n_area, COUNT(*) n FROM tb_area_city c JOIN tb_area a USING (id_area) WHERE c.uf='SP'`);
+    const r = await db.query(`SELECT COUNT(DISTINCT a.name) n_area, COUNT(*) n FROM tb_area_city c JOIN tb_area a USING (id_area) WHERE c.uf='SP' AND a.kind='manual'`);
     assert.strictEqual(Number(r.rows[0].n_area), 5);
     assert.ok(Number(r.rows[0].n) >= 38);
   });
