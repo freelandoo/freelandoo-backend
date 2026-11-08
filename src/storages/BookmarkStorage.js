@@ -53,7 +53,7 @@ module.exports = {
     return ReachStorage.inTx(pool, async (db) => {
       const out = await this._toggleTx(db, args);
       if (out.changed) {
-        await ReachStorage.addWeighted(db, "post", args.id_portfolio_item, "save", out.bookmarked ? 1 : -1);
+        await ReachStorage.addWeighted(db, "post", args.id_portfolio_item, "save", out.bookmarked ? 1 : -1, { actor: args.id_user });
       }
       delete out.changed;
       return out;

@@ -215,7 +215,9 @@ class CouponService {
           throw err;
         }
 
-        const coupon = await CouponStorage.findByCode(db, code);
+        const found = await CouponStorage.findByCode(db, code);
+        // A7: cupom Gold só entra pelo seletor da compra (reserva + resgate).
+        const coupon = found && !found.gold_owner_user_id ? found : null;
 
         if (!coupon) {
           const err = new Error("Cupom não encontrado.");

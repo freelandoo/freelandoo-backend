@@ -1,6 +1,17 @@
 const crypto = require("crypto");
 const pool = require("../databases");
 const PremiumStorage = require("../storages/PremiumStorage");
+const EmeraldService = require("./EmeraldService");
+const GoldCouponService = require("./GoldCouponService");
+const { emeraldPrice, parseCurrency } = require("../utils/currency");
+
+// A7: preço em Esmeralda — null/"" volta à regra (Gold × 1.000), 0 = não vende.
+function emeraldOverride(v) {
+  if (v === null || v === "" || v === "auto") return null;
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 const PolenStorage = require("../storages/PolenStorage");
 const ProfileStorage = require("../storages/ProfileStorage");
 const PaymentGateway = require("../integrations/payments");
@@ -62,6 +73,7 @@ class PremiumService {
           duration_days: pricing.duration_days,
           price_cents: pricing.price_cents,
           price_polens: pricing.price_polens,
+          price_emerald: emeraldPrice(pricing.price_polens, pricing.price_emerald),
         },
         slots: {
           total: pricing.slots,
@@ -82,12 +94,15 @@ class PremiumService {
   /**
    * Compra com Poléns (transação atômica: debita + cria registro ativo).
    */
-  static async checkoutWithPolens(user, profileId) {
+  static async checkoutWithPolens(user, profileId, body = {}) {
     return runWithLogs(log, "checkoutWithPolens", () => ({
       id_user: user?.id_user,
       profileId,
     }), async () => {
       if (!user?.id_user) return { error: "Não autenticado" };
+      // A7: o destaque se paga em Gold ou em Esmeralda.
+      const currency = parseCurrency(body?.currency);
+      if (!currency) return { error: "Moeda inválida" };
       const loaded = await loadProfileForPremium(pool, profileId);
       if (loaded.error) return { error: loaded.error };
       const { profile } = loaded;
@@ -119,26 +134,39 @@ class PremiumService {
           return { error: "Cidade lotada — sem vagas premium disponíveis" };
         }
 
-        const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
+        const amount = currency === "emerald"
+          ? emeraldPrice(pricing.price_polens, pricing.price_emerald)
+          : Number(pricing.price_polens) || 0;
+        if (amount <= 0) {
+          await client.query("ROLLBACK");
+          return { error: "Premium não se compra nesta moeda" };
+        }
         const sourceId = `premium:${profile.id_profile}:${crypto.randomUUID()}`;
-        const debit = await PolenStorage.debit(client, {
+        const args = {
           user_id: user.id_user,
-          wallet_id: wallet.id,
-          amount: pricing.price_polens,
+          amount,
           type: "spend_premium",
           source: "premium",
           source_id: sourceId,
           metadata: { profile_id: profile.id_profile, uf: profile.estado, city: profile.municipio },
-        });
+        };
+        let debit;
+        if (currency === "emerald") {
+          debit = await EmeraldService.charge(client, args);
+        } else {
+          const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
+          debit = await PolenStorage.debit(client, { ...args, wallet_id: wallet.id });
+        }
         if (!debit) {
           await client.query("ROLLBACK");
-          return { error: "Saldo de Poléns insuficiente" };
+          return { error: currency === "emerald" ? "Saldo de Esmeralda insuficiente" : "Saldo de Gold insuficiente" };
         }
 
         const pending = await PremiumStorage.createPending(client, {
           profile_id: profile.id_profile,
-          payment_method: "polens",
-          amount_polens: pricing.price_polens,
+          payment_method: currency === "emerald" ? "emerald" : "polens",
+          amount_polens: currency === "gold" ? amount : null,
+          amount_emerald: currency === "emerald" ? amount : null,
           uf: profile.estado,
           city_name: profile.municipio,
         });
@@ -147,7 +175,9 @@ class PremiumService {
         });
 
         await client.query("COMMIT");
-        return { premium: activated, wallet: debit.wallet, transaction: debit.transaction };
+        return currency === "emerald"
+          ? { premium: activated, emerald_wallet: debit.wallet, transaction: debit.transaction, currency }
+          : { premium: activated, wallet: debit.wallet, transaction: debit.transaction, currency };
       } catch (err) {
         await client.query("ROLLBACK");
         throw err;
@@ -188,8 +218,10 @@ class PremiumService {
       if (taken >= pricing.slots) return { error: "Cidade lotada — sem vagas premium disponíveis" };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await PaymentGateway.createCheckout({
-        amount_cents: pricing.price_cents,
+      const charged = await GoldCouponService.charge({
+        user_id: user.id_user, couponId: body?.gold_coupon_id, amount_cents: pricing.price_cents, flow: "premium",
+      }, (amount_cents, couponMeta) => PaymentGateway.createCheckout({
+        amount_cents,
         currency: "BRL",
         productName: `Premium - ${profile.display_name || profile.username || "Perfil"}`,
         customerEmail: user.email || undefined,
@@ -204,14 +236,17 @@ class PremiumService {
           uf: profile.estado,
           city_name: profile.municipio,
           ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
+          ...couponMeta,
         },
-      });
+      }));
+      if (charged.error) return { error: charged.error };
+      const { session } = charged;
 
       // Registra pending pra idempotência via UNIQUE em stripe_session_id.
       await PremiumStorage.createPending(pool, {
         profile_id: profile.id_profile,
         payment_method: "stripe",
-        amount_cents: pricing.price_cents,
+        amount_cents: charged.amount_cents,
         stripe_session_id: session.id,
         uf: profile.estado,
         city_name: profile.municipio,
@@ -359,6 +394,11 @@ class PremiumService {
         const v = clampInt(body.price_polens, { min: 1, fallback: 0 });
         if (v <= 0) return { error: "price_polens deve ser maior que zero" };
         patch.price_polens = v;
+      }
+      if (body.price_emerald !== undefined) {
+        const v = emeraldOverride(body.price_emerald);
+        if (v === undefined) return { error: "price_emerald inválido" };
+        patch.price_emerald = v;
       }
       if (body.slots_per_city !== undefined) {
         patch.slots_per_city = clampInt(body.slots_per_city, { min: 0, fallback: 0 });

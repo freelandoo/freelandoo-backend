@@ -127,6 +127,7 @@ class PolenProductStorage {
       `UPDATE public.polen_purchases
           SET status = 'paid',
               polens_credited = $2,
+              gold_credited = $2,
               stripe_payment_intent = COALESCE($3, stripe_payment_intent),
               paid_at = NOW(),
               updated_at = NOW()

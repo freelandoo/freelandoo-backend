@@ -203,7 +203,7 @@ class CheckoutStorage {
                 updated_by,
                 is_active
             FROM tb_coupon
-            WHERE UPPER(code) = UPPER($1)
+            WHERE UPPER(code) = UPPER($1) AND gold_owner_user_id IS NULL
             LIMIT 1
         `;
 

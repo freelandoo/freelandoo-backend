@@ -106,7 +106,13 @@ async function mkUser(pool, tag) {
   await Storage.ensureResidence(pool, host);
   const res = await Storage.getActiveResidence(pool, host);
   const char = async () => (await pool.query(`SELECT * FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'`, [host])).rows[0];
-  const coins = async () => Number((await pool.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [host])).rows[0].coins);
+  // A7: as moedas do jogo são a Esmeralda (saldo inteiro) + a fração guardada no jogo.
+  const coins = async (who = host) => Number((await pool.query(`SELECT COALESCE(e.balance, 0) + COALESCE(w.coins, 0) AS c FROM tb_mm_wallet w LEFT JOIN emerald_wallets e ON e.user_id = w.id_user WHERE w.id_user = $1`, [who])).rows[0].c);
+  const setCoins = async (who, n) => {
+    await pool.query(`INSERT INTO emerald_wallets (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`, [who]);
+    await pool.query(`UPDATE emerald_wallets SET balance = $2 WHERE user_id = $1`, [who, n]);
+    await pool.query(`UPDATE tb_mm_wallet SET coins = 0 WHERE id_user = $1`, [who]);
+  };
 
   // ── Nascimento e leitura ────────────────────────────────────────────────────
   const outs = await Promise.all([1, 2, 3, 4, 5].map(() => Life.peek(host)));
@@ -131,12 +137,12 @@ async function mkUser(pool, tag) {
   await pool.query(`UPDATE tb_mm_character SET satiety = 30 WHERE id_user = $1`, [host]);
   const ate = await Life.consume(host, "prato_integral");
   check("comer cobra o preço e enche", ate.consumed?.price === 34 && ate.wallet.coins === 466 && ate.character.vitals.satiety > 70, JSON.stringify(ate.error || ate.wallet));
-  await pool.query(`UPDATE tb_mm_wallet SET coins = 1 WHERE id_user = $1`, [host]);
+  await setCoins(host, 1);
   await pool.query(`UPDATE tb_mm_character SET satiety = 30 WHERE id_user = $1`, [host]);
   const broke = await Life.consume(host, "salmao_legumes");
   check("sem moedas: 402 e nada muda", broke.statusCode === 402 && broke.code === "coins" && (await coins()) === 1 && (await char()).satiety < 31);
   check("item inexistente: 404", (await Life.consume(host, "nada")).statusCode === 404);
-  await pool.query(`UPDATE tb_mm_wallet SET coins = 500 WHERE id_user = $1`, [host]);
+  await setCoins(host, 500);
 
   // ── Vendedor do centro (mm3d-37e): casas e cores do carro ───────────────────
   {
@@ -149,7 +155,7 @@ async function mkUser(pool, tag) {
     const cat = await Shop.catalog(host);
     check("catálogo: casa nível 1, carro vermelho, níveis à venda e 10 cores", cat.house?.level === 1 && cat.house.paint === "vermelho" && cat.houses.length >= 8 && cat.paints.length === 10, JSON.stringify(cat.house));
     check("catálogo: o vermelho é de graça e já é seu", cat.paints.find((p) => p.id === "vermelho").owned && cat.paints.find((p) => p.id === "azul").price === 600);
-    await pool.query(`UPDATE tb_mm_wallet SET coins = 700 WHERE id_user = $1`, [host]);
+    await setCoins(host, 700);
     check("casa nível 2 sem moedas: 402", (await Shop.buyHouse(host, 2)).code === "coins");
     check("nível que não existe: 400", (await Shop.buyHouse(host, 99)).code === "level");
     check("o mesmo nível: 409", (await Shop.buyHouse(host, 1)).code === "same");
@@ -159,13 +165,13 @@ async function mkUser(pool, tag) {
     check("voltar ao vermelho: de graça (de fábrica = NULL)", back.paint?.price === 0 && (await coins()) === 100 && (await pool.query(`SELECT car_paint FROM tb_mm_house WHERE id_house = $1`, [res.id_house])).rows[0].car_paint === null);
     const again = await Shop.paintCar(host, "azul");
     check("o azul já é seu: trocar não cobra de novo", again.paint?.bought === false && (await coins()) === 100);
-    await pool.query(`UPDATE tb_mm_wallet SET coins = 2000 WHERE id_user = $1`, [host]);
+    await setCoins(host, 2000);
     const up = await Shop.buyHouse(host, 3);
     check("casa nível 3: paga 1500 e a casa sobe", up.house?.level === 3 && (await coins()) === 500 && (await Storage.getActiveResidence(pool, host)) && (await pool.query(`SELECT level FROM tb_mm_house WHERE id_house = $1`, [res.id_house])).rows[0].level === 3, JSON.stringify(up.error));
     const down = await Shop.buyHouse(host, 1);
     check("descer para o nível 1: de graça", down.house?.level === 1 && (await coins()) === 500);
     RTv.atCenterPlace = placeOf;
-    await pool.query(`UPDATE tb_mm_wallet SET coins = 500 WHERE id_user = $1`, [host]);
+    await setCoins(host, 500);
   }
 
   // ── Atividade com horas, tempo passando com o jogo fechado ─────────────────
@@ -380,7 +386,7 @@ async function mkUser(pool, tag) {
   check("payload da casa traz a geladeira", inHouse.interior?.fridges?.length >= 1);
   check("a sala manda o fôlego no estado", typeof H().p.st === "number" && H().p.wd === false);
   await pool.query(`UPDATE tb_mm_character SET energy = 80, satiety = 30, toxicity = 0, effects = '[]'::jsonb WHERE id_user = $1 AND status = 'alive'`, [host]);
-  await pool.query(`UPDATE tb_mm_wallet SET coins = 200 WHERE id_user = $1`, [host]);
+  await setCoins(host, 200);
   // mm3d-37c: comprar para a geladeira só no supermercado; pedir no balcão só lá dentro.
   here = null;
   check("comprar fora do supermercado: recusado", (await Life.buy(host, "pizza", 1)).code === "market");
@@ -449,18 +455,18 @@ async function mkUser(pool, tag) {
   // Admin adquire de graça (outro admin, para o caminho pago seguir com o anfitrião).
   const adm = await mkUser(pool, "adm");
   await Life.peek(adm);
-  await pool.query(`UPDATE tb_mm_wallet SET coins = 3 WHERE id_user = $1`, [adm]);
+  await setCoins(adm, 3);
   const free = await Life.buySkin(adm, "sergio");
-  const admCoins = Number((await pool.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [adm])).rows[0].coins);
+  const admCoins = await coins(adm);
   const paid = (await pool.query(`SELECT price FROM tb_mm_skin_owned WHERE id_user = $1`, [adm])).rows[0]?.price;
   check("admin adquire de graça: é dele, carteira intacta, pago 0", free.bought === true && sk(free, "sergio").owned && Math.floor(admCoins) === 3 && paid === 0, JSON.stringify([free.error, admCoins, paid]));
   // Quem não é admin paga: o anfitrião perde o papel durante o caminho pago.
   await pool.query(`UPDATE tb_user_role SET is_active = FALSE WHERE id_user = $1`, [host]);
   check("sem papel: Sergio custa o preço", sk(await Life.skins(host), "sergio").cost === sk(w0, "sergio").price);
-  await pool.query(`UPDATE tb_mm_wallet SET coins = 10 WHERE id_user = $1`, [host]);
+  await setCoins(host, 10);
   const poor = await Life.buySkin(host, "sergio");
   check("sem moedas: 402 e nada muda", poor.statusCode === 402 && (await coins()) === 10 && !(await Life.skins(host)).wardrobe.skins.find((x) => x.id === "sergio").owned);
-  await pool.query(`UPDATE tb_mm_wallet SET coins = 5000 WHERE id_user = $1`, [host]);
+  await setCoins(host, 5000);
   const price = sk(w0, "sergio").price;
   const [b1, b2] = await Promise.all([Life.buySkin(host, "sergio"), Life.buySkin(host, "sergio")]);
   check("duas compras simultâneas cobram UMA vez", [b1, b2].filter((b) => b.bought).length === 1 && Math.floor(await coins()) === 5000 - price, String(await coins()));

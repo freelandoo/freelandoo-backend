@@ -132,7 +132,7 @@ module.exports = {
       );
 
       // Alcance (mig 328): curtida ±5; curtir tira o "não gostei" (exclusivos).
-      await ReachStorage.addWeighted(client, "post", id_portfolio_item, "like", delta);
+      await ReachStorage.addWeighted(client, "post", id_portfolio_item, "like", delta, { actor: id_user });
       if (liked) await ReachStorage.removeDislike(client, "post", id_portfolio_item, id_user);
 
       await client.query("COMMIT");

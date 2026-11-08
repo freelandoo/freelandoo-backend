@@ -11,6 +11,15 @@ const CouponAdminStorage = require("../storages/CouponAdminStorage");
  * Retorna { discount_type, discount_value, max_discount_cents, source }.
  */
 async function resolve(conn, coupon) {
+  // A7: cupom comprado com Gold vale exatamente o que foi pago por ele.
+  if (coupon?.gold_owner_user_id) {
+    return {
+      discount_type: "amount",
+      discount_value: Number(coupon.value),
+      max_discount_cents: null,
+      source: "gold",
+    };
+  }
   const override = await CouponAdminStorage.getDiscountOverride(conn, coupon.id_coupon);
   if (
     override &&

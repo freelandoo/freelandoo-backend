@@ -10,5 +10,7 @@ const admin = [authMiddleware, roleMiddleware("Administrator")];
 router.get("/settings", ...admin, asyncHandler(PolenController.adminSettings));
 router.put("/settings", ...admin, asyncHandler(PolenController.updateAdminSettings));
 router.get("/metrics", ...admin, asyncHandler(PolenController.adminMetrics));
+router.get("/emerald-settings", ...admin, asyncHandler(PolenController.adminEmeraldSettings));
+router.put("/emerald-settings", ...admin, asyncHandler(PolenController.updateAdminEmeraldSettings));
 
 module.exports = router;

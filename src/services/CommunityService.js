@@ -5,7 +5,7 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const PortfolioFeedService = require("./portfolioFeed/PortfolioFeedService");
-const PolenStorage = require("../storages/PolenStorage");
+const EmeraldStorage = require("../storages/EmeraldStorage");
 const FeatureFlagService = require("./FeatureFlagService");
 const CondoRules = require("../utils/condoRules");
 const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
@@ -1176,8 +1176,9 @@ class CommunityService {
       await client.query("BEGIN");
       const closed = await CommunityStorage.closeGoal(client, goal.id, winnerUserId);
       if (closed && winnerUserId && Number(goal.prize_polens) > 0) {
-        const wallet = await PolenStorage.getOrCreateWallet(client, winnerUserId);
-        await PolenStorage.credit(client, {
+        // A7: prêmio grátis paga ESMERALDA (mesmo número).
+        const wallet = await EmeraldStorage.getOrCreateWallet(client, winnerUserId);
+        await EmeraldStorage.credit(client, {
           user_id: winnerUserId,
           wallet_id: wallet.id,
           amount: Number(goal.prize_polens),

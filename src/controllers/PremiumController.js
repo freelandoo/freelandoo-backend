@@ -9,7 +9,7 @@ class PremiumController {
   static async checkoutPolens(req, res) {
     return sendServiceResult(
       res,
-      await PremiumService.checkoutWithPolens(req.user, req.params.profileId)
+      await PremiumService.checkoutWithPolens(req.user, req.params.profileId, req.body || {})
     );
   }
 

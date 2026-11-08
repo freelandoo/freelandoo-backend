@@ -1,4 +1,6 @@
 const PolenService = require("../services/PolenService");
+const EmeraldService = require("../services/EmeraldService");
+const GoldCouponService = require("../services/GoldCouponService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class PolenController {
@@ -20,6 +22,32 @@ class PolenController {
 
   static async spend(req, res) {
     return sendServiceResult(res, await PolenService.spend(req.user, req.body || {}));
+  }
+
+  // A7 — Verde Esmeralda.
+  static async emeraldHistory(req, res) {
+    return sendServiceResult(res, await EmeraldService.history(req.user, req.query || {}));
+  }
+
+  static async convert(req, res) {
+    return sendServiceResult(res, await EmeraldService.convert(req.user, req.body || {}));
+  }
+
+  // A7 — cupom de desconto comprado com Gold.
+  static async myCoupons(req, res) {
+    return sendServiceResult(res, await GoldCouponService.listMine(req.user));
+  }
+
+  static async buyCoupon(req, res) {
+    return sendServiceResult(res, await GoldCouponService.buy(req.user, req.body || {}), 201);
+  }
+
+  static async adminEmeraldSettings(req, res) {
+    return sendServiceResult(res, await EmeraldService.getAdminSettings());
+  }
+
+  static async updateAdminEmeraldSettings(req, res) {
+    return sendServiceResult(res, await EmeraldService.updateAdminSettings(req.user, req.body || {}));
   }
 
   static async adminSettings(req, res) {

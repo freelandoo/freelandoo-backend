@@ -152,18 +152,18 @@ async function main() {
   const low = await Gear.buy(id, { item: "couraca_rebitada", key: k() });
   check("requisito de nível no servidor", low.code === "level", JSON.stringify(low));
   await pool2.query(`UPDATE tb_mm_adventure SET xp = 500 WHERE id_user = $1`, [id]);
-  await pool2.query(`UPDATE tb_mm_wallet SET coins = 1000 WHERE id_user = $1`, [id]);
+  await pool2.query(`INSERT INTO emerald_wallets (user_id, balance) VALUES ($1, 1000) ON CONFLICT (user_id) DO UPDATE SET balance = 1000`, [id]); // A7: moedas do jogo = Esmeralda
 
   // mesmo pedido em duas abas: cobra uma vez
   const key1 = k();
   const [p1, p2] = await Promise.all([Gear.buy(id, { item: "couraca_rebitada", key: key1 }), Gear.buy(id, { item: "couraca_rebitada", key: key1 })]);
   check("compra repetida = mesmo recibo", p1.receipt && p2.receipt && p1.receipt.eventId === p2.receipt.eventId, JSON.stringify([p1.error, p2.error]));
-  const coinsA = Number((await pool2.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [id])).rows[0].coins);
+  const coinsA = Number((await pool2.query(`SELECT balance FROM emerald_wallets WHERE user_id = $1`, [id])).rows[0].balance);
   check("cobrou 700 uma vez", Math.round(coinsA) === 300, String(coinsA));
 
   // duas compras DIFERENTES com saldo para uma só: nunca negativo
   const [c1, c2] = await Promise.all([Gear.buy(id, { item: "colete_couro", key: k() }), Gear.buy(id, { item: "relogio_bolso", key: k() })]);
-  const coinsB = Number((await pool2.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1`, [id])).rows[0].coins);
+  const coinsB = Number((await pool2.query(`SELECT balance FROM emerald_wallets WHERE user_id = $1`, [id])).rows[0].balance);
   check("saldo nunca negativo em compras concorrentes", coinsB >= 0 && [c1, c2].filter((x) => x.code === "coins").length === 1, JSON.stringify([c1.code, c2.code, coinsB]));
 
   // equipar: arma de outra classe recusada
@@ -182,7 +182,7 @@ async function main() {
   // forja: sem materiais recusa; com materiais, consome e entrega
   const nf = await Gear.forge(id, { recipe: "forjar_luvas", key: k() });
   check("forja sem materiais recusa", nf.code === "needs" || nf.code === "coins", JSON.stringify(nf));
-  await pool2.query(`UPDATE tb_mm_wallet SET coins = 500 WHERE id_user = $1`, [id]);
+  await pool2.query(`INSERT INTO emerald_wallets (user_id, balance) VALUES ($1, 500) ON CONFLICT (user_id) DO UPDATE SET balance = 500`, [id]); // A7: moedas do jogo = Esmeralda
   await pool2.query(
     `INSERT INTO tb_mm_gear (id_user, item_id, qty) VALUES ($1, 'couro_reforcado', 3), ($1, 'mola_precisao', 4)
      ON CONFLICT (id_user, item_id) DO UPDATE SET qty = EXCLUDED.qty`,
@@ -292,7 +292,7 @@ async function main() {
   const su = crypto.randomUUID();
   await pool.query(`INSERT INTO tb_user VALUES ($1, 'mms', 'mms@mm.test')`, [su]);
   await Life.peek(su);
-  await pool.query(`INSERT INTO tb_mm_wallet (id_user, coins) VALUES ($1, 100000) ON CONFLICT (id_user) DO UPDATE SET coins = 100000`, [su]);
+  await pool.query(`INSERT INTO emerald_wallets (user_id, balance) VALUES ($1, 100000) ON CONFLICT (user_id) DO UPDATE SET balance = 100000`, [su]); // A7: moedas do jogo = Esmeralda
   await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f') ON CONFLICT DO NOTHING`, [su]);
   const wear = (skin) => pool.query(`INSERT INTO tb_mm_avatar_pref (id_user, body, skin) VALUES ($1, 'normal', $2) ON CONFLICT (id_user) DO UPDATE SET skin = $2`, [su, skin]);
   const fightKit = async () => (await Adv.fightStart(su, { origin: "laminas", kind: "soldier", level: 1 })).fight.setup;

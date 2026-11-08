@@ -243,18 +243,28 @@ class MeuMundoLifeStorage {
     }));
   }
 
-  /** Carteira do jogo, criada com o saldo inicial na primeira vez, travada. */
-  static async lockWallet(c, idUser, startCoins) {
-    await c.query(`INSERT INTO tb_mm_wallet (id_user, coins) VALUES ($1, $2) ON CONFLICT (id_user) DO NOTHING`, [
-      idUser,
-      startCoins,
-    ]);
-    const r = await c.query(`SELECT coins FROM tb_mm_wallet WHERE id_user = $1 FOR UPDATE`, [idUser]);
-    return r.rows[0].coins;
+  /**
+   * A7 (mig 332): as moedas do jogo são a Esmeralda da Freelandoo. Esta linha
+   * trava a pessoa e guarda só a FRAÇÃO (< 1) que o trabalho rende por hora.
+   * `fresh` = jogador novo (a vida credita as moedas de início); `migrated`
+   * false = linha antiga que ainda tem moedas inteiras para passar.
+   */
+  static async lockWallet(c, idUser) {
+    const ins = await c.query(
+      `INSERT INTO tb_mm_wallet (id_user, coins, emerald_migrated_at) VALUES ($1, 0, NOW())
+       ON CONFLICT (id_user) DO NOTHING RETURNING 1`,
+      [idUser]
+    );
+    const r = await c.query(`SELECT coins, emerald_migrated_at FROM tb_mm_wallet WHERE id_user = $1 FOR UPDATE`, [idUser]);
+    return { coins: Number(r.rows[0].coins) || 0, fresh: ins.rowCount > 0, migrated: !!r.rows[0].emerald_migrated_at };
   }
 
+  /** Guarda a fração (< 1) que sobrou; o inteiro já foi para a Esmeralda. */
   static async setCoins(c, idUser, coins) {
-    await c.query(`UPDATE tb_mm_wallet SET coins = $2, updated_at = NOW() WHERE id_user = $1`, [idUser, coins]);
+    await c.query(
+      `UPDATE tb_mm_wallet SET coins = $2, emerald_migrated_at = COALESCE(emerald_migrated_at, NOW()), updated_at = NOW() WHERE id_user = $1`,
+      [idUser, coins]
+    );
   }
 
   // ═══ GELADEIRA (mig 301) ═══ — estoque por pessoa; quem chama já travou a carteira.

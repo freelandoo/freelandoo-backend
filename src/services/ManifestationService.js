@@ -1,6 +1,17 @@
 const pool = require("../databases");
 const ManifestationStorage = require("../storages/ManifestationStorage");
 const PolenStorage = require("../storages/PolenStorage");
+const EmeraldService = require("./EmeraldService");
+const GoldCouponService = require("./GoldCouponService");
+const { emeraldPrice, parseCurrency } = require("../utils/currency");
+
+// A7: preço em Esmeralda — null/"" volta à regra (Gold × 1.000), 0 = não vende.
+function emeraldOverride(v) {
+  if (v === null || v === "" || v === "auto") return null;
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 const PaymentGateway = require("../integrations/payments");
 const uploadManifestationBannerToR2 = require("../integrations/r2/uploadManifestationBanner");
 const { slugify } = require("../utils/slug");
@@ -143,8 +154,16 @@ class ManifestationService {
       if (!user?.id_user) return { error: "Não autenticado" };
       const product = await ManifestationStorage.getProductById(pool, body.product_id);
       if (!product || !product.is_active) return { error: "Manifestação não encontrada ou indisponível" };
-      // Preço 0 é válido: o admin pode liberar uma manifestação grátis via Poléns.
-      const amount = Math.max(0, Number(product.price_polens) || 0);
+      // A7: paga em Gold (o antigo Pólen) OU em Esmeralda (`currency`).
+      // Preço 0 em Gold = grátis nas duas moedas; preço em Esmeralda 0 com
+      // Gold > 0 = não vende em Esmeralda.
+      const currency = parseCurrency(body.currency);
+      if (!currency) return { error: "Moeda inválida" };
+      const gold = Math.max(0, Number(product.price_polens) || 0);
+      const amount = currency === "emerald" && gold > 0 ? emeraldPrice(gold, product.price_emerald) : gold;
+      if (currency === "emerald" && gold > 0 && amount <= 0) {
+        return { error: "Esta manifestação não se compra com Esmeralda.", code: "currency_unavailable" };
+      }
 
       // Já desbloqueada? Não debita de novo (idempotência — critério de aceite 11).
       const already = await ManifestationStorage.getOwnedUnlock(pool, user.id_user, product.id);
@@ -171,32 +190,38 @@ class ManifestationService {
           await client.query("ROLLBACK");
           return { error: "Manifestação indisponível" };
         }
-        const wallet = await PolenStorage.getOrCreateWallet(client, user.id_user);
+        const wallet = currency === "gold" ? await PolenStorage.getOrCreateWallet(client, user.id_user) : null;
         // amount === 0 => resgate grátis: não debita, não cria transação.
         let debit = null;
         if (amount > 0) {
-          debit = await PolenStorage.debit(client, {
+          const args = {
             user_id: user.id_user,
-            wallet_id: wallet.id,
             amount,
             type: "spend_manifestation",
             source: "manifestation",
             source_id: `manifestation:${product.id}:${user.id_user}`,
             metadata: { product_id: product.id, product_name: product.name, slug: product.slug },
-          });
+          };
+          debit = currency === "emerald"
+            ? await EmeraldService.charge(client, args)
+            : await PolenStorage.debit(client, { ...args, wallet_id: wallet.id });
           if (!debit) {
             await client.query("ROLLBACK");
             return {
-              error: `Você precisa de ${amount} pólens para desbloquear esta manifestação.`,
+              error: currency === "emerald"
+                ? `Você precisa de ${amount} Esmeraldas para desbloquear esta manifestação.`
+                : `Você precisa de ${amount} Gold para desbloquear esta manifestação.`,
               code: "insufficient_balance",
+              currency,
             };
           }
         }
         const unlock = await ManifestationStorage.createUnlock(client, {
           user_id: user.id_user,
           product_id: product.id,
-          payment_method: amount > 0 ? "polens" : "free",
-          amount_polens: amount,
+          payment_method: amount > 0 ? (currency === "emerald" ? "emerald" : "polens") : "free",
+          amount_polens: currency === "gold" ? amount : 0,
+          amount_emerald: currency === "emerald" ? amount : null,
         });
         if (!unlock) {
           // Corrida: desbloqueado entre o pré-check e o INSERT.
@@ -208,7 +233,8 @@ class ManifestationService {
           message: "Manifestação desbloqueada com sucesso.",
           unlock,
           product,
-          wallet: debit?.wallet ?? wallet,
+          currency,
+          ...(currency === "emerald" ? { emerald_wallet: debit?.wallet ?? null } : { wallet: debit?.wallet ?? wallet }),
           transaction: debit?.transaction ?? null,
         };
       } catch (err) {
@@ -263,8 +289,10 @@ class ManifestationService {
       if (!gate.ok) return { error: gate.error, eligibility: gate.eligibility };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await PaymentGateway.createCheckout({
-        amount_cents: amount,
+      const charged = await GoldCouponService.charge({
+        user_id: user.id_user, couponId: body?.gold_coupon_id, amount_cents: amount, flow: "manifestation",
+      }, (amount_cents, couponMeta) => PaymentGateway.createCheckout({
+        amount_cents,
         currency: "BRL",
         productName: `Manifestação - ${product.name}`,
         customerEmail: user.email || undefined,
@@ -276,8 +304,11 @@ class ManifestationService {
           user_id: user.id_user,
           product_id: product.id,
           ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
+          ...couponMeta,
         },
-      });
+      }));
+      if (charged.error) return { error: charged.error };
+      const { session } = charged;
       return { checkout_url: session.url, session_id: session.id };
     });
   }
@@ -539,6 +570,7 @@ class ManifestationService {
         tag_icon: sanitizeText(body?.tag_icon, 60),
         price_cents: clampInt(body?.price_cents, { fallback: 0 }),
         price_polens: clampInt(body?.price_polens, { fallback: 0 }),
+        price_emerald: body?.price_emerald === undefined ? null : emeraldOverride(body.price_emerald) ?? null,
         duration_days: clampInt(body?.duration_days, { min: 1, fallback: 365 }),
         stock: body?.stock != null && body.stock !== "" ? clampInt(body.stock, { min: 0, fallback: 0 }) : null,
         is_featured: body?.is_featured === true || body?.is_featured === "true",
@@ -592,6 +624,11 @@ class ManifestationService {
       if (body?.banner_thumb_url !== undefined) patch.banner_thumb_url = sanitizeText(body.banner_thumb_url, 600);
       if (body?.price_cents !== undefined) patch.price_cents = clampInt(body.price_cents);
       if (body?.price_polens !== undefined) patch.price_polens = clampInt(body.price_polens);
+      if (body?.price_emerald !== undefined) {
+        const v = emeraldOverride(body.price_emerald);
+        if (v === undefined) return { error: "price_emerald inválido" };
+        patch.price_emerald = v;
+      }
       if (body?.duration_days !== undefined) patch.duration_days = clampInt(body.duration_days, { min: 1, fallback: 365 });
       if (body?.stock !== undefined) {
         patch.stock = body.stock == null || body.stock === ""

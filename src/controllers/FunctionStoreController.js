@@ -16,7 +16,8 @@ module.exports = {
   async createCheckout(req, res) {
     const result = await FunctionStoreService.createCheckout(
       req.user,
-      String(req.params.key || "")
+      String(req.params.key || ""),
+      req.body || {}
     );
     return sendServiceResult(res, result);
   },

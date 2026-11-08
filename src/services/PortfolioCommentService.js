@@ -109,6 +109,7 @@ class PortfolioCommentService {
             client,
             id_portfolio_item,
             1,
+            { actor: user.id_user, ref: created?.id_portfolio_comment || null, chars: trimmed.length },
           );
           await client.query("COMMIT");
 
@@ -220,6 +221,7 @@ class PortfolioCommentService {
               client,
               deactivated.id_portfolio_item,
               -1,
+              { actor: existing.id_user, ref: id_portfolio_comment },
             );
           }
           await client.query("COMMIT");

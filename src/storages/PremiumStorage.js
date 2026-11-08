@@ -9,7 +9,7 @@ class PremiumStorage {
   }
 
   static async updateSettings(conn, patch) {
-    const allowed = ["duration_days", "price_cents", "price_polens", "slots_per_city", "is_active"];
+    const allowed = ["duration_days", "price_cents", "price_polens", "price_emerald", "slots_per_city", "is_active"];
     const fields = [];
     const values = [];
     let i = 1;
@@ -137,8 +137,8 @@ class PremiumStorage {
     const { rows } = await conn.query(
       `INSERT INTO public.profile_premium
          (profile_id, status, payment_method, amount_cents, amount_polens,
-          stripe_session_id, uf, city_name)
-       VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7)
+          stripe_session_id, uf, city_name, amount_emerald)
+       VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         data.profile_id,
@@ -148,6 +148,7 @@ class PremiumStorage {
         data.stripe_session_id ?? null,
         data.uf,
         data.city_name,
+        data.amount_emerald ?? null,
       ]
     );
     return rows[0];
@@ -261,6 +262,8 @@ class PremiumStorage {
       duration_days: settings.duration_days,
       price_cents: override?.price_cents ?? settings.price_cents,
       price_polens: override?.price_polens ?? settings.price_polens,
+      // A7: NULL = Gold × 1.000 (resolvido em utils/currency.emeraldPrice).
+      price_emerald: override?.price_emerald ?? (override?.price_polens != null ? null : settings.price_emerald ?? null),
       slots: override?.slots ?? settings.slots_per_city,
       override_id: override?.id || null,
       is_active: settings.is_active,

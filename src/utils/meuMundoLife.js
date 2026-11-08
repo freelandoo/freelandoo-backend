@@ -148,6 +148,11 @@ const RULES = Object.freeze({
   FATAL_VITALITY: 20, // internado com vitalidade ≤ isto não resiste
   START_COINS: 500,
   WORK_COINS_H: 14,
+  // A7: as moedas do jogo são Esmeralda. O trabalho rende no máximo isto por
+  // dia de Brasília (teto PRÓPRIO, separado do teto do engajamento). Conta de
+  // hoje: 14/h × (0,6 + int/1000) × foco × ~6–8 h úteis ≈ 130–180. O admin
+  // muda em emerald_settings.work_daily_cap (chega pela carteira: workCap).
+  WORK_COINS_DAY: 150,
   // Recuperação de saúde por hora (só com fome, sono, estresse e toxicidade
   // sob controle); bem alimentado (saciedade > FED_AT e dieta ≥ 0) soma FED.
   // Dormir rende 3/h e o hospital também (pedido do Alex, 2026-10-26: doente
@@ -866,8 +871,11 @@ function stepState(s, t, dt, events, out) {
   }
   if (kind === "working") {
     gain(s, "intelligence", ATTR.GAIN_H.workInt * dt * focus, t);
-    const coins = RULES.WORK_COINS_H * dt * (0.6 + s.intelligence / ATTR.MAX) * focus;
+    const raw = RULES.WORK_COINS_H * dt * (0.6 + s.intelligence / ATTR.MAX) * focus;
+    const cap = out.wallet && Number.isFinite(out.wallet.workCap) ? out.wallet.workCap : RULES.WORK_COINS_DAY;
+    const coins = Math.max(0, Math.min(raw, cap - s.dayAcc.coins));
     out.coins += coins;
+    out.earned += coins;
     s.dayAcc.coins += coins;
   }
   if (s.growth.stage !== "adult") {
@@ -1200,8 +1208,8 @@ function simulate(s, to, wallet = null, pantry = null) {
   normalize(s);
   const events = [];
   // `pantry` ({ itemId: qtd }) é a geladeira: a rotina come dela antes de comprar.
-  const out = { days: [], coins: 0, wallet, pantry };
-  if (to <= s.simAt) return { events, days: out.days, coins: 0 };
+  const out = { days: [], coins: 0, earned: 0, wallet, pantry };
+  if (to <= s.simAt) return { events, days: out.days, coins: 0, earned: 0 };
   let t = s.simAt;
   const stop = Math.min(to, t + MAX_CATCHUP_MS);
   while (t < stop && s.status === "alive") {
@@ -1213,7 +1221,7 @@ function simulate(s, to, wallet = null, pantry = null) {
     atBoundary(s, t, events, out);
   }
   s.simAt = to;
-  return { events, days: out.days, coins: out.coins };
+  return { events, days: out.days, coins: out.coins, earned: out.earned };
 }
 
 // ═══ AÇÕES ═══ (sempre depois de simular até `t`)

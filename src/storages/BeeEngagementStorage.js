@@ -33,7 +33,7 @@ const REACH_BY_COUNTER = { likes_count: "like", comments_count: "comment" };
 class BeeEngagementStorage {
   // Incrementa um contador e recalcula o engagement_score na mesma transação.
   // counterColumn passa por whitelist antes de interpolar.
-  static async _bumpCounter(client, id_story, counterColumn, delta) {
+  static async _bumpCounter(client, id_story, counterColumn, delta, who = null) {
     const allowed = new Set(["likes_count", "comments_count", "shares_count", "impressions_count"]);
     if (!allowed.has(counterColumn)) throw new Error(`counter inválido: ${counterColumn}`);
     await client.query(
@@ -44,7 +44,7 @@ class BeeEngagementStorage {
     );
     // Curtida ±5 e comentário ±10 no alcance, na mesma transação.
     if (REACH_BY_COUNTER[counterColumn] && delta) {
-      await reach().addWeighted(client, "bee", id_story, REACH_BY_COUNTER[counterColumn], delta);
+      await reach().addWeighted(client, "bee", id_story, REACH_BY_COUNTER[counterColumn], delta, who);
     }
     const { rows } = await client.query(
       `UPDATE public.tb_story
@@ -79,7 +79,7 @@ class BeeEngagementStorage {
         liked = true;
       }
       const counters = await BeeEngagementStorage._bumpCounter(
-        client, id_story, "likes_count", liked ? 1 : -1
+        client, id_story, "likes_count", liked ? 1 : -1, { actor: id_user }
       );
       if (liked) await reach().removeDislike(client, "bee", id_story, id_user);
       await client.query("COMMIT");
