@@ -51,24 +51,8 @@ async function until(fn, ms = 4000) {
   return false;
 }
 
-const MIGS = [
-  "291_meu_mundo_bairros",
-  "292_meu_mundo_house_levels",
-  "293_meu_mundo_visits",
-  "294_meu_mundo_body_sergio",
-  "295_meu_mundo_vida",
-  "297_meu_mundo_atributos_1000",
-  "298_meu_mundo_atributos_inicio_baixo",
-  "299_meu_mundo_vehicles",
-  "300_meu_mundo_skins",
-  "301_meu_mundo_geladeira",
-  "302_meu_mundo_inbox",
-  "304_meu_mundo_avatar_colors",
-  "308_meu_mundo_lugar_atividade",
-  "309_meu_mundo_vendedor",
-  "311_meu_mundo_boxe",
-];
-const TABLES = `tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
+const TABLES = `tb_mm_player, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  tb_mm_notice, tb_mm_mail, tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
   tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user`;
 async function bootstrap(pool) {
   await pool.query(`DROP TABLE IF EXISTS ${TABLES} CASCADE`);
@@ -77,13 +61,22 @@ async function bootstrap(pool) {
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
   await require("./helpers/mmPolens").polenTables(pool);
-  for (const m of MIGS) await pool.query(fs.readFileSync(path.join(__dirname, `../src/databases/migrations/${m}.sql`), "utf8"));
+  // todas as do Meu Mundo (como a aventura e o jetpack): a lista fixa parou antes
+  // das classes (318) e a suíte não subia mais. Chat (303) e salão (312) dependem
+  // de tabelas de fora.
+  const all = fs
+    .readdirSync(path.join(__dirname, "../src/databases/migrations"))
+    .filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f))
+    .sort();
+  for (const f of all) await pool.query(fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8"));
 }
 
 async function mkUser(pool, tag) {
   const id = crypto.randomUUID();
   await pool.query(`INSERT INTO tb_user VALUES ($1, $2, $3)`, [id, `mmtest_${tag}`, `${id}@mm.test`]);
   await pool.query(`INSERT INTO tb_user_role (id_user, id_role) VALUES ($1, 1)`, [id]);
+  // classes (mm3d-58): sem classe o bairro pede a escolha (409 needs_clan)
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm')`, [id]);
   return id;
 }
 

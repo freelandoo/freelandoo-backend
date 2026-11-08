@@ -19,6 +19,9 @@
 // Sem Babylon (testável no node; nada de enum nem parâmetro-propriedade).
 
 const STEP = 2
+/** Inclinação lateral máxima (rad, 30°) e o ganho sobre a curvatura (mm3d-73). */
+const BANK_MAX = 0.52
+const BANK_K = 46
 
                                                
 
@@ -251,12 +254,22 @@ function buildTrack(def          )        {
     const q = (i + 1) % n
     T.curv[i] = wrapAngle(T.yaw[q] - T.yaw[p]) / (2 * STEP)
   }
-  // inclinação lateral: curvatura suavizada (média de 30 m), até 16°
-  const win = Math.round(15 / STEP)
+  // inclinação lateral (mm3d-73): curvatura suavizada numa janela de 60 m, que
+  // faz a entrada e a saída da curva irem aos poucos; reta ≈ 0°, curva de 90°
+  // em 150 m ≈ 26°, teto BANK_MAX (30°). Mudou → regerar o back (build-corrida-sim).
+  const win = Math.round(30 / STEP)
+  const raw = new Float32Array(n)
   for (let i = 0; i < n; i++) {
     let c = 0
     for (let k = -win; k <= win; k++) c += T.curv[(i + k + n) % n]
-    T.bank[i] = Math.max(-0.28, Math.min(0.28, (c / (2 * win + 1)) * 22))
+    raw[i] = Math.max(-BANK_MAX, Math.min(BANK_MAX, (c / (2 * win + 1)) * BANK_K))
+  }
+  // segunda passada curta: tira a quina onde o teto corta
+  const win2 = Math.round(8 / STEP)
+  for (let i = 0; i < n; i++) {
+    let c = 0
+    for (let k = -win2; k <= win2; k++) c += raw[(i + k + n) % n]
+    T.bank[i] = c / (2 * win2 + 1)
   }
   for (let i = 0; i < n; i++) {
     const b = T.bounds
@@ -722,6 +735,7 @@ class Race {
     if (!c.air && Math.abs(inp.steer) < 0.05) a -= a * Math.min(1, TUNING.assist * dt)
     c.yaw = p.yaw + a
     // avança
+    const uFrom = c.u
     const ds = c.v * Math.cos(a) * dt
     c.dist += ds
     c.u += c.v * Math.sin(a) * dt
@@ -760,9 +774,13 @@ class Race {
         return
       }
     } else {
-      // crista ou fim da rampa: o balístico fica acima do chão → decola
+      // crista ou fim da rampa: o balístico fica acima do chão → decola.
+      // mm3d-73: o que o chão desce só pela inclinação lateral (entrar/sair da
+      // curva inclinada, ir para o lado de dentro) não é crista: a nave segue
+      // colada. Só a subida/descida do EIXO decide a decolagem.
       const vy = c.v * p.slope
-      const next = c.Y + vy * dt - 0.5 * TUNING.gravity * dt * dt
+      const bankDrop = surfaceY(q, c.u) - q.y - (surfaceY(p, uFrom) - p.y)
+      const next = c.Y + vy * dt - 0.5 * TUNING.gravity * dt * dt + Math.min(0, bankDrop)
       if (q.gap || next > ground + 0.04) {
         c.air = true
         c.vy = vy
@@ -1039,4 +1057,4 @@ function carPose(race      , c     , out         )          {
   return out
 }
 
-module.exports = { STEP, wrapAngle, wrapS, buildTrack, trackAt, surfaceY, worldAt, BAIA, TUNING, SHIPS, DEFAULT_SHIP, shipOf, CAR_COLORS, Race, carPose };
+module.exports = { STEP, BANK_MAX, BANK_K, wrapAngle, wrapS, buildTrack, trackAt, surfaceY, worldAt, BAIA, TUNING, SHIPS, DEFAULT_SHIP, shipOf, CAR_COLORS, Race, carPose };
