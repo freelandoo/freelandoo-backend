@@ -61,6 +61,9 @@ const ERRORS = {
   currency: ["Este produto é exclusivo de Poléns", 409],
   mail: ["Presente não encontrado", 404],
   place: ["Treino é na academia; estudo, na universidade, biblioteca ou escola; reza, na igreja — dentro do prédio", 409],
+  // B10: aparelho/curso por nível
+  station: ["Esse aparelho ou curso não existe aqui", 400],
+  tier: ["Ainda não dá para esse nível: falta atributo", 409],
   menu: ["Isso não tem no cardápio", 404],
   away: ["Você precisa estar lá dentro", 409],
   market: ["Compras para a geladeira são no supermercado do centro", 409],
@@ -447,7 +450,7 @@ class MeuMundoLifeService {
   }
 
   /** Estudar, treinar, trabalhar (com horas) ou parar (idle). */
-  static async setActivity(idUser, rawKind, rawHours, rawPlace = null) {
+  static async setActivity(idUser, rawKind, rawHours, rawPlace = null, rawStation = null) {
     const kind = String(rawKind || "");
     if (!REST_ROUTE_KINDS.includes(kind)) return fail(kind === "lying" || kind === "sleeping" ? "bed" : "activity");
     // Treino e estudo só no prédio (mm3d-37b): o lugar certo E a pessoa lá,
@@ -456,7 +459,7 @@ class MeuMundoLifeService {
     if (place !== null && (!Life.PLACES[kind].includes(place) || !require("../realtime/meuMundo").atCenterPlace(idUser, place))) return fail("place");
     return MeuMundoLifeService.withLife(idUser, (s, ctx) => {
       // Parar de dormir/deitar pela rota = levantar: a sala solta da cama.
-      const r = Life.startActivity(s, kind, rawHours, ctx.now, null, place);
+      const r = Life.startActivity(s, kind, rawHours, ctx.now, null, place, place ? rawStation || null : null);
       if (!r.ok) return fail(r.code);
       // Hora de aula da universidade (moedas do jogo, na largada).
       const fee = Life.placeFee(kind, place, r.hours);

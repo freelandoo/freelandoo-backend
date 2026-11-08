@@ -49,6 +49,8 @@ function rowToState(r) {
       resume: r.activity_resume,
       // mig 308: onde treina/estuda (mm3d-37b)
       place: r.activity_place || null,
+      // mig 370 (B10): aparelho/curso e nível ("weights:3")
+      station: r.activity_station || null,
     },
     effects: r.effects || [],
     meals: r.meals,
@@ -85,6 +87,7 @@ const COLS = [
   "wear_days", "exposure", "boxing", "growth",
   "dexterity", "attr_budget", "sleep_note", "soul",
   "accuracy",
+  "activity_station",
 ];
 
 function values(s) {
@@ -106,6 +109,7 @@ function values(s) {
     s.sleepFrom || s.woke ? JSON.stringify({ from: s.sleepFrom || null, woke: s.woke || null }) : null,
     s.soul ? JSON.stringify(s.soul) : null,
     s.accuracy || 0,
+    a.station || null,
   ];
 }
 
