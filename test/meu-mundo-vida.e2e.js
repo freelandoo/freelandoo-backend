@@ -41,7 +41,7 @@ async function until(fn, ms = 4000) {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_player, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
                     tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
@@ -72,6 +72,7 @@ async function bootstrap(pool) {
     "319_meu_mundo_clan_skin.sql",
     "320_meu_mundo_reforma_progresso.sql",
     "324_meu_mundo_sono.sql",
+    "327_meu_mundo_alma.sql",
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8");
     await pool.query(sql);
@@ -488,6 +489,22 @@ async function mkUser(pool, tag) {
   check("cores: código inválido vira o padrão", (await Life.setSkinColors(host, "standard", "zz!")).look === "0032");
   await Life.setSkinColors(host, "standard", "b97b");
   check("cores: são da conta (lidas de novo)", (await Storage.getLook(pool, host)) === "b97b");
+
+  // ═══ A alma do hóspede (mm3d-72, mig 327) ═══
+  const so1 = (await Life.peek(host)).character.soul;
+  check("alma: tem personalidade, afeto, gosta/odeia", !!so1 && ["psicopata", "covarde", "comilao", "bondoso", "competitivo"].includes(so1.temper) && so1.affection >= 0 && !!so1.likes.food && !!so1.hates.food);
+  check("alma: sem apelido ainda", so1.nickname === null && so1.call.kind === "nick");
+  const so2 = (await Life.peek(host)).character.soul;
+  check("alma: a mesma de uma leitura para outra (gravada)", so2.temper === so1.temper && so2.likes.food === so1.likes.food);
+  check("apelido: curto demais é recusado", (await Life.setNickname(host, "a")).code === "nick");
+  const nk = await Life.setNickname(host, "  Alex\n  Rei ");
+  check("apelido: grava limpo", nk.character.soul.nickname === "Alex Rei");
+  const pn = await Life.setPetName(host, "Bolota");
+  check("apelido do hóspede: grava", pn.petName === "Bolota" && pn.character.soul.petName === "Bolota");
+  box.length = 0;
+  await Life.peek(host);
+  await sleep(150);
+  check("alma: vai para o aparelho no aviso life", got("life").some((x) => x.m.soul && x.m.soul.petName === "Bolota"));
 
   await Promise.race([room.leave().catch(() => {}), sleep(500)]);
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);

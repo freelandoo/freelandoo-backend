@@ -2130,7 +2130,7 @@ function applyLife(userId, life) {
   if (!p || !p.room.applyLife) return false;
   p.room.applyLife(p.sessionId, life);
   // Avisos (needs) vão junto: o cliente fala com o retrato sem pedir nada (mm3d-28).
-  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, until: life.until ?? null, body: life.body, look: life.look ?? "", height: life.height || 0, needs: life.needs || [], stamina: life.stamina || null, vitals: life.vitals || null });
+  presence.send(userId, "life", { pace: life.pace, status: life.status, activity: life.activity, until: life.until ?? null, body: life.body, look: life.look ?? "", height: life.height || 0, needs: life.needs || [], stamina: life.stamina || null, vitals: life.vitals || null, soul: life.soul || null });
   return true;
 }
 

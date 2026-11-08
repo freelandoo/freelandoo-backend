@@ -218,6 +218,14 @@ async function gearRecycle(req, res) {
   return reply(res, await gear().recycle(req.user.id_user, req.body || {}));
 }
 
+// mm3d-72: o apelido da pessoa e o do hóspede
+async function lifeNickname(req, res) {
+  return reply(res, await MeuMundoLifeService.setNickname(req.user.id_user, req.body?.nickname));
+}
+async function lifePetName(req, res) {
+  return reply(res, await MeuMundoLifeService.setPetName(req.user.id_user, req.body?.name));
+}
+
 async function lifeConsume(req, res) {
   return reply(res, await MeuMundoLifeService.consume(req.user.id_user, req.body?.item));
 }
@@ -358,6 +366,8 @@ module.exports = {
   hospital,
   lifeActivity,
   lifeConsume,
+  lifeNickname,
+  lifePetName,
   adventureGet,
   fightStart,
   fightFinish,

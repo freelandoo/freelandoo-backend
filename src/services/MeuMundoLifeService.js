@@ -25,6 +25,7 @@ const PolenStorage = require("../storages/PolenStorage");
 const { rowToState } = require("../storages/MeuMundoLifeStorage");
 const Cars = require("../utils/meuMundoCars");
 const Life = require("../utils/meuMundoLife");
+const Soul = require("../utils/meuMundoSoul");
 const { grownHeight } = require("../utils/meuMundoHeights");
 const Skins = require("../utils/meuMundoSkins");
 const Colors = require("../utils/meuMundoColors");
@@ -62,7 +63,14 @@ const ERRORS = {
   menu: ["Isso não tem no cardápio", 404],
   away: ["Você precisa estar lá dentro", 409],
   market: ["Compras para a geladeira são no supermercado do centro", 409],
+  nick: ["O apelido precisa ter de 2 a 20 letras", 400],
 };
+
+/** Apelido (mm3d-72): sem quebra de linha nem caractere de controle, espaços juntos, 2–20 letras. */
+function cleanNick(raw) {
+  const v = String(raw == null ? "" : raw).replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+  return v.length >= 2 && v.length <= 20 ? v : null;
+}
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
   return { error, statusCode, code };
@@ -88,6 +96,10 @@ const LIFE_NOTICES = {
   jailed: 1,
   // mm3d-58: virou adulto (+20% e saúde 100).
   adult: 2,
+  // mm3d-72: o que ele quer (pela personalidade), e se o dono atendeu
+  wish: 3,
+  wish_ok: 3,
+  wish_fail: 2,
 };
 
 async function recordNotices(c, idUser, idCharacter, needs, events) {
@@ -200,6 +212,8 @@ class MeuMundoLifeService {
         events.push({ at: now, kind: "born", data: { generation: 1 } });
       }
       const s = rowToState(row);
+      // mm3d-72: a alma antes da simulação (o comilão tem o apetite do corpo no alto)
+      Soul.soulOf(s);
       // Admin (testes): energia infinita, nunca exausto, fôlego sem fim (vale também no tempo fora do jogo).
       const admin = MeuMundoLifeService.adminPerks && (await AuthStorage.isAdmin(c, idUser));
       if (admin) Life.adminTopUp(s);
@@ -217,6 +231,11 @@ class MeuMundoLifeService {
       }
       const idCharacter = ctx.newRow ? ctx.newRow.id_character : row.id_character;
       const state = ctx.newState || s;
+      // mm3d-72: a alma sente o que aconteceu (afeto, desejos) — eventos da simulação + o que a pessoa fez agora
+      const soulRes = Soul.applyEvents(s, events, now);
+      events.push(...soulRes.events);
+      if (ctx.newState) Soul.soulOf(ctx.newState);
+      const nickname = await MeuMundoLifeStorage.nickname(c, idUser);
       Life.noteSleep(s, now);
       const care = ctx.felt ? [careReceipt(`${idCharacter}:eat:${now}`, now, ctx.felt)] : [];
       // Acordou: fica guardado até a pessoa estar no jogo para ver.
@@ -225,7 +244,11 @@ class MeuMundoLifeService {
         care.push(careReceipt(`${idCharacter}:woke:${at}`, at, felt));
         delete s.woke;
       }
-      const notices = await recordNotices(c, idUser, row.id_character, Life.snapshot(state, now).needs, [
+      const needs0 = Life.snapshot(state, now).needs;
+      // mm3d-72 ("Putz! A geladeira tá vazia!"): sem comida nenhuma na geladeira
+      const fridgeEmpty = state.status === "alive" && !Object.entries(pantry).some(([id, n]) => n > 0 && Soul.FOODS.includes(id));
+      const needsNow = fridgeEmpty ? [...needs0, { id: "fridge_empty", level: 4 }].sort((x, y) => x.level - y.level) : needs0;
+      const notices = await recordNotices(c, idUser, row.id_character, needsNow, [
         ...events,
         ...(ctx.newEvents || []),
       ]);
@@ -253,6 +276,9 @@ class MeuMundoLifeService {
         bornAt: new Date(cur.born_at).toISOString(),
         deathSeen: !!cur.death_seen_at || !!ctx.deathSeen,
         ...Life.snapshot(state, now),
+        needs: needsNow,
+        // mm3d-72: personalidade, afeto, gosta/odeia, desejo e como ele chama o dono
+        soul: { ...Soul.view(state, now), nickname, felt: soulRes.delta },
       };
       const snap = admin ? Life.adminView(snap0) : snap0;
       // Altura de agora (2026-11-02): o corpo desenhado + o crescimento da vida.
@@ -283,6 +309,8 @@ class MeuMundoLifeService {
         height,
         // Avisos com retrato e fôlego de corrida (2026-10-24).
         needs: snap.needs,
+        // mm3d-72: as falas no jogo usam a personalidade e o apelido
+        soul: snap.soul,
         stamina: snap.stamina,
         // HUD do personagem (mm3d-60d): saúde/energia/estresse e o teto da saúde
         vitals: {
@@ -636,6 +664,24 @@ class MeuMundoLifeService {
    * velhice = Freelandoo paga e o novo herda 20%; outra causa = o jogador paga
    * (até o que tiver) e o novo começa do zero. Tudo na mesma transação.
    */
+  /** O apelido que a pessoa escolhe para si (mm3d-72): o hóspede chama o dono assim. */
+  static async setNickname(idUser, raw) {
+    const nick = cleanNick(raw);
+    if (!nick) return fail("nick");
+    await MeuMundoLifeStorage.setNickname(pool, idUser, nick);
+    return MeuMundoLifeService.withLife(idUser);
+  }
+
+  /** O apelido que a pessoa dá ao hóspede (mm3d-72); vale para este hóspede. */
+  static async setPetName(idUser, raw) {
+    const nick = cleanNick(raw);
+    if (!nick) return fail("nick");
+    return MeuMundoLifeService.withLife(idUser, (s) => {
+      Soul.soulOf(s).petName = nick;
+      return { petName: nick };
+    });
+  }
+
   static async newcomer(idUser) {
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       if (s.status !== "dead") return fail("alive");

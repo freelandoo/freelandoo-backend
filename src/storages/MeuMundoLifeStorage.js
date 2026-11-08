@@ -62,6 +62,8 @@ function rowToState(r) {
     ...(r.sleep_note && r.sleep_note.woke ? { woke: r.sleep_note.woke } : {}),
     // nascimento (só leitura): a idade do crescimento conta daqui (2026-11-02)
     bornAt: ms(r.born_at),
+    // mig 327 (mm3d-72): a alma (personalidade, afeto, gostos, desejo); NULL = nasce pela semente
+    soul: r.soul || null,
     wearDays: r.wear_days != null ? r.wear_days : Math.max(0, (ms(r.sim_at) - ms(r.born_at)) / 86400000),
     dayAcc: r.day_acc,
     status: r.status,
@@ -79,7 +81,7 @@ const COLS = [
   "activity", "activity_started_at", "activity_until", "activity_bed", "activity_resume", "activity_place",
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
   "wear_days", "exposure", "boxing", "growth",
-  "dexterity", "attr_budget", "sleep_note",
+  "dexterity", "attr_budget", "sleep_note", "soul",
 ];
 
 function values(s) {
@@ -99,10 +101,25 @@ function values(s) {
     s.growth ? JSON.stringify(s.growth) : null,
     s.dexterity, JSON.stringify(s.budget || { days: {} }),
     s.sleepFrom || s.woke ? JSON.stringify({ from: s.sleepFrom || null, woke: s.woke || null }) : null,
+    s.soul ? JSON.stringify(s.soul) : null,
   ];
 }
 
 class MeuMundoLifeStorage {
+  /** Apelido que a pessoa escolheu para si no jogo (mig 327); null = ainda não escolheu. */
+  static async nickname(db, idUser) {
+    const r = await db.query(`SELECT nickname FROM tb_mm_player WHERE id_user = $1`, [idUser]);
+    return r.rows[0] ? r.rows[0].nickname : null;
+  }
+
+  static async setNickname(db, idUser, nickname) {
+    await db.query(
+      `INSERT INTO tb_mm_player (id_user, nickname) VALUES ($1, $2)
+       ON CONFLICT (id_user) DO UPDATE SET nickname = EXCLUDED.nickname, updated_at = NOW()`,
+      [idUser, nickname]
+    );
+  }
+
   /** O hóspede mais recente do usuário (vivo ou morto), travado. */
   static async lockLatest(c, idUser) {
     const r = await c.query(

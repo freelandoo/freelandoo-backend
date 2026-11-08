@@ -63,6 +63,9 @@ router.get("/life", ...admin, asyncHandler(MeuMundoController.life));
 router.get("/hospital", ...admin, asyncHandler(MeuMundoController.hospital));
 router.post("/life/activity", ...admin, asyncHandler(MeuMundoController.lifeActivity));
 router.post("/life/consume", ...admin, asyncHandler(MeuMundoController.lifeConsume));
+// mm3d-72: apelidos (o da pessoa e o do hóspede)
+router.post("/life/nickname", ...admin, asyncHandler(MeuMundoController.lifeNickname));
+router.post("/life/pet-name", ...admin, asyncHandler(MeuMundoController.lifePetName));
 // mm3d-59: aventura e luta conferida (o servidor sorteia a semente e re-simula a gravação).
 router.get("/adventure", ...admin, asyncHandler(MeuMundoController.adventureGet));
 router.post("/fight/start", ...admin, asyncHandler(MeuMundoController.fightStart));
