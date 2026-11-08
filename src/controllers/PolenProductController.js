@@ -17,6 +17,8 @@ class PolenProductController {
         product_id: req.params.id,
         // Origem da compra (whitelist no serviço): o jogo volta para o jogo.
         return_to: req.body?.return_to,
+        // A8: cupom do link de afiliado (só atribui comissão; não dá desconto no Gold).
+        coupon_code: req.body?.coupon_code,
       })
     );
   }
