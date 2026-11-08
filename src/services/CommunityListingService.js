@@ -59,7 +59,10 @@ const PolenStorage = require("../storages/PolenStorage");
 const PaymentGateway = require("../integrations/payments");
 const { providerOf } = require("../integrations/payments/contract");
 const { isFullRefund } = require("../utils/refunds");
-const { territorialContext } = require("../utils/territorialCommunity");
+// A4 (mig 338): a vitrine vale em TODA comunidade. Territorial continua pedindo
+// morador (vitrineContext delega a territorialContext); as outras pedem estar
+// dentro (membro, ou qualquer conta nas modalidades sem membresia).
+const { vitrineContext: territorialContext } = require("../utils/vitrineCommunity");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("CommunityListingService");
@@ -232,7 +235,12 @@ class CommunityListingService {
         });
 
         if (courtesy) {
-          const live = await CommunityListingStorage.extendPaidUntil(pool, listing.id_listing, 1);
+          // A4: "tudo grátis no começo" — cortesia de `free_listing_months`.
+          const live = await CommunityListingStorage.extendPaidUntil(
+            pool,
+            listing.id_listing,
+            settings.free_listing_months || 1
+          );
           listing.paid_until = live?.paid_until || null;
         }
 
@@ -382,6 +390,29 @@ class CommunityListingService {
         }
 
         const settings = await CommunityListingStorage.getEffectiveSettings(pool, communityIdOf(params));
+
+        // A4 (mig 338): enquanto a cota de cortesia valer, "pôr no ar" não
+        // cobra — estende pelo período grátis. Voltar a cobrar é zerar a cota
+        // em condo_settings; este caminho some sozinho.
+        const freeQuota = freeQuotaFor(settings, listing.kind);
+        if (freeQuota > 0) {
+          const live = await CommunityListingStorage.countLive(
+            pool,
+            communityIdOf(params),
+            user.id_user,
+            listing.kind
+          );
+          const alreadyLive = listing.paid_until && new Date(listing.paid_until) > new Date();
+          if (alreadyLive || live < freeQuota) {
+            const row = await CommunityListingStorage.extendPaidUntil(
+              pool,
+              listing.id_listing,
+              settings.free_listing_months || 1
+            );
+            return { free: true, id_listing: listing.id_listing, paid_until: row?.paid_until || null };
+          }
+        }
+
         const unit = Number(settings.listing_monthly_cents);
         if (!unit) {
           return { error: "A vitrine não está cobrando mensalidade aqui.", statusCode: 400 };

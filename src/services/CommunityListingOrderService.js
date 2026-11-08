@@ -43,7 +43,9 @@ const NotificationService = require("./NotificationService");
 const PaymentGateway = require("../integrations/payments");
 const { providerOf } = require("../integrations/payments/contract");
 const { isFullRefund } = require("../utils/refunds");
-const { territorialContext } = require("../utils/territorialCommunity");
+// A4 (mig 338): a venda com retenção de 8 dias vale em toda comunidade.
+const { vitrineContext: territorialContext } = require("../utils/vitrineCommunity");
+const { isTerritorialKind } = require("../utils/territorialCommunity");
 const {
   getListingSettings,
   platformFeeFor,
@@ -149,6 +151,10 @@ class CommunityListingOrderService {
         // cobrar R$3 no dia em que o painel já dissesse R$4.
         let deliveryCents = 0;
         let deliveryKind = null;
+        // Entrega entre vizinhos (mig 248) só existe onde há vizinhos.
+        if (body?.delivery_kind && !isTerritorialKind(ctx.community.kind)) {
+          return { error: "Entrega entre vizinhos só existe em condomínio e bairro.", statusCode: 400 };
+        }
         if (body?.delivery_kind) {
           if (!isDeliveryKind(body.delivery_kind)) {
             return { error: "Tipo de entrega inválido.", statusCode: 400 };

@@ -38,6 +38,7 @@ const adminRankingRoutes = require("./adminRanking.routes");
 const clanRoutes = require("./clan.routes");
 const clanPublicRoutes = require("./clanPublic.routes");
 const communityRoutes = require("./community.routes");
+const vitrinesRoutes = require("./vitrines.routes");
 const socialSafetyRoutes = require("./socialSafety.routes");
 const communityPublicRoutes = require("./communityPublic.routes");
 const prospectRoutes = require("./prospect.routes");
@@ -222,6 +223,10 @@ module.exports = (app) => {
   app.use("/public/clans", clanPublicRoutes);
   // Comunidades: auth ANTES da pública no mesmo base — /eligibility (auth GET)
   // não pode ser engolido por GET /:id_profile da pública.
+  // A2/A4 (mig 338): /me/needs, /debts, /admin/debts e as abas Empregos e
+  // Dívidas (/communities/:id/jobs|debts). ANTES das comunidades para não
+  // depender da contagem de segmentos de outro arquivo.
+  app.use("/", vitrinesRoutes);
   app.use("/communities", communityRoutes);
   // Prospecção (mig 254): `/communities/:id_profile/leads/*`. Montada ANTES da
   // pública porque `GET /:id_profile` de lá é o catch de um segmento — as

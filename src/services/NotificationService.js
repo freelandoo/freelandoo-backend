@@ -1005,6 +1005,23 @@ class NotificationService {
    * gravada no banco nasce em português para sempre, e a plataforma fala três
    * idiomas.
    */
+  /**
+   * Feed de boletos (mig 338). SEM ator, de propósito: o feed é anônimo para
+   * proteger quem pediu ajuda (LGPD), e o aviso não pode revelar quem é quem.
+   */
+  static async notifyDebt({ recipient_user_id, type, id_bill, amount_cents }) {
+    if (!recipient_user_id || !type) return null;
+    return safeNotify({
+      id_recipient_user: recipient_user_id,
+      type,
+      entity_type: "debt_bill",
+      payload: {
+        id_bill: id_bill ?? null,
+        amount_cents: Number.isFinite(Number(amount_cents)) ? Number(amount_cents) : null,
+      },
+    });
+  }
+
   static async notifyListingOrder({
     recipient_user_id,
     actor_user_id,

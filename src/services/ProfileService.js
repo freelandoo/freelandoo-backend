@@ -3,6 +3,7 @@ const ProfileStorage = require("../storages/ProfileStorage");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { normalizeDocument } = require("../utils/documents");
 const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
+const { categoryMinAgeError } = require("../utils/categoryMinAge");
 const ProfileSubscriptionStorage = require("../storages/ProfileSubscriptionStorage");
 const SubscriptionEndService = require("./SubscriptionEndService");
 
@@ -55,6 +56,12 @@ class ProfileService {
             return {
               error: "A profissão selecionada não pertence ao enxame escolhido",
             };
+          }
+          // A3 (mig 338): enxame com idade mínima (o trigger é a regra; isto é a frase).
+          const ageDenied = await categoryMinAgeError(client, { id_category, id_user });
+          if (ageDenied) {
+            await client.query("ROLLBACK");
+            return ageDenied;
           }
 
           const profile = await ProfileStorage.createProfile(client, {
@@ -333,6 +340,17 @@ class ProfileService {
               client,
               nextCategory
             );
+            // A3 (mig 338): enxame com idade mínima.
+            if (okCat && Number(nextCategory) !== Number(before.id_category)) {
+              const ageDenied = await categoryMinAgeError(client, {
+                id_category: nextCategory,
+                id_user: before.id_user,
+              });
+              if (ageDenied) {
+                await client.query("ROLLBACK");
+                return ageDenied;
+              }
+            }
             if (!okCat) {
               await client.query("ROLLBACK");
               return { error: "Categoria não encontrada ou inativa" };
