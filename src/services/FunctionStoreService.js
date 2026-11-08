@@ -10,6 +10,7 @@ const FunctionStoreStorage = require("../storages/FunctionStoreStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const { USER_FEATURE_KEYS } = require("../utils/userFeatureKeys");
 const PlanService = require("./PlanService");
+const GoldCouponService = require("./GoldCouponService");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -56,7 +57,7 @@ class FunctionStoreService {
 
   /* ------------------------------ checkout ------------------------------ */
 
-  static async createCheckout(user, feature_key) {
+  static async createCheckout(user, feature_key, body = {}) {
     return runWithLogs(
       log,
       "createCheckout",
@@ -81,8 +82,11 @@ class FunctionStoreService {
         if (alreadyOwns) return { error: "Você já possui esta função." };
 
         const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(/\/$/, "");
-        const session = await PaymentGateway.createCheckout({
-          amount_cents: Number(product.price_cents),
+        // A7: cupom Gold do próprio comprador abate do preço (reserva + resgate).
+        const charged = await GoldCouponService.charge({
+          user_id: user.id_user, couponId: body.gold_coupon_id, amount_cents: Number(product.price_cents), flow: "function_purchase",
+        }, (amount_cents, couponMeta) => PaymentGateway.createCheckout({
+          amount_cents,
           currency: "BRL",
           productName: `Função ${product.nav_label} — Freelandoo`,
           customerEmail: user.email || undefined,
@@ -94,14 +98,17 @@ class FunctionStoreService {
             user_id: user.id_user,
             feature_key,
             id_product: product.id,
+            ...couponMeta,
           },
-        });
+        }));
+        if (charged.error) return { error: charged.error };
+        const { session } = charged;
 
         await FunctionStoreStorage.createPurchase(pool, {
           id_user: user.id_user,
           feature_key,
           id_product: product.id,
-          amount_cents: Number(product.price_cents),
+          amount_cents: charged.amount_cents,
           stripe_session_id: session.id,
         });
 

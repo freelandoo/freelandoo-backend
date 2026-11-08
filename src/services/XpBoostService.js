@@ -7,6 +7,7 @@ const pool = require("../databases");
 const PaymentGateway = require("../integrations/payments");
 const XpBoostStorage = require("../storages/XpBoostStorage");
 const XpStorage = require("../storages/XpStorage");
+const GoldCouponService = require("./GoldCouponService");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -44,8 +45,10 @@ class XpBoostService {
         }
 
         const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(/\/$/, "");
-        const session = await PaymentGateway.createCheckout({
-          amount_cents: PRICE_CENTS,
+        const charged = await GoldCouponService.charge({
+          user_id: user.id_user, couponId: body?.gold_coupon_id, amount_cents: PRICE_CENTS, flow: "xp_boost",
+        }, (amount_cents, couponMeta) => PaymentGateway.createCheckout({
+          amount_cents,
           currency: "BRL",
           productName: `Booster de XP — Nível ${TARGET_LEVEL}`,
           customerEmail: user.email || undefined,
@@ -62,14 +65,17 @@ class XpBoostService {
             ...(body?.coupon_code
               ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) }
               : {}),
+            ...couponMeta,
           },
-        });
+        }));
+        if (charged.error) return { error: charged.error };
+        const { session } = charged;
 
         await XpBoostStorage.createPurchase(pool, {
           user_id: user.id_user,
           id_profile,
           target_level: TARGET_LEVEL,
-          amount_cents: PRICE_CENTS,
+          amount_cents: charged.amount_cents,
           stripe_session_id: session.id,
         });
 

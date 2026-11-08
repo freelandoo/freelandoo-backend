@@ -2,6 +2,7 @@ const pool = require("../databases");
 const ManifestationStorage = require("../storages/ManifestationStorage");
 const PolenStorage = require("../storages/PolenStorage");
 const EmeraldService = require("./EmeraldService");
+const GoldCouponService = require("./GoldCouponService");
 const { emeraldPrice, parseCurrency } = require("../utils/currency");
 
 // A7: preço em Esmeralda — null/"" volta à regra (Gold × 1.000), 0 = não vende.
@@ -288,8 +289,10 @@ class ManifestationService {
       if (!gate.ok) return { error: gate.error, eligibility: gate.eligibility };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await PaymentGateway.createCheckout({
-        amount_cents: amount,
+      const charged = await GoldCouponService.charge({
+        user_id: user.id_user, couponId: body?.gold_coupon_id, amount_cents: amount, flow: "manifestation",
+      }, (amount_cents, couponMeta) => PaymentGateway.createCheckout({
+        amount_cents,
         currency: "BRL",
         productName: `Manifestação - ${product.name}`,
         customerEmail: user.email || undefined,
@@ -301,8 +304,11 @@ class ManifestationService {
           user_id: user.id_user,
           product_id: product.id,
           ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
+          ...couponMeta,
         },
-      });
+      }));
+      if (charged.error) return { error: charged.error };
+      const { session } = charged;
       return { checkout_url: session.url, session_id: session.id };
     });
   }

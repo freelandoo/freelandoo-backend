@@ -930,6 +930,11 @@ async function fulfillCheckoutSession(session) {
     return result;
   }
 
+  // A7: cupom Gold usado nesta compra vira "usado" (idempotente).
+  if (meta.gold_coupon_id) {
+    await require("./GoldCouponService").redeem(meta.gold_coupon_id, session.id);
+  }
+
   // Atribuição de comissão para fluxos não-assinatura quando o cupom veio
   // capturado via ?cupom= no link. Idempotente por (provider, ref).
   await maybeAttributeCouponCommission(pool, session, meta);
@@ -945,6 +950,14 @@ async function fulfillCheckoutSession(session) {
  */
 async function expireCheckoutSession(session, reason) {
   const meta = session.metadata || {};
+  // A7: cobrança que não vingou solta o cupom Gold reservado para ela.
+  if (meta.gold_coupon_id) {
+    try {
+      await require("./GoldCouponService").release(meta.gold_coupon_id, session.id);
+    } catch (err) {
+      log.warn("gold_coupon.release_failed", { session_id: session.id, message: err?.message });
+    }
+  }
   try {
     switch (meta.type) {
       case "booking_deposit": {

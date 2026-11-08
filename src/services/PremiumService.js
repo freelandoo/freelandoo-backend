@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const pool = require("../databases");
 const PremiumStorage = require("../storages/PremiumStorage");
 const EmeraldService = require("./EmeraldService");
+const GoldCouponService = require("./GoldCouponService");
 const { emeraldPrice, parseCurrency } = require("../utils/currency");
 
 // A7: preço em Esmeralda — null/"" volta à regra (Gold × 1.000), 0 = não vende.
@@ -217,8 +218,10 @@ class PremiumService {
       if (taken >= pricing.slots) return { error: "Cidade lotada — sem vagas premium disponíveis" };
 
       const frontend = String(process.env.FRONTEND_URL || "https://freelandoo.com").replace(/\/$/, "");
-      const session = await PaymentGateway.createCheckout({
-        amount_cents: pricing.price_cents,
+      const charged = await GoldCouponService.charge({
+        user_id: user.id_user, couponId: body?.gold_coupon_id, amount_cents: pricing.price_cents, flow: "premium",
+      }, (amount_cents, couponMeta) => PaymentGateway.createCheckout({
+        amount_cents,
         currency: "BRL",
         productName: `Premium - ${profile.display_name || profile.username || "Perfil"}`,
         customerEmail: user.email || undefined,
@@ -233,14 +236,17 @@ class PremiumService {
           uf: profile.estado,
           city_name: profile.municipio,
           ...(body?.coupon_code ? { coupon_code: String(body.coupon_code).trim().toUpperCase().slice(0, 40) } : {}),
+          ...couponMeta,
         },
-      });
+      }));
+      if (charged.error) return { error: charged.error };
+      const { session } = charged;
 
       // Registra pending pra idempotência via UNIQUE em stripe_session_id.
       await PremiumStorage.createPending(pool, {
         profile_id: profile.id_profile,
         payment_method: "stripe",
-        amount_cents: pricing.price_cents,
+        amount_cents: charged.amount_cents,
         stripe_session_id: session.id,
         uf: profile.estado,
         city_name: profile.municipio,

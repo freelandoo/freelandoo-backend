@@ -63,6 +63,7 @@ async function resolveCoupon(conn, couponCode, buyerUserId) {
             discount_type, value, max_discount_cents
      FROM public.tb_coupon
      WHERE UPPER(code) = UPPER($1)
+       AND gold_owner_user_id IS NULL
      LIMIT 1`,
     [couponCode]
   );
