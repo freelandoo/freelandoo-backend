@@ -73,6 +73,8 @@ router.post("/fight/finish", ...admin, asyncHandler(MeuMundoController.fightFini
 router.post("/client-report", ...admin, asyncHandler(MeuMundoController.clientReport));
 // mm3d-59: equipamento — compras/forja com chave do pedido (recibo idempotente).
 router.get("/gear", ...admin, asyncHandler(MeuMundoController.gearGet));
+// B7: ranking do jogo (poder | nivel | freelandoo) — top 100 do Brasil + a minha posição
+router.get("/ranking/:tab", ...admin, asyncHandler(MeuMundoController.ranking));
 router.post("/gear/buy", ...admin, asyncHandler(MeuMundoController.gearBuy));
 router.post("/gear/equip", ...admin, asyncHandler(MeuMundoController.gearEquip));
 router.post("/gear/forge", ...admin, asyncHandler(MeuMundoController.gearForge));

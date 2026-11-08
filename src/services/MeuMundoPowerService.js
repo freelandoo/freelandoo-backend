@@ -1,12 +1,13 @@
-// src/services/MeuMundoPowerService.js — MEU MUNDO 3D: o PODER do personagem (T3).
+// src/services/MeuMundoPowerService.js — MEU MUNDO 3D: o PODER do personagem.
 //
-// A fórmula mora no front (features/meu-mundo/power/power.ts) e o back roda a
-// cópia GERADA (src/utils/meuMundoPower.js). A ficha da luta entra pela cópia
-// gerada da regra da luta (meuMundoFight.js): a mesma conta que o aparelho faz.
+// Fórmula do B7 (decisão do Alex, 2026-11-08): soma simples do permanente —
+//   força + velocidade + destreza + inteligência + acurácia + HP máx do nível
+//   + equipamento (1% de bônus = 10 pontos). Sem suplemento nem efeito temporário.
+// A regra mora no front (features/meu-mundo/power/power.ts) e o back roda a cópia
+// GERADA (src/utils/meuMundoPower.js). O HP do nível vem da cópia gerada da luta
+// (meuMundoFight.heroLevelScale): a mesma conta do aparelho.
 //
-// Entradas: corpo vestido, nível de aventura, atributos da vida, equipamento
-// equipado (mesmo que vai para a luta) e os efeitos ativos da vida (suplementos).
-// Grava em tb_mm_character.power (mig 334) só quando muda.
+// Grava em tb_mm_character.power (mig 334) + power_at (mig 335) só quando muda.
 
 const pool = require("../databases");
 const Power = require("../utils/meuMundoPower");
@@ -22,35 +23,44 @@ const log = createLogger("meuMundo.power");
 /** Require tardio: o serviço de equipamento usa o withLife (ciclo). */
 const GearService = () => require("./MeuMundoGearService");
 
+const attrsOf = (s) => ({
+  strength: s.strength,
+  speed: s.speed,
+  dexterity: s.dexterity,
+  intelligence: s.intelligence,
+  accuracy: s.accuracy || 0,
+});
+
 class MeuMundoPowerService {
-  /** Entradas do poder de quem é `idUser`, com o estado `s` da vida em `now`. */
-  static async inputs(c, idUser, s, now = Date.now()) {
+  /** Entradas do poder de quem é `idUser`, com o estado `s` da vida. */
+  static async inputs(c, idUser, s) {
     const body = await MeuMundoStorage.getBody(c, idUser);
     const clan = clanOfBody(body) ?? (await MeuMundoStorage.getClan(c, idUser)).clan;
-    const level = Adv.levelOf(Number((await AdvStore.getAdventure(c, idUser)).xp)).level;
+    const level = Adv.levelOf(Number((await AdvStore.getAdventure(c, idUser)).xp) || 0).level;
     const gear = await GearService().fightGear(c, idUser, clan);
-    const supplements = (s.effects || []).filter((e) => e && e.until > now).map((e) => e.id);
-    return {
-      body,
-      level,
-      stats: { strength: s.strength, speed: s.speed, intelligence: s.intelligence, dexterity: s.dexterity },
-      gear,
-      supplements,
-    };
+    return { attrs: attrsOf(s), level, gear };
   }
 
-  static async compute(c, idUser, s, now = Date.now()) {
-    return Power.powerOf(FightSim, await MeuMundoPowerService.inputs(c, idUser, s, now));
+  /** Poder com as parcelas: { total, parts }. */
+  static async score(c, idUser, s) {
+    return Power.powerScore(FightSim, await MeuMundoPowerService.inputs(c, idUser, s));
   }
 
-  /** Grava só quando muda. */
+  static async compute(c, idUser, s) {
+    return (await MeuMundoPowerService.score(c, idUser, s)).total;
+  }
+
+  /** Grava só quando muda (power_at marca a mudança: desempate do ranking). */
   static async store(c, idCharacter, power) {
-    await c.query(`UPDATE tb_mm_character SET power = $2 WHERE id_character = $1 AND power IS DISTINCT FROM $2`, [idCharacter, power]);
+    await c.query(
+      `UPDATE tb_mm_character SET power = $2, power_at = NOW() WHERE id_character = $1 AND power IS DISTINCT FROM $2`,
+      [idCharacter, power]
+    );
   }
 
   /** Recalcula e grava (dentro da transação de quem chama). Devolve o poder. */
-  static async refresh(c, idUser, idCharacter, s, now = Date.now()) {
-    const power = await MeuMundoPowerService.compute(c, idUser, s, now);
+  static async refresh(c, idUser, idCharacter, s) {
+    const power = await MeuMundoPowerService.compute(c, idUser, s);
     await MeuMundoPowerService.store(c, idCharacter, power);
     return power;
   }
@@ -66,7 +76,7 @@ class MeuMundoPowerService {
   }
 
   /**
-   * Backfill (mig 334): toda linha com power NULL. Usa o estado gravado (não
+   * Backfill (migs 334/335): toda linha com power NULL. Usa o estado gravado (não
    * simula a vida até agora — isso fica para o próximo withLife). Idempotente:
    * depois da primeira passada não sobra nada.
    */
@@ -81,12 +91,15 @@ class MeuMundoPowerService {
       for (const row of r.rows) {
         try {
           const s = rowToState(row);
-          const power = await MeuMundoPowerService.compute(pool, row.id_user, s, Date.now());
-          await pool.query(`UPDATE tb_mm_character SET power = $2 WHERE id_character = $1 AND power IS NULL`, [row.id_character, power]);
+          const power = await MeuMundoPowerService.compute(pool, row.id_user, s);
+          await pool.query(
+            `UPDATE tb_mm_character SET power = $2, power_at = NOW() WHERE id_character = $1 AND power IS NULL`,
+            [row.id_character, power]
+          );
         } catch (err) {
           // linha que não calcula não trava as outras; grava 0 para não repetir para sempre
           log.warn("mm_power_backfill_row", { id: row.id_character, message: err.message });
-          await pool.query(`UPDATE tb_mm_character SET power = 0 WHERE id_character = $1 AND power IS NULL`, [row.id_character]);
+          await pool.query(`UPDATE tb_mm_character SET power = 0, power_at = NOW() WHERE id_character = $1 AND power IS NULL`, [row.id_character]);
         }
         done++;
       }

@@ -347,8 +347,8 @@ class MeuMundoLifeService {
       const avatar = await MeuMundoStorage.getBody(c, idUser);
       // Cores da skin vestida (mm3d-36, mig 304): "" = visual próprio.
       const look = await MeuMundoStorage.getLook(c, idUser);
-      // T3 (mig 334): o PODER do hóspede, recalculado a cada mudança da vida
-      // (regra gerada do front: src/utils/meuMundoPower.js).
+      // T3/B7 (migs 334/335): o PODER do hóspede, recalculado a cada mudança da vida
+      // (regra gerada do front: src/utils/meuMundoPower.js; soma simples do permanente).
       const power = await MeuMundoPowerService().refresh(c, idUser, idCharacter, state, now);
       await c.query("COMMIT");
       const cur = ctx.newRow || row;

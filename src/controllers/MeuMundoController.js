@@ -181,6 +181,11 @@ async function clientReport(req, res) {
   return reply(res, { ok: true });
 }
 // mm3d-59 slice 3: equipamento (Armeiro, mochila, forja)
+// B7: aba Ranking (Poder, Nível, Freelandoo)
+async function ranking(req, res) {
+  return reply(res, await require("../services/MeuMundoPoderService").ranking(req.user.id_user, String(req.params.tab || "")));
+}
+
 const gear = () => require("../services/MeuMundoGearService");
 async function gearGet(req, res) {
   return reply(res, await gear().get(req.user.id_user));
@@ -373,6 +378,7 @@ module.exports = {
   fightFinish,
   clientReport,
   gearGet,
+  ranking,
   gearBuy,
   gearEquip,
   gearForge,

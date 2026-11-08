@@ -211,24 +211,30 @@ const ATTR = Object.freeze({
   USEFUL_H: { studying: 5, training: 4 },
   OVER_FACTOR: 0.05,
   REGAIN: 2,
-  FLOOR: { intelligence: 0.9, strength: 0.6, speed: 0.6, dexterity: 0.6 },
+  FLOOR: { intelligence: 0.9, strength: 0.6, speed: 0.6, dexterity: 0.6, accuracy: 0.6 },
   // Sem praticar, cai por dia (2026-11-03, pedido do Alex): força, velocidade
   // e destreza 5 pontos (até 60% do pico); inteligência 1 (até 90%). Só cai
   // depois de DECAY_AFTER_H sem praticar aquele atributo — quem treina todo
   // dia não perde nas horas em que não está treinando.
-  DECAY_DAY: { intelligence: 1, strength: 5, speed: 5, dexterity: 5 },
+  // B7 (2026-11-08): acurácia segue a regra de força/velocidade/destreza.
+  DECAY_DAY: { intelligence: 1, strength: 5, speed: 5, dexterity: 5, accuracy: 5 },
   DECAY_AFTER_H: 24,
   // mm3d-59: ORÇAMENTO DIÁRIO (pontos-base, ANTES da curva, dia de Brasília).
   // Todas as fontes do mesmo atributo (academia, universidade, minijogos,
   // lutas) gastam o mesmo saldo; os multiplicadores (disciplina, suplementos,
   // anabolizante, universidade) aumentam o base e por isso batem o teto antes,
   // nunca passam dele. Trocar de jogo/classe/skin ou reconectar não reinicia.
-  BUDGET: { strength: 12, intelligence: 12, dexterity: 12, speed: 8 },
+  BUDGET: { strength: 12, intelligence: 12, dexterity: 12, speed: 8, accuracy: 12 },
 });
 /** Os três que crescem com o adulto (+20%) e entram na régua do crescer. */
 const TRAINED = Object.freeze(["intelligence", "strength", "speed"]);
-/** Os quatro atributos de prática (mm3d-59: + destreza). */
-const ATTRS = Object.freeze(["strength", "intelligence", "dexterity", "speed"]);
+/**
+ * Os atributos de prática (mm3d-59: + destreza; B7, 2026-11-08: + ACURÁCIA). A acurácia nasce
+ * em 0 e ainda nada a treina (o B10 faz o saco de pancada treiná-la); entra no Poder
+ * (meuMundoPower.js). Não confundir com o rótulo "Acuracidade" que a tela dá à chave
+ * `strength` desde 2026-11-06.
+ */
+const ATTRS = Object.freeze(["strength", "intelligence", "dexterity", "speed", "accuracy"]);
 /** Destreza de quem nasce (e o backfill da mig 320): pela semente, sem sortear de novo. */
 const birthDexterity = (seed) => 15 + (Math.abs(Number(seed) || 0) % 16);
 
@@ -495,6 +501,9 @@ function normalize(s) {
   // mm3d-59: destreza (mig 320) e o orçamento do dia.
   if (!(s.dexterity >= 0)) s.dexterity = birthDexterity(s.seed);
   if (s.peaks && !(s.peaks.dexterity >= 0)) s.peaks.dexterity = s.dexterity;
+  // B7 (mig 334): acurácia começa em 0 para todos.
+  if (!(s.accuracy >= 0)) s.accuracy = 0;
+  if (s.peaks && !(s.peaks.accuracy >= 0)) s.peaks.accuracy = s.accuracy;
   if (!s.budget || typeof s.budget !== "object" || !s.budget.days) s.budget = { days: {} };
   if (!(s.wearDays >= 0)) s.wearDays = 0;
   // mm3d-58: hóspede de antes começa a contar pelos dias já vividos.
@@ -586,7 +595,8 @@ function birth(seed, t) {
     simAt: t,
   };
   s.dexterity = birthDexterity(seed);
-  s.peaks = { intelligence: s.intelligence, strength: s.strength, speed: s.speed, dexterity: s.dexterity };
+  s.accuracy = 0;
+  s.peaks = { intelligence: s.intelligence, strength: s.strength, speed: s.speed, dexterity: s.dexterity, accuracy: s.accuracy };
   s.budget = { days: {} };
   return s;
 }
@@ -894,6 +904,8 @@ function stepState(s, t, dt, events, out) {
   }
   // destreza sobe nos minijogos e nas lutas (recibos marcam a prática)
   decay(s, "dexterity", dt, t);
+  // acurácia (B7): nada treina ainda; cai pela mesma regra quando o B10 a fizer subir
+  decay(s, "accuracy", dt, t);
 
   // Estresse
   let ds = rate.stress;
@@ -1505,6 +1517,7 @@ function snapshot(s, t) {
       strength: r2(s.strength),
       speed: r2(s.speed),
       dexterity: r2(s.dexterity),
+      accuracy: r2(s.accuracy || 0),
       fertility: r2(s.fertility),
       // 0–1000: maior valor já alcançado e o piso que não se perde mais.
       peaks: Object.fromEntries(ATTRS.map((k) => [k, r2(s.peaks[k])])),

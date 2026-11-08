@@ -35,6 +35,8 @@ function rowToState(r) {
     speed: r.speed,
     // mig 320 (mm3d-59): destreza e o orçamento de prática do dia
     dexterity: r.dexterity,
+    // mig 334 (B7): acurácia (DEFAULT 0)
+    accuracy: r.accuracy != null ? r.accuracy : 0,
     budget: r.attr_budget || { days: {} },
     fertility: r.fertility,
     // mig 297: maior valor já alcançado (o piso que não se perde sai dele)
@@ -82,6 +84,7 @@ const COLS = [
   "effects", "meals", "day_acc", "status", "died_at", "death_cause", "sim_at",
   "wear_days", "exposure", "boxing", "growth",
   "dexterity", "attr_budget", "sleep_note", "soul",
+  "accuracy",
 ];
 
 function values(s) {
@@ -102,6 +105,7 @@ function values(s) {
     s.dexterity, JSON.stringify(s.budget || { days: {} }),
     s.sleepFrom || s.woke ? JSON.stringify({ from: s.sleepFrom || null, woke: s.woke || null }) : null,
     s.soul ? JSON.stringify(s.soul) : null,
+    s.accuracy || 0,
   ];
 }
 

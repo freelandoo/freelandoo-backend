@@ -438,7 +438,7 @@ test("afterlife: velhice herda 20% do pico e a Freelandoo paga; doença não her
   const old = L.afterlife(s);
   assert.equal(old.natural, true);
   assert.deepEqual(old.funeral, { coins: L.AFTERLIFE.FUNERAL_COINS, paidBy: "freelandoo" });
-  assert.deepEqual(old.inherit, { strength: 60, intelligence: 120, dexterity: 40, speed: 18 });
+  assert.deepEqual(old.inherit, { strength: 60, intelligence: 120, dexterity: 40, speed: 18, accuracy: 0 });
   const n = L.applyInheritance(fresh(12), old.inherit);
   assert.equal(n.intelligence, 120);
   assert.equal(n.strength, 60);
