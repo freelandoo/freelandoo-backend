@@ -211,6 +211,11 @@ class AffiliateStorage {
       where.push(`UPPER(cp.code) LIKE UPPER($${++i})`);
       values.push(`%${filters.code}%`);
     }
+    // A8: filtro por tipo de compra (ex.: "meu_mundo_purchase" na área de afiliados).
+    if (filters.source_context) {
+      where.push(`c.rule_snapshot->>'source_context' = $${++i}`);
+      values.push(filters.source_context);
+    }
     if (filters.eligible_only) {
       where.push(`c.status = 'APPROVED' AND c.eligible_at <= NOW() AND c.id_payout_item IS NULL`);
     }

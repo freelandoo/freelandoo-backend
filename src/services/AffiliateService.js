@@ -15,6 +15,9 @@ const ZERO_AGGREGATES = {
   converted_count: 0,
 };
 
+// A8: filtros de tipo de compra que a área de afiliados pode pedir.
+const CONTEXT_FILTERS = Object.freeze({ meu_mundo: "meu_mundo_purchase" });
+
 class ServiceError extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -124,6 +127,8 @@ async function listMyConversions(user, query) {
       status: query.status || null,
       from: query.from || null,
       to: query.to || null,
+      // A8: só as do Meu Mundo (lista fechada de contextos — nada solto do navegador).
+      source_context: CONTEXT_FILTERS[query.context] || null,
     },
     { page, limit }
   );

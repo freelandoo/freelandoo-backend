@@ -186,6 +186,11 @@ async function ranking(req, res) {
   return reply(res, await require("../services/MeuMundoPoderService").ranking(req.user.id_user, String(req.params.tab || "")));
 }
 
+// A8: botão Compartilhar — código de afiliado + % do Meu Mundo
+async function shareLink(req, res) {
+  return reply(res, await require("../services/MeuMundoShareService").link(req.user.id_user));
+}
+
 const gear = () => require("../services/MeuMundoGearService");
 async function gearGet(req, res) {
   return reply(res, await gear().get(req.user.id_user));
@@ -379,6 +384,7 @@ module.exports = {
   clientReport,
   gearGet,
   ranking,
+  shareLink,
   gearBuy,
   gearEquip,
   gearForge,

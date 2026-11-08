@@ -30,6 +30,7 @@ const PremiumStorage = require("../storages/PremiumStorage");
 const CasaProductStorage = require("../storages/CasaProductStorage");
 const { isFullRefund } = require("../utils/refunds");
 const { createLogger } = require("../utils/logger");
+const { isMeuMundoSale, MM_AFFILIATE_CONTEXT } = require("../utils/meuMundoAffiliate");
 
 const log = createLogger("StripeWebhookService");
 
@@ -588,6 +589,10 @@ async function handleSubscriptionDeleted(conn, subscription) {
  * NÃO geram comissão: Poléns, Premium (prêmio), Clã e Manifestação.
  */
 function resolveCommissionContext(meta) {
+  // A8: dinheiro real gasto no Meu Mundo (Gold comprado no jogo; itens em R$ do
+  // B4) é um tipo de compra próprio, 10% na regra da mig 350. Vem ANTES do
+  // switch: o Gold do jogo também é `polen_purchase`.
+  if (isMeuMundoSale(meta)) return { source_context: MM_AFFILIATE_CONTEXT };
   switch (meta?.type) {
     // Regime USUÁRIO — o dono do item define a % (mig 192); só comissão.
     case "profile_product_order":  return { source_context: "loja_produto" };

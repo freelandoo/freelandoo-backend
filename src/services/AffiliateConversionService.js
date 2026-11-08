@@ -7,6 +7,12 @@ const NotificationService = require("./NotificationService");
 const pool = require("../databases");
 const { providerOf } = require("../integrations/payments/contract");
 const { createLogger } = require("../utils/logger");
+const ReferralStorage = require("../storages/ReferralStorage");
+const {
+  MM_AFFILIATE_CONTEXT,
+  meuMundoCommissionCents,
+  isSelfReferral,
+} = require("../utils/meuMundoAffiliate");
 
 const log = createLogger("AffiliateConversionService");
 
@@ -691,16 +697,54 @@ async function createFromGenericPaidOrder(client, {
       if (!affiliate || affiliate.status !== "ACTIVE") return null;
     }
 
+    // A8 (Meu Mundo): autoindicação também por CPF — mesma pessoa em duas
+    // contas não indica a si mesma, nem pelo cupom nem pelo vínculo.
+    const isMeuMundo = source_context === MM_AFFILIATE_CONTEXT;
+    if (isMeuMundo) {
+      const [buyerCpf, affiliateCpf] = await Promise.all([
+        ReferralStorage.getUserCpf(client, id_user_buyer),
+        ReferralStorage.getUserCpf(client, affiliate.id_user),
+      ]);
+      if (isSelfReferral({
+        buyerUserId: id_user_buyer,
+        affiliateUserId: affiliate.id_user,
+        buyerCpf,
+        affiliateCpf,
+      })) {
+        log.warn("affiliate.conversion.skip.self_referral", { source_context, id_affiliate: affiliate.id_affiliate });
+        return null;
+      }
+    }
+
     const when = paid_at instanceof Date ? paid_at : new Date();
 
-    const rule = await AffiliateRuleResolver.resolve(client, {
+    const resolved = await AffiliateRuleResolver.resolve(client, {
       id_coupon: coupon.id_coupon,
       at: when.toISOString(),
     });
-    if (!rule) {
+    if (!resolved) {
       log.warn("affiliate.conversion.skip.no_settings", { source_context, code: coupon?.code || null });
       return null;
     }
+    // A8: no Meu Mundo a % é a da linha do tipo de compra (mig 350, 10%), não a
+    // global legada. Prazo, carência e holdback seguem a regra global.
+    const rule = isMeuMundo
+      ? {
+          ...resolved,
+          commission_percent: Number(programRule.percent),
+          commission_base: "GROSS",
+          max_commission_cents: null,
+          min_order_cents: Number(programRule.min_order_cents) || 0,
+          snapshot: {
+            ...resolved.snapshot,
+            source: "program_rule",
+            commission_percent: Number(programRule.percent),
+            commission_base: "GROSS",
+            max_commission_cents: null,
+            min_order_cents: Number(programRule.min_order_cents) || 0,
+          },
+        }
+      : resolved;
 
     const subtotal_cents = toCents(total_cents, 0);
 
@@ -709,7 +753,12 @@ async function createFromGenericPaidOrder(client, {
     const explicit = explicit_commission_cents != null ? toCents(explicit_commission_cents, 0) : 0;
     let commission_cents;
     let commission_base_cents;
-    if (explicit > 0) {
+    if (isMeuMundo) {
+      if (subtotal_cents < rule.min_order_cents) return null;
+      commission_cents = meuMundoCommissionCents(subtotal_cents, rule.commission_percent);
+      commission_base_cents = subtotal_cents;
+      if (commission_cents <= 0) return null;
+    } else if (explicit > 0) {
       commission_cents = explicit;
       commission_base_cents = explicit;
     } else {
@@ -809,7 +858,7 @@ async function createFromGenericPaidOrder(client, {
         source_context,
         payment_provider,
         payment_provider_ref,
-        commission_mode: explicit > 0 ? "additive_explicit" : "percent_base",
+        commission_mode: isMeuMundo ? "meu_mundo" : explicit > 0 ? "additive_explicit" : "percent_base",
         attribution_mode: attribution_mode || "coupon",
         pool_cents,
         referral_discount_cents: referralDiscount,

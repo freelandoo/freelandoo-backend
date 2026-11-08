@@ -8,6 +8,29 @@ const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("PolenProductService");
 
+/**
+ * Estorno total → a conversão de afiliado desta compra é cancelada (mesma
+ * transação do estorno do Gold). Sem pedido de comissão = nada a fazer.
+ */
+async function cancelAffiliateOrder(client, purchase, charge) {
+  const ref = purchase?.stripe_session_id;
+  if (!ref) return null;
+  const { rows } = await client.query(
+    `SELECT * FROM public.tb_order WHERE payment_provider_ref = $1 LIMIT 1`,
+    [ref]
+  );
+  const order = rows[0];
+  if (!order) return null;
+  const AffiliateConversionService = require("./AffiliateConversionService");
+  return AffiliateConversionService.onOrderStatusChange(client, {
+    order,
+    newStatus: "CANCELED",
+    source: "polen_refund",
+    source_event_id: `charge.refunded:${charge?.id || ref}`,
+    payload: { charge_id: charge?.id || null, amount_refunded: charge?.amount_refunded || null },
+  });
+}
+
 const RETURN_PATHS = Object.freeze({ default: "/loja-polens", "meu-mundo": "/meu-mundo/admin" });
 
 function clampInt(value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback = 0 } = {}) {
@@ -308,6 +331,10 @@ class PolenProductService {
         });
       }
       const updated = await PolenProductStorage.markPurchaseRefunded(client, purchase.id);
+      // A8: estorno/chargeback desfaz a comissão do afiliado (Gold comprado no
+      // Meu Mundo). O pedido da comissão nasce com a sessão da cobrança como
+      // referência; antes do saque vira REVERSED, depois fica em disputa.
+      await cancelAffiliateOrder(client, purchase, charge);
       await client.query("COMMIT");
       return { purchase: updated, reversal };
     } catch (err) {
@@ -328,3 +355,4 @@ class PolenProductService {
 }
 
 module.exports = PolenProductService;
+module.exports.cancelAffiliateOrder = cancelAffiliateOrder;
