@@ -229,6 +229,9 @@ const SKILLS = {
                
                                                                 
               
+                                                                                                       
+                                             
+             
  
                          
             
@@ -246,6 +249,46 @@ const SKILLS = {
                                                                                                                
                                                   
  
+
+/**
+ * mm3d-72 (Alex, 2026-11-07: "os monstros que são personagens ganham os poderes"): o Golem de
+ * Pedra, o Ciborgue, a Dama e o Brutamontes, na Arena e na rua, usam os mesmos 4 poderes de
+ * quem joga — Corte (raio reto), Investida (avanço que arrasta), Escudo (−70% por 4 s, só
+ * machucado) e Poder Máximo (área em volta) —, cada um com a sua recarga.
+ */
+const MOB_SKILL_KINDS                     = ["soldier", "golem", "harpy", "brute"]
+const MOB_SKILLS                       = [
+  { id: "skSlash", windup: 0.6, active: 0.14, recover: 0.7, range: 7.5, arc: 0, line: 0.85, dmg: 16, lunge: 0, weight: 2, minD: 2.5, maxD: 7.5, heavy: true, skill: "slash", cd: 8 },
+  { id: "skDash", windup: 0.45, active: 0.35, recover: 0.8, range: 1.8, arc: 1.8, dmg: 12, lunge: 15, ram: true, weight: 2, minD: 3, maxD: 8, skill: "dash", cd: 6 },
+  { id: "skShield", windup: 0.3, active: 0.1, recover: 0.3, range: 0, arc: 0, dmg: 0, lunge: 0, weight: 3, minD: 0, maxD: 99, skill: "shield", cd: 18 },
+  { id: "skUlt", windup: 1.2, active: 0.2, recover: 1.2, range: 0, arc: 0, area: 4.2, reach: 0, dmg: 34, lunge: 0, weight: 4, minD: 0, maxD: 3.6, heavy: true, skill: "ult", cd: 16 },
+]
+/** Escudo do monstro: quanto corta, quanto dura e abaixo de que vida ele usa. */
+const MOB_SHIELD = { cut: 0.7, dur: 4, below: 0.6 }
+
+/**
+ * mm3d-72 (regras do Alex, 2026-11-08): a PERSONALIDADE mexe na luta por probabilidade, e o
+ * afeto pelo dono muda a chance.
+ *  - Psicopata: o Poder Máximo pode sair 3 vezes seguidas ("PSICOPATA" na tela). Contra
+ *    inimigo com mais de 1,5× a minha força (ataque) ou defesa a chance é alta; fora disso
+ *    ela existe e cresce com o afeto.
+ *  - Covarde: com a vida baixa, às vezes desiste — avisa ("tô com medo dessa luta, vou
+ *    sair") e sai `cowardWarn` s depois. Quanto mais gosta do dono, menor a chance.
+ * Os sorteios só acontecem para quem tem a personalidade: a luta dos outros não muda.
+ */
+const SOUL_FIGHT = {
+  psychoRatio: 1.5,
+  psychoStrong: 0.75,
+  psychoPerAff: 0.0015,
+  psychoAffMax: 0.35,
+  /** Disparos extras do Poder Máximo depois do primeiro (s). */
+  psychoExtra: [0.45, 0.9],
+  cowardHp: 0.5,
+  cowardPerS: 0.06,
+  cowardAffHalf: 150,
+  cowardWarn: 2,
+}
+                                                                                         
 
 const MOBS                          = {
   soldier: {
@@ -390,6 +433,9 @@ const MOBS                          = {
                   
                                                 
                   
+                                                                                  
+                                 
+                     
  
 
                         
@@ -404,14 +450,19 @@ const MOBS                          = {
                                                                                    
                               
                                 
-                              
+                                                                                         
+                                                      
+                                                                                                            
+                   
+                     
+                                                 
                                   
                                                          
                                                   
                                                                                           
                                                                              
                                                         
-                                                                          
+                                                                                      
                                             
                                                                      
                                                
@@ -435,6 +486,8 @@ const MOBS                          = {
                  
                 
                   
+                                                     
+                
  
 
 /** Uma luta: quem entra e com que força. `level` (1–60; o Soldado só 1–2) multiplica vida, dano e firmeza. */
@@ -465,6 +518,9 @@ const MOBS                          = {
                            
                                                                          
                
+                                                                                                   
+                      
+                    
  
 
                             
@@ -680,7 +736,15 @@ class Fight {
            level        
            kind         
   time = 0
-  over                                      = null
+  over                                                              = null
+  /** mm3d-72: personalidade e afeto (probabilidades da luta). */
+           temper                    
+           affection        
+  /** Este Poder Máximo sai 3 vezes (psicopata). */
+          psychoTriple = false
+  /** Covarde: sai quando o relógio passar disto (0 = não vai sair). */
+          fleeAt = 0
+          lastSecond = 0
   /** Eventos do último passo (quem desenha consome). */
   events               = []
   /** Lobo que tem a vez de atacar (os outros circulam). */
@@ -713,6 +777,8 @@ class Fight {
 
   constructor(setup            ) {
     this.R = rng(setup.seed ?? (Date.now() & 0x7fffffff))
+    this.temper = setup.temper ?? null
+    this.affection = Math.max(0, Number(setup.affection) || 0)
     this.kind = setup.kind
     this.combo = setup.style === "mage" ? MAGE_COMBO : COMBO
     // O Golem de Pedra do menu tem só os níveis 1 e 2 (Alex, 29/10) — quem corta é o
@@ -769,6 +835,8 @@ class Fight {
     const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : setup.tier ? (normal * ms[0]) / 100 / spots.length : def.hp * lv.hp)
     const moves = setup.tier && def.arena ? def.arena : def
     const dmgMul = this.rated ? (mean(this.combo.map((c) => c.dmg)) * (normal / PLAYER.hp)) / mean(moves.attacks.map((a) => a.dmg)) : lv.dmg
+    // os poderes entram DEPOIS da conta do dano (não mudam a força dos golpes de sempre)
+    const attacks = setup.tier && MOB_SKILL_KINDS.includes(setup.kind) ? [...moves.attacks, ...MOB_SKILLS] : moves.attacks
     spots.forEach((p, i) =>
       this.mobs.push({
         id: i + 1,
@@ -781,7 +849,7 @@ class Fight {
         hpMax: hp,
         state: "spawn",
         t: -0.35 * i,
-        attacks: moves.attacks,
+        attacks,
         engage: moves.engage,
         atk: 0,
         windup: 0,
@@ -800,6 +868,8 @@ class Fight {
         leapV: 0,
         flowLeft: 0,
         ramming: false,
+        skillCd: {},
+        shieldUntil: 0,
       }),
     )
   }
@@ -844,6 +914,9 @@ class Fight {
       this.me.shieldUntil = 0
       this.events.push({ t: "shieldEnd" })
     }
+    if (inp.quit) return this.quit("me")
+    this.stepCoward()
+    if (this.over) return
     this.stepPower(powerPressed)
     if (skillPressed) this.startSkill(skillPressed, inp)
     this.stepPlayer(inp, attackPressed, dodgePressed)
@@ -876,25 +949,70 @@ class Fight {
     this.me.rate = this.fx.rate
   }
 
+  /** mm3d-72: desistir (botão, ou o covarde sozinho) = derrota. */
+          quit(who                 ) {
+    if (this.over) return
+    this.over = { win: false, at: this.time, quit: who }
+    this.events.push({ t: "end", win: false, quit: who })
+  }
+
+  /** Covarde: uma vez por segundo, com a vida baixa, sorteia se desiste (avisa antes). */
+          stepCoward() {
+    if (this.temper !== "covarde") return
+    if (this.fleeAt) {
+      if (this.time >= this.fleeAt) this.quit("coward")
+      return
+    }
+    const sec = Math.floor(this.time)
+    if (sec === this.lastSecond) return
+    this.lastSecond = sec
+    if (this.me.hp >= SOUL_FIGHT.cowardHp * this.me.hpMax || this.me.state === "down") return
+    const chance = SOUL_FIGHT.cowardPerS / (1 + this.affection / SOUL_FIGHT.cowardAffHalf)
+    if (this.R() >= chance) return
+    this.fleeAt = this.time + SOUL_FIGHT.cowardWarn
+    this.events.push({ t: "fleeWarn" })
+  }
+
+  /** Psicopata: este Poder Máximo sai 3 vezes? */
+          psychoRoll() {
+    if (this.temper !== "psicopata") return false
+    const k = SOUL_FIGHT.psychoRatio
+    const strong = this.mobs.some((m) => m.state !== "dead" && (m.rate.atk >= k * this.rate.atk || m.rate.def >= k * this.rate.def))
+    const chance = strong ? SOUL_FIGHT.psychoStrong : Math.min(SOUL_FIGHT.psychoAffMax, this.affection * SOUL_FIGHT.psychoPerAff)
+    return chance > 0 && this.R() < chance
+  }
+
+  /** Duração do Poder Máximo (o triplo do psicopata dura mais). */
+  powerDur() {
+    return POWER.dur + (this.psychoTriple ? SOUL_FIGHT.psychoExtra[SOUL_FIGHT.psychoExtra.length - 1] : 0)
+  }
+
   /** Poder: começa com a barra cheia (parado ou golpeando); dispara em fireAt. */
           stepPower(pressed         ) {
     const p = this.me
     if (pressed && (p.power < POWER.max || p.cd.ult > 0)) this.events.push({ t: "denied", id: "ult" })
     else if (pressed && (p.state === "idle" || p.state === "attack")) {
       p.power = 0
+      this.psychoTriple = this.psychoRoll()
       // a recarga começa quando o poder termina
-      p.cd.ult = SKILLS.ult.cd + POWER.dur
+      p.cd.ult = SKILLS.ult.cd + this.powerDur()
       p.vx = 0
       p.vz = 0
       this.faceNearest()
       this.setPlayer("power")
       this.events.push({ t: "power", x: p.x, z: p.z, facing: p.facing })
+      if (this.psychoTriple) this.events.push({ t: "psycho" })
       return
     }
     if (p.state !== "power") return
-    // stepPlayer avança o relógio; aqui só o disparo (uma vez, no quadro que cruza fireAt)
+    // stepPlayer avança o relógio; aqui só o disparo (uma vez, no quadro que cruza cada instante)
     const t = p.t + DT
-    if (p.t < POWER.fireAt && t >= POWER.fireAt) this.firePower()
+    if (p.t < POWER.fireAt && t >= POWER.fireAt) this.firePower(1)
+    if (this.psychoTriple)
+      SOUL_FIGHT.psychoExtra.forEach((d, i) => {
+        const at = POWER.fireAt + d
+        if (p.t < at && t >= at) this.firePower(i + 2)
+      })
   }
 
           faceNearest() {
@@ -969,7 +1087,7 @@ class Fight {
     }
   }
 
-          firePower() {
+          firePower(n = 1) {
     const p = this.me
     const mage = this.combo === MAGE_COMBO
     let healed = 0
@@ -989,7 +1107,7 @@ class Fight {
     }
     // a cura do poder cresce junto com a vida máxima
     if (healed) p.hp = Math.min(p.hpMax, p.hp + Math.round((healed * p.hpMax) / PLAYER.hp))
-    this.events.push({ t: "powerFire", x: p.x, z: p.z, facing: p.facing, heal: healed })
+    this.events.push({ t: "powerFire", x: p.x, z: p.z, facing: p.facing, heal: healed, n })
   }
 
           stepPlayerIdle() {
@@ -1090,7 +1208,10 @@ class Fight {
       case "power":
         p.vx = 0
         p.vz = 0
-        if (p.t >= POWER.dur) this.setPlayer("idle")
+        if (p.t >= this.powerDur()) {
+          this.psychoTriple = false
+          this.setPlayer("idle")
+        }
         break
       case "skill":
         if (p.skill === "slash") {
@@ -1255,7 +1376,9 @@ class Fight {
     }
     // Pancada na brecha (logo depois do golpe dele) dói mais.
     const opening = m.state === "recover" ? 1.25 : 1
-    const dmg = Math.max(1, Math.round(base * opening * (this.rated ? damageRatio(this.rate.atk, m.rate.def) : 1)))
+    // mm3d-72: escudo do monstro corta o dano
+    const guard = m.shieldUntil > this.time ? 1 - MOB_SHIELD.cut : 1
+    const dmg = Math.max(1, Math.round(base * opening * guard * (this.rated ? damageRatio(this.rate.atk, m.rate.def) : 1)))
     m.hp = Math.max(0, m.hp - dmg)
     const dead = m.hp <= 0
     this.events.push({ t: "hit", on: "mob", id: m.id, dmg, x: m.x, y: m.y, z: m.z, heavy, dead, rank, src })
@@ -1310,6 +1433,7 @@ class Fight {
     const toMe = Math.atan2(dx, dz)
     const speed = def.speed
     m.maxLeft -= DT
+    for (const k in m.skillCd) m.skillCd[k] -= DT
     switch (m.state) {
       case "spawn":
         if (m.t >= 0.9) this.setMob(m, def.flies ? "fly" : "chase")
@@ -1328,7 +1452,16 @@ class Fight {
         const myTurn = this.kind !== "wolf" || this.token === m.id
         // Escolhe golpe quando descansou e está no alcance de algum.
         if (myTurn && m.restLeft <= 0 && p.state !== "down") {
-          const opts = m.attacks.map((a, i) => ({ a, i })).filter(({ a }) => dist >= a.minD && dist <= a.maxD && (!a.max || m.maxLeft <= 0))
+          const opts = m.attacks
+            .map((a, i) => ({ a, i }))
+            .filter(
+              ({ a }) =>
+                dist >= a.minD &&
+                dist <= a.maxD &&
+                (!a.max || m.maxLeft <= 0) &&
+                (!a.cd || (m.skillCd[a.id] ?? 0) <= 0) &&
+                (a.skill !== "shield" || (m.hp < MOB_SHIELD.below * m.hpMax && m.shieldUntil <= this.time)),
+            )
           if (opts.length) {
             let sum = opts.reduce((s, o) => s + o.a.weight, 0) * this.R()
             let pick = opts[0]
@@ -1341,6 +1474,7 @@ class Fight {
             }
             m.atk = pick.i
             if (pick.a.max) m.maxLeft = pick.a.max
+            if (pick.a.cd) m.skillCd[pick.a.id] = pick.a.cd
             m.windup = pick.a.windup * this.fx.warn
             m.struck = false
             m.facing = toMe
@@ -1388,6 +1522,12 @@ class Fight {
           m.ramming = false
           this.setMob(m, "strike")
           this.events.push({ t: "strike", id: m.id, attack: a.id })
+          if (a.skill === "shield") {
+            // o escudo não bate: liga e pronto
+            m.struck = true
+            m.shieldUntil = this.time + MOB_SHIELD.dur
+            this.events.push({ t: "mobShield", id: m.id, until: m.shieldUntil })
+          }
         }
         return
       }
@@ -1435,6 +1575,32 @@ class Fight {
     }
   }
 
+  /**
+   * mm3d-72 (Alex: "se ele tem muito speed, quando esquivar sozinho, fazer ele realmente esquivar
+   * como se tivesse apertado"): a esquiva pela velocidade vira a esquiva do botão — de lado, para
+   * longe do golpe —, sem gastar fôlego e sem sorteio (o lado sai da posição).
+   */
+          autoDodge(m     ) {
+    const p = this.me
+    const free = p.state === "idle" || (p.state === "attack" && (!p.struck || p.t > this.combo[p.combo].hitAt / p.rate + 0.08))
+    if (!free) return
+    const dx = p.x - m.x
+    const dz = p.z - m.z
+    const l = Math.hypot(dx, dz) || 1
+    // perpendicular ao golpe, do lado em que já estou em relação à frente dele
+    const side = Math.sin(m.facing) * dz - Math.cos(m.facing) * dx >= 0 ? 1 : -1
+    let ex = (-dz / l) * side + (dx / l) * 0.35
+    let ez = (dx / l) * side + (dz / l) * 0.35
+    const el = Math.hypot(ex, ez) || 1
+    ex /= el
+    ez /= el
+    p.dodgeX = ex
+    p.dodgeZ = ez
+    p.queued = false
+    this.setPlayer("dodge")
+    this.events.push({ t: "dodge" })
+  }
+
   /** O golpe do inimigo acerta? (cone à frente ou área marcada; esquiva na hora certa passa). */
           mobHit(m     , a           ) {
     const p = this.me
@@ -1465,6 +1631,7 @@ class Fight {
       m.landed = !evaded
       if (evaded) {
         this.events.push({ t: "miss", on: "me", x: p.x, y: 0, z: p.z, auto: !dodging })
+        if (!dodging) this.autoDodge(m)
         return
       }
     }
@@ -1572,7 +1739,9 @@ const BTN_POWER = 8
 const BTN_SLASH = 16
 const BTN_DASH = 32
 const BTN_SHIELD = 64
-const BTN_ALL = 127
+/** mm3d-72: Desistir. */
+const BTN_QUIT = 128
+const BTN_ALL = 255
 
 /** Um bloco: [quantos passos, mx (−127…127), mz (−127…127), botões]. */
                                                             
@@ -1588,7 +1757,7 @@ const q127 = (v        ) => Math.max(-127, Math.min(127, Math.round((Number(v) |
 function quantizeInput(inp       )        {
   const mx = q127(inp.mx) / 127
   const mz = q127(inp.mz) / 127
-  return { mx, mz, run: !!inp.run, attack: !!inp.attack, dodge: !!inp.dodge, power: !!inp.power, slash: !!inp.slash, dash: !!inp.dash, shield: !!inp.shield }
+  return { mx, mz, run: !!inp.run, attack: !!inp.attack, dodge: !!inp.dodge, power: !!inp.power, slash: !!inp.slash, dash: !!inp.dash, shield: !!inp.shield, quit: !!inp.quit }
 }
 
 /** Grava um passo (já quantizado) no fim da lista. */
@@ -1602,7 +1771,8 @@ function pushFrame(frames             , inp       ) {
     (inp.power ? BTN_POWER : 0) |
     (inp.slash ? BTN_SLASH : 0) |
     (inp.dash ? BTN_DASH : 0) |
-    (inp.shield ? BTN_SHIELD : 0)
+    (inp.shield ? BTN_SHIELD : 0) |
+    (inp.quit ? BTN_QUIT : 0)
   const last = frames[frames.length - 1]
   if (last && last[1] === mx && last[2] === mz && last[3] === b && last[0] < 65535) last[0]++
   else frames.push([1, mx, mz, b])
@@ -1644,7 +1814,7 @@ function replayFight(setup            , frames         )               {
   let hits = 0
   let hitsTaken = 0
   for (const [n, mx, mz, b] of frames              ) {
-    const inp        = { mx: mx / 127, mz: mz / 127, run: !!(b & BTN_RUN), attack: !!(b & BTN_ATTACK), dodge: !!(b & BTN_DODGE), power: !!(b & BTN_POWER), slash: !!(b & BTN_SLASH), dash: !!(b & BTN_DASH), shield: !!(b & BTN_SHIELD) }
+    const inp        = { mx: mx / 127, mz: mz / 127, run: !!(b & BTN_RUN), attack: !!(b & BTN_ATTACK), dodge: !!(b & BTN_DODGE), power: !!(b & BTN_POWER), slash: !!(b & BTN_SLASH), dash: !!(b & BTN_DASH), shield: !!(b & BTN_SHIELD), quit: !!(b & BTN_QUIT) }
     const sig = (mx & 0xff) | ((mz & 0xff) << 8) | (b << 16)
     for (let i = 0; i < n; i++) {
       if (fight.over) break
@@ -1667,4 +1837,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOBS, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, SOUL_FIGHT, MOBS, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

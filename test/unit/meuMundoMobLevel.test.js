@@ -154,8 +154,10 @@ test("Brutamontes do nível 15 = a referência do Alex; a ficha da skin não and
 
 test("Ciborgue atira na Arena e na rua, como a skin; no ringue segue no soco", () => {
   const ids = (f) => f.mobs[0].attacks.map((x) => x.id);
-  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "arena" })), ["shot", "blast"]);
-  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "street" })), ["shot", "blast"]);
+  // mm3d-72: + os 4 poderes de personagem (Corte, Investida, Escudo, Poder Máximo)
+  const SK = ["skSlash", "skDash", "skShield", "skUlt"];
+  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "arena" })), ["shot", "blast", ...SK]);
+  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "street" })), ["shot", "blast", ...SK]);
   assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, peer: 1 })), ["swipe", "slam"]);
   assert.equal(new F.Fight({ kind: "golem", seed: 2, tier: "arena" }).mobs[0].engage, 6);
 });

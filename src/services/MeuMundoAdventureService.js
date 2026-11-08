@@ -16,6 +16,7 @@ const MeuMundoLifeService = require("./MeuMundoLifeService");
 const Store = require("../storages/MeuMundoAdventureStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const Life = require("../utils/meuMundoLife");
+const Soul = require("../utils/meuMundoSoul");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
 const Gear = require("../utils/meuMundoGear");
@@ -300,6 +301,9 @@ class MeuMundoAdventureService {
         gear: origin === "boxe" ? undefined : await GearService().fightGear(c, idUser, clan),
         appearance: origin === "boxe" ? undefined : await GearService().fightAppearance(c, idUser, clan),
         mobId,
+        // mm3d-72: personalidade e afeto mexem na luta por probabilidade (psicopata, covarde)
+        temper: origin === "tutorial" ? undefined : Soul.temperOf(s),
+        affection: origin === "tutorial" ? undefined : Math.floor(Soul.soulOf(s).affection),
       };
       // tutorial: o inimigo entra enfraquecido (pedido do prólogo)
       if (origin === "tutorial") setup.stats = { ...setup.stats, strength: Math.max(setup.stats.strength, 400) };
@@ -308,7 +312,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, hero, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null },
+          setup: { kind, level, hero, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,
@@ -334,7 +338,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");
