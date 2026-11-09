@@ -58,6 +58,20 @@ const PortfolioCommentStorage = {
     return r.rowCount ? r.rows[0] : null;
   },
 
+  // Quem pode ver o post (communityInsideAccess.canViewPortfolioItem): dono
+  // do perfil e comunidade exclusiva (mig 173). Sem filtro de ativo de propósito.
+  async getItemAccess(db, id_portfolio_item) {
+    const r = await db.query(
+      `SELECT i.id_portfolio_item, i.id_exclusive_community, p.id_user AS owner_id_user
+         FROM public.tb_profile_portfolio_item i
+         JOIN public.tb_profile p ON p.id_profile = i.id_profile
+        WHERE i.id_portfolio_item = $1
+        LIMIT 1`,
+      [id_portfolio_item]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  },
+
   async itemExists(db, id_portfolio_item) {
     const r = await db.query(
       `SELECT 1 FROM public.tb_profile_portfolio_item

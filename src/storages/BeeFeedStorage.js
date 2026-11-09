@@ -6,9 +6,12 @@
 const { BEE_ALIVE_SQL } = require("./BeeEngagementStorage");
 const { BEE_EXPIRES_SQL } = require("../utils/beeLife");
 const { reachBandSql, reachBandParams } = require("../utils/feedReach");
+// Bee do mural de comunidade exclusiva não entra na timeline (Segurança A1
+// lote 2); por id, quem decide é communityInsideAccess.canViewBee.
+const { notInExclusiveCommunitySql } = require("../utils/communityPolicy");
 
 const BEE_SELECT = `
-  s.id_story, s.id_profile, s.id_user, s.kind,
+  s.id_story, s.id_profile, s.id_user, s.kind, s.id_community,
   s.video_url, s.thumbnail_url, s.duration_seconds, s.width, s.height,
   s.caption, s.metadata, s.location, s.links,
   s.audio_track_id, s.audio_start_ms,
@@ -94,6 +97,7 @@ class BeeFeedStorage {
         WHERE s.kind = 'bee'
           AND ${BEE_ALIVE_SQL}
           AND p.deleted_at IS NULL AND p.is_active = TRUE
+          AND ${notInExclusiveCommunitySql("s.id_community")}
           ${scopeClause}
         ${orderClause}
         LIMIT $${params.length}`,

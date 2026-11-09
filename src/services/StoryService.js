@@ -14,6 +14,8 @@ const { parseComposeParams } = require("../utils/composeParams");
 const { assertProfileCanPublish } = require("../utils/profilePaywall");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
+// Bee do mural de comunidade exclusiva: ver/reagir só quem é de dentro (A1 lote 2).
+const { canViewBee } = require("./communityInsideAccess");
 
 const log = createLogger("StoryService");
 
@@ -858,7 +860,9 @@ class StoryService {
         }
 
         const story = await StoryStorage.getActiveById(pool, id_story);
-        if (!story) return { error: "Story não encontrada" };
+        if (!story || !(await canViewBee(story, user.id_user))) {
+          return { error: "Story não encontrada" };
+        }
 
         await StoryStorage.markViewed(pool, {
           id_story,
@@ -885,7 +889,9 @@ class StoryService {
         if (!emoji) return { error: "emoji obrigatÃ³rio" };
 
         const story = await StoryStorage.getActiveById(pool, id_story);
-        if (!story) return { error: "Story nÃ£o encontrada" };
+        if (!story || !(await canViewBee(story, user.id_user))) {
+          return { error: "Story nÃ£o encontrada" };
+        }
 
         const messageText = `${emoji} reagiu ao seu bee`;
         const result = await ConversationService.sendMessage(user, {

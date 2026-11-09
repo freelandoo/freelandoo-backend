@@ -3,6 +3,7 @@
 // boost de novidade, penalidade) aplicada sobre tb_story kind='bee' vivos.
 const pool = require("../databases");
 const BeeFeedStorage = require("../storages/BeeFeedStorage");
+const { canViewBee } = require("./communityInsideAccess");
 const feedMix = require("../utils/feedMix");
 const ReachStorage = require("../storages/ReachStorage");
 const { reachLabel } = require("../utils/feedReach");
@@ -178,7 +179,10 @@ class BeeFeedService {
         const row = await BeeFeedStorage.getById(pool, {
           id_story, viewer_id_user: user.id_user,
         });
-        if (!row) return { error: "Bee não encontrado", statusCode: 404 };
+        // Bee do mural de comunidade exclusiva: 404 para quem é de fora.
+        if (!row || !(await canViewBee(row, user.id_user))) {
+          return { error: "Bee não encontrado", statusCode: 404 };
+        }
         return { item: shapeBee(row) };
       });
   }

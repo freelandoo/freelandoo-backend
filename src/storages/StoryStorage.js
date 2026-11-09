@@ -2,6 +2,10 @@
 // teto 7 dias. Substitui o antigo "deleted_at IS NULL AND expires_at > NOW()"
 // (linhas legadas trampo/rest têm score 0 → mesma janela de 24h).
 const { BEE_ALIVE_SQL } = require("./BeeEngagementStorage");
+// Bee do mural de comunidade exclusiva (privada/condomínio/bairro) não sai
+// nas superfícies globais (Segurança A1 lote 2) — o lugar dele é o mural.
+const { notInExclusiveCommunitySql } = require("../utils/communityPolicy");
+const BEE_GLOBAL_SQL = notInExclusiveCommunitySql("s.id_community");
 
 const STORY_COLUMNS = `
   s.id_story,
@@ -25,7 +29,8 @@ const STORY_COLUMNS = `
   s.audio_start_ms,
   s.created_at,
   s.expires_at,
-  s.deleted_at
+  s.deleted_at,
+  s.id_community
 `;
 
 // Faixa de áudio anexada (mig 108) — colunas extras quando há JOIN com tb_audio_track.
@@ -223,6 +228,7 @@ class StoryStorage {
         WHERE ${BEE_ALIVE_SQL}
           -- 'rest' legado segue aparecendo por até 24h pós-deploy do Bees v2.
           AND s.kind IN ('bee', 'rest')
+          AND ${BEE_GLOBAL_SQL}
         GROUP BY s.id_profile
       )
       SELECT
@@ -293,6 +299,7 @@ class StoryStorage {
         JOIN public.tb_profile p ON p.id_profile = s.id_profile
         WHERE ${BEE_ALIVE_SQL}
           AND s.kind IN ('bee', 'rest')
+          AND ${BEE_GLOBAL_SQL}
           AND p.deleted_at IS NULL
           AND p.is_active = TRUE
         GROUP BY s.id_user
@@ -335,6 +342,7 @@ class StoryStorage {
         ${AUDIO_JOIN}
        WHERE s.id_user = $1
          AND ${BEE_ALIVE_SQL}
+         AND ${BEE_GLOBAL_SQL}
          AND s.kind IN ('bee', 'rest')
          AND p.deleted_at IS NULL
          AND p.is_active = TRUE
@@ -362,11 +370,22 @@ class StoryStorage {
         ${AUDIO_JOIN}
        WHERE s.id_profile = $1
          AND ${BEE_ALIVE_SQL}
+         AND ${BEE_GLOBAL_SQL}
        ORDER BY s.created_at ASC
       `,
       [id_profile]
     );
     return rows;
+  }
+
+  // Só o necessário para decidir quem pode ver (communityInsideAccess.canViewBee),
+  // sem predicado de vida: comentário de bee vencido segue a mesma regra.
+  static async getVisibilityById(conn, id_story) {
+    const { rows } = await conn.query(
+      `SELECT id_story, id_user, id_community FROM public.tb_story WHERE id_story = $1`,
+      [id_story]
+    );
+    return rows[0] || null;
   }
 
   static async getActiveById(conn, id_story) {

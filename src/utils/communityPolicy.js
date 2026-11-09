@@ -146,6 +146,31 @@ function projectCommunity(row, tier) {
   return stripCounters(row);
 }
 
+/**
+ * `policyFor(row).contentIsExclusive` escrito em SQL, para as listas que não
+ * podem carregar a comunidade linha a linha. `alias` é uma linha de tb_profile
+ * da comunidade. Mesma regra: só common/assunto NÃO privada é aberta; qualquer
+ * outra modalidade (inclusive desconhecida) é exclusiva.
+ */
+function exclusiveCommunitySql(alias) {
+  const open = ["common", ...SUBJECT_KINDS].map((k) => `'${k}'`).join(", ");
+  return `NOT (COALESCE(${alias}.community_kind, '') IN (${open})
+           AND COALESCE(${alias}.community_privacy, 'public') <> 'private')`;
+}
+
+/**
+ * Predicado para superfícies GLOBAIS (timeline, StoryBar, perfil do autor):
+ * a linha não nasceu dentro de comunidade exclusiva. `communityCol` é a coluna
+ * com o id da comunidade (ex.: `s.id_community` de tb_story, mig 208).
+ */
+function notInExclusiveCommunitySql(communityCol) {
+  return `NOT EXISTS (
+    SELECT 1 FROM public.tb_profile cx_excl
+     WHERE cx_excl.id_profile = ${communityCol}
+       AND ${exclusiveCommunitySql("cx_excl")}
+  )`;
+}
+
 module.exports = {
   TIER,
   SUBJECT_KINDS,
@@ -155,4 +180,6 @@ module.exports = {
   can,
   stripCounters,
   projectCommunity,
+  exclusiveCommunitySql,
+  notInExclusiveCommunitySql,
 };

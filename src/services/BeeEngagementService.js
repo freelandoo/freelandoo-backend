@@ -5,6 +5,7 @@
 const pool = require("../databases");
 const BeeEngagementStorage = require("../storages/BeeEngagementStorage");
 const StoryStorage = require("../storages/StoryStorage");
+const { canViewBee } = require("./communityInsideAccess");
 const ReachStorage = require("../storages/ReachStorage");
 const XpStorage = require("../storages/XpStorage");
 const NotificationService = require("./NotificationService");
@@ -45,10 +46,13 @@ function shapeComment(row) {
 
 // Bee vivo = story kind='bee' dentro da janela de vida (getActiveById já
 // aplica o predicado de vida após a mig 183 / slice B2).
-async function getAliveBee(id_story) {
+// Bee do mural de comunidade exclusiva só existe para quem é de dentro
+// (Segurança A1 lote 2): para o resto ele é 404, igual a um bee que não existe.
+async function getAliveBee(id_story, user) {
   if (!id_story || !UUID_RE.test(id_story)) return null;
   const story = await StoryStorage.getActiveById(pool, id_story);
   if (!story || story.kind !== "bee") return null;
+  if (!(await canViewBee(story, user?.id_user))) return null;
   return story;
 }
 
@@ -58,7 +62,7 @@ class BeeEngagementService {
       () => ({ id_user: user?.id_user, id_story: params?.id_story }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
-        const bee = await getAliveBee(params?.id_story);
+        const bee = await getAliveBee(params?.id_story, user);
         if (!bee) return { error: "Bee não encontrado", statusCode: 404 };
 
         const result = await BeeEngagementStorage.toggleLike(pool, {
@@ -92,7 +96,7 @@ class BeeEngagementService {
       () => ({ id_user: user?.id_user, id_story: params?.id_story }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
-        const bee = await getAliveBee(params?.id_story);
+        const bee = await getAliveBee(params?.id_story, user);
         if (!bee) return { error: "Bee não encontrado", statusCode: 404 };
         return ReachStorage.toggleDislike(pool, "bee", { id: bee.id_story, id_user: user.id_user });
       });
@@ -105,6 +109,11 @@ class BeeEngagementService {
         const id_story = params?.id_story;
         if (!id_story || !UUID_RE.test(id_story)) {
           return { error: "id_story inválido", statusCode: 400 };
+        }
+        // Comentário de bee de comunidade exclusiva é conteúdo de dentro.
+        const visibility = await StoryStorage.getVisibilityById(pool, id_story);
+        if (visibility && !(await canViewBee(visibility, user?.id_user))) {
+          return { items: [], has_more: false, next_cursor: null };
         }
         const limit = Math.min(Math.max(Number(query?.limit) || 20, 1), 50);
         const rows = await BeeEngagementStorage.listComments(pool, {
@@ -130,7 +139,7 @@ class BeeEngagementService {
         if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
         const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
         if (minorBlock) return minorBlock;
-        const bee = await getAliveBee(params?.id_story);
+        const bee = await getAliveBee(params?.id_story, user);
         if (!bee) return { error: "Bee não encontrado", statusCode: 404 };
         if (typeof body?.content !== "string") return { error: "content inválido", statusCode: 400 };
         const trimmed = body.content.trim();
@@ -235,7 +244,7 @@ class BeeEngagementService {
       () => ({ id_user: user?.id_user, id_story: params?.id_story }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
-        const bee = await getAliveBee(params?.id_story);
+        const bee = await getAliveBee(params?.id_story, user);
         if (!bee) return { error: "Bee não encontrado", statusCode: 404 };
         const category = String(body?.reason_category || "").trim();
         if (!REPORT_CATEGORIES.has(category)) {
@@ -257,7 +266,7 @@ class BeeEngagementService {
       () => ({ id_user: user?.id_user, id_story: params?.id_story }),
       async () => {
         if (!user?.id_user) return { error: "Não autenticado", statusCode: 401 };
-        const bee = await getAliveBee(params?.id_story);
+        const bee = await getAliveBee(params?.id_story, user);
         if (!bee) return { error: "Bee não encontrado", statusCode: 404 };
         return BeeEngagementStorage.toggleBookmark(pool, {
           id_story: bee.id_story,
@@ -275,7 +284,7 @@ class BeeEngagementService {
         if (!EVENT_TYPES.has(event_type)) {
           return { error: "event_type inválido", statusCode: 400 };
         }
-        const bee = await getAliveBee(id_story);
+        const bee = await getAliveBee(id_story, user);
         if (!bee) return { error: "Bee não encontrado", statusCode: 404 };
         const session_id = typeof body?.session_id === "string"
           ? body.session_id.slice(0, 64) : null;

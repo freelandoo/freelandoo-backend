@@ -107,9 +107,11 @@ class BeeEngagementStorage {
       `SELECT sc.id_story_comment, sc.id_story, sc.id_user, sc.content,
               sc.created_at, sc.updated_at, sc.likes_count,
               ${viewerSelect},
-              u.username, u.display_name AS user_display_name, u.avatar_url AS user_avatar_url
+              u.username, u.nome AS user_display_name, upa.avatar_url AS user_avatar_url
          FROM public.tb_story_comment sc
          JOIN public.tb_user u ON u.id_user = sc.id_user
+         LEFT JOIN public.tb_profile upa
+           ON upa.id_user = sc.id_user AND upa.is_user_account = TRUE
         WHERE sc.id_story = $1
           AND sc.is_active = TRUE
           ${cursorClause}
@@ -132,9 +134,11 @@ class BeeEngagementStorage {
 
   static async getCommentById(conn, id_story_comment) {
     const { rows } = await conn.query(
-      `SELECT sc.*, u.username, u.display_name AS user_display_name, u.avatar_url AS user_avatar_url
+      `SELECT sc.*, u.username, u.nome AS user_display_name, upa.avatar_url AS user_avatar_url
          FROM public.tb_story_comment sc
          JOIN public.tb_user u ON u.id_user = sc.id_user
+         LEFT JOIN public.tb_profile upa
+           ON upa.id_user = sc.id_user AND upa.is_user_account = TRUE
         WHERE sc.id_story_comment = $1 AND sc.is_active = TRUE
         LIMIT 1`,
       [id_story_comment]

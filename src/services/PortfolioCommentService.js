@@ -1,6 +1,7 @@
 const pool = require("../databases");
 const PortfolioCommentStorage = require("../storages/PortfolioCommentStorage");
 const NotificationService = require("./NotificationService");
+const { canViewPortfolioItem } = require("./communityInsideAccess");
 const { assertMinorPermission } = require("../utils/supervision");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
@@ -43,6 +44,12 @@ class PortfolioCommentService {
         const id_portfolio_item = params?.id_portfolio_item;
         if (!id_portfolio_item || !UUID_RE.test(id_portfolio_item)) {
           return { error: "id_portfolio_item inválido", statusCode: 400 };
+        }
+        // Post exclusivo de comunidade privada/condomínio: os comentários são
+        // conteúdo de dentro (Segurança A1 lote 2). De fora, lista vazia.
+        const access = await PortfolioCommentStorage.getItemAccess(pool, id_portfolio_item);
+        if (access && !(await canViewPortfolioItem(access, params?.viewer?.id_user))) {
+          return { items: [], has_more: false, next_cursor: null };
         }
         const limit = Math.min(Math.max(Number(params?.limit) || 20, 1), 50);
         const cursor = params?.cursor || null;
@@ -96,6 +103,10 @@ class PortfolioCommentService {
           id_portfolio_item,
         );
         if (!itemOk) return { error: "Item não encontrado", statusCode: 404 };
+        const access = await PortfolioCommentStorage.getItemAccess(pool, id_portfolio_item);
+        if (!(await canViewPortfolioItem(access, user.id_user))) {
+          return { error: "Item não encontrado", statusCode: 404 };
+        }
 
         const client = await pool.connect();
         try {
