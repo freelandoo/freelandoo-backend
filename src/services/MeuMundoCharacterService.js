@@ -42,6 +42,8 @@ const ERRORS = {
   accel: ["Ele já tem 15 anos ou mais", 409],
   key: ["Pedido inválido", 400],
   gone: ["Esse personagem não está vivo nem na cápsula", 409],
+  gene: ["Genética não encontrada", 404],
+  geneFull: ["O congelador de genéticas está cheio", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -55,6 +57,22 @@ const newSeed = () => crypto.randomInt(1, 2 ** 31 - 1);
 const ms = (v) => (v == null ? null : new Date(v).getTime());
 const iso = (v) => (v == null ? null : new Date(v).toISOString());
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+/** Número aleatório do servidor em [0, 1) (o sorteio da mistura). */
+const roll = () => crypto.randomInt(0, 1000000) / 1000000;
+/** Quantas genéticas a pessoa guarda sem usar. */
+const GENE_SLOTS = 10;
+
+/** A alma com o temperamento trocado e os gostos que vêm com ele (o psicopata gosta de lutar…). */
+function withTemper(soul, temper) {
+  if (!temper || temper === soul.temper) return soul;
+  const out = { ...soul, temper, likes: { ...soul.likes }, hates: { ...soul.hates } };
+  if (temper === "psicopata") out.likes.act = "fight";
+  else if (temper === "competitivo") out.likes.act = "minigame";
+  else if (temper === "bondoso") out.likes.act = "praying";
+  if (temper === "covarde") out.hates.act = "fight";
+  if (out.likes.act === out.hates.act) out.hates.act = out.likes.act === "studying" ? "working" : "studying";
+  return out;
+}
 
 /** Maior valor já alcançado em cada atributo (o que a fusão e a herança olham). */
 const peaksOf = (s) => Object.fromEntries(Life.ATTRS.map((k) => [k, Math.max(Number(s[k]) || 0, Number(s.peaks && s.peaks[k]) || 0)]));
@@ -182,8 +200,27 @@ class MeuMundoCharacterService {
       accelPrice: free ? 0 : Chars.LAB.ACCEL_PRICE,
       accelYears: Chars.LAB.ACCEL_YEARS,
       embryos: Chars.SPECIES.map((d) => ({ species: d.id, kind: d.kind, sex: d.sex, price: free ? 0 : Chars.embryoPrice(d.id) })),
+      // 09/11: genéticas à venda e a regra da mistura que a tela mostra
+      genes: Chars.SPECIES.map((d) => ({ species: d.id, kind: d.kind, sex: d.sex, price: free ? 0 : Chars.genePrice(d.id), power: Chars.genePower(d.id) })),
+      mutation: Chars.MIX.MUTATION,
+      inherit: Chars.FUSION.INHERIT,
+      geneSlots: GENE_SLOTS,
     };
-    return { list, capsule: { used, slots: Chars.CAPSULE.SLOTS }, species: Chars.SPECIES_IDS, lab };
+    // as genéticas guardadas (o temperamento delas sai da semente, como o de um personagem)
+    const genetics = (await LS.openGenetics(c, idUser)).map((g) => ({
+      id: g.id_genetics,
+      species: g.species,
+      sex: g.sex,
+      power: Chars.genePower(g.species),
+      temper: Soul.bornSoul(g.seed).temper,
+      boughtAt: iso(g.created_at),
+    }));
+    // quantas misturas tem a linha de cada um (certidão)
+    for (const x of list) {
+      const row = rows.find((r) => r.id_character === x.id);
+      x.mixCount = Number(row && row.genetics && row.genetics.mix && row.genetics.mix.count) || 0;
+    }
+    return { list, capsule: { used, slots: Chars.CAPSULE.SLOTS }, species: Chars.SPECIES_IDS, lab, genetics };
   }
 
   /**
@@ -222,22 +259,30 @@ class MeuMundoCharacterService {
   }
 
   /**
-   * POST /characters/fuse { a, b, species, sex? } — dois adultos vivos (o ativo e/ou da
-   * cápsula). Os pais viram histórico (status 'fused'); o filho nasce com 1 m, 20% do
-   * maior pico de cada atributo, personalidade e temperamento misturados pela semente.
-   * Se o ativo era um dos pais, o filho vira o ativo; senão vai para a cápsula.
+   * POST /characters/fuse { a, b } ou { a, gene } — a MISTURA do Laboratório de Criogenia
+   * (pedido do Alex, 09/11; regra MIX em characters/rules.ts). `a` é um personagem adulto
+   * (o ativo ou da cápsula); o outro é outro adulto (`b`) ou uma GENÉTICA comprada (`gene`).
+   * Os dois somem (personagens viram histórico 'fused'; a genética fica usada) e nasce o
+   * filho: espécie SORTEADA aqui com a probabilidade pelo Poder (a tela mostra a mesma
+   * conta), 20% do maior pico de cada atributo, a personalidade do mais forte (pode mudar).
+   * O ativo, se for um dos pais, congela na mistura e o filho sai andando; senão o filho
+   * nasce na cápsula. Tudo vai para a certidão (genetics.mix).
    */
   static async fuse(idUser, body = {}) {
     const a = String(body.a || "");
-    const b = String(body.b || "");
-    if (!UUID.test(a) || !UUID.test(b)) return fail("notFound");
-    if (a === b) return fail("pair");
+    const b = body.b ? String(body.b) : "";
+    const gene = body.gene ? String(body.gene) : "";
+    if (!UUID.test(a)) return fail("notFound");
+    if (Boolean(b) === Boolean(gene)) return fail("pair");
+    if (b && a === b) return fail("pair");
+    if (b && !UUID.test(b)) return fail("notFound");
+    if (gene && !UUID.test(gene)) return fail("gene");
     return LifeService().withLife(idUser, async (s, ctx) => {
       const c = ctx.client;
       const k = await clanOf(c, idUser);
       const activeId = ctx.row.id_character;
       const parents = [];
-      for (const id of [a, b]) {
+      for (const id of b ? [a, b] : [a]) {
         const row = id === activeId ? ctx.row : await LS.lockCharacter(c, idUser, id);
         if (!row) return fail("notFound");
         const st = id === activeId ? s : rowToState(row);
@@ -245,71 +290,164 @@ class MeuMundoCharacterService {
         if (!(st.growth && st.growth.stage === "adult")) return fail("adult");
         if (id === activeId && (st.activity.kind === "hospital" || st.activity.kind === "jail")) return fail("busy");
         Soul.soulOf(st);
-        parents.push({ row, st, species: speciesOf(row.species, k.clan), active: id === activeId });
+        const species = speciesOf(row.species, k.clan);
+        parents.push({
+          kind: "character",
+          row,
+          st,
+          species,
+          sex: Chars.speciesSex(species, row.sex || k.sex),
+          power: Number(row.power) || 0,
+          peaks: peaksOf(st),
+          temper: st.soul.temper,
+          personality: st.personality,
+          seed: st.seed,
+          lineage: row.lineage_gen || 1,
+          count: Number(row.genetics && row.genetics.mix && row.genetics.mix.count) || 0,
+          active: id === activeId,
+        });
+      }
+      if (gene) {
+        const g = await LS.lockGenetics(c, idUser, gene);
+        if (!g || !Chars.speciesById(g.species)) return fail("gene");
+        const born = Life.birth(g.seed, 0);
+        parents.push({
+          kind: "genetics",
+          gene: g,
+          species: g.species,
+          sex: Chars.speciesSex(g.species, g.sex),
+          power: Chars.genePower(g.species),
+          peaks: {},
+          temper: Soul.bornSoul(g.seed).temper,
+          personality: born.personality,
+          seed: g.seed,
+          lineage: 0,
+          count: 0,
+          active: false,
+        });
       }
       const [A, B] = parents;
-      const options = Chars.fusionSpecies(A.species, B.species);
-      const species = String(body.species || "");
-      if (!options.includes(species)) return fail("species");
+
+      // o sorteio (números aleatórios do servidor; a conta é a mesma que a tela mostra)
+      const odds = Chars.mixOdds(A.species, A.power, B.species, B.power);
+      const drawn = Chars.mixPick(odds, roll());
+      const W = drawn === "a" ? A : B;
+      const species = W.species;
       const def = Chars.speciesById(species);
-      let sex = def.sex;
-      if (!sex) {
-        const want = body.sex;
-        if (want != null && want !== "m" && want !== "f") return fail("sex");
-        const sameSpecies = [A, B].find((p) => p.species === species);
-        sex = want || Chars.speciesSex(species, (sameSpecies && sameSpecies.row.sex) || k.sex);
-      }
+      const sex = def.sex || W.sex;
+      const strong = Chars.mixStronger(A.power, B.power);
+      const S = strong === "a" ? A : B;
+      const L = strong === "a" ? B : A;
 
       // O filho
-      const seed = Chars.fusionSeed(A.st.seed, B.st.seed);
+      const seed = Chars.fusionSeed(A.seed, B.seed);
       const child = Life.birth(seed, ctx.now);
-      child.personality = Chars.fusionPersonality(A.st.personality, B.st.personality, seed);
-      const inherit = Chars.fusionInherit(peaksOf(A.st), peaksOf(B.st));
+      child.personality = Chars.fusionPersonality(S.personality, S.personality, seed);
+      const inherit = Chars.fusionInherit(A.peaks, B.peaks);
+      const from = Chars.inheritFrom(A.peaks, B.peaks);
       Life.applyInheritance(child, inherit);
-      const temper = Chars.fusionTemper(A.st.soul.temper, B.st.soul.temper, seed);
-      const soul = Soul.bornSoul(seed);
-      if (temper && temper !== soul.temper) {
-        soul.temper = temper;
-        if (temper === "psicopata") soul.likes = { ...soul.likes, act: "fight" };
-        else if (temper === "competitivo") soul.likes = { ...soul.likes, act: "minigame" };
-        else if (temper === "bondoso") soul.likes = { ...soul.likes, act: "praying" };
-        if (temper === "covarde") soul.hates = { ...soul.hates, act: "fight" };
-        if (soul.likes.act === soul.hates.act) soul.hates = { ...soul.hates, act: soul.likes.act === "studying" ? "working" : "studying" };
-      }
-      child.soul = soul;
+      const tm = Chars.mixTemper(S.temper, L.temper, roll(), roll());
+      child.soul = withTemper(Soul.bornSoul(seed), tm.temper);
       Soul.soulOf(child);
       const activeParent = parents.some((p) => p.active);
       child.status = activeParent ? "alive" : "capsule";
 
       // Os pais saem (antes do filho entrar: um vivo por pessoa)
       for (const p of parents) {
+        if (p.kind !== "character") continue;
         p.st.status = "fused";
         if (p.active) Life.freeze(p.st, ctx.now);
         await LS.save(c, p.row.id_character, p.st);
       }
+      const brief = (p) =>
+        p.kind === "genetics"
+          ? { kind: "genetics", species: p.species, sex: p.sex, power: p.power, temper: p.temper }
+          : {
+              kind: "character",
+              serial: Number(p.row.serial),
+              serialText: Chars.serialText(p.row.serial),
+              certCode: p.row.cert_code,
+              species: p.species,
+              sex: p.sex,
+              power: p.power,
+              temper: p.temper,
+              name: (p.st.soul && p.st.soul.petName) || null,
+            };
+      const mix = {
+        count: Chars.mixCount(A.count, B.count),
+        a: brief(A),
+        b: brief(B),
+        odds: { a: odds, b: Math.round((1 - odds) * 100) / 100 },
+        drawn,
+        stronger: strong,
+        inheritFrom: from,
+        temper: { from: strong, base: S.temper || L.temper || null, result: tm.temper, mutated: tm.mutated },
+      };
       const row = await LS.insert(c, idUser, await LS.nextGeneration(c, idUser), child, {
         species,
         sex,
-        lineageGen: Math.max(A.row.lineage_gen || 1, B.row.lineage_gen || 1) + 1,
-        parentA: A.row.id_character,
-        parentB: B.row.id_character,
+        lineageGen: Math.max(A.lineage, B.lineage) + 1,
+        parentA: A.kind === "character" ? A.row.id_character : null,
+        parentB: B.kind === "character" ? B.row.id_character : null,
         origin: "fusion",
-        genetics: geneticsOf(child, { inherited: inherit }),
+        genetics: geneticsOf(child, { inherited: inherit, mix }),
       });
       for (const p of parents) {
+        if (p.kind === "genetics") {
+          await LS.useGenetics(c, p.gene.id_genetics, row.id_character, ctx.now);
+          continue;
+        }
         await LS.markFused(c, p.row.id_character, row.id_character, ctx.now);
         if (!p.active) await LS.insertEvents(c, p.row.id_character, [{ at: ctx.now, kind: "fused", data: { into: row.id_character } }]);
       }
+      const bornEv = { at: ctx.now, kind: "born", data: { origin: "fusion", species, inherited: inherit, odds: mix.odds, drawn, mutated: tm.mutated } };
       if (activeParent) {
         ctx.events.push({ at: ctx.now, kind: "fused", data: { into: row.id_character } });
         ctx.newRow = row;
         ctx.newState = child;
-        ctx.newEvents = [{ at: ctx.now, kind: "born", data: { origin: "fusion", species, inherited: inherit } }];
+        ctx.newEvents = [bornEv];
       } else {
-        await LS.insertEvents(c, row.id_character, [{ at: ctx.now, kind: "born", data: { origin: "fusion", species, inherited: inherit } }]);
+        await LS.insertEvents(c, row.id_character, [bornEv]);
         await PowerService().refresh(c, idUser, row.id_character, child);
       }
-      return { fused: { child: row.id_character, species, sex, inherited: inherit } };
+      return {
+        fused: {
+          child: row.id_character,
+          certCode: row.cert_code,
+          species,
+          sex,
+          inherited: inherit,
+          chance: drawn === "a" ? mix.odds.a : mix.odds.b,
+          drawn,
+          temper: tm.temper,
+          mutated: tm.mutated,
+          active: activeParent,
+        },
+      };
+    }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
+  }
+
+  /**
+   * POST /characters/genetics { species, sex?, key } — compra a GENÉTICA de uma espécie no
+   * laboratório (fica guardada até a mistura; GENE_SLOTS no máximo). Paga em Esmeralda;
+   * admin não paga; `key` é a chave do pedido (reenvio não compra duas vezes).
+   */
+  static async buyGenetics(idUser, body = {}) {
+    const species = String(body.species || "");
+    if (!Chars.speciesById(species)) return fail("badSpecies");
+    if (body.sex != null && body.sex !== "m" && body.sex !== "f") return fail("sex");
+    const key = String(body.key || "");
+    if (!KEY_RE.test(key)) return fail("key");
+    return LifeService().withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      const price = (await MeuMundoStorage.isAdmin(c, idUser)) ? 0 : Chars.genePrice(species);
+      const row = await LS.addGenetics(c, idUser, { species, sex: Chars.speciesSex(species, body.sex), seed: newSeed(), ref: key, price });
+      if (!row) return { gene: null, repeat: true };
+      if ((await LS.openGenetics(c, idUser)).length > GENE_SLOTS) return fail("geneFull");
+      if (ctx.coins < price) return fail("coins");
+      ctx.coins -= price;
+      ctx.what = `genetics:${species}`;
+      return { gene: row.id_genetics, paid: price };
     }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
   }
 

@@ -239,6 +239,39 @@ class MeuMundoLifeStorage {
     return r.rows[0] ? r.rows[0].id_grant : null;
   }
 
+  // ═══ genéticas do laboratório (mig 430) ═══
+  /** Compra: devolve a linha nova, ou null se a chave do pedido já foi usada (reenvio). */
+  static async addGenetics(c, idUser, { species, sex, seed, ref, price }) {
+    const r = await c.query(
+      `INSERT INTO tb_mm_genetics (id_user, species, sex, seed, ref, price) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id_user, ref) DO NOTHING RETURNING *`,
+      [idUser, species, sex, seed, ref, price]
+    );
+    return r.rows[0] || null;
+  }
+
+  /** As genéticas guardadas (ainda não usadas). */
+  static async openGenetics(db, idUser) {
+    const r = await db.query(
+      `SELECT * FROM tb_mm_genetics WHERE id_user = $1 AND used_at IS NULL ORDER BY created_at, id_genetics`,
+      [idUser]
+    );
+    return r.rows;
+  }
+
+  /** Uma genética guardada, travada para a mistura (null = não é dela ou já foi usada). */
+  static async lockGenetics(c, idUser, idGenetics) {
+    const r = await c.query(
+      `SELECT * FROM tb_mm_genetics WHERE id_genetics = $1 AND id_user = $2 AND used_at IS NULL FOR UPDATE`,
+      [idGenetics, idUser]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async useGenetics(c, idGenetics, idCharacter, at) {
+    await c.query(`UPDATE tb_mm_genetics SET used_at = $2, used_in = $3 WHERE id_genetics = $1`, [idGenetics, new Date(at), idCharacter]);
+  }
+
   /** Entregas pendentes, travadas (quem chama já serializou a pessoa). */
   static async openGrants(c, idUser) {
     const r = await c.query(

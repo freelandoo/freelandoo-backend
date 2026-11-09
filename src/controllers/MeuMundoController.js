@@ -347,6 +347,11 @@ async function characterEmbryo(req, res) {
   return reply(res, await MeuMundoCharacterService.buyEmbryo(req.user.id_user, req.body || {}));
 }
 
+// 09/11: a genética do laboratório (para a mistura).
+async function characterGenetics(req, res) {
+  return reply(res, await MeuMundoCharacterService.buyGenetics(req.user.id_user, req.body || {}));
+}
+
 async function characterAccelerate(req, res) {
   return reply(res, await MeuMundoCharacterService.accelerate(req.user.id_user, req.params.id));
 }
@@ -450,6 +455,7 @@ module.exports = {
   characterFuse,
   characterTestGrant,
   characterEmbryo,
+  characterGenetics,
   characterAccelerate,
   certificate,
 };
