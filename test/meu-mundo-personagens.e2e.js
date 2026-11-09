@@ -80,7 +80,22 @@ async function main() {
   const active0 = l0.characters.list[0];
   const aur = caps.find((c) => c.species === "aurion");
   await pool.query(`UPDATE tb_mm_character SET strength = 400 WHERE id_character = $1`, [active0.id]);
+  // nível POR PERSONAGEM (mig 435): o ativo sobe, o outro começa do 1
+  const AdvStore = require("../src/storages/MeuMundoAdventureStorage");
+  const AdvRule = require("../src/utils/meuMundoAdventure");
+  {
+    const c0 = await pool.connect();
+    try {
+      await AdvStore.lockAdventure(c0, A);
+      await AdvStore.saveAdventure(c0, A, { xp: 50000, level: AdvRule.levelOf(50000).level, losses: 0, lossesDay: null });
+    } finally {
+      c0.release();
+    }
+  }
+  const lvHigh = AdvRule.levelOf(Number((await AdvStore.getAdventure(pool, A)).xp)).level;
   const sw = await Chars.use(A, aur.id);
+  const lvNew = AdvRule.levelOf(Number((await AdvStore.getAdventure(pool, A)).xp)).level;
+  check("nível: o personagem trocado começa do nível 1", lvHigh > 1 && lvNew === 1, `${lvHigh} → ${lvNew}`);
   check("troca: Aurion vira o ativo", !sw.error && sw.characters.list[0].id === aur.id && sw.characters.list[0].status === "alive", JSON.stringify(sw.error || sw.swapped));
   check("troca: o antigo vai para a cápsula", sw.characters.list.some((c) => c.id === active0.id && c.status === "capsule"));
   const alive = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'`, [A])).rows[0].count);
@@ -91,6 +106,7 @@ async function main() {
   const r0 = back.characters.list.find((c) => c.id === active0.id);
   check("volta da cápsula com o mesmo atributo (congelado não perde)", r0 && r0.status === "alive" && r0.attrs.strength === 400, JSON.stringify(r0 && r0.attrs));
   check("volta da cápsula com a mesma idade ativa", r0 && r0.activeDays === active0.activeDays, `${r0 && r0.activeDays} vs ${active0.activeDays}`);
+  check("nível: quem volta da cápsula volta com o nível dele", AdvRule.levelOf(Number((await AdvStore.getAdventure(pool, A)).xp)).level === lvHigh);
   check("trocar com quem não está na cápsula é recusado", (await Chars.use(A, active0.id)).code === "notCapsule");
 
   // ── vagas: até 5 na cápsula pelo grant de teste

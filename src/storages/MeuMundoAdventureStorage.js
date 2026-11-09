@@ -22,21 +22,49 @@ function receiptOut(r) {
 }
 
 class MeuMundoAdventureStorage {
-  /** Linha da aventura da pessoa (cria na 1ª vez), travada. */
+  // Nível de aventura POR PERSONAGEM (mig 435, regra do Alex 2026-11-09): o da pessoa é o
+  // do personagem ATIVO (status 'alive'); trocar de personagem troca o nível junto, e
+  // personagem novo começa no nível 1 com 0 de XP. Sem personagem vivo = nível 1 (nada grava).
+
+  /** Linha da aventura do personagem ativo (cria na 1ª vez), travada. */
   static async lockAdventure(c, idUser) {
-    await c.query(`INSERT INTO tb_mm_adventure (id_user) VALUES ($1) ON CONFLICT (id_user) DO NOTHING`, [idUser]);
-    const r = await c.query(`SELECT * FROM tb_mm_adventure WHERE id_user = $1 FOR UPDATE`, [idUser]);
-    return r.rows[0];
+    await c.query(
+      `WITH ch AS (
+         SELECT id_character FROM tb_mm_character WHERE id_user = $1 AND status = 'alive' ORDER BY born_at DESC LIMIT 1
+       )
+       INSERT INTO tb_mm_char_adventure (id_character, id_user)
+       SELECT id_character, $1 FROM ch
+       ON CONFLICT (id_character) DO NOTHING`,
+      [idUser]
+    );
+    const q = await c.query(
+      `SELECT a.* FROM tb_mm_char_adventure a
+         JOIN tb_mm_character ch ON ch.id_character = a.id_character
+        WHERE ch.id_user = $1 AND ch.status = 'alive'
+        ORDER BY ch.born_at DESC LIMIT 1
+        FOR UPDATE OF a`,
+      [idUser]
+    );
+    return q.rows[0] || { id_character: null, xp: 0, level: 1, losses: 0, losses_day: null };
   }
 
   static async getAdventure(c, idUser) {
-    const r = await c.query(`SELECT * FROM tb_mm_adventure WHERE id_user = $1`, [idUser]);
+    const r = await c.query(
+      `SELECT a.* FROM tb_mm_char_adventure a
+         JOIN tb_mm_character ch ON ch.id_character = a.id_character
+        WHERE ch.id_user = $1 AND ch.status = 'alive'
+        ORDER BY ch.born_at DESC LIMIT 1`,
+      [idUser]
+    );
     return r.rows[0] || { xp: 0, level: 1, losses: 0, losses_day: null };
   }
 
   static async saveAdventure(c, idUser, { xp, level, losses, lossesDay }) {
     await c.query(
-      `UPDATE tb_mm_adventure SET xp = $2, level = $3, losses = $4, losses_day = $5, updated_at = NOW() WHERE id_user = $1`,
+      `UPDATE tb_mm_char_adventure a SET xp = $2, level = $3, losses = $4, losses_day = $5, updated_at = NOW()
+        WHERE a.id_character = (
+          SELECT id_character FROM tb_mm_character WHERE id_user = $1 AND status = 'alive' ORDER BY born_at DESC LIMIT 1
+        )`,
       [idUser, xp, level, losses, lossesDay]
     );
   }

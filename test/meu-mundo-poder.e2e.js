@@ -29,7 +29,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -98,12 +98,13 @@ async function main() {
   await Life.peek(B);
   await pool.query(`UPDATE tb_mm_character SET strength = 800, speed = 600, accuracy = 120 WHERE id_user = $1`, [B]);
   await pool.query(
-    `INSERT INTO tb_mm_adventure (id_user, xp, level) VALUES ($1, 50000, 1)
-     ON CONFLICT (id_user) DO UPDATE SET xp = 50000`,
+    `INSERT INTO tb_mm_char_adventure (id_character, id_user, xp, level)
+     SELECT id_character, $1, 50000, 1 FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'
+     ON CONFLICT (id_character) DO UPDATE SET xp = 50000`,
     [B]
   );
   const lvB = require("../src/utils/meuMundoAdventure").levelOf(50000).level;
-  await pool.query(`UPDATE tb_mm_adventure SET level = $2 WHERE id_user = $1`, [B, lvB]);
+  await pool.query(`UPDATE tb_mm_char_adventure SET level = $2 WHERE id_user = $1`, [B, lvB]);
   await Life.peek(B);
   const pB = { ...(await powerOfRow(B)), parts: await Poder.myParts(B) };
   check("HP máx do nível entra no Poder", pB.parts.hp === 100 + 9 * (lvB - 1) && pB.parts.accuracy === 120, JSON.stringify(pB));

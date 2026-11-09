@@ -3,7 +3,7 @@
  *
  * Poder: tb_mm_character.power (gravado pela vida, MeuMundoPowerService); o ranking pega o
  * melhor personagem VIVO de cada pessoa — B3 (mig 340): o ativo E os da cápsula (congelados com o
- * poder que tinham); fundidos e mortos fora. O de Nível lê tb_mm_adventure (por pessoa).
+ * poder que tinham); fundidos e mortos fora. O de Nível lê tb_mm_char_adventure (o melhor personagem de cada pessoa, mig 435).
  * Recorte: Brasil inteiro (o jogo não tem recorte regional ainda). Menor de idade fica fora,
  * como no ranking da Freelandoo.
  */
@@ -64,7 +64,15 @@ const BEST_LEVEL = `
            ROW_NUMBER() OVER (ORDER BY COALESCE(a.level, 1) DESC, COALESCE(a.xp, 0) DESC, a.updated_at ASC NULLS LAST, p.id_user) AS position
       FROM players p
       JOIN tb_user uu ON uu.id_user = p.id_user
-      LEFT JOIN tb_mm_adventure a ON a.id_user = p.id_user
+      -- nível POR PERSONAGEM (mig 435): o melhor personagem que ainda existe
+      LEFT JOIN LATERAL (
+        SELECT ca.level, ca.xp, ca.updated_at
+          FROM tb_mm_char_adventure ca
+          JOIN tb_mm_character cc ON cc.id_character = ca.id_character
+         WHERE ca.id_user = p.id_user AND cc.status IN ('alive', 'capsule')
+         ORDER BY ca.level DESC, ca.xp DESC
+         LIMIT 1
+      ) a ON TRUE
      WHERE uu.is_minor = FALSE
   )`;
 

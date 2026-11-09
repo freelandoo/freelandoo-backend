@@ -19,7 +19,7 @@ function check(name, condition) { assert.ok(condition, name); checks++; console.
 
 async function bootstrap(pool) {
   await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
-    tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned,
+    tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned,
     tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day,
     tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail, tb_mm_visit, tb_mm_avatar_pref,
     tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
@@ -51,7 +51,7 @@ async function main() {
       await pool.query(`INSERT INTO tb_user VALUES ($1, 'forge', 'forge@mm.test')`, [user]);
       await Life.peek(user);
       await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm')`, [user]);
-      await pool.query(`INSERT INTO tb_mm_adventure (id_user, xp) VALUES ($1, 500000)`, [user]);
+      await pool.query(`INSERT INTO tb_mm_char_adventure (id_character, id_user, xp) SELECT id_character, $1, 500000 FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'`, [user]);
       await pool.query(`UPDATE tb_mm_wallet SET coins = 500000 WHERE id_user = $1`, [user]);
     }
     for (const item of Gear.GEAR.filter((g) => ["material", "recipe", "cosmetic", "quest"].includes(g.category))) {
@@ -80,7 +80,7 @@ async function main() {
     const money0 = await balance();
     const material0 = (await Service.get(id)).bag.owned.fragmento_lamina.qty;
     const stable0 = (await pool.query(`SELECT attr_peaks,growth,born_at FROM tb_mm_character WHERE id_user=$1 ORDER BY generation DESC LIMIT 1`, [id])).rows[0];
-    const xp0 = (await pool.query(`SELECT xp FROM tb_mm_adventure WHERE id_user=$1`, [id])).rows[0].xp;
+    const xp0 = (await pool.query(`SELECT xp FROM tb_mm_char_adventure WHERE id_user=$1`, [id])).rows[0].xp;
     const [a, b] = await Promise.all([Service.refine(id, request), Service.refine(id, request)]);
     check("duas abas recebem mesma proposta e recibo", a.proposal?.id === b.proposal?.id && a.receipt?.eventId === b.receipt?.eventId);
     check("sorteio e cobrança acontecem uma vez", draws === 1 && await balance() === money0 - q.cost.coins);
@@ -99,7 +99,7 @@ async function main() {
     check("recusa após aceite não reverte equipamento", (await Service.resolveRefine(id, { proposalId: a.proposal.id, accept: false, key: key() })).code === "resolved" && (await row()).level === 3);
     const stable1 = (await pool.query(`SELECT attr_peaks,growth,born_at FROM tb_mm_character WHERE id_user=$1 ORDER BY generation DESC LIMIT 1`, [id])).rows[0];
     assert.deepEqual(stable1, stable0);
-    check("XP, idade, crescimento e picos permanentes ficam preservados", (await pool.query(`SELECT xp FROM tb_mm_adventure WHERE id_user=$1`, [id])).rows[0].xp === xp0);
+    check("XP, idade, crescimento e picos permanentes ficam preservados", (await pool.query(`SELECT xp FROM tb_mm_char_adventure WHERE id_user=$1`, [id])).rows[0].xp === xp0);
 
     // Recusa e expiração preservam item, mas nunca devolvem custo.
     await reset(4, 2);

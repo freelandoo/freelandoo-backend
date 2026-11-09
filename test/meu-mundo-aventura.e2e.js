@@ -29,7 +29,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -104,7 +104,7 @@ async function main() {
   check("um recibo no banco", n === 1, String(n));
   const rec = a.receipt;
   check("vitória decidida pelo servidor", rec.result.win === fight.over.win);
-  const adv = (await pool.query(`SELECT xp FROM tb_mm_adventure WHERE id_user = $1`, [id])).rows[0];
+  const adv = (await pool.query(`SELECT xp FROM tb_mm_char_adventure WHERE id_user = $1`, [id])).rows[0];
   check("XP gravado uma vez", Number(adv.xp) === rec.deltas.xp.xp && rec.deltas.xp.xp > 0, JSON.stringify([adv, rec.deltas.xp]));
   // mm3d-60k: atributo da luta = DROP (pontos inteiros nos 4 atributos) + moedas
   check("luta dropa atributo", Object.values(rec.deltas.attrs).reduce((x, y) => x + y, 0) > 0 && Object.keys(rec.deltas.attrs).every((k) => ["strength", "dexterity", "speed", "intelligence"].includes(k)), JSON.stringify(rec.deltas.attrs));
@@ -158,7 +158,7 @@ async function main() {
   // nível 1 não compra a couraça rebitada (nível 3)
   const low = await Gear.buy(id, { item: "couraca_rebitada", key: k() });
   check("requisito de nível no servidor", low.code === "level", JSON.stringify(low));
-  await pool2.query(`UPDATE tb_mm_adventure SET xp = 500 WHERE id_user = $1`, [id]);
+  await pool2.query(`UPDATE tb_mm_char_adventure SET xp = 500 WHERE id_user = $1`, [id]);
   await pool2.query(`INSERT INTO emerald_wallets (user_id, balance) VALUES ($1, 1000) ON CONFLICT (user_id) DO UPDATE SET balance = 1000`, [id]); // A7: moedas do jogo = Esmeralda
 
   // mesmo pedido em duas abas: cobra uma vez
@@ -269,7 +269,7 @@ async function main() {
   check("passo 9 entregue", (await qa()).receipt);
   const last = await qa();
   check("passo 10: pista de Morkhan + amuleto", last.receipt && last.receipt.result.last && last.receipt.items.some((i) => i.id === "cristal_morkhan"), JSON.stringify(last.error));
-  const advRow = (await pool.query(`SELECT xp FROM tb_mm_adventure WHERE id_user = $1`, [nu])).rows[0];
+  const advRow = (await pool.query(`SELECT xp FROM tb_mm_char_adventure WHERE id_user = $1`, [nu])).rows[0];
   const lv = require("../src/utils/meuMundoAdventure").levelOf(Number(advRow.xp));
   check("prólogo garante subir de nível (≥ 3)", lv.level >= 3, JSON.stringify(lv));
   const lvUps = (await pool.query(`SELECT COUNT(*)::int n FROM tb_mm_receipt WHERE id_user = $1 AND (deltas->'xp'->>'to')::int > (deltas->'xp'->>'from')::int`, [nu])).rows[0].n;
