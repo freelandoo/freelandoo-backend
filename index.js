@@ -13,7 +13,7 @@ const bootLog = createLogger("boot");
 const PORT = process.env.PORT || 3000;
 
 const server = app.listen(PORT, () => {
-  bootLog.info("server.listen", { port: PORT });
+  bootLog.info("server.listen", { port: PORT, node: process.version });
 
   // Realtime (socket.io) — autenticado por JWT, attach no mesmo HTTP server.
   // Endpoint: /realtime. Eventos: conversation:message, notification:new,

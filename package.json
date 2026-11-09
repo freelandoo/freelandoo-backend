@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "API Creators Views",
   "main": "index.js",
+  "engines": {
+    "node": ">=22.23.4"
+  },
   "scripts": {
     "dev": "nodemon index.js",
     "prestart": "node run-migrations.js",
