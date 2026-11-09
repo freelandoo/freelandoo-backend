@@ -46,7 +46,7 @@ const { interiorFor } = require("../utils/meuMundoInteriors");
 const { VISIT_RULES } = require("../utils/meuMundoVisits");
 const { MOTION } = require("../utils/meuMundoMotion");
 const { kindOfId, spotFor } = require("../utils/meuMundoCars");
-const { buildCenterPayload, PLACES: CENTER_PLACES } = require("../utils/meuMundoCenter");
+const { buildCenterPayload, PLACES: CENTER_PLACES, ARRIVAL: CENTER_ARRIVAL } = require("../utils/meuMundoCenter");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
 const Inbox = require("../storages/MeuMundoInboxStorage");
@@ -81,6 +81,16 @@ const CORRIDA_DOOR = CENTER_PLACES.find((p) => p.id === "corrida").interact;
 const NOTURNO_DOOR = CENTER_PLACES.find((p) => p.id === "noturno").interact;
 // Gincana em grupo (mm3d-47): a mesma regra de porta.
 const GINCANA_DOOR = CENTER_PLACES.find((p) => p.id === "gincana").interact;
+/**
+ * Perto da porta do minijogo? Também vale quem está parado no ponto de chegada do centro:
+ * com o minijogo aberto a rua fica estacionada e, se o servidor reinicia (deploy), a conexão
+ * volta pelo ponto de chegada — antes disso toda tentativa voltava "longe" (Rolê Noturno, 2026-11-09).
+ */
+function atMinigameDoor(pos, door) {
+  if (!pos) return false;
+  if (Math.hypot(pos.x - door.x, pos.z - door.z) <= JETPACK_REACH) return true;
+  return Math.hypot(pos.x - CENTER_ARRIVAL.x, pos.z - CENTER_ARRIVAL.z) <= 1.5;
+}
 function beginTravel(idUser) {
   const t = traveling.get(idUser);
   if (t && Date.now() - t < TRAVEL_GUARD_MS) return false;
@@ -558,7 +568,7 @@ class MeuMundoService {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
-    if (!pos || Math.hypot(pos.x - JETPACK_DOOR.x, pos.z - JETPACK_DOOR.z) > JETPACK_REACH) {
+    if (!atMinigameDoor(pos, JETPACK_DOOR)) {
       return { error: "Chegue perto da porta do jetpack", statusCode: 409, code: "far" };
     }
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
@@ -587,7 +597,7 @@ class MeuMundoService {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
-    if (!pos || Math.hypot(pos.x - PAINT_DOOR.x, pos.z - PAINT_DOOR.z) > JETPACK_REACH) {
+    if (!atMinigameDoor(pos, PAINT_DOOR)) {
       return { error: "Chegue perto da porta do Paint", statusCode: 409, code: "far" };
     }
     const [body, name] = await Promise.all([MeuMundoStorage.getBody(pool, idUser), MeuMundoStorage.getPublicName(pool, idUser)]);
@@ -611,7 +621,7 @@ class MeuMundoService {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
-    if (!pos || Math.hypot(pos.x - CORRIDA_DOOR.x, pos.z - CORRIDA_DOOR.z) > JETPACK_REACH) {
+    if (!atMinigameDoor(pos, CORRIDA_DOOR)) {
       return { error: "Chegue perto da porta da corrida", statusCode: 409, code: "far" };
     }
     const name = await MeuMundoStorage.getPublicName(pool, idUser);
@@ -637,7 +647,7 @@ class MeuMundoService {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
-    if (!pos || Math.hypot(pos.x - NOTURNO_DOOR.x, pos.z - NOTURNO_DOOR.z) > JETPACK_REACH) {
+    if (!atMinigameDoor(pos, NOTURNO_DOOR)) {
       return { error: "Chegue perto da porta do Rolê Noturno", statusCode: 409, code: "far" };
     }
     const name = await MeuMundoStorage.getPublicName(pool, idUser);
@@ -657,7 +667,7 @@ class MeuMundoService {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
-    if (!pos || Math.hypot(pos.x - GINCANA_DOOR.x, pos.z - GINCANA_DOOR.z) > JETPACK_REACH) {
+    if (!atMinigameDoor(pos, GINCANA_DOOR)) {
       return { error: "Chegue perto da porta da Gincana", statusCode: 409, code: "far" };
     }
     const name = await MeuMundoStorage.getPublicName(pool, idUser);

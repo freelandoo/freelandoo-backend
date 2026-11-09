@@ -160,10 +160,23 @@ async function mkUser(pool, tag) {
 
   // ── Quem pode entrar ──────────────────────────────────────────────────────
   check("o centro tem o Rolê Noturno como minijogo", Center.PLACES.find((p) => p.id === "noturno").destination === "game:noturno");
+  nearDoor(users[0], 30);
   const far = await Service.joinNoturno(users[0], { ride: "bike" });
   check("longe da porta: 409 far", far.statusCode === 409 && far.code === "far", JSON.stringify(far));
   const street = await Service.joinNoturno(users[9], { ride: "bike" });
   check("fora do centro: 409", street.statusCode === 409);
+  // parado no ponto de chegada (a conexão voltou depois de um restart com o minijogo aberto) também entra
+  {
+    const here = presence.get(users[0]);
+    const room = realtime._centerRooms().find((x) => x.roomId === here.id);
+    Object.assign([...room.sim.values()].find((x) => x.userId === users[0]).body, { x: Center.ARRIVAL.x, z: Center.ARRIVAL.z });
+    const back = await Service.joinNoturno(users[0], { ride: "bike" });
+    check("no ponto de chegada do centro (volta de restart): entra", !!(back.multiplayer && back.multiplayer.reservation), JSON.stringify(back.error || ""));
+    if (back.multiplayer) {
+      const box = await consume(back);
+      await bye(box);
+    }
+  }
   for (let i = 0; i < 9; i++) nearDoor(users[i]);
 
   // ── Espera de 1 minuto (encurtada); as vagas vazias viram COMPUTADORES (regra de 2026-11-08) ───────────────────────
@@ -177,20 +190,20 @@ async function mkUser(pool, tag) {
     "…a MESMA semente e a rua do grupo (bike) para os dois",
     A.start.seed === B.start.seed && A.start.seed > 0 && A.start.street === "bike" && B.start.street === "bike"
   );
-  check("…as 2 pessoas + 4 computadores (6 vagas)", A.start.seats.length === 6 && A.start.seats.filter((x) => x.bot).length === 4 && A.start.seats.filter((x) => x.bot).every((x) => x.name && x.body && x.ride), JSON.stringify(A.start.seats));
+  check("…as 2 pessoas + 2 computadores (4 vagas)", A.start.seats.length === 4 && A.start.seats.filter((x) => x.bot).length === 2 && A.start.seats.filter((x) => x.bot).every((x) => x.name && x.body && x.ride), JSON.stringify(A.start.seats));
   const sa = A.start.seats.find((s) => s.slot === 0);
   const sb = A.start.seats.find((s) => s.slot === 1);
   check("…veículo e corpo de cada um", sa.ride === "bike" && sa.body === "female" && typeof sa.look === "string");
   check("…veículo/corpo desconhecidos viram skate/normal", sb.ride === "skate" && sb.body === "normal");
   const Cx = await join(users[2], "skates");
   check("trancada: quem chega depois vai para outra largada", Cx.room && Cx.room.roomId !== A.room.roomId && Cx.room.state.phase === "lobby");
-  check("sozinho depois do prazo: larga com 5 computadores", (await until(() => Cx.start, 4000)) && Cx.start.seats.length === 6 && Cx.start.seats.filter((x) => x.bot).length === 5);
+  check("sozinho depois do prazo: larga com 3 computadores", (await until(() => Cx.start, 4000)) && Cx.start.seats.length === 4 && Cx.start.seats.filter((x) => x.bot).length === 3);
   await bye(Cx.room);
 
   const r = roomOf(A.room.roomId);
   r.startedAt -= 3000; // pula a contagem
   check("rolê começa", await until(() => A.room.state.phase === "run"));
-  check("as poses chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 6 * 8);
+  check("as poses chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 4 * 8);
 
   // pose: normal passa, impossível é limitada, pontos com teto
   pose(A, 30, { x: 2.5, s: 40 });
@@ -227,7 +240,7 @@ async function mkUser(pool, tag) {
   const res = JSON.parse(A.room.state.result);
   check(
     "…2 linhas pelos pontos, quem caiu com o que derrubou",
-    res.rows.length === 6 && res.rows.filter((x) => x.bot).length === 4 && res.rows.find((x) => x.slot === 0).by === "truck" && res.rows.find((x) => x.slot === 0).tricks === 2,
+    res.rows.length === 4 && res.rows.filter((x) => x.bot).length === 2 && res.rows.find((x) => x.slot === 0).by === "truck" && res.rows.find((x) => x.slot === 0).tricks === 2,
     JSON.stringify(res.rows)
   );
   check("…quem saiu está marcado", res.rows.find((x) => x.slot === 1).gone);
@@ -235,17 +248,17 @@ async function mkUser(pool, tag) {
   check("…e a sala fecha", await until(() => !roomOf(A.room.roomId), 3000));
   await bye(A.room);
 
-  // ── 6 pessoas largam na hora ───────────────────────────────────────────────
+  // ── 4 pessoas largam na hora ───────────────────────────────────────────────
   noturno._noturnoTiming.lobbyMs = 20000;
   const six = [];
-  for (let i = 2; i < 8; i++) six.push(await join(users[i], ["bike", "skate", "skates"][i % 3]));
+  for (let i = 2; i < 6; i++) six.push(await join(users[i], ["bike", "skate", "skates"][i % 3]));
   check(
-    "6 pessoas: a mesma largada, sem esperar o minuto",
+    "4 pessoas: a mesma largada, sem esperar o prazo",
     six.every((b) => b.room && b.room.roomId === six[0].room.roomId) && (await until(() => six[0].room.state.phase === "countdown", 2000))
   );
   check(
-    "…as 6 com a mesma semente",
-    (await until(() => six.every((b) => b.start))) && six.every((b) => b.start.seed === six[0].start.seed && b.start.seats.length === 6)
+    "…as 4 com a mesma semente",
+    (await until(() => six.every((b) => b.start))) && six.every((b) => b.start.seed === six[0].start.seed && b.start.seats.length === 4)
   );
   for (const b of six) await bye(b.room);
 

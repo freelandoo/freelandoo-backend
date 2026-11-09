@@ -3,7 +3,7 @@
 // Pedido do Alex: "o Rolê Noturno tem que ser multiplayer também, na mesma
 // tela como o Antigravidade". Então o mesmo molde da CorridaRoom: uma sala por
 // largada, do MESMO centro (filterBy centerRoomId, a mais cheia primeiro),
-// espera até LOBBY_MS desde que abriu (ou larga na hora com 6) → tranca →
+// espera até LOBBY_MS desde que abriu (ou larga na hora com 4) → tranca →
 // contagem → todos correm na MESMA rua → resultado quando o último cai → fecha.
 //
 // Diferente da corrida, NÃO há computador nem regra no servidor: a rua sai
@@ -29,7 +29,7 @@ const log = createLogger("meuMundo.noturno");
 const { PracticeMeter } = require("./meuMundoPractice");
 
 const NOTURNO_ROOM = "noturno";
-const SEATS = 6;
+const SEATS = 4; // no máximo 4 no rolê; vaga vazia vira computador (Alex, 2026-11-09)
 const RIDES = ["bike", "skate", "skates"];
 /** A rua do grupo é gerada pela curva deste veículo (o mais rápido): igual em todos os aparelhos. */
 const STREET = "bike";
@@ -50,7 +50,7 @@ const SILENT_S = 8;
 const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os minijogos (Alex, 2026-11-08; antes 1 min)
 
 // ── COMPUTADORES (regra do Alex, 2026-11-08) ── a espera é de 1 minuto; na largada as
-// vagas vazias viram computadores, rodados AQUI com a regra gerada (como a Gincana).
+// vagas vazias viram computadores, rodados AQUI com a regra gerada (como a Gincana). Até 4 no total.
 const { NoturnoBot } = require("../utils/meuMundoNoturnoBot");
 const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
 const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
