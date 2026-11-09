@@ -22,7 +22,7 @@
 const pool = require("../databases");
 const CommunityStorage = require("../storages/CommunityStorage");
 const CommunitySiteStorage = require("../storages/CommunitySiteStorage");
-const CondoStorage = require("../storages/CondoStorage");
+const { canViewLoadedCommunityInside } = require("./communityInsideAccess");
 const CommunitySite = require("../utils/communitySite");
 const SiteSlug = require("../utils/communitySiteSlug");
 const ProfileServiceStorage = require("../storages/ProfileServiceStorage");
@@ -416,27 +416,12 @@ async function liveTemplate(row, showcase) {
 
 /**
  * O viewer pode LER o que é interno desta comunidade?
- * Espelha `CommunityService.listBees` de propósito: são a mesma pergunta, e
- * responder diferente aqui abriria um vazamento por uma porta nova.
+ * É a MESMA pergunta do mural de bees e das portas por id — por isso delega a
+ * `communityInsideAccess` (régua da política, `contentIsExclusive`), em vez de
+ * repetir um `privacy === 'private'` que esquecia o bairro (segurança A1-09).
  */
 async function canViewInside(community, id_user) {
-  const membership = id_user
-    ? await CommunityStorage.getMembership(pool, community.id_profile, id_user)
-    : null;
-  const isAdmin = membership?.role === "leader" || membership?.role === "vice";
-
-  if (community.kind === "condo") {
-    if (isAdmin) return true;
-    if (!id_user) return false;
-    const resident = await CondoStorage.getResidentStatus(
-      pool,
-      community.id_profile,
-      id_user
-    );
-    return !!resident.confirmed;
-  }
-  if (community.privacy === "private") return !!membership;
-  return true;
+  return canViewLoadedCommunityInside(community, id_user);
 }
 
 /**

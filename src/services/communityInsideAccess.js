@@ -16,7 +16,16 @@ const { policyFor } = require("../utils/communityPolicy");
 async function canViewCommunityInside(id_community, id_user) {
   if (!id_community) return true;
   const community = await CommunityStorage.getById(pool, id_community);
+  return canViewLoadedCommunityInside(community, id_user);
+}
+
+/**
+ * A mesma pergunta para quem já carregou a comunidade (mural de bees, site).
+ * `community` precisa de `id_profile`, `kind` e `privacy` (CommunityStorage.getById).
+ */
+async function canViewLoadedCommunityInside(community, id_user) {
   if (!community) return false;
+  const id_community = community.id_profile;
   if (!policyFor(community).contentIsExclusive) return true;
   if (!id_user) return false;
 
@@ -46,4 +55,9 @@ async function canViewPortfolioItem(item, id_user) {
   return canViewCommunityInside(item.id_exclusive_community, id_user);
 }
 
-module.exports = { canViewCommunityInside, canViewBee, canViewPortfolioItem };
+module.exports = {
+  canViewCommunityInside,
+  canViewLoadedCommunityInside,
+  canViewBee,
+  canViewPortfolioItem,
+};

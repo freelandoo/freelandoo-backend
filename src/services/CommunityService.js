@@ -23,6 +23,7 @@ const PlanService = require("./PlanService");
 const { BUSINESS_GATES } = require("../utils/businessPlan");
 const { createLogger, runWithLogs } = require("../utils/logger");
 const { normalizeFeedKind } = require("../utils/feedKind");
+const { canViewLoadedCommunityInside } = require("./communityInsideAccess");
 
 const log = createLogger("CommunityService");
 
@@ -1384,23 +1385,11 @@ class CommunityService {
         const community = await CommunityStorage.getById(pool, params.id_profile);
         if (!community) return { error: "Comunidade não encontrada", statusCode: 404 };
 
-        const membership = await CommunityStorage.getMembership(
-          pool,
-          params.id_profile,
-          id_user
-        );
-        const isAdmin = membership?.role === "leader" || membership?.role === "vice";
-
-        if (community.kind === "condo") {
-          const resident = await CondoStorage.getResidentStatus(
-            pool,
-            params.id_profile,
-            id_user
-          );
-          if (!resident.confirmed && !isAdmin) {
-            return { bees: [], locked: true };
-          }
-        } else if (community.privacy === "private" && !membership) {
+        // Mesma régua das portas por id (A1-05): exclusividade vem da
+        // política, não de um `privacy === 'private'` solto — que deixava o
+        // mural do BAIRRO (territorial = exclusivo) aberto a quem é de fora
+        // (segurança A1-09).
+        if (!(await canViewLoadedCommunityInside(community, id_user))) {
           return { bees: [], locked: true };
         }
 
@@ -1489,6 +1478,21 @@ class CommunityService {
               statusCode: 409,
               needs_claim: true,
             };
+          }
+
+          // BAIRRO: só morador reconhecido entra (segurança A1-11). A porta
+          // própria (`NeighborhoodService.join`) confere a residência; este
+          // botão genérico não conferia, e qualquer conta logada virava
+          // "membro" do bairro alheio — e com isso lia o mural, que a política
+          // territorial guarda para quem é de dentro. Delegar (em vez de
+          // copiar o guard) mantém UMA régua de entrada: o morador que aperta
+          // "Entrar" na página da comunidade continua entrando.
+          if (community.kind === "neighborhood") {
+            await client.query("ROLLBACK");
+            const NeighborhoodService = require("./NeighborhoodService");
+            const res = await NeighborhoodService.join(user, { id_profile: params.id_profile });
+            if (res?.error) return res;
+            return { ok: true, role: "member" };
           }
 
           // PLATAFORMA NÃO TEM MEMBRO (decisão do Alex, 2026-09-25). Pet,
