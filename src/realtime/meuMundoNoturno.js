@@ -52,6 +52,7 @@ const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os
 // ── COMPUTADORES (regra do Alex, 2026-11-08) ── a espera é de 1 minuto; na largada as
 // vagas vazias viram computadores, rodados AQUI com a regra gerada (como a Gincana). Até 4 no total.
 const { NoturnoBot } = require("../utils/meuMundoNoturnoBot");
+const { isRunPhase } = require("../utils/meuMundoNoturnoSim");
 const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
 const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
 
@@ -88,6 +89,8 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 class NoturnoRoom extends Room {
   async onCreate(options) {
     this.centerRoomId = String(options.centerRoomId || "");
+    // Rolê 2.0: a rota da largada (a sala só junta quem escolheu a mesma — filterBy)
+    this.route = isRunPhase(options.phase) ? options.phase : "classica";
     this.maxClients = SEATS;
     this.patchRate = 100;
     this.seatReservationTimeout = 15;
@@ -280,7 +283,7 @@ class NoturnoRoom extends Room {
         return SEATS;
       })();
       const ride = RIDES[Math.floor(Math.random() * RIDES.length)];
-      const bot = new NoturnoBot({ ride, seed, street: STREET, skill: 0.25 + Math.random() * 0.6, luck: (Math.random() * 0x7fffffff) | 1 });
+      const bot = new NoturnoBot({ ride, seed, street: STREET, skill: 0.25 + Math.random() * 0.6, luck: (Math.random() * 0x7fffffff) | 1, phase: this.route });
       this.bots.push({ slot, name: names[i % names.length], ride, body: BOT_BODIES[i % BOT_BODIES.length], bot, run: { z: 0, x: 0, y: 0, f: 0, k: 0, score: 0, coins: 0, tricks: 0, alive: true, gone: false, by: "", time: 0 } });
     }
     const seats = [...this.seats.values()]
@@ -301,9 +304,9 @@ class NoturnoRoom extends Room {
     void this.lock();
     for (const client of this.clients) {
       const s = this.seats.get(client.sessionId);
-      if (s) client.send("start", { me: s.slot, seed, street: STREET, countdown: COUNTDOWN_S, seats });
+      if (s) client.send("start", { me: s.slot, seed, street: STREET, phase: this.route, countdown: COUNTDOWN_S, seats });
     }
-    log.info("noturno.start", { roomId: this.roomId, people: seats.length });
+    log.info("noturno.start", { roomId: this.roomId, people: seats.length, route: this.route });
   }
 
   loop() {
@@ -384,14 +387,14 @@ class NoturnoRoom extends Room {
 
 let ready = false;
 function define(gameServer) {
-  gameServer.define(NOTURNO_ROOM, NoturnoRoom).filterBy(["centerRoomId"]).sortBy({ clients: -1 });
+  gameServer.define(NOTURNO_ROOM, NoturnoRoom).filterBy(["centerRoomId", "phase"]).sortBy({ clients: -1 });
   ready = true;
 }
 
 /** Reserva o lugar na próxima largada do centro em que a pessoa está (quem chama já conferiu papel, centro e porta). */
-async function reserveNoturnoSeat({ userId, name, centerRoomId, ride, body }) {
+async function reserveNoturnoSeat({ userId, name, centerRoomId, ride, body, phase }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name, ride, body };
+  const options = { centerRoomId, userId, name, ride, body, phase: isRunPhase(phase) ? phase : "classica" };
   let last = null;
   for (let i = 0; i < 4; i++) {
     try {

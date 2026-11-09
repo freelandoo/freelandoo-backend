@@ -9,7 +9,7 @@
 // correr para sempre, ele ERRA: em cada perigo, com uma chance que cresce com a velocidade e
 // cai com a habilidade, não reage. Tudo sorteado por semente própria (repetível no teste).
 
-const { Run, TUNING, speedAt } = require("./meuMundoNoturnoSim");
+const { Run, TUNING, speedAt, isRunPhase } = require("./meuMundoNoturnoSim");
 
 const NONE = Object.freeze({ left: false, right: false, jump: false, down: false });
 const ACTS = { n: NONE, l: { ...NONE, left: true }, r: { ...NONE, right: true }, j: { ...NONE, jump: true }, d: { ...NONE, down: true } };
@@ -71,9 +71,10 @@ class NoturnoBot {
    * @param street curva da rua da sala
    * @param skill 0–1 (quanto mais, menos erra)
    * @param luck  semente dos erros
+   * @param phase rota do Rolê 2.0 (a mesma da sala; sem ela, a Clássica)
    */
-  constructor({ ride, seed, street, skill, luck }) {
-    this.run = new Run(ride, seed, street);
+  constructor({ ride, seed, street, skill, luck, phase }) {
+    this.run = new Run(ride, seed, street, isRunPhase(phase) ? phase : "classica");
     this.skill = Math.max(0, Math.min(1, skill));
     this.rnd = rng(luck);
     this.queue = [];

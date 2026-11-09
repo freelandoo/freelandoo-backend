@@ -643,7 +643,7 @@ class MeuMundoService {
 
   // ── Rolê Noturno em grupo (mm3d-42) ───────────────────────────────────────
   /** Lugar na próxima largada do Rolê do centro em que a pessoa está (veículo e corpo para os outros a desenharem). */
-  static async joinNoturno(idUser, { ride, body } = {}) {
+  static async joinNoturno(idUser, { ride, body, phase } = {}) {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
@@ -653,7 +653,7 @@ class MeuMundoService {
     const name = await MeuMundoStorage.getPublicName(pool, idUser);
     let reservation;
     try {
-      reservation = await reserveNoturnoSeat({ userId: idUser, name, centerRoomId: here.id, ride: String(ride || ""), body: String(body || "") });
+      reservation = await reserveNoturnoSeat({ userId: idUser, name, centerRoomId: here.id, ride: String(ride || ""), body: String(body || ""), phase: String(phase || "") });
     } catch (err) {
       log.error("noturno.reserve_fail", { message: err.message });
       return { error: "O rolê em grupo não abriu agora.", statusCode: 503 };

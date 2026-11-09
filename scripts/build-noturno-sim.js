@@ -19,7 +19,7 @@ const SIM = process.env.MM_FRONT
   : path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/noturno/sim");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoNoturnoSim.js");
 // Ordem de dependência (cada um só usa os de cima).
-const MODULES = ["run"];
+const MODULES = ["track", "run"];
 
 function build() {
   const exported = [];

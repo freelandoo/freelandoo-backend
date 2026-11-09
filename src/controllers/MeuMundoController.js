@@ -85,7 +85,7 @@ async function corridaJoin(req, res) {
 
 // Rolê Noturno em grupo (mm3d-42): lugar na próxima largada, com o veículo escolhido.
 async function noturnoJoin(req, res) {
-  return reply(res, await MeuMundoService.joinNoturno(req.user.id_user, { ride: req.body?.ride, body: req.body?.body }));
+  return reply(res, await MeuMundoService.joinNoturno(req.user.id_user, { ride: req.body?.ride, body: req.body?.body, phase: req.body?.phase }));
 }
 
 // Gincana em grupo (mm3d-47): lugar na próxima largada (o computador completa as 8 vagas).
