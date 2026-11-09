@@ -9,6 +9,7 @@
 const fs = require("fs")
 const path = require("path")
 const { Client } = require("pg")
+require("../src/databases/prodGuard").assertDbAllowed(process.env.DATABASE_URL, { label: "DATABASE_URL" }); // segurança 0B: remoto só com --prod
 
 const MIGS = [
   "329_gold_redenomination.sql",

@@ -12,6 +12,7 @@
  */
 const { Pool } = require("pg");
 const { createLogger } = require("../utils/logger");
+const { assertDbAllowed } = require("./prodGuard");
 
 const useSsl = process.env.DATABASE_SSL === "true";
 
@@ -50,6 +51,8 @@ function createPool({
   timeoutEnv = "DATABASE_STATEMENT_TIMEOUT_MS",
   timeoutDefault = 8_000,
 }) {
+  // Segurança 0B: fora do servidor, banco remoto só com --prod.
+  assertDbAllowed(connectionString, { label: name });
   const log = createLogger(name);
   const timeout = intFromEnv(timeoutEnv, timeoutDefault);
 

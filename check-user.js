@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 require('dotenv').config({ path: '.env.migrate' });
+require("./src/databases/prodGuard").assertDbAllowed(process.env.DATABASE_URL, { label: "DATABASE_URL" }); // segurança 0B: remoto só com --prod
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

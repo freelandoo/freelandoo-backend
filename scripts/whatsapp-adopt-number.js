@@ -41,6 +41,7 @@ require("dotenv").config({ path: ".env.whatsapp.local", override: false, quiet: 
 
 const { Client } = require("pg");
 const WhatsappStorage = require("../src/storages/WhatsappStorage");
+require("../src/databases/prodGuard").assertDbAllowed(process.env.DATABASE_URL, { label: "DATABASE_URL" }); // segurança 0B: remoto só com --prod
 
 const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v21.0"}`;
 

@@ -14,6 +14,7 @@ require("dotenv").config();
 
 const { Client } = require("pg");
 const { generatePartnerKey, sha256Hex } = require("../src/utils/partnerKey");
+require("../src/databases/prodGuard").assertDbAllowed(process.env.DATABASE_URL, { label: "DATABASE_URL" }); // segurança 0B: remoto só com --prod
 
 function connectionConfig() {
   const raw = process.env.DATABASE_URL;
