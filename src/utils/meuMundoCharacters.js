@@ -19,9 +19,9 @@
 //    ativa; viram adultos pela regra GROWTH da vida e crescem até a altura final da espécie
 //    em mais 30 dias;
 //  • FUSÃO de dois adultos vivos: os pais somem, o filho nasce com 20% do maior pico entre
-//    eles em cada atributo. Desde 09/11 (MIX, abaixo) a espécie é SORTEADA entre as dos
-//    pais com a probabilidade à vista e a personalidade é a do mais forte (pode mudar);
-//    um dos dois pode ser uma GENÉTICA comprada no laboratório.
+//    eles em cada atributo. Desde 09/11 (MIX, abaixo) a MISTURA tem resultado fixo: o
+//    primeiro escolhido passa a personalidade e 20% dos atributos dele, a pessoa escolhe a
+//    espécie entre as dos dois; o segundo pode ser uma GENÉTICA comprada no laboratório.
 // Módulo PURO: sem import/export de outros arquivos (o gerador do back não entende).
 
 /** Espécie: id (= id do corpo, salvo as classes), altura final, altura de jovem e sexo. */
@@ -202,36 +202,19 @@ function fusionTemper(temperA                           , temperB               
 
 // ═══ MISTURA NO LABORATÓRIO (pedido do Alex, 09/11 — no molde do laboratório de Monster Rancher 2) ═══
 // Mistura = a FUSÃO de dois personagens adultos, ou de um adulto com uma GENÉTICA comprada
-// (ex.: "genética de Aurion"). Os dois somem (ficam no histórico) e nasce um filho:
-//  • ESPÉCIE: sorteada entre as dos dois, com a PROBABILIDADE mostrada antes — quem tem
-//    mais Poder tem mais chance (entre 20% e 80%); a mesma espécie = 100%;
-//  • ATRIBUTOS: 20% do maior pico de cada atributo entre os dois (fusionInherit), e o
-//    certificado diz de quem veio cada um;
-//  • PERSONALIDADE: a do mais forte (Poder), com MIX.MUTATION de chance de mudar para outra;
-//  • tudo vai para a certidão de nascimento (quantas misturas, de quem, quanto, se mudou).
-// O sorteio é do SERVIDOR (números aleatórios dele); aqui só a conta, pura, que a tela
-// também usa para mostrar a probabilidade.
-
-/** Temperamentos (espelho de TEMPERS em meuMundoSoul.js; o unit confere). */
-const TEMPERS                    = Object.freeze(["psicopata", "covarde", "comilao", "bondoso", "competitivo"])
+// (ex.: "genética de Aurion"). Os dois somem (ficam no histórico) e nasce um filho.
+// RESULTADO FIXO, sem sorteio (decisão do Alex, 09/11 — nada de "caixa de sorteio paga"):
+//  • o PRIMEIRO escolhido (sempre um personagem) passa a PERSONALIDADE dele (temperamento e
+//    traços, iguais) e 20% de cada ATRIBUTO dele (o pico);
+//  • a ESPÉCIE do filho é escolhida pela pessoa entre as dos dois (mixSpecies), antes de
+//    confirmar — a tela já mostra o resultado exato;
+//  • o segundo (outro personagem ou a genética) entra com a espécie;
+//  • tudo vai para a certidão de nascimento (quantas misturas, de quem, quanto).
 
 const MIX = Object.freeze({
-  /** Chance mínima e máxima de a espécie ser a de um dos dois (espécies diferentes). */
-  ODDS_MIN: 0.2,
-  ODDS_MAX: 0.8,
-  /** Chance de a personalidade mudar (sair outra que não a do mais forte). */
-  MUTATION: 0.15,
-  /** "Poder" de uma genética comprada (ela não tem atributos; entra só na probabilidade e em quem é o mais forte). */
-  GENE_POWER: Object.freeze({ clan: 150, special: 350, god: 600 })                                                ,
   /** Preço da genética por tipo de espécie (Esmeralda): metade do embrião. */
   GENE_PRICE: Object.freeze({ clan: 5000, special: 75000, god: 450000 })                                                ,
 })
-
-/** Poder de uma genética da espécie (0 = espécie desconhecida). */
-function genePower(species                           )         {
-  const d = speciesById(species)
-  return d ? MIX.GENE_POWER[d.kind] : 0
-}
 
 /** Preço da genética da espécie (null = espécie desconhecida). */
 function genePrice(species                           )                {
@@ -239,45 +222,14 @@ function genePrice(species                           )                {
   return d ? MIX.GENE_PRICE[d.kind] : null
 }
 
-/**
- * Chance (0–1, 2 casas) de o filho sair da espécie de A: proporcional ao Poder dos dois,
- * presa entre ODDS_MIN e ODDS_MAX; a mesma espécie = 1; os dois sem Poder = 0,5.
- */
-function mixOdds(speciesA                           , powerA                           , speciesB                           , powerB                           )         {
-  if (speciesA && speciesA === speciesB) return 1
-  const a = Math.max(0, Number(powerA) || 0)
-  const b = Math.max(0, Number(powerB) || 0)
-  const p = a + b > 0 ? a / (a + b) : 0.5
-  return Math.round(Math.min(MIX.ODDS_MAX, Math.max(MIX.ODDS_MIN, p)) * 100) / 100
+/** O que o filho herda do PRIMEIRO: 20% do pico de cada atributo dele (2 casas). */
+function mixInherit(peaksFirst                                           )                         {
+  return fusionInherit(peaksFirst, null)
 }
 
-/** Quem é o mais forte pelo Poder ("a" no empate). */
-function mixStronger(powerA                           , powerB                           )            {
-  return (Number(powerB) || 0) > (Number(powerA) || 0) ? "b" : "a"
-}
-
-/** Espécie sorteada: `roll` é um número aleatório do servidor em [0, 1). */
-function mixPick(oddsA        , roll        )            {
-  return roll < oddsA ? "a" : "b"
-}
-
-/**
- * Personalidade do filho: a do mais forte; com chance MIX.MUTATION (`roll` < MUTATION)
- * muda para outra, escolhida por `roll2` entre as que sobram. Sem temperamento no mais
- * forte, vale o do outro.
- */
-function mixTemper(strongTemper                           , weakTemper                           , roll        , roll2        )                                              {
-  const base = strongTemper || weakTemper || null
-  if (!base || roll >= MIX.MUTATION) return { temper: base, mutated: false }
-  const others = TEMPERS.filter((x) => x !== base)
-  return { temper: others[Math.min(others.length - 1, Math.floor(roll2 * others.length))], mutated: true }
-}
-
-/** De quem veio cada atributo herdado (o maior pico; "a" no empate). */
-function inheritFrom(peaksA                                           , peaksB                                           )                            {
-  const out                            = {}
-  for (const k of FUSION_ATTRS) out[k] = Number((peaksB && peaksB[k]) || 0) > Number((peaksA && peaksA[k]) || 0) ? "b" : "a"
-  return out
+/** Espécies que o filho pode ter (as dos dois, sem repetir) — a pessoa escolhe uma. */
+function mixSpecies(speciesFirst                           , speciesSecond                           )           {
+  return fusionSpecies(speciesFirst, speciesSecond)
 }
 
 /** Quantas misturas há na linha do filho: 1 + a maior dos dois (a genética conta 0). */
@@ -355,4 +307,4 @@ const SKIN_SPECIES                                                              
   "vampira-adulta": { species: "vampiro", sex: "f" },
 })
 
-module.exports = { SPECIES, SPECIES_IDS, speciesById, speciesSex, speciesBody, GROW, speciesHeight, activeDays, CAPSULE, FUSION, FUSION_ATTRS, fusionInherit, fusionSpecies, fusionSeed, fusionPersonality, fusionTemper, TEMPERS, MIX, genePower, genePrice, mixOdds, mixStronger, mixPick, mixTemper, inheritFrom, mixCount, LAB, embryoPrice, canAccelerate, accelerated, serialText, SKIN_SPECIES };
+module.exports = { SPECIES, SPECIES_IDS, speciesById, speciesSex, speciesBody, GROW, speciesHeight, activeDays, CAPSULE, FUSION, FUSION_ATTRS, fusionInherit, fusionSpecies, fusionSeed, fusionPersonality, fusionTemper, MIX, genePrice, mixInherit, mixSpecies, mixCount, LAB, embryoPrice, canAccelerate, accelerated, serialText, SKIN_SPECIES };

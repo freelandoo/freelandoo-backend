@@ -149,32 +149,16 @@ test("mig 340: a tabela skin → espécie do SQL é a mesma de SKIN_SPECIES", ()
   assert.deepEqual(Object.fromEntries(rows), { ...C.SKIN_SPECIES });
 });
 
-test("mistura do laboratório (09/11): probabilidade pelo Poder, personalidade do mais forte e de quem veio cada atributo", () => {
-  // mesma espécie = certeza; Poder dá a chance, presa entre 20% e 80%
-  assert.equal(C.mixOdds("raposa", 100, "raposa", 900), 1);
-  assert.equal(C.mixOdds("aurion", 300, "raposa", 100), 0.75);
-  assert.equal(C.mixOdds("aurion", 1000, "raposa", 1), 0.8);
-  assert.equal(C.mixOdds("aurion", 1, "raposa", 1000), 0.2);
-  assert.equal(C.mixOdds("aurion", 0, "raposa", 0), 0.5);
-  assert.equal(C.mixPick(0.75, 0.74), "a");
-  assert.equal(C.mixPick(0.75, 0.75), "b");
-  assert.equal(C.mixStronger(10, 20), "b");
-  assert.equal(C.mixStronger(20, 20), "a");
-  // personalidade: a do mais forte; abaixo de MUTATION muda, e nunca para a mesma
-  assert.deepEqual(C.mixTemper("psicopata", "covarde", C.MIX.MUTATION, 0), { temper: "psicopata", mutated: false });
-  for (let i = 0; i < 20; i++) {
-    const m = C.mixTemper("psicopata", "covarde", 0, i / 20);
-    assert.ok(m.mutated && m.temper !== "psicopata" && C.TEMPERS.includes(m.temper));
-  }
-  assert.deepEqual(C.mixTemper(null, "bondoso", 0.9, 0), { temper: "bondoso", mutated: false });
-  assert.deepEqual(C.mixTemper(null, null, 0, 0), { temper: null, mutated: false });
-  // de quem veio cada atributo (o maior pico)
-  assert.deepEqual(C.inheritFrom({ strength: 10, speed: 5 }, { strength: 3, speed: 9 }), { strength: "a", intelligence: "a", dexterity: "a", speed: "b", accuracy: "a" });
+test("mistura do laboratório (09/11): resultado fixo — o primeiro passa 20% dos atributos, a espécie é escolhida", () => {
+  assert.deepEqual(C.mixInherit({ strength: 500, speed: 50, intelligence: 0 }), { strength: 100, intelligence: 0, dexterity: 0, speed: 10, accuracy: 0 });
+  assert.deepEqual(C.mixInherit(null), { strength: 0, intelligence: 0, dexterity: 0, speed: 0, accuracy: 0 });
+  assert.deepEqual(C.mixSpecies("aurion", "raposa"), ["aurion", "raposa"]);
+  assert.deepEqual(C.mixSpecies("raposa", "raposa"), ["raposa"]);
   assert.equal(C.mixCount(0, 0), 1);
   assert.equal(C.mixCount(2, 1), 3);
-  // genética: preço e Poder por tipo; os temperamentos espelham os da alma
   assert.equal(C.genePrice("aurion"), C.MIX.GENE_PRICE.god);
-  assert.equal(C.genePower("raposa"), C.MIX.GENE_POWER.clan);
+  assert.equal(C.genePrice("raposa"), 5000);
   assert.equal(C.genePrice("lobo"), null);
-  assert.deepEqual([...C.TEMPERS], [...require("../../src/utils/meuMundoSoul").TEMPERS]);
+  // sem sorteio na regra
+  for (const k of ["mixOdds", "mixPick", "mixTemper"]) assert.equal(C[k], undefined);
 });

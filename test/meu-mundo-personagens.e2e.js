@@ -114,20 +114,21 @@ async function main() {
   const full = await Chars.testGrant(A, { species: "golem" });
   check("cápsula cheia recusa (5 vagas)", full.code === "full", JSON.stringify(full));
 
-  // ── fusão (mistura): só adultos; 20% do maior pico; espécie SORTEADA entre as dos pais
-  const notAdult = await Chars.fuse(A, { a: active0.id, b: aur.id });
+  // ── mistura: só adultos; resultado fixo — o primeiro passa personalidade e 20% dos atributos, a espécie é escolhida
+  const notAdult = await Chars.fuse(A, { a: active0.id, b: aur.id, species: "aurion" });
   check("fusão de jovens é recusada", notAdult.code === "adult", JSON.stringify(notAdult));
   const adult = JSON.stringify({ stage: "adult", from: Date.now() - 100 * 86400000, at: Date.now() - 50 * 86400000 });
   await pool.query(`UPDATE tb_mm_character SET growth = $2::jsonb WHERE id_character = ANY($1::uuid[])`, [[active0.id, aur.id], adult]);
   await pool.query(`UPDATE tb_mm_character SET intelligence = 900, attr_peaks = attr_peaks || '{"intelligence": 900}'::jsonb WHERE id_character = $1`, [aur.id]);
-  check("mistura sem o segundo é recusada", (await Chars.fuse(A, { a: active0.id })).code === "pair");
-  check("mistura com dois segundos é recusada", (await Chars.fuse(A, { a: active0.id, b: aur.id, gene: aur.id })).code === "pair");
-  await pool.query(`UPDATE tb_mm_character SET power = 300 WHERE id_character = $1`, [aur.id]);
-  await pool.query(`UPDATE tb_mm_character SET power = 100 WHERE id_character = $1`, [active0.id]);
-  const fz = await Chars.fuse(A, { a: active0.id, b: aur.id });
-  check("mistura gera o filho de uma das duas espécies", !fz.error && fz.fused && ["aurion", "raposa"].includes(fz.fused.species), JSON.stringify(fz.error || fz.fused));
-  check("chance mostrada = a da regra (Poder 100 × 300)", fz.fused && fz.fused.chance === (fz.fused.drawn === "a" ? 0.25 : 0.75), JSON.stringify(fz.fused && [fz.fused.drawn, fz.fused.chance]));
-  check("filho herda 20% do maior pico", fz.fused && fz.fused.inherited.intelligence === 180 && fz.fused.inherited.strength === 80, JSON.stringify(fz.fused && fz.fused.inherited));
+  check("mistura sem o segundo é recusada", (await Chars.fuse(A, { a: active0.id, species: "aurion" })).code === "pair");
+  check("mistura com dois segundos é recusada", (await Chars.fuse(A, { a: active0.id, b: aur.id, gene: aur.id, species: "aurion" })).code === "pair");
+  check("espécie fora das dos dois é recusada", (await Chars.fuse(A, { a: aur.id, b: active0.id, species: "golem" })).code === "species");
+  const temperAur = (await pool.query(`SELECT soul->>'temper' AS t FROM tb_mm_character WHERE id_character = $1`, [aur.id])).rows[0].t;
+  // o PRIMEIRO é o Aurion (inteligência 900, força do pico): a espécie escolhida é a raposa
+  const fz = await Chars.fuse(A, { a: aur.id, b: active0.id, species: "raposa" });
+  check("mistura gera o filho da espécie escolhida", !fz.error && fz.fused && fz.fused.species === "raposa", JSON.stringify(fz.error || fz.fused));
+  check("personalidade do primeiro", fz.fused && (!temperAur || fz.fused.temper === temperAur), JSON.stringify([temperAur, fz.fused && fz.fused.temper]));
+  check("filho herda 20% dos atributos do primeiro (não do segundo)", fz.fused && fz.fused.inherited.intelligence === 180 && fz.fused.inherited.strength < 80, JSON.stringify(fz.fused && fz.fused.inherited));
   const kids = fz.characters ? fz.characters.list : [];
   const kid = kids.find((c) => c.id === fz.fused.child);
   check("o ativo era pai: o filho vira o ativo, com 1 m", kid && kid.status === "alive" && kid.height === 1 && kid.lineage === 2, JSON.stringify(kid && [kid.status, kid.height, kid.lineage]));
@@ -137,9 +138,9 @@ async function main() {
   // ── certificado público
   const cert = await Chars.certificate(kid.certCode);
   const c = cert.certificate;
-  check("certificado: série, espécie, genética e pais", c && c.serialText === kid.serialText && c.species === "aurion" && c.genetics && c.genetics.seed > 0 && c.parents.length === 2, JSON.stringify(c && { s: c.serialText, p: c.parents.length }));
+  check("certificado: série, espécie, genética e pais", c && c.serialText === kid.serialText && c.species === "raposa" && c.genetics && c.genetics.seed > 0 && c.parents.length === 2, JSON.stringify(c && { s: c.serialText, p: c.parents.length }));
   const mx = c && c.genetics && c.genetics.mix;
-  check("certidão da mistura: contagem, chances, mais forte e de quem veio", mx && mx.count === 1 && mx.odds.a === 0.25 && mx.odds.b === 0.75 && mx.stronger === "b" && mx.inheritFrom.intelligence === "b" && mx.a.kind === "character" && mx.b.serialText === aur.serialText && mx.temper.from === "b", JSON.stringify(mx));
+  check("certidão da mistura: contagem, primeiro, espécie escolhida", mx && mx.count === 1 && mx.first === "a" && mx.species === "b" && mx.a.serialText === aur.serialText && mx.a.kind === "character" && !("odds" in mx), JSON.stringify(mx));
   check("certificado sem dados do dono além do apelido", c && !("id_user" in c) && !("email" in c) && !JSON.stringify(cert).includes(A));
   check("código inválido = não encontrado", (await Chars.certificate("zzz")).code === "notFound");
 
@@ -185,22 +186,21 @@ async function main() {
   // ── genética (09/11): compra, guarda e mistura com um adulto
   await pool.query(`UPDATE emerald_wallets SET balance = 5000 WHERE user_id = $1`, [B]);
   const lg = (await Chars.list(B)).characters.lab;
-  check("genética à venda: metade do embrião", lg.genes.find((g) => g.species === "raposa").price === 5000 && lg.genes.find((g) => g.species === "aurion").price === 450000 && lg.mutation === 0.15, JSON.stringify(lg.genes.slice(0, 2)));
+  check("genética à venda: metade do embrião", lg.genes.find((g) => g.species === "raposa").price === 5000 && lg.genes.find((g) => g.species === "aurion").price === 450000, JSON.stringify(lg.genes.slice(0, 2)));
   check("genética cara sem saldo é recusada", (await Chars.buyGenetics(B, { species: "aurion", key: "gene-0001" })).code === "coins");
   const g1 = await Chars.buyGenetics(B, { species: "raposa", sex: "f", key: "gene-0002" });
   check("genética comprada fica guardada", !g1.error && g1.gene && g1.characters.genetics.length === 1 && g1.characters.genetics[0].species === "raposa" && (await bal()) === 0, JSON.stringify(g1.error || g1.characters.genetics));
   const g1b = await Chars.buyGenetics(B, { species: "raposa", sex: "f", key: "gene-0002" });
   check("mesmo pedido da genética não compra duas vezes", !g1b.error && g1b.repeat === true && g1b.characters.genetics.length === 1);
-  check("genética com jovem é recusada", (await Chars.fuse(B, { a: id3, gene: g1.gene })).code === "adult");
+  check("genética com jovem é recusada", (await Chars.fuse(B, { a: id3, gene: g1.gene, species: "raposa" })).code === "adult");
   await pool.query(`UPDATE tb_mm_character SET growth = $2::jsonb, power = 450, strength = 500, attr_peaks = attr_peaks || '{"strength": 500}'::jsonb WHERE id_character = $1`, [id3, adult]);
-  const fg = await Chars.fuse(B, { a: id3, gene: g1.gene });
-  check("mistura com genética gera o filho", !fg.error && fg.fused && ["vampiro", "raposa"].includes(fg.fused.species) && fg.fused.active === true, JSON.stringify(fg.error || fg.fused));
-  check("chance da genética pelo Poder (450 × 150)", fg.fused && fg.fused.chance === (fg.fused.drawn === "a" ? 0.75 : 0.25), JSON.stringify(fg.fused && [fg.fused.drawn, fg.fused.chance]));
-  check("filho herda 20% da força do pai (a genética não tem atributo)", fg.fused && fg.fused.inherited.strength === 100, JSON.stringify(fg.fused && fg.fused.inherited));
+  const fg = await Chars.fuse(B, { a: id3, gene: g1.gene, species: "raposa" });
+  check("mistura com genética: filho da espécie da genética, saindo andando", !fg.error && fg.fused && fg.fused.species === "raposa" && fg.fused.sex === "f" && fg.fused.active === true, JSON.stringify(fg.error || fg.fused));
+  check("filho herda 20% da força do primeiro", fg.fused && fg.fused.inherited.strength === 100, JSON.stringify(fg.fused && fg.fused.inherited));
   check("a genética foi usada", fg.characters && fg.characters.genetics.length === 0);
-  check("genética usada não mistura de novo", (await Chars.fuse(B, { a: fg.fused.child, gene: g1.gene })).code !== undefined);
+  check("genética usada não mistura de novo", (await Chars.fuse(B, { a: fg.fused.child, gene: g1.gene, species: "raposa" })).code !== undefined);
   const cg = (await Chars.certificate(fg.fused.certCode)).certificate;
-  check("certidão: o outro lado é a genética", cg && cg.genetics.mix.b.kind === "genetics" && cg.genetics.mix.b.species === "raposa" && cg.genetics.mix.stronger === "a" && cg.parents.length === 1, JSON.stringify(cg && cg.genetics.mix));
+  check("certidão: o outro lado é a genética", cg && cg.genetics.mix.b.kind === "genetics" && cg.genetics.mix.b.species === "raposa" && cg.genetics.mix.species === "b" && cg.parents.length === 1, JSON.stringify(cg && cg.genetics.mix));
   check("admin compra de graça", (await Chars.list(A)).characters.lab.free === true && (await Chars.list(A)).characters.lab.embryos[0].price === 0);
 
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);

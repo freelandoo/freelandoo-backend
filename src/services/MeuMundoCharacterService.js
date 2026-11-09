@@ -57,8 +57,6 @@ const newSeed = () => crypto.randomInt(1, 2 ** 31 - 1);
 const ms = (v) => (v == null ? null : new Date(v).getTime());
 const iso = (v) => (v == null ? null : new Date(v).toISOString());
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
-/** Número aleatório do servidor em [0, 1) (o sorteio da mistura). */
-const roll = () => crypto.randomInt(0, 1000000) / 1000000;
 /** Quantas genéticas a pessoa guarda sem usar. */
 const GENE_SLOTS = 10;
 
@@ -201,8 +199,7 @@ class MeuMundoCharacterService {
       accelYears: Chars.LAB.ACCEL_YEARS,
       embryos: Chars.SPECIES.map((d) => ({ species: d.id, kind: d.kind, sex: d.sex, price: free ? 0 : Chars.embryoPrice(d.id) })),
       // 09/11: genéticas à venda e a regra da mistura que a tela mostra
-      genes: Chars.SPECIES.map((d) => ({ species: d.id, kind: d.kind, sex: d.sex, price: free ? 0 : Chars.genePrice(d.id), power: Chars.genePower(d.id) })),
-      mutation: Chars.MIX.MUTATION,
+      genes: Chars.SPECIES.map((d) => ({ species: d.id, kind: d.kind, sex: d.sex, price: free ? 0 : Chars.genePrice(d.id) })),
       inherit: Chars.FUSION.INHERIT,
       geneSlots: GENE_SLOTS,
     };
@@ -211,8 +208,6 @@ class MeuMundoCharacterService {
       id: g.id_genetics,
       species: g.species,
       sex: g.sex,
-      power: Chars.genePower(g.species),
-      temper: Soul.bornSoul(g.seed).temper,
       boughtAt: iso(g.created_at),
     }));
     // quantas misturas tem a linha de cada um (certidão)
@@ -259,12 +254,12 @@ class MeuMundoCharacterService {
   }
 
   /**
-   * POST /characters/fuse { a, b } ou { a, gene } — a MISTURA do Laboratório de Criogenia
-   * (pedido do Alex, 09/11; regra MIX em characters/rules.ts). `a` é um personagem adulto
-   * (o ativo ou da cápsula); o outro é outro adulto (`b`) ou uma GENÉTICA comprada (`gene`).
-   * Os dois somem (personagens viram histórico 'fused'; a genética fica usada) e nasce o
-   * filho: espécie SORTEADA aqui com a probabilidade pelo Poder (a tela mostra a mesma
-   * conta), 20% do maior pico de cada atributo, a personalidade do mais forte (pode mudar).
+   * POST /characters/fuse { a, b|gene, species } — a MISTURA do Laboratório de Criogenia
+   * (pedido do Alex, 09/11; regra MIX em characters/rules.ts). `a` é o PRIMEIRO, um
+   * personagem adulto (o ativo ou da cápsula); o outro é outro adulto (`b`) ou uma GENÉTICA
+   * comprada (`gene`). RESULTADO FIXO, sem sorteio: o filho tem a personalidade do primeiro
+   * e 20% de cada atributo dele; a espécie é a que a pessoa escolheu entre as dos dois.
+   * Os dois somem (personagens viram histórico 'fused'; a genética fica usada).
    * O ativo, se for um dos pais, congela na mistura e o filho sai andando; senão o filho
    * nasce na cápsula. Tudo vai para a certidão (genetics.mix).
    */
@@ -316,7 +311,6 @@ class MeuMundoCharacterService {
           gene: g,
           species: g.species,
           sex: Chars.speciesSex(g.species, g.sex),
-          power: Chars.genePower(g.species),
           peaks: {},
           temper: Soul.bornSoul(g.seed).temper,
           personality: born.personality,
@@ -328,26 +322,20 @@ class MeuMundoCharacterService {
       }
       const [A, B] = parents;
 
-      // o sorteio (números aleatórios do servidor; a conta é a mesma que a tela mostra)
-      const odds = Chars.mixOdds(A.species, A.power, B.species, B.power);
-      const drawn = Chars.mixPick(odds, roll());
-      const W = drawn === "a" ? A : B;
-      const species = W.species;
+      // a espécie: a que a pessoa escolheu entre as dos dois (sem sorteio)
+      const species = String(body.species || "");
+      if (!Chars.mixSpecies(A.species, B.species).includes(species)) return fail("species");
       const def = Chars.speciesById(species);
+      const W = A.species === species ? A : B;
       const sex = def.sex || W.sex;
-      const strong = Chars.mixStronger(A.power, B.power);
-      const S = strong === "a" ? A : B;
-      const L = strong === "a" ? B : A;
 
-      // O filho
+      // O filho: personalidade do primeiro (igual) e 20% de cada atributo dele
       const seed = Chars.fusionSeed(A.seed, B.seed);
       const child = Life.birth(seed, ctx.now);
-      child.personality = Chars.fusionPersonality(S.personality, S.personality, seed);
-      const inherit = Chars.fusionInherit(A.peaks, B.peaks);
-      const from = Chars.inheritFrom(A.peaks, B.peaks);
+      child.personality = { ...A.personality };
+      const inherit = Chars.mixInherit(A.peaks);
       Life.applyInheritance(child, inherit);
-      const tm = Chars.mixTemper(S.temper, L.temper, roll(), roll());
-      child.soul = withTemper(Soul.bornSoul(seed), tm.temper);
+      child.soul = withTemper(Soul.bornSoul(seed), A.temper);
       Soul.soulOf(child);
       const activeParent = parents.some((p) => p.active);
       child.status = activeParent ? "alive" : "capsule";
@@ -361,7 +349,7 @@ class MeuMundoCharacterService {
       }
       const brief = (p) =>
         p.kind === "genetics"
-          ? { kind: "genetics", species: p.species, sex: p.sex, power: p.power, temper: p.temper }
+          ? { kind: "genetics", species: p.species, sex: p.sex, temper: p.temper }
           : {
               kind: "character",
               serial: Number(p.row.serial),
@@ -377,11 +365,10 @@ class MeuMundoCharacterService {
         count: Chars.mixCount(A.count, B.count),
         a: brief(A),
         b: brief(B),
-        odds: { a: odds, b: Math.round((1 - odds) * 100) / 100 },
-        drawn,
-        stronger: strong,
-        inheritFrom: from,
-        temper: { from: strong, base: S.temper || L.temper || null, result: tm.temper, mutated: tm.mutated },
+        // resultado fixo: o primeiro ("a") passa personalidade e atributos; a espécie veio de `species`
+        first: "a",
+        species: W === A ? "a" : "b",
+        temper: A.temper || null,
       };
       const row = await LS.insert(c, idUser, await LS.nextGeneration(c, idUser), child, {
         species,
@@ -400,7 +387,7 @@ class MeuMundoCharacterService {
         await LS.markFused(c, p.row.id_character, row.id_character, ctx.now);
         if (!p.active) await LS.insertEvents(c, p.row.id_character, [{ at: ctx.now, kind: "fused", data: { into: row.id_character } }]);
       }
-      const bornEv = { at: ctx.now, kind: "born", data: { origin: "fusion", species, inherited: inherit, odds: mix.odds, drawn, mutated: tm.mutated } };
+      const bornEv = { at: ctx.now, kind: "born", data: { origin: "fusion", species, inherited: inherit } };
       if (activeParent) {
         ctx.events.push({ at: ctx.now, kind: "fused", data: { into: row.id_character } });
         ctx.newRow = row;
@@ -417,10 +404,7 @@ class MeuMundoCharacterService {
           species,
           sex,
           inherited: inherit,
-          chance: drawn === "a" ? mix.odds.a : mix.odds.b,
-          drawn,
-          temper: tm.temper,
-          mutated: tm.mutated,
+          temper: A.temper || null,
           active: activeParent,
         },
       };
