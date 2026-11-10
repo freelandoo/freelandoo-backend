@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 14; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 16; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -213,6 +213,15 @@ const PLAZA_BENCHES = Object.freeze(
     [6, 13.6], [-6, 13.6], [6, -13.6], [-6, -13.6],
   ].map(([x, z]) => Object.freeze([x, z, round(Math.atan2(x, z))])) // encosto para fora, assento olhando para o monumento (igual ao bairro)
 );
+// Lore v2 F4: os dois velhos da praça, do lado oeste de Morkhan (quem chega pelo
+// portal dá de cara com eles), fora do miolo livre da praça (|x|, |z| ≤ 11). Parados, com colisão; "Falar" abre a conversa
+// (talk:<id>, meuMundoPlaces.js). Corpo de classe + cores; nenhum modelo novo.
+const STREET_NPCS = Object.freeze(
+  [
+    { id: "vampiro_velho", x: -12, z: 9.5, facing: -Math.PI / 2, body: "vampiro_adulto" },
+    { id: "raposa_velha", x: -12, z: -9.5, facing: -Math.PI / 2, body: "raposa_adulto" },
+  ].map((n) => Object.freeze({ ...n, facing: round(n.facing), radius: 2.4 }))
+);
 const PLAZA_LAMPS = Object.freeze([[11.6, 15.2], [-11.6, 15.2], [11.6, -15.2], [-11.6, -15.2], [15.2, 11.6], [-15.2, 11.6], [15.2, -11.6], [-15.2, -11.6]].map((p) => Object.freeze(p)));
 const PLAZA_FLOWERS = Object.freeze([[9.5, 15.6], [-9.5, 15.6], [9.5, -15.6], [-9.5, -15.6], [15.6, 9.5], [-15.6, 9.5], [15.6, -9.5], [-15.6, -9.5]].map((p) => Object.freeze(p)));
 
@@ -392,6 +401,7 @@ function buildObstacles() {
   for (const [x, z] of PLAZA_EDGES.bollards) push(x, z, BOLLARD, BOLLARD, 0, 0.9);
   for (const [x, z, rot] of PLAZA_BENCHES) push(x, z, 1.05, 0.38, rot, 1);
   for (const [x, z] of PLAZA_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
+  for (const n of STREET_NPCS) push(n.x, n.z, 0.35, 0.35, 0, 1.9);
   for (const [x, z, s] of PLAZA_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
   for (const [x, z] of STREET_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
   for (const [x, z, s] of STREET_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
@@ -409,6 +419,17 @@ function buildObstacles() {
   return boxes;
 }
 const OBSTACLES = Object.freeze(buildObstacles().map((b) => Object.freeze(b)));
+
+// Lore v2 F4 — pontos de visita (visit:<id>): a praça, Morkhan, o portal e a
+// porta de cada prédio (entrar conta como visita). O menor que contém a pessoa vence.
+const VISIT_POINTS = Object.freeze(
+  [
+    { id: "praca", x: 0, z: 0, half: PLAZA },
+    { id: "estatua_morkhan", x: MONUMENT.x, z: MONUMENT.z, r: 8 },
+    { id: "portal", x: PORTAL_X, z: 0, r: 7 },
+    ...PLACES.map((p) => ({ id: p.id, x: p.interact.x, z: p.interact.z, r: p.interact.radius + 0.5 })),
+  ].map((p) => Object.freeze(p))
+);
 
 /** Lugar seguro (dentro da cerca e fora de obstáculo). `resolveCircle` vem da regra de movimento. */
 function isSafeSpot(x, z, resolveCircle, radius, obstacles = OBSTACLES) {
@@ -510,6 +531,7 @@ function buildCenterPayload() {
     statueAssets: STATUE_ASSETS,
     arrival: ARRIVAL,
     portal: PORTAL,
+    npcs: STREET_NPCS,
     obstacles: OBSTACLES,
     limit: LIMIT,
     assets: ASSETS,
@@ -529,6 +551,8 @@ module.exports = {
   PARKING,
   PORTAL,
   MONUMENT,
+  STREET_NPCS,
+  VISIT_POINTS,
   GROUNDS,
   PROPS,
   isSafeSpot,

@@ -638,7 +638,8 @@ function buildInterior(plan) {
   def.spots = spots;
   for (const n of plan.npcs || []) {
     const fwd = rotY(0, -1, (n.r || 0) * DEG);
-    npcs.push({ role: n.role, floor: n.floor || 0, x: round(n.x), z: round(n.z), facing: round(Math.atan2(fwd.x, fwd.z)), pose: "stand" });
+    // lore v2 F4: `talk` = o NPC conversa (talk:<id>, meuMundoPlaces.js)
+    npcs.push({ role: n.role, floor: n.floor || 0, x: round(n.x), z: round(n.z), facing: round(Math.atan2(fwd.x, fwd.z)), pose: "stand", ...(n.talk ? { talk: n.talk } : {}) });
   }
   def.npcs = npcs;
   // Medidas-padrão de cada móvel: o cliente desenha com estas (não guarda cópia).

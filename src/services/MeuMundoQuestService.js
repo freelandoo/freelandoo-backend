@@ -19,6 +19,8 @@ const Trainer = require("../utils/meuMundoTrainer");
 const Q = require("../utils/meuMundoQuests");
 const { addXp } = require("./MeuMundoAdventureService");
 const TrainerService = require("./MeuMundoTrainerService");
+const PlaceService = require("./MeuMundoPlaceService");
+const Places = require("../utils/meuMundoPlaces");
 const GearService = () => require("./MeuMundoGearService");
 
 const ACTIONS = Object.freeze(["ack", "visit_armory"]);
@@ -28,6 +30,8 @@ const ERRORS = {
   pending: ["O objetivo ainda não foi cumprido", 409],
   dead: ["Hóspede sem vida", 409],
   level: ["O próximo capítulo abre num nível maior do treinador", 409],
+  npc: ["Pessoa desconhecida", 400],
+  far: ["Chegue perto dessa pessoa para conversar", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -172,8 +176,21 @@ async function satisfied(c, idUser, idCharacter, s, step, row) {
           [idUser, since]
         )
       );
+    case "visit":
+    case "talk": {
+      // F4: a sala grava "visit" { place }; a conversa grava "talk" { npc } (mark)
+      const field = type === "visit" ? "place" : "npc";
+      return yes(
+        !!arg &&
+          (await q1(
+            `SELECT 1 FROM tb_mm_character_event e JOIN tb_mm_character ch ON ch.id_character = e.id_character
+              WHERE ch.id_user = $1 AND e.kind = $2 AND e.data->>'${field}' = $3 AND e.at >= $4 LIMIT 1`,
+            [idUser, type, arg, since]
+          ))
+      );
+    }
     default:
-      // visit / talk / archive / nectar / paintTop: o dado chega nas próximas fatias
+      // archive / nectar / paintTop: o dado chega nas próximas fatias
       return yes(false);
   }
 }
@@ -295,12 +312,21 @@ class MeuMundoQuestService {
 
   /**
    * POST /quest/mark { mark } — o aparelho conta que abriu uma tela que é objetivo
-   * (hoje: a certidão). O servidor grava como evento da vida; o passo lê o evento.
+   * (a certidão). O servidor grava como evento da vida; o passo lê o evento.
+   * F4: { mark: "talk", npc } — abriu a conversa. Só vale se a ÚLTIMA visita da
+   * pessoa foi ao lugar do NPC (a sala grava a visita; o aparelho não diz onde está).
    */
   static async mark(idUser, body = {}) {
     const mark = String(body.mark || "");
     if (!Q.MARKS.includes(mark)) return fail("action");
+    const npc = String(body.npc || "");
+    if (mark === "talk" && !Object.prototype.hasOwnProperty.call(Places.NPCS, npc)) return fail("npc");
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      if (mark === "talk") {
+        if (!(await PlaceService.canTalk(ctx.client, idUser, npc, ctx.now))) return fail("far");
+        ctx.events.push({ at: ctx.now, kind: "talk", data: { npc } });
+        return { ok: true, npc };
+      }
       ctx.events.push({ at: ctx.now, kind: "mark", data: { mark } });
       return { ok: true };
     });

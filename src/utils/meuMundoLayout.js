@@ -192,6 +192,9 @@ function lawnPositions() {
 // do bairro (os outros deuses são só skins; pedido do Alex). Os quatro bancos
 // da praça continuam nas diagonais, virados para ele.
 const PLAZA_STATUES = Object.freeze([statue("aurion", 0, 0, 0, 10, { kind: "pedestal", r: 3.6, h: 1.4 })]);
+// Lore v2 F4 — pontos de visita do bairro (visit:<id>; meuMundoPlaces.js). "bairro"
+// e "casa" a sala grava na entrada (titular / dono da casa).
+const VISIT_POINTS = Object.freeze([Object.freeze({ id: "estatua_aurion", x: 0, z: 0, r: 7 })]);
 // Quatro pracinhas no gramado, nas diagonais: piso redondo, canteiro no meio,
 // quatro bancos virados para ele e um poste.
 const SQUARE = Object.freeze({ r: 5, bed: 1.1, bench: 3.3 });
@@ -472,6 +475,7 @@ function buildNeighborhoodPayload({ code, name, houses, residents }) {
 module.exports = {
   MEU_MUNDO_RELEASE,
   LAYOUT_VERSION,
+  VISIT_POINTS,
   LOTS_PER_NEIGHBORHOOD,
   LOT_PLAN,
   HOUSE_L1,

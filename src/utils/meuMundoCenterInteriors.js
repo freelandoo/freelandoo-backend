@@ -440,7 +440,7 @@ function delegacia() {
         ],
       },
     ],
-    npcs: [{ role: "delegado", x: 0, z: 5.65, r: 0 }],
+    npcs: [{ role: "delegado", x: 0, z: 5.65, r: 0, talk: "delegado" }],
   };
 }
 
@@ -526,7 +526,7 @@ function criolab() {
         ["lamp", 3.8, 0.65, 0],
       ],
     }],
-    npcs: [{ role: "criogenista", x: 0, z: 10.9, r: 0 }],
+    npcs: [{ role: "criogenista", x: 0, z: 10.9, r: 0, talk: "nivea" }],
   };
 }
 

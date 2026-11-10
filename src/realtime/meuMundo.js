@@ -61,6 +61,7 @@ const {
   buildObstacles,
   houseBoxes,
   levelDef,
+  VISIT_POINTS: BAIRRO_VISIT_POINTS,
 } = require("../utils/meuMundoLayout");
 const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds, freshStamina, setStamina, staminaIntent } = require("../utils/meuMundoMotion");
 const { bodyStride } = require("../utils/meuMundoHeights");
@@ -89,7 +90,10 @@ const {
   isSafeSpot: isCenterSafe,
   PLACES: CENTER_PLACES,
   DIMS: CENTER_DIMS,
+  VISIT_POINTS: CENTER_VISIT_POINTS,
 } = require("../utils/meuMundoCenter");
+const { VISIT_EVERY_MS, pickVisit, visitDue } = require("../utils/meuMundoPlaces");
+const MeuMundoPlaceService = require("../services/MeuMundoPlaceService");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.realtime");
@@ -282,6 +286,23 @@ function takeToken(client, s) {
 }
 
 const freshBucket = () => ({ bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now() });
+
+/**
+ * Lore v2 F4 — "chegou em <place>" (visit:<lugar>). Promessa SOLTA: o laço da sala
+ * nunca espera o banco; erro só vai para o log. A pessoa recebe "visited" quando o
+ * lugar é novo para ela (a missão reconfere); a repetição de quem ficou parado não avisa.
+ */
+function recordVisit(room, sid, userId, place) {
+  MeuMundoPlaceService.recordVisit(userId, place)
+    .then((ok) => {
+      const s = room.sim.get(sid);
+      if (!ok || !s || s.visitSent === place) return;
+      s.visitSent = place;
+      const client = room.clients.find((k) => k.sessionId === sid);
+      if (client) client.send("visited", { p: place });
+    })
+    .catch((err) => log.warn("visit.fail", { place, message: err.message }));
+}
 
 /** Intenção de andar sem notícia (mm3d-27): a pessoa para. */
 function expireIntent(s, now) {
@@ -479,6 +500,8 @@ class BairroRoom extends Room {
     presence.setPlacement(userId, { scene: "nb", nbId: this.neighborhoodId });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: residence.lot_number, visitor });
     client.send("mobs", { l: this.mobDirector.list() });
+    // lore v2 F4: chegou ao PRÓPRIO bairro (visit:bairro)
+    if (!visitor) recordVisit(this, client.sessionId, userId, "bairro");
     this.loadAdv(client.sessionId, userId);
     refreshLife(userId);
     log.info("join", { roomId: this.roomId, online: this.state.players.size, visitor });
@@ -884,6 +907,27 @@ class BairroRoom extends Room {
     }
     if (this.testBots) this.testBots.tick(dt);
     this.tickMobs(now, dt);
+    this.tickVisits(now);
+  }
+
+  /** Pontos de visita desta sala (o centro troca pelos dele). */
+  visitPoints() {
+    return BAIRRO_VISIT_POINTS;
+  }
+
+  /**
+   * Lore v2 F4: a cada VISIT_EVERY_MS, em que ponto nomeado cada pessoa está.
+   * Só conta e decide aqui; a gravação sai do laço (recordVisit).
+   */
+  tickVisits(now) {
+    if (now - (this.visitCheckAt || 0) < VISIT_EVERY_MS) return;
+    this.visitCheckAt = now;
+    const points = this.visitPoints();
+    for (const [sid, s] of this.sim) {
+      if (!s.userId || s.jailed) continue;
+      const place = visitDue(s, pickVisit(points, s.body.x, s.body.z), now);
+      if (place) recordVisit(this, sid, s.userId, place);
+    }
   }
 
   // ── Invasões (mm3d-48b/57b) ───────────────────────────────────────────────
@@ -1077,6 +1121,8 @@ class CasaRoom extends Room {
     presence.claim(userId, this, client.sessionId, "house", this.houseId);
     presence.setPlacement(userId, { scene: "house", houseId: this.houseId, nbId: house.id_neighborhood, lot: house.lot_number });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, floor: b.floor, host: isOwner });
+    // lore v2 F4: entrou na PRÓPRIA casa (visit:casa)
+    if (isOwner) recordVisit(this, client.sessionId, userId, "casa");
     // Quem saiu do jogo deitado/dormindo numa cama desta casa volta para ela
     // quando a vida chegar (applyLife).
     refreshLife(userId);
@@ -1612,6 +1658,11 @@ class CentroRoom extends BairroRoom {
     super.tick(dtMs);
     const now = Date.now();
     this.checkCrimes(now);
+  }
+
+  /** Lore v2 F4: praça, Morkhan, portal e a porta de cada prédio. */
+  visitPoints() {
+    return CENTER_VISIT_POINTS;
   }
 
   checkCrimes(now) {

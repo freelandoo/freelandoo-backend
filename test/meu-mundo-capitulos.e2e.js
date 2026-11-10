@@ -73,7 +73,7 @@ async function main() {
   check("10 capítulos, níveis 1/3/5/8/11/14/17/20/23/27", Q.CHAPTERS.length === 10 && Q.CHAPTERS.map((c) => c.minTrainerLevel).join() === "1,3,5,8,11,14,17,20,23,27");
   check("capítulos encadeados por next", Q.CHAPTERS.every((c, i) => c.next === (Q.CHAPTERS[i + 1] ? Q.CHAPTERS[i + 1].id : null)));
   const types = new Set(Q.CHAPTERS.flatMap((c) => c.steps.map((s) => Q.parseCheck(s.check).type)));
-  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", ...Q.PENDING_CHECKS];
+  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", "visit", "talk", ...Q.PENDING_CHECKS];
   check("todo check dos capítulos é conhecido pelo servidor", [...types].every((t) => known.includes(t)), [...types].filter((t) => !known.includes(t)).join());
   const mobs = Q.CHAPTERS.flatMap((c) => c.steps).map((s) => Q.parseCheck(s.check)).filter((p) => (p.type === "fightWin" || p.type === "nightKill") && p.arg);
   check("monstros dos capítulos com os ids novos (F1)", mobs.every((p) => require("../src/utils/meuMundoAdventure").TROPHY_KINDS.includes(p.arg)), JSON.stringify(mobs));
@@ -134,13 +134,13 @@ async function main() {
 
   // ── certidão: marca gravada pelo servidor ──
   check("certificate sem abrir = não", !(await sat("certificate")).ok);
-  check("marca desconhecida recusada", (await Quest.mark(id, { mark: "talk" })).code === "action");
+  check("marca desconhecida recusada", (await Quest.mark(id, { mark: "dance" })).code === "action");
   const mk = await Quest.mark(id, { mark: "certificate" });
   check("POST /quest/mark certificate", mk.ok === true, JSON.stringify(mk.error));
   check("certificate depois de abrir", (await sat("certificate")).ok);
 
   // ── o que ainda espera outra fatia ──
-  for (const c of ["visit:praca", "talk:nivea", "archive:registro_ninho", "nectar:10", "paintTop"]) check(`${c} fica pendente até a fatia dele`, !(await sat(c)).ok);
+  for (const c of ["archive:registro_ninho", "nectar:10", "paintTop"]) check(`${c} fica pendente até a fatia dele`, !(await sat(c)).ok);
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();

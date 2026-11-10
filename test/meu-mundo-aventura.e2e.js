@@ -224,7 +224,7 @@ async function main() {
   if (ate.error) console.log("consume:", JSON.stringify(ate));
   check("passo 3 (comer) conferido pelo evento", (await qa()).receipt);
   q = (await qget()).quest;
-  check("passo 4 (ir à praça) espera a próxima fatia", q.current.key === "praca" && q.current.waiting === true && !q.current.ready, JSON.stringify(q.current));
+  check("passo 4 (ir à praça) espera a visita da sala (F4)", q.current.key === "praca" && q.current.waiting === false && !q.current.ready, JSON.stringify(q.current));
   check("passo 4 não se entrega", (await qa()).code === "pending");
 
   // salto para o capítulo 4: capítulos 1–3 feitos, mas o treinador ainda baixo
