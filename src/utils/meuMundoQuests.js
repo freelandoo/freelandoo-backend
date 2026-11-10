@@ -32,8 +32,9 @@
 //  certificate         abriu uma certidão (marca gravada pelo servidor)
 //  visit:<lugar>       chegou ao lugar (a sala grava; F4, utils/meuMundoPlaces.js)
 //  talk:<npc>          conversou com o NPC, no lugar dele (POST /quest/mark talk; F4)
+//  archive:<id>        leu aquele texto do Arquivo (read_at; F5, utils/meuMundoArchive.js)
 //  — ainda sem dado (entram nas próximas fatias; até lá o passo fica pendente):
-//  archive:<id> (F5) · nectar:N (N3) · paintTop (C3)
+//  nectar:N (N3) · paintTop (C3)
 "use strict";
 
 const step = (key, check, xp, where, extra = {}) => Object.freeze({ key, check, xp, where, ...extra });
@@ -172,7 +173,7 @@ const CHAPTERS = Object.freeze([
 const CHAPTER_BY_ID = new Map(CHAPTERS.map((c) => [c.id, c]));
 
 /** Checks que ainda não têm dado no servidor (o passo espera a fatia que grava). */
-const PENDING_CHECKS = Object.freeze(["archive", "nectar", "paintTop"]);
+const PENDING_CHECKS = Object.freeze(["nectar", "paintTop"]);
 
 /** "fightWin:wolf" → { type: "fightWin", arg: "wolf" }. */
 function parseCheck(check) {

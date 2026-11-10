@@ -18,6 +18,15 @@ const roleMiddleware = require("../middlewares/roleMiddleware");
 const asyncHandler = require("../utils/asyncHandler");
 const rateLimit = require("../middlewares/rateLimit");
 const MeuMundoController = require("../controllers/MeuMundoController");
+const uploadMeuMundoVideo = require("../middlewares/uploadMeuMundoVideo");
+
+// Lore v2 F5: erro do multer (formato, tamanho) vira 400 com o texto, não 500.
+const videoUpload = (req, res, next) =>
+  uploadMeuMundoVideo(req, res, (err) => {
+    if (!err) return next();
+    const error = err.code === "LIMIT_FILE_SIZE" ? "Arquivo grande demais (máximo 100 MB)" : err.message || "Envio recusado";
+    return res.status(400).json({ error });
+  });
 
 const router = Router();
 const admin = [authMiddleware, roleMiddleware("Administrator")];
@@ -92,6 +101,14 @@ router.post("/gear/recycle", ...admin, asyncHandler(MeuMundoController.gearRecyc
 router.get("/quest", ...admin, asyncHandler(MeuMundoController.questGet));
 router.post("/quest/advance", ...admin, asyncHandler(MeuMundoController.questAdvance));
 router.post("/quest/mark", ...admin, asyncHandler(MeuMundoController.questMark));
+// Lore v2 F5: Arquivo e vídeos. O ENVIO de vídeo é só de Administrator mesmo
+// quando o jogo abrir ao público (hoje todo o jogo já é só de admin).
+router.get("/archive", ...admin, asyncHandler(MeuMundoController.archiveGet));
+router.post("/archive/read", ...admin, asyncHandler(MeuMundoController.archiveRead));
+const videoAdmin = [authMiddleware, roleMiddleware("Administrator")];
+router.get("/videos", ...videoAdmin, asyncHandler(MeuMundoController.videosList));
+router.post("/videos/:kind/:ref", ...videoAdmin, videoUpload, asyncHandler(MeuMundoController.videosUpload));
+router.post("/videos/:kind/:ref/clear", ...videoAdmin, asyncHandler(MeuMundoController.videosClear));
 // Mercado → geladeira (mig 301). Comer da geladeira é pela sala da casa (mensagem "fridge").
 router.post("/life/buy", ...admin, asyncHandler(MeuMundoController.lifeBuy));
 // Pedido no balcão da pizzaria/hamburgueria (mm3d-37c): come na hora, lá dentro.

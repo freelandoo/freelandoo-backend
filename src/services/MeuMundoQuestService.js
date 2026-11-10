@@ -189,8 +189,11 @@ async function satisfied(c, idUser, idCharacter, s, step, row) {
           ))
       );
     }
+    case "archive":
+      // F5: o servidor grava read_at quando a pessoa abre o texto destravado
+      return yes(!!arg && (await q1(`SELECT 1 FROM tb_mm_archive WHERE id_user = $1 AND entry_id = $2 AND read_at IS NOT NULL`, [idUser, arg])));
     default:
-      // archive / nectar / paintTop: o dado chega nas próximas fatias
+      // nectar / paintTop: o dado chega nas próximas fatias
       return yes(false);
   }
 }

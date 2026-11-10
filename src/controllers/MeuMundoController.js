@@ -228,6 +228,24 @@ async function questAdvance(req, res) {
 async function questMark(req, res) {
   return reply(res, await quest().mark(req.user.id_user, req.body || {}));
 }
+
+// Lore v2 F5: o Arquivo (textos destravados) e os vídeos de capítulo/personagem
+const archive = () => require("../services/MeuMundoArchiveService");
+async function archiveGet(req, res) {
+  return reply(res, await archive().get(req.user.id_user));
+}
+async function archiveRead(req, res) {
+  return reply(res, await archive().read(req.user.id_user, req.body || {}));
+}
+async function videosList(req, res) {
+  return reply(res, await archive().listVideos());
+}
+async function videosUpload(req, res) {
+  return reply(res, await archive().upload(req.user.id_user, String(req.params.kind || ""), String(req.params.ref || ""), req.files || {}));
+}
+async function videosClear(req, res) {
+  return reply(res, await archive().clear(String(req.params.kind || ""), String(req.params.ref || ""), req.body || {}));
+}
 async function gearRecycle(req, res) {
   return reply(res, await gear().recycle(req.user.id_user, req.body || {}));
 }
@@ -429,6 +447,11 @@ module.exports = {
   questGet,
   questAdvance,
   questMark,
+  archiveGet,
+  archiveRead,
+  videosList,
+  videosUpload,
+  videosClear,
   lifeBuy,
   lifeOrder,
   shopCatalog,

@@ -32,7 +32,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -73,7 +73,7 @@ async function main() {
   check("10 capítulos, níveis 1/3/5/8/11/14/17/20/23/27", Q.CHAPTERS.length === 10 && Q.CHAPTERS.map((c) => c.minTrainerLevel).join() === "1,3,5,8,11,14,17,20,23,27");
   check("capítulos encadeados por next", Q.CHAPTERS.every((c, i) => c.next === (Q.CHAPTERS[i + 1] ? Q.CHAPTERS[i + 1].id : null)));
   const types = new Set(Q.CHAPTERS.flatMap((c) => c.steps.map((s) => Q.parseCheck(s.check).type)));
-  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", "visit", "talk", ...Q.PENDING_CHECKS];
+  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", "visit", "talk", "archive", ...Q.PENDING_CHECKS];
   check("todo check dos capítulos é conhecido pelo servidor", [...types].every((t) => known.includes(t)), [...types].filter((t) => !known.includes(t)).join());
   const mobs = Q.CHAPTERS.flatMap((c) => c.steps).map((s) => Q.parseCheck(s.check)).filter((p) => (p.type === "fightWin" || p.type === "nightKill") && p.arg);
   check("monstros dos capítulos com os ids novos (F1)", mobs.every((p) => require("../src/utils/meuMundoAdventure").TROPHY_KINDS.includes(p.arg)), JSON.stringify(mobs));
@@ -140,7 +140,7 @@ async function main() {
   check("certificate depois de abrir", (await sat("certificate")).ok);
 
   // ── o que ainda espera outra fatia ──
-  for (const c of ["archive:registro_ninho", "nectar:10", "paintTop"]) check(`${c} fica pendente até a fatia dele`, !(await sat(c)).ok);
+  for (const c of ["nectar:10", "paintTop"]) check(`${c} fica pendente até a fatia dele`, !(await sat(c)).ok);
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();
