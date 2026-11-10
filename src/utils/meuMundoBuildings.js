@@ -5,7 +5,10 @@
 // cada prédio); o cliente só desenha o cadeado. Administrador passa direto.
 //
 // Decisão do Alex (B13b, 09/11): a 1ª sessão abre Laboratório, casa, mercado e
-// comida, academia e treino; nível 5 abre os minijogos; nível 10 abre o Hall
+// comida, academia e treino; os minijogos abrem UM A CADA 2 NÍVEIS, o Paint por
+// último (Alex, 10/11): Gincana 3, Jetpack 5, Corrida 7, Rolê Noturno 9, Boxe 11,
+// Paint 13 — o cap. 3 (5–7) tem 3 jogos no 7 e o cap. 5 (11–13) o Paint no 13;
+// nível 10 abre o Hall
 // (a Arena das Lâminas é o Hall da Fama), o Laboratório completo (embrião e
 // acelerador) e o mercado de personagens; o resto é meta longa. Hospital e
 // Delegacia nunca fecham (a vida leva a pessoa para lá). "O resto" abre no
@@ -22,13 +25,13 @@ const BUILDING_LEVELS = Object.freeze({
   academia: 1,
   hospital: 1,
   delegacia: 1,
-  // nível 5: os minijogos (o Boxe é minijogo)
+  // minijogos: um a cada 2 níveis, o Paint por último (o Boxe é minijogo)
+  gincana: 3,
   jetpack: 5,
-  paint: 5,
-  corrida: 5,
-  noturno: 5,
-  gincana: 5,
-  boxe: 5,
+  corrida: 7,
+  noturno: 9,
+  boxe: 11,
+  paint: 13,
   // meta longa: o nível do capítulo 4
   universidade: 8,
   escola: 8,
@@ -63,7 +66,12 @@ const isOpen = (id, level, bypass = false) => bypass || Number(level) >= minLeve
  */
 const BUILDING_QUESTS = Object.freeze(
   [
-    { id: "pr_minijogos", minLevel: 5, place: "jetpack", check: "games:1", xp: 0 },
+    { id: "pr_gincana", minLevel: 3, place: "gincana", check: "game:gincana", xp: 0 },
+    { id: "pr_jetpack", minLevel: 5, place: "jetpack", check: "game:jetpack", xp: 0 },
+    { id: "pr_corrida", minLevel: 7, place: "corrida", check: "game:corrida", xp: 0 },
+    { id: "pr_noturno", minLevel: 9, place: "noturno", check: "game:noturno", xp: 0 },
+    { id: "pr_boxe", minLevel: 11, place: "boxe", check: "game:boxe", xp: 0 },
+    { id: "pr_paint", minLevel: 13, place: "paint", check: "game:paint", xp: 0 },
     { id: "pr_estudo", minLevel: 8, place: "universidade", check: "practice:studying", xp: 0 },
     { id: "pr_forja", minLevel: 8, place: "forja", check: "forge", xp: 0 },
     { id: "pr_arsenal", minLevel: 8, place: "arsenal", check: "visit:arsenal", xp: 0 },

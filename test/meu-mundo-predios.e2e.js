@@ -116,7 +116,8 @@ async function main() {
   check("entrar no Jetpack no nível 1 → 403", r.status === 403 && r.body.level === 5);
   for (const fn of ["paintJoin", "corridaJoin", "noturnoJoin", "gincanaJoin"]) check(`${fn} no nível 1 → 403`, (await call(fn, nu)).status === 403);
   r = await call("fightStart", nu, { body: { origin: "boxe", kind: "brute" } });
-  check("luta no ringue do Boxe no nível 1 → 403", r.status === 403 && r.body.level === 5);
+  check("luta no ringue do Boxe no nível 1 → 403 (abre no 11)", r.status === 403 && r.body.level === 11);
+  check("nível 1: Gincana abre no 3 e Paint por último, no 13", (await Bld.gate(nu, "gincana")).level === 3 && (await Bld.gate(nu, "paint")).level === 13);
   r = await call("fightStart", nu, { body: { origin: "laminas", kind: "stone" } });
   check("luta na Arena no nível 1 → 403 (10)", r.status === 403 && r.body.level === 10);
   r = await call("fightStart", nu, { body: { origin: "tutorial" } });
@@ -132,38 +133,44 @@ async function main() {
   const st = await Bld.state(nu);
   check("missões de prédio: todas trancadas no nível 1", st.missions.every((m) => m.state === "locked"));
 
-  // ── nível 5 ──
+  // ── nível 3 e 5: um minijogo a cada 2 níveis ──
+  await setLevel(nu, 3);
+  check("nível 3: só a Gincana abre", (await Bld.gate(nu, "gincana")) === null && (await Bld.gate(nu, "jetpack")).level === 5);
   await setLevel(nu, 5);
-  check("nível 5: minijogo abre", (await Bld.gate(nu, "jetpack")) === null && (await Bld.gate(nu, "boxe")) === null);
+  check("nível 5: Gincana e Jetpack; Boxe e Paint seguem fechados", (await Bld.gate(nu, "jetpack")) === null && (await Bld.gate(nu, "boxe")).level === 11 && (await Bld.gate(nu, "paint")).level === 13);
   check("nível 5: universidade ainda fecha", (await Bld.gate(nu, "universidade")).level === 8);
   r = await call("jetpackJoin", nu);
   check("entrar no Jetpack no nível 5 passa da trava", r.body?.code !== "closed");
   let s5 = await Bld.state(nu);
-  let m = s5.missions.find((x) => x.id === "pr_minijogos");
-  check("nível 5: missão dos minijogos abre", m.state === "current" && !m.ready, JSON.stringify(m));
+  let m = s5.missions.find((x) => x.id === "pr_jetpack");
+  check("nível 5: missão do Jetpack abre (e a da Gincana também)", m.state === "current" && !m.ready && s5.missions.find((x) => x.id === "pr_gincana").state === "current", JSON.stringify(m));
+  check("…a do Paint não", s5.missions.find((x) => x.id === "pr_paint").state === "locked");
   check("…e as do nível 8 seguem trancadas", s5.missions.find((x) => x.id === "pr_forja").state === "locked");
-  check("missão sem cumprir → 'pending'", (await Bld.deliver(nu, { id: "pr_minijogos" })).code === "pending");
+  check("missão sem cumprir → 'pending'", (await Bld.deliver(nu, { id: "pr_jetpack" })).code === "pending");
   check("missão de nível acima → 'missionLocked'", (await Bld.deliver(nu, { id: "pr_hall" })).code === "missionLocked");
   check("missão desconhecida → 'mission'", (await Bld.deliver(nu, { id: "pr_zz" })).code === "mission");
   const ch = (await pool.query(`SELECT id_character FROM tb_mm_character WHERE id_user = $1`, [nu])).rows[0].id_character;
   await new Promise((res) => setTimeout(res, 2100));
   await AdvStore.insertReceipt(pool, { idUser: nu, idCharacter: ch, source: "minigame:jetpack", actionKey: "k1", rules: "R3", result: { activity: "jetpack" }, deltas: {}, items: [] });
   s5 = await Bld.state(nu);
-  check("jogou uma partida → missão pronta", s5.missions.find((x) => x.id === "pr_minijogos").ready);
-  const d1 = await Bld.deliver(nu, { id: "pr_minijogos" });
-  check("entrega com recibo único", !!d1.receipt && d1.replay === false && d1.receipt.actionKey === "pr:pr_minijogos", JSON.stringify(d1.error || d1.receipt && d1.receipt.actionKey));
-  const d2 = await Bld.deliver(nu, { id: "pr_minijogos" });
+  check("jogou o Jetpack → missão pronta", s5.missions.find((x) => x.id === "pr_jetpack").ready);
+  check("…e não cumpre a da Gincana", !s5.missions.find((x) => x.id === "pr_gincana").ready);
+  const d1 = await Bld.deliver(nu, { id: "pr_jetpack" });
+  check("entrega com recibo único", !!d1.receipt && d1.replay === false && d1.receipt.actionKey === "pr:pr_jetpack", JSON.stringify(d1.error || d1.receipt && d1.receipt.actionKey));
+  const d2 = await Bld.deliver(nu, { id: "pr_jetpack" });
   check("reenvio devolve o MESMO recibo (sem prêmio de novo)", d2.replay === true && d2.receipt.eventId === d1.receipt.eventId);
-  check("missão fica feita", (await Bld.state(nu)).missions.find((x) => x.id === "pr_minijogos").state === "done");
+  check("missão fica feita", (await Bld.state(nu)).missions.find((x) => x.id === "pr_jetpack").state === "done");
   // o capítulo não apaga as missões de prédio
   await Quest.get(nu);
-  check("ler o capítulo não apaga a missão de prédio", (await pool.query(`SELECT 1 FROM tb_mm_quest WHERE id_user = $1 AND quest_id = 'pr_minijogos'`, [nu])).rows.length === 1);
-  check("e a missão de prédio não vira 'acompanhada' (o card é do capítulo)", (await pool.query(`SELECT tracked FROM tb_mm_quest WHERE id_user = $1 AND quest_id = 'pr_minijogos'`, [nu])).rows[0].tracked === false);
+  check("ler o capítulo não apaga a missão de prédio", (await pool.query(`SELECT 1 FROM tb_mm_quest WHERE id_user = $1 AND quest_id = 'pr_jetpack'`, [nu])).rows.length === 1);
+  check("e a missão de prédio não vira 'acompanhada' (o card é do capítulo)", (await pool.query(`SELECT tracked FROM tb_mm_quest WHERE id_user = $1 AND quest_id = 'pr_jetpack'`, [nu])).rows[0].tracked === false);
 
   // ── nível 10 ──
   await setLevel(nu, 10);
   check("nível 10: Arena/Hall e Laboratório completo abrem", (await Bld.gate(nu, "laminas")) === null && (await Bld.gateFeature(nu, "lab_full")) === null);
-  check("nível 10: todas as missões abertas", (await Bld.state(nu)).missions.every((x) => x.state !== "locked"));
+  check("nível 10: Boxe e Paint ainda fechados", (await Bld.gate(nu, "boxe")).level === 11 && (await Bld.gate(nu, "paint")).level === 13);
+  await setLevel(nu, 13);
+  check("nível 13: o Paint abre por último e todas as missões estão abertas", (await Bld.gate(nu, "paint")) === null && (await Bld.state(nu)).missions.every((x) => x.state !== "locked"));
 
   // ── conta antiga (já jogou: capítulo e prólogo antigo) ──
   const old = await user("mmp_antigo");
