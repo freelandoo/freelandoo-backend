@@ -12,6 +12,7 @@ const Adv = require("../utils/meuMundoAdventure");
 const Gear = require("../utils/meuMundoGear");
 const { QUESTS, PROLOGUE } = require("../utils/meuMundoQuests");
 const { addXp } = require("./MeuMundoAdventureService");
+const TrainerService = require("./MeuMundoTrainerService");
 const GearService = () => require("./MeuMundoGearService");
 
 const ACTIONS = Object.freeze(["ack", "visit_armory"]);
@@ -129,6 +130,8 @@ class MeuMundoQuestService {
       const adv = await AdvStore.lockAdventure(c, idUser);
       const level = addXp(adv, step.xp);
       await AdvStore.saveAdventure(c, idUser, { xp: adv.xp, level: adv.level, losses: adv.losses, lossesDay: adv.losses_day });
+      // F2: o XP da missão vai INTEIRO para o treinador (a conta), sem teto
+      const trainer = await TrainerService.grant(c, idUser, "quest", step.xp, ctx.now);
       const items = step.items ? await GearService().deliver(c, idUser, step.items.map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id).rarity })), ctx) : [];
       const last = row.step + 1 >= quest.steps.length;
       await c.query(
@@ -143,7 +146,7 @@ class MeuMundoQuestService {
         actionKey: key,
         rules: Adv.RULES_VERSION,
         result: { quest: quest.id, step: step.key, index: row.step, last },
-        deltas: { xp: level },
+        deltas: { xp: level, trainer },
         items,
       });
       ctx.events.push({ at: ctx.now, kind: "quest", data: { quest: quest.id, step: step.key } });

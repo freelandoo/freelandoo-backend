@@ -315,6 +315,8 @@ class MeuMundoLifeService {
         await c.query("ROLLBACK");
         return extra;
       }
+      // F2 (lore v2): refeições e horas úteis de treino/estudo do diário viram XP do treinador
+      const trainerReceipt = await require("./MeuMundoTrainerService").fromLife(c, idUser, row.id_character, [...sim.days, s.dayAcc], now);
       const idCharacter = ctx.newRow ? ctx.newRow.id_character : row.id_character;
       const state = ctx.newState || s;
       // mm3d-72: a alma sente o que aconteceu (afeto, desejos) — eventos da simulação + o que a pessoa fez agora
@@ -429,6 +431,7 @@ class MeuMundoLifeService {
       });
       for (const n of notices) require("./MeuMundoInboxService").push(idUser, n);
       for (const r of care) presence.send(idUser, "receipt", r);
+      if (trainerReceipt) presence.send(idUser, "trainer", { trainer: trainerReceipt.deltas.trainer });
       return out;
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});

@@ -20,6 +20,7 @@ const Soul = require("../utils/meuMundoSoul");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
 const Gear = require("../utils/meuMundoGear");
+const TrainerService = require("./MeuMundoTrainerService");
 const { clanOfBody, usesHammer, usesBow, usesGun } = require("../utils/meuMundoClans");
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
@@ -124,6 +125,8 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       ? []
       : await GearService().deliver(c, idUser, Gear.rollLoot(family, { win: verdict.win, activeMs: practice.activeMs }, GearService().R), ctx);
   const level = addXp(adv, xpGain);
+  // F2: o treinador (a conta) leva uma fração do XP da luta, com teto do dia
+  const trainer = await TrainerService.grant(c, idUser, "fight", level.xp, ctx.now);
   const day = Life.localParts(ctx.now).day;
   adv.losses = verdict.win ? 0 : streak + 1;
   adv.losses_day = day;
@@ -153,6 +156,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
     },
     deltas: {
       xp: level,
+      trainer,
       attrs: practice.attrs,
       // delta EFETIVO (depois dos limites 0–100)
       vitals: { energy: r2(s.energy - before.energy), stress: r2(s.stress - before.stress) },
@@ -204,6 +208,8 @@ class MeuMundoAdventureService {
       const adv = await Store.lockAdventure(c, idUser);
       const level = addXp(adv, Adv.minigameXp(practice.activeMs) + (win ? 5 : 0));
       await Store.saveAdventure(c, idUser, { xp: adv.xp, level: adv.level, losses: adv.losses, lossesDay: adv.losses_day });
+      // F2: o treinador (a conta) leva uma fração do XP do minijogo, com teto do dia
+      const trainer = await TrainerService.grant(c, idUser, "minigame", level.xp, ctx.now);
       const drops =
         practice.activeMs >= MINIGAME_LOOT_MIN_MS
           ? await GearService().deliver(c, idUser, Gear.rollLoot(def.loot, { win, activeMs: practice.activeMs }, GearService().R), ctx)
@@ -219,7 +225,7 @@ class MeuMundoAdventureService {
         rules: Adv.RULES_VERSION,
         activeMs: practice.activeMs,
         result: { activity, win: !!win, condition },
-        deltas: { xp: level, attrs: practice.attrs, coins: coins + drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
+        deltas: { xp: level, trainer, attrs: practice.attrs, coins: coins + drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
         items: drops,
       });
       ctx.events.push({ at: ctx.now, kind: "minigame", data: { activity, activeMs: practice.activeMs } });
@@ -234,6 +240,8 @@ class MeuMundoAdventureService {
     const lv = Adv.levelOf(Number(adv.xp));
     return {
       adventure: { ...lv, unlocks: Adv.UNLOCKS, rules: Adv.RULES_VERSION },
+      // F2: o nível do TREINADOR (a conta; não zera ao trocar de personagem)
+      trainer: await TrainerService.view(pool, idUser),
       receipts: await Store.recentReceipts(pool, idUser, 20),
     };
   }
