@@ -11,8 +11,20 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function reply(res, out) {
   res.set("Cache-Control", "no-store");
-  if (out && out.error) return res.status(out.statusCode || 400).json({ error: out.error, code: out.code });
+  // F6: prédio fechado manda o nível que abre (o cliente desenha o cadeado com ele)
+  if (out && out.error) return res.status(out.statusCode || 400).json({ error: out.error, code: out.code, ...(out.level ? { level: out.level } : {}) });
   return res.json(out);
+}
+
+// Lore v2 F6: prédio fechado pelo nível do treinador — o SERVIDOR recusa a rota.
+const building = () => require("../services/MeuMundoBuildingService");
+async function gated(req, res, place, run) {
+  const no = place ? await building().gate(req.user.id_user, place) : null;
+  return no ? reply(res, no) : run();
+}
+async function gatedFeature(req, res, feature, run) {
+  const no = await building().gateFeature(req.user.id_user, feature);
+  return no ? reply(res, no) : run();
 }
 
 const withVisit = (fn) => async (req, res) => {
@@ -70,26 +82,36 @@ async function centerLeave(req, res) {
 
 // Jetpack no túnel (mm3d-63): sala do centro em que a pessoa está (sozinho ou em grupo), da fase escolhida (mm3d-75).
 async function jetpackJoin(req, res) {
+  const closed = await building().gate(req.user.id_user, "jetpack");
+  if (closed) return reply(res, closed);
   return reply(res, await MeuMundoService.joinJetpack(req.user.id_user, { solo: req.body?.solo === true, phase: req.body?.phase }));
 }
 
 // Paint (mm3d-35): lugar numa sala do centro em que a pessoa está, no modo pedido.
 async function paintJoin(req, res) {
+  const closed = await building().gate(req.user.id_user, "paint");
+  if (closed) return reply(res, closed);
   return reply(res, await MeuMundoService.joinPaint(req.user.id_user, { mode: req.body?.mode, roomId: req.body?.roomId, map: req.body?.map }));
 }
 
 // Corrida em grupo (mm3d-39b): lugar na próxima largada do centro em que a pessoa está (com a nave da garagem, mm3d-49).
 async function corridaJoin(req, res) {
+  const closed = await building().gate(req.user.id_user, "corrida");
+  if (closed) return reply(res, closed);
   return reply(res, await MeuMundoService.joinCorrida(req.user.id_user, { ship: req.body?.ship, track: req.body?.track }));
 }
 
 // Rolê Noturno em grupo (mm3d-42): lugar na próxima largada, com o veículo escolhido.
 async function noturnoJoin(req, res) {
+  const closed = await building().gate(req.user.id_user, "noturno");
+  if (closed) return reply(res, closed);
   return reply(res, await MeuMundoService.joinNoturno(req.user.id_user, { ride: req.body?.ride, body: req.body?.body, phase: req.body?.phase }));
 }
 
 // Gincana em grupo (mm3d-47): lugar na próxima largada (o computador completa as 8 vagas).
 async function gincanaJoin(req, res) {
+  const closed = await building().gate(req.user.id_user, "gincana");
+  if (closed) return reply(res, closed);
   return reply(res, await MeuMundoService.joinGincana(req.user.id_user, { body: req.body?.body }));
 }
 
@@ -124,7 +146,7 @@ async function centerInterior(req, res) {
   const id = String(req.params.id || "");
   const interior = Object.prototype.hasOwnProperty.call(CENTER_INTERIORS, id) ? CENTER_INTERIORS[id] : null;
   if (!interior) return reply(res, { error: "Local sem interior", statusCode: 404 });
-  return reply(res, { id, interior });
+  return gated(req, res, id, () => reply(res, { id, interior }));
 }
 
 // Vida do hóspede (mm3d-13). Deitar/dormir vão pela sala da casa (cama).
@@ -133,7 +155,8 @@ async function life(req, res) {
 }
 
 async function lifeActivity(req, res) {
-  return reply(res, await MeuMundoLifeService.setActivity(req.user.id_user, req.body?.activity, req.body?.hours, req.body?.place, req.body?.station));
+  const place = typeof req.body?.place === "string" ? req.body.place : null;
+  return gated(req, res, place, async () => reply(res, await MeuMundoLifeService.setActivity(req.user.id_user, req.body?.activity, req.body?.hours, req.body?.place, req.body?.station)));
 }
 
 // mm3d-59: aventura (XP, recibos) e luta conferida pelo servidor.
@@ -148,15 +171,19 @@ async function monstersGet(req, res) {
 }
 // B8: Lâminas = Hall (cadeiras e desafios pela vaga)
 const hall = () => require("../services/MeuMundoHallService");
+// o Hall da Fama é a Arena das Lâminas (abre no nível dela)
 async function hallBoard(req, res) {
-  return reply(res, await hall().board(req.user.id_user));
+  return gated(req, res, "laminas", async () => reply(res, await hall().board(req.user.id_user)));
 }
 async function hallChallenge(req, res) {
-  return reply(res, await hall().challenge(req.user.id_user, req.body || {}));
+  return gated(req, res, "laminas", async () => reply(res, await hall().challenge(req.user.id_user, req.body || {})));
 }
 
 async function fightStart(req, res) {
-  return reply(res, await adventure().fightStart(req.user.id_user, req.body || {}));
+  // luta no ringue do Boxe e na Arena das Lâminas: o prédio precisa estar aberto
+  const origin = String(req.body?.origin || "");
+  const place = origin === "boxe" || origin === "laminas" ? origin : null;
+  return gated(req, res, place, async () => reply(res, await adventure().fightStart(req.user.id_user, req.body || {})));
 }
 async function fightFinish(req, res) {
   return reply(res, await adventure().fightFinish(req.user.id_user, req.body || {}));
@@ -203,7 +230,7 @@ async function gearEquip(req, res) {
   return reply(res, await gear().equip(req.user.id_user, req.body || {}));
 }
 async function gearForge(req, res) {
-  return reply(res, await gear().forge(req.user.id_user, req.body || {}));
+  return gated(req, res, "forja", async () => reply(res, await gear().forge(req.user.id_user, req.body || {})));
 }
 async function gearUpgrade(req, res) {
   return reply(res, await gear().upgrade(req.user.id_user, req.body || {}));
@@ -364,17 +391,26 @@ async function characterFuse(req, res) {
 }
 
 // B12: Laboratório de Criogenia — comprar embrião e usar o acelerador.
+// Laboratório completo (embrião, genética, acelerador): nível 10 do treinador
 async function characterEmbryo(req, res) {
-  return reply(res, await MeuMundoCharacterService.buyEmbryo(req.user.id_user, req.body || {}));
+  return gatedFeature(req, res, "lab_full", async () => reply(res, await MeuMundoCharacterService.buyEmbryo(req.user.id_user, req.body || {})));
 }
 
 // 09/11: a genética do laboratório (para a mistura).
 async function characterGenetics(req, res) {
-  return reply(res, await MeuMundoCharacterService.buyGenetics(req.user.id_user, req.body || {}));
+  return gatedFeature(req, res, "lab_full", async () => reply(res, await MeuMundoCharacterService.buyGenetics(req.user.id_user, req.body || {})));
 }
 
 async function characterAccelerate(req, res) {
-  return reply(res, await MeuMundoCharacterService.accelerate(req.user.id_user, req.params.id));
+  return gatedFeature(req, res, "lab_full", async () => reply(res, await MeuMundoCharacterService.accelerate(req.user.id_user, req.params.id)));
+}
+
+// Lore v2 F6: o nível, a tabela dos prédios e as missões de prédio
+async function buildingsGet(req, res) {
+  return reply(res, await building().state(req.user.id_user));
+}
+async function buildingsMission(req, res) {
+  return reply(res, await building().deliver(req.user.id_user, req.body || {}));
 }
 
 // TESTE (hoje só admin joga): ganha um personagem da espécie na cápsula.
@@ -448,6 +484,8 @@ module.exports = {
   questAdvance,
   questMark,
   archiveGet,
+  buildingsGet,
+  buildingsMission,
   archiveRead,
   videosList,
   videosUpload,

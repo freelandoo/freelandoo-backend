@@ -53,7 +53,8 @@ function currentChapter(rows) {
 
 /** Abre (ou trava) a linha do capítulo. O prólogo antigo sai na primeira vez. */
 async function lockChapter(c, idUser, chapterId) {
-  await c.query(`DELETE FROM tb_mm_quest WHERE id_user = $1 AND NOT (quest_id = ANY($2::text[]))`, [idUser, CAP_IDS]);
+  // (F6: as missões de prédio "pr_<id>" moram na mesma tabela e ficam)
+  await c.query(`DELETE FROM tb_mm_quest WHERE id_user = $1 AND NOT (quest_id = ANY($2::text[])) AND quest_id NOT LIKE 'pr\_%'`, [idUser, CAP_IDS]);
   await c.query(`INSERT INTO tb_mm_quest (id_user, quest_id) VALUES ($1, $2) ON CONFLICT (id_user, quest_id) DO NOTHING`, [idUser, chapterId]);
   return (await c.query(`SELECT * FROM tb_mm_quest WHERE id_user = $1 AND quest_id = $2 FOR UPDATE`, [idUser, chapterId])).rows[0];
 }

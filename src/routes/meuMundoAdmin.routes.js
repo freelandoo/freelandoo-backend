@@ -104,6 +104,9 @@ router.post("/quest/mark", ...admin, asyncHandler(MeuMundoController.questMark))
 // Lore v2 F5: Arquivo e vídeos. O ENVIO de vídeo é só de Administrator mesmo
 // quando o jogo abrir ao público (hoje todo o jogo já é só de admin).
 router.get("/archive", ...admin, asyncHandler(MeuMundoController.archiveGet));
+// Lore v2 F6: prédios por nível do treinador (a trava em si mora em cada rota de prédio)
+router.get("/buildings", ...admin, asyncHandler(MeuMundoController.buildingsGet));
+router.post("/buildings/mission", ...admin, asyncHandler(MeuMundoController.buildingsMission));
 router.post("/archive/read", ...admin, asyncHandler(MeuMundoController.archiveRead));
 const videoAdmin = [authMiddleware, roleMiddleware("Administrator")];
 router.get("/videos", ...videoAdmin, asyncHandler(MeuMundoController.videosList));
