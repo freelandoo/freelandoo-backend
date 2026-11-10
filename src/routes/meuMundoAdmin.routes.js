@@ -91,6 +91,7 @@ router.post("/gear/recycle", ...admin, asyncHandler(MeuMundoController.gearRecyc
 // mm3d-59: missões — o servidor confere cada objetivo; recompensa por recibo único.
 router.get("/quest", ...admin, asyncHandler(MeuMundoController.questGet));
 router.post("/quest/advance", ...admin, asyncHandler(MeuMundoController.questAdvance));
+router.post("/quest/mark", ...admin, asyncHandler(MeuMundoController.questMark));
 // Mercado → geladeira (mig 301). Comer da geladeira é pela sala da casa (mensagem "fridge").
 router.post("/life/buy", ...admin, asyncHandler(MeuMundoController.lifeBuy));
 // Pedido no balcão da pizzaria/hamburgueria (mm3d-37c): come na hora, lá dentro.

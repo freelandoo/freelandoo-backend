@@ -217,13 +217,16 @@ async function gearRefineResolve(req, res) {
 async function gearUse(req, res) {
   return reply(res, await gear().use(req.user.id_user, req.body || {}));
 }
-// mm3d-59 slice 5: missões (o prólogo)
+// lore v2 F3: missões (os 10 capítulos)
 const quest = () => require("../services/MeuMundoQuestService");
 async function questGet(req, res) {
   return reply(res, await quest().get(req.user.id_user));
 }
 async function questAdvance(req, res) {
   return reply(res, await quest().advance(req.user.id_user, req.body || {}));
+}
+async function questMark(req, res) {
+  return reply(res, await quest().mark(req.user.id_user, req.body || {}));
 }
 async function gearRecycle(req, res) {
   return reply(res, await gear().recycle(req.user.id_user, req.body || {}));
@@ -425,6 +428,7 @@ module.exports = {
   gearRecycle,
   questGet,
   questAdvance,
+  questMark,
   lifeBuy,
   lifeOrder,
   shopCatalog,

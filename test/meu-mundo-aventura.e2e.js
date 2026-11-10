@@ -29,7 +29,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -198,37 +198,64 @@ async function main() {
   const fg = await Gear.forge(id, { recipe: "forjar_luvas", key: k() });
   check("forja entrega as luvas", fg.receipt && fg.bag.owned.luvas_precisao && !fg.bag.owned.mola_precisao, JSON.stringify(fg.error || fg.bag.owned));
 
-  // ── slice 5: o prólogo inteiro numa conta NOVA (raposa) ──
+  // ── lore v2 F3: os capítulos numa conta NOVA (raposa) ──
   const Quest = require("../src/services/MeuMundoQuestService");
+  const T = require("../src/utils/meuMundoTrainer");
   const nu = crypto.randomUUID();
   await pool.query(`INSERT INTO tb_user VALUES ($1, 'mmq', 'mmq@mm.test')`, [nu]);
   await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f')`, [nu]);
-  const step = async () => (await Quest.get(nu)).quest;
+  // quem vinha do prólogo antigo recomeça no capítulo 1 (a linha do "despertar" sai)
+  await pool.query(`INSERT INTO tb_mm_quest (id_user, quest_id, step) VALUES ($1, 'despertar', 4)`, [nu]);
+  const qget = async () => Quest.get(nu);
   const qa = (action = "ack") => Quest.advance(nu, { action });
-  let q = await step();
-  check("prólogo começa no passo 1 de 10", q.step === 0 && q.total === 10 && q.current.key === "chegada");
+  let g = await qget();
+  let q = g.quest;
+  check("capítulo 1 no passo 1 de 6", q.id === "cap1" && q.step === 0 && q.total === 6 && q.current.key === "degelo", JSON.stringify(q).slice(0, 200));
+  check("o prólogo antigo saiu", (await pool.query(`SELECT 1 FROM tb_mm_quest WHERE id_user = $1 AND quest_id = 'despertar'`, [nu])).rows.length === 0);
+  check("lista dos 10 capítulos; o 2 trancado pelo nível", g.chapters.length === 10 && g.chapters[0].state === "current" && g.chapters[1].state === "locked" && g.chapters[1].minTrainerLevel === 3);
   const tut0 = await Adv.fightStart(nu, { origin: "tutorial" });
   check("luta de treino fechada fora do passo", tut0.code === "tutorial");
   const r1 = await qa();
-  const r1b = await Quest.advance(nu, { action: "ack" });
-  check("passo 1 entregue; o seguinte ainda não", r1.receipt && r1b.code === "pending", JSON.stringify([r1.error, r1b.code]));
+  check("passo 1 entregue (XP do personagem + do treinador)", r1.receipt && r1.receipt.deltas.trainer && r1.receipt.deltas.trainer.xp === 20, JSON.stringify(r1.error || r1.receipt.deltas));
+  check("passo 2 (classe já escolhida) conferido", (await qa()).receipt);
+  const pend = await qa();
+  check("passo 3 sem comer = pendente", pend.code === "pending");
   const ate = await Life.consume(nu, "agua_coco");
   if (ate.error) console.log("consume:", JSON.stringify(ate));
-  check("passo 2 (comer) conferido pelo evento", (await qa()).receipt);
-  const pend = await qa();
-  check("passo 3 sem treino = pendente", pend.code === "pending");
+  check("passo 3 (comer) conferido pelo evento", (await qa()).receipt);
+  q = (await qget()).quest;
+  check("passo 4 (ir à praça) espera a próxima fatia", q.current.key === "praca" && q.current.waiting === true && !q.current.ready, JSON.stringify(q.current));
+  check("passo 4 não se entrega", (await qa()).code === "pending");
+
+  // salto para o capítulo 4: capítulos 1–3 feitos, mas o treinador ainda baixo
+  for (const id of ["cap1", "cap2", "cap3"]) {
+    await pool.query(
+      `INSERT INTO tb_mm_quest (id_user, quest_id, step, done_at, tracked) VALUES ($1, $2, 9, NOW(), FALSE)
+       ON CONFLICT (id_user, quest_id) DO UPDATE SET step = 9, done_at = NOW(), tracked = FALSE`,
+      [nu, id]
+    );
+  }
+  g = await qget();
+  check("capítulo 4 trancado pelo nível do treinador", g.quest.id === "cap4" && g.quest.locked && g.quest.locked.level === 8 && g.quest.current === null, JSON.stringify(g.quest).slice(0, 200));
+  check("entregar com o capítulo trancado = nível", (await qa()).code === "level");
+  await pool.query(`UPDATE tb_mm_trainer SET xp = $2 WHERE id_user = $1`, [nu, T.xpForLevel(8)]);
+  q = (await qget()).quest;
+  check("nível 8: capítulo 4 abre no passo 1", q.id === "cap4" && q.step === 0 && q.current.key === "corpo" && !q.locked, JSON.stringify(q).slice(0, 200));
   const chr = (await pool.query(`SELECT id_character FROM tb_mm_character WHERE id_user = $1`, [nu])).rows[0].id_character;
-  await pool.query(`INSERT INTO tb_mm_character_event (id_character, at, kind, data) VALUES ($1, NOW() + INTERVAL '1 second', 'activity', '{"kind":"training","hours":1,"place":"academia"}')`, [chr]);
-  const r3 = await qa();
-  check("passo 3 (treinar) conferido", r3.receipt, JSON.stringify(r3.error));
-  q = await step();
+  const ev = (kind, data) => pool.query(`INSERT INTO tb_mm_character_event (id_character, at, kind, data) VALUES ($1, NOW() + INTERVAL '1 second', $2, $3)`, [chr, kind, JSON.stringify(data)]);
+  await ev("activity", { kind: "studying", hours: 1, place: "universidade" });
+  check("passo 'corpo' não vale com estudo", (await qa()).code === "pending");
+  await ev("activity", { kind: "training", hours: 1, place: "academia" });
+  check("passo 'corpo' (treino) conferido", (await qa()).receipt);
+  await ev("activity", { kind: "studying", hours: 1, place: "universidade" });
+  check("passo 'mente' (estudo) conferido", (await qa()).receipt);
+  q = (await qget()).quest;
   const bagQ = (await Gear.get(nu)).bag;
-  check("passo 4 entrega o cajado da raposa, equipado", q.current.key === "arma" && bagQ.equipped.weapon === "cajado_aprendiz");
-  check("passo 4 entregue", (await qa()).receipt);
-  // passo 5: luta de treino (de graça) com o kit de MAGA pela classe
+  check("passo 'arma' entrega o cajado da raposa, equipado", q.current.key === "arma" && bagQ.equipped.weapon === "cajado_aprendiz");
+  check("passo 'arma' entregue", (await qa()).receipt);
+  // luta de treino (de graça) com o kit de MAGA pela classe
   const tut = await Adv.fightStart(nu, { origin: "tutorial" });
-  check("luta de treino abre no passo 5, maga pela classe", tut.fight && tut.fight.setup.style === "mage", JSON.stringify(tut.error || tut.fight.setup));
-  const e0 = (await Life.peek(nu)).character.vitals.energy;
+  check("luta de treino abre no passo dela, maga pela classe", tut.fight && tut.fight.setup.style === "mage", JSON.stringify(tut.error || tut.fight.setup));
   const fT = new F.Fight({ ...tut.fight.setup, style: "mage", gear: tut.fight.setup.gear || undefined });
   const framesT = [];
   for (let i = 0; i < 30000 && !fT.over; i++) {
@@ -240,42 +267,26 @@ async function main() {
   const doneT = await Adv.fightFinish(nu, { ticket: tut.fight.ticket, frames: framesT });
   check("luta de treino conferida", doneT.receipt && doneT.receipt.result.origin === "tutorial", JSON.stringify(doneT.error));
   check("treino sem custo de energia/estresse", doneT.receipt.deltas.cost.energy === 0 && doneT.receipt.deltas.cost.stress === 0);
-  void e0;
-  check("passo 5 entregue", (await qa()).receipt);
-  const won = doneT.receipt.result.win;
-  if (!won) {
-    // passo 6 pede VITÓRIA conferida: outra luta de treino até vencer
-    for (let k = 0; k < 8; k++) {
-      const t2 = await Adv.fightStart(nu, { origin: "tutorial" });
-      const f2 = new F.Fight({ ...t2.fight.setup, style: "mage", gear: t2.fight.setup.gear || undefined });
-      const fr2 = [];
-      for (let i = 0; i < 30000 && !f2.over; i++) {
-        const qi = F.quantizeInput({ mx: 0, mz: 0, run: false, attack: i % 10 === 0, dodge: false, power: f2.me.power >= 100 });
-        F.pushFrame(fr2, qi);
-        f2.step(qi);
-      }
-      await pool.query(`UPDATE tb_mm_fight SET started_at = NOW() - INTERVAL '6 minutes' WHERE id_fight = $1`, [t2.fight.ticket]);
-      const d2 = await Adv.fightFinish(nu, { ticket: t2.fight.ticket, frames: fr2 });
-      if (d2.receipt && d2.receipt.result.win) break;
-    }
-  }
-  const r6 = await qa();
-  check("passo 6 (vitória conferida)", r6.receipt, JSON.stringify(r6.error));
-  check("passo 7 (material na mochila — o drop da luta)", (await qa()).receipt);
+  check("passo 'pedra' (luta de treino) entregue", (await qa()).receipt);
   const r8a = await qa();
-  check("passo 8 sem visitar o Armeiro = pendente", r8a.code === "pending");
+  check("passo 'armeiro' sem visitar o Armeiro = pendente", r8a.code === "pending");
   await Quest.advance(nu, { action: "visit_armory" });
-  check("passo 8 (Armeiro + arma equipada)", (await qa()).receipt);
-  check("passo 9 entregue", (await qa()).receipt);
+  check("passo 'armeiro' (Armeiro + arma equipada)", (await qa()).receipt);
+  check("passo 'forja' sem receita = pendente", (await qa()).code === "pending");
+  const AdvStore = require("../src/storages/MeuMundoAdventureStorage");
+  await AdvStore.insertReceipt(pool, { idUser: nu, idCharacter: chr, source: "forge", actionKey: "t-forja", rules: "R3", result: {}, deltas: {}, items: [] });
+  check("passo 'forja' conferido pelo recibo da Forja", (await qa()).receipt);
+  // monstro da rua: luta de Arena com lobo não vale; só a da rua
+  await AdvStore.insertReceipt(pool, { idUser: nu, idCharacter: chr, source: "fight", actionKey: "t-arena-lobo", rules: "R3", result: { origin: "laminas", kind: "wolf", win: true, abandoned: false }, deltas: {}, items: [] });
+  check("passo 'noite': lobo da Arena não vale", (await qa()).code === "pending");
+  await AdvStore.insertReceipt(pool, { idUser: nu, idCharacter: chr, source: "fight", actionKey: "t-rua-lobo", rules: "R3", result: { origin: "mob", kind: "wolf", win: true, abandoned: false }, deltas: {}, items: [] });
   const last = await qa();
-  check("passo 10: pista de Morkhan + amuleto", last.receipt && last.receipt.result.last && last.receipt.items.some((i) => i.id === "cristal_morkhan"), JSON.stringify(last.error));
-  const advRow = (await pool.query(`SELECT xp FROM tb_mm_char_adventure WHERE id_user = $1`, [nu])).rows[0];
-  const lv = require("../src/utils/meuMundoAdventure").levelOf(Number(advRow.xp));
-  check("prólogo garante subir de nível (≥ 3)", lv.level >= 3, JSON.stringify(lv));
+  check("passo 'noite' (lobo da rua) fecha o capítulo 4", last.receipt && last.receipt.result.last && last.receipt.result.chapter === 4, JSON.stringify(last.error));
+  check("capítulo 5 espera o nível 11", last.quest && last.quest.id === "cap5" && last.quest.locked && last.quest.locked.level === 11);
   const lvUps = (await pool.query(`SELECT COUNT(*)::int n FROM tb_mm_receipt WHERE id_user = $1 AND (deltas->'xp'->>'to')::int > (deltas->'xp'->>'from')::int`, [nu])).rows[0].n;
   check("subidas de nível vêm em recibos (para a celebração)", lvUps >= 1, String(lvUps));
   const dup = await Quest.advance(nu, { action: "ack" });
-  check("missão concluída não concede de novo", dup.code === "done");
+  check("capítulo trancado não concede", dup.code === "level");
 
   // ── slice 4: crédito de minijogo medido pela sala ──
   const now = Date.now();

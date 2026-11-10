@@ -95,7 +95,7 @@ async function main() {
 
   // ── missão: XP inteiro ──
   const r1 = await Quest.advance(id, { action: "ack" });
-  const step0 = require("../src/utils/meuMundoQuests").PROLOGUE.steps[0];
+  const step0 = require("../src/utils/meuMundoQuests").CHAPTERS[0].steps[0];
   check("missão: o treinador leva o XP do passo inteiro", r1.receipt && r1.receipt.deltas.trainer && r1.receipt.deltas.trainer.xp === step0.xp, JSON.stringify(r1.receipt && r1.receipt.deltas));
   check("missão: o personagem também ganha o XP (nível de aventura próprio)", r1.receipt.deltas.xp.xp === step0.xp);
 
@@ -126,7 +126,7 @@ async function main() {
     await Life.consume(id, "agua_coco");
   }
   const r2b = r2.receipt ? r2 : await Quest.advance(id, { action: "ack" });
-  const step1 = require("../src/utils/meuMundoQuests").PROLOGUE.steps[1];
+  const step1 = require("../src/utils/meuMundoQuests").CHAPTERS[0].steps[1];
   check("teto: missão passa por cima do teto (XP inteiro)", r2b.receipt && r2b.receipt.deltas.trainer && r2b.receipt.deltas.trainer.xp === step1.xp, JSON.stringify(r2b.error || (r2b.receipt && r2b.receipt.deltas)));
   // o teto vira no dia seguinte
   await pool.query(`UPDATE tb_mm_trainer SET gain_day = (gain_day - 1) WHERE id_user = $1`, [id]);
