@@ -26,12 +26,14 @@
 // `release` e `drop`.
 
 const { rollMobLevel } = require("../utils/meuMundoAdventure");
-// 2026-11-03 (Alex): o Golem de Pedra ("soldier" na regra) também anda na rua.
+// 2026-11-03 (Alex): o Golem de Pedra também anda na rua. F1 (lore v2, 2026-11-10): ids novos —
+// `stone` = Golem de Pedra (ex-"soldier" da rua), `ciborgue` (ex-"golem"), `garras` (ex-"harpy").
+// O Cavaleiro Dourado (`cavaleiro`) fica na Arena; não anda na rua.
 const KINDS = Object.freeze([
   ["wolf", 30],
-  ["soldier", 20],
-  ["golem", 20],
-  ["harpy", 15],
+  ["stone", 20],
+  ["ciborgue", 20],
+  ["garras", 15],
   ["brute", 15],
 ]);
 

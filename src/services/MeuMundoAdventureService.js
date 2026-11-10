@@ -285,7 +285,7 @@ class MeuMundoAdventureService {
       level = lv;
     }
     if (origin === "tutorial") {
-      kind = "soldier";
+      kind = "cavaleiro";
       level = 1;
     }
     // B8: o defensor entra como o Campeão (humano), com a ficha congelada pelo `peer`
@@ -293,6 +293,8 @@ class MeuMundoAdventureService {
       kind = "brute";
       level = 1;
     }
+    // aparelho com a página de antes da F1 ainda manda o id antigo; o "soldier" do menu da Arena era o Golem
+    kind = kind === "soldier" && origin === "laminas" ? "stone" : FightSim.mobKindOf(kind) || kind;
     if (!FightSim.MOB_KINDS.includes(kind)) return fail("kind");
     // no menu todos entram com os status de quem joga: o nível só pesa no prêmio, e fica no 1
     if (origin === "boxe" || origin === "laminas") level = 1;

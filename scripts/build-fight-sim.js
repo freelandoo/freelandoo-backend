@@ -13,7 +13,8 @@ const fs = require("fs");
 const path = require("path");
 const { stripTypeScriptTypes } = require("node:module");
 
-const SIM = path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/laminas/sim");
+// MM_FRONT = raiz do front (worktree), como nos outros geradores
+const SIM = path.join(process.env.MM_FRONT || path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main"), "features/meu-mundo/laminas/sim");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoFight.js");
 // Ordem de dependência (cada um só usa os de cima).
 const MODULES = ["fight", "replay"];

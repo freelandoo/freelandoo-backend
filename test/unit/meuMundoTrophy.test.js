@@ -7,15 +7,18 @@ test("Arena e rua contam; Boxe e prólogo não", () => {
   assert.equal(Adv.trophyKind("laminas", "wolf"), "wolf");
   assert.equal(Adv.trophyKind("mob", "brute"), "brute");
   assert.equal(Adv.trophyKind("boxe", "wolf"), null);
-  assert.equal(Adv.trophyKind("tutorial", "soldier"), null);
+  assert.equal(Adv.trophyKind("tutorial", "cavaleiro"), null);
 });
 
-test("na rua o soldier é o Golem de Pedra", () => {
-  assert.equal(Adv.trophyKind("mob", "soldier"), "stone");
-  assert.equal(Adv.trophyKind("laminas", "soldier"), "soldier");
+test("F1: Golem de Pedra e Cavaleiro Dourado são tipos separados, na Arena e na rua", () => {
+  assert.equal(Adv.trophyKind("mob", "stone"), "stone");
+  assert.equal(Adv.trophyKind("laminas", "stone"), "stone");
+  assert.equal(Adv.trophyKind("laminas", "cavaleiro"), "cavaleiro");
+  // os ids antigos não são mais tipo de troféu (viraram os novos na mig 436)
+  assert.equal(Adv.trophyKind("laminas", "soldier"), null);
 });
 
 test("monstro desconhecido não entra", () => {
   assert.equal(Adv.trophyKind("laminas", "dragao"), null);
-  assert.deepEqual([...Adv.TROPHY_KINDS].sort(), ["brute", "golem", "harpy", "soldier", "stone", "wolf"]);
+  assert.deepEqual([...Adv.TROPHY_KINDS].sort(), ["brute", "cavaleiro", "ciborgue", "garras", "stone", "wolf"]);
 });

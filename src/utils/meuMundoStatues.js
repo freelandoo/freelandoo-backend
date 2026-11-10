@@ -7,7 +7,7 @@
 // meuMundoCenter.js); aqui mora só o catálogo dos modelos publicados e a forma
 // de cada entrada:
 //   { id, x, z, rot, height, base: { kind: "pedestal" | "pulpit" | "none", r, h } }
-// "none" = em cima da base de outra estátua (a fera no pedestal do Morkhan):
+// "none" = em cima da base de outra estátua (hoje ninguém usa; a fera aos pés de Morkhan saiu na lore v2):
 // sem desenho nem colisão próprios, só a altura `h` de onde ela fica.
 // `rot` = rotação em Y com a FRENTE no −Z local (a mesma conta dos lotes);
 // `height` = altura da estátua em metros (o modelo tem 1 m); a estátua fica

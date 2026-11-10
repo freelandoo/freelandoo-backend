@@ -24,15 +24,15 @@ test("todo level up aumenta vida, defesa, ataque e atributos", () => {
 });
 
 test("a luta usa o nível: vida máxima, defesa somada ao equipamento com teto", () => {
-  const f = new F.Fight({ kind: "golem", level: 1, seed: 1, hero: 20, gear: { def: 0.25 } });
+  const f = new F.Fight({ kind: "ciborgue", level: 1, seed: 1, hero: 20, gear: { def: 0.25 } });
   assert.equal(f.me.hpMax, F.heroLevelScale(20).hp);
   assert.equal(f.me.hp, f.me.hpMax);
   assert.ok(Math.abs(f.def - Math.min(F.DEF_MAX, 0.25 + F.heroLevelScale(20).def)) < 1e-9);
-  const top = new F.Fight({ kind: "golem", seed: 1, hero: 60, gear: { def: 0.25 } }).def;
+  const top = new F.Fight({ kind: "ciborgue", seed: 1, hero: 60, gear: { def: 0.25 } }).def;
   assert.ok(Math.abs(top - 0.545) < 1e-9 && top <= F.DEF_MAX);
   // ataque: o mesmo atributo bate mais forte com nível maior
-  const a = new F.Fight({ kind: "golem", seed: 1, hero: 1 });
-  const b = new F.Fight({ kind: "golem", seed: 1, hero: 10 });
+  const a = new F.Fight({ kind: "ciborgue", seed: 1, hero: 1 });
+  const b = new F.Fight({ kind: "ciborgue", seed: 1, hero: 10 });
   assert.ok(b.fx.dmg > a.fx.dmg * 2);
 });
 
@@ -51,7 +51,7 @@ test("monstro do MESMO nível pede quase os mesmos golpes que no nível 1", () =
 });
 
 test("replay com o nível chega ao mesmo resultado (o servidor confere com o ticket)", () => {
-  const setup = { kind: "soldier", level: 1, seed: 11, hero: 15 };
+  const setup = { kind: "cavaleiro", level: 1, seed: 11, hero: 15 };
   const frames = [[60 * 60, 0, 127, 2]];
   const r1 = F.replayFight(setup, frames);
   const r2 = F.replayFight(setup, frames);

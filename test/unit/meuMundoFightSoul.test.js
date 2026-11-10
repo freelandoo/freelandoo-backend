@@ -19,7 +19,7 @@ function play(setup, steps, input = () => idle) {
 }
 
 test("Desistir: a luta acaba em derrota e o servidor confere pela gravação", () => {
-  const setup = { kind: "golem", seed: 7, stats: STATS, tier: "arena" };
+  const setup = { kind: "ciborgue", seed: 7, stats: STATS, tier: "arena" };
   const { f, evs } = play(setup, 600, (i) => ({ ...idle, quit: i === 120 }));
   assert.ok(f.over && !f.over.win && f.over.quit === "me");
   assert.ok(evs.some((e) => e.t === "end" && e.quit === "me"));
@@ -57,7 +57,7 @@ test("psicopata contra inimigo à altura: só com afeto (sem afeto nunca)", () =
   const roll = (affection) => {
     let n = 0;
     for (let seed = 1; seed <= 60; seed++) {
-      const { evs } = play({ kind: "soldier", seed, stats: STATS, peer: 1, temper: "psicopata", affection }, 120, (i, f) => {
+      const { evs } = play({ kind: "cavaleiro", seed, stats: STATS, peer: 1, temper: "psicopata", affection }, 120, (i, f) => {
         if (i === 30) f.me.power = F.POWER.max;
         return { ...idle, power: i === 31 };
       });
@@ -73,7 +73,7 @@ test("covarde com vida baixa: avisa e sai; quanto mais gosta do dono, menos sai"
   const flee = (affection) => {
     let n = 0;
     for (let seed = 1; seed <= 40; seed++) {
-      const { f, evs } = play({ kind: "golem", seed, stats: STATS, tier: "arena", temper: "covarde", affection }, 60 * 40, (i, ff) => {
+      const { f, evs } = play({ kind: "ciborgue", seed, stats: STATS, tier: "arena", temper: "covarde", affection }, 60 * 40, (i, ff) => {
         if (i === 1) ff.me.hp = Math.floor(ff.me.hpMax * 0.3);
         return idle;
       });
@@ -95,7 +95,7 @@ test("covarde com vida baixa: avisa e sai; quanto mais gosta do dono, menos sai"
 test("esquiva automática vira esquiva de verdade (estado e evento de esquiva)", () => {
   let seen = 0;
   for (let seed = 1; seed <= 20 && !seen; seed++) {
-    const f = new F.Fight({ kind: "harpy", seed, stats: { ...STATS, speed: 3000 }, tier: "arena" });
+    const f = new F.Fight({ kind: "garras", seed, stats: { ...STATS, speed: 3000 }, tier: "arena" });
     for (let i = 0; i < 60 * 30 && !f.over; i++) {
       f.step(idle);
       const auto = f.events.find((e) => e.t === "miss" && e.on === "me" && e.auto);
@@ -127,7 +127,7 @@ test("monstros-personagem usam os poderes na Arena; o ringue e os lobos não", (
 });
 
 test("escudo do monstro corta o dano por 4 s", () => {
-  const f = new F.Fight({ kind: "golem", seed: 3, stats: STATS, tier: "arena" });
+  const f = new F.Fight({ kind: "ciborgue", seed: 3, stats: STATS, tier: "arena" });
   const m = f.mobs[0];
   m.state = "chase";
   const hit = () => {

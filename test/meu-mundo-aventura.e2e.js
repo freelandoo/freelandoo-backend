@@ -68,7 +68,7 @@ async function main() {
   const seed = (await pool.query(`SELECT seed, dexterity FROM tb_mm_character WHERE id_user = $1`, [id])).rows[0];
   check("destreza gravada (NOT NULL, nascimento pela semente)", seed.dexterity === 15 + (Math.abs(seed.seed) % 16), JSON.stringify(seed));
 
-  const start = await Adv.fightStart(id, { origin: "laminas", kind: "soldier", level: 1 });
+  const start = await Adv.fightStart(id, { origin: "laminas", kind: "cavaleiro", level: 1 });
   check("start devolve ticket e semente do servidor", start.fight && start.fight.ticket && start.fight.setup.seed > 0, JSON.stringify(start).slice(0, 200));
   const life0 = (await Life.peek(id)).character.vitals;
 
@@ -119,17 +119,17 @@ async function main() {
   check("reenvio devolve o mesmo recibo", again.replay === true && again.receipt.eventId === rec.eventId);
   // B5 (mig 365): a luta entra UMA vez no inventário de monstros (as duas abas e o reenvio não somam)
   const inv1 = (await Adv.monsters(id)).monsters
-  const sol = inv1.find((m) => m.kind === "soldier")
+  const sol = inv1.find((m) => m.kind === "cavaleiro")
   check("inventário: a luta da Arena conta uma vez", sol.wins + sol.losses === 1 && sol.wins === (rec.result.win ? 1 : 0), JSON.stringify(sol))
-  check("inventário: lista todas as espécies, zero no resto", inv1.length === 6 && inv1.filter((m) => m.kind !== "soldier").every((m) => m.wins === 0 && m.losses === 0))
+  check("inventário: lista todas as espécies, zero no resto", inv1.length === 6 && inv1.filter((m) => m.kind !== "cavaleiro").every((m) => m.wins === 0 && m.losses === 0))
   check("inventário: maior nível vencido", sol.bestLevel === (rec.result.win ? 1 : 0), JSON.stringify(sol))
 
   // abandono: abre e não fecha; a próxima abre e cobra a derrota uma vez
-  const s2 = await Adv.fightStart(id, { origin: "laminas", kind: "golem", level: 1 });
-  const s3 = await Adv.fightStart(id, { origin: "laminas", kind: "golem", level: 1 });
+  const s2 = await Adv.fightStart(id, { origin: "laminas", kind: "ciborgue", level: 1 });
+  const s3 = await Adv.fightStart(id, { origin: "laminas", kind: "ciborgue", level: 1 });
   check("luta abandonada vira derrota (uma vez)", s3.abandoned.length === 1 && s3.abandoned[0].result.abandoned && s3.abandoned[0].actionKey === s2.fight.ticket);
-  const s4 = await Adv.fightStart(id, { origin: "laminas", kind: "golem", level: 1 });
-  check("inventário: abandono não conta", (await Adv.monsters(id)).monsters.find((m) => m.kind === "golem").losses === 0)
+  const s4 = await Adv.fightStart(id, { origin: "laminas", kind: "ciborgue", level: 1 });
+  check("inventário: abandono não conta", (await Adv.monsters(id)).monsters.find((m) => m.kind === "ciborgue").losses === 0)
   check("o abandono não é cobrado de novo", s4.abandoned.length === 1 && s4.abandoned[0].actionKey === s3.fight.ticket);
 
   // monstro da rua sem a sala ter visto: recusa
@@ -183,7 +183,7 @@ async function main() {
   check("equipa a espada de latão (bônus de dano)", ok.bag && ok.bag.bonus.dmg === 0.05, JSON.stringify(ok.bag && ok.bag.bonus));
 
   // a luta seguinte leva o bônus no ticket
-  const s5 = await Adv.fightStart(id, { origin: "laminas", kind: "soldier", level: 1 });
+  const s5 = await Adv.fightStart(id, { origin: "laminas", kind: "cavaleiro", level: 1 });
   check("ticket leva o bônus do equipamento", s5.fight.setup.gear && s5.fight.setup.gear.dmg === 0.05);
 
   // forja: sem materiais recusa; com materiais, consome e entrega
@@ -303,7 +303,7 @@ async function main() {
   await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f') ON CONFLICT DO NOTHING`, [su]);
   // B3 (mig 340): as skins viraram ESPÉCIES de personagem — "vestir" = o personagem ativo ser daquela espécie.
   const wear = (skin) => pool.query(`UPDATE tb_mm_character SET species = $2 WHERE id_user = $1 AND status = 'alive'`, [su, skin]);
-  const fightKit = async () => (await Adv.fightStart(su, { origin: "laminas", kind: "soldier", level: 1 })).fight.setup;
+  const fightKit = async () => (await Adv.fightStart(su, { origin: "laminas", kind: "cavaleiro", level: 1 })).fight.setup;
   const fox = await Gear.buy(su, { item: "espada_aco", key: k() });
   check("raposa não compra espada", fox.code === "clan", JSON.stringify(fox));
   check("mochila da raposa: não é guerreira", (await Gear.get(su)).bag.warrior === false);

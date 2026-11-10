@@ -87,7 +87,7 @@ test("custo da luta: delta efetivo e a 3ª derrota seguida sem estresse", () => 
 });
 
 test("luta conferida: replay igual ao aparelho; gravação alterada perde", () => {
-  const setup = { kind: "soldier", level: 1, seed: 99, stats: { strength: 150, speed: 150, intelligence: 80, dexterity: 40 } };
+  const setup = { kind: "cavaleiro", level: 1, seed: 99, stats: { strength: 150, speed: 150, intelligence: 80, dexterity: 40 } };
   const fight = new F.Fight(setup);
   const frames = [];
   for (let i = 0; i < 20000 && !fight.over; i++) {
@@ -154,8 +154,8 @@ test("drop: material comum garantido com participação; vitória aumenta; nunca
 });
 
 test("luta com equipamento: mais dano dado, menos levado, teto do lado da regra", () => {
-  const base = new F.Fight({ kind: "golem", seed: 3 });
-  const geared = new F.Fight({ kind: "golem", seed: 3, gear: { dmg: 0.5, def: 0.12 } });
+  const base = new F.Fight({ kind: "ciborgue", seed: 3 });
+  const geared = new F.Fight({ kind: "ciborgue", seed: 3, gear: { dmg: 0.5, def: 0.12 } });
   assert.ok(Math.abs(geared.fx.dmg / base.fx.dmg - 1.35) < 1e-9, "dano cortado no novo teto de +35%");
   assert.equal(geared.gear.def, 0.12);
 });
@@ -241,8 +241,8 @@ test("drop da luta: saúde baixa, estresse e derrota derrubam menos", () => {
 })
 test("moedas: luta e minijogo sempre dropam (vitória mais que derrota)", () => {
   const r = seq(11)
-  assert.ok(A.fightCoins("soldier", 1, true, r) >= 7)
-  assert.ok(A.fightCoins("brute", 3, true, r) > A.fightCoins("soldier", 1, true, r))
+  assert.ok(A.fightCoins("cavaleiro", 1, true, r) >= 7)
+  assert.ok(A.fightCoins("brute", 3, true, r) > A.fightCoins("cavaleiro", 1, true, r))
   assert.ok(A.fightCoins("wolf", 1, false, r) >= 2)
   assert.ok(A.minigameCoins(8 * 60000, false, r) >= 15)
   assert.equal(A.minigameCoins(0, true, r), 0)

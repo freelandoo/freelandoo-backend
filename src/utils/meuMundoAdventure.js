@@ -59,7 +59,7 @@ const PER_10MIN = Object.freeze({ main: 1, sec: 0.3 });
 /** XP por 10 min ativos de minijogo; luta: por monstro e nível. */
 const XP_GAIN = Object.freeze({
   minigamePer10: 6,
-  fightWin: { soldier: 30, wolf: 45, golem: 50, harpy: 55, brute: 80 },
+  fightWin: { cavaleiro: 30, stone: 30, wolf: 45, ciborgue: 50, garras: 55, brute: 80 },
   fightLevelMul: 0.5, // +50% por nível acima do 1
   fightLoss: 10,
 });
@@ -152,7 +152,7 @@ function rollFightDrop({ ageDays, adult, win, health, vitality, stress }, rand) 
 // rende ~14/h; uma vitória rende uma refeição barata, um minijogo inteiro
 // (o tempo máximo da atividade) um pouco mais.
 const COINS = Object.freeze({
-  fightWin: Object.freeze({ soldier: 10, wolf: 13, golem: 14, harpy: 15, brute: 20 }),
+  fightWin: Object.freeze({ cavaleiro: 10, stone: 10, wolf: 13, ciborgue: 14, garras: 15, brute: 20 }),
   /** +40% por nível do inimigo acima do 1. */
   fightLevelMul: 0.4,
   fightLoss: 3,
@@ -297,12 +297,12 @@ function applyFightCost(s, win, lossesToday, tutorial = false) {
 
 // ═══ B5: INVENTÁRIO DE MONSTROS ═══ — que luta conta e com que nome.
 // Arena ('laminas') e rua ('mob'); o ringue do Boxe (humanos) e o prólogo não.
-// Na rua o 'soldier' é o Golem de Pedra ('stone', como MOB_SHEETS da luta).
-const TROPHY_KINDS = Object.freeze(["soldier", "stone", "wolf", "golem", "harpy", "brute"]);
+// F1 (lore v2): os tipos da luta com os ids novos — cavaleiro (Soldado de Pedra/Cavaleiro Dourado),
+// stone (Golem de Pedra), ciborgue, garras. Os antigos (soldier/golem/harpy) viraram estes na mig 436.
+const TROPHY_KINDS = Object.freeze(["cavaleiro", "stone", "wolf", "ciborgue", "garras", "brute"]);
 function trophyKind(origin, kind) {
   if (origin !== "laminas" && origin !== "mob") return null;
-  const k = origin === "mob" && kind === "soldier" ? "stone" : kind;
-  return TROPHY_KINDS.includes(k) ? k : null;
+  return TROPHY_KINDS.includes(kind) ? kind : null;
 }
 
 module.exports = {

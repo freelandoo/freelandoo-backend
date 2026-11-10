@@ -30,7 +30,7 @@ test("status do monstro crescem com o nível, sem teto", () => {
   assert.equal(f.level, 20);
   assert.equal(f.mobs[0].hpMax, Math.round(F.MOBS.wolf.hp * F.mobLevelScale(20).hp));
   // 2026-11-03: o Golem de Pedra da rua tem nível sorteado (o corte 1–2 do menu é do servidor)
-  assert.equal(new F.Fight({ kind: "soldier", level: 9, seed: 3 }).level, 9);
+  assert.equal(new F.Fight({ kind: "cavaleiro", level: 9, seed: 3 }).level, 9);
 });
 
 test("sorteio: 20% igual, 30% +3/+4, 20% +6 a +10, 20% +12, 10% +20", () => {
@@ -55,7 +55,7 @@ test("status sem teto: atributo, nível e luta passam de 1000 e de 60", () => {
   assert.equal(s.acc, 100 + 5000 + 3 * 79);
   assert.ok(s.atk > 1000 && s.hp > 631);
   assert.ok(A.levelOf(1e9).level > 60);
-  const f = new F.Fight({ kind: "soldier", seed: 3, hero: 80, peer: 1, stats: { strength: 5000, speed: 5000, intelligence: 5000, dexterity: 9000 } });
+  const f = new F.Fight({ kind: "cavaleiro", seed: 3, hero: 80, peer: 1, stats: { strength: 5000, speed: 5000, intelligence: 5000, dexterity: 9000 } });
   assert.ok(f.fx.stamK > 0 && f.fx.recoverK > 0);
   assert.ok(Math.abs(F.rankOdds(5000, 9000).reduce((a, b) => a + b, 0) - 1) < 1e-9);
   assert.ok(L.ATTR.CURVE_MIN > 0, "treino nunca para de render");
@@ -80,8 +80,8 @@ test("adversário à altura: vida, dano e defesa de quem joga; Campeão com 20% 
 });
 
 test("sem peer (prólogo), o monstro segue pelo nível", () => {
-  const f = new F.Fight({ kind: "soldier", level: 1, hero: 30, seed: 3 });
-  assert.equal(f.mobs[0].hpMax, F.MOBS.soldier.hp);
+  const f = new F.Fight({ kind: "cavaleiro", level: 1, hero: 30, seed: 3 });
+  assert.equal(f.mobs[0].hpMax, F.MOBS.cavaleiro.hp);
   assert.equal(f.rated, false);
 });
 
@@ -102,7 +102,7 @@ test("acuracidade contra velocidade, ataque contra defesa", () => {
   assert.equal(200 * F.damageRatio(50, 1000), 10);
   assert.equal(F.hitChance(10, 1000), 0.01);
   // nível 1 sem equipamento: 100 contra 100; status baixos ficam como são
-  const f = new F.Fight({ kind: "soldier", seed: 1, peer: 1, stats: { strength: 50, speed: 30 } });
+  const f = new F.Fight({ kind: "cavaleiro", seed: 1, peer: 1, stats: { strength: 50, speed: 30 } });
   assert.equal(f.rate.atk, 100);
   assert.equal(f.rate.def, 100);
   assert.equal(f.rate.acc, 150);
@@ -131,11 +131,11 @@ test("cada personagem nasce com a própria ficha", () => {
 });
 
 test("monstros pela ficha: o da rua no nível dele, o da Arena no de quem joga", () => {
-  const stone = new F.Fight({ kind: "soldier", level: 1, seed: 2, tier: "street" }).mobs[0];
+  const stone = new F.Fight({ kind: "stone", level: 1, seed: 2, tier: "street" }).mobs[0];
   assert.equal(stone.hpMax, 175);
   assert.equal(stone.rate.def, 165);
   assert.equal(stone.rate.spd, 60);
-  assert.equal(new F.Fight({ kind: "soldier", seed: 2, tier: "arena" }).mobs[0].hpMax, 170);
+  assert.equal(new F.Fight({ kind: "cavaleiro", seed: 2, tier: "arena" }).mobs[0].hpMax, 170);
   const wolves = new F.Fight({ kind: "wolf", seed: 2, tier: "arena" }).mobs;
   assert.equal(wolves.reduce((a, m) => a + m.hpMax, 0), 225);
   const l = new F.Fight({ kind: "brute", level: 60, hero: 1, seed: 2, tier: "street" }).mobs[0];
@@ -156,14 +156,14 @@ test("Ciborgue atira na Arena e na rua, como a skin; no ringue segue no soco", (
   const ids = (f) => f.mobs[0].attacks.map((x) => x.id);
   // mm3d-72: + os 4 poderes de personagem (Corte, Investida, Escudo, Poder Máximo)
   const SK = ["skSlash", "skDash", "skShield", "skUlt"];
-  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "arena" })), ["shot", "blast", ...SK]);
-  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, tier: "street" })), ["shot", "blast", ...SK]);
-  assert.deepEqual(ids(new F.Fight({ kind: "golem", seed: 2, peer: 1 })), ["swipe", "slam"]);
-  assert.equal(new F.Fight({ kind: "golem", seed: 2, tier: "arena" }).mobs[0].engage, 6);
+  assert.deepEqual(ids(new F.Fight({ kind: "ciborgue", seed: 2, tier: "arena" })), ["shot", "blast", ...SK]);
+  assert.deepEqual(ids(new F.Fight({ kind: "ciborgue", seed: 2, tier: "street" })), ["shot", "blast", ...SK]);
+  assert.deepEqual(ids(new F.Fight({ kind: "ciborgue", seed: 2, peer: 1 })), ["swipe", "slam"]);
+  assert.equal(new F.Fight({ kind: "ciborgue", seed: 2, tier: "arena" }).mobs[0].engage, 6);
 });
 
 test("o tiro é por distância: longe do alcance das mãos ele ainda pega", () => {
-  const f = new F.Fight({ kind: "golem", seed: 3, tier: "arena", stats: { strength: 0, speed: 0, intelligence: 0, dexterity: 0 } });
+  const f = new F.Fight({ kind: "ciborgue", seed: 3, tier: "arena", stats: { strength: 0, speed: 0, intelligence: 0, dexterity: 0 } });
   const idle = { mx: 0, mz: 0, run: false, attack: false, dodge: false };
   const start = f.me.hp;
   for (let i = 0; i < 60 * 8 && !f.over; i++) f.step(idle);
@@ -172,16 +172,16 @@ test("o tiro é por distância: longe do alcance das mãos ele ainda pega", () =
 });
 
 test("ringue não usa a curva dos monstros: o adversário segue espelho", () => {
-  const f = new F.Fight({ kind: "soldier", hero: 15, seed: 2, peer: 1 });
+  const f = new F.Fight({ kind: "cavaleiro", hero: 15, seed: 2, peer: 1 });
   assert.equal(f.mobs[0].hpMax, f.me.hpMax);
   assert.equal(f.mobs[0].rate.atk, f.rate.atk);
 });
 
 test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", () => {
-  const f = new F.Fight({ kind: "soldier", seed: 11, peer: 1, stats: { strength: 1000, speed: 1000 } });
+  const f = new F.Fight({ kind: "cavaleiro", seed: 11, peer: 1, stats: { strength: 1000, speed: 1000 } });
   const m = f.mobs[0];
   m.rate.acc = 100;
-  const a = F.MOBS.soldier.attacks[0];
+  const a = F.MOBS.cavaleiro.attacks[0];
   let landed = 0;
   let row = 0;
   let twice = 0;
