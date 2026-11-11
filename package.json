@@ -69,6 +69,7 @@
     "test:meu-mundo-predios": "node test/meu-mundo-predios.e2e.js",
     "test:meu-mundo-bairros": "node test/meu-mundo-bairros-area.e2e.js",
     "test:meu-mundo-poder": "node test/meu-mundo-poder.e2e.js",
+    "test:meu-mundo-placar": "node test/meu-mundo-placar.e2e.js",
     "test:meu-mundo-personagens": "node test/meu-mundo-personagens.e2e.js",
     "test:meu-mundo-centro": "node test/meu-mundo-centro.e2e.js",
     "test:meu-mundo-jetpack": "node test/meu-mundo-jetpack.e2e.js",

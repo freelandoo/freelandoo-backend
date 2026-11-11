@@ -335,7 +335,13 @@ class CorridaRoom extends Room {
     log.info("corrida.end", { roomId: this.roomId, winnerHuman: !!(rows[0] && rows[0].human) });
     if (this.meter) {
       const win = rows[0] && rows[0].human ? [...this.seats.values()].find((s) => s.car === rows[0].car) : null;
-      this.meter.settle(null, new Set(win ? [win.userId] : []));
+      // N1: placar da semana = o tempo de quem CHEGOU (ms; menor é melhor)
+      const scores = new Map();
+      for (const s of this.seats.values()) {
+        const r = rows.find((x) => x.car === s.car);
+        if (s.userId && r && r.time != null && !r.gone) scores.set(s.userId, Math.round(r.time * 1000));
+      }
+      this.meter.settle(null, new Set(win ? [win.userId] : []), scores);
     }
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }

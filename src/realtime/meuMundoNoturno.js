@@ -354,7 +354,9 @@ class NoturnoRoom extends Room {
       // vitória = a maior pontuação da corrida (com os computadores), se for de uma pessoa
       const all = [...this.seats.values(), ...(this.bots || [])].filter((s) => s.run).sort((a, b) => b.run.score - a.run.score);
       const best = all[0];
-      this.meter.settle(null, new Set(best && best.userId ? [best.userId] : []));
+      // N1: placar da semana = os pontos da corrida (os mesmos da tela de resultado)
+      const scores = new Map([...this.seats.values()].filter((s) => s.userId && s.run && !s.run.gone).map((s) => [s.userId, s.run.score]));
+      this.meter.settle(null, new Set(best && best.userId ? [best.userId] : []), scores);
     }
     const rows = [...this.seats.values()]
       .map((s) => {

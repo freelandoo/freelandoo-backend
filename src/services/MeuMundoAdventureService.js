@@ -21,6 +21,8 @@ const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
 const Gear = require("../utils/meuMundoGear");
 const TrainerService = require("./MeuMundoTrainerService");
+const Scores = require("../utils/meuMundoScores");
+const ScoreStore = require("../storages/MeuMundoScoreStorage");
 const { clanOfBody, usesHammer, usesBow, usesGun } = require("../utils/meuMundoClans");
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
@@ -56,6 +58,17 @@ const r2 = (v) => Math.round(v * 100) / 100;
 
 /** Atributos que a luta usa (sem o benefício de admin: a vida já é a mesma). */
 const fightStats = (s) => ({ strength: s.strength, speed: s.speed, intelligence: s.intelligence, dexterity: s.dexterity });
+
+/**
+ * N1: grava a partida no placar da semana (mig 440), na MESMA transação do
+ * recibo — só com recibo novo (o repetido volta null), então nunca conta duas
+ * vezes. Marca inválida (quem não chegou, valor fora) não grava.
+ */
+async function recordScore(c, idUser, game, value, now) {
+  const mark = Scores.markOf(game, value);
+  if (mark == null) return null;
+  return ScoreStore.record(c, { idUser, game, week: Scores.weekOf(now), value: mark, at: now });
+}
 
 /** Soma XP na linha da aventura (já travada) e devolve o antes/depois. */
 function addXp(adv, xp) {
@@ -166,6 +179,8 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
     items: drops,
   });
   ctx.events.push({ at: ctx.now, kind: "fight", data: { origin, kind: setup.kind, win: verdict.win, abandoned: !!verdict.abandoned, xp: level.xp } });
+  // N1: vitória conferida nas Lâminas, no Boxe e no Hall soma 1 no placar da semana
+  if (rec && verdict.win && !verdict.abandoned && Scores.FIGHT_GAMES.includes(origin)) await recordScore(c, idUser, origin, 1, ctx.now);
   // B5: inventário de monstros (só luta de verdade; recibo repetido = já contou).
   const trophy = Adv.trophyKind(origin, setup.kind);
   if (rec && trophy && !verdict.abandoned) await Store.addTrophy(c, { idUser, kind: trophy, win: verdict.win, level: setup.level });
@@ -188,7 +203,7 @@ class MeuMundoAdventureService {
    * Prática (orçamento do dia, janela máxima por partida), XP e o material da
    * família. Sem custo de energia (a vida já cobra o tempo acordado).
    */
-  static async creditMinigame(idUser, { activity, actionKey, segments, win = false }) {
+  static async creditMinigame(idUser, { activity, actionKey, segments, win = false, score = null }) {
     const def = Adv.ACTIVITIES[activity];
     if (!def || !actionKey) return fail("origin");
     const source = `minigame:${activity}`;
@@ -224,11 +239,13 @@ class MeuMundoAdventureService {
         actionKey: String(actionKey),
         rules: Adv.RULES_VERSION,
         activeMs: practice.activeMs,
-        result: { activity, win: !!win, condition },
+        result: { activity, win: !!win, condition, ...(score != null && Number.isFinite(Number(score)) ? { score: Number(score) } : {}) },
         deltas: { xp: level, trainer, attrs: practice.attrs, coins: coins + drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
         items: drops,
       });
       ctx.events.push({ at: ctx.now, kind: "minigame", data: { activity, activeMs: practice.activeMs } });
+      // N1: a marca da partida (medida pela sala) no placar da semana
+      if (receipt && score != null) await recordScore(c, idUser, activity, score, ctx.now);
       return { receipt, replay: false };
     });
   }

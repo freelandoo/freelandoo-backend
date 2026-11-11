@@ -350,7 +350,9 @@ class JetpackRoom extends Room {
     if (this.meter) {
       // vitória = quem foi mais longe no túnel (contando os computadores), se for uma pessoa
       const best = [...this.seats.values(), ...(this.bots || [])].filter((s) => s.run).sort((a, b) => b.run.z - a.run.z)[0];
-      this.meter.settle(null, new Set(best && best.userId ? [best.userId] : []));
+      // N1: placar da semana = os pontos da corrida (os mesmos da tela de resultado)
+      const scores = new Map([...this.seats.values()].filter((s) => s.userId && s.run && !s.run.gone).map((s) => [s.userId, s.run.score]));
+      this.meter.settle(null, new Set(best && best.userId ? [best.userId] : []), scores);
     }
     const rows = [...this.seats.values()]
       .map((s) => {

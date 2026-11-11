@@ -48,9 +48,11 @@ class PracticeMeter {
 
   /**
    * Entrega a prática de uma pessoa (ou de todas, sem `userId`). `wins` =
-   * Set de quem venceu. Assíncrono e idempotente (recibo por partida+pessoa).
+   * Set de quem venceu. `scores` (N1) = Map userId → marca da partida medida
+   * pela sala (pontos ou tempo em ms; utils/meuMundoScores.js); quem sai no meio
+   * é entregue sem marca. Assíncrono e idempotente (recibo por partida+pessoa).
    */
-  settle(userId = null, wins = null) {
+  settle(userId = null, wins = null, scores = null) {
     const ids = userId ? [userId] : [...this.users.keys()];
     for (const id of ids) {
       const u = this.users.get(id);
@@ -58,7 +60,8 @@ class PracticeMeter {
       u.settled = true;
       if (!u.segs.some((g) => g.to > g.from)) continue;
       const Adv = require("../services/MeuMundoAdventureService");
-      Adv.creditMinigame(id, { activity: this.activity, actionKey: `${this.matchKey}:${id}`, segments: u.segs, win: !!(wins && wins.has(id)) })
+      const score = scores && scores.has(id) ? scores.get(id) : null;
+      Adv.creditMinigame(id, { activity: this.activity, actionKey: `${this.matchKey}:${id}`, segments: u.segs, win: !!(wins && wins.has(id)), score })
         .then((out) => {
           if (out && out.receipt && !out.replay) require("./meuMundoPresence").send(id, "receipt", out.receipt);
         })

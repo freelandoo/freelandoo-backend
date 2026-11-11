@@ -140,3 +140,8 @@ class MeuMundoPoderStorage {
 }
 
 module.exports = MeuMundoPoderStorage;
+// N1: o placar semanal mostra as pessoas do mesmo jeito
+module.exports.WHO = WHO;
+module.exports.WHO_JOIN = WHO_JOIN;
+module.exports.CHAR_ACTIVE = CHAR_ACTIVE;
+module.exports.who = who;

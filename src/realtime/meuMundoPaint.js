@@ -587,7 +587,15 @@ class PaintRoom extends Room {
         const p = this.state.players.get(sid);
         if (p && s.userId && wt != null && p.team === wt) wins.add(s.userId);
       }
-      this.meter.settle(null, wins);
+      // N1: placar da semana = o dano causado na partida (a regra que decide o vencedor)
+      const scores = new Map();
+      const rows = (this.match.result && this.match.result.rows) || [];
+      for (const [sid, s] of this.seats) {
+        const p = this.state.players.get(sid);
+        const r = p ? rows.find((x) => x.slot === p.slot) : null;
+        if (s.userId && r) scores.set(s.userId, Math.round(r.dmg || 0));
+      }
+      this.meter.settle(null, wins, scores);
     }
     this.state.until = Date.now() + timing.closeMs;
     log.info("paint.end", { roomId: this.roomId, mode: this.mode, map: this.mapId, winnerTeam: this.match.result.winnerTeam });

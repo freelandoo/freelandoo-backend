@@ -86,6 +86,8 @@ router.post("/client-report", ...admin, asyncHandler(MeuMundoController.clientRe
 // mm3d-59: equipamento — compras/forja com chave do pedido (recibo idempotente).
 router.get("/gear", ...admin, asyncHandler(MeuMundoController.gearGet));
 // B7: ranking do jogo (poder | nivel | freelandoo) — top 100 do Brasil + a minha posição
+// N1: placar semanal por jogável (antes da rota de abas)
+router.get("/ranking/semana/:game", ...admin, asyncHandler(MeuMundoController.weeklyRanking));
 router.get("/ranking/:tab", ...admin, asyncHandler(MeuMundoController.ranking));
 // A8: link de afiliado do Meu Mundo (10% do que o convidado gastar em dinheiro)
 router.get("/share", ...admin, asyncHandler(MeuMundoController.shareLink));

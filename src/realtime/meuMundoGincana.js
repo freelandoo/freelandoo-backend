@@ -352,7 +352,13 @@ class GincanaRoom extends Room {
     // prática de quem jogou (vitória = chegou em 1º)
     if (this.meter) {
       const first = rows[0] && rows[0].fin >= 0 && !rows[0].bot ? [...this.seats.values()].find((s) => s.slot === rows[0].slot) : null;
-      this.meter.settle(null, new Set(first ? [first.userId] : []));
+      // N1: placar da semana = o tempo de chegada (ms; menor é melhor; quem não chegou fica de fora)
+      const scores = new Map();
+      for (const s of this.seats.values()) {
+        const r = rows.find((x) => x.slot === s.slot);
+        if (s.userId && r && r.fin >= 0 && !r.gone) scores.set(s.userId, Math.round(r.fin * 1000));
+      }
+      this.meter.settle(null, new Set(first ? [first.userId] : []), scores);
     }
     this.closeTimer = this.clock.setTimeout(() => this.disconnect(), timing.closeMs);
   }

@@ -210,6 +210,11 @@ async function clientReport(req, res) {
 }
 // mm3d-59 slice 3: equipamento (Armeiro, mochila, forja)
 // B7: aba Ranking (Poder, Nível, Freelandoo)
+// N1: o placar da semana de um jogável (?week=AAAA-MM-DD, um domingo; sem = a semana de agora)
+async function weeklyRanking(req, res) {
+  return reply(res, await require("../services/MeuMundoPoderService").weekly(req.user.id_user, String(req.params.game || ""), req.query.week ? String(req.query.week) : null));
+}
+
 async function ranking(req, res) {
   return reply(res, await require("../services/MeuMundoPoderService").ranking(req.user.id_user, String(req.params.tab || "")));
 }
@@ -471,6 +476,7 @@ module.exports = {
   clientReport,
   gearGet,
   ranking,
+  weeklyRanking,
   shareLink,
   gearBuy,
   gearEquip,

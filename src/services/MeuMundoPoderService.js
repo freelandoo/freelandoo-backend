@@ -14,6 +14,8 @@ const Store = require("../storages/MeuMundoPoderStorage");
 const RankingStorage = require("../storages/RankingStorage");
 
 const TABS = Object.freeze(["poder", "nivel", "freelandoo"]);
+const Scores = require("../utils/meuMundoScores");
+const ScoreStore = require("../storages/MeuMundoScoreStorage");
 const TOP = 100;
 
 const PowerService = () => require("./MeuMundoPowerService");
@@ -34,6 +36,27 @@ class MeuMundoPoderService {
     // As parcelas (força, …, HP, equipamento) só da minha linha: a tela mostra o meu detalhe.
     if (tab === "poder" && me) me.parts = await MeuMundoPoderService.myParts(idUser);
     return { tab, scope: "br", top, me };
+  }
+
+  /**
+   * N1: GET /ranking/semana/:game — o placar da SEMANA de um jogável (top 100 +
+   * a minha linha). `week` = domingo (AAAA-MM-DD); sem = a semana de agora. O
+   * Poder não tem semana: é o número de agora (o mesmo da aba Poder).
+   */
+  static async weekly(idUser, game, week = null, now = Date.now()) {
+    const g = Scores.GAME_BY_ID.get(game);
+    if (!g) return { error: "Ranking não encontrado", statusCode: 404 };
+    const current = Scores.weekOf(now);
+    const w = week || current;
+    if (!Scores.isWeekId(w) || w > current) return { error: "Semana inválida", statusCode: 400 };
+    const range = Scores.weekRange(w);
+    const head = { tab: "semana", game, kind: g.kind, dir: g.dir, unit: g.unit, week: w, current: w === current, endsAt: new Date(range.end).toISOString(), scope: "br", games: Scores.GAMES.map((x) => x.id) };
+    if (g.kind === "live") {
+      const r = await MeuMundoPoderService.ranking(idUser, "poder");
+      return { ...head, top: r.top, me: r.me ? { ...r.me, parts: undefined } : null };
+    }
+    const [top, me] = await Promise.all([ScoreStore.top(pool, game, w, TOP), ScoreStore.mine(pool, game, w, idUser)]);
+    return { ...head, top, me };
   }
 
   /** Parcelas do meu Poder agora (a mesma conta que o servidor grava). */
