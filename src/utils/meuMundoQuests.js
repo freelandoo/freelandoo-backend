@@ -33,8 +33,9 @@
 //  visit:<lugar>       chegou ao lugar (a sala grava; F4, utils/meuMundoPlaces.js)
 //  talk:<npc>          conversou com o NPC, no lugar dele (POST /quest/mark talk; F4)
 //  archive:<id>        leu aquele texto do Arquivo (read_at; F5, utils/meuMundoArchive.js)
+//  nectar:N            entregou N litros na estátua desde que o capítulo começou (N3; domingo)
 //  — ainda sem dado (entram nas próximas fatias; até lá o passo fica pendente):
-//  nectar:N (N3) · paintTop (C3)
+//  paintTop (C3)
 "use strict";
 
 const step = (key, check, xp, where, extra = {}) => Object.freeze({ key, check, xp, where, ...extra });
@@ -74,7 +75,7 @@ const CHAPTERS = Object.freeze([
       step("jogos", "minigame", 40, "centro"),
       step("primeira", "games:1", 80, "minijogos"),
       step("tres", "games:3", 120, "minijogos"),
-      step("oferenda", "nectar:10", 150, "estatua"),
+      step("oferenda", "nectar:1", 150, "estatua"),
       step("placar", "ack", 40, "placar"),
     ],
   },
@@ -151,7 +152,7 @@ const CHAPTERS = Object.freeze([
       step("poder", "power:1500", 250, "status"),
       step("ouro", "fightWin:cavaleiro", 300, "laminas"),
       step("aldo", "talk:cavaleiro", 150, "estatua_aurion"),
-      step("corrida", "nectar:500", 300, "estatua"),
+      step("corrida", "nectar:30", 300, "estatua"),
     ],
   },
   {
@@ -173,7 +174,7 @@ const CHAPTERS = Object.freeze([
 const CHAPTER_BY_ID = new Map(CHAPTERS.map((c) => [c.id, c]));
 
 /** Checks que ainda não têm dado no servidor (o passo espera a fatia que grava). */
-const PENDING_CHECKS = Object.freeze(["nectar", "paintTop"]);
+const PENDING_CHECKS = Object.freeze(["paintTop"]);
 
 /** "fightWin:wolf" → { type: "fightWin", arg: "wolf" }. */
 function parseCheck(check) {

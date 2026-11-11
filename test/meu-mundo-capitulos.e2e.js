@@ -73,7 +73,7 @@ async function main() {
   check("10 capítulos, níveis 1/3/5/8/11/14/17/20/23/27", Q.CHAPTERS.length === 10 && Q.CHAPTERS.map((c) => c.minTrainerLevel).join() === "1,3,5,8,11,14,17,20,23,27");
   check("capítulos encadeados por next", Q.CHAPTERS.every((c, i) => c.next === (Q.CHAPTERS[i + 1] ? Q.CHAPTERS[i + 1].id : null)));
   const types = new Set(Q.CHAPTERS.flatMap((c) => c.steps.map((s) => Q.parseCheck(s.check).type)));
-  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", "visit", "talk", "archive", ...Q.PENDING_CHECKS];
+  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", "visit", "talk", "archive", "nectar", ...Q.PENDING_CHECKS];
   check("todo check dos capítulos é conhecido pelo servidor", [...types].every((t) => known.includes(t)), [...types].filter((t) => !known.includes(t)).join());
   const mobs = Q.CHAPTERS.flatMap((c) => c.steps).map((s) => Q.parseCheck(s.check)).filter((p) => (p.type === "fightWin" || p.type === "nightKill") && p.arg);
   check("monstros dos capítulos com os ids novos (F1)", mobs.every((p) => require("../src/utils/meuMundoAdventure").TROPHY_KINDS.includes(p.arg)), JSON.stringify(mobs));
@@ -140,7 +140,8 @@ async function main() {
   check("certificate depois de abrir", (await sat("certificate")).ok);
 
   // ── o que ainda espera outra fatia ──
-  for (const c of ["nectar:10", "paintTop"]) check(`${c} fica pendente até a fatia dele`, !(await sat(c)).ok);
+  check("paintTop fica pendente até a fatia dele", !(await sat("paintTop")).ok);
+  check("nectar:1 sem entrega na estátua = não (N3)", !(await sat("nectar:1")).ok);
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);
   await pool.end();

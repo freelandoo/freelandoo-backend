@@ -93,6 +93,7 @@ const {
   VISIT_POINTS: CENTER_VISIT_POINTS,
 } = require("../utils/meuMundoCenter");
 const { VISIT_EVERY_MS, pickVisit, visitDue } = require("../utils/meuMundoPlaces");
+const NO_VISIT_POINTS = Object.freeze([]);
 const MeuMundoPlaceService = require("../services/MeuMundoPlaceService");
 const { createLogger } = require("../utils/logger");
 
@@ -330,6 +331,15 @@ class BairroRoom extends Room {
     // responde entra no estado, e a leitura não a sobrescreve (revisão).
     this.obstacles = buildObstacles();
     roomsByNeighborhood.set(this.neighborhoodId, this);
+    // Lore v2 N3: a Cidade Baixa (bairro dos Vampiros) só tem o pedestal vazio —
+    // lá não existe o ponto "estatua_aurion" (a entrega de Raposa não vale ali).
+    this.nbClan = null;
+    try {
+      const k = await pool.query(`SELECT clan FROM tb_mm_neighborhood WHERE id_neighborhood::text = $1`, [this.neighborhoodId]);
+      this.nbClan = (k.rows[0] && k.rows[0].clan) || null;
+    } catch (err) {
+      log.warn("nb.clan_fail", { message: err.message });
+    }
     // Cor do carro de cada casa (mm3d-37e, mig 309).
     this.paints = new Map();
     for (const row of await MeuMundoStorage.listHouseLevels(pool, this.neighborhoodId)) {
@@ -912,7 +922,7 @@ class BairroRoom extends Room {
 
   /** Pontos de visita desta sala (o centro troca pelos dele). */
   visitPoints() {
-    return BAIRRO_VISIT_POINTS;
+    return this.nbClan === "vampiro" ? NO_VISIT_POINTS : BAIRRO_VISIT_POINTS;
   }
 
   /**
@@ -2147,6 +2157,20 @@ function applyCarPaint(neighborhoodId, lotNumber, paint) {
   }
 }
 
+/**
+ * Lore v2 N3: a corrida das estátuas mudou (alguém entregou néctar) → todas as
+ * salas vivas do bairro e do centro recebem "statue" (a cena acende o estágio).
+ */
+function broadcastStatue(payload) {
+  for (const room of new Set([...roomsByNeighborhood.values(), ...centerRooms.values()])) {
+    try {
+      room.broadcast("statue", payload);
+    } catch (err) {
+      log.warn("statue.broadcast_fail", { message: err.message });
+    }
+  }
+}
+
 /** Leva a troca de nível à sala viva do bairro (se houver alguém online). */
 function applyHouseLevel(neighborhoodId, lotNumber, level, rev) {
   const room = roomsByNeighborhood.get(neighborhoodId);
@@ -2302,6 +2326,7 @@ const _centerTiming = timing;
 
 module.exports = {
   init,
+  broadcastStatue,
   reserveSeat,
   reserveHouseSeat,
   reserveCenterSeat,

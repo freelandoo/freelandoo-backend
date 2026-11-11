@@ -219,6 +219,21 @@ async function nectarWallet(req, res) {
   return reply(res, await require("../services/MeuMundoNectarService").wallet(req.user.id_user));
 }
 
+// N3: domingo na estátua
+const Statue = () => require("../services/MeuMundoStatueService");
+async function statueRace(req, res) {
+  return reply(res, await Statue().race(req.user.id_user));
+}
+async function statueDeliver(req, res) {
+  return reply(res, await Statue().deliver(req.user.id_user, req.body || {}));
+}
+async function statueConfigGet(req, res) {
+  return reply(res, await Statue().getConfig());
+}
+async function statueConfigSave(req, res) {
+  return reply(res, await Statue().saveConfig(req.user.id_user, req.body || {}));
+}
+
 async function ranking(req, res) {
   return reply(res, await require("../services/MeuMundoPoderService").ranking(req.user.id_user, String(req.params.tab || "")));
 }
@@ -482,6 +497,10 @@ module.exports = {
   ranking,
   weeklyRanking,
   nectarWallet,
+  statueRace,
+  statueDeliver,
+  statueConfigGet,
+  statueConfigSave,
   shareLink,
   gearBuy,
   gearEquip,

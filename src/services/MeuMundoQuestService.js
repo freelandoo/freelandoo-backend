@@ -20,6 +20,7 @@ const Q = require("../utils/meuMundoQuests");
 const { addXp } = require("./MeuMundoAdventureService");
 const TrainerService = require("./MeuMundoTrainerService");
 const PlaceService = require("./MeuMundoPlaceService");
+const StatueStore = require("../storages/MeuMundoStatueStorage");
 const Places = require("../utils/meuMundoPlaces");
 const GearService = () => require("./MeuMundoGearService");
 
@@ -193,8 +194,14 @@ async function satisfied(c, idUser, idCharacter, s, step, row) {
     case "archive":
       // F5: o servidor grava read_at quando a pessoa abre o texto destravado
       return yes(!!arg && (await q1(`SELECT 1 FROM tb_mm_archive WHERE id_user = $1 AND entry_id = $2 AND read_at IS NOT NULL`, [idUser, arg])));
+    case "nectar": {
+      // N3: litros ENTREGUES na estátua (recibo tb_mm_nectar_delivery) desde que o capítulo começou
+      const n = Math.max(1, Number(arg) || 1);
+      const ml = await StatueStore.deliveredSince(c, idUser, new Date(new Date(row.started_at).getTime() - 2000));
+      return out(Math.floor(ml / 1000), n);
+    }
     default:
-      // nectar / paintTop: o dado chega nas próximas fatias
+      // paintTop: o dado chega na C3
       return yes(false);
   }
 }

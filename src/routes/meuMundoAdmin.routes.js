@@ -90,6 +90,11 @@ router.get("/gear", ...admin, asyncHandler(MeuMundoController.gearGet));
 router.get("/ranking/semana/:game", ...admin, asyncHandler(MeuMundoController.weeklyRanking));
 // N2: carteira de néctar (para entregar) + quanto vale cada posição
 router.get("/nectar", ...admin, asyncHandler(MeuMundoController.nectarWallet));
+// N3: domingo na estátua — corrida Raposas × Vampiros, entrega (recibo pela chave) e a meta no admin
+router.get("/estatua", ...admin, asyncHandler(MeuMundoController.statueRace));
+router.post("/estatua/entregar", ...admin, asyncHandler(MeuMundoController.statueDeliver));
+router.get("/estatua/config", ...admin, asyncHandler(MeuMundoController.statueConfigGet));
+router.post("/estatua/config", ...admin, asyncHandler(MeuMundoController.statueConfigSave));
 router.get("/ranking/:tab", ...admin, asyncHandler(MeuMundoController.ranking));
 // A8: link de afiliado do Meu Mundo (10% do que o convidado gastar em dinheiro)
 router.get("/share", ...admin, asyncHandler(MeuMundoController.shareLink));
