@@ -37,7 +37,9 @@ test("lugar dos NPCs é um ponto que a sala conhece", () => {
     // o NPC da rua fica dentro de um lugar dele
     assert.ok(P.NPCS[n.id].places.includes(P.pickVisit(C.VISIT_POINTS, n.x, n.z)), n.id);
     // e tem colisão — a própria, ou (C2: o Arauto em cima do pedestal) a do pedestal de Morkhan
+    // (C6: o Cavaleiro, noturno NO CHÃO, fica sem caixa: de dia some e não sobra parede invisível)
     if (n.y) assert.ok(Math.hypot(n.x, n.z) < 4.5 * 0.88, `${n.id} fora do pedestal`);
+    else if (n.hours === "night") assert.ok(!C.OBSTACLES.some((b) => b.x === n.x && b.z === n.z), `${n.id} noturno com caixa`);
     else assert.ok(C.OBSTACLES.some((b) => b.x === n.x && b.z === n.z), `${n.id} sem colisão`);
   }
 });

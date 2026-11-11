@@ -48,6 +48,9 @@ const NPCS = Object.freeze({
   fulvo: Object.freeze({ places: Object.freeze(["praca", "estatua_morkhan"]), hours: "night" }),
   // C5 (cap. 8): Pipa grita para o ringue, na frente do Boxe (porta ou o lugar dela).
   pipa: Object.freeze({ places: Object.freeze(["boxe", "boxe_pipa"]) }),
+  // C6 (cap. 9): o Cavaleiro Dourado vigia quem chega pelo portal dos Bairros, SÓ DE NOITE
+  // (o portal ou o lugar dele, na calçada; 07-falas §12, pergunta 3).
+  cavaleiro: Object.freeze({ places: Object.freeze(["portal", "portal_cavaleiro"]), hours: "night" }),
 });
 
 /** Ponto circular (`r`) ou quadrado (`half`). */

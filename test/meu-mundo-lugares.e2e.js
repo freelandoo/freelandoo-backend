@@ -155,6 +155,13 @@ async function main() {
   await PlaceSvc.recordVisit(id, "boxe_pipa");
   r = await Quest.mark(id, { mark: "talk", npc: "pipa" });
   check("talk:pipa ao lado da porta do Boxe", r.ok === true && (await sat("talk:pipa")).ok, JSON.stringify(r));
+  // ── C6: o Cavaleiro Dourado (portal dos Bairros ou o lugar dele, só de noite) ──
+  r = await Quest.mark(id, { mark: "talk", npc: "cavaleiro" });
+  check("talk:cavaleiro longe do portal (última visita = Pipa) → far", r.code === "far");
+  await PlaceSvc.recordVisit(id, "portal_cavaleiro");
+  r = await Quest.mark(id, { mark: "talk", npc: "cavaleiro" });
+  if (isNight(Date.now())) check("talk:cavaleiro na calçada do portal, de noite", r.ok === true && (await sat("talk:cavaleiro")).ok, JSON.stringify(r));
+  else check("talk:cavaleiro de dia → far (ele só está lá de noite)", r.code === "far" && !(await sat("talk:cavaleiro")).ok, JSON.stringify(r));
 
   // ── C3: a sala do Paint grava a chegada à ilha de Bastor (paintTop) ──
   const Paint = require("../src/realtime/meuMundoPaint");

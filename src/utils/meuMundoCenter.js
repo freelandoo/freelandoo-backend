@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 20; // (20 = Pipa na porta do Boxe, lore v2 C5; 19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 21; // (21 = o Cavaleiro Dourado na calçada do portal dos Bairros, de noite, lore v2 C6; 20 = Pipa na porta do Boxe, lore v2 C5; 19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -237,6 +237,12 @@ const STREET_NPCS = Object.freeze(
     // na frente do Boxe, ao lado da porta (a "arquibancada" de quem não entra), virada para
     // o prédio e a porta. Sempre lá. Corpo de Raposa adulta; o lenço amarelo é arte do Alex.
     { id: "pipa", x: -1.8, z: 57, facing: -2.2, body: "raposa_adulta" },
+    // Lore v2 C6 (cap. 9): o Cavaleiro Dourado (Aldo) "vigiando quem chega", na calçada
+    // sul da avenida, perto do portal dos Bairros (por onde as Raposas chegam das Matas),
+    // virado para o portal. Só de noite (07-falas §12, pergunta 3: fica no centro, e não no
+    // pé de Aurion, para o Vampiro poder chegar até ele). Noturno no chão = SEM caixa (de
+    // dia ele some e não sobra parede invisível na calçada).
+    { id: "cavaleiro", x: -53, z: -4.1, facing: -Math.PI / 2, body: "cavaleiro", hours: "night" },
   ].map((n) => Object.freeze({ ...n, facing: round(n.facing), radius: 2.4 }))
 );
 const PLAZA_LAMPS = Object.freeze([[11.6, 15.2], [-11.6, 15.2], [11.6, -15.2], [-11.6, -15.2], [15.2, 11.6], [-15.2, 11.6], [15.2, -11.6], [-15.2, -11.6]].map((p) => Object.freeze(p)));
@@ -423,7 +429,7 @@ function buildObstacles() {
   for (const [x, z] of PLAZA_EDGES.bollards) push(x, z, BOLLARD, BOLLARD, 0, 0.9);
   for (const [x, z, rot] of PLAZA_BENCHES) push(x, z, 1.05, 0.38, rot, 1);
   for (const [x, z] of PLAZA_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
-  for (const n of STREET_NPCS) if (!n.y) push(n.x, n.z, 0.35, 0.35, 0, 1.9); // em cima do pedestal (C2) = já dentro da colisão dele
+  for (const n of STREET_NPCS) if (!n.y && n.hours !== "night") push(n.x, n.z, 0.35, 0.35, 0, 1.9); // em cima do pedestal (C2) = já dentro da colisão dele
   for (const [x, z, s] of PLAZA_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
   for (const [x, z] of STREET_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
   for (const [x, z, s] of STREET_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
@@ -457,6 +463,8 @@ const VISIT_POINTS = Object.freeze(
     { id: "laminas_fundo", x: 25, z: -60.6, r: 3 },
     // C5: o lugar da Pipa, ao lado da porta do Boxe (talk:pipa vale daqui ou da porta)
     { id: "boxe_pipa", x: -1.8, z: 57, r: 3 },
+    // C6: o lugar do Cavaleiro, na calçada do portal (talk:cavaleiro vale daqui ou do portal)
+    { id: "portal_cavaleiro", x: -53, z: -4.1, r: 3 },
     ...PLACES.map((p) => ({ id: p.id, x: p.interact.x, z: p.interact.z, r: p.interact.radius + 0.5 })),
   ].map((p) => Object.freeze(p))
 );
