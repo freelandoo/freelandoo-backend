@@ -32,7 +32,8 @@ const LOOT_MIN_ACTIVE_MS = 15000;
 
 // B8: "hall" = desafio pela cadeira do Hall; só abre por dentro (MeuMundoHallService).
 // lore v2 D1: "domain" = a luta de um setor dos Domínios (o servidor escolhe monstro e nível).
-const ORIGINS = Object.freeze(["laminas", "boxe", "mob", "tutorial", "hall", "domain"]);
+// lore v2 N4: "god" = o deus solto que alcançou a pessoa (rua ou Domínio); ficha = 2× a dela.
+const ORIGINS = Object.freeze(["laminas", "boxe", "mob", "tutorial", "hall", "domain", "god"]);
 const TICKET_TTL_MS = 8 * 60 * 1000;
 /** Folga entre o tempo da luta gravada e o relógio do servidor (rede, carregamento). */
 const CLOCK_SLACK_MS = 3000;
@@ -107,12 +108,14 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   const setup = fight.setup;
   const origin = fight.origin;
   const tutorial = origin === "tutorial";
+  // N4: perder para o deus solto só tira energia — sem estresse, sem XP, sem drop, sem moedas
+  const godLoss = origin === "god" && !verdict.win;
   const adv = await Store.lockAdventure(c, idUser);
   const before = { energy: s.energy, stress: s.stress, health: s.health, vitality: s.vitality };
   const streak = lossesToday(adv, ctx.now);
   // resultado × disposição (energia/estresse de ANTES da luta) — mm3d-60b
   const mult = Adv.fightGainMult(verdict.win, before.energy, before.stress);
-  const cost = Adv.applyFightCost(s, verdict.win, streak, tutorial);
+  const cost = Adv.applyFightCost(s, verdict.win, streak, tutorial, { noStress: godLoss });
   // Prática: tempo ATIVO conferido, terminando agora (a luta acabou agora).
   const activeMs = Math.round(verdict.activeSteps * FightSim.DT * 1000);
   const activity = origin === "boxe" ? "boxe" : "laminas";
@@ -120,7 +123,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   // saúde × estresse de ANTES da luta), fora do orçamento do dia.
   const R = GearService().R;
   const stage = Life.lifeStage(s, ctx.now);
-  const drop = verdict.abandoned
+  const drop = verdict.abandoned || godLoss
     ? {}
     : Adv.rollFightDrop({ ageDays: stage.ageDays, adult: stage.adult, win: verdict.win, health: before.health, vitality: before.vitality, stress: before.stress }, R);
   // E5 (A14): freio pela régua do nível do personagem (o recibo mostra o drop já freado)
@@ -131,13 +134,13 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
     if (got > 0) gained[k] = r2(got);
   }
   const practice = { attrs: gained, activeMs: verdict.abandoned ? 0 : activeMs };
-  const coins = verdict.abandoned ? 0 : Adv.fightCoins(setup.kind, setup.level, verdict.win, R);
+  const coins = verdict.abandoned || godLoss ? 0 : Adv.fightCoins(setup.kind, setup.level, verdict.win, R);
   ctx.coins += coins;
-  const xpGain = verdict.abandoned ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
+  const xpGain = verdict.abandoned || godLoss ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
   // Drop: recompensa básica GARANTIDA com participação válida; vitória aumenta.
   // E3: porta única do saque, pela tabela nomeada da atividade (fight:laminas / fight:boxe)
   const drops =
-    verdict.abandoned || (!verdict.win && practice.activeMs < LOOT_MIN_ACTIVE_MS)
+    verdict.abandoned || godLoss || (!verdict.win && practice.activeMs < LOOT_MIN_ACTIVE_MS)
       ? []
       : await RewardService().grant(c, idUser, { table: RewardService().tableOf(activity), ctx, R: GearService().R, roll: { win: verdict.win, activeMs: practice.activeMs, level: setup.level } });
   const level = addXp(adv, xpGain);
@@ -168,6 +171,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       domain: setup.domain ?? undefined,
       sector: setup.sector ?? undefined,
       boss: setup.boss ?? undefined,
+      god: setup.god ?? undefined,
       gainMult: mult,
       condition: Adv.conditionFactor(before.energy, before.stress),
       dropCondition: Adv.dropCondition(before.health, before.vitality, before.stress),
@@ -196,6 +200,10 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       const pact = await Dom.openPact(c, idUser, setup.domain, setup.sector, fight.id_fight, ctx.now);
       if (pact) rec.pact = pact;
     }
+  }
+  // N4: a vitória conferida derruba o deus solto para TODOS (na mesma transação do recibo)
+  if (origin === "god" && rec && verdict.win && !verdict.abandoned && setup.god) {
+    rec.god = await require("./MeuMundoGodService").settle(c, idUser, setup.god, fight.id_fight, ctx.now);
   }
   // B5: inventário de monstros (só luta de verdade; recibo repetido = já contou).
   const trophy = Adv.trophyKind(origin, setup.kind);
@@ -312,6 +320,14 @@ class MeuMundoAdventureService {
     let level = Math.max(1, Math.min(3, Math.round(Number(body.level) || 1)));
     let mobId = null;
     let domain = null;
+    let god = null;
+    if (origin === "god") {
+      // N4: o deus está solto, caça o povo da conta e alcançou a pessoa (sala) ou ela está num Domínio aberto
+      god = await require("./MeuMundoGodService").gate(idUser, body);
+      if (god.error) return god;
+      kind = god.kind;
+      level = 1;
+    }
     if (origin === "domain") {
       // D1: travas (nível do treinador, travessia, setor) e o monstro do setor
       const gate = await require("./MeuMundoDomainService").fightGate(idUser, body);
@@ -393,6 +409,8 @@ class MeuMundoAdventureService {
         sector: domain ? domain.sector : undefined,
         // D4: o deus chefão do setor 10 luta em fases (a regra lê do ticket; luta antiga não tem)
         boss: domain && domain.boss ? domain.boss : undefined,
+        // N4: o deus solto (a regra dá a ele 2× a ficha de quem enfrenta: GOD_PEER)
+        god: god ? god.god : undefined,
         // mm3d-72: personalidade e afeto mexem na luta por probabilidade (psicopata, covarde)
         temper: origin === "tutorial" ? undefined : Soul.temperOf(s),
         affection: origin === "tutorial" ? undefined : Math.floor(Soul.soulOf(s).affection),
@@ -409,7 +427,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, hero, domain: setup.domain ?? null, sector: setup.sector ?? null, boss: setup.boss ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
+          setup: { kind, level, hero, domain: setup.domain ?? null, sector: setup.sector ?? null, boss: setup.boss ?? null, god: setup.god ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,
@@ -425,6 +443,7 @@ class MeuMundoAdventureService {
     const ticket = String(body.ticket || "");
     if (!UUID.test(ticket)) return fail("ticket");
     let mobVerdict = null;
+    let godVerdict = null;
     const out = await MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       const c = ctx.client;
       const fight = await Store.lockFight(c, idUser, ticket);
@@ -435,7 +454,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined, boss: setup.boss || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined, boss: setup.boss || undefined, god: setup.god || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");
@@ -444,6 +463,7 @@ class MeuMundoAdventureService {
       if (ctx.now > new Date(fight.expires_at).getTime() + CLOCK_SLACK_MS) return fail("expired");
       const receipt = await settleFight(s, ctx, idUser, fight, verdict);
       if (fight.origin === "mob") mobVerdict = { mobId: setup.mobId, win: verdict.win };
+      if (fight.origin === "god" && setup.god) godVerdict = { god: setup.god, win: verdict.win, fresh: !!(receipt && receipt.god && receipt.god.fresh) };
       return { receipt, replay: false };
     });
     // Depois do COMMIT: a sala tira o monstro (vitória) ou o solta (derrota).
@@ -452,6 +472,18 @@ class MeuMundoAdventureService {
         require("../realtime/meuMundo").mobVerdict(idUser, mobVerdict.mobId, mobVerdict.win);
       } catch {
         /* sala fora do ar: o monstro some sozinho pelo tempo */
+      }
+    }
+    // N4: depois do COMMIT — a queda avisa todos e tira o deus das salas; a derrota deixa a pessoa em paz um tempo
+    if (godVerdict && !out.error) {
+      try {
+        require("../realtime/meuMundo").godVerdict(idUser, godVerdict.god, godVerdict.win);
+      } catch {
+        /* sala fora do ar */
+      }
+      if (godVerdict.fresh) {
+        const who = await require("../databases").query(`SELECT username FROM tb_user WHERE id_user = $1`, [idUser]).catch(() => null);
+        await require("./MeuMundoGodService").fell(godVerdict.god, who && who.rows[0] ? who.rows[0].username : "");
       }
     }
     return out;

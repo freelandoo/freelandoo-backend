@@ -322,6 +322,20 @@ const BOSSES                                       = {
 const bossIdOf = (b         )                => (BOSS_IDS.includes(b          ) ? (b          ) : null)
 
 /**
+ * Lore v2 N4 — O DEUS SOLTO: estátua cheia no domingo → na semana seguinte o deus daquele povo
+ * anda e caça a raça oposta. Alcançou = luta um contra um em que o deus tem 2× o status de QUEM
+ * ENFRENTA (decisão D1 do Alex, 10/11): a ficha dele é a do herói × GOD_PEER (vida, acuracidade,
+ * velocidade, ataque e defesa), como o adversário à altura do ringue. Os golpes são os do tipo de
+ * GOD_KINDS (Aurion = espada e escudo do Cavaleiro Dourado; Morkhan = a força do Brutamontes).
+ * Só vale com `setup.god` (o servidor grava no ticket): luta antiga não tem, sem RULES_VERSION.
+ */
+                                        
+const GOD_IDS                   = ["aurion", "morkhan"]
+const GOD_PEER = 2
+const GOD_KINDS                         = { aurion: "cavaleiro", morkhan: "brute" }
+const godIdOf = (g         )               => (GOD_IDS.includes(g         ) ? (g         ) : null)
+
+/**
  * mm3d-72 (regras do Alex, 2026-11-08): a PERSONALIDADE mexe na luta por probabilidade, e o
  * afeto pelo dono muda a chance.
  *  - Psicopata: o Poder Máximo pode sair 3 vezes seguidas ("PSICOPATA" na tela). Contra
@@ -601,6 +615,8 @@ const MOBS                          = {
                     
                                                                                                      
                
+                                                                                                      
+             
  
 
 /**
@@ -893,7 +909,8 @@ class Fight {
     this.heroLevel = Math.max(1, Math.round(Number(setup.hero) || 1))
     this.hero = heroLevelScale(this.heroLevel)
     this.def = clamp(this.gear.def + this.hero.def, 0, DEF_MAX)
-    const peer = clamp(Number(setup.peer) || 0, 0, 2)
+    // N4: o deus solto entra com 2× o status de quem enfrenta (o "peer" do ringue, fixo)
+    const peer = godIdOf(setup.god) ? GOD_PEER : clamp(Number(setup.peer) || 0, 0, 2)
     this.rated = peer > 0 || !!setup.tier
     this.fx = this.withGear(statEffects(gearMind(heroStats(stats, this.heroLevel), this.gear, this.rated)))
     const sheet = heroSheet(setup.body, this.heroLevel, stats, this.gear)
@@ -1976,4 +1993,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, BOSS_IDS, BOSS_ROAR, BOSSES, bossIdOf, SOUL_FIGHT, MOBS, GEAR_MAX, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, BOSS_IDS, BOSS_ROAR, BOSSES, bossIdOf, GOD_IDS, GOD_PEER, GOD_KINDS, godIdOf, SOUL_FIGHT, MOBS, GEAR_MAX, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

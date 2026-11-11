@@ -84,6 +84,14 @@ class MeuMundoDomainService {
     return { trainer, bypass, power: await powerOf(db, idUser), domain, pacts: (await PactStore.active(db, Date.now())).filter((p) => p.domain === id) };
   }
 
+  /** N4: a pessoa pode estar neste Domínio agora? (o deus solto caça também lá dentro) null = pode; senão o erro. */
+  static async canBeIn(idUser, domain, db = pool) {
+    const id = String(domain || "");
+    if (!D.domainOf(id)) return fail("domain");
+    const lock = D.lockOf(id, await levelOf(db, idUser), await bestOf(db, idUser), await bypassOf(db, idUser));
+    return lock ? lockFail(lock) : null;
+  }
+
   /**
    * A luta de um setor pode abrir? Devolve o monstro e o nível que o SERVIDOR
    * escolhe pelo setor (ou o erro). Chamado pelo fightStart, fora do withLife.

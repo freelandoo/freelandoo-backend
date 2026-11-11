@@ -372,6 +372,8 @@ class BairroRoom extends Room {
       span: HEDGE_SPAN,
       test: testBotsOn(),
     });
+    // Lore v2 N4: o deus solto (o bairro só recebe o deus que caça o povo dele)
+    this.mobDirector.setGods(godsNow(), this.nbClan || null);
     this.startLoop();
     log.info("room.create", { roomId: this.roomId, neighborhood: this.neighborhoodId });
   }
@@ -387,6 +389,8 @@ class BairroRoom extends Room {
     this.onMessage("tune", (client, msg) => this.onTune(client, msg));
     this.mobSentAt = 0;
     this.onMessage("mfight", (client, msg) => this.onMobFight(client, msg));
+    this.godSentAt = 0;
+    this.onMessage("gfight", (client, msg) => this.onGodFight(client, msg));
     // Sem mensagem "body" desde 2026-10-21: o tipo físico vem da vida (applyLife).
     this.onMessage("*", (client) => this.countMessage(client));
     this.setSimulationInterval((dt) => this.tick(dt), SIM_MS);
@@ -510,6 +514,7 @@ class BairroRoom extends Room {
     presence.setPlacement(userId, { scene: "nb", nbId: this.neighborhoodId });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: residence.lot_number, visitor });
     client.send("mobs", { l: this.mobDirector.list() });
+    client.send("gods", { l: this.mobDirector.listGods() });
     // lore v2 F4: chegou ao PRÓPRIO bairro (visit:bairro)
     if (!visitor) recordVisit(this, client.sessionId, userId, "bairro");
     this.loadAdv(client.sessionId, userId);
@@ -946,7 +951,8 @@ class BairroRoom extends Room {
   // recebe "mcatch" e a luta abre sozinha no aparelho.
   tickMobs(now, dt) {
     const players = [];
-    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z, lv: s.adv || 0, soul: s.soul || null });
+    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z, lv: s.adv || 0, soul: s.soul || null, clan: s.clan || null });
+    this.tickGods(now, players, dt);
     const { changed, caught } = this.mobDirector.tick(now, players, dt);
     for (const c of caught) {
       const client = this.clients.find((k) => k.sessionId === c.sid);
@@ -956,6 +962,50 @@ class BairroRoom extends Room {
       this.mobSentAt = now;
       this.broadcast("mobs", { l: this.mobDirector.list() });
     }
+  }
+
+  // ── N4: o deus solto ─────────────────────────────────────────────────────
+  // Lista a cada 0,5 s enquanto houver deus na sala; quem ele alcança recebe
+  // "gcatch" e a luta (origem "god") abre no aparelho.
+  tickGods(now, players, dt) {
+    const { changed, caught } = this.mobDirector.tickGods(now, players, dt);
+    for (const c of caught) {
+      const client = this.clients.find((k) => k.sessionId === c.sid);
+      if (client) client.send("gcatch", { god: c.god });
+    }
+    if (changed || (this.mobDirector.gods.size && now - this.godSentAt >= 500)) {
+      this.godSentAt = now;
+      this.broadcast("gods", { l: this.mobDirector.listGods() });
+    }
+  }
+
+  /** Deuses soltos mudaram (GodService): a sala troca a lista e avisa já. */
+  applyGods(hunts) {
+    this.mobDirector.setGods(hunts, this.nbClan || null);
+    this.godSentAt = Date.now();
+    this.broadcast("gods", { l: this.mobDirector.listGods() });
+  }
+
+  /** Luta do deus: só a desistência/ocupado (`r` 0, `b` 1) vem do aparelho; a vitória é do servidor. */
+  onGodFight(client, msg) {
+    const s = this.sim.get(client.sessionId);
+    if (!s || !msg || typeof msg !== "object" || typeof msg.g !== "string") return;
+    const now = Date.now();
+    if (now - (s.godAt || 0) < 3000) return;
+    s.godAt = now;
+    if (msg.r !== 1) this.mobDirector.releaseGod(msg.g, client.sessionId, now, msg.b === 1);
+  }
+
+  /** N4: a luta conferida contra o deus acabou (vitória = ele sai desta sala na hora; o resto vem do GodService). */
+  godVerdict(userId, god, win) {
+    const sid = this.sidOf(userId);
+    if (!sid) return false;
+    const now = Date.now();
+    if (!win) return this.mobDirector.releaseGod(god, sid, now, false);
+    this.mobDirector.removeGod(god);
+    this.godSentAt = now;
+    this.broadcast("gods", { l: this.mobDirector.listGods() });
+    return true;
   }
 
   /**
@@ -986,6 +1036,13 @@ class BairroRoom extends Room {
       .then((a) => {
         const s = this.sim.get(sid);
         if (s) s.adv = levelOf(Number(a.xp)).level;
+      })
+      .catch(() => {});
+    // N4: o povo da conta (o deus solto caça a raça oposta à dele)
+    MeuMundoStorage.getClan(pool, userId)
+      .then((k) => {
+        const s = this.sim.get(sid);
+        if (s) s.clan = (k && k.clan) || null;
       })
       .catch(() => {});
   }
@@ -1571,6 +1628,8 @@ class CentroRoom extends BairroRoom {
       collide: (x, z, r) => resolveCircle(x, z, r, this.obstacles),
       test: testBotsOn(),
     });
+    // Lore v2 N4: o centro recebe os dois deuses soltos
+    this.mobDirector.setGods(godsNow(), null);
     centerRooms.set(this.roomId, this);
     this.startLoop();
     this.armEmpty();
@@ -1644,6 +1703,7 @@ class CentroRoom extends BairroRoom {
     presence.setPlacement(userId, { scene: "center", roomId: this.roomId, from: pl.from || null });
     client.send("welcome", { x: b.x, z: b.z, facing: b.facing, house: slot, visitor: false });
     client.send("mobs", { l: this.mobDirector.list() });
+    client.send("gods", { l: this.mobDirector.listGods() });
     this.loadAdv(client.sessionId, userId);
     refreshLife(userId);
     this.syncLockSoon();
@@ -2282,6 +2342,46 @@ function mobEngaged(userId, mobId) {
   return null;
 }
 
+/** N4: o que o GodService tem em memória (sem banco; require tardio, o serviço usa esta sala). */
+function godsNow() {
+  try {
+    return require("../services/MeuMundoGodService").current();
+  } catch {
+    return [];
+  }
+}
+
+/** N4: deuses soltos mudaram — todas as salas de rua trocam a lista. */
+function setGods(hunts) {
+  for (const room of new Set(mobRooms())) {
+    try {
+      if (room.mobDirector) room.applyGods(hunts);
+    } catch (err) {
+      log.warn("gods.apply_fail", { message: err.message });
+    }
+  }
+}
+
+/** N4: o deus `god` alcançou este usuário e espera a luta (em alguma sala de rua)? */
+function godEngaged(userId, god) {
+  for (const room of mobRooms()) {
+    if (!room.mobDirector) continue;
+    const sid = room.sidOf(userId);
+    if (!sid) continue;
+    const g = room.mobDirector.getGod(god);
+    if (g && g.mode === "fight" && g.target === sid) return true;
+  }
+  return false;
+}
+
+/** N4: o veredito da luta contra o deus chega à sala onde a pessoa está. */
+function godVerdict(userId, god, win) {
+  for (const room of mobRooms()) {
+    if (room.mobDirector && room.sidOf(userId)) return room.godVerdict(userId, god, win);
+  }
+  return false;
+}
+
 /** mm3d-59: o veredito da luta conferida chega à sala onde a pessoa está. */
 function mobVerdict(userId, mobId, win) {
   for (const room of mobRooms()) {
@@ -2345,6 +2445,9 @@ module.exports = {
   atCenterPlace,
   mobEngaged,
   mobVerdict,
+  setGods,
+  godEngaged,
+  godVerdict,
   applyCarPaint,
   applyLife,
   pushNotice,

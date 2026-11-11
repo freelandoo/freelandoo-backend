@@ -29,6 +29,8 @@ const server = app.listen(PORT, () => {
   require("./src/services/MeuMundoService").startSweeper();
   // lore v2 N2: depois do sábado 23:59 (Brasília) fecha a semana e credita o néctar (com trava)
   require("./src/services/MeuMundoNectarService").startSweeper();
+  // lore v2 N4: estátua cheia → o deus solto (relê a cada 30 s, avisa por socket, leva às salas)
+  require("./src/services/MeuMundoGodService").start();
 
   // F4.S1 — worker de mídia (fork): todo ffmpeg/sharp pesado roda fora deste
   // processo, com fila (concorrência 1) + status em media_jobs. Se o worker

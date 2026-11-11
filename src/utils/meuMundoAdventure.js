@@ -318,10 +318,11 @@ function fightXp(kind, level, win) {
  * Custo persistente de uma luta já validada. `lossesToday` = derrotas seguidas
  * antes desta. Aplica em `s` e devolve o delta EFETIVO (depois dos limites).
  */
-function applyFightCost(s, win, lossesToday, tutorial = false) {
+// N4: `noStress` = a derrota para o deus solto só tira energia.
+function applyFightCost(s, win, lossesToday, tutorial = false, { noStress = false } = {}) {
   if (tutorial) return { energy: 0, stress: 0 };
   const c = win ? FIGHT_COST.win : FIGHT_COST.loss;
-  const stress = !win && lossesToday + 1 >= FIGHT_COST.calmAfter ? 0 : c.stress;
+  const stress = noStress || (!win && lossesToday + 1 >= FIGHT_COST.calmAfter) ? 0 : c.stress;
   const e0 = s.energy;
   const s0 = s.stress;
   s.energy = Math.max(0, Math.min(100, s.energy + c.energy));

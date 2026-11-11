@@ -26,6 +26,11 @@
 // `release` e `drop`.
 
 const { rollMobLevel } = require("../utils/meuMundoAdventure");
+// Lore v2 N4: o deus solto anda pela mesma sala (modo próprio, abaixo).
+const GodHunt = require("../utils/meuMundoGodHunt");
+const GOD = GodHunt.HUNT;
+/** Modo do deus na rede: 0 andando, 1 caçando, 2 lutando. */
+const GOD_MODE = Object.freeze({ walk: 0, chase: 1, fight: 2 });
 // 2026-11-03 (Alex): o Golem de Pedra também anda na rua. F1 (lore v2, 2026-11-10): ids novos —
 // `stone` = Golem de Pedra (ex-"soldier" da rua), `ciborgue` (ex-"golem"), `garras` (ex-"harpy").
 // O Cavaleiro Dourado (`cavaleiro`) fica na Arena; não anda na rua.
@@ -119,6 +124,10 @@ class MobDirector {
     /** sessionId → até quando o monstro não persegue essa pessoa. */
     this.calm = new Map();
     this.seq = 0;
+    // N4: deuses soltos que aparecem nesta sala (god → estado) e quem perdeu para eles
+    this.gods = new Map();
+    this.godCalm = new Map();
+    this.godWanted = [];
     this.wasNight = night(now);
     this.nextAt = now + this.between(MOBS.FIRST_MS);
   }
@@ -364,6 +373,157 @@ class MobDirector {
   drop(sid) {
     this.calm.delete(sid);
     for (const m of this.mobs.values()) if (m.target === sid) this.wanderFromHere(m);
+    // N4: o deus também a solta (e a paz de quem perdeu fica: sair e voltar não zera)
+    for (const g of this.gods.values()) if (g.target === sid) this.godWalk(g);
+  }
+
+  // ═══ N4: MODO DEUS ═══════════════════════════════════════════════════════
+  // O deus solto não é um monstro da invasão: anda de dia e de noite, cruza a
+  // sala de ponto em ponto, SENTE a presa (a raça oposta ao povo dele) em volta,
+  // sem cone, e corre mais que ela (GOD.CHASE_V > corrida do jogador). Alcançou =
+  // `caught` com `god`; a luta é a das Lâminas com origem "god". Quem decide se
+  // ele cai é o servidor (a vitória conferida apaga a caçada para todos).
+
+  /**
+   * Quais deuses estão soltos (GodService.current): [{ god, prey }]. `roomClan` = o
+   * povo do bairro (null no centro): o bairro só recebe o deus que caça o povo dele.
+   */
+  setGods(hunts, roomClan = null) {
+    this.godWanted = (hunts || []).filter((h) => GodHunt.showsIn(h.god, roomClan)).map((h) => h.god);
+    let changed = false;
+    for (const id of [...this.gods.keys()]) {
+      if (!this.godWanted.includes(id)) {
+        this.gods.delete(id);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /** Um ponto livre aleatório da sala (o destino da caminhada). */
+  godSpot(players, far = 0) {
+    const now = Date.now();
+    if (!this.godSpots || now - this.godSpotsAt > 60_000) {
+      this.godSpots = this.spots();
+      this.godSpotsAt = now;
+    }
+    const ok = this.godSpots.filter((p) => players.every((q) => Math.hypot(q.x - p.x, q.z - p.z) >= far));
+    const list = ok.length ? ok : this.godSpots;
+    return list.length ? list[Math.floor(this.rng() * list.length)] : null;
+  }
+
+  godWalk(g) {
+    g.mode = "walk";
+    g.target = null;
+    g.to = null;
+  }
+
+  /**
+   * Avança os deuses. `players` = [{ sid, x, z, clan }]. Devolve
+   * { changed, caught: [{ sid, god }] }.
+   */
+  tickGods(now, players, dt) {
+    let changed = false;
+    const caught = [];
+    for (const [sid, until] of this.godCalm) if (until <= now) this.godCalm.delete(sid);
+    const bySid = new Map(players.map((p) => [p.sid, p]));
+    // nasce quem está solto e ainda não está na sala (longe de todo mundo)
+    for (const id of this.godWanted) {
+      if (this.gods.has(id)) continue;
+      const at = this.godSpot(players, GOD.FAR_FROM_PLAYER);
+      if (!at) continue;
+      const def = GodHunt.godOf(id);
+      this.gods.set(id, { id, prey: def.prey, kind: def.kind, x: at.x, z: at.z, facing: this.rng() * Math.PI * 2, mode: "walk", target: null, to: null, fightAt: 0 });
+      changed = true;
+    }
+    for (const g of this.gods.values()) {
+      if (g.mode === "fight") {
+        if (now - g.fightAt < GOD.FIGHT_MS && bySid.has(g.target)) continue;
+        this.godWalk(g);
+        changed = true;
+      }
+      if (g.mode === "chase") {
+        const p = bySid.get(g.target);
+        const d = p ? Math.hypot(p.x - g.x, p.z - g.z) : Infinity;
+        if (!p || d > GOD.LOSE || this.godCalm.has(g.target)) {
+          this.godWalk(g);
+          changed = true;
+        } else if (d <= GOD.CATCH) {
+          g.mode = "fight";
+          g.fightAt = now;
+          g.facing = Math.atan2(p.x - g.x, p.z - g.z);
+          caught.push({ sid: g.target, god: g.id });
+          changed = true;
+          continue;
+        } else {
+          const step = Math.min(GOD.CHASE_V * dt, d - GOD.CATCH * 0.5);
+          g.facing = Math.atan2(p.x - g.x, p.z - g.z);
+          const c = this.collide(g.x + Math.sin(g.facing) * step, g.z + Math.cos(g.facing) * step, GOD.RADIUS);
+          g.x = c.x;
+          g.z = c.z;
+          continue;
+        }
+      }
+      // procura a presa mais perto (sem cone: o deus caça)
+      let best = null;
+      let bestD = GOD.SIGHT;
+      for (const p of players) {
+        if (p.clan !== g.prey || this.godCalm.has(p.sid) || this.isEngaged(p.sid) || this.godTarget(p.sid)) continue;
+        const d = Math.hypot(p.x - g.x, p.z - g.z);
+        if (d < bestD) {
+          best = p;
+          bestD = d;
+        }
+      }
+      if (best) {
+        g.mode = "chase";
+        g.target = best.sid;
+        changed = true;
+        continue;
+      }
+      // caminha de ponto em ponto
+      if (!g.to || Math.hypot(g.to.x - g.x, g.to.z - g.z) < 1.5) g.to = this.godSpot(players);
+      if (!g.to) continue;
+      const d = Math.hypot(g.to.x - g.x, g.to.z - g.z);
+      g.facing = Math.atan2(g.to.x - g.x, g.to.z - g.z);
+      const step = Math.min(GOD.WALK_V * dt, d);
+      const c = this.collide(g.x + Math.sin(g.facing) * step, g.z + Math.cos(g.facing) * step, GOD.RADIUS);
+      // preso numa quina: troca de destino
+      if (Math.hypot(c.x - g.x, c.z - g.z) < step * 0.2) g.to = null;
+      g.x = c.x;
+      g.z = c.z;
+    }
+    return { changed, caught };
+  }
+
+  /** O deus que caça/luta com esta pessoa (ou null). */
+  godTarget(sid) {
+    for (const g of this.gods.values()) if (g.target === sid) return g;
+    return null;
+  }
+
+  /** Lista dos deuses para a rede: [deus, x, z, rumo, modo]. */
+  listGods() {
+    return [...this.gods.values()].map((g) => [g.id, r2(g.x), r2(g.z), r2(g.facing), GOD_MODE[g.mode] ?? 0]);
+  }
+
+  getGod(id) {
+    return this.gods.get(String(id)) || null;
+  }
+
+  /** Perdeu (ou estava ocupado): o deus volta a andar e a pessoa fica em paz um tempo. */
+  releaseGod(id, sid, now, busy = false) {
+    this.godCalm.set(sid, now + (busy ? GOD.BUSY_MS : GOD.CALM_MS));
+    const g = this.getGod(id);
+    if (!g || g.target !== sid) return false;
+    this.godWalk(g);
+    return true;
+  }
+
+  /** O deus caiu (vitória conferida): sai desta sala na hora. */
+  removeGod(id) {
+    this.godWanted = this.godWanted.filter((g) => g !== String(id));
+    return this.gods.delete(String(id));
   }
 
   /** Teste e admin: invasão agora. */

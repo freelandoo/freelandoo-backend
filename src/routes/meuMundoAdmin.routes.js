@@ -95,6 +95,9 @@ router.get("/estatua", ...admin, asyncHandler(MeuMundoController.statueRace));
 router.post("/estatua/entregar", ...admin, asyncHandler(MeuMundoController.statueDeliver));
 router.get("/estatua/config", ...admin, asyncHandler(MeuMundoController.statueConfigGet));
 router.post("/estatua/config", ...admin, asyncHandler(MeuMundoController.statueConfigSave));
+// N4: o deus solto — quem está solto, os próximos e as quedas; o admin solta para conferir
+router.get("/deus", ...admin, asyncHandler(MeuMundoController.godState));
+router.post("/deus/soltar", ...admin, asyncHandler(MeuMundoController.godRelease));
 router.get("/ranking/:tab", ...admin, asyncHandler(MeuMundoController.ranking));
 // A8: link de afiliado do Meu Mundo (10% do que o convidado gastar em dinheiro)
 router.get("/share", ...admin, asyncHandler(MeuMundoController.shareLink));

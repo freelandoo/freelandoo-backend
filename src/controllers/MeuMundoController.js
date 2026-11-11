@@ -235,6 +235,15 @@ async function statueConfigSave(req, res) {
   return reply(res, await Statue().saveConfig(req.user.id_user, req.body || {}));
 }
 
+// N4: o deus solto
+const God = () => require("../services/MeuMundoGodService");
+async function godState(req, res) {
+  return reply(res, await God().state(req.user.id_user));
+}
+async function godRelease(req, res) {
+  return reply(res, await God().adminRelease(req.user.id_user, req.body || {}));
+}
+
 async function ranking(req, res) {
   return reply(res, await require("../services/MeuMundoPoderService").ranking(req.user.id_user, String(req.params.tab || "")));
 }
@@ -515,6 +524,8 @@ module.exports = {
   statueDeliver,
   statueConfigGet,
   statueConfigSave,
+  godState,
+  godRelease,
   shareLink,
   gearBuy,
   gearEquip,
