@@ -49,7 +49,7 @@ test("setores em ordem: o 1 abre com o Domínio, o N depois do N−1; vencidos f
 test("monstro e nível pelo setor: comuns, fortes, elite (Lobos na Floresta), guardião e o deus; nível nunca desce", () => {
   assert.deepEqual(D.DOMAIN_IDS.map((id) => D.kindOf(id, 7)), Array(6).fill("wolf"));
   assert.equal(D.kindOf("floresta", 1), "cavaleiro");
-  assert.equal(D.kindOf("floresta", 10), "brute");
+  assert.equal(D.kindOf("canion", 10), "brute", "Domínio sem fatia própria segue no placeholder");
   for (const id of D.DOMAIN_IDS) for (let s = 1; s <= 10; s++) assert.ok(F.MOB_KINDS.includes(D.kindOf(id, s)), `${id} ${s}`);
   let prev = 0;
   for (const id of D.DOMAIN_IDS) {
@@ -62,8 +62,8 @@ test("monstro e nível pelo setor: comuns, fortes, elite (Lobos na Floresta), gu
   }
   // a travessia sobe a dificuldade: o deus do último é mais forte que o do primeiro
   assert.ok(D.sectorLevel("orbital", 10) > D.sectorLevel("floresta", 10));
-  // régua do B7: a soma dos status alcança o Poder recomendado
-  for (const id of D.DOMAIN_IDS) for (let s = 1; s <= 10; s++) assert.ok(D.mobPower(D.kindOf(id, s), D.sectorLevel(id, s)) >= D.recommendedPower(id, s) - 1);
+  // régua do B7 (Domínios ainda sem calibração por robô): a soma dos status alcança o Poder recomendado
+  for (const id of D.DOMAIN_IDS.filter((x) => !D.LEVELS_BY_DOMAIN[x])) for (let s = 1; s <= 10; s++) assert.ok(D.mobPower(D.kindOf(id, s), D.sectorLevel(id, s)) >= D.recommendedPower(id, s) - 1);
 });
 
 test("Poder recomendado sobe por setor e por Domínio (lore: 150 → 600 na Floresta, 2.200 → 3.000 na Orbital)", () => {
@@ -110,4 +110,51 @@ test("portal dos Domínios na praça: fora do miolo e da estátua, pilares com c
   assert.deepEqual(pay.domainPortal, P);
   assert.ok(C.VISIT_POINTS.some((v) => v.id === "portal_dominios"));
   assert.ok(C.CENTER_VERSION >= 19);
+});
+
+// ── D2: a Floresta da Lua pela lore ─────────────────────────────────────────
+test("D2: a Floresta pela lore — Mariposas, Cervo, Coruja, Sonâmbulos, Lobos (elite), Selene (guardiã), Noctis (deus)", () => {
+  assert.deepEqual(
+    Array.from({ length: 10 }, (_, k) => D.foeOf("floresta", k + 1).id),
+    ["mariposa", "mariposa", "cervo", "coruja", "sonambulo", "sonambulo", "lobo", "lobo", "selene", "noctis"]
+  );
+  // a regra é de um tipo que já existe (sem tipo novo, sem RULES_VERSION)
+  for (let s = 1; s <= 10; s++) assert.ok(F.MOB_KINDS.includes(D.kindOf("floresta", s)), `setor ${s}`);
+  assert.deepEqual([7, 8].map((s) => D.kindOf("floresta", s)), ["wolf", "wolf"], "Lobos de Ferrugem = o elite que já existe");
+  // os corpos que desenham são skins do jogo, com ficha na luta
+  for (let s = 1; s <= 10; s++) {
+    const f = D.foeOf("floresta", s);
+    if (f.body) assert.ok(F.BODY_SHEETS[f.body], `setor ${s}: corpo ${f.body}`);
+  }
+  assert.deepEqual(D.foeOf("floresta", 10), { id: "noctis", body: "noctis", rig: true, art: true });
+  assert.equal(D.kindOf("floresta", 10), "ciborgue", "Noctis atira (regra do Alex): arma de fogo do Ciborgue até a D4");
+  assert.equal(D.foeOf("floresta", 9).body, "vampira_adulta");
+  assert.equal(D.foeOf("floresta", 9).art, false, "Selene de Sombra: arte do Alex pendente");
+  assert.equal(D.foeOf("canion", 1), null, "Domínio sem fatia própria: sem criatura da lore");
+});
+
+test("D2: níveis da Floresta calibrados com robô (sobem, nunca descem; o deus no topo)", () => {
+  const L = Array.from({ length: 10 }, (_, k) => D.sectorLevel("floresta", k + 1));
+  assert.deepEqual(L, [...D.LEVELS_BY_DOMAIN.floresta]);
+  for (let s = 1; s < 10; s++) assert.ok(L[s] >= L[s - 1], `setor ${s + 1}`);
+  assert.ok(L[0] >= 2, "a régua do B7 deixava tudo no nv. 1 (o robô vencia 100%)");
+  assert.equal(Math.max(...L), L[9], "o deus é o mais forte");
+  assert.equal(D.view(5, {})[0].sectors[9].level, L[9], "a tela mostra o nível calibrado");
+});
+
+test("D2: robô — com o Poder recomendado vence quase sempre o setor 1 e menos da metade contra Noctis", () => {
+  const C = require("../../scripts/mm-domain-calibrate");
+  const at = (s) => C.winRate(D.kindOf("floresta", s), D.sectorLevel("floresta", s), D.recommendedPower("floresta", s), D.heroOf("floresta", s), 24);
+  const first = at(1);
+  const last = at(10);
+  assert.ok(first >= 0.8, `setor 1: ${first}`);
+  assert.ok(last <= 0.6, `setor 10: ${last}`);
+  assert.ok(first > last);
+});
+
+test("D2: Pedraverde é um lugar da cena da Floresta (ao lado do setor 6), mandado pela tela", () => {
+  const fl = D.view(5, {})[0];
+  assert.deepEqual(fl.places, [{ id: "pedraverde", sector: 6 }]);
+  assert.deepEqual(D.view(30, {}, true)[1].places, [], "o Cânion ainda não tem lugar");
+  assert.equal(fl.sectors[5].foe.id, "sonambulo");
 });

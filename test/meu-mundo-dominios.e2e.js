@@ -140,6 +140,12 @@ async function main() {
   await setLevel(nu, 5);
   r = await call("domainsEnter", nu, { body: { domain: "floresta" } });
   check("nível 5: entra na Floresta", r.status === 200 && r.body.domain.id === "floresta" && r.body.domain.sectors[0].open && !r.body.domain.sectors[1].open);
+  {
+    const fl = r.body.domain;
+    check("D2: a tela manda a criatura da lore e o corpo de cada setor", fl.sectors.map((s) => s.foe && s.foe.id).join() === "mariposa,mariposa,cervo,coruja,sonambulo,sonambulo,lobo,lobo,selene,noctis" && fl.sectors[9].foe.body === "noctis" && fl.sectors[9].foe.rig === true, JSON.stringify(fl.sectors.map((s) => s.foe)).slice(0, 200));
+    check("D2: níveis calibrados na tela (2 → 7)", fl.sectors.map((s) => s.level).join() === D.LEVELS_BY_DOMAIN.floresta.join());
+    check("D2: Pedraverde na cena (setor 6)", Array.isArray(fl.places) && fl.places.length === 1 && fl.places[0].id === "pedraverde" && fl.places[0].sector === 6);
+  }
   r = await call("domainsEnter", nu, { body: { domain: "canion" } });
   check("nível 5: Cânion segue fechado (travessia)", r.status === 403 && r.body.need === "crossing" && r.body.code === "closed");
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 2 } });
@@ -194,7 +200,7 @@ async function main() {
   await strong(nu);
   await setBest(nu, "floresta", 9);
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 10 } });
-  check("setor 10 = o deus (placeholder do Brutamontes), palco do palácio", r.status === 200 && r.body.fight.setup.kind === "brute" && D.stageOf(10) === "palacio");
+  check("setor 10 = Noctis (regra do Ciborgue, D2), nível calibrado, palco do palácio", r.status === 200 && r.body.fight.setup.kind === "ciborgue" && r.body.fight.setup.level === D.LEVELS_BY_DOMAIN.floresta[9] && D.stageOf(10) === "palacio", JSON.stringify(r.body.fight && r.body.fight.setup).slice(0, 160));
   const p10 = await play(nu, r.body.fight);
   check("vitória no setor 10 marca a travessia", p10.win && p10.done.receipt.domain && p10.done.receipt.domain.crossed === true && p10.done.receipt.domain.crossedNow === true, JSON.stringify(p10.done.receipt && p10.done.receipt.domain));
   check("crossed_at gravado", (await best(nu, "floresta")).crossed === true);
