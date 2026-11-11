@@ -159,6 +159,11 @@ class MeuMundoGearStorage {
     await c.query(`UPDATE tb_mm_gear_instance SET plus = $3, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, plus]);
   }
 
+  /** E10: grau de refinamento (I…V; CHECK da mig 446). */
+  static async setGrade(c, idUser, idInstance, grade) {
+    await c.query(`UPDATE tb_mm_gear_instance SET grade = $3, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, grade]);
+  }
+
   static async setInstanceRefineFailures(c, idUser, idInstance, failures) {
     const r = await c.query(`UPDATE tb_mm_gear_instance SET refine_failures = $3, version = version + 1 WHERE id_user = $1 AND id_instance = $2 RETURNING version`, [idUser, idInstance, failures]);
     return r.rows[0] ? Number(r.rows[0].version) : null;

@@ -124,6 +124,13 @@ function upgradeView(it, inst) {
     bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade), bonusAfter: Items.pieceBonus(it, cost.to, inst.grade) };
 }
 
+/** E10: o próximo grau de uma cópia (custo fixo em Pó de Refino e Catalisador; bônus antes e depois). */
+function gradeView(it, inst) {
+  const cost = Upgrade.gradeCost(it, inst.grade);
+  if (!cost) return null;
+  return { ...cost, bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade), bonusAfter: Items.pieceBonus(it, inst.plus, cost.to) };
+}
+
 function publicProposal(p) {
   const snap = p.snapshot || {};
   const quote = snap.quote || {};
@@ -196,7 +203,7 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   for (const x of all) {
     const it = Gear.GEAR_BY_ID.get(x.item);
     if (!Upgrade.upgradable(it)) continue;
-    forge[x.id] = { upgrade: upgradeView(it, x) };
+    forge[x.id] = { upgrade: upgradeView(it, x), grade: gradeView(it, x) };
   }
   const stacks = {};
   for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
@@ -405,6 +412,34 @@ class MeuMundoGearService {
         result: { item: it.id, instance: inst.id, from: cost.from, to: cost.to, rulesVersion: Upgrade.RULES_VERSION,
           bonusBefore: Items.pieceBonus(it, cost.from, inst.grade), bonusAfter: Items.pieceBonus(it, cost.to, inst.grade) },
         deltas: { coins: -cost.coins },
+        items: lines(Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n]))),
+      };
+    });
+  }
+
+  /**
+   * E10: REFINAMENTO I–V da cópia — grau de qualidade, separado do aprimoramento. Custo fixo do
+   * próximo grau (Pó de Refino + Catalisador), sempre sobe, até o V. Recibo com a chave do pedido.
+   */
+  static async grade(idUser, body = {}) {
+    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
+    if (!it || !Upgrade.upgradable(it)) return fail("item");
+    return withReceipt(idUser, "gear_grade", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
+      if (picked.error) return picked;
+      const inst = picked.inst;
+      if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
+      const cost = Upgrade.gradeCost(it, inst.grade);
+      if (!cost) return fail("max");
+      const owned = await GearStore.owned(c, idUser);
+      for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
+      for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
+      await GearStore.setGrade(c, idUser, inst.id, cost.to);
+      return {
+        result: { item: it.id, instance: inst.id, fromGrade: cost.from, toGrade: cost.to, rulesVersion: Upgrade.RULES_VERSION,
+          bonusBefore: Items.pieceBonus(it, inst.plus, cost.from), bonusAfter: Items.pieceBonus(it, inst.plus, cost.to) },
+        deltas: {},
         items: lines(Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n]))),
       };
     });

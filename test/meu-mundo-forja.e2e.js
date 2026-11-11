@@ -112,6 +112,29 @@ const STEPS = [
     const fresh = (await pool.query(`INSERT INTO tb_mm_gear_instance (id_user,item_id) VALUES ($1,'espada_latao') RETURNING rules`, [id])).rows[0];
     check("E9: instância nova nasce em forge-v2", fresh.rules === "forge-v2");
   },
+  // ── E10: refinamento I–V ──
+  async ({ pool, Service, id, other, setQty, qty, emeralds, line }) => {
+    const grade = async () => (await pool.query(`SELECT grade FROM tb_mm_gear_instance WHERE id_instance=$1`, [line])).rows[0].grade;
+    const bag = (await Service.get(id)).bag;
+    const view = bag.forge[line].grade;
+    check("E10: a bancada mostra o grau II da lendária (120 de Pó, 1 Catalisador)", view.to === 2 && view.needs.po_refino === 120 && view.needs.catalisador_refino === 1 && view.bonusAfter.dmg > view.bonusBefore.dmg);
+    await setQty(id, "catalisador_refino", 1);
+    const before = await emeralds(id);
+    check("E10: sem Pó suficiente recusa", (await Service.grade(id, { item: "linha_garras_lunares", instance: line, key: crypto.randomUUID() })).code === "needs" && (await grade()) === 1);
+    await setQty(id, "po_refino", 500);
+    const k = crypto.randomUUID();
+    const [g1, g2] = await Promise.all([
+      Service.grade(id, { item: "linha_garras_lunares", instance: line, key: k }),
+      Service.grade(id, { item: "linha_garras_lunares", instance: line, key: k }),
+    ]);
+    check("E10: mesma chave duas vezes refina e cobra uma", g1.receipt.eventId === g2.receipt.eventId && (await grade()) === 2 && (await qty(id, "po_refino")) === 380 && (await qty(id, "catalisador_refino")) === 0);
+    check("E10: refinamento nunca cobra Esmeralda", (await emeralds(id)) === before);
+    check("E10: o grau não mexe no aprimoramento", (await pool.query(`SELECT plus FROM tb_mm_gear_instance WHERE id_instance=$1`, [line])).rows[0].plus === 1);
+    await pool.query(`UPDATE tb_mm_gear_instance SET grade=5 WHERE id_instance=$1`, [line]);
+    check("E10: no grau V não sobe mais", (await Service.grade(id, { item: "linha_garras_lunares", instance: line, key: crypto.randomUUID() })).code === "max");
+    check("E10: cópia de outra conta dá 404", (await Service.grade(other, { item: "linha_garras_lunares", instance: line, key: crypto.randomUUID() })).code === "instance");
+    await pool.query(`UPDATE tb_mm_gear_instance SET grade=2 WHERE id_instance=$1`, [line]);
+  },
 ];
 
 main().catch((error) => { console.error(error); process.exit(1); });

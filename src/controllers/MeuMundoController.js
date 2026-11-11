@@ -307,6 +307,9 @@ async function videosUpload(req, res) {
 async function videosClear(req, res) {
   return reply(res, await archive().clear(String(req.params.kind || ""), String(req.params.ref || ""), req.body || {}));
 }
+async function gearGrade(req, res) {
+  return gated(req, res, "forja", async () => reply(res, await gear().grade(req.user.id_user, req.body || {})));
+}
 async function gearFragmentConvert(req, res) {
   return gated(req, res, "forja", async () => reply(res, await gear().convertFragments(req.user.id_user, req.body || {})));
 }
@@ -539,6 +542,7 @@ module.exports = {
   gearUse,
   gearRecycle,
   gearFragmentConvert,
+  gearGrade,
   questGet,
   questAdvance,
   questMark,
