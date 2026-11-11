@@ -129,10 +129,10 @@ async function main() {
    * D4: o chefão com fases às vezes derruba a entrada roteirizada (semente sorteada pelo servidor):
    * abre e joga de novo até vencer (no máximo 5 lutas). Derrota nunca abre setor nem pacto.
    */
-  const playBoss = async (id) => {
+  const playBoss = async (id, domain = "floresta") => {
     let last = null;
     for (let k = 0; k < 5; k++) {
-      const t = (await call("fightStart", id, { body: { origin: "domain", domain: "floresta", sector: 10 } })).body.fight;
+      const t = (await call("fightStart", id, { body: { origin: "domain", domain, sector: 10 } })).body.fight;
       last = { ticket: t, ...(await play(id, t)) };
       if (last.win) return last;
       if (last.done.receipt && last.done.receipt.pact) throw new Error("derrota abriu pacto");
@@ -320,6 +320,31 @@ async function main() {
   // um setor mais baixo vencido depois não desce o progresso
   const p3 = await play(nu, (await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 3 } })).body.fight);
   check("vencer um setor antigo não desce o progresso", p3.win && p3.done.receipt.domain.best === 10 && p3.done.receipt.domain.opened === null);
+
+  // ── D5: o Cânion das Tempestades (a conta é Raposa, nível 9, Floresta atravessada) ──
+  {
+    r = await call("domainsEnter", nu, { body: { domain: "canion" } });
+    const cn = r.body.domain;
+    check("D5: a tela do Cânion manda as criaturas da lore", cn.sectors.map((s) => s.foe && s.foe.id).join() === "abutre,abutre,chacal,mensageiro,mensageiro,escorpiao,harpia,harpia,carta,zephyra" && cn.sectors[9].foe.body === "zephyra" && cn.sectors[9].foe.rig === true, JSON.stringify(cn.sectors.map((s) => s.foe && s.foe.id)));
+    check("D5: níveis calibrados na tela (5 → 12) e só o 1 aberto", cn.sectors.map((s) => s.level).join() === D.LEVELS_BY_DOMAIN.canion.join() && cn.sectors[0].open && !cn.sectors[1].open);
+    check("D5: Zéphyra é o chefão do setor 10 (tela)", cn.sectors[9].boss === "zephyra" && cn.sectors.slice(0, 9).every((s) => s.boss === null));
+    r = await call("fightStart", nu, { body: { origin: "domain", domain: "canion", sector: 2 } });
+    check("D5: setor 2 fechado antes do 1", r.status === 403);
+    r = await call("fightStart", nu, { body: { origin: "domain", domain: "canion", sector: 1 } });
+    check("D5: setor 1 = Abutres (regra do Cavaleiro) no nível calibrado, sem chefão", r.status === 200 && r.body.fight.setup.kind === "cavaleiro" && r.body.fight.setup.level === D.LEVELS_BY_DOMAIN.canion[0] && r.body.fight.setup.boss === null, JSON.stringify(r.body.fight && r.body.fight.setup).slice(0, 160));
+    const c1 = await play(nu, r.body.fight);
+    check("D5: vencer o setor 1 do Cânion abre o 2", c1.win && c1.done.receipt.domain && c1.done.receipt.domain.domain === "canion" && (await best(nu, "canion")).best === 1, JSON.stringify(c1.done.receipt && c1.done.receipt.domain));
+    await setBest(nu, "canion", 9);
+    r = await call("fightStart", nu, { body: { origin: "domain", domain: "canion", sector: 10 } });
+    check("D5: o ticket do setor 10 traz Zéphyra com fases (regra do Cavaleiro, nível 12)", r.status === 200 && r.body.fight.setup.boss === "zephyra" && r.body.fight.setup.kind === "cavaleiro" && r.body.fight.setup.level === D.LEVELS_BY_DOMAIN.canion[9], JSON.stringify(r.body.fight && r.body.fight.setup).slice(0, 160));
+    let z = await play(nu, r.body.fight);
+    if (!z.win) z = await playBoss(nu, "canion");
+    check("D5: vencer Zéphyra atravessa o Cânion", z.win && z.done.receipt.domain && z.done.receipt.domain.crossedNow === true && (await best(nu, "canion")).crossed === true, JSON.stringify(z.done.receipt && z.done.receipt.domain));
+    const pact = z.done.receipt.pact;
+    check("D5: pacto de Zéphyra para as Raposas na Antigravidade (corrida)", pact && pact.fresh === true && pact.domain === "canion" && pact.god === "zephyra" && pact.game === "corrida" && pact.clan === "raposa", JSON.stringify(pact));
+    st = await Dom.state(nu);
+    check("D5: atravessou o Cânion — a passagem leva ao Mar de Gelo (que pede o nível 13)", st.domains[1].passage && st.domains[1].passage.to === "gelo" && st.domains[2].lock.code === "trainer" && st.domains[2].lock.level === 13, JSON.stringify(st.domains[2].lock));
+  }
 
   // ── administrador passa direto ──
   const adm = await user("mmd_admin");

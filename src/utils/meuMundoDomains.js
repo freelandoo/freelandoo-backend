@@ -53,8 +53,17 @@ const SECTOR_KINDS = Object.freeze(["cavaleiro", "cavaleiro", "cavaleiro", "garr
  *   7–8 Lobos de Ferrugem (elite, já existem) · 9 Selene de Sombra (Vampira adulta, espada)
  *   10 NOCTIS (o corpo do deus, de arma de fogo: a regra do Ciborgue + as fases da D4, BOSS_BY_DOMAIN)
  */
+/**
+ * D5 — o Cânion das Tempestades pela lore (§2), no mesmo molde:
+ *   1–2 Abutres de Pó (animal; placeholder) · 3 Chacais de Vento (o bando dos lobos, placeholder)
+ *   4–5 Mensageiros Sem Rosto (Raposas rápidas: regra da Dama, corpo da Raposa adulta de mão)
+ *   6 Escorpião Para-raios (regra do Brutamontes, placeholder) · 7–8 Harpias (elite: a Dama das Garras,
+ *   que nasceu como o tipo `harpy`) · 9 A Carta (redemoinho de papel e raio: regra do Golem de Pedra,
+ *   o do raio reto; placeholder) · 10 ZÉPHYRA (corpo da deusa com a espada: regra do Cavaleiro + fases)
+ */
 const KINDS_BY_DOMAIN = Object.freeze({
   floresta: Object.freeze(["cavaleiro", "cavaleiro", "garras", "garras", "brute", "brute", "wolf", "wolf", "cavaleiro", "ciborgue"]),
+  canion: Object.freeze(["cavaleiro", "cavaleiro", "wolf", "garras", "garras", "brute", "garras", "garras", "stone", "cavaleiro"]),
 });
 
 /**
@@ -75,6 +84,18 @@ const FOES_BY_DOMAIN = Object.freeze({
     { id: "selene", body: "vampira_adulta", rig: true, art: false },
     { id: "noctis", body: "noctis", rig: true, art: true },
   ].map((f) => Object.freeze(f))),
+  canion: Object.freeze([
+    { id: "abutre", art: false },
+    { id: "abutre", art: false },
+    { id: "chacal", art: false },
+    { id: "mensageiro", body: "raposa_adulto", art: false },
+    { id: "mensageiro", body: "raposa_adulto", art: false },
+    { id: "escorpiao", art: false },
+    { id: "harpia", art: true },
+    { id: "harpia", art: true },
+    { id: "carta", art: false },
+    { id: "zephyra", body: "zephyra", rig: true, art: true },
+  ].map((f) => Object.freeze(f))),
 });
 
 /**
@@ -86,18 +107,28 @@ const FOES_BY_DOMAIN = Object.freeze({
 // 35% contra Noctis (nv. 7, o chefão é mais duro de propósito).
 const LEVELS_BY_DOMAIN = Object.freeze({
   floresta: Object.freeze([2, 2, 2, 2, 4, 4, 5, 6, 7, 7]),
+  // D5 (2026-11-11, 80 lutas por ponto, herói 5 → 9): o robô vence 96% no setor 1 (nv. 5), 68–98% no
+  // meio (setor 4 fica em 74%: o nível não desce do setor 3) e 54% contra Zéphyra com as fases (nv. 12).
+  canion: Object.freeze([5, 6, 7, 7, 7, 8, 9, 10, 10, 12]),
 });
 /**
  * D4: o deus do setor 10 luta em FASES (regra `BOSSES` em meuMundoFight.js, setup.boss no
  * ticket). Domínio sem chefão com fases (ainda sem fatia) luta como antes.
  */
-const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis" });
+const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis", canion: "zephyra" });
 /** O chefão com fases do setor (só o 10), ou null. */
 const bossOf = (domainId, sector) => (sector === SECTORS && BOSS_BY_DOMAIN[domainId]) || null;
 /** Vitórias do robô com o Poder recomendado, do setor 1 ao 10 (o fim fica no deus). */
 const TARGET = Object.freeze([0.9, 0.86, 0.82, 0.78, 0.74, 0.7, 0.66, 0.62, 0.56, 0.5]);
-/** Nível de aventura que o robô usa em cada setor (quem chega ao fundo já lutou mais). */
-const heroOf = (domainId, sector) => 1 + Math.floor((sector - 1) / 2);
+/**
+ * Nível de aventura que o robô usa em cada setor (quem chega ao fundo já lutou mais). D5: a
+ * travessia é em ordem, então quem chega a um Domínio já passou pelos anteriores — cada Domínio
+ * começa 4 níveis acima do anterior (Floresta 1→5, Cânion 5→9, …; a Floresta não muda).
+ */
+const heroOf = (domainId, sector) => {
+  const d = domainOf(domainId);
+  return 1 + 4 * (d ? d.index : 0) + Math.floor((sector - 1) / 2);
+};
 
 /**
  * Lugares da cena: Pedraverde (a clareira com o Golem sentado) fica ao lado do setor 6 da Floresta.

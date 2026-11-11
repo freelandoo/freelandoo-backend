@@ -47,9 +47,10 @@ test("setores em ordem: o 1 abre com o Domínio, o N depois do N−1; vencidos f
 });
 
 test("monstro e nível pelo setor: comuns, fortes, elite (Lobos na Floresta), guardião e o deus; nível nunca desce", () => {
-  assert.deepEqual(D.DOMAIN_IDS.map((id) => D.kindOf(id, 7)), Array(6).fill("wolf"));
+  // D5: o elite do Cânion são as Harpias (a Dama das Garras); os Domínios sem fatia seguem nos Lobos
+  assert.deepEqual(D.DOMAIN_IDS.map((id) => D.kindOf(id, 7)), ["wolf", "garras", "wolf", "wolf", "wolf", "wolf"]);
   assert.equal(D.kindOf("floresta", 1), "cavaleiro");
-  assert.equal(D.kindOf("canion", 10), "brute", "Domínio sem fatia própria segue no placeholder");
+  assert.equal(D.kindOf("gelo", 10), "brute", "Domínio sem fatia própria segue no placeholder");
   for (const id of D.DOMAIN_IDS) for (let s = 1; s <= 10; s++) assert.ok(F.MOB_KINDS.includes(D.kindOf(id, s)), `${id} ${s}`);
   let prev = 0;
   for (const id of D.DOMAIN_IDS) {
@@ -130,7 +131,7 @@ test("D2: a Floresta pela lore — Mariposas, Cervo, Coruja, Sonâmbulos, Lobos 
   assert.equal(D.kindOf("floresta", 10), "ciborgue", "Noctis atira (regra do Alex): arma de fogo do Ciborgue até a D4");
   assert.equal(D.foeOf("floresta", 9).body, "vampira_adulta");
   assert.equal(D.foeOf("floresta", 9).art, false, "Selene de Sombra: arte do Alex pendente");
-  assert.equal(D.foeOf("canion", 1), null, "Domínio sem fatia própria: sem criatura da lore");
+  assert.equal(D.foeOf("gelo", 1), null, "Domínio sem fatia própria: sem criatura da lore");
 });
 
 test("D2: níveis da Floresta calibrados com robô (sobem, nunca descem; o deus no topo)", () => {
@@ -155,6 +156,6 @@ test("D2: robô — com o Poder recomendado vence quase sempre o setor 1 e menos
 test("D2: Pedraverde é um lugar da cena da Floresta (ao lado do setor 6), mandado pela tela", () => {
   const fl = D.view(5, {})[0];
   assert.deepEqual(fl.places, [{ id: "pedraverde", sector: 6, spots: ["golem"] }]);
-  assert.deepEqual(D.view(30, {}, true)[1].places, [], "o Cânion ainda não tem lugar");
+  assert.deepEqual(D.view(30, {}, true)[1].places, [], "o Cânion não tem lugar ao lado do caminho");
   assert.equal(fl.sectors[5].foe.id, "sonambulo");
 });

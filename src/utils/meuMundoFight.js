@@ -283,8 +283,8 @@ const MOB_SHIELD = { cut: 0.7, dur: 4, below: 0.6 }
  * uma luta aberta antes desta regra (o ticket dela não tem `boss`), então sem RULES_VERSION.
  * Os golpes novos entram DEPOIS da conta do dano (como os poderes): a força dos de sempre fica.
  */
-                             
-const BOSS_IDS                    = ["noctis"]
+                                         
+const BOSS_IDS                    = ["noctis", "zephyra"]
                             
                                                                   
                
@@ -315,6 +315,27 @@ const BOSSES                                       = {
       add: [
         { id: "moonClaw", windup: 0.55, active: 0.2, recover: 0.6, range: 2.4, arc: 2.4, dmg: 16, lunge: 3, weight: 4, minD: 0, maxD: 3 },
         { id: "moonPounce", windup: 0.8, active: 0.5, recover: 0.9, range: 2.2, arc: 2.2, dmg: 20, lunge: 11, leap: true, weight: 4, minD: 3, maxD: 22, heavy: true },
+      ],
+    },
+  ],
+  // lore v2 D5: Zéphyra, a Deusa-Chacal das Tempestades (historia/v2/04-mundo-exploravel.md §2: "a luta
+  // é em movimento, num trilho de pista"). Espada (a regra do Cavaleiro, como a skin). Fase 2 (Vento que
+  // Derruba): o Corte de Vento, uma rajada reta e larga que sai da lâmina (todo tiro é reto). Fase 3
+  // (Rastro de Raio): ela corre o trilho — avanço longo que arrasta quem pega — e gira a lâmina de perto.
+  zephyra: [
+    {
+      below: 0.66,
+      rest: 0.8,
+      speed: 1.2,
+      add: [{ id: "gale", windup: 0.85, active: 0.16, recover: 0.75, range: 10, arc: 0, line: 0.9, dmg: 16, lunge: 0, weight: 4, minD: 2.5, maxD: 10.5, heavy: true }],
+    },
+    {
+      below: 0.33,
+      rest: 0.6,
+      speed: 1.35,
+      add: [
+        { id: "boltRush", windup: 0.7, active: 0.6, recover: 0.9, range: 1.8, arc: 1.8, dmg: 18, lunge: 14, ram: true, weight: 4, minD: 3, maxD: 14, heavy: true },
+        { id: "stormCut", windup: 0.5, active: 0.25, recover: 0.6, range: 2.6, arc: 2.8, dmg: 14, lunge: 2, weight: 3, minD: 0, maxD: 3 },
       ],
     },
   ],
