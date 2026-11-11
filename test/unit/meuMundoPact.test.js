@@ -12,7 +12,7 @@ const noctis = (boss) => new F.Fight({ kind: "ciborgue", level: 7, hero: 5, tier
 test("D4: só o setor 10 da Floresta tem chefão com fases (Noctis); a tela manda", () => {
   assert.equal(D.bossOf("floresta", 10), "noctis");
   for (let s = 1; s < 10; s++) assert.equal(D.bossOf("floresta", s), null, `setor ${s}`);
-  assert.equal(D.bossOf("gelo", 10), null, "o Mar de Gelo ainda não tem fatia");
+  assert.equal(D.bossOf("gelo", 10), "maru", "DV6: Marú em fases no setor 10 do Mar de Gelo");
   const fl = D.view(5, {})[0];
   assert.equal(fl.sectors[9].boss, "noctis");
   assert.equal(fl.sectors[8].boss, null);

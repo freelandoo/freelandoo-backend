@@ -283,8 +283,8 @@ const MOB_SHIELD = { cut: 0.7, dur: 4, below: 0.6 }
  * uma luta aberta antes desta regra (o ticket dela não tem `boss`), então sem RULES_VERSION.
  * Os golpes novos entram DEPOIS da conta do dano (como os poderes): a força dos de sempre fica.
  */
-                                         
-const BOSS_IDS                    = ["noctis", "zephyra"]
+                                                                                
+const BOSS_IDS                    = ["noctis", "zephyra", "maru", "aeryn", "kragor", "iris"]
                             
                                                                   
                
@@ -336,6 +336,85 @@ const BOSSES                                       = {
       add: [
         { id: "boltRush", windup: 0.7, active: 0.6, recover: 0.9, range: 1.8, arc: 1.8, dmg: 18, lunge: 14, ram: true, weight: 4, minD: 3, maxD: 14, heavy: true },
         { id: "stormCut", windup: 0.5, active: 0.25, recover: 0.6, range: 2.6, arc: 2.8, dmg: 14, lunge: 2, weight: 3, minD: 0, maxD: 3 },
+      ],
+    },
+  ],
+  // Domínios v2 (os quatro últimos, historia/v2/04-mundo-exploravel.md §3–6), no mesmo molde: cada fase
+  // só ACRESCENTA golpes (a força dos de sempre fica) e todo tiro é reto.
+  // Marú, o Tritão-Axolote (espada, regra do Cavaleiro). Fase 2 (Maré Alta): a onda reta e larga que
+  // sai da lâmina. Fase 3 (Gelo Partido): a estocada que desliza no gelo e o redemoinho de perto.
+  maru: [
+    {
+      below: 0.66,
+      rest: 0.82,
+      speed: 1.15,
+      add: [{ id: "tide", windup: 0.9, active: 0.18, recover: 0.8, range: 10, arc: 0, line: 1.1, dmg: 15, lunge: 0, weight: 4, minD: 2.5, maxD: 10.5, heavy: true }],
+    },
+    {
+      below: 0.33,
+      rest: 0.62,
+      speed: 1.3,
+      add: [
+        { id: "icePike", windup: 0.7, active: 0.55, recover: 0.9, range: 1.8, arc: 1.8, dmg: 18, lunge: 12, ram: true, weight: 4, minD: 3, maxD: 12, heavy: true },
+        { id: "whirlpool", windup: 0.55, active: 0.3, recover: 0.6, range: 2.8, arc: 3.1, dmg: 14, lunge: 1.5, weight: 3, minD: 0, maxD: 3 },
+      ],
+    },
+  ],
+  // Aeryn, a Águia de Bronze (arqueira de flechas de luz: regra de tiro do Ciborgue). Fase 2 (Chuva de
+  // Bronze): a flechada pesada, reta e larga. Fase 3 (Voo da Águia): o mergulho de longe e as garras de perto.
+  aeryn: [
+    {
+      below: 0.66,
+      rest: 0.8,
+      speed: 1.15,
+      add: [{ id: "bronzeVolley", windup: 0.9, active: 0.16, recover: 0.8, range: 12, arc: 0, line: 0.8, dmg: 20, lunge: 0, weight: 4, minD: 0, maxD: 12.5, heavy: true }],
+    },
+    {
+      below: 0.33,
+      rest: 0.6,
+      speed: 1.3,
+      add: [
+        { id: "eagleDive", windup: 0.8, active: 0.5, recover: 0.9, range: 2.2, arc: 2.2, dmg: 20, lunge: 12, leap: true, weight: 4, minD: 3, maxD: 22, heavy: true },
+        { id: "talon", windup: 0.55, active: 0.2, recover: 0.6, range: 2.4, arc: 2.4, dmg: 15, lunge: 3, weight: 4, minD: 0, maxD: 3 },
+      ],
+    },
+  ],
+  // Kragor, o Minotauro de Basalto (machado, regra do Brutamontes; "cada fase ele troca de arma").
+  // Fase 2 (Martelo de Basalto): a pancada pesada de perto. Fase 3 (Chifres de Lava): a carga que
+  // arrasta e o giro de magma.
+  kragor: [
+    {
+      below: 0.66,
+      rest: 0.85,
+      speed: 1.1,
+      add: [{ id: "basaltSlam", windup: 1.0, active: 0.2, recover: 0.9, range: 3.2, arc: 2.6, dmg: 24, lunge: 2, weight: 4, minD: 0, maxD: 3.6, heavy: true }],
+    },
+    {
+      below: 0.33,
+      rest: 0.65,
+      speed: 1.25,
+      add: [
+        { id: "lavaCharge", windup: 0.75, active: 0.6, recover: 1.0, range: 2, arc: 2, dmg: 20, lunge: 14, ram: true, weight: 4, minD: 3, maxD: 14, heavy: true },
+        { id: "magmaSweep", windup: 0.6, active: 0.3, recover: 0.7, range: 3, arc: 3.2, dmg: 16, lunge: 1, weight: 3, minD: 0, maxD: 3.3 },
+      ],
+    },
+  ],
+  // Íris, a Deusa-Camaleão (arqueira de luz: regra de tiro do Ciborgue). Fase 2 (Prisma): o feixe
+  // reto e largo. Fase 3 (Mil Cores): o avanço em arco-íris que arrasta e a explosão de cor de perto.
+  iris: [
+    {
+      below: 0.66,
+      rest: 0.78,
+      speed: 1.2,
+      add: [{ id: "prismBeam", windup: 0.85, active: 0.18, recover: 0.75, range: 12, arc: 0, line: 1.2, dmg: 18, lunge: 0, weight: 4, minD: 0, maxD: 12.5, heavy: true }],
+    },
+    {
+      below: 0.33,
+      rest: 0.58,
+      speed: 1.35,
+      add: [
+        { id: "chromaDash", windup: 0.65, active: 0.55, recover: 0.85, range: 1.9, arc: 1.9, dmg: 18, lunge: 13, ram: true, weight: 4, minD: 3, maxD: 13, heavy: true },
+        { id: "rainbowBurst", windup: 0.5, active: 0.25, recover: 0.6, range: 2.6, arc: 3, dmg: 14, lunge: 2, weight: 3, minD: 0, maxD: 3 },
       ],
     },
   ],

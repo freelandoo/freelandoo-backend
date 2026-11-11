@@ -64,6 +64,21 @@ const SECTOR_KINDS = Object.freeze(["cavaleiro", "cavaleiro", "cavaleiro", "garr
 const KINDS_BY_DOMAIN = Object.freeze({
   floresta: Object.freeze(["cavaleiro", "cavaleiro", "garras", "garras", "brute", "brute", "wolf", "wolf", "cavaleiro", "ciborgue"]),
   canion: Object.freeze(["cavaleiro", "cavaleiro", "wolf", "garras", "garras", "brute", "garras", "garras", "stone", "cavaleiro"]),
+  // Domínios v2 (DV6–DV9, §3–6), no mesmo molde da D5: regra = tipo que já existe; quem a criatura É
+  // fica em FOES. Mar de Gelo: Peixes-Lanterna 1–2, Caranguejos-Âncora 3 (o machado), Afogados da Maré
+  // 4–5 (Raposa adulta de mão), Serpentes do Rio 6 (o bando dos lobos), Ciborgue 7–8 (elite, Tomé),
+  // Ondina 9 (Raposa adulta de espada), MARÚ 10 (espada, regra do Cavaleiro + fases).
+  gelo: Object.freeze(["cavaleiro", "cavaleiro", "brute", "garras", "garras", "wolf", "ciborgue", "ciborgue", "cavaleiro", "cavaleiro"]),
+  // Fábrica de Bronze: Ratos de Engrenagem 1–2, Aranhas-Relógio 3, Cobaias 4–5 (Raposa adulta de mão),
+  // Golens de Sucata 6 (o Golem), Dama das Garras 7–8 (elite, a cobaia 14), A Esteira 9 (o braço: o
+  // Brutamontes), AERYN 10 (arqueira de luz: regra de tiro do Ciborgue + fases).
+  fabrica: Object.freeze(["wolf", "wolf", "garras", "garras", "garras", "stone", "garras", "garras", "brute", "ciborgue"]),
+  // Vulcão de Kragor: Salamandras de Brasa 1–2, Mineiros Fundidos 3–4 (Raposa adulta de mão), Touros de
+  // Lava 5, Lutadores do Poço 6, Golem de Pedra 7–8 (elite), Brutamontes 9 (porteiro), KRAGOR 10 (machado).
+  vulcao: Object.freeze(["wolf", "wolf", "garras", "garras", "brute", "cavaleiro", "stone", "stone", "brute", "brute"]),
+  // Cidade Orbital: Pombas Prismáticas 1–2, Camaleões Rachados 3, Pintores Sem Cor 4–5 (Raposa adulta de
+  // mão), Espelhos 6, Cavaleiro Dourado 7–8 (elite), O Arco Partido 9 (o raio reto do Golem), ÍRIS 10.
+  orbital: Object.freeze(["garras", "garras", "wolf", "garras", "garras", "cavaleiro", "cavaleiro", "cavaleiro", "stone", "ciborgue"]),
 });
 
 /**
@@ -96,6 +111,54 @@ const FOES_BY_DOMAIN = Object.freeze({
     { id: "carta", art: false },
     { id: "zephyra", body: "zephyra", rig: true, art: true },
   ].map((f) => Object.freeze(f))),
+  gelo: Object.freeze([
+    { id: "peixe", art: false },
+    { id: "peixe", art: false },
+    { id: "caranguejo", art: false },
+    { id: "afogado", body: "raposa_adulto", art: false },
+    { id: "afogado", body: "raposa_adulto", art: false },
+    { id: "serpente", art: false },
+    { id: "ciborgue", art: true },
+    { id: "ciborgue", art: true },
+    { id: "ondina", body: "raposa_adulta", rig: true, art: false },
+    { id: "maru", body: "maru", rig: true, art: true },
+  ].map((f) => Object.freeze(f))),
+  fabrica: Object.freeze([
+    { id: "rato", art: false },
+    { id: "rato", art: false },
+    { id: "aranha", art: false },
+    { id: "cobaia", body: "raposa_adulto", art: false },
+    { id: "cobaia", body: "raposa_adulto", art: false },
+    { id: "sucata", art: false },
+    { id: "garras", art: true },
+    { id: "garras", art: true },
+    { id: "esteira", art: false },
+    { id: "aeryn", body: "aeryn", rig: true, art: true },
+  ].map((f) => Object.freeze(f))),
+  vulcao: Object.freeze([
+    { id: "salamandra", art: false },
+    { id: "salamandra", art: false },
+    { id: "mineiro", body: "raposa_adulto", art: false },
+    { id: "mineiro", body: "raposa_adulto", art: false },
+    { id: "touro", art: false },
+    { id: "lutador", body: "raposa_adulto", rig: true, art: false },
+    { id: "golem", art: true },
+    { id: "golem", art: true },
+    { id: "brutamontes", art: true },
+    { id: "kragor", body: "kragor", rig: true, art: true },
+  ].map((f) => Object.freeze(f))),
+  orbital: Object.freeze([
+    { id: "pomba", art: false },
+    { id: "pomba", art: false },
+    { id: "camaleao", art: false },
+    { id: "pintor", body: "raposa_adulto", art: false },
+    { id: "pintor", body: "raposa_adulto", art: false },
+    { id: "espelho", body: "raposa_adulta", rig: true, art: false },
+    { id: "cavaleiro", art: true },
+    { id: "cavaleiro", art: true },
+    { id: "arco", art: false },
+    { id: "iris", body: "iris", rig: true, art: true },
+  ].map((f) => Object.freeze(f))),
 });
 
 /**
@@ -110,12 +173,18 @@ const LEVELS_BY_DOMAIN = Object.freeze({
   // D5 (2026-11-11, 80 lutas por ponto, herói 5 → 9): o robô vence 96% no setor 1 (nv. 5), 68–98% no
   // meio (setor 4 fica em 74%: o nível não desce do setor 3) e 54% contra Zéphyra com as fases (nv. 12).
   canion: Object.freeze([5, 6, 7, 7, 7, 8, 9, 10, 10, 12]),
+  // Domínios v2 DV6–DV9 (2026-11-11, mm-domain-calibrate --fit, 40 lutas por ponto; heroOf +4 por Domínio):
+  // o robô vence 88–100% no setor 1 e 45–63% contra o deus em fases.
+  gelo: Object.freeze([9, 9, 11, 11, 13, 13, 13, 13, 15, 16]),
+  fabrica: Object.freeze([14, 14, 15, 16, 17, 17, 19, 20, 20, 20]),
+  vulcao: Object.freeze([18, 18, 19, 19, 22, 23, 23, 23, 24, 24]),
+  orbital: Object.freeze([21, 22, 25, 25, 26, 26, 30, 30, 30, 30]),
 });
 /**
  * D4: o deus do setor 10 luta em FASES (regra `BOSSES` em meuMundoFight.js, setup.boss no
  * ticket). Domínio sem chefão com fases (ainda sem fatia) luta como antes.
  */
-const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis", canion: "zephyra" });
+const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis", canion: "zephyra", gelo: "maru", fabrica: "aeryn", vulcao: "kragor", orbital: "iris" });
 /** O chefão com fases do setor (só o 10), ou null. */
 const bossOf = (domainId, sector) => (sector === SECTORS && BOSS_BY_DOMAIN[domainId]) || null;
 /** Vitórias do robô com o Poder recomendado, do setor 1 ao 10 (o fim fica no deus). */
