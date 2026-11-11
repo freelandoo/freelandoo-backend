@@ -212,11 +212,21 @@ function npcsFor(clan) {
   const neighbor = Object.freeze({ id: vamp ? "vizinho_vampiro" : "vizinha_raposa", body: vamp ? "vampiro_adulto" : "raposa_adulta", ...NEIGHBOR_SPOT });
   return vamp ? [neighbor] : [neighbor, PRIESTESS];
 }
-/** A placa do pedestal vazio (só na Cidade Baixa): o texto mora no front (qw_pedestal). */
-const signsFor = (clan) => (clan === "vampiro" ? [Object.freeze({ id: "pedestal", text: "qw_pedestal", x: 0, z: -4.4, radius: 2.2 })] : []);
+// Lore v2 C3 (cap. 5): a RUÍNA DO NINHO, o orfanato da mata, na pracinha noroeste do
+// Bairro das Matas. PROVISÓRIO: só o livro num atril, ao sul do canteiro (os bancos
+// ficam nas diagonais), sem caixa de colisão (a lista de obstáculos não muda com a
+// classe). A ruína é arte do Alex (roteiro §4). Ler a placa abre o livro: o
+// Arquivo "registro_ninho" só grava a primeira leitura com a visita "ninho".
+const NINHO = Object.freeze({ x: -19, z: 19 });
+const NINHO_SIGN = Object.freeze({ id: "ninho", text: "qw_ninho", archive: "registro_ninho", x: NINHO.x, z: NINHO.z - 2.2, radius: 2.2 });
+/** As placas do bairro: o texto mora no front (qw_*). Pedestal vazio na Cidade Baixa; o livro do Ninho nas Matas. */
+function signsFor(clan) {
+  if (clan === "vampiro") return [Object.freeze({ id: "pedestal", text: "qw_pedestal", x: 0, z: -4.4, radius: 2.2 })];
+  return clan === "raposa" ? [NINHO_SIGN] : [];
+}
 // Lore v2 F4 — pontos de visita do bairro (visit:<id>; meuMundoPlaces.js). "bairro"
-// e "casa" a sala grava na entrada (titular / dono da casa).
-const VISIT_POINTS = Object.freeze([Object.freeze({ id: "estatua_aurion", x: 0, z: 0, r: 7 })]);
+// e "casa" a sala grava na entrada (titular / dono da casa). C3: a pracinha do Ninho.
+const VISIT_POINTS = Object.freeze([Object.freeze({ id: "estatua_aurion", x: 0, z: 0, r: 7 }), Object.freeze({ id: "ninho", x: NINHO.x, z: NINHO.z, r: 5 })]);
 // Quatro pracinhas no gramado, nas diagonais: piso redondo, canteiro no meio,
 // quatro bancos virados para ele e um poste.
 const SQUARE = Object.freeze({ r: 5, bed: 1.1, bench: 3.3 });

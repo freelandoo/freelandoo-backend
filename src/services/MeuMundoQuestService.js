@@ -200,8 +200,10 @@ async function satisfied(c, idUser, idCharacter, s, step, row) {
       const ml = await StatueStore.deliveredSince(c, idUser, new Date(new Date(row.started_at).getTime() - 2000));
       return out(Math.floor(ml / 1000), n);
     }
+    case "paintTop":
+      // C3: a sala do Paint grava "paint_top" quando a pessoa passa pelo portal do topo (ilha de Bastor)
+      return yes(await q1(`SELECT 1 FROM tb_mm_character_event WHERE id_character = $1 AND kind = 'paint_top' AND at >= $2 LIMIT 1`, [idCharacter, since]));
     default:
-      // paintTop: o dado chega na C3
       return yes(false);
   }
 }

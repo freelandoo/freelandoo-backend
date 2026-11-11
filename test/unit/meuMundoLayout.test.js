@@ -248,7 +248,8 @@ test("C1: Cidade Baixa tem o pedestal VAZIO com a placa; Bairro das Matas tem o 
   // mesma base = mesma colisão (a sala não sabe de classe)
   assert.deepEqual(v.dims.statues[0].base, r.dims.statues[0].base);
   assert.deepEqual(v.signs.map((s) => s.text), ["qw_pedestal"]);
-  assert.equal(r.signs.length, 0);
+  // C3: nas Matas, só o livro do Ninho (que abre o Arquivo)
+  assert.deepEqual(r.signs.map((s) => s.text), ["qw_ninho"]);
   // o modelo do pedestal vazio nunca é publicado (o cliente desenha só a base)
   assert.ok(!L.buildNeighborhoodPayload({ code: "x", name: "x", residents: 0, houses: [] }).statueAssets?.models?.pedestal_vazio);
 });

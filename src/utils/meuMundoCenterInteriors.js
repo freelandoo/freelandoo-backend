@@ -274,7 +274,8 @@ function biblioteca() {
         ],
       },
     ],
-    npcs: [{ role: "bibliotecaria", x: -4.2, z: 3.45, r: 0 }],
+    // lore v2 C3: a bibliotecária guarda o livro do Ninho (cap. 5, para quem não entra nas Matas)
+    npcs: [{ role: "bibliotecaria", x: -4.2, z: 3.45, r: 0, talk: "bibliotecaria" }],
   };
 }
 
@@ -467,7 +468,8 @@ function forja() {
         ["lamp", 3.8, 0.65, 0],
       ],
     }],
-    npcs: [{ role: "forjador", x: -1.7, z: 7.9, r: 0 }],
+    // lore v2 C3 (cap. 4, "Ferro"): o Forjador fala (só ambiente)
+    npcs: [{ role: "forjador", x: -1.7, z: 7.9, r: 0, talk: "forjador" }],
   };
 }
 
@@ -495,7 +497,8 @@ function arsenal() {
         ["lamp", 3.8, 0.65, 0],
       ],
     }],
-    npcs: [{ role: "armeiro", x: -1.9, z: 10.2, r: 0 }, { role: "armeira", x: 1.9, z: 10.2, r: 0 }],
+    // lore v2 C3: um NPC só fala, o Armeiro (a fala muda pela classe de quem ouve; 07-falas §0.2)
+    npcs: [{ role: "armeiro", x: -1.9, z: 10.2, r: 0, talk: "armeiro" }, { role: "armeira", x: 1.9, z: 10.2, r: 0 }],
   };
 }
 

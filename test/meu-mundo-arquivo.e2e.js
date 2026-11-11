@@ -111,8 +111,29 @@ async function main() {
   v = await Arq.get(id);
   check("cap. 5 aberto no passo 'ninho' destrava o registro do Ninho", ent(v, "registro_ninho").unlocked);
   check("archive:registro_ninho ainda não lido = não", !(await sat("archive:registro_ninho")).ok);
-  await Arq.read(id, { id: "registro_ninho" });
+  check("o registro diz onde o livro está", JSON.stringify(ent(v, "registro_ninho").at) === '["ninho","biblioteca"]' && ent(v, "praca").at === null);
+  // C3: o livro está na ruína do Ninho (Matas) e na Biblioteca; a 1ª leitura só vale lá
+  const PlaceSvc = require("../src/services/MeuMundoPlaceService");
+  let far = await Arq.read(id, { id: "registro_ninho" });
+  check("ler o registro sem ter ido a lugar nenhum → 'far' 409", far.code === "far" && far.statusCode === 409, JSON.stringify(far));
+  await PlaceSvc.recordVisit(id, "praca");
+  far = await Arq.read(id, { id: "registro_ninho" });
+  check("ler o registro na praça → 'far'", far.code === "far");
+  check("…e o passo não cumpre", !(await sat("archive:registro_ninho")).ok);
+  await PlaceSvc.recordVisit(id, "ninho");
+  await pool.query(`UPDATE tb_mm_character_event SET at = NOW() - interval '61 minutes' WHERE id_character = $1 AND kind = 'visit'`, [ch]);
+  check("visita ao Ninho de mais de 1 h atrás → 'far'", (await Arq.read(id, { id: "registro_ninho" })).code === "far");
+  await PlaceSvc.recordVisit(id, "biblioteca");
+  v = await Arq.read(id, { id: "registro_ninho" });
+  check("na Biblioteca o livro abre", !!(v.entries && ent(v, "registro_ninho").readAt), JSON.stringify(v.error));
   check("archive:registro_ninho depois de ler", (await sat("archive:registro_ninho")).ok);
+  await PlaceSvc.recordVisit(id, "praca");
+  v = await Arq.read(id, { id: "registro_ninho" });
+  check("depois de lido, relê em qualquer lugar", !!(v.entries && ent(v, "registro_ninho").readAt));
+  await pool.query(`UPDATE tb_mm_archive SET read_at = NULL WHERE id_user = $1 AND entry_id = 'registro_ninho'`, [id]);
+  await PlaceSvc.recordVisit(id, "ninho");
+  v = await Arq.read(id, { id: "registro_ninho" });
+  check("na ruína do Ninho (Matas) o livro abre", !!(v.entries && ent(v, "registro_ninho").readAt));
 
   // ── monstro vencido ──
   let k = 0;

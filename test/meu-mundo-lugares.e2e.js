@@ -139,6 +139,38 @@ async function main() {
   r = await Quest.mark(id, { mark: "talk", npc: "delegado" });
   check("talk:delegado na Delegacia", r.ok === true && (await sat("talk:delegado")).ok);
 
+  // ── C3: a sala do Paint grava a chegada à ilha de Bastor (paintTop) ──
+  const Paint = require("../src/realtime/meuMundoPaint");
+  check("paintTop antes de subir = não", !(await sat("paintTop")).ok);
+  const seat = { userId: id, slot: 0 };
+  check("subiu: a sala grava (fora do laço)", Paint._markPaintTop(seat) === true);
+  check("na mesma partida não grava de novo", Paint._markPaintTop(seat) === false);
+  check("computador do Paint não grava", Paint._markPaintTop({ bot: true, userId: null, slot: 1 }) === false);
+  await wait(150);
+  const tops = (await pool.query(`SELECT COUNT(*)::int n FROM tb_mm_character_event WHERE id_character = $1 AND kind = 'paint_top'`, [ch])).rows[0].n;
+  check("um evento paint_top", tops === 1, String(tops));
+  check("paintTop depois de subir", (await sat("paintTop")).ok);
+  check("paintTop não conta como visita (não muda onde a conversa vale)", (await PlaceSvc.lastVisit(pool, id)).place !== "paint_top");
+
+  // passo 'bastor' do cap. 5 com recibo (conta com nível 11)
+  const bu = crypto.randomUUID();
+  await pool.query(`INSERT INTO tb_user VALUES ($1, 'mmb', 'mmb@mm.test')`, [bu]);
+  await Life.peek(bu);
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f')`, [bu]);
+  await pool.query(`INSERT INTO tb_mm_trainer (id_user, xp) VALUES ($1, 999999) ON CONFLICT (id_user) DO UPDATE SET xp = 999999`, [bu]);
+  for (const c of ["cap1", "cap2", "cap3", "cap4"]) await pool.query(`INSERT INTO tb_mm_quest (id_user, quest_id, step, done_at) VALUES ($1, $2, 9, NOW())`, [bu, c]);
+  await pool.query(`INSERT INTO tb_mm_quest (id_user, quest_id, step, step_at) VALUES ($1, 'cap5', 2, NOW() - interval '1 minute')`, [bu]);
+  let bq = (await Quest.get(bu)).quest;
+  check("cap. 5 no passo 'bastor', esperando a partida (não mais pendente de fatia)", bq.current && bq.current.key === "bastor" && bq.current.waiting === false && !bq.current.ready, JSON.stringify(bq.current));
+  check("sem subir → entregar recusa", (await Quest.advance(bu, {})).code === "pending");
+  Paint._markPaintTop({ userId: bu, slot: 0 });
+  await wait(150);
+  const got = await Quest.advance(bu, {});
+  check("subiu à ilha de Bastor → entrega com recibo", !!got.receipt && got.receipt.result.step === "bastor" && got.receipt.actionKey === "cap5:2", JSON.stringify(got.error || got.receipt));
+  const again = await Quest.advance(bu, {});
+  check("o mesmo passo não paga duas vezes", !again.receipt || again.receipt.actionKey !== "cap5:2" || again.replay === true);
+  check("o capítulo segue para 'matilha'", (await Quest.get(bu)).quest.current.key === "matilha");
+
   // ── capítulo 1 inteiro, conta nova ──
   const nu = crypto.randomUUID();
   await pool.query(`INSERT INTO tb_user VALUES ($1, 'mmn', 'mmn@mm.test')`, [nu]);

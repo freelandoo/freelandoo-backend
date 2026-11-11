@@ -73,7 +73,7 @@ async function main() {
   check("10 capítulos, níveis 1/3/5/8/11/14/17/20/23/27", Q.CHAPTERS.length === 10 && Q.CHAPTERS.map((c) => c.minTrainerLevel).join() === "1,3,5,8,11,14,17,20,23,27");
   check("capítulos encadeados por next", Q.CHAPTERS.every((c, i) => c.next === (Q.CHAPTERS[i + 1] ? Q.CHAPTERS[i + 1].id : null)));
   const types = new Set(Q.CHAPTERS.flatMap((c) => c.steps.map((s) => Q.parseCheck(s.check).type)));
-  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", "visit", "talk", "archive", "nectar", ...Q.PENDING_CHECKS];
+  const known = ["ack", "minigame", "clan", "ate", "practice", "sleep", "buy", "weapon", "material", "armory", "tutorialFight", "forge", "game", "games", "fightWin", "nightKill", "stat", "power", "hallChallenge", "mix", "certificate", "visit", "talk", "archive", "nectar", "paintTop", ...Q.PENDING_CHECKS];
   check("todo check dos capítulos é conhecido pelo servidor", [...types].every((t) => known.includes(t)), [...types].filter((t) => !known.includes(t)).join());
   const mobs = Q.CHAPTERS.flatMap((c) => c.steps).map((s) => Q.parseCheck(s.check)).filter((p) => (p.type === "fightWin" || p.type === "nightKill") && p.arg);
   check("monstros dos capítulos com os ids novos (F1)", mobs.every((p) => require("../src/utils/meuMundoAdventure").TROPHY_KINDS.includes(p.arg)), JSON.stringify(mobs));
@@ -139,8 +139,13 @@ async function main() {
   check("POST /quest/mark certificate", mk.ok === true, JSON.stringify(mk.error));
   check("certificate depois de abrir", (await sat("certificate")).ok);
 
-  // ── o que ainda espera outra fatia ──
-  check("paintTop fica pendente até a fatia dele", !(await sat("paintTop")).ok);
+  // ── C3: paintTop = a sala do Paint gravou a chegada à ilha de Bastor ──
+  check("paintTop sem partida = não", !(await sat("paintTop")).ok);
+  await ev("paint_top", {}, "NOW() - interval '5 minutes'");
+  check("paintTop de antes do passo abrir não vale", !(await sat("paintTop")).ok);
+  await ev("paint_top", {});
+  check("paintTop pelo evento da sala", (await sat("paintTop")).ok);
+  check("nenhum check espera outra fatia", Q.PENDING_CHECKS.length === 0);
   check("nectar:1 sem entrega na estátua = não (N3)", !(await sat("nectar:1")).ok);
 
   console.log(`\n${PASS} ok, ${FAIL} falhas`);

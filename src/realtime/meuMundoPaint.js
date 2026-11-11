@@ -41,6 +41,21 @@ const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.paint");
 const { PracticeMeter } = require("./meuMundoPractice");
+const MeuMundoPlaceService = require("../services/MeuMundoPlaceService");
+
+/**
+ * Lore v2 C3 (cap. 5, passo "bastor" = paintTop): a pessoa passou pelo portal do
+ * topo e chegou à ilha do Guardião. Grava UMA vez por lugar na partida, FORA do
+ * laço (promessa solta, erro só no log). Computador e robô não têm conta: não gravam.
+ */
+function markPaintTop(s, record = MeuMundoPlaceService.recordPaintTop) {
+  if (!s || s.bot || !s.userId || s.topSent) return false;
+  s.topSent = true;
+  Promise.resolve()
+    .then(() => record(s.userId))
+    .catch((err) => log.warn("paintTop.fail", { message: err.message }));
+  return true;
+}
 
 const PAINT_ROOM = "paint";
 const CLOSE = { REPLACED: 4009, FORBIDDEN: 4003, ABUSE: 4029 };
@@ -572,6 +587,7 @@ class PaintRoom extends Room {
       p.dmg = Math.round(mp.dmg);
       p.ko = mp.ko;
       p.boss = mp.inBoss;
+      if (mp.inBoss) markPaintTop(s);
       p.out = !!mp.out;
     }
   }
@@ -663,4 +679,5 @@ module.exports = {
   // só para a suíte e2e
   _paintRooms: () => [...rooms.values()],
   _paintTiming: timing,
+  _markPaintTop: markPaintTop,
 };

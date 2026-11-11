@@ -23,6 +23,30 @@ class MeuMundoPlaceService {
     return r.rowCount > 0;
   }
 
+  /**
+   * Lore v2 C3: chegou à ilha do Guardião (Bastor) numa partida de Paint. A sala do
+   * Paint chama FORA do laço (promessa solta), uma vez por partida. Só um fato, como a visita.
+   */
+  static async recordPaintTop(idUser, db = pool) {
+    if (!idUser) return false;
+    const r = await db.query(
+      `INSERT INTO tb_mm_character_event (id_character, at, kind, data)
+       SELECT id_character, NOW(), 'paint_top', '{}'::jsonb FROM (${ALIVE_SQL}) ch`,
+      [idUser]
+    );
+    return r.rowCount > 0;
+  }
+
+  /**
+   * Lore v2 C3: a pessoa está num destes lugares agora? (a última visita foi a um
+   * deles, há menos de TALK_TTL_MS). O livro do Ninho só se abre no lugar dele.
+   */
+  static async isAt(c, idUser, places, now = Date.now()) {
+    const last = await MeuMundoPlaceService.lastVisit(c, idUser);
+    if (!last || !places.includes(last.place)) return false;
+    return now - new Date(last.at).getTime() <= P.TALK_TTL_MS;
+  }
+
   /** A última visita da pessoa (qualquer personagem dela): { place, at } ou null. */
   static async lastVisit(c, idUser) {
     const r = await c.query(

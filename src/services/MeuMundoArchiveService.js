@@ -9,6 +9,7 @@
 
 const pool = require("../databases");
 const A = require("../utils/meuMundoArchive");
+const PlaceService = require("./MeuMundoPlaceService");
 const { ensureFileBuffer, hasUpload } = require("../utils/mediaProcessing");
 const uploadMeuMundoVideoToR2 = require("../integrations/r2/uploadMeuMundoVideo");
 
@@ -17,6 +18,7 @@ const ERRORS = {
   locked: ["Esse texto do Arquivo ainda está trancado", 409],
   slot: ["Esse vídeo não tem lugar no jogo", 404],
   empty: ["Envie o vídeo ou a imagem", 400],
+  far: ["Esse texto só se abre no lugar dele", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code];
@@ -52,7 +54,7 @@ async function view(c, idUser) {
   return {
     entries: A.ENTRIES.map((e) => {
       const r = rows.get(e.id);
-      return { id: e.id, chapter: e.chapter, unlocked: !!r, unlockedAt: r ? r.unlocked_at : null, readAt: r ? r.read_at : null };
+      return { id: e.id, chapter: e.chapter, unlocked: !!r, unlockedAt: r ? r.unlocked_at : null, readAt: r ? r.read_at : null, at: e.at || null };
     }),
     videos: await videos(c),
   };
@@ -70,6 +72,10 @@ class MeuMundoArchiveService {
     if (!A.ENTRY_BY_ID.has(id)) return fail("unknown");
     const rows = await sync(db, idUser);
     if (!rows.has(id)) return fail("locked");
+    // C3: texto que mora num lugar (o livro do Ninho) só se lê a primeira vez LÁ —
+    // a última visita gravada pela sala (o aparelho não diz onde está). Depois, em qualquer lugar.
+    const e = A.ENTRY_BY_ID.get(id);
+    if (e.at && !rows.get(id).read_at && !(await PlaceService.isAt(db, idUser, e.at))) return fail("far");
     await db.query(`UPDATE tb_mm_archive SET read_at = COALESCE(read_at, NOW()) WHERE id_user = $1 AND entry_id = $2`, [idUser, id]);
     return view(db, idUser);
   }

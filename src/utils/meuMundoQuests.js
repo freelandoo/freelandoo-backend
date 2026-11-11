@@ -34,8 +34,7 @@
 //  talk:<npc>          conversou com o NPC, no lugar dele (POST /quest/mark talk; F4)
 //  archive:<id>        leu aquele texto do Arquivo (read_at; F5, utils/meuMundoArchive.js)
 //  nectar:N            entregou N litros na estátua desde que o capítulo começou (N3; domingo)
-//  — ainda sem dado (entram nas próximas fatias; até lá o passo fica pendente):
-//  paintTop (C3)
+//  paintTop            chegou à ilha do Guardião (Bastor) numa partida de Paint (a sala grava; C3)
 "use strict";
 
 const step = (key, check, xp, where, extra = {}) => Object.freeze({ key, check, xp, where, ...extra });
@@ -174,7 +173,7 @@ const CHAPTERS = Object.freeze([
 const CHAPTER_BY_ID = new Map(CHAPTERS.map((c) => [c.id, c]));
 
 /** Checks que ainda não têm dado no servidor (o passo espera a fatia que grava). */
-const PENDING_CHECKS = Object.freeze(["paintTop"]);
+const PENDING_CHECKS = Object.freeze([]);
 
 /** "fightWin:wolf" → { type: "fightWin", arg: "wolf" }. */
 function parseCheck(check) {

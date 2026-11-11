@@ -8,20 +8,22 @@
 //   done:<cap>          o capítulo terminou
 //   step:<cap>:<passo>  o capítulo chegou naquele passo (o passo pede a leitura)
 //   win:<monstro>       venceu uma luta conferida contra aquele monstro
-// Basta UMA das condições. `archive:<id>` (missão) = `read_at` gravado pelo servidor.
+// Basta UMA das condições. `at` (C3) = lugares onde o texto está (visit:<id>): a
+// primeira leitura só vale com a última visita num deles (o livro do Ninho). `archive:<id>` (missão) = `read_at` gravado pelo servidor.
 // Também aqui: os lugares de vídeo (um por capítulo, um por personagem).
 "use strict";
 
 const Q = require("./meuMundoQuests");
 
-const entry = (id, chapter, unlock) => Object.freeze({ id, chapter, unlock: Object.freeze(unlock) });
+const entry = (id, chapter, unlock, at = null) => Object.freeze({ id, chapter, unlock: Object.freeze(unlock), at: at && Object.freeze(at) });
 
 const ENTRIES = Object.freeze([
   entry("praca", 1, ["done:cap1"]),
   entry("tregua", 2, ["done:cap2"]),
   entry("nectar", 3, ["done:cap3"]),
   entry("soldados_pedra", 4, ["done:cap4"]),
-  entry("registro_ninho", 5, ["step:cap5:ninho"]),
+  // o livro está na ruína do Ninho (Bairro das Matas) e, para o Vampiro, na Biblioteca do centro
+  entry("registro_ninho", 5, ["step:cap5:ninho"], ["ninho", "biblioteca"]),
   entry("pequenos_ferro", 5, ["done:cap5"]),
   entry("ciborgue", 6, ["done:cap6", "win:ciborgue"]),
   entry("caderno_aeryn", 7, ["step:cap7:caderno"]),
