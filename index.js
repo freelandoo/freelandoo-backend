@@ -6,7 +6,8 @@ const { createLogger } = require("./src/utils/logger");
 
 const bootLog = createLogger("boot");
 
-// Migrations rodam automaticamente no boot via `prestart` (run-migrations.js),
+// Migrations rodam automaticamente no boot pelo próprio `start` (run-migrations.js && node index.js;
+// NÃO `prestart`: o .npmrc tem ignore-scripts=true desde a 0B e isso cala pre/post-scripts),
 // antes deste processo subir. Não há endpoint HTTP de migration.
 
 // porta vinda do .env ou fallback

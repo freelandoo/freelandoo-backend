@@ -1,7 +1,9 @@
 // Entry point do runner de migrations.
 //
 // Chamado em dois caminhos:
-//   1. `prestart` em package.json — antes do `npm start` em produção.
+//   1. `start` em package.json (`node run-migrations.js && node index.js`) — antes do
+//      servidor em produção. Nunca `prestart`: com ignore-scripts=true (0B) o npm o pula
+//      em silêncio (foi assim que as migs 436–444 ficaram sem rodar de 09 a 11/11/2026).
 //   2. `npm run migrate` — execução explícita por humano ou pipeline.
 //
 // Falha ABORTA com exit 1, então o `npm start` não dispara com schema

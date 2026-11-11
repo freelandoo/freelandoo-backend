@@ -13,7 +13,7 @@
 
 ## Como roda
 
-- **Deploy Railway** — `prestart` em `package.json` chama `node run-migrations.js`
+- **Deploy Railway** — o `start` em `package.json` é `node run-migrations.js && node index.js` (não `prestart`: o `.npmrc` tem `ignore-scripts=true` e o npm pula pre/post-scripts em silêncio)
   antes do `npm start`. Falha em qualquer migration aborta o boot (exit 1).
 - **Local / staging manual** — `npm run migrate` ou `node migrate-remote.js`
   (apontando o `.env` para o banco alvo).
