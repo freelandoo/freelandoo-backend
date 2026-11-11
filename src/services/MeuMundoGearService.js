@@ -8,6 +8,12 @@
 // pedido repetido (duplo clique, duas abas, resposta perdida) devolve o mesmo
 // recibo e não cobra/entrega de novo. Saldo nunca fica negativo (a carteira
 // tem CHECK ≥ 0 e a conta confere antes).
+//
+// Trilha E, fatia E2 (mig 446): todo EQUIPAMENTO (arma, escudo, proteção, acessório) é uma
+// instância com o seu `plus`; o equipado é do PERSONAGEM vivo (tb_mm_loadout). Cada operação
+// começa por `prepare` (materializa a pilha antiga, uma vez). Os pedidos aceitam `instance`;
+// sem ele, vale a instância representante (a equipada; senão a de maior `plus`) — o aparelho
+// antigo continua funcionando. Regra de bônus, slots e custos não mudam nesta fatia.
 
 const crypto = require("crypto");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
@@ -44,6 +50,7 @@ const ERRORS = {
   stale: ["O equipamento mudou; recuse a proposta e confira uma nova prévia", 409],
   key_conflict: ["Essa chave já foi usada para outra ação", 409],
   use: ["Use esse item na ação indicada no catálogo", 409],
+  instance: ["Equipamento não encontrado", 404],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -53,6 +60,41 @@ const fail = (code) => {
 const levelOf = async (c, idUser) => Adv.levelOf(Number((await AdvStore.getAdventure(c, idUser)).xp)).level;
 const hash = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const iso = (value) => (value == null ? null : new Date(value).toISOString());
+
+/** E2: o que vira instância (equipamento que não empilha). Recibo e cosmético seguem em pilha. */
+const isInstanceItem = (it) => !!it && !it.stack && Gear.slotsFor(it).length > 0;
+const INSTANCE_ITEMS = Gear.GEAR.filter(isInstanceItem).map((g) => g.id);
+/** Começo de toda operação: a pilha antiga de equipamento vira instância (uma vez). */
+const prepare = (c, idUser) => GearStore.materialize(c, idUser, INSTANCE_ITEMS);
+
+/**
+ * A instância do pedido: `instance` explícita (tem de ser da pessoa e do item) ou, sem ela,
+ * a representante do item. Devolve { inst } ou { error }.
+ */
+async function pickInstance(c, idUser, it, rawInstance, { lock = false } = {}) {
+  if (rawInstance != null && rawInstance !== "") {
+    if (!KEY.test(String(rawInstance))) return fail("instance");
+    const inst = await GearStore.lockInstance(c, idUser, String(rawInstance));
+    if (!inst || (it && inst.item !== it.id)) return fail("instance");
+    return { inst };
+  }
+  if (!it) return fail("instance");
+  const rep = ((await GearStore.instancesByItem(c, idUser))[it.id] || [])[0];
+  if (!rep) return fail("owned");
+  return { inst: lock ? await GearStore.lockInstance(c, idUser, rep.id) : rep };
+}
+
+/** Entra na mochila: instância (uma por unidade) ou pilha com livro. Devolve o que entrou. */
+async function putItem(c, idUser, it, n, origin) {
+  if (isInstanceItem(it)) {
+    const ids = [];
+    for (let i = 0; i < n; i++) ids.push(await GearStore.createInstance(c, idUser, it.id, origin));
+    return { got: n, ids };
+  }
+  const before = (await GearStore.lockItem(c, idUser, it.id))?.qty || 0;
+  const after = await GearStore.addStack(c, idUser, it.id, n, null, Gear.STACK_MAX);
+  return { got: Math.max(0, (after ?? before) - before), ids: [] };
+}
 
 function itemBonus(item, level) {
   return Gear.gearBonus({ [Gear.slotsFor(item)[0]]: { id: item.id, level } });
@@ -70,12 +112,14 @@ function refinementQuote(item, owned, protect = false) {
   const value = { ...quote, item: item.id, version: owned.version, rulesVersion: Forge.RULES_VERSION, pity: { ...quote.pity, guaranteeAt: 4 }, bonusBefore: before, candidates };
   return { ...value, id: hash(value) };
 }
+/** A instância na forma que o refino forge-v1 lê (`level` = `plus`). */
+const asOwned = (inst) => ({ qty: 1, level: inst.plus, refineFailures: inst.refineFailures, version: inst.version });
 
 function publicProposal(p) {
   const snap = p.snapshot || {};
   const quote = snap.quote || {};
   return {
-    id: p.id_proposal, item: p.item_id, fromLevel: p.from_level, candidateLevel: p.candidate_level,
+    id: p.id_proposal, item: p.item_id, instance: p.id_instance || null, fromLevel: p.from_level, candidateLevel: p.candidate_level,
     status: p.status, createdAt: iso(p.created_at), expiresAt: iso(p.expires_at), resolvedAt: iso(p.resolved_at),
     rulesVersion: p.rules_version, cost: quote.cost, odds: quote.odds, pity: quote.pity,
     protection: quote.protection, beforeBonus: snap.beforeBonus, candidateBonus: snap.candidateBonus,
@@ -83,10 +127,11 @@ function publicProposal(p) {
   };
 }
 
-async function hasPending(c, idUser, items, now) {
+/** Há proposta pendente para algum destes itens (id de item OU de instância)? */
+async function hasPending(c, idUser, ids, now) {
   const pending = await GearStore.pendingProposals(c, idUser, now);
-  const ids = new Set(items.filter(Boolean));
-  return pending.some((p) => ids.has(p.item_id));
+  const set = new Set(ids.filter(Boolean));
+  return pending.some((p) => set.has(p.item_id) || (p.id_instance && set.has(p.id_instance)));
 }
 
 /**
@@ -110,22 +155,22 @@ function weaponBlocked(it, body) {
   return it.category === "weapon" && (usesHammer(body) || usesBow(body) || usesGun(body));
 }
 
-/** Equipado como a regra quer: { slot: { id, level } } (arma de outra classe não vale). */
+/** Equipado do personagem vivo como a regra quer: { slot: { id, level } } (arma de outra classe não vale). */
 async function equippedFull(c, idUser, clan) {
-  const eq = await GearStore.equipped(c, idUser);
-  const owned = await GearStore.owned(c, idUser);
+  const live = await GearStore.loadoutLive(c, idUser);
   const body = await MeuMundoStorage.getBody(c, idUser);
   const out = {};
-  for (const [slot, id] of Object.entries(eq)) {
-    const it = Gear.GEAR_BY_ID.get(id);
-    if (!it || !owned[id] || (it.clan && it.clan !== clan) || weaponBlocked(it, body)) continue;
-    out[slot] = { id, level: owned[id].level };
+  for (const [slot, x] of Object.entries(live)) {
+    const it = Gear.GEAR_BY_ID.get(x.item);
+    if (!it || (it.clan && it.clan !== clan) || weaponBlocked(it, body)) continue;
+    out[slot] = { id: x.item, level: x.plus };
   }
   return out;
 }
 
 /** O estado da mochila (posse, equipado, nível, classe, moedas). */
 async function bagState(c, idUser, coins, now = Date.now()) {
+  await prepare(c, idUser);
   await GearStore.expireProposals(c, idUser, now);
   const clan = await wornClan(c, idUser);
   const owned = await GearStore.owned(c, idUser);
@@ -133,18 +178,39 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   const level = await levelOf(c, idUser);
   const full = await equippedFull(c, idUser, clan);
   const pending = await GearStore.pendingProposals(c, idUser, now);
-  const locked = new Set(pending.map((p) => p.item_id));
+  const lockedItems = new Set(pending.map((p) => p.item_id));
+  const lockedInst = new Set(pending.map((p) => p.id_instance).filter(Boolean));
+  const all = await GearStore.instances(c, idUser);
+  const live = await GearStore.loadoutLive(c, idUser);
+  const liveIds = new Set(Object.values(live).map((x) => x.instance));
+  const refinable = (it) => it && (it.category === "weapon" || it.category === "armor");
   const refinement = {};
   for (const [id, row] of Object.entries(owned)) {
     const it = Gear.GEAR_BY_ID.get(id);
-    if (!it || (it.category !== "weapon" && it.category !== "armor")) continue;
-    refinement[id] = locked.has(id) ? { standard: null, protected: null } : {
+    if (!refinable(it)) continue;
+    refinement[id] = lockedItems.has(id) ? { standard: null, protected: null } : {
       standard: refinementQuote(it, row), protected: refinementQuote(it, row, true),
     };
   }
+  const refinementInstances = {};
+  for (const x of all) {
+    const it = Gear.GEAR_BY_ID.get(x.item);
+    if (!refinable(it)) continue;
+    refinementInstances[x.id] = lockedInst.has(x.id) ? { standard: null, protected: null } : {
+      standard: refinementQuote(it, asOwned(x)), protected: refinementQuote(it, asOwned(x), true),
+    };
+  }
+  const stacks = {};
+  for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
   const unlocks = await GearStore.unlocks(c, idUser);
   const body = await MeuMundoStorage.getBody(c, idUser);
   return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full), refinement,
+    instances: all.map((x) => ({
+      id: x.id, item: x.item, plus: x.plus, grade: x.grade, locked: x.locked || lockedInst.has(x.id),
+      equippedBy: x.equippedBy, equippedSlot: x.equippedSlot, equippedHere: liveIds.has(x.id),
+    })),
+    equippedInstances: Object.fromEntries(Object.entries(live).map(([slot, x]) => [slot, x.instance])),
+    stacks, refinementInstances,
     pendingProposals: pending.map(publicProposal),
     learnedRecipes: unlocks.filter((u) => u.kind === "recipe").map((u) => u.item_id),
     unlockedEmotes: unlocks.filter((u) => u.kind === "emote").map((u) => u.item_id),
@@ -161,11 +227,13 @@ function withReceipt(idUser, source, rawKey, fn) {
   if (!KEY.test(key)) return Promise.resolve(fail("key"));
   return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
     const c = ctx.client;
+    await prepare(c, idUser);
     await GearStore.expireProposals(c, idUser, ctx.now);
     // Equipamentos e operações pertencem à conta, mesmo após novo hóspede.
     const same = await GearStore.accountReceipt(c, idUser, source, key);
     if (same) return { receipt: same, replay: true, bag: await bagState(c, idUser, ctx.coins) };
     if (s.status !== "alive") return fail("dead");
+    const mark = await GearStore.ledgerMark(c, idUser);
     const r = await fn(s, ctx);
     if (r.error) return r;
     const rec = await AdvStore.insertReceipt(c, {
@@ -179,6 +247,7 @@ function withReceipt(idUser, source, rawKey, fn) {
       items: r.items || [],
     });
     if (!rec) return fail("key"); // outra aba gravou no mesmo instante (o lock impede; é só defesa)
+    await GearStore.attachLedger(c, idUser, mark, rec.eventId);
     return { receipt: rec, replay: false, bag: await bagState(c, idUser, ctx.coins) };
   });
 }
@@ -201,14 +270,15 @@ class MeuMundoGearService {
    */
   static async grantStarter(idUser, ctx) {
     const c = ctx.client;
+    await prepare(c, idUser);
     const clan = (await MeuMundoStorage.getClan(c, idUser)).clan;
     const id = Gear.starterOf(clan);
     if (!id) return null;
     const owned = await GearStore.owned(c, idUser);
     if (owned[id]) return null;
-    await GearStore.add(c, idUser, id, 1);
-    const eq = await GearStore.equipped(c, idUser);
-    if (!eq.weapon) await GearStore.equip(c, idUser, "weapon", id);
+    const inst = await GearStore.createInstance(c, idUser, id, "starter");
+    const live = await GearStore.loadoutLive(c, idUser);
+    if (!live.weapon && ctx.row && ctx.row.status === "alive") await GearStore.equipInstance(c, idUser, ctx.row.id_character, "weapon", inst);
     return { id, qty: 1, rarity: Gear.GEAR_BY_ID.get(id).rarity };
   }
 
@@ -225,36 +295,51 @@ class MeuMundoGearService {
       if (!it.stack && owned[it.id]) return fail("max");
       if (ctx.coins < it.price) return fail("coins");
       ctx.coins -= it.price;
-      await GearStore.add(c, idUser, it.id, 1);
-      return { result: { item: it.id }, deltas: { coins: -it.price }, items: lines({ [it.id]: 1 }) };
+      const { ids } = await putItem(c, idUser, it, 1, "shop");
+      return { result: { item: it.id, instance: ids[0] || null }, deltas: { coins: -it.price }, items: lines({ [it.id]: 1 }) };
     });
   }
 
-  /** Mochila: equipa (ou tira, com item vazio) um slot. */
+  /** Mochila: equipa (ou tira, com item vazio) um slot do personagem vivo. `instance` escolhe a cópia. */
   static async equip(idUser, body = {}) {
     const slot = String(body.slot || "");
     if (!Gear.SLOTS.includes(slot)) return fail("slot");
     const id = body.item ? String(body.item) : null;
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       const c = ctx.client;
+      await prepare(c, idUser);
       await GearStore.expireProposals(c, idUser, ctx.now);
-      const eq = await GearStore.equipped(c, idUser);
-      if (await hasPending(c, idUser, [id, eq[slot]], ctx.now)) return fail("locked");
-      if (!id) {
-        await GearStore.unequip(c, idUser, slot);
+      if (!ctx.row || ctx.row.status !== "alive") return fail("dead");
+      const idCharacter = ctx.row.id_character;
+      const live = await GearStore.loadoutLive(c, idUser);
+      const current = live[slot];
+      if (!id && !body.instance) {
+        if (current && (await hasPending(c, idUser, [current.instance], ctx.now))) return fail("locked");
+        await GearStore.unequipSlot(c, idCharacter, slot);
         return { bag: await bagState(c, idUser, ctx.coins) };
       }
-      const it = Gear.GEAR_BY_ID.get(id);
-      if (!it) return fail("item");
-      if (!Gear.slotsFor(it).includes(slot)) return fail("slot");
-      const clan = await wornClan(c, idUser);
+      let it = id ? Gear.GEAR_BY_ID.get(id) : null;
+      if (id && !it) return fail("item");
       const owned = await GearStore.owned(c, idUser);
-      const why = Gear.canEquip(it, { clan, level: await levelOf(c, idUser), owned: !!owned[id] });
+      let inst = null;
+      if (it && (!isInstanceItem(it) || !Gear.slotsFor(it).includes(slot))) return fail("slot");
+      if (it && !owned[it.id]) {
+        const clan = await wornClan(c, idUser);
+        const why = Gear.canEquip(it, { clan, level: await levelOf(c, idUser), owned: false });
+        return fail(why || "owned");
+      }
+      const picked = await pickInstance(c, idUser, it, body.instance);
+      if (picked.error) return picked;
+      inst = picked.inst;
+      it = Gear.GEAR_BY_ID.get(inst.item);
+      if (!Gear.slotsFor(it).includes(slot)) return fail("slot");
+      if (await hasPending(c, idUser, [inst.id, current && current.instance], ctx.now)) return fail("locked");
+      const clan = await wornClan(c, idUser);
+      const why = Gear.canEquip(it, { clan, level: await levelOf(c, idUser), owned: true });
       if (why) return fail(why);
       if (weaponBlocked(it, await MeuMundoStorage.getBody(c, idUser))) return fail("clan");
-      // o mesmo acessório não ocupa os dois slots
-      for (const [other, oid] of Object.entries(eq)) if (other !== slot && oid === id) await GearStore.unequip(c, idUser, other);
-      await GearStore.equip(c, idUser, slot, id);
+      // a mesma cópia não ocupa dois slots (equipInstance tira de onde estava)
+      await GearStore.equipInstance(c, idUser, idCharacter, slot, inst.id);
       return { bag: await bagState(c, idUser, ctx.coins) };
     });
   }
@@ -276,10 +361,10 @@ class MeuMundoGearService {
       for (const [m, n] of Object.entries(rc.needs)) if (!owned[m] || owned[m].qty < n) return fail("needs");
       if (ctx.coins < rc.coins) return fail("coins");
       ctx.coins -= rc.coins;
-      for (const [m, n] of Object.entries(rc.needs)) if ((await GearStore.add(c, idUser, m, -n)) == null) return fail("needs");
-      await GearStore.add(c, idUser, rc.out, 1);
+      for (const [m, n] of Object.entries(rc.needs)) if ((await GearStore.addStack(c, idUser, m, -n)) == null) return fail("needs");
+      const { ids } = await putItem(c, idUser, out, 1, "forge");
       return {
-        result: { recipe: rc.id, out: rc.out, spent: rc.needs },
+        result: { recipe: rc.id, out: rc.out, spent: rc.needs, instance: ids[0] || null },
         deltas: { coins: -rc.coins },
         items: lines({ [rc.out]: 1 }),
       };
@@ -291,7 +376,7 @@ class MeuMundoGearService {
     return MeuMundoGearService.refine(idUser, body);
   }
 
-  /** Sorteia e PAGA a proposta. A arma permanece intacta até o aceite. */
+  /** Sorteia e PAGA a proposta. A peça permanece intacta até o aceite. `instance` escolhe a cópia. */
   static async refine(idUser, body = {}) {
     const key = String(body.key || "");
     if (!KEY.test(key)) return fail("key");
@@ -299,9 +384,10 @@ class MeuMundoGearService {
     const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
     if (!it || (it.category !== "weapon" && it.category !== "armor")) return fail("item");
     const protect = body.protect === true;
-    const requestHash = hash({ item: it.id, protect, quote: body.quote });
+    const requestHash = hash(body.instance ? { item: it.id, instance: String(body.instance), protect, quote: body.quote } : { item: it.id, protect, quote: body.quote });
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       const c = ctx.client;
+      await prepare(c, idUser);
       await GearStore.expireProposals(c, idUser, ctx.now);
       const old = await GearStore.findProposalByKey(c, idUser, key);
       if (old) {
@@ -309,38 +395,41 @@ class MeuMundoGearService {
         return { receipt: await GearStore.receipt(c, idUser, old.create_receipt), proposal: publicProposal(old), replay: true, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
       }
       if (s.status !== "alive") return fail("dead");
-      if (await hasPending(c, idUser, [it.id], ctx.now)) return fail("locked");
-      const row = await GearStore.lockItem(c, idUser, it.id);
-      if (!row?.qty) return fail("owned");
-      const quote = refinementQuote(it, row, protect);
+      const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
+      if (picked.error) return picked;
+      const inst = picked.inst;
+      if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
+      const quote = refinementQuote(it, asOwned(inst), protect);
       if (!quote) return fail("max");
       if (typeof body.quote !== "string" || body.quote !== quote.id) return { ...fail("quote"), quote };
       const owned = await GearStore.owned(c, idUser);
       for (const [id, n] of Object.entries(quote.cost.needs)) if (!owned[id] || owned[id].qty < n) return fail("needs");
       if (ctx.coins < quote.cost.coins) return fail("coins");
+      const mark = await GearStore.ledgerMark(c, idUser);
       ctx.coins -= quote.cost.coins;
-      for (const [id, n] of Object.entries(quote.cost.needs)) if ((await GearStore.add(c, idUser, id, -n)) == null) return fail("needs");
+      for (const [id, n] of Object.entries(quote.cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
       const candidate = Forge.roll(quote, MeuMundoGearService.R);
-      if (!Number.isInteger(candidate) || candidate < Math.max(quote.floor, row.level - 1) || candidate > row.level + 1) throw new Error("Resultado de refino inválido");
-      const failuresAfter = candidate > row.level ? 0 : Math.min(3, row.refineFailures + 1);
-      const version = await GearStore.setRefineFailures(c, idUser, it.id, failuresAfter);
+      if (!Number.isInteger(candidate) || candidate < Math.max(quote.floor, inst.plus - 1) || candidate > inst.plus + 1) throw new Error("Resultado de refino inválido");
+      const failuresAfter = candidate > inst.plus ? 0 : Math.min(3, inst.refineFailures + 1);
+      const version = await GearStore.setInstanceRefineFailures(c, idUser, inst.id, failuresAfter);
       const p = await GearStore.insertProposal(c, {
-        id: crypto.randomUUID(), idUser, item: it.id, key, requestHash, rules: Forge.RULES_VERSION,
-        version, fromLevel: row.level, candidateLevel: candidate, now: ctx.now, expiresAt: ctx.now + Forge.PROPOSAL_TTL_MS,
-        snapshot: { quote, failuresAfter, beforeBonus: itemBonus(it, row.level), candidateBonus: itemBonus(it, candidate) },
+        id: crypto.randomUUID(), idUser, item: it.id, instance: inst.id, key, requestHash, rules: Forge.RULES_VERSION,
+        version, fromLevel: inst.plus, candidateLevel: candidate, now: ctx.now, expiresAt: ctx.now + Forge.PROPOSAL_TTL_MS,
+        snapshot: { quote, failuresAfter, beforeBonus: itemBonus(it, inst.plus), candidateBonus: itemBonus(it, candidate) },
       });
       const receipt = await AdvStore.insertReceipt(c, {
         idUser, idCharacter: ctx.row.id_character, source: "gear_refine", actionKey: key, rules: Forge.RULES_VERSION,
-        result: { proposalId: p.id_proposal, item: it.id, fromLevel: row.level, candidateLevel: candidate, status: "pending", failuresAfter },
+        result: { proposalId: p.id_proposal, item: it.id, instance: inst.id, fromLevel: inst.plus, candidateLevel: candidate, status: "pending", failuresAfter },
         deltas: { coins: -quote.cost.coins }, items: lines(Object.fromEntries(Object.entries(quote.cost.needs).map(([id, n]) => [id, -n]))),
       });
       if (!receipt) return fail("key_conflict");
+      await GearStore.attachLedger(c, idUser, mark, receipt.eventId);
       await GearStore.attachProposalReceipt(c, idUser, p.id_proposal, receipt.eventId);
       return { receipt, proposal: publicProposal(p), replay: false, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
     });
   }
 
-  /** Aceitar/recusar nunca cobra de novo. Fechar/expirar mantém o item anterior. */
+  /** Aceitar/recusar nunca cobra de novo. Fechar/expirar mantém a peça anterior. */
   static async resolveRefine(idUser, body = {}) {
     const key = String(body.key || "");
     if (!KEY.test(key)) return fail("key");
@@ -348,6 +437,7 @@ class MeuMundoGearService {
     if (typeof body.accept !== "boolean") return fail("decision");
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       const c = ctx.client;
+      await prepare(c, idUser);
       await GearStore.expireProposals(c, idUser, ctx.now);
       const p = await GearStore.lockProposal(c, idUser, body.proposalId);
       if (!p) return fail("proposal");
@@ -358,13 +448,13 @@ class MeuMundoGearService {
         return { receipt: await GearStore.receipt(c, idUser, p.resolve_receipt || p.create_receipt), proposal: publicProposal(p), replay: true, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
       }
       if (s.status !== "alive" && body.accept) return fail("dead");
-      const row = await GearStore.lockItem(c, idUser, p.item_id);
-      if (body.accept && (!row?.qty || row.level !== p.from_level || row.version !== Number(p.item_version))) return fail("stale");
-      if (body.accept) await GearStore.setLevel(c, idUser, p.item_id, p.candidate_level);
+      const inst = p.id_instance ? await GearStore.lockInstance(c, idUser, p.id_instance) : null;
+      if (body.accept && (!inst || inst.plus !== p.from_level || inst.version !== Number(p.item_version))) return fail("stale");
+      if (body.accept) await GearStore.setPlus(c, idUser, inst.id, p.candidate_level);
       const status = body.accept ? "accepted" : "discarded";
       const receipt = await AdvStore.insertReceipt(c, {
         idUser, idCharacter: ctx.row.id_character, source: "gear_refine_resolve", actionKey: key, rules: p.rules_version,
-        result: { proposalId: p.id_proposal, item: p.item_id, status, accepted: body.accept, fromLevel: p.from_level, level: body.accept ? p.candidate_level : p.from_level },
+        result: { proposalId: p.id_proposal, item: p.item_id, instance: p.id_instance || null, status, accepted: body.accept, fromLevel: p.from_level, level: body.accept ? p.candidate_level : p.from_level },
         deltas: {}, items: [],
       });
       if (!receipt) return fail("key_conflict");
@@ -388,7 +478,7 @@ class MeuMundoGearService {
       const items = [];
       if (it.use === "learn_recipe" && it.category === "recipe") {
         if (!learned) {
-          if ((await GearStore.add(c, idUser, it.id, -1)) == null) return fail("owned");
+          if ((await GearStore.addStack(c, idUser, it.id, -1)) == null) return fail("owned");
           await GearStore.unlock(c, idUser, it.id, "recipe");
           items.push(...lines({ [it.id]: -1 }));
         }
@@ -403,7 +493,10 @@ class MeuMundoGearService {
     });
   }
 
-  /** Forja: recicla (materiais excedentes e equipamento que não está em uso) em moedas. */
+  /**
+   * Forja: recicla (materiais excedentes e equipamento que não está em uso) em moedas.
+   * Equipamento: `instance` escolhe a cópia; sem ela, as cópias soltas de menor `plus`.
+   */
   static async recycle(idUser, body = {}) {
     const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
     if (!it) return fail("item");
@@ -414,37 +507,58 @@ class MeuMundoGearService {
       const owned = await GearStore.owned(c, idUser);
       if (!owned[it.id] || owned[it.id].qty < qty) return fail("owned");
       if (await hasPending(c, idUser, [it.id], ctx.now)) return fail("locked");
-      const eq = await GearStore.equipped(c, idUser);
-      if (Object.values(eq).includes(it.id) && owned[it.id].qty - qty < 1) return fail("equipped");
-      if ((await GearStore.add(c, idUser, it.id, -qty)) == null) return fail("owned");
+      const removed = [];
+      if (isInstanceItem(it)) {
+        let pool;
+        if (body.instance) {
+          const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
+          if (picked.error) return picked;
+          if (qty !== 1) return fail("owned");
+          pool = [(await GearStore.instancesByItem(c, idUser))[it.id].find((x) => x.id === picked.inst.id)];
+        } else {
+          pool = ((await GearStore.instancesByItem(c, idUser))[it.id] || []).slice().sort((a, b) => a.plus - b.plus);
+        }
+        const free = pool.filter((x) => !x.equippedBy);
+        if (free.length < qty) return fail(pool.some((x) => x.equippedBy) ? "equipped" : "owned");
+        for (const x of free.slice(0, qty)) {
+          if (!(await GearStore.removeInstance(c, idUser, x.id))) return fail("owned");
+          removed.push(x.id);
+        }
+      } else if ((await GearStore.addStack(c, idUser, it.id, -qty)) == null) return fail("owned");
       const coins = it.sell * qty;
       ctx.coins += coins;
-      return { result: { item: it.id, qty }, deltas: { coins }, items: lines({ [it.id]: -qty }) };
+      return { result: { item: it.id, qty, instances: removed }, deltas: { coins }, items: lines({ [it.id]: -qty }) };
     });
   }
 }
 
-/** Para a luta: o equipamento que vale (bônus com teto). */
-MeuMundoGearService.fightGear = async (c, idUser, clan) => Gear.gearBonus(await equippedFull(c, idUser, clan));
+/** Para a luta: o equipamento que vale (bônus com teto) — o do personagem vivo. */
+MeuMundoGearService.fightGear = async (c, idUser, clan) => {
+  await prepare(c, idUser);
+  return Gear.gearBonus(await equippedFull(c, idUser, clan));
+};
 /** Aparência só visual, congelada no ticket; não altera a simulação da luta. */
 MeuMundoGearService.fightAppearance = async (c, idUser, clan) => {
+  await prepare(c, idUser);
   const { weapon, shield } = await equippedFull(c, idUser, clan);
   const cosmetic = (await GearStore.unlocks(c, idUser)).find((u) => u.kind === "cosmetic" && u.active);
   return { weaponId: weapon?.id || null, level: weapon?.level || 0, shieldId: shield?.id || null, cosmetic: cosmetic?.item_id || null };
 };
-/** Entrega uma lista de drops (respeita a pilha; o excedente vira moedas). */
+/** Entrega uma lista de drops (respeita a pilha; o excedente vira moedas; equipamento nasce instância). */
 MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {
+  await prepare(c, idUser);
   const out = [];
   for (const d of drops) {
-    const before = (await GearStore.owned(c, idUser))[d.id]?.qty || 0;
-    const after = await GearStore.add(c, idUser, d.id, d.qty, Gear.STACK_MAX);
-    const got = Math.max(0, (after ?? before) - before);
+    const it = Gear.GEAR_BY_ID.get(d.id);
+    const { got } = it ? await putItem(c, idUser, it, d.qty, "loot") : { got: 0 };
     const over = d.qty - got;
-    if (over > 0 && ctx) ctx.coins += over * (Gear.GEAR_BY_ID.get(d.id)?.sell || 0);
-    out.push({ ...d, qty: got, overflowCoins: over > 0 ? over * (Gear.GEAR_BY_ID.get(d.id)?.sell || 0) : 0 });
+    if (over > 0 && ctx) ctx.coins += over * (it?.sell || 0);
+    out.push({ ...d, qty: got, overflowCoins: over > 0 ? over * (it?.sell || 0) : 0 });
   }
   return out;
 };
 MeuMundoGearService.R = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
+MeuMundoGearService.isInstanceItem = isInstanceItem;
+MeuMundoGearService.prepare = prepare;
 
 module.exports = MeuMundoGearService;

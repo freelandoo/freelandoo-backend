@@ -14,7 +14,8 @@ const SLOTS = Object.freeze(["weapon", "shield", "armor", "acc1", "acc2"]);
 const GEAR_CAP = Object.freeze({ dmg: 0.35, def: 0.25, stam: 0.12, warn: 0.12, power: 0.18 });
 /** Preserve the old per-level bonuses; the expanded caps keep +6..10 useful. */
 const UPGRADE = Object.freeze({ MAX: Forge.MAX_LEVEL, DMG: 0.02, DEF: 0.015, COINS: Forge.COINS, MATS: Forge.MATERIALS, SECONDARY: Forge.SECONDARY_PER_LEVEL });
-const STACK_MAX = 999;
+/** E2: pilha até 9.999 (CHECK da mig 446). */
+const STACK_MAX = 9999;
 
 /** Metadata is derived from actual recipes so no source/usage becomes stale. */
 function itemDetails(item) {

@@ -29,7 +29,10 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
 
 test("E1: GEAR, saque e constantes de equipamento iguais aos de antes", () => {
   assert.deepEqual(semTier(Gear.GEAR), ANTES.gear.GEAR);
-  for (const k of ["SLOTS", "GEAR_CAP", "UPGRADE", "STACK_MAX"]) assert.deepEqual(semTier(Gear[k]), ANTES.gear[k], k);
+  for (const k of ["SLOTS", "GEAR_CAP", "UPGRADE"]) assert.deepEqual(semTier(Gear[k]), ANTES.gear[k], k);
+  // E2 (mig 446) subiu a pilha de propósito: 999 → 9.999 (objetivo da fatia, §8 E2).
+  assert.equal(ANTES.gear.STACK_MAX, 999);
+  assert.equal(Gear.STACK_MAX, 9999);
   assert.deepEqual(semTier(Gear.LOOT), ANTES.loot);
 });
 

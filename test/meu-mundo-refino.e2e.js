@@ -18,7 +18,7 @@ let checks = 0;
 function check(name, condition) { assert.ok(condition, name); checks++; console.log(`✓ ${name}`); }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_loadout, tb_mm_item_ledger, tb_mm_gear_instance, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
     tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned,
     tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day,
     tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail, tb_mm_visit, tb_mm_avatar_pref,
@@ -52,18 +52,21 @@ async function main() {
       await Life.peek(user);
       await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm')`, [user]);
       await pool.query(`INSERT INTO tb_mm_char_adventure (id_character, id_user, xp) SELECT id_character, $1, 500000 FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'`, [user]);
-      await pool.query(`UPDATE tb_mm_wallet SET coins = 500000 WHERE id_user = $1`, [user]);
+      // A7 (migs 330/332): as moedas do jogo são a Esmeralda; tb_mm_wallet só guarda a fração.
+      await pool.query(`INSERT INTO emerald_wallets (user_id, balance) VALUES ($1, 500000) ON CONFLICT (user_id) DO UPDATE SET balance = 500000`, [user]);
     }
     for (const item of Gear.GEAR.filter((g) => ["material", "recipe", "cosmetic", "quest"].includes(g.category))) {
       await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty) VALUES ($1,$2,$3)`, [id, item.id, item.category === "material" ? 500 : 1]);
     }
     await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty,level) VALUES ($1,'espada_latao',1,4),($1,'espada_aprendiz',1,0)`, [id]);
     await Service.equip(id, { slot: "weapon", item: "espada_latao" });
-    const balance = async () => Number((await pool.query(`SELECT coins FROM tb_mm_wallet WHERE id_user=$1`, [id])).rows[0].coins);
-    const row = async () => (await pool.query(`SELECT level,refine_failures,version FROM tb_mm_gear WHERE id_user=$1 AND item_id='espada_latao'`, [id])).rows[0];
+    const balance = async () => Math.floor((await Service.get(id)).bag.coins);
+    // E2: a espada da pilha antiga virou instância no primeiro pedido (materialize); o refino é dela.
+    const row = async () => (await pool.query(`SELECT plus AS level,refine_failures,version FROM tb_mm_gear_instance WHERE id_user=$1 AND item_id='espada_latao'`, [id])).rows[0];
     const quote = async (protect = false) => (await Service.get(id)).bag.refinement.espada_latao[protect ? "protected" : "standard"];
     const refine = async (protect = false) => Service.refine(id, { item: "espada_latao", key: key(), quote: (await quote(protect)).id, protect });
-    const reset = async (level = 4, failures = 0) => pool.query(`UPDATE tb_mm_gear SET level=$2,refine_failures=$3,version=version+1 WHERE id_user=$1 AND item_id='espada_latao'`, [id, level, failures]);
+    const reset = async (level = 4, failures = 0) => pool.query(`UPDATE tb_mm_gear_instance SET plus=$2,refine_failures=$3,version=version+1 WHERE id_user=$1 AND item_id='espada_latao'`, [id, level, failures]);
+    check("E2: pilha antiga virou instância com o mesmo nível e ficou equipada", (await row()).level === 4 && (await Service.get(id)).bag.equipped.weapon === "espada_latao");
 
     const beforeInvalid = await balance();
     const legacy = await Service.upgrade(id, { item: "espada_latao", key: key() });
