@@ -202,7 +202,34 @@ test("I6 — a mesma faixa do sorteio da rua dá a mesma distância de régua (�
   }
 });
 test("I7 — fabricar → desmontar → fabricar perde pelo menos 50% dos materiais", { todo: "E11" }, () => {});
-test("I8 — vitórias para +15 nunca abaixo de 270; cruzamento moeda × material nos níveis 6, 17, 31, 53, 80, 114 (±2)", { todo: "E9" }, () => {});
+test("I8 — vitórias para +15 nunca abaixo de 270; cruzamento moeda × material nos níveis 6, 17, 31, 53, 80, 114 (±2)", () => {
+  // E9: a regra em uso (rules/upgrade.js). Moeda: o total de Esmeraldas do +0 ao +15 ÷ o que uma vitória
+  // paga no nível L; material: as Pedras do +0 ao +15 ÷ a queda por vitória (0,5) — não depende do nível.
+  const U = require("../../src/utils/mmItems/rules/upgrade");
+  const want = { 1: 6, 2: 17, 3: 31, 4: 53, 5: 80, 6: 114 };
+  for (let tier = 1; tier <= 6; tier++) {
+    const item = { id: "t" + tier, slot: "weapon", tier };
+    const { coins, stones } = U.upgradeTotal(item);
+    const material = stones / B.STONE_PER_WIN;
+    assert.equal(material, 270, `T${tier}: pedras`);
+    let cross = null;
+    for (let L = 1; L <= 500; L++) {
+      const money = coins / B.income(L);
+      assert.ok(Math.max(money, material) >= 270, `T${tier} nível ${L}: ${Math.max(money, material)} vitórias`);
+      if (cross == null && money <= material) cross = L;
+    }
+    assert.ok(Math.abs(cross - want[tier]) <= 2, `T${tier}: cruza no nível ${cross}, alvo ${want[tier]}`);
+    // no nível de referência a moeda custa ~745 vitórias (o arredondamento a 10 mexe pouco)
+    assert.ok(Math.abs(coins / B.income(B.REF[tier]) - 745) <= 15, `T${tier}: ${coins / B.income(B.REF[tier])}`);
+  }
+  // do +11 em diante só ascendida; o +15 é o último passo
+  const sword = Gear.GEAR_BY_ID.get("espada_latao");
+  assert.equal(U.upgradeCost(sword, 9).ascension, false);
+  assert.equal(U.upgradeCost(sword, 10).ascension, true);
+  assert.equal(U.upgradeCost(sword, 15), null);
+  // A2: +N da forge-v1 vira +round(1,5 × N); passou de +10, ascendida
+  assert.deepEqual([4, 6, 7, 10].map((n) => U.convertV1(n)), [{ plus: 6, ascended: false }, { plus: 9, ascended: false }, { plus: 11, ascended: true }, { plus: 15, ascended: true }]);
+});
 test("I9 (armas) — vitórias de chefão para fabricar: 3 a 20 por raridade; pior caso ≤ 1,5 × o esperado", () => {
   const Items = require("../../src/utils/mmItems");
   const { BOSS_FRAGMENTS, NEED } = Items.LINES;

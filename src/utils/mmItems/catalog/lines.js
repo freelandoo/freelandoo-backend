@@ -85,7 +85,8 @@ const NOTES = Object.freeze({
   selo_dominio: "Custo da Ascensão, que libera o +11 ao +15.",
 });
 const notes = (id) => (NOTES[id] ? { notes: Object.freeze([NOTES[id]]) } : {});
-const M = (id, name, rarity, domain, where) => G(id, "material", name, rarity, { domain, sell: 0, source: Object.freeze([where]), ...notes(id) });
+// `where` null = a origem sai das tabelas de saque (catalog/loot.js), sem linha declarada
+const M = (id, name, rarity, domain, where) => G(id, "material", name, rarity, { domain, sell: 0, ...(where ? { source: Object.freeze([where]) } : {}), ...notes(id) });
 const DOM_COMMON = (d) => `Domínio ${DOMAIN_NAME[d]}: garantido em todo setor (1 a 4 por vitória).`;
 const DOM_RARE = (d) => `Domínio ${DOMAIN_NAME[d]}: chance nos setores 1 a 9 (5% + 3% por setor) e garantido no setor 10.`;
 const MATERIALS = Object.freeze([
@@ -95,7 +96,7 @@ const MATERIALS = Object.freeze([
   M("madeira_ancestral", "Madeira Ancestral", "uncommon", null, "Antigravidade e Gincana: chance de 25% por partida."),
   M("cristal_bruto", "Cristal Bruto", "uncommon", null, "Jetpack, Rolê Noturno e Domínios: chance de 15% a 25%."),
   M("po_forja", "Pó de Forja", "common", null, "Lâminas (garantido), minijogos e monstros da rua (30%)."),
-  M("pedra_aprimoramento", "Pedra de Aprimoramento", "uncommon", null, "Vitórias na Arena das Lâminas, no Boxe, na rua e nos Domínios: chance de 50%."),
+  M("pedra_aprimoramento", "Pedra de Aprimoramento", "uncommon", null, null), // E9: cai nas lutas (fight:laminas e fight:boxe)
   M("catalisador_refino", "Catalisador de Refino", "epic", null, "Hall dos Campeões (20%) e Domínios a partir do setor 8 (10%)."),
   M("essencia_primordial", "Essência Primordial", "legendary", null, "Hall dos Campeões (10%) e chefões dos Domínios (25%)."),
   M("po_de_lua", "Pó de Lua", "common", "floresta", DOM_COMMON("floresta")),

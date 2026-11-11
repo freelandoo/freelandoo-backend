@@ -38,10 +38,16 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   // E4 (A12) acrescentou as chaves hp/acc/spd/int/dex ao teto; as 5 de antes não mudam
   assert.deepEqual(Object.fromEntries(Object.keys(ANTES.publicGear.cap).map((k) => [k, agora.cap[k]])), ANTES.publicGear.cap);
   assert.deepEqual(Object.keys(agora.cap).filter((k) => !(k in ANTES.publicGear.cap)), ["hp", "acc", "spd", "int", "dex"]);
-  assert.deepEqual(agora.upgrade, ANTES.publicGear.upgrade);
+  // E9 (A2): o refino sorteado +0…+10 virou o aprimoramento garantido +0…+15
+  assert.equal(ANTES.publicGear.upgrade.rulesVersion, "forge-v1");
+  assert.deepEqual(agora.upgrade, { max: 15, ascendFrom: 11, stone: "pedra_aprimoramento", rulesVersion: "forge-v2" });
   agora.items = deAntes(agora.items);
   assert.deepEqual(agora.items.map((i) => i.id), ANTES.publicGear.items.map((i) => i.id), "mesma ordem de itens");
-  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual(agora.items[n], antes, antes.id));
+  // E9: o texto de uso do refino mudou junto com a regra (e todo equipamento passou a aprimorar)
+  const V1 = ["Refinar de +0 a +10 mediante proposta, com custo, pisos e proteção opcionais.", "Custo de refinamento ou proteção; a cotação informa a quantidade exata."];
+  const V2 = "Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.";
+  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2);
+  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses) }, { ...antes, uses: usesV1(antes.uses) }, antes.id));
   // E8: as receitas por fragmento entram no fim; as de antes não mudam
   assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
   assert.ok(agora.recipes.slice(ANTES.publicGear.recipes.length).every((r) => r.kind === "fragment"));

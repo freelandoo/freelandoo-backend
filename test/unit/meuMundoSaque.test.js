@@ -53,9 +53,11 @@ test("E3: as tabelas dão o mesmo saque da regra antiga com o mesmo R (10 mil so
       const A = seeded(i * 7919 + family.length), B = seeded(i * 7919 + family.length);
       const antes = rollLootAntes(family, ctx, A);
       const agora = Items.rollTable(Items.FAMILY_TABLE[family], ctx, B);
-      assert.deepEqual(agora, antes, `${family} #${i}`);
-      assert.equal(B.calls, A.calls, `${family} #${i}: mesma quantidade de sorteios`);
-      assert.deepEqual(Gear.rollLoot(family, ctx, seeded(i * 7919 + family.length)), antes);
+      // E9: a Pedra de Aprimoramento entrou no FIM das lutas (Lâminas e Boxe): os sorteios de antes não mudam
+      const stone = ctx.win && (family === "forja" || family === "couro") ? 1 : 0;
+      assert.deepEqual(agora.filter((x) => x.id !== "pedra_aprimoramento"), antes, `${family} #${i}`);
+      assert.equal(B.calls, A.calls + stone, `${family} #${i}: mesma quantidade de sorteios (+1 da pedra)`);
+      assert.deepEqual(Gear.rollLoot(family, ctx, seeded(i * 7919 + family.length)), agora);
     }
   }
 });

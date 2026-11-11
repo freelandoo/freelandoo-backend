@@ -18,8 +18,8 @@
 const crypto = require("crypto");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const Gear = require("../utils/meuMundoGear");
-const Forge = require("../utils/meuMundoForge");
 const Items = require("../utils/mmItems");
+const Upgrade = require("../utils/mmItems/rules/upgrade");
 const Adv = require("../utils/meuMundoAdventure");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const AdvStore = require("../storages/MeuMundoAdventureStorage");
@@ -54,6 +54,8 @@ const ERRORS = {
   instance: ["Equipamento não encontrado", 404],
   twohanded: ["Sua arma usa as duas mãos", 409],
   notfragment: ["Esse item não é um fragmento", 400],
+  ascend: ["A peça precisa da Ascensão para passar do +10", 409],
+  gone: ["O refino sorteado acabou: use o aprimoramento garantido", 410],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -61,7 +63,6 @@ const fail = (code) => {
 };
 
 const levelOf = async (c, idUser) => Adv.levelOf(Number((await AdvStore.getAdventure(c, idUser)).xp)).level;
-const hash = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const iso = (value) => (value == null ? null : new Date(value).toISOString());
 
 /** E2: o que vira instância (equipamento que não empilha). Recibo e cosmético seguem em pilha. */
@@ -76,6 +77,7 @@ const TWO_HANDED = Gear.GEAR.filter((g) => g.twoHanded).map((g) => g.id);
  */
 async function prepare(c, idUser) {
   const moved = await GearStore.materialize(c, idUser, INSTANCE_ITEMS);
+  await GearStore.convertForgeV1(c, idUser); // E9 (A2): o que ainda está em forge-v1 vira +round(1,5 × N)
   const legacy = await GearStore.legacyLoadout(c, idUser, Object.keys(Gear.LEGACY_SLOTS));
   for (const row of legacy) {
     const to = Gear.normalizeSlot(row.slot, Gear.GEAR_BY_ID.get(row.item_id));
@@ -114,24 +116,13 @@ async function putItem(c, idUser, it, n, origin) {
   return { got: Math.max(0, (after ?? before) - before), ids: [] };
 }
 
-function itemBonus(item, level) {
-  return Gear.gearBonus({ [Gear.slotsFor(item)[0]]: { id: item.id, level } });
+/** E9: o próximo passo de uma cópia, como a bancada mostra (custo fixo, bônus antes e depois). */
+function upgradeView(it, inst) {
+  const cost = Upgrade.upgradeCost(it, inst.plus);
+  if (!cost) return null;
+  return { ...cost, blocked: cost.ascension && !inst.ascended ? "ascend" : null,
+    bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade), bonusAfter: Items.pieceBonus(it, cost.to, inst.grade) };
 }
-
-function refinementQuote(item, owned, protect = false) {
-  const quote = Forge.quote(item, owned.level, { failures: owned.refineFailures || 0, protected: protect });
-  if (!quote) return null;
-  const before = itemBonus(item, owned.level);
-  const levels = [...new Set([Math.min(Forge.MAX_LEVEL, owned.level + 1), owned.level, Math.max(quote.floor, owned.level - 1)])];
-  const candidates = levels.map((level) => {
-    const bonus = itemBonus(item, level);
-    return { level, bonus, delta: Object.fromEntries(Object.keys(before).map((k) => [k, Math.round((bonus[k] - before[k]) * 10000) / 10000])) };
-  });
-  const value = { ...quote, item: item.id, version: owned.version, rulesVersion: Forge.RULES_VERSION, pity: { ...quote.pity, guaranteeAt: 4 }, bonusBefore: before, candidates };
-  return { ...value, id: hash(value) };
-}
-/** A instância na forma que o refino forge-v1 lê (`level` = `plus`). */
-const asOwned = (inst) => ({ qty: 1, level: inst.plus, refineFailures: inst.refineFailures, version: inst.version });
 
 function publicProposal(p) {
   const snap = p.snapshot || {};
@@ -196,41 +187,30 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   const level = await levelOf(c, idUser);
   const full = await equippedFull(c, idUser, clan);
   const pending = await GearStore.pendingProposals(c, idUser, now);
-  const lockedItems = new Set(pending.map((p) => p.item_id));
   const lockedInst = new Set(pending.map((p) => p.id_instance).filter(Boolean));
   const all = await GearStore.instances(c, idUser);
   const live = await GearStore.loadoutLive(c, idUser);
   const liveIds = new Set(Object.values(live).map((x) => x.instance));
-  const refinable = (it) => it && (it.category === "weapon" || it.category === "armor");
-  const refinement = {};
-  for (const [id, row] of Object.entries(owned)) {
-    const it = Gear.GEAR_BY_ID.get(id);
-    if (!refinable(it)) continue;
-    refinement[id] = lockedItems.has(id) ? { standard: null, protected: null } : {
-      standard: refinementQuote(it, row), protected: refinementQuote(it, row, true),
-    };
-  }
-  const refinementInstances = {};
+  // E9: a bancada mostra o custo FIXO do próximo passo de cada cópia e o bônus antes e depois
+  const forge = {};
   for (const x of all) {
     const it = Gear.GEAR_BY_ID.get(x.item);
-    if (!refinable(it)) continue;
-    refinementInstances[x.id] = lockedInst.has(x.id) ? { standard: null, protected: null } : {
-      standard: refinementQuote(it, asOwned(x)), protected: refinementQuote(it, asOwned(x), true),
-    };
+    if (!Upgrade.upgradable(it)) continue;
+    forge[x.id] = { upgrade: upgradeView(it, x) };
   }
   const stacks = {};
   for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
   const unlocks = await GearStore.unlocks(c, idUser);
   const body = await MeuMundoStorage.getBody(c, idUser);
-  return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full), refinement,
+  return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full),
     // E7: bônus de cada slot pela régua (plus e grau da cópia vestida), para a tela de equipar
     pieces: Object.fromEntries(Object.entries(full).map(([slot, e]) => [slot, Items.pieceBonus(Gear.GEAR_BY_ID.get(e.id), e.level || 0, e.grade || 1)])),
     instances: all.map((x) => ({
-      id: x.id, item: x.item, plus: x.plus, grade: x.grade, locked: x.locked || lockedInst.has(x.id),
+      id: x.id, item: x.item, plus: x.plus, grade: x.grade, ascended: !!x.ascended, locked: x.locked || lockedInst.has(x.id),
       equippedBy: x.equippedBy, equippedSlot: x.equippedSlot, equippedHere: liveIds.has(x.id),
     })),
     equippedInstances: Object.fromEntries(Object.entries(live).map(([slot, x]) => [slot, x.instance])),
-    stacks, refinementInstances,
+    stacks, forge,
     pendingProposals: pending.map(publicProposal),
     learnedRecipes: unlocks.filter((u) => u.kind === "recipe").map((u) => u.item_id),
     unlockedEmotes: unlocks.filter((u) => u.kind === "emote").map((u) => u.item_id),
@@ -398,97 +378,46 @@ class MeuMundoGearService {
     });
   }
 
-  /** Compatibilidade: o endpoint antigo também exige prévia e aceite separado. */
+  /**
+   * E9 (forge-v2): APRIMORAMENTO GARANTIDO. Paga o custo fixo do próximo passo (Esmeraldas + Pedras
+   * de Aprimoramento) e a cópia SOBE um. Do +11 em diante, só ascendida. `instance` escolhe a cópia
+   * (sem ela, a representante do item). Mesma chave duas vezes = o mesmo recibo, cobra uma.
+   */
   static async upgrade(idUser, body = {}) {
-    return MeuMundoGearService.refine(idUser, body);
-  }
-
-  /** Sorteia e PAGA a proposta. A peça permanece intacta até o aceite. `instance` escolhe a cópia. */
-  static async refine(idUser, body = {}) {
-    const key = String(body.key || "");
-    if (!KEY.test(key)) return fail("key");
-    if (body.protect !== undefined && typeof body.protect !== "boolean") return fail("decision");
     const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
-    if (!it || (it.category !== "weapon" && it.category !== "armor")) return fail("item");
-    const protect = body.protect === true;
-    const requestHash = hash(body.instance ? { item: it.id, instance: String(body.instance), protect, quote: body.quote } : { item: it.id, protect, quote: body.quote });
-    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+    if (!it || !Upgrade.upgradable(it)) return fail("item");
+    return withReceipt(idUser, "gear_upgrade", body.key, async (s, ctx) => {
       const c = ctx.client;
-      await prepare(c, idUser);
-      await GearStore.expireProposals(c, idUser, ctx.now);
-      const old = await GearStore.findProposalByKey(c, idUser, key);
-      if (old) {
-        if (old.request_hash !== requestHash) return fail("key_conflict");
-        return { receipt: await GearStore.receipt(c, idUser, old.create_receipt), proposal: publicProposal(old), replay: true, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
-      }
-      if (s.status !== "alive") return fail("dead");
       const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
       if (picked.error) return picked;
       const inst = picked.inst;
       if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
-      const quote = refinementQuote(it, asOwned(inst), protect);
-      if (!quote) return fail("max");
-      if (typeof body.quote !== "string" || body.quote !== quote.id) return { ...fail("quote"), quote };
+      const cost = Upgrade.upgradeCost(it, inst.plus);
+      if (!cost) return fail("max");
+      if (cost.ascension && !inst.ascended) return fail("ascend");
       const owned = await GearStore.owned(c, idUser);
-      for (const [id, n] of Object.entries(quote.cost.needs)) if (!owned[id] || owned[id].qty < n) return fail("needs");
-      if (ctx.coins < quote.cost.coins) return fail("coins");
-      const mark = await GearStore.ledgerMark(c, idUser);
-      ctx.coins -= quote.cost.coins;
-      for (const [id, n] of Object.entries(quote.cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
-      const candidate = Forge.roll(quote, MeuMundoGearService.R);
-      if (!Number.isInteger(candidate) || candidate < Math.max(quote.floor, inst.plus - 1) || candidate > inst.plus + 1) throw new Error("Resultado de refino inválido");
-      const failuresAfter = candidate > inst.plus ? 0 : Math.min(3, inst.refineFailures + 1);
-      const version = await GearStore.setInstanceRefineFailures(c, idUser, inst.id, failuresAfter);
-      const p = await GearStore.insertProposal(c, {
-        id: crypto.randomUUID(), idUser, item: it.id, instance: inst.id, key, requestHash, rules: Forge.RULES_VERSION,
-        version, fromLevel: inst.plus, candidateLevel: candidate, now: ctx.now, expiresAt: ctx.now + Forge.PROPOSAL_TTL_MS,
-        snapshot: { quote, failuresAfter, beforeBonus: itemBonus(it, inst.plus), candidateBonus: itemBonus(it, candidate) },
-      });
-      const receipt = await AdvStore.insertReceipt(c, {
-        idUser, idCharacter: ctx.row.id_character, source: "gear_refine", actionKey: key, rules: Forge.RULES_VERSION,
-        result: { proposalId: p.id_proposal, item: it.id, instance: inst.id, fromLevel: inst.plus, candidateLevel: candidate, status: "pending", failuresAfter },
-        deltas: { coins: -quote.cost.coins }, items: lines(Object.fromEntries(Object.entries(quote.cost.needs).map(([id, n]) => [id, -n]))),
-      });
-      if (!receipt) return fail("key_conflict");
-      await GearStore.attachLedger(c, idUser, mark, receipt.eventId);
-      await GearStore.attachProposalReceipt(c, idUser, p.id_proposal, receipt.eventId);
-      return { receipt, proposal: publicProposal(p), replay: false, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
+      for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
+      if (ctx.coins < cost.coins) return fail("coins");
+      ctx.coins -= cost.coins;
+      for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
+      await GearStore.setPlus(c, idUser, inst.id, cost.to);
+      return {
+        result: { item: it.id, instance: inst.id, from: cost.from, to: cost.to, rulesVersion: Upgrade.RULES_VERSION,
+          bonusBefore: Items.pieceBonus(it, cost.from, inst.grade), bonusAfter: Items.pieceBonus(it, cost.to, inst.grade) },
+        deltas: { coins: -cost.coins },
+        items: lines(Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n]))),
+      };
     });
   }
 
-  /** Aceitar/recusar nunca cobra de novo. Fechar/expirar mantém a peça anterior. */
-  static async resolveRefine(idUser, body = {}) {
-    const key = String(body.key || "");
-    if (!KEY.test(key)) return fail("key");
-    if (!KEY.test(String(body.proposalId || ""))) return fail("proposal");
-    if (typeof body.accept !== "boolean") return fail("decision");
-    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
-      const c = ctx.client;
-      await prepare(c, idUser);
-      await GearStore.expireProposals(c, idUser, ctx.now);
-      const p = await GearStore.lockProposal(c, idUser, body.proposalId);
-      if (!p) return fail("proposal");
-      const other = await GearStore.findResolutionByKey(c, idUser, key);
-      if (other && other.id_proposal !== p.id_proposal) return fail("key_conflict");
-      if (p.status !== "pending") {
-        if (p.status !== "expired" && (p.status === "accepted") !== body.accept) return { ...fail("resolved"), proposal: publicProposal(p) };
-        return { receipt: await GearStore.receipt(c, idUser, p.resolve_receipt || p.create_receipt), proposal: publicProposal(p), replay: true, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
-      }
-      if (s.status !== "alive" && body.accept) return fail("dead");
-      const inst = p.id_instance ? await GearStore.lockInstance(c, idUser, p.id_instance) : null;
-      if (body.accept && (!inst || inst.plus !== p.from_level || inst.version !== Number(p.item_version))) return fail("stale");
-      if (body.accept) await GearStore.setPlus(c, idUser, inst.id, p.candidate_level);
-      const status = body.accept ? "accepted" : "discarded";
-      const receipt = await AdvStore.insertReceipt(c, {
-        idUser, idCharacter: ctx.row.id_character, source: "gear_refine_resolve", actionKey: key, rules: p.rules_version,
-        result: { proposalId: p.id_proposal, item: p.item_id, instance: p.id_instance || null, status, accepted: body.accept, fromLevel: p.from_level, level: body.accept ? p.candidate_level : p.from_level },
-        deltas: {}, items: [],
-      });
-      if (!receipt) return fail("key_conflict");
-      const updated = await GearStore.resolveProposal(c, idUser, p.id_proposal, status, key, receipt.eventId, ctx.now);
-      if (!updated) return fail("resolved");
-      return { receipt, proposal: publicProposal(updated), replay: false, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
-    });
+  /** E9: o refino sorteado (forge-v1) acabou — o aparelho antigo recebe 410 e recarrega. */
+  static async refine() {
+    return fail("gone");
+  }
+
+  /** E9: aceitar/recusar proposta da forge-v1 acabou (410). */
+  static async resolveRefine() {
+    return fail("gone");
   }
 
   /**

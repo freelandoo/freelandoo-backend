@@ -22,12 +22,17 @@ const TABLES = Object.freeze({
     chance: [
       { id: "nucleo_eter", qty: [1, 1], p: 0.35, win: true, note: "há condensação garantida no ferreiro" },
       { id: "selo_forja", qty: [1, 1], p: 0.06, win: true, note: "há certificação garantida no ferreiro" },
+      // E9: a Pedra paga o aprimoramento garantido (GDD, tabela L); no fim da lista, para não mexer nos sorteios de antes
+      { id: "pedra_aprimoramento", qty: [1, 1], p: 0.5, win: true, note: "paga o aprimoramento garantido" },
     ],
   },
   "fight:boxe": {
     label: "Boxe", winLabel: "Vitórias do Boxe",
     sure: [{ id: "couro_reforcado", qty: { byMinutes: true, win: 1 } }],
-    chance: [{ id: "rebite", qty: [1, 1], p: 0.35, win: true, note: "também pode ser produzido no ferreiro" }],
+    chance: [
+      { id: "rebite", qty: [1, 1], p: 0.35, win: true, note: "também pode ser produzido no ferreiro" },
+      { id: "pedra_aprimoramento", qty: [1, 1], p: 0.5, win: true, note: "paga o aprimoramento garantido" }, // E9
+    ],
   },
   "minigame:paint": { label: "Paint", sure: [{ id: "pigmento_eter", qty: { byMinutes: true, win: 1 } }] },
   "minigame:gincana": { label: "Gincana", sure: [{ id: "mola_precisao", qty: { byMinutes: true, win: 1 } }] },

@@ -71,8 +71,8 @@ class MeuMundoGearStorage {
            FROM old WHERE g.id_user = $1 AND g.item_id = old.item_id
          RETURNING g.item_id
        ), made AS (
-         INSERT INTO tb_mm_gear_instance (id_user, item_id, plus, refine_failures, version, origin)
-         SELECT $1, m.item_id, LEAST(15, GREATEST(0, m.level)), LEAST(3, GREATEST(0, m.refine_failures)), m.version, 'materialize'
+         INSERT INTO tb_mm_gear_instance (id_user, item_id, plus, refine_failures, version, origin, rules)
+         SELECT $1, m.item_id, LEAST(15, GREATEST(0, m.level)), LEAST(3, GREATEST(0, m.refine_failures)), m.version, 'materialize', 'forge-v1'
            FROM old m CROSS JOIN LATERAL generate_series(1, m.qty) AS n
          RETURNING id_instance, item_id
        )
@@ -109,10 +109,24 @@ class MeuMundoGearStorage {
     return moved.rowCount;
   }
 
-  /** Nasce +0, grau I. Devolve o id_instance. */
+  /** Nasce +0, grau I, na regra do aprimoramento garantido (E9). Devolve o id_instance. */
   static async createInstance(c, idUser, itemId, origin = null) {
-    const r = await c.query(`INSERT INTO tb_mm_gear_instance (id_user, item_id, origin) VALUES ($1, $2, $3) RETURNING id_instance`, [idUser, itemId, origin]);
+    const r = await c.query(`INSERT INTO tb_mm_gear_instance (id_user, item_id, origin, rules) VALUES ($1, $2, $3, 'forge-v2') RETURNING id_instance`, [idUser, itemId, origin]);
     return r.rows[0].id_instance;
+  }
+
+  /**
+   * E9 (A2, a mesma conta da mig 448): instância ainda em forge-v1 (pilha materializada depois do
+   * deploy) passa a +round(1,5 × N); passou de +10, ascendida. Rodar de novo não faz nada.
+   */
+  static async convertForgeV1(c, idUser) {
+    const r = await c.query(
+      `UPDATE tb_mm_gear_instance SET plus = LEAST(15, ROUND(plus * 1.5)), ascended = ascended OR ROUND(plus * 1.5) > 10,
+              rules = 'forge-v2', version = version + 1
+        WHERE id_user = $1 AND rules = 'forge-v1'`,
+      [idUser]
+    );
+    return r.rowCount;
   }
 
   /** Todas as instâncias da pessoa, com quem as segura. Ordem: equipada pelo vivo, maior plus, mais antiga. */

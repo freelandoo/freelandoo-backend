@@ -5,6 +5,8 @@
 
 const Items = require("../index");
 const Forge = require("./forgeV1");
+const Upgrade = require("./upgrade");
+const B = require("./budget");
 
 const { GEAR, GEAR_BY_ID, RECIPES, DESCRIPTIONS } = Items;
 
@@ -31,14 +33,14 @@ function itemDetails(item) {
   const source = Items.sourcesOf(item);
   const uses = [];
   if (item.use === "equip") uses.push("Equipar no slot compatível; bônus de aventura sujeitos ao teto.");
-  if (["weapon", "armor"].includes(item.category)) uses.push("Refinar de +0 a +10 mediante proposta, com custo, pisos e proteção opcionais.");
+  // E9: aprimoramento garantido (forge-v2) em todo equipamento
+  if (Upgrade.upgradable(item)) uses.push("Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.");
   if (item.use === "learn_recipe") uses.push("Aprender uma vez; o projeto consumido fica registrado permanentemente.");
   if (item.use === "inspect_quest") uses.push("Examinar a inscrição e registrar a leitura na coleção; não conclui missão automaticamente.");
   if (item.use === "apply_weapon_cosmetic") uses.push("Ativar o visual cosmético da arma, sem bônus de combate.");
   if (item.use === "unlock_emote") uses.push("Desbloquear a saudação de Lúmen na coleção de emotes.");
   if (Array.isArray(item.notes)) uses.push(...item.notes); // E8: uso declarado (custo de forja que não é receita)
   for (const r of consuming) uses.push(`Ingrediente de ${GEAR_BY_ID.get(r.out)?.name || r.out}: ${r.needs[item.id]} unidade(s).`);
-  if (["fragmento_lamina", "couro_reforcado", "nucleo_eter", "selo_forja"].includes(item.id)) uses.push("Custo de refinamento ou proteção; a cotação informa a quantidade exata.");
   if (item.category === "fragment" && item.fragment) uses.push(`Converter o que sobrar em Pó de Refino: ${item.fragment.powder} por fragmento.`);
   if (item.sell > 0) uses.push(`Reciclar por ${item.sell} moedas por unidade quando não estiver equipado.`);
   return { description: item.description || DESCRIPTIONS[item.id], source, uses, assemblyParts: assembly ? [...assembly.parts] : [] };
@@ -81,10 +83,10 @@ function gearBonus(equipped) {
   return out;
 }
 
-/** Custo do próximo aprimoramento (null = no máximo / não aprimora). */
+/** Custo do próximo aprimoramento (null = no máximo / não aprimora). E9: o garantido (forge-v2). */
 function upgradeCost(item, level) {
-  const q = Forge.quote(item, level);
-  return q ? { ...q.cost, to: q.toMax } : null;
+  const q = Upgrade.upgradeCost(item, level);
+  return q ? { coins: q.coins, needs: q.needs, to: q.to } : null;
 }
 
 /**
@@ -104,7 +106,8 @@ function publicGear() {
   return {
     slots: SLOTS,
     cap: GEAR_CAP,
-    upgrade: { max: UPGRADE.MAX, dmg: UPGRADE.DMG, def: UPGRADE.DEF, secondary: UPGRADE.SECONDARY, rulesVersion: Forge.RULES_VERSION },
+    // E9: aprimoramento garantido +0…+15; do +11 em diante só ascendida
+    upgrade: { max: Upgrade.MAX_PLUS, ascendFrom: B.ASCEND_FROM, stone: Upgrade.STONE, rulesVersion: Upgrade.RULES_VERSION },
     items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.origin ? { origin: g.origin } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
     recipes: RECIPES,
     // E7: conjuntos (2 ou 3 peças = 40% da fatia, 4 = 100%)

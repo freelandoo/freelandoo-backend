@@ -95,6 +95,23 @@ async function main() {
   }
 }
 /** As fatias seguintes da fase 3 acrescentam seus passos aqui. */
-const STEPS = [];
+const STEPS = [
+  // ── E9: aprimoramento garantido ──
+  async ({ pool, Service, id, setQty, qty, emeralds, line }) => {
+    await setQty(id, "pedra_aprimoramento", 3);
+    const before = await emeralds(id);
+    const up = await Service.upgrade(id, { item: "linha_garras_lunares", instance: line, key: crypto.randomUUID() });
+    check("E9: arma de linha (T5) sobe +0 → +1 por 350 Esmeraldas e 1 pedra", !up.error && up.receipt.result.to === 1 && before - (await emeralds(id)) === 350 && (await qty(id, "pedra_aprimoramento")) === 2);
+    // A2 pela migration: uma cópia ainda em forge-v1 vira +round(1,5 × N) e roda de novo sem mudar nada
+    const old = (await pool.query(`INSERT INTO tb_mm_gear_instance (id_user,item_id,plus,rules) VALUES ($1,'espada_latao',7,'forge-v1') RETURNING id_instance`, [id])).rows[0].id_instance;
+    const sql = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/448_meu_mundo_aprimoramento_garantido.sql"), "utf8");
+    await pool.query(sql);
+    await pool.query(sql);
+    const conv = (await pool.query(`SELECT plus, ascended, rules FROM tb_mm_gear_instance WHERE id_instance=$1`, [old])).rows[0];
+    check("E9: mig 448 converte +7 em +11 ascendida, idempotente", conv.plus === 11 && conv.ascended === true && conv.rules === "forge-v2");
+    const fresh = (await pool.query(`INSERT INTO tb_mm_gear_instance (id_user,item_id) VALUES ($1,'espada_latao') RETURNING rules`, [id])).rows[0];
+    check("E9: instância nova nasce em forge-v2", fresh.rules === "forge-v2");
+  },
+];
 
 main().catch((error) => { console.error(error); process.exit(1); });

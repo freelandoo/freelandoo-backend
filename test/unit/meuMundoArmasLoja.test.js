@@ -87,7 +87,7 @@ test("escudos: 16 à venda, preço crescente, sem classe, slot próprio e dentro
     assert.equal(s.use, "equip");
     assert.ok(s.bonus.def > 0, s.id);
     assert.ok(Gear.itemDetails(s).description, s.id);
-    assert.equal(Gear.upgradeCost(s, 0), null, "escudo não refina");
+    assert.ok(Gear.upgradeCost(s, 0), "E9: escudo também aprimora (todo equipamento sobe)");
     if (i) assert.ok(s.price > shields[i - 1].price && s.level >= shields[i - 1].level, s.id);
   });
   const top = Gear.gearBonus({ weapon: { id: "espada_morkhan", level: 10 }, shield: { id: "escudo_fera", level: 0 }, armor: { id: "couraca_rebitada", level: 10 } });
