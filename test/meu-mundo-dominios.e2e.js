@@ -166,6 +166,30 @@ async function main() {
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 1 } });
   check("luta no setor 1 no nível 1 → 403 (o servidor recusa)", r.status === 403 && r.body.code === "closed", JSON.stringify(r));
 
+  // ── DV1: 3 cenas de mundo aberto; a passagem abre com o chefe da cena anterior ──
+  {
+    const cu = await user("mmd_cenas");
+    await setLevel(cu, 5);
+    let q = await call("domainsEnter", cu, { body: { domain: "floresta" } });
+    check("DV1: entrar sem cena = cena 1 (floresta-1, setores 1–3, chefe 3)", q.status === 200 && q.body.scene && q.body.scene.name === "floresta-1" && q.body.scene.boss === 3 && q.body.scene.sectors.join() === "1,2,3", JSON.stringify(q.body.scene));
+    check("DV1: a tela manda as 3 cenas e a cena de cada setor", q.body.domain.scenes.map((c) => c.name).join() === "floresta-1,floresta-2,floresta-3" && q.body.domain.sectors.map((x) => x.scene).join() === "1,1,1,2,2,2,2,3,3,3");
+    check("DV1: passagem da cena 1 fechada com o chefe de pé", q.body.domain.scenes[0].passage.open === false);
+    q = await call("domainsEnter", cu, { body: { domain: "floresta", scene: 2 } });
+    check("DV1: cena 2 antes do chefe da cena 1 → 403 scene (o servidor recusa)", q.status === 403 && q.body.code === "scene", JSON.stringify(q));
+    await setBest(cu, "floresta", 3);
+    q = await call("domainsEnter", cu, { body: { domain: "floresta", scene: 2 } });
+    check("DV1: chefe da cena 1 vencido → entra na cena 2", q.status === 200 && q.body.scene.name === "floresta-2" && q.body.domain.scenes[0].passage.open === true && q.body.domain.scenes[0].cleared === true, JSON.stringify(q.body.scene));
+    q = await call("domainsEnter", cu, { body: { domain: "floresta", scene: 3 } });
+    check("DV1: cena 3 com o chefe da cena 2 de pé → 403", q.status === 403 && q.body.code === "scene");
+    await setBest(cu, "floresta", 7);
+    q = await call("domainsEnter", cu, { body: { domain: "floresta", scene: "3" } });
+    check("DV1: chefe da cena 2 vencido → cena 3 (guardião 9, deus 10)", q.status === 200 && q.body.scene.name === "floresta-3" && q.body.scene.boss === 9 && q.body.scene.god === 10 && q.body.scene.passage === null);
+    q = await call("domainsEnter", cu, { body: { domain: "floresta", scene: 4 } });
+    check("DV1: cena que não existe → 403 scene", q.status === 403 && q.body.code === "scene");
+    q = await call("domainsEnter", cu, { body: { domain: "canion", scene: 1 } });
+    check("DV1: Domínio fechado continua 403 closed (antes da cena)", q.status === 403 && q.body.code === "closed");
+  }
+
   // ── nível 5: a Floresta abre, só o setor 1 ──
   await setLevel(nu, 5);
   r = await call("domainsEnter", nu, { body: { domain: "floresta" } });

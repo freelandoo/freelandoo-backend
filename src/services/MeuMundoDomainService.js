@@ -29,6 +29,7 @@ const ERRORS = {
   domain: ["Domínio desconhecido", 404],
   closed: ["Esse Domínio ainda está fechado", 403],
   sector: ["Esse setor ainda está fechado", 403],
+  scene: ["Essa parte do Domínio ainda está fechada", 403],
   place: ["Lugar desconhecido", 404],
   placeFar: ["Chegue à clareira primeiro", 409],
 };
@@ -101,7 +102,11 @@ class MeuMundoDomainService {
     return { trainer, bypass, power: await powerOf(db, idUser), sectors: D.SECTORS, domains, pacts: await PactStore.active(db, Date.now()) };
   }
 
-  /** POST /domains/enter { domain } — só entra na cena de um Domínio aberto. */
+  /**
+   * POST /domains/enter { domain, scene? } — só entra na cena de um Domínio aberto. DV1: `scene`
+   * (1–3, padrão 1) = qual das 3 cenas do mundo aberto; cena cujo chefe anterior não caiu = 403
+   * `scene` (a passagem só carrega a próxima depois do chefe). Devolve a cena em `scene`.
+   */
   static async enter(idUser, body = {}, db = pool) {
     const id = String(body.domain || "");
     if (!D.domainOf(id)) return fail("domain");
@@ -110,8 +115,12 @@ class MeuMundoDomainService {
     const best = await bestOf(db, idUser);
     const lock = D.lockOf(id, trainer, best, bypass);
     if (lock) return lockFail(lock);
+    const n = body.scene == null || body.scene === "" ? 1 : Number(body.scene);
+    if (!D.scenesOf(id).some((c) => c.n === n)) return fail("scene", { scene: body.scene });
+    if (!D.sceneOpen(id, n, trainer, best, bypass)) return fail("scene", { scene: n, best: best[id] || 0 });
     const domain = withLoot(D.view(trainer, best, bypass).filter((d) => d.id === id), await firstsOf(db, idUser))[0];
-    return { trainer, bypass, power: await powerOf(db, idUser), domain, pacts: (await PactStore.active(db, Date.now())).filter((p) => p.domain === id) };
+    const scene = domain.scenes.find((c) => c.n === n);
+    return { trainer, bypass, power: await powerOf(db, idUser), domain, scene, pacts: (await PactStore.active(db, Date.now())).filter((p) => p.domain === id) };
   }
 
   /** N4: a pessoa pode estar neste Domínio agora? (o deus solto caça também lá dentro) null = pode; senão o erro. */

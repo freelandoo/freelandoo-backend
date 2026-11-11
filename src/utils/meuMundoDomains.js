@@ -151,6 +151,39 @@ function placeOpen(domainId, placeId, best = {}, bypass = false) {
   return !!bypass || p.sector <= (Number(best[domainId]) || 0) + 1;
 }
 
+/**
+ * Domínios v2 (DV1, plano MEU MUNDO 3D/planos/2026-11-11-dominios-v2.md): MUNDO ABERTO, 3 cenas
+ * por Domínio. Cena = faixa de setores; o chefe da cena é o último setor dela (cena 3: o guardião
+ * (9) na porta do castelo e o deus (10) dentro). A passagem para a cena seguinte abre quando o
+ * chefe da cena anterior cai — é o mesmo que o primeiro setor da cena seguinte abrir, então as
+ * travas de setor (sectorOpen) continuam as mesmas. O arquivo da cena no aparelho é
+ * `<domínio>-<n>` (front: features/meu-mundo/engine/cena-codigo/cenas).
+ */
+const SCENES = Object.freeze(
+  [
+    { n: 1, sectors: [1, 2, 3], boss: 3 },
+    { n: 2, sectors: [4, 5, 6, 7], boss: 7 },
+    { n: 3, sectors: [8, 9, 10], boss: 9, god: 10 },
+  ].map((c) => Object.freeze({ ...c, sectors: Object.freeze(c.sectors) }))
+);
+/** Os seis usam a mesma divisão (o plano §1.3); fica por Domínio para um deles poder mudar. */
+const SCENES_BY_DOMAIN = Object.freeze(Object.fromEntries(DOMAIN_IDS.map((id) => [id, SCENES])));
+const scenesOf = (domainId) => SCENES_BY_DOMAIN[domainId] || null;
+/** A cena (1–3) onde fica o setor. */
+function sceneOf(domainId, sector) {
+  const list = scenesOf(domainId);
+  const c = list && list.find((x) => x.sectors.includes(sector));
+  return c ? c.n : null;
+}
+const sceneName = (domainId, n) => `${domainId}-${n}`;
+/** A cena está aberta? (a 1 com o Domínio; a N quando o chefe da N−1 caiu) */
+function sceneOpen(domainId, n, trainerLevel, best, bypass = false) {
+  const list = scenesOf(domainId);
+  const c = list && list.find((x) => x.n === n);
+  if (!c) return false;
+  return sectorOpen(domainId, c.sectors[0], trainerLevel, best, bypass);
+}
+
 /** Os três palcos de luta por Domínio (entrada, setores fundos, palácio do deus). */
 function stageOf(sector) {
   if (sector >= 9) return "palacio";
@@ -249,10 +282,26 @@ function view(trainerLevel, best, bypass = false) {
       // trecho de passagem: aparece depois do setor 10 vencido
       places: (PLACES_BY_DOMAIN[d.id] || []).map((p) => ({ id: p.id, sector: p.sector, spots: [...(p.spots || [])] })),
       passage: next && top >= SECTORS ? { to: next.id, open: !lockOf(next.id, trainerLevel, best, bypass) } : null,
+      // DV1: as 3 cenas do mundo aberto (o aparelho monta `name`; `passage` = a saída para a próxima)
+      scenes: (scenesOf(d.id) || []).map((c, ci, list) => {
+        const open = !lock && (bypass || c.sectors[0] <= top + 1);
+        const nx = list[ci + 1] || null;
+        return {
+          n: c.n,
+          name: sceneName(d.id, c.n),
+          sectors: [...c.sectors],
+          boss: c.boss,
+          god: c.god || null,
+          open,
+          cleared: top >= c.sectors[c.sectors.length - 1],
+          passage: nx ? { to: nx.n, open: open && (bypass || top >= c.boss) } : null,
+        };
+      }),
       sectors: Array.from({ length: SECTORS }, (_, k) => {
         const s = k + 1;
         return {
           n: s,
+          scene: sceneOf(d.id, s),
           kind: kindOf(d.id, s),
           foe: foeOf(d.id, s),
           boss: bossOf(d.id, s),
@@ -277,6 +326,12 @@ module.exports = {
   LEVELS_BY_DOMAIN,
   PLACES_BY_DOMAIN,
   BOSS_BY_DOMAIN,
+  SCENES,
+  SCENES_BY_DOMAIN,
+  scenesOf,
+  sceneOf,
+  sceneName,
+  sceneOpen,
   bossOf,
   placeOf,
   placeOpen,
