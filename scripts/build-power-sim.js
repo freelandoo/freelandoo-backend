@@ -12,7 +12,8 @@ const fs = require("fs");
 const path = require("path");
 const { stripTypeScriptTypes } = require("node:module");
 
-const SIM = path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/power");
+// MM_FRONT = raiz do front (worktree), como nos outros geradores
+const SIM = path.join(process.env.MM_FRONT || path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main"), "features/meu-mundo/power");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoPower.js");
 const MODULES = ["power"];
 
@@ -20,7 +21,8 @@ function build() {
   const exported = [];
   const parts = [];
   for (const m of MODULES) {
-    let src = stripTypeScriptTypes(fs.readFileSync(path.join(SIM, `${m}.ts`), "utf8"), { mode: "strip" });
+    // fim de linha do front (CRLF no Windows) não pode mudar a cópia
+    let src = stripTypeScriptTypes(fs.readFileSync(path.join(SIM, `${m}.ts`), "utf8").replace(/\r\n/g, "\n"), { mode: "strip" });
     src = src.replace(/^export\s+(?=(const|function|class|let)\s)/gm, (s0, kind, off) => {
       const name = /^(?:const|function|class|let)\s+([A-Za-z_$][\w$]*)/.exec(src.slice(off + s0.length))[1];
       exported.push(name);

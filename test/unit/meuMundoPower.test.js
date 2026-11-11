@@ -47,10 +47,17 @@ test("poder — HP máx = o do nível de aventura (100 + 9 por nível), igual à
   assert.equal(P.powerOf(F, { attrs: {}, level: 0 }), 100);
 });
 
-test("poder — equipamento soma TODAS as chaves de bônus, 1% = 10 pontos", () => {
+test("poder (E4, A13) — o equipamento vale o que soma DE VERDADE à ficha no nível", () => {
+  // nível 1: base 100, vida 100; fôlego/aviso/barra = 1.000 por 1,0
   const p = P.powerScore(F, { attrs: {}, level: 1, gear: { dmg: 0.1, def: 0.05, stam: 0.02, warn: 0.01, power: 0.03 } });
-  assert.equal(p.parts.gear, 210); // 10 + 5 + 2 + 1 + 3 = 21%
-  assert.equal(p.total, 100 + 210);
+  assert.equal(p.parts.gear, Math.round(0.1 * 100 + 0.05 * 100 + 1000 * 0.06)); // 75
+  assert.equal(p.total, 100 + p.parts.gear);
+  // a conta do plano (§8 E4): nível 30, atributos 300, tudo no teto
+  const base = 100 + (900 * 29) / 59, vida = 100 + 9 * 29, ac = 100 + 300 + 3 * 29;
+  const want = 0.35 * base + 0.25 * base + 0.25 * vida + 0.2 * ac + 0.15 * ac + 0.15 * 300 + 0.15 * 300 + 420;
+  const a = { strength: 300, speed: 300, dexterity: 300, intelligence: 300, accuracy: 300 };
+  assert.equal(P.powerScore(F, { attrs: a, level: 30, gear: Gear.GEAR_CAP }).parts.gear, Math.round(want));
+  assert.equal(Math.round(want), 1096);
 });
 
 test("poder — equipamento no teto vale o teto (gearBonus já corta)", () => {
@@ -59,9 +66,10 @@ test("poder — equipamento no teto vale o teto (gearBonus já corta)", () => {
   for (const g of Gear.GEAR) if (g.bonus && i < 5) all[Gear.SLOTS[i++]] = { id: g.id, level: 99 };
   const capped = Gear.gearBonus(all);
   for (const [k, v] of Object.entries(capped)) assert.ok(v <= Gear.GEAR_CAP[k] + 1e-9, `${k} acima do teto`);
-  const max = Object.values(Gear.GEAR_CAP).reduce((a, b) => a + b, 0);
-  const p = P.powerScore(F, { attrs: {}, level: 1, gear: Gear.GEAR_CAP });
-  assert.equal(p.parts.gear, Math.round(max * 100 * P.GEAR_PER_PCT));
+  // nível 1, sem atributos: ficha = 100 em tudo; inteligência e destreza 0
+  const C = Gear.GEAR_CAP;
+  const p = P.powerScore(F, { attrs: {}, level: 1, gear: C });
+  assert.equal(p.parts.gear, Math.round(100 * (C.dmg + C.def + C.hp + C.acc + C.spd) + P.GEAR_FLAT * (C.stam + C.warn + C.power)));
 });
 
 test("poder — valores inválidos ou negativos não somam; total é inteiro", () => {

@@ -69,8 +69,9 @@ test("I3 (régua) — os números do §6.4: dano na arma e chave fora do slot", 
   assert.ok(B.piece("dmg", "weapon", "rare", 0, 1, B.SECONDARY) < B.piece("dmg", "weapon", "rare", 0, 1));
 });
 
-test("E0 — a régua ainda não muda nenhuma regra em uso (teto de hoje intacto)", () => {
-  assert.deepStrictEqual({ ...Gear.GEAR_CAP }, { dmg: 0.35, def: 0.25, stam: 0.12, warn: 0.12, power: 0.18 });
+test("E4 — teto do equipamento: as 10 chaves do §6.3, iguais no back e na luta (GEAR_MAX)", () => {
+  assert.deepStrictEqual({ ...Gear.GEAR_CAP }, { dmg: 0.35, def: 0.25, stam: 0.12, warn: 0.12, power: 0.18, hp: 0.25, acc: 0.2, spd: 0.15, int: 0.15, dex: 0.15 });
+  assert.deepStrictEqual({ ...F.GEAR_MAX }, { ...Gear.GEAR_CAP });
   assert.equal(Gear.UPGRADE.MAX, 10);
 });
 
@@ -101,9 +102,39 @@ test("E0 — conjuntos: 4 peças nos setores 7 a 10 entre 25 e 40 vitórias (pio
   }
 });
 
-test("I2 — equipamento no teto multiplica a troca pelo mesmo valor (±2%) nos níveis 1…500", { todo: "E4" }, () => {});
+test("I2 — equipamento no teto multiplica a troca pelo mesmo valor (±2%) nos níveis 1…500", () => {
+  const NO = { dmg: 0, def: 0, stam: 0, warn: 0, power: 0 };
+  // ataque, defesa e vida no teto: 1,35 × 1,25 × 1,25 = 2,11 (acerto fora: satura em 100%)
+  const top = { ...NO, dmg: 0.35, def: 0.25, hp: 0.25 };
+  const legend = { ...NO, dmg: 0.33 }; // a lendária +10 de hoje
+  for (const L of [1, 5, 10, 20, 30, 60, 100, 200, 500]) {
+    const even = (g) => {
+      const ms = F.MOB_SHEETS.brute;
+      const need = Math.max(0, (F.mobBase(L).rate * ms[4]) / 100 - 100 - 3 * (L - 1));
+      return Bal.duel(null, L, { strength: need, speed: need, intelligence: need, dexterity: need }, g, "brute", L).ratio;
+    };
+    const k = even(top) / even(NO);
+    assert.ok(Math.abs(k / 2.109375 - 1) <= 0.02, `nível ${L}: ×${k.toFixed(3)}`);
+    const l = even(legend) / even(NO);
+    assert.ok(Math.abs(l / 1.33 - 1) <= 0.02, `nível ${L}: lendária ×${l.toFixed(3)}`);
+  }
+});
 test("I3 (catálogo) — todo item real sai da régua: build focado = teto, peça ≤ 50%, fonte ≤ subteto", { todo: "E7" }, () => {});
-test("I4 — parcela do equipamento no Poder = o que ele soma à ficha", { todo: "E4" }, () => {});
+test("I4 — parcela do equipamento no Poder = o que ele soma à ficha", () => {
+  const P = require("../../src/utils/meuMundoPower");
+  const NO = {};
+  for (const L of [1, 10, 30, 100, 500]) {
+    for (const a of [0, 300, 2000]) {
+      const attrs = { strength: a, speed: a, intelligence: a, dexterity: a, accuracy: a };
+      const g = { ...Gear.GEAR_CAP };
+      const with_ = F.heroSheet(null, L, attrs, g), without = F.heroSheet(null, L, attrs, NO);
+      const sheet = with_.atk - without.atk + (with_.def - without.def) + (with_.hp - without.hp) + (with_.acc - without.acc) + (with_.spd - without.spd);
+      const want = sheet + g.int * a + g.dex * a + 1000 * (g.stam + g.warn + g.power);
+      const got = P.powerScore(F, { attrs, level: L, gear: g }).parts.gear;
+      assert.ok(Math.abs(got - want) <= 1.5, `L${L} a${a}: ${got} × ${want.toFixed(1)}`);
+    }
+  }
+});
 test("I5 — acuracidade e velocidade entre 1× e 3× a régua nos níveis 10…500", { todo: "E5 (depende da A14)" }, () => {});
 test("I6 — a mesma faixa do sorteio da rua dá a mesma distância de régua (±10%) nos níveis 5…200", { todo: "E5 (depende da A15)" }, () => {});
 test("I7 — fabricar → desmontar → fabricar perde pelo menos 50% dos materiais", { todo: "E11" }, () => {});

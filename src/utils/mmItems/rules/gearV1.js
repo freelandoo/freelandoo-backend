@@ -10,8 +10,11 @@ const { GEAR, GEAR_BY_ID, RECIPES, DESCRIPTIONS } = Items;
 
 const SLOTS = Object.freeze(["weapon", "shield", "armor", "acc1", "acc2"]);
 
-/** Teto dos bônus SOMADOS de tudo que está equipado (frações). */
-const GEAR_CAP = Object.freeze({ dmg: 0.35, def: 0.25, stam: 0.12, warn: 0.12, power: 0.18 });
+/**
+ * Teto dos bônus SOMADOS de tudo que está equipado (frações). Trilha E4 (A12): as 10 chaves do §6.3
+ * (hp, acc, spd, int, dex novas), as mesmas do GEAR_MAX da luta (laminas/sim/fight.ts).
+ */
+const GEAR_CAP = Object.freeze({ dmg: 0.35, def: 0.25, stam: 0.12, warn: 0.12, power: 0.18, hp: 0.25, acc: 0.2, spd: 0.15, int: 0.15, dex: 0.15 });
 /** Preserve the old per-level bonuses; the expanded caps keep +6..10 useful. */
 const UPGRADE = Object.freeze({ MAX: Forge.MAX_LEVEL, DMG: 0.02, DEF: 0.015, COINS: Forge.COINS, MATS: Forge.MATERIALS, SECONDARY: Forge.SECONDARY_PER_LEVEL });
 /** E2: pilha até 9.999 (CHECK da mig 446). */
@@ -62,7 +65,7 @@ function canEquip(item, { clan, level, owned }) {
  * O aprimoramento entra aqui (arma: dano; proteção: defesa).
  */
 function gearBonus(equipped) {
-  const sum = { dmg: 0, def: 0, stam: 0, warn: 0, power: 0 };
+  const sum = Object.fromEntries(Object.keys(GEAR_CAP).map((k) => [k, 0]));
   for (const slot of SLOTS) {
     const e = equipped && equipped[slot];
     const it = e && GEAR_BY_ID.get(e.id);

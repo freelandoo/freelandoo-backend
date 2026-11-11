@@ -12,7 +12,8 @@
 
 const Life = require("./meuMundoLife");
 
-const RULES_VERSION = "R3";
+// R4 (trilha E4): equipamento proporcional (multiplica a ficha) e chaves hp/acc/spd/int/dex.
+const RULES_VERSION = "R4";
 
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,

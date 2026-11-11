@@ -20,7 +20,9 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   const agora = semTier(Gear.publicGear());
   assert.deepEqual(Object.keys(agora), Object.keys(ANTES.publicGear));
   assert.deepEqual(agora.slots, ANTES.publicGear.slots);
-  assert.deepEqual(agora.cap, ANTES.publicGear.cap);
+  // E4 (A12) acrescentou as chaves hp/acc/spd/int/dex ao teto; as 5 de antes não mudam
+  assert.deepEqual(Object.fromEntries(Object.keys(ANTES.publicGear.cap).map((k) => [k, agora.cap[k]])), ANTES.publicGear.cap);
+  assert.deepEqual(Object.keys(agora.cap).filter((k) => !(k in ANTES.publicGear.cap)), ["hp", "acc", "spd", "int", "dex"]);
   assert.deepEqual(agora.upgrade, ANTES.publicGear.upgrade);
   assert.deepEqual(agora.items.map((i) => i.id), ANTES.publicGear.items.map((i) => i.id), "mesma ordem de itens");
   ANTES.publicGear.items.forEach((antes, n) => assert.deepEqual(agora.items[n], antes, antes.id));
@@ -29,7 +31,8 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
 
 test("E1: GEAR, saque e constantes de equipamento iguais aos de antes", () => {
   assert.deepEqual(semTier(Gear.GEAR), ANTES.gear.GEAR);
-  for (const k of ["SLOTS", "GEAR_CAP", "UPGRADE"]) assert.deepEqual(semTier(Gear[k]), ANTES.gear[k], k);
+  for (const k of ["SLOTS", "UPGRADE"]) assert.deepEqual(semTier(Gear[k]), ANTES.gear[k], k);
+  for (const [k, v] of Object.entries(ANTES.gear.GEAR_CAP)) assert.equal(Gear.GEAR_CAP[k], v, "GEAR_CAP." + k);
   // E2 (mig 446) subiu a pilha de propósito: 999 → 9.999 (objetivo da fatia, §8 E2).
   assert.equal(ANTES.gear.STACK_MAX, 999);
   assert.equal(Gear.STACK_MAX, 9999);

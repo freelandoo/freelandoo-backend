@@ -87,12 +87,13 @@ async function main() {
   check("snapshot traz o mesmo Poder", a0.character.power === p0.poder, `${a0.character.power} vs ${p0.poder}`);
   check("Poder = soma dos atributos + 100 de HP (nível 1, sem equipamento)", p0.poder === want, `${p0 && p0.poder} vs ${want}`);
 
-  // ── equipamento (armadura +5% defesa = 50 pontos)
+  // ── equipamento (E4, A13: armadura +5% defesa no nível 1 = 5% da base 100 = 5 pontos;
+  //    a pilha antiga vira instância e o tb_mm_equip vira loadout no primeiro pedido)
   await pool.query(`INSERT INTO tb_mm_gear (id_user, item_id, qty, level) VALUES ($1, 'colete_couro', 1, 0)`, [A]);
   await pool.query(`INSERT INTO tb_mm_equip (id_user, slot, item_id) VALUES ($1, 'armor', 'colete_couro')`, [A]);
   await Life.peek(A);
   const p1 = { ...(await powerOfRow(A)), parts: await Poder.myParts(A) };
-  check("equipamento entra: +5% = +50", p1.parts.gear === 50 && p1.poder - p0.poder >= 49 && p1.poder - p0.poder <= 51, JSON.stringify(p1));
+  check("equipamento entra: +5% de defesa no nível 1 = +5", p1.parts.gear === 5 && p1.poder - p0.poder >= 4 && p1.poder - p0.poder <= 6, JSON.stringify(p1));
 
   // ── nível: B treinou muito e subiu de nível
   await Life.peek(B);
