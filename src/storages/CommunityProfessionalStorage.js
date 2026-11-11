@@ -27,6 +27,18 @@ const PROFESSIONAL_SELECT = `
     LEFT JOIN public.tb_category c ON c.id_category = p.id_category
 `;
 
+// ⚠️ A EQUIPE SÓ VALE ENQUANTO A PESSOA É MEMBRO (segurança A1-18). Promover
+// exige membresia (`addProfessional`), mas sair da comunidade (ou ser
+// removido) não apaga a linha daqui — e o site público continuava mostrando
+// nome, foto, serviços e agenda de quem já tinha ido embora, e o líder seguia
+// recebendo, com o nome do cliente, o aviso das reservas dela pelo site.
+// Conferir na LEITURA (e não apagar na saída) cobre toda porta de saída que
+// existe e as que ainda vão existir; quem volta à comunidade volta à equipe.
+const STILL_MEMBER_SQL = `EXISTS (
+  SELECT 1 FROM public.tb_community_member m
+   WHERE m.id_community_profile = cp.id_profile
+     AND m.id_user = cp.id_user)`;
+
 class CommunityProfessionalStorage {
   /**
    * A equipe promovida, na ordem em que entrou.
@@ -40,6 +52,7 @@ class CommunityProfessionalStorage {
       `${PROFESSIONAL_SELECT}
         JOIN public.tb_community_professional cp ON cp.id_user = u.id_user
        WHERE cp.id_profile = $1
+         AND ${STILL_MEMBER_SQL}
        ORDER BY cp.created_at ASC`,
       [id_community]
     );
@@ -54,8 +67,10 @@ class CommunityProfessionalStorage {
 
   static async exists(conn, id_community, id_user) {
     const r = await conn.query(
-      `SELECT 1 FROM public.tb_community_professional
-        WHERE id_profile = $1 AND id_user = $2 LIMIT 1`,
+      `SELECT 1 FROM public.tb_community_professional cp
+        WHERE cp.id_profile = $1 AND cp.id_user = $2
+          AND ${STILL_MEMBER_SQL}
+        LIMIT 1`,
       [id_community, id_user]
     );
     return r.rowCount > 0;
