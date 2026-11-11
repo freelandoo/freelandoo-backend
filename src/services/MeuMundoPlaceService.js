@@ -7,6 +7,7 @@
 
 const pool = require("../databases");
 const P = require("../utils/meuMundoPlaces");
+const { isNight } = require("../realtime/meuMundoMobs");
 
 /** Personagem vivo de agora (o mesmo critério do AdventureStorage). */
 const ALIVE_SQL = `SELECT id_character FROM tb_mm_character WHERE id_user = $1 AND status = 'alive' ORDER BY born_at DESC LIMIT 1`;
@@ -63,6 +64,8 @@ class MeuMundoPlaceService {
   static async canTalk(c, idUser, npc, now = Date.now()) {
     const def = P.NPCS[npc];
     if (!def) return false;
+    // C4: NPC da noite (Fulvo) só existe das 18h às 6h de Brasília (a mesma noite dos monstros)
+    if (def.hours === "night" && !isNight(now)) return false;
     const last = await MeuMundoPlaceService.lastVisit(c, idUser);
     if (!last || !def.places.includes(last.place)) return false;
     return now - new Date(last.at).getTime() <= P.TALK_TTL_MS;

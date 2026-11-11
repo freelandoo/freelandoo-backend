@@ -112,7 +112,7 @@ const CHAPTERS = Object.freeze([
       step("ecos", "fightWin", 150, "laminas", { count: 3 }),
       step("aco", "fightWin:ciborgue", 200, "laminas"),
       step("porta_azul", "talk:ciborgue", 100, "laminas"),
-      step("fulvo", "talk:fulvo", 150, "bairro_vampiros"),
+      step("fulvo", "talk:fulvo", 150, "praca"),
       step("forca", "stat:120", 150, "treino"),
     ],
   },

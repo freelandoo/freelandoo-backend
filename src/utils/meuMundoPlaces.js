@@ -41,6 +41,11 @@ const NPCS = Object.freeze({
   forjador: Object.freeze({ places: Object.freeze(["forja"]) }),
   armeiro: Object.freeze({ places: Object.freeze(["arsenal"]) }),
   bibliotecaria: Object.freeze({ places: Object.freeze(["biblioteca"]) }),
+  // C4 (cap. 6): o Ciborgue treina sozinho no fundo da Arena das Lâminas (porta ou o
+  // canto dele). Fulvo fica na praça do centro, no pedestal de Morkhan, SÓ DE NOITE
+  // (07-falas §12, pergunta 3, pela recomendação: ninguém entra no bairro do outro povo).
+  ciborgue: Object.freeze({ places: Object.freeze(["laminas", "laminas_fundo"]) }),
+  fulvo: Object.freeze({ places: Object.freeze(["praca", "estatua_morkhan"]), hours: "night" }),
 });
 
 /** Ponto circular (`r`) ou quadrado (`half`). */

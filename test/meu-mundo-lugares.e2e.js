@@ -138,6 +138,17 @@ async function main() {
   await PlaceSvc.recordVisit(id, "delegacia");
   r = await Quest.mark(id, { mark: "talk", npc: "delegado" });
   check("talk:delegado na Delegacia", r.ok === true && (await sat("talk:delegado")).ok);
+  // ── C4: o Ciborgue (porta da Arena ou o canto dele) e Fulvo (praça, só de noite) ──
+  r = await Quest.mark(id, { mark: "talk", npc: "ciborgue" });
+  check("talk:ciborgue longe da Arena (última visita = Delegacia) → far", r.code === "far");
+  await PlaceSvc.recordVisit(id, "laminas_fundo");
+  r = await Quest.mark(id, { mark: "talk", npc: "ciborgue" });
+  check("talk:ciborgue no canto dele, atrás da Arena", r.ok === true && (await sat("talk:ciborgue")).ok, JSON.stringify(r));
+  await PlaceSvc.recordVisit(id, "estatua_morkhan");
+  r = await Quest.mark(id, { mark: "talk", npc: "fulvo" });
+  const { isNight } = require("../src/realtime/meuMundoMobs");
+  if (isNight(Date.now())) check("talk:fulvo no pedestal de Morkhan, de noite", r.ok === true && (await sat("talk:fulvo")).ok, JSON.stringify(r));
+  else check("talk:fulvo de dia → far (ele só está lá de noite)", r.code === "far" && !(await sat("talk:fulvo")).ok, JSON.stringify(r));
 
   // ── C3: a sala do Paint grava a chegada à ilha de Bastor (paintTop) ──
   const Paint = require("../src/realtime/meuMundoPaint");

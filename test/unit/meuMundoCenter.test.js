@@ -184,7 +184,8 @@ test("chegada a pé e portal em lugar livre; payload sem nada de usuário", () =
   assert.equal(p.capacity, 20);
   assert.equal(p.places.length, 20);
   assert.equal(p.obstacles.length, C.OBSTACLES.length);
-  assert.ok(JSON.stringify(p).length < 36000, "payload pequeno, interiores das oficinas buscados só ao entrar");
+  // 37000 (lore v2 C4: Fulvo e o Ciborgue na rua somaram ~0,3 KB; os interiores continuam fora)
+  assert.ok(JSON.stringify(p).length < 37000, "payload pequeno, interiores das oficinas buscados só ao entrar");
   assert.ok(p.interiors.hospital && p.interiors.hospital.beds.length >= 6, "interior do hospital no payload");
   assert.ok(!/user|email|token/i.test(JSON.stringify(p)));
 });

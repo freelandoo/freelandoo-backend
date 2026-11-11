@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 17; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 18; // (18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -226,6 +226,13 @@ const STREET_NPCS = Object.freeze(
     // cliente esconde de dia). Fica dentro da colisão do pedestal: sem caixa própria,
     // então de dia não sobra parede invisível.
     { id: "arauto", x: -1.9, z: 3.3, y: MONUMENT.h, facing: Math.atan2(-1.9, 3.3), body: "vampiro_adulto", hours: "night" },
+    // Lore v2 C4 (cap. 6): Fulvo, líder da corrida dos Vampiros, no MESMO pedestal, do
+    // outro lado (60° da frente, espelhando o Arauto), só de noite (07-falas §12, pergunta 3:
+    // fica no centro, e não na Cidade Baixa, para a Raposa poder chegar até ele).
+    { id: "fulvo", x: -1.9, z: -3.3, y: MONUMENT.h, facing: Math.atan2(-1.9, -3.3), body: "vampiro_adulto", hours: "night" },
+    // Lore v2 C4 (cap. 6): o Ciborgue treina sozinho no fundo da Arena das Lâminas, no
+    // canto sudeste, ao lado da porta, de frente para a parede (não olha para quem chega).
+    { id: "ciborgue", x: 25, z: -60.6, facing: -Math.PI / 2, body: "ciborgue" },
   ].map((n) => Object.freeze({ ...n, facing: round(n.facing), radius: 2.4 }))
 );
 const PLAZA_LAMPS = Object.freeze([[11.6, 15.2], [-11.6, 15.2], [11.6, -15.2], [-11.6, -15.2], [15.2, 11.6], [-15.2, 11.6], [15.2, -11.6], [-15.2, -11.6]].map((p) => Object.freeze(p)));
@@ -433,6 +440,8 @@ const VISIT_POINTS = Object.freeze(
     { id: "praca", x: 0, z: 0, half: PLAZA },
     { id: "estatua_morkhan", x: MONUMENT.x, z: MONUMENT.z, r: 8 },
     { id: "portal", x: PORTAL_X, z: 0, r: 7 },
+    // C4: o canto do Ciborgue, atrás da porta da Arena (talk:ciborgue vale daqui ou da porta)
+    { id: "laminas_fundo", x: 25, z: -60.6, r: 3 },
     ...PLACES.map((p) => ({ id: p.id, x: p.interact.x, z: p.interact.z, r: p.interact.radius + 0.5 })),
   ].map((p) => Object.freeze(p))
 );
