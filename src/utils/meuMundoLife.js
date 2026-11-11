@@ -403,8 +403,8 @@ const ITEMS = Object.freeze([
   I("creatina", "supplement", "Creatina", 35, { nutri: 1, effect: ["creatine", 24] }),
   I("multivitaminico", "supplement", "Multivitamínico", 25, { nutri: 2, effect: ["multivit", 24] }),
   // Remédios
-  I("metformina", "medicine", "Metformina (diabetes)", 20, { effect: ["metformin", 24] }),
-  I("losartana", "medicine", "Losartana (pressão)", 18, { effect: ["losartan", 24] }),
+  // apresentação 05 (D9, 2026-11-11): Metformina e Losartana saíram junto com o diabetes e a
+  // pressão alta (mig 443 devolve as moedas de quem tinha na despensa).
   I("calmante", "medicine", "Calmante", 25, { stress: -30, energy: -10, tox: 3, effect: ["calm", 8] }),
   // Estimulantes (para não dormir)
   I("cafe", "stimulant", "Café", 2, { kcal: 5, energy: 8, tox: 1, effect: ["coffee", 2] }),
@@ -854,8 +854,11 @@ function stepState(s, t, dt, events, out) {
   const eff = kind === "sleeping" && stim ? "lying" : kind;
   const rate = RATES[eff];
   const resting = eff === "sleeping" || eff === "lying" || hospital;
-  const diabetesOpen = s.hasDiabetes && !hospital && !effectOn(s, "metformin", t);
-  const hyperOpen = s.hasHypertension && !hospital && !effectOn(s, "losartan", t);
+  // D9: diabetes e pressão alta saíram da regra; quem tinha fica curado aqui e na mig 443.
+  s.hasDiabetes = false;
+  s.hasHypertension = false;
+  s.diabetesRisk = 0;
+  s.bpRisk = 0;
   const fp = fatPct(s);
   // Refeição em atraso: fração da penalidade que ainda pesa (internado não paga).
   const late = hospital ? null : latePenalty(s, t);
@@ -870,7 +873,6 @@ function stepState(s, t, dt, events, out) {
     de *= 1.1 - 0.2 * p.resilience;
     if (stim) de *= 0.5;
     else if (effectOn(s, "energy_drink", t) || effectOn(s, "coffee", t) || effectOn(s, "preworkout", t)) de *= 0.8;
-    if (diabetesOpen) de -= 1;
     if (s.satiety <= 0 && !pen) de -= 2;
   }
   // Doente o tanque é menor (teto de applyUnwell) e o gasto encolhe junto:
@@ -964,39 +966,14 @@ function stepState(s, t, dt, events, out) {
   if (s.satiety <= 0 && !hospital && !pen) ds += 3;
   ds += perH("stress");
   if (s.energy <= 0.01 && stim) ds += 6;
-  if (diabetesOpen || hyperOpen) ds += 0.5;
   s.stress = clamp(s.stress + ds * dt);
   applyUnwell(s);
-
-  // Riscos de doença
-  let dr = -0.08;
-  if (fp > 28) dr += (fp - 28) * 0.02;
-  if (kind === "training") dr -= 0.15;
-  if (s.diet < -30) dr += 0.05;
-  s.diabetesRisk = clamp(s.diabetesRisk + dr * dt);
-  if (!s.hasDiabetes && s.diabetesRisk >= 100) {
-    s.hasDiabetes = true;
-    events.push({ at: t, kind: "diabetes", data: {} });
-  }
-  let db = -0.1;
-  if (s.stress > 60) db += (s.stress - 60) * 0.01;
-  if (stim) db += 0.3;
-  if (anab) db += 0.25;
-  if (effectOn(s, "preworkout", t)) db += 0.1;
-  if (fp > 30) db += (fp - 30) * 0.02;
-  if (kind === "training") db -= 0.08;
-  s.bpRisk = clamp(s.bpRisk + db * dt);
-  if (!s.hasHypertension && s.bpRisk >= 100) {
-    s.hasHypertension = true;
-    events.push({ at: t, kind: "hypertension", data: {} });
-  }
 
   // Toxicidade
   s.toxicity = Math.max(0, s.toxicity - 1.5 * dt * (hospital ? 3 : 1));
 
   // Coração
   let dc = -(eff === "sleeping" || hospital ? 0.8 : 0.3);
-  if (hyperOpen) dc += 0.5;
   if (stim) dc += 0.6;
   if (s.energy <= 0.01 && stim) dc += 3;
   if (s.awakeH > 30) dc += (s.awakeH - 30) * 0.05;
@@ -1015,8 +992,6 @@ function stepState(s, t, dt, events, out) {
     if (s.energy <= 0.01 && stim) dmg.exaustao = 2.5;
     else if (s.zeroEnergyH > 0) dmg.exaustao = 1.5;
     if (s.awakeH > 40) dmg.sono = (s.awakeH - 40) * 0.08;
-    if (diabetesOpen) dmg.diabetes = 0.25;
-    if (hyperOpen) dmg.hipertensao = 0.15;
     if (s.diet < -30) dmg.dieta = 0.05;
     if (s.stress > 90) dmg.estresse = 0.2;
   }
@@ -1044,7 +1019,6 @@ function stepState(s, t, dt, events, out) {
   if (fp > 30) ft -= (fp - 30) * 1.5;
   if (s.stress > 70) ft -= (s.stress - 70) * 0.5;
   if (s.health < 50) ft -= (50 - s.health) * 0.6;
-  if (s.hasDiabetes) ft -= 10;
   if (s.toxicity > 30) ft -= 15;
   ft -= lt.fertility;
   s.fertility = clamp(s.fertility + (clamp(ft) - s.fertility) * Math.min(1, 0.02 * dt));
@@ -1059,7 +1033,6 @@ function stepState(s, t, dt, events, out) {
     (s.stress - 30) * 0.4 +
     (s.health - 70) * 0.3 +
     Math.min(25, pleasure);
-  if (diabetesOpen || hyperOpen) mt -= 5;
   if (kind === "praying") mt += 15;
   s.mood = clamp(s.mood + (clamp(mt) - s.mood) * Math.min(1, 0.25 * dt));
 
@@ -1354,13 +1327,6 @@ function consume(s, itemId, t) {
   s.satiety = clamp(s.satiety + it.sat);
   s.fatKg = clamp(s.fatKg + it.kcal / RULES.KCAL_PER_KG, 2, 140);
   if (it.kind === "food" || it.kind === "drink" || it.kind === "supplement") s.diet = clamp(s.diet * 0.85 + it.nutri * 10 * 0.15, -100, 100);
-  if (it.sugar) {
-    if (s.hasDiabetes) {
-      if (!effectOn(s, "metformin", t)) s.health = Math.max(0.01, s.health - it.sugar * 0.8);
-    } else s.diabetesRisk = clamp(s.diabetesRisk + Math.max(0, it.sugar - 3) * 0.5);
-  }
-  // Só o EXCESSO pesa: sal e açúcar de comida de verdade o corpo elimina.
-  if (it.sodium > 4) s.bpRisk = clamp(s.bpRisk + (it.sodium - 4) * 1.5);
   if (it.heal) s.health = Math.min(s.vitality, clamp(s.health + it.heal));
   s.energy = clamp(s.energy + it.energy);
   s.stress = clamp(s.stress + it.stress);
@@ -1589,8 +1555,6 @@ function snapshot(s, t) {
   normalize(s);
   const fp = fatPct(s);
   const w = weightKg(s);
-  const diabetesOpen = s.hasDiabetes && !effectOn(s, "metformin", t) && s.activity.kind !== "hospital";
-  const hyperOpen = s.hasHypertension && !effectOn(s, "losartan", t) && s.activity.kind !== "hospital";
   const stim = effectOn(s, "stim", t);
   const pl = s.effects.filter((e) => e.id === "pleasure" && e.until > t).reduce((n, e) => n + e.mag, 0);
   const a = s.activity;
@@ -1634,14 +1598,15 @@ function snapshot(s, t) {
       ),
     },
     health: {
-      diabetes: s.hasDiabetes ? (diabetesOpen ? "uncontrolled" : "controlled") : "none",
-      hypertension: s.hasHypertension ? (hyperOpen ? "uncontrolled" : "controlled") : "none",
-      diabetesRisk: r2(s.diabetesRisk),
-      bpRisk: r2(s.bpRisk),
+      // D9: campos de legado (cliente antigo); sempre "sem doença"
+      diabetes: "none",
+      hypertension: "none",
+      diabetesRisk: 0,
+      bpRisk: 0,
       // Leituras derivadas (para os cards; não entram na conta).
-      glucose: Math.round(85 + s.diabetesRisk * 0.15 + Math.min(40, pl) + (diabetesOpen ? 110 : s.hasDiabetes ? 25 : 0)),
-      systolic: Math.round(112 + s.bpRisk * 0.2 + s.stress * 0.1 + (stim ? 10 : 0) + (hyperOpen ? 35 : s.hasHypertension ? 8 : 0)),
-      diastolic: Math.round(72 + s.bpRisk * 0.1 + (stim ? 6 : 0) + (hyperOpen ? 20 : s.hasHypertension ? 5 : 0)),
+      glucose: Math.round(85 + Math.min(40, pl)),
+      systolic: Math.round(112 + s.stress * 0.1 + (stim ? 10 : 0)),
+      diastolic: Math.round(72 + (stim ? 6 : 0)),
       toxicity: r2(s.toxicity),
       cardiac: r2(s.cardiac),
       diet: r2(s.diet),

@@ -93,7 +93,7 @@ test("cheio recusa comida, mas aceita remédio", () => {
   const s = fresh();
   s.satiety = 95;
   assert.equal(L.consume(s, "pizza", T0).code, "full");
-  assert.ok(L.consume(s, "losartana", T0).ok);
+  assert.ok(L.consume(s, "calmante", T0).ok);
   assert.equal(L.consume(s, "nao_existe", T0).code, "item");
 });
 
@@ -104,7 +104,7 @@ test("saudável é bem mais caro que porcaria", () => {
   assert.ok(avg(healthy) > 3 * avg(junk), `${avg(healthy)} × ${avg(junk)}`);
 });
 
-test("duas semanas de porcaria engordam e levam ao diabetes; comida saudável não", () => {
+test("duas semanas de porcaria engordam; comida saudável não (D9: sem diabetes nem pressão alta)", () => {
   const junk = fresh(11);
   const good = fresh(11);
   const end = T0 + 14 * 24 * H;
@@ -121,26 +121,29 @@ test("duas semanas de porcaria engordam e levam ao diabetes; comida saudável n�
   const fj = L.snapshot(junk, end).body.fatPct;
   const fg = L.snapshot(good, end).body.fatPct;
   assert.ok(fj > fg + 3, `gordura porcaria ${fj} × saudável ${fg}`);
-  assert.ok(junk.diabetesRisk > good.diabetesRisk + 30, `risco ${junk.diabetesRisk} × ${good.diabetesRisk}`);
-  assert.ok(junk.hasDiabetes || junk.hasHypertension, "porcaria adoece");
-  assert.ok(!good.hasDiabetes && !good.hasHypertension, "saudável não adoece");
+  assert.ok(!junk.hasDiabetes && !junk.hasHypertension, "D9: porcaria não abre diabetes nem pressão alta");
+  assert.ok(!evJunk.some((e) => e.kind === "diabetes" || e.kind === "hypertension"), "nenhum evento de doença");
   assert.ok(good.health > 70, `saúde ${good.health}`);
   inRange(junk);
 });
 
-test("diabetes sem remédio machuca; com metformina, não", () => {
-  const a = fresh();
-  const b = fresh();
-  for (const s of [a, b]) {
-    s.hasDiabetes = true;
-    s.satiety = 80;
-    s.energy = 90;
-    s.health = 80;
-  }
-  L.consume(b, "metformina", T0);
-  L.simulate(a, T0 + 10 * H);
-  L.simulate(b, T0 + 10 * H);
-  assert.ok(a.health < b.health - 1.5, `sem ${a.health} × com ${b.health}`);
+test("D9: quem tinha diabetes e pressão alta fica curado; os remédios saíram do catálogo", () => {
+  const s = fresh();
+  s.hasDiabetes = true;
+  s.hasHypertension = true;
+  s.diabetesRisk = 90;
+  s.bpRisk = 90;
+  L.simulate(s, T0 + H);
+  assert.equal(s.hasDiabetes, false);
+  assert.equal(s.hasHypertension, false);
+  assert.equal(s.diabetesRisk, 0);
+  assert.equal(s.bpRisk, 0);
+  const h = L.snapshot(s, T0 + H).health;
+  assert.equal(h.diabetes, "none");
+  assert.equal(h.hypertension, "none");
+  assert.equal(L.ITEM_BY_ID.get("metformina"), undefined);
+  assert.equal(L.ITEM_BY_ID.get("losartana"), undefined);
+  assert.equal(L.consume(s, "losartana", T0 + H).code, "item");
 });
 
 test("rotina sem moedas: dorme e descansa sozinho (sem desmaio), mas sem comer passa fome", () => {
