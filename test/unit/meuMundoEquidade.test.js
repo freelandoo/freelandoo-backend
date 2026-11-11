@@ -135,8 +135,30 @@ test("I4 — parcela do equipamento no Poder = o que ele soma à ficha", () => {
     }
   }
 });
-test("I5 — acuracidade e velocidade entre 1× e 3× a régua nos níveis 10…500", { todo: "E5 (depende da A14)" }, () => {});
-test("I6 — a mesma faixa do sorteio da rua dá a mesma distância de régua (±10%) nos níveis 5…200", { todo: "E5 (depende da A15)" }, () => {});
+test("I5 — acuracidade e velocidade entre 1× e 3× a régua nos níveis 10…500 (freio da E5, regra em uso)", () => {
+  const A = require("../../src/utils/meuMundoAdventure");
+  const rows = Bal.sectionD(500);
+  for (const r of rows.filter((x) => x.L >= 10)) {
+    assert.ok(r.accPX >= 1 && r.accPX <= 3, `nível ${r.L}: acuracidade ×${r.accPX}`);
+    assert.ok(r.spdPX >= 1 && r.spdPX <= 3, `nível ${r.L}: velocidade ×${r.spdPX}`);
+  }
+  // a tabela do §6.3 (A14): 1,45 … 2,24 e 1,09 … 1,92
+  const at = (L) => rows.find((x) => x.L === L);
+  assert.ok(Math.abs(at(10).accPX - 1.45) <= 0.05 && Math.abs(at(500).accPX - 2.24) <= 0.05);
+  assert.ok(Math.abs(at(10).spdPX - 1.09) <= 0.05 && Math.abs(at(500).spdPX - 1.92) <= 0.05);
+  // abaixo da régua, drop cheio; nunca zera
+  assert.equal(A.dropPace(0, 50), 1);
+  assert.ok(A.dropPace(A.ruler(50) * 5, 50) > 0);
+});
+test("I6 — a mesma faixa do sorteio da rua dá a mesma distância de régua (±10%) nos níveis 5…200", () => {
+  const A = require("../../src/utils/meuMundoAdventure");
+  for (const [, f] of A.STREET_FACTORS) {
+    for (const L of [5, 10, 20, 30, 60, 100, 200]) {
+      const k = A.ruler(A.levelForFactor(L, f)) / A.ruler(L);
+      assert.ok(k >= f - 1e-9 && k <= f * 1.1, `nível ${L} ×${f}: régua ×${k.toFixed(3)}`);
+    }
+  }
+});
 test("I7 — fabricar → desmontar → fabricar perde pelo menos 50% dos materiais", { todo: "E11" }, () => {});
 test("I8 — vitórias para +15 nunca abaixo de 270; cruzamento moeda × material nos níveis 6, 17, 31, 53, 80, 114 (±2)", { todo: "E9" }, () => {});
 test("I9 — vitórias de chefão para fabricar: 3 a 20 por raridade; pior caso ≤ 1,5 × o esperado", { todo: "E8, E12" }, () => {});

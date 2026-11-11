@@ -103,7 +103,8 @@ function sectionC() {
 }
 
 /** A14: freio do drop pela régua (proposta; a regra em uso NÃO tem freio). */
-const dropPace = (attr, L) => Math.min(1, Math.exp(-3 * (attr / ruler(L) - 1)));
+/** E5: a regra em uso (meuMundoAdventure.dropPace), não uma cópia. */
+const dropPace = (attr, L) => A.dropPace(attr, L);
 
 /** I5 — atributo pelo drop da luta (adulto, 15 por vitória, 45% acuracidade, 15% velocidade), com e sem o freio. */
 function sectionD(maxL = 500) {
@@ -143,11 +144,8 @@ function sectionD(maxL = 500) {
 
 /** A15 (proposta): fator sobre a régua e chances; o sorteio em uso é +3…+20 níveis. */
 const STREET_FACTORS = Object.freeze([{ f: 1, p: 0.2 }, { f: 1.1, p: 0.3 }, { f: 1.25, p: 0.2 }, { f: 1.4, p: 0.2 }, { f: 1.6, p: 0.1 }]);
-function levelForFactor(L, f) {
-  let M = L;
-  while (ruler(M) < f * ruler(L) - 1e-9) M++;
-  return M;
-}
+/** E5: a regra em uso (meuMundoAdventure.levelForFactor). */
+const levelForFactor = (L, f) => A.levelForFactor(L, f);
 function sectionE() {
   const today = [1, 5, 10, 30, 60, 100, 200].map((L) => ({ L, over: Object.fromEntries([3, 10, 12, 20].map((k) => [k, r((ruler(L + k) / ruler(L) - 1) * 100, 0)])) }));
   const proposal = [1, 5, 10, 30, 60, 100, 200].map((L) => ({ L, plus: Object.fromEntries(STREET_FACTORS.filter((x) => x.f > 1).map((x) => [x.f, levelForFactor(L, x.f) - L])) }));
@@ -595,7 +593,7 @@ function printMd(x) {
   console.log(out.join("\n"));
 }
 
-module.exports = { duel, evenFight, ruler, dropPace, levelForFactor, STREET_FACTORS, all, proposalItems, proposalRecipes, proposalLoot, bossWinsByRarity, craftWins, setWins, todayGear, I1_LEVELS, LEVELS };
+module.exports = { sectionD, sectionE, duel, evenFight, ruler, dropPace, levelForFactor, STREET_FACTORS, all, proposalItems, proposalRecipes, proposalLoot, bossWinsByRarity, craftWins, setWins, todayGear, I1_LEVELS, LEVELS };
 
 /** E3: as tabelas de saque em uso (catalog/loot.js), por vitória e por minuto ativo. */
 function lootLive() {

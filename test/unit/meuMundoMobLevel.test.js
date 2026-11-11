@@ -33,17 +33,21 @@ test("status do monstro crescem com o nível, sem teto", () => {
   assert.equal(new F.Fight({ kind: "cavaleiro", level: 9, seed: 3 }).level, 9);
 });
 
-test("sorteio: 20% igual, 30% +3/+4, 20% +6 a +10, 20% +12, 10% +20", () => {
+test("sorteio (E5, A15): fator da régua ×1 20%, ×1,10 30%, ×1,25 20%, ×1,40 20%, ×1,60 10%", () => {
   const r = seq(42);
-  const offs = Array.from({ length: 20000 }, () => A.rollMobLevel(20, r) - 20);
+  // nível 30: +0, +4, +9, +14, +21 (a tabela do §6.3 do plano)
+  const offs = Array.from({ length: 20000 }, () => A.rollMobLevel(30, r) - 30);
   const share = (fn) => offs.filter(fn).length / offs.length;
   const near = (v, p) => assert.ok(Math.abs(v - p) < 0.02, `${v} perto de ${p}`);
   near(share((o) => o === 0), 0.2);
-  near(share((o) => o === 3 || o === 4), 0.3);
-  near(share((o) => o >= 6 && o <= 10), 0.2);
-  near(share((o) => o === 12), 0.2);
-  near(share((o) => o === 20), 0.1);
-  assert.ok(offs.every((o) => [0, 3, 4, 6, 7, 8, 9, 10, 12, 20].includes(o)));
+  near(share((o) => o === 4), 0.3);
+  near(share((o) => o === 9), 0.2);
+  near(share((o) => o === 14), 0.2);
+  near(share((o) => o === 21), 0.1);
+  assert.ok(offs.every((o) => [0, 4, 9, 14, 21].includes(o)));
+  for (const [L, row] of [[1, [1, 2, 3, 4]], [10, [2, 4, 6, 9]], [100, [11, 27, 42, 63]], [200, [21, 52, 82, 123]]]) {
+    assert.deepEqual([1.1, 1.25, 1.4, 1.6].map((f) => A.levelForFactor(L, f) - L), row, `nível ${L}`);
+  }
   // nunca abaixo do meu nível; acima de 60 vale
   assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(1, r)).every((l) => l >= 1));
   assert.ok(Array.from({ length: 500 }, () => A.rollMobLevel(58, r)).some((l) => l > 60));

@@ -123,8 +123,10 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   const drop = verdict.abandoned
     ? {}
     : Adv.rollFightDrop({ ageDays: stage.ageDays, adult: stage.adult, win: verdict.win, health: before.health, vitality: before.vitality, stress: before.stress }, R);
+  // E5 (A14): freio pela régua do nível do personagem (o recibo mostra o drop já freado)
+  const paced = Adv.pacedDrop(drop, s, Math.max(1, Number(setup.hero) || Adv.levelOf(Number(adv.xp)).level));
   const gained = {};
-  for (const [k, n] of Object.entries(drop)) {
+  for (const [k, n] of Object.entries(paced)) {
     const got = Life.dropAttr(s, k, n);
     if (got > 0) gained[k] = r2(got);
   }

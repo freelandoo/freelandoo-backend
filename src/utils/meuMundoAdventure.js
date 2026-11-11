@@ -11,9 +11,11 @@
 "use strict";
 
 const Life = require("./meuMundoLife");
+const FightSim = require("./meuMundoFight");
 
 // R4 (trilha E4): equipamento proporcional (multiplica a ficha) e chaves hp/acc/spd/int/dex.
-const RULES_VERSION = "R4";
+// R5 (trilha E5): freio do drop de atributo pela régua e monstro da rua por fator da régua.
+const RULES_VERSION = "R5";
 
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,
@@ -179,15 +181,46 @@ function minigameCoins(activeMs, win, rand) {
   return jitter(COINS.minigamePerMin * (activeMs / MIN_MS) * (win ? COINS.minigameWin : 1), rand);
 }
 
-// ═══ NÍVEL DO MONSTRO DA RUA (regra do Alex, 2026-11-06) ═══ — sorteado a partir
-// do nível de quem o viu primeiro: 20% igual, 30% +3 ou +4, 20% +6 a +10, 20% +12 e
-// 10% +20. Os status dele saem desse nível (MOB_SHEETS).
-const MOB_LEVEL_BANDS = Object.freeze([[0.2, 0, 0], [0.5, 3, 4], [0.7, 6, 10], [0.9, 12, 12], [1, 20, 20]]);
+// ═══ RÉGUA DO NÍVEL (trilha E5) ═══ — o `rate` de um monstro do nível (a ficha da luta,
+// mobBase): 100 no nível 1 e +18,52 por nível, sem teto. É a régua do atributo e do monstro da rua.
+const ruler = (level) => FightSim.mobBase(Math.max(1, Math.round(Number(level) || 1))).rate;
+
+// ═══ NÍVEL DO MONSTRO DA RUA ═══ — sorteado a partir do nível de quem o viu primeiro.
+// Até a E4 (regra do Alex, 2026-11-06) eram níveis somados (20% igual, 30% +3/+4, 20% +6…+10,
+// 20% +12, 10% +20): no nível 1 um +20 era +370% de régua e no 200 só +10%. Trilha E5 (A15, a
+// recomendação do §4 seguida por ordem do Alex de tocar a trilha toda): FATOR sobre a régua com as
+// mesmas chances — ×1,00 (20%), ×1,10 (30%), ×1,25 (20%), ×1,40 (20%), ×1,60 (10%); o nível é o
+// menor M com régua(M) ≥ fator × régua(L). No nível 30 dá quase o sorteio de antes.
+const STREET_FACTORS = Object.freeze([[0.2, 1], [0.5, 1.1], [0.7, 1.25], [0.9, 1.4], [1, 1.6]]);
+function levelForFactor(L, f) {
+  const want = f * ruler(L) - 1e-9;
+  // régua linear: estimativa direta e ajuste fino (nunca abaixo de L)
+  let M = Math.max(L, Math.floor(1 + (want - 100) / (ruler(2) - 100)) - 1);
+  while (ruler(M) < want) M++;
+  while (M > L && ruler(M - 1) >= want) M--;
+  return M;
+}
 function rollMobLevel(playerLevel, rand) {
   const L = Math.max(1, Math.round(Number(playerLevel) || 1));
   const r = rand();
-  const [, lo, hi] = MOB_LEVEL_BANDS.find(([p]) => r < p) || MOB_LEVEL_BANDS[MOB_LEVEL_BANDS.length - 1];
-  return L + lo + Math.floor(rand() * (hi - lo + 1));
+  const [, f] = STREET_FACTORS.find(([p]) => r < p) || STREET_FACTORS[STREET_FACTORS.length - 1];
+  return levelForFactor(L, f);
+}
+
+// ═══ RITMO DO ATRIBUTO (trilha E5, A14) ═══ — o drop de cada atributo da luta é multiplicado por
+// min(1, e^(−3·(atributo ÷ régua(L) − 1))): abaixo da régua, drop cheio; acima, cai rápido sem zerar.
+// Sem teto: o atributo fica entre 1× e ~2,3× a régua do nível (I5).
+function dropPace(attr, level) {
+  return Math.min(1, Math.exp(-3 * (Math.max(0, Number(attr) || 0) / ruler(level) - 1)));
+}
+/** O drop com o freio aplicado, por atributo (frações de ponto valem: Life.dropAttr soma). */
+function pacedDrop(drop, attrs, level) {
+  const out = {};
+  for (const [k, n] of Object.entries(drop || {})) {
+    const v = Math.round(n * dropPace(attrs ? attrs[k] : 0, level) * 100) / 100;
+    if (v > 0) out[k] = v;
+  }
+  return out;
 }
 
 /** Fator da disposição pela energia/estresse de ANTES da atividade: 0,3 (exausto e estressado) a 1,3 (descansado e calmo). */
@@ -307,6 +340,11 @@ function trophyKind(origin, kind) {
 }
 
 module.exports = {
+  ruler,
+  STREET_FACTORS,
+  levelForFactor,
+  dropPace,
+  pacedDrop,
   RULES_VERSION,
   XP,
   xpToNext,
