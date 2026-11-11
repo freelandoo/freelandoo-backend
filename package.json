@@ -67,6 +67,7 @@
     "test:meu-mundo-lugares": "node test/meu-mundo-lugares.e2e.js",
     "test:meu-mundo-arquivo": "node test/meu-mundo-arquivo.e2e.js",
     "test:meu-mundo-predios": "node test/meu-mundo-predios.e2e.js",
+    "test:meu-mundo-dominios": "node test/meu-mundo-dominios.e2e.js",
     "test:meu-mundo-bairros": "node test/meu-mundo-bairros-area.e2e.js",
     "test:meu-mundo-poder": "node test/meu-mundo-poder.e2e.js",
     "test:meu-mundo-placar": "node test/meu-mundo-placar.e2e.js",

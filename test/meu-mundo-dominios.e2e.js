@@ -1,0 +1,241 @@
+// test/meu-mundo-dominios.e2e.js — lore v2 D1: motor dos Domínios.
+//
+// O SERVIDOR decide tudo: o portal só abre o Domínio com o nível do treinador E a
+// travessia (setor 10 do anterior vencido); o setor N só depois do N−1; o monstro e o
+// nível vêm do setor; o progresso só sobe pela luta re-simulada (origem "domain"), na
+// mesma transação do recibo — reenvio, abandono e derrota não abrem setor; vencer o
+// setor 10 abre a passagem. Administrador passa direto (MM_ADMIN_LOCKS=1 desliga).
+//
+// Roda: TEST_DATABASE_URL=postgres://postgres:<senha>@127.0.0.1:55432/freelandoo_test npm run test:meu-mundo-dominios
+// Só Postgres LOCAL e descartável (derruba e recria as tabelas do Meu Mundo).
+
+const url = process.env.TEST_DATABASE_URL;
+if (!url || !/@(localhost|127\.0\.0\.1)[:/]/.test(url)) {
+  console.error("TEST_DATABASE_URL precisa apontar para um Postgres LOCAL e descartável.");
+  process.exit(2);
+}
+process.env.DATABASE_URL = url;
+process.env.DATABASE_SSL = "false";
+
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+
+let PASS = 0;
+let FAIL = 0;
+function check(label, cond, extra = "") {
+  if (cond) {
+    PASS++;
+    console.log(`✓ ${label}`);
+  } else {
+    FAIL++;
+    console.log(`✗ ${label}${extra ? " — " + extra : ""}`);
+  }
+}
+
+async function bootstrap(pool) {
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+                    tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
+                    tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
+                    tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+                    tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
+  await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
+  await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
+  await require("./helpers/mmPolens").polenTables(pool);
+  const all = fs
+    .readdirSync(path.join(__dirname, "../src/databases/migrations"))
+    .filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f))
+    .sort();
+  for (const f of all) await pool.query(fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8"));
+}
+
+function fakeRes() {
+  const out = { status: 200, body: null };
+  const res = {
+    set() {
+      return res;
+    },
+    status(n) {
+      out.status = n;
+      return res;
+    },
+    json(b) {
+      out.body = b;
+      return res;
+    },
+  };
+  return { res, out };
+}
+
+async function main() {
+  const pool = require("../src/databases");
+  await bootstrap(pool);
+  // a migration roda duas vezes sem erro (idempotente)
+  const mig = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/444_meu_mundo_dominios.sql"), "utf8");
+  await pool.query(mig);
+  await pool.query(mig);
+  check("mig 444 idempotente (rodou 3×)", true);
+  const Life = require("../src/services/MeuMundoLifeService");
+  Life.adminPerks = false;
+  const Dom = require("../src/services/MeuMundoDomainService");
+  const Adv = require("../src/services/MeuMundoAdventureService");
+  const Ctl = require("../src/controllers/MeuMundoController");
+  const Trainer = require("../src/utils/meuMundoTrainer");
+  const D = require("../src/utils/meuMundoDomains");
+  const F = require("../src/utils/meuMundoFight");
+
+  const user = async (name) => {
+    const id = crypto.randomUUID();
+    await pool.query(`INSERT INTO tb_user VALUES ($1, $2, $3)`, [id, name, `${name}@mm.test`]);
+    await Life.peek(id);
+    return id;
+  };
+  const setLevel = (id, L) =>
+    pool.query(`INSERT INTO tb_mm_trainer (id_user, xp, level) VALUES ($1, $2, $3) ON CONFLICT (id_user) DO UPDATE SET xp = EXCLUDED.xp, level = EXCLUDED.level`, [id, Trainer.xpForLevel(L), L]);
+  const setBest = (id, domain, s) =>
+    pool.query(`INSERT INTO tb_mm_domain_progress (id_user, domain, best_sector) VALUES ($1, $2, $3) ON CONFLICT (id_user, domain) DO UPDATE SET best_sector = EXCLUDED.best_sector`, [id, domain, s]);
+  const best = async (id, domain) => {
+    const r = (await pool.query(`SELECT best_sector, wins, crossed_at FROM tb_mm_domain_progress WHERE id_user = $1 AND domain = $2`, [id, domain])).rows[0];
+    return r ? { best: Number(r.best_sector), wins: Number(r.wins), crossed: !!r.crossed_at } : { best: 0, wins: 0, crossed: false };
+  };
+  // forte de verdade: a luta de teste termina em vitória
+  const strong = (id) => pool.query(`UPDATE tb_mm_character SET strength = 4000, speed = 4000, intelligence = 4000, dexterity = 4000, energy = 100, stress = 0 WHERE id_user = $1 AND status = 'alive'`, [id]);
+  const call = async (fn, id, { params = {}, body = {} } = {}) => {
+    const { res, out } = fakeRes();
+    await Ctl[fn]({ user: { id_user: id }, params, body }, res);
+    return out;
+  };
+  /** Joga a luta do ticket como o aparelho (entrada quantizada) e fecha pelo servidor. */
+  const play = async (id, ticket) => {
+    const su = ticket.setup;
+    const fight = new F.Fight({ kind: su.kind, level: su.level, hero: su.hero || undefined, peer: su.peer || undefined, tier: su.tier || undefined, body: su.body || undefined, seed: su.seed, stats: su.stats, style: su.style || undefined, gear: su.gear || undefined, temper: su.temper || undefined, affection: su.affection || undefined });
+    const frames = [];
+    for (let i = 0; i < 40000 && !fight.over; i++) {
+      const q = F.quantizeInput({ mx: Math.sin(i / 45) * 0.5, mz: 0.85, run: false, attack: i % 9 === 0, dodge: i % 61 === 0 });
+      F.pushFrame(frames, q);
+      fight.step(q);
+    }
+    await pool.query(`UPDATE tb_mm_fight SET started_at = NOW() - INTERVAL '30 minutes' WHERE id_fight = $1`, [ticket.ticket]);
+    return { win: !!(fight.over && fight.over.win), frames, done: await Adv.fightFinish(id, { ticket: ticket.ticket, frames }) };
+  };
+
+  // ── conta nova: nível 1 ──
+  const nu = await user("mmd_novo");
+  let st = await Dom.state(nu);
+  check("GET /domains: os seis na ordem da travessia", st.domains.map((d) => d.id).join() === D.DOMAIN_IDS.join(), JSON.stringify(st.domains.map((d) => d.id)));
+  check("nível 1: Floresta fechada pelo treinador (abre no 5)", !st.domains[0].open && st.domains[0].lock.code === "trainer" && st.domains[0].lock.level === 5, JSON.stringify(st.domains[0].lock));
+  check("nível 1: Cânion fechado pela travessia", st.domains[1].lock.code === "crossing" && st.domains[1].lock.from === "floresta");
+  let r = await call("domainsGet", nu);
+  check("rota GET /domains responde 200 com o treinador", r.status === 200 && r.body.trainer === 1 && r.body.bypass === false && r.body.sectors === 10);
+  r = await call("domainsEnter", nu, { body: { domain: "floresta" } });
+  check("POST /domains/enter no nível 1 → 403 com o nível que abre", r.status === 403 && r.body.code === "closed" && r.body.level === 5, JSON.stringify(r));
+  r = await call("domainsEnter", nu, { body: { domain: "atlantida" } });
+  check("Domínio desconhecido → 404", r.status === 404 && r.body.code === "domain");
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 1 } });
+  check("luta no setor 1 no nível 1 → 403 (o servidor recusa)", r.status === 403 && r.body.code === "closed", JSON.stringify(r));
+
+  // ── nível 5: a Floresta abre, só o setor 1 ──
+  await setLevel(nu, 5);
+  r = await call("domainsEnter", nu, { body: { domain: "floresta" } });
+  check("nível 5: entra na Floresta", r.status === 200 && r.body.domain.id === "floresta" && r.body.domain.sectors[0].open && !r.body.domain.sectors[1].open);
+  r = await call("domainsEnter", nu, { body: { domain: "canion" } });
+  check("nível 5: Cânion segue fechado (travessia)", r.status === 403 && r.body.need === "crossing" && r.body.code === "closed");
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 2 } });
+  check("setor 2 antes de vencer o 1 → 403 sector", r.status === 403 && r.body.code === "sector", JSON.stringify(r));
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 1, kind: "brute", level: 3 } });
+  const t1 = r.body && r.body.fight;
+  check("setor 1: o servidor escolhe monstro e nível (ignora o que o aparelho manda)", r.status === 200 && t1.setup.kind === D.kindOf("floresta", 1) && t1.setup.level === D.sectorLevel("floresta", 1), JSON.stringify(t1 && t1.setup).slice(0, 200));
+  check("ticket com tier domain e o setor gravado", t1.setup.tier === "domain" && t1.setup.domain === "floresta" && t1.setup.sector === 1);
+  const row = (await pool.query(`SELECT origin, setup FROM tb_mm_fight WHERE id_fight = $1`, [t1.ticket])).rows[0];
+  check("tb_mm_fight: origem 'domain' (CHECK da mig 444) e setor no setup", row.origin === "domain" && row.setup.domain === "floresta" && row.setup.sector === 1);
+
+  // abandono (abrir outra luta) não sobe o setor
+  await strong(nu);
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 1 } });
+  check("abrir outra luta conta a anterior como abandono", r.status === 200 && r.body.abandoned.length === 1 && r.body.abandoned[0].result.abandoned === true);
+  check("abandono não abre setor", (await best(nu, "floresta")).best === 0);
+
+  // vitória conferida: sobe o setor, recibo com o domínio
+  const p1 = await play(nu, r.body.fight);
+  check("a luta de teste termina em vitória", p1.win, JSON.stringify(p1.done).slice(0, 200));
+  const rec = p1.done.receipt;
+  check("recibo da luta do Domínio (origem, setor e progresso)", rec && rec.result.origin === "domain" && rec.result.domain === "floresta" && rec.result.sector === 1 && rec.domain && rec.domain.best === 1 && rec.domain.opened === 2, JSON.stringify(p1.done).slice(0, 300));
+  check("tb_mm_domain_progress: setor 1 vencido", (await best(nu, "floresta")).best === 1);
+  const again = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames: p1.frames });
+  check("reenvio = o mesmo recibo, sem subir de novo", again.replay === true && again.receipt.eventId === rec.eventId);
+  const b1 = await best(nu, "floresta");
+  check("reenvio não conta outra vitória", b1.best === 1 && b1.wins === 1, JSON.stringify(b1));
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 2 } });
+  check("setor 2 abre depois de vencer o 1", r.status === 200 && r.body.fight.setup.sector === 2);
+  // gravação falsa (o "venci" do aparelho) não vale
+  const fake = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames: [[200, 0, 127, 0]] });
+  check("gravação falsa não fecha a luta nem sobe o setor", fake.code === "replay" && (await best(nu, "floresta")).best === 1, JSON.stringify(fake));
+  // derrota: o mais fraco possível, sem apertar nada
+  await pool.query(`UPDATE tb_mm_character SET strength = 1, speed = 1, intelligence = 1, dexterity = 1 WHERE id_user = $1 AND status = 'alive'`, [nu]);
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 2 } });
+  {
+    const su = r.body.fight.setup;
+    const fight = new F.Fight({ kind: su.kind, level: su.level, hero: su.hero || undefined, tier: su.tier || undefined, body: su.body || undefined, seed: su.seed, stats: su.stats, style: su.style || undefined, gear: su.gear || undefined, temper: su.temper || undefined, affection: su.affection || undefined });
+    const frames = [];
+    for (let i = 0; i < 60000 && !fight.over; i++) {
+      const q = F.quantizeInput({ mx: 0, mz: 0, run: false, attack: false, dodge: false });
+      F.pushFrame(frames, q);
+      fight.step(q);
+    }
+    await pool.query(`UPDATE tb_mm_fight SET started_at = NOW() - INTERVAL '60 minutes', expires_at = NOW() + INTERVAL '5 minutes' WHERE id_fight = $1`, [r.body.fight.ticket]);
+    const lost = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames });
+    check("derrota no setor 2: recibo sem progresso", fight.over && !fight.over.win && lost.receipt && lost.receipt.result.win === false && !lost.receipt.domain, JSON.stringify(lost).slice(0, 200));
+    check("derrota não abre o setor 3", (await best(nu, "floresta")).best === 1);
+  }
+
+  // ── setor 10: a travessia ──
+  await strong(nu);
+  await setBest(nu, "floresta", 9);
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 10 } });
+  check("setor 10 = o deus (placeholder do Brutamontes), palco do palácio", r.status === 200 && r.body.fight.setup.kind === "brute" && D.stageOf(10) === "palacio");
+  const p10 = await play(nu, r.body.fight);
+  check("vitória no setor 10 marca a travessia", p10.win && p10.done.receipt.domain && p10.done.receipt.domain.crossed === true && p10.done.receipt.domain.crossedNow === true, JSON.stringify(p10.done.receipt && p10.done.receipt.domain));
+  check("crossed_at gravado", (await best(nu, "floresta")).crossed === true);
+  st = await Dom.state(nu);
+  check("nível 5 atravessou: a passagem existe, mas o Cânion pede o nível 9", st.domains[0].passage && st.domains[0].passage.to === "canion" && st.domains[0].passage.open === false && st.domains[1].lock.code === "trainer" && st.domains[1].lock.level === 9, JSON.stringify(st.domains[1].lock));
+  await setLevel(nu, 9);
+  r = await call("domainsEnter", nu, { body: { domain: "canion" } });
+  check("nível 9 e Floresta atravessada: entra no Cânion", r.status === 200 && r.body.domain.id === "canion");
+  r = await call("domainsEnter", nu, { body: { domain: "floresta" } });
+  check("quem atravessou volta direto ao começo da Floresta", r.status === 200 && r.body.domain.sectors.every((s) => s.open));
+  r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 3 } });
+  check("setor vencido fica livre para lutar de novo", r.status === 200);
+  r = await call("domainsEnter", nu, { body: { domain: "gelo" } });
+  check("Mar de Gelo segue fechado (o Cânion não foi atravessado)", r.status === 403 && r.body.need === "crossing");
+  // um setor mais baixo vencido depois não desce o progresso
+  const p3 = await play(nu, (await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 3 } })).body.fight);
+  check("vencer um setor antigo não desce o progresso", p3.win && p3.done.receipt.domain.best === 10 && p3.done.receipt.domain.opened === null);
+
+  // ── administrador passa direto ──
+  const adm = await user("mmd_admin");
+  await pool.query(`INSERT INTO tb_user_role (id_user, id_role) SELECT $1, id_role FROM tb_role WHERE desc_role = 'Administrator'`, [adm]);
+  st = await Dom.state(adm);
+  check("admin no nível 1: os seis abertos, todos os setores", st.bypass === true && st.domains.every((d) => d.open && d.sectors.every((s) => s.open)));
+  r = await call("fightStart", adm, { body: { origin: "domain", domain: "orbital", sector: 10 } });
+  check("admin luta no setor 10 da Orbital", r.status === 200 && r.body.fight.setup.level === D.sectorLevel("orbital", 10));
+  process.env.MM_ADMIN_LOCKS = "1";
+  r = await call("domainsEnter", adm, { body: { domain: "floresta" } });
+  check("MM_ADMIN_LOCKS=1: o admin vê a trava", r.status === 403 && r.body.level === 5);
+  delete process.env.MM_ADMIN_LOCKS;
+
+  // ── as outras lutas seguem iguais ──
+  // (a Arena abre no nível 10 pela trava do prédio: aqui direto no serviço)
+  const tr = await Adv.fightStart(nu, { origin: "laminas", kind: "cavaleiro" });
+  check("luta de treino sem domain no ticket", tr.fight && tr.fight.setup.domain === null && tr.fight.setup.tier === "arena", JSON.stringify(tr).slice(0, 200));
+
+  console.log(`\n${PASS} ok, ${FAIL} falha(s)`);
+  await pool.end();
+  process.exit(FAIL ? 1 : 0);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

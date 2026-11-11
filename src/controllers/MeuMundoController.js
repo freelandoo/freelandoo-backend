@@ -12,7 +12,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function reply(res, out) {
   res.set("Cache-Control", "no-store");
   // F6: prédio fechado manda o nível que abre (o cliente desenha o cadeado com ele)
-  if (out && out.error) return res.status(out.statusCode || 400).json({ error: out.error, code: out.code, ...(out.level ? { level: out.level } : {}) });
+  // D1: Domínio fechado diz também se falta o nível ("trainer") ou a travessia ("crossing", de onde)
+  if (out && out.error) return res.status(out.statusCode || 400).json({ error: out.error, code: out.code, ...(out.level ? { level: out.level } : {}), ...(out.need ? { need: out.need } : {}), ...(out.from ? { from: out.from } : {}) });
   return res.json(out);
 }
 
@@ -437,6 +438,15 @@ async function buildingsMission(req, res) {
   return reply(res, await building().deliver(req.user.id_user, req.body || {}));
 }
 
+// Lore v2 D1: os Domínios (portal da praça). A luta do setor é o POST /fight/start com origin "domain".
+const domains = () => require("../services/MeuMundoDomainService");
+async function domainsGet(req, res) {
+  return reply(res, await domains().state(req.user.id_user));
+}
+async function domainsEnter(req, res) {
+  return reply(res, await domains().enter(req.user.id_user, req.body || {}));
+}
+
 // TESTE (hoje só admin joga): ganha um personagem da espécie na cápsula.
 async function characterTestGrant(req, res) {
   return reply(res, await MeuMundoCharacterService.testGrant(req.user.id_user, req.body || {}));
@@ -516,6 +526,8 @@ module.exports = {
   archiveGet,
   buildingsGet,
   buildingsMission,
+  domainsGet,
+  domainsEnter,
   archiveRead,
   videosList,
   videosUpload,

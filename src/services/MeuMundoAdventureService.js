@@ -31,7 +31,8 @@ const GearService = () => require("./MeuMundoGearService");
 const LOOT_MIN_ACTIVE_MS = 15000;
 
 // B8: "hall" = desafio pela cadeira do Hall; só abre por dentro (MeuMundoHallService).
-const ORIGINS = Object.freeze(["laminas", "boxe", "mob", "tutorial", "hall"]);
+// lore v2 D1: "domain" = a luta de um setor dos Domínios (o servidor escolhe monstro e nível).
+const ORIGINS = Object.freeze(["laminas", "boxe", "mob", "tutorial", "hall", "domain"]);
 const TICKET_TTL_MS = 8 * 60 * 1000;
 /** Folga entre o tempo da luta gravada e o relógio do servidor (rede, carregamento). */
 const CLOCK_SLACK_MS = 3000;
@@ -162,6 +163,8 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       hits: verdict.hits || 0,
       hitsTaken: verdict.hitsTaken || 0,
       mobId: setup.mobId ?? null,
+      domain: setup.domain ?? undefined,
+      sector: setup.sector ?? undefined,
       gainMult: mult,
       condition: Adv.conditionFactor(before.energy, before.stress),
       dropCondition: Adv.dropCondition(before.health, before.vitality, before.stress),
@@ -181,6 +184,10 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   ctx.events.push({ at: ctx.now, kind: "fight", data: { origin, kind: setup.kind, win: verdict.win, abandoned: !!verdict.abandoned, xp: level.xp } });
   // N1: vitória conferida nas Lâminas, no Boxe e no Hall soma 1 no placar da semana
   if (rec && verdict.win && !verdict.abandoned && Scores.FIGHT_GAMES.includes(origin)) await recordScore(c, idUser, origin, 1, ctx.now);
+  // D1: vitória conferida no setor do Domínio sobe o progresso na MESMA transação do recibo
+  if (origin === "domain" && rec && verdict.win && !verdict.abandoned && setup.domain && setup.sector) {
+    rec.domain = await require("./MeuMundoDomainService").advance(c, idUser, setup.domain, setup.sector, ctx.now);
+  }
   // B5: inventário de monstros (só luta de verdade; recibo repetido = já contou).
   const trophy = Adv.trophyKind(origin, setup.kind);
   if (rec && trophy && !verdict.abandoned) await Store.addTrophy(c, { idUser, kind: trophy, win: verdict.win, level: setup.level });
@@ -295,6 +302,14 @@ class MeuMundoAdventureService {
     let kind = String(body.kind || "");
     let level = Math.max(1, Math.min(3, Math.round(Number(body.level) || 1)));
     let mobId = null;
+    let domain = null;
+    if (origin === "domain") {
+      // D1: travas (nível do treinador, travessia, setor) e o monstro do setor
+      const gate = await require("./MeuMundoDomainService").fightGate(idUser, body);
+      if (gate.error) return gate;
+      domain = gate;
+      kind = gate.kind;
+    }
     if (origin === "mob") {
       mobId = Number(body.mobId);
       const m = require("../realtime/meuMundo").mobEngaged(idUser, mobId);
@@ -323,6 +338,7 @@ class MeuMundoAdventureService {
     if (!FightSim.MOB_KINDS.includes(kind)) return fail("kind");
     // no menu todos entram com os status de quem joga: o nível só pesa no prêmio, e fica no 1
     if (origin === "boxe" || origin === "laminas") level = 1;
+    if (domain) level = domain.level;
     // Kit da luta (2026-11-03, Alex: "a raposa está com espada e golpes de vampira"):
     // vestindo o personagem de uma classe (skin de classe, hoje só de admin), a
     // luta é a DELE — arma, golpes e equipamento; senão, a classe da conta.
@@ -349,7 +365,7 @@ class MeuMundoAdventureService {
         hero,
         // ringue: o adversário copia quem joga; Arena e rua: ficha do monstro; o prólogo fica de fora
         peer: origin === "boxe" ? FightSim.peerOf(kind) : origin === "hall" ? internal.hall.peer : undefined,
-        tier: origin === "mob" ? "street" : origin === "laminas" ? "arena" : undefined,
+        tier: origin === "mob" ? "street" : origin === "laminas" ? "arena" : origin === "domain" ? "domain" : undefined,
         // o corpo vestido multiplica os status (pesos em BODY_SHEETS)
         body: worn,
         seed: crypto.randomInt(1, 2 ** 31 - 1),
@@ -363,6 +379,9 @@ class MeuMundoAdventureService {
         gear: origin === "boxe" ? undefined : await GearService().fightGear(c, idUser, clan),
         appearance: origin === "boxe" ? undefined : await GearService().fightAppearance(c, idUser, clan),
         mobId,
+        // D1: o setor fica no ticket (o fim sobe o progresso por ele, nunca pelo aparelho)
+        domain: domain ? domain.domain : undefined,
+        sector: domain ? domain.sector : undefined,
         // mm3d-72: personalidade e afeto mexem na luta por probabilidade (psicopata, covarde)
         temper: origin === "tutorial" ? undefined : Soul.temperOf(s),
         affection: origin === "tutorial" ? undefined : Math.floor(Soul.soulOf(s).affection),
@@ -379,7 +398,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, hero, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
+          setup: { kind, level, hero, domain: setup.domain ?? null, sector: setup.sector ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,

@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 18; // (18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 19; // (19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -305,6 +305,11 @@ const ARRIVAL_SPOTS = Object.freeze([...AVENUE_SPOTS, ...PARKING[0].slots, ...PA
 const ARRIVAL = Object.freeze({ x: -50, z: 4.1, facing: round(Math.PI / 2) });
 // Portal "Bairros": a volta para casa. Atravessar = pedir ao servidor.
 const PORTAL = Object.freeze({ id: "portal-bairros", x: PORTAL_X, z: 0, radius: 4.5, nameKey: "centerHome" });
+// Lore v2 D1: o Portal dos Domínios, no lado leste da praça, de frente para Morkhan
+// (a entrada leste da praça passa por baixo do arco). Leva só ao primeiro Domínio
+// aberto; a tela escolhe entre os já atravessados. Dois pilares com colisão; o vão
+// de 3,5 m entre eles fica livre; o miolo (|x|, |z| <= 11) também. Fora do alcance da estátua (7,5 m).
+const DOMAIN_PORTAL = Object.freeze({ id: "portal-dominios", x: 13.2, z: 0, facing: round(-Math.PI / 2), radius: 2.8, span: 2.2, h: 4.6, nameKey: "centerDomains" });
 
 // ═══ HOSPITAL (mm3d-26) ═══ — pátio, baia da ambulância e o caminho até o anel.
 // Medidas no quadro do hospital: X = lateral da fachada (o X local do modelo),
@@ -418,6 +423,8 @@ function buildObstacles() {
   for (const [x, z, s] of PLAZA_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
   for (const [x, z] of STREET_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
   for (const [x, z, s] of STREET_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
+  // Portal dos Domínios (D1): os dois pilares do arco.
+  for (const s of [-1, 1]) push(DOMAIN_PORTAL.x, DOMAIN_PORTAL.z + s * DOMAIN_PORTAL.span, 0.45, 0.45, 0, DOMAIN_PORTAL.h);
   // Portal: dois pilares ladeando a avenida.
   for (const z of [-5.6, 5.6]) push(PORTAL_X - 1, z, 0.5, 0.5, 0, 6);
   // Cerca viva em volta, com o portão (fechado) atrás do portal.
@@ -440,6 +447,8 @@ const VISIT_POINTS = Object.freeze(
     { id: "praca", x: 0, z: 0, half: PLAZA },
     { id: "estatua_morkhan", x: MONUMENT.x, z: MONUMENT.z, r: 8 },
     { id: "portal", x: PORTAL_X, z: 0, r: 7 },
+    // D1: debaixo do arco dos Domínios
+    { id: "portal_dominios", x: DOMAIN_PORTAL.x, z: DOMAIN_PORTAL.z, r: 3 },
     // C4: o canto do Ciborgue, atrás da porta da Arena (talk:ciborgue vale daqui ou da porta)
     { id: "laminas_fundo", x: 25, z: -60.6, r: 3 },
     ...PLACES.map((p) => ({ id: p.id, x: p.interact.x, z: p.interact.z, r: p.interact.radius + 0.5 })),
@@ -546,6 +555,7 @@ function buildCenterPayload() {
     statueAssets: STATUE_ASSETS,
     arrival: ARRIVAL,
     portal: PORTAL,
+    domainPortal: DOMAIN_PORTAL,
     npcs: STREET_NPCS,
     obstacles: OBSTACLES,
     limit: LIMIT,
@@ -565,6 +575,7 @@ module.exports = {
   ARRIVAL_SPOTS,
   PARKING,
   PORTAL,
+  DOMAIN_PORTAL,
   MONUMENT,
   STREET_NPCS,
   VISIT_POINTS,

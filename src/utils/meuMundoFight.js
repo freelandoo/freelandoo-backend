@@ -537,8 +537,12 @@ const MOBS                          = {
                                           
      
                
-                                                                                                 
-                           
+     
+                                                                                             
+                                                                                       
+                                                                           
+     
+                                      
                                                                          
                
                                                                                                    
@@ -851,7 +855,7 @@ class Fight {
     const lv = mobLevelScale(this.level)
     const spots = spawnList(setup.kind)
     const mean = (list          ) => list.reduce((a, b) => a + b, 0) / list.length
-    const foeLevel = setup.tier === "street" ? this.level : this.heroLevel
+    const foeLevel = setup.tier === "street" || setup.tier === "domain" ? this.level : this.heroLevel
     const base = setup.tier ? mobBase(foeLevel) : { hp: heroLevelScale(foeLevel).hp, rate: 100 + levelRate(foeLevel) }
     const normal = base.hp
     const rated = base.rate

@@ -116,6 +116,9 @@ router.get("/archive", ...admin, asyncHandler(MeuMundoController.archiveGet));
 // Lore v2 F6: prédios por nível do treinador (a trava em si mora em cada rota de prédio)
 router.get("/buildings", ...admin, asyncHandler(MeuMundoController.buildingsGet));
 router.post("/buildings/mission", ...admin, asyncHandler(MeuMundoController.buildingsMission));
+// Lore v2 D1: Domínios — a tela do portal e a entrada na cena (travas: treinador + travessia)
+router.get("/domains", ...admin, asyncHandler(MeuMundoController.domainsGet));
+router.post("/domains/enter", ...admin, asyncHandler(MeuMundoController.domainsEnter));
 router.post("/archive/read", ...admin, asyncHandler(MeuMundoController.archiveRead));
 const videoAdmin = [authMiddleware, roleMiddleware("Administrator")];
 router.get("/videos", ...videoAdmin, asyncHandler(MeuMundoController.videosList));
