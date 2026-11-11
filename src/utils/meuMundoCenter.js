@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 19; // (19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 20; // (20 = Pipa na porta do Boxe, lore v2 C5; 19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -233,6 +233,10 @@ const STREET_NPCS = Object.freeze(
     // Lore v2 C4 (cap. 6): o Ciborgue treina sozinho no fundo da Arena das Lâminas, no
     // canto sudeste, ao lado da porta, de frente para a parede (não olha para quem chega).
     { id: "ciborgue", x: 25, z: -60.6, facing: -Math.PI / 2, body: "ciborgue" },
+    // Lore v2 C5 (cap. 8): Pipa, a sobrinha do Brutamontes, grita "Fubá!" para o ringue,
+    // na frente do Boxe, ao lado da porta (a "arquibancada" de quem não entra), virada para
+    // o prédio e a porta. Sempre lá. Corpo de Raposa adulta; o lenço amarelo é arte do Alex.
+    { id: "pipa", x: -1.8, z: 57, facing: -2.2, body: "raposa_adulta" },
   ].map((n) => Object.freeze({ ...n, facing: round(n.facing), radius: 2.4 }))
 );
 const PLAZA_LAMPS = Object.freeze([[11.6, 15.2], [-11.6, 15.2], [11.6, -15.2], [-11.6, -15.2], [15.2, 11.6], [-15.2, 11.6], [15.2, -11.6], [-15.2, -11.6]].map((p) => Object.freeze(p)));
@@ -451,6 +455,8 @@ const VISIT_POINTS = Object.freeze(
     { id: "portal_dominios", x: DOMAIN_PORTAL.x, z: DOMAIN_PORTAL.z, r: 3 },
     // C4: o canto do Ciborgue, atrás da porta da Arena (talk:ciborgue vale daqui ou da porta)
     { id: "laminas_fundo", x: 25, z: -60.6, r: 3 },
+    // C5: o lugar da Pipa, ao lado da porta do Boxe (talk:pipa vale daqui ou da porta)
+    { id: "boxe_pipa", x: -1.8, z: 57, r: 3 },
     ...PLACES.map((p) => ({ id: p.id, x: p.interact.x, z: p.interact.z, r: p.interact.radius + 0.5 })),
   ].map((p) => Object.freeze(p))
 );

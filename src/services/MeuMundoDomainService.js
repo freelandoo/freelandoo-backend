@@ -15,11 +15,15 @@ const AuthStorage = require("../storages/AuthStorage");
 const TrainerStore = require("../storages/MeuMundoTrainerStorage");
 const Trainer = require("../utils/meuMundoTrainer");
 const D = require("../utils/meuMundoDomains");
+const GearStore = require("../storages/MeuMundoGearStorage");
+const MeuMundoPlaceService = require("./MeuMundoPlaceService");
 
 const ERRORS = {
   domain: ["Domínio desconhecido", 404],
   closed: ["Esse Domínio ainda está fechado", 403],
   sector: ["Esse setor ainda está fechado", 403],
+  place: ["Lugar desconhecido", 404],
+  placeFar: ["Chegue à clareira primeiro", 409],
 };
 const fail = (code, extra = {}) => {
   const [error, statusCode] = ERRORS[code];
@@ -89,6 +93,41 @@ class MeuMundoDomainService {
     if (lock) return lockFail(lock);
     if (!D.sectorOpen(id, sector, trainer, best, bypass)) return fail("sector", { sector, best: best[id] || 0 });
     return { domain: id, sector, kind: D.kindOf(id, sector), level: D.sectorLevel(id, sector) };
+  }
+
+  /**
+   * Lore v2 C5 — POST /domains/place { domain, place, spot? }: a cena do Domínio é do
+   * aparelho (não há sala), então a chegada a um lugar dela vem como pedido, e o
+   * SERVIDOR confere que dá para estar lá: Domínio aberto e o setor do lugar ao alcance
+   * (o anterior vencido). Grava "visit" <place> (o check `visit:pedraverde`).
+   * `spot: "golem"` (a ~4 m do Golem sentado) só vale logo depois de chegar à clareira
+   * (a última visita foi o lugar, há pouco) e SEM ARMA equipada: armado, não grava e
+   * devolve `armed` (o Golem manda largar o ferro). Só um fato, como a visita da sala:
+   * sem withLife, sem prêmio (o passo entrega pelo recibo do capítulo).
+   */
+  static async place(idUser, body = {}, db = pool, now = Date.now()) {
+    const id = String(body.domain || "");
+    if (!D.domainOf(id)) return fail("domain");
+    const placeId = String(body.place || "");
+    const def = D.placeOf(id, placeId);
+    if (!def) return fail("place");
+    const spot = body.spot == null || body.spot === "" ? null : String(body.spot);
+    if (spot && !(def.spots || []).includes(spot)) return fail("place");
+    const trainer = await levelOf(db, idUser);
+    const bypass = await bypassOf(db, idUser);
+    const best = await bestOf(db, idUser);
+    const lock = D.lockOf(id, trainer, best, bypass);
+    if (lock) return lockFail(lock);
+    if (!D.placeOpen(id, placeId, best, bypass)) return fail("sector", { sector: def.sector, best: best[id] || 0 });
+    if (!spot) {
+      const recorded = await MeuMundoPlaceService.recordVisit(idUser, placeId, db);
+      return { domain: id, place: placeId, spot: null, recorded, armed: false };
+    }
+    if (!(await MeuMundoPlaceService.isAt(db, idUser, [placeId, spot], now))) return fail("placeFar");
+    const eq = await GearStore.equipped(db, idUser);
+    if (eq.weapon) return { domain: id, place: placeId, spot, recorded: false, armed: true };
+    const recorded = await MeuMundoPlaceService.recordVisit(idUser, spot, db);
+    return { domain: id, place: placeId, spot, recorded, armed: false };
   }
 
   /**

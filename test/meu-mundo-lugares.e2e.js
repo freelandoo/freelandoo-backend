@@ -149,6 +149,12 @@ async function main() {
   const { isNight } = require("../src/realtime/meuMundoMobs");
   if (isNight(Date.now())) check("talk:fulvo no pedestal de Morkhan, de noite", r.ok === true && (await sat("talk:fulvo")).ok, JSON.stringify(r));
   else check("talk:fulvo de dia → far (ele só está lá de noite)", r.code === "far" && !(await sat("talk:fulvo")).ok, JSON.stringify(r));
+  // ── C5: Pipa (porta do Boxe ou o lugar dela) ──
+  r = await Quest.mark(id, { mark: "talk", npc: "pipa" });
+  check("talk:pipa longe do Boxe (última visita = Morkhan) → far", r.code === "far");
+  await PlaceSvc.recordVisit(id, "boxe_pipa");
+  r = await Quest.mark(id, { mark: "talk", npc: "pipa" });
+  check("talk:pipa ao lado da porta do Boxe", r.ok === true && (await sat("talk:pipa")).ok, JSON.stringify(r));
 
   // ── C3: a sala do Paint grava a chegada à ilha de Bastor (paintTop) ──
   const Paint = require("../src/realtime/meuMundoPaint");

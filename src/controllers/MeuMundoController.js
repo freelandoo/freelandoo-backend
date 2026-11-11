@@ -446,6 +446,10 @@ async function domainsGet(req, res) {
 async function domainsEnter(req, res) {
   return reply(res, await domains().enter(req.user.id_user, req.body || {}));
 }
+// lore v2 C5: chegou a um lugar da cena do Domínio (Pedraverde, o Golem)
+async function domainsPlace(req, res) {
+  return reply(res, await domains().place(req.user.id_user, req.body || {}));
+}
 
 // TESTE (hoje só admin joga): ganha um personagem da espécie na cápsula.
 async function characterTestGrant(req, res) {
@@ -528,6 +532,7 @@ module.exports = {
   buildingsMission,
   domainsGet,
   domainsEnter,
+  domainsPlace,
   archiveRead,
   videosList,
   videosUpload,

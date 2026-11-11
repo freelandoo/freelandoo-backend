@@ -148,6 +148,42 @@ async function main() {
   }
   r = await call("domainsEnter", nu, { body: { domain: "canion" } });
   check("nível 5: Cânion segue fechado (travessia)", r.status === 403 && r.body.need === "crossing" && r.body.code === "closed");
+
+  // ── C5: Pedraverde e o Golem (POST /domains/place) ──
+  {
+    const visits = async (id, place) => Number((await pool.query(`SELECT COUNT(*)::int AS n FROM tb_mm_character_event e JOIN tb_mm_character ch ON ch.id_character = e.id_character WHERE ch.id_user = $1 AND e.kind = 'visit' AND e.data->>'place' = $2`, [id, place])).rows[0].n);
+    check("C5: a tela manda o ponto do Golem dentro de Pedraverde", JSON.stringify(D.view(5, {}, false)[0].places) === JSON.stringify([{ id: "pedraverde", sector: 6, spots: ["golem"] }]));
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde" } });
+    check("C5: Pedraverde com o setor 5 ainda fechado → 403 (o servidor recusa)", r.status === 403 && r.body.code === "sector", JSON.stringify(r));
+    check("C5: ...e não grava a visita", (await visits(nu, "pedraverde")) === 0);
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "ninho" } });
+    check("C5: lugar que não existe no Domínio → 404", r.status === 404 && r.body.code === "place");
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde", spot: "porta" } });
+    check("C5: ponto que não existe no lugar → 404", r.status === 404 && r.body.code === "place");
+    r = await call("domainsPlace", nu, { body: { domain: "canion", place: "pedraverde" } });
+    check("C5: Pedraverde não é lugar do Cânion → 404", r.status === 404 && r.body.code === "place");
+    const lone = await user("mmd_pedra_n1");
+    r = await call("domainsPlace", lone, { body: { domain: "floresta", place: "pedraverde" } });
+    check("C5: nível 1 → 403 com o nível que abre", r.status === 403 && r.body.code === "closed" && r.body.level === 5);
+
+    await setBest(nu, "floresta", 5);
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde", spot: "golem" } });
+    check("C5: o Golem antes de chegar à clareira → 409", r.status === 409 && r.body.code === "placeFar", JSON.stringify(r));
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde" } });
+    check("C5: setor 5 vencido → chega a Pedraverde e grava visit:pedraverde", r.status === 200 && r.body.recorded === true && r.body.spot === null && (await visits(nu, "pedraverde")) === 1, JSON.stringify(r));
+    await pool.query(`INSERT INTO tb_mm_equip (id_user, slot, item_id) VALUES ($1, 'weapon', 'w_test') ON CONFLICT (id_user, slot) DO UPDATE SET item_id = EXCLUDED.item_id`, [nu]);
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde", spot: "golem" } });
+    check("C5: armado → o Golem manda largar o ferro e o passo não conta", r.status === 200 && r.body.armed === true && r.body.recorded === false && (await visits(nu, "golem")) === 0, JSON.stringify(r));
+    await pool.query(`DELETE FROM tb_mm_equip WHERE id_user = $1 AND slot = 'weapon'`, [nu]);
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde", spot: "golem" } });
+    check("C5: sem arma → grava visit:golem", r.status === 200 && r.body.armed === false && r.body.recorded === true && (await visits(nu, "golem")) === 1, JSON.stringify(r));
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde", spot: "golem" } });
+    check("C5: de novo no Golem (a última visita é ele) → grava de novo", r.status === 200 && r.body.recorded === true);
+    await pool.query(`UPDATE tb_mm_character_event SET at = at - INTERVAL '2 hours' WHERE kind = 'visit' AND id_character IN (SELECT id_character FROM tb_mm_character WHERE id_user = $1)`, [nu]);
+    r = await call("domainsPlace", nu, { body: { domain: "floresta", place: "pedraverde", spot: "golem" } });
+    check("C5: visita velha (> 1 h) → 409, precisa chegar de novo", r.status === 409 && r.body.code === "placeFar");
+    await pool.query(`DELETE FROM tb_mm_domain_progress WHERE id_user = $1`, [nu]);
+  }
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 2 } });
   check("setor 2 antes de vencer o 1 → 403 sector", r.status === 403 && r.body.code === "sector", JSON.stringify(r));
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 1, kind: "brute", level: 3 } });

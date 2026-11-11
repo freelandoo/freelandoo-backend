@@ -92,10 +92,26 @@ const TARGET = Object.freeze([0.9, 0.86, 0.82, 0.78, 0.74, 0.7, 0.66, 0.62, 0.56
 /** Nível de aventura que o robô usa em cada setor (quem chega ao fundo já lutou mais). */
 const heroOf = (domainId, sector) => 1 + Math.floor((sector - 1) / 2);
 
-/** Lugares da cena: Pedraverde (a clareira com o Golem sentado) fica ao lado do setor 6 da Floresta. */
+/**
+ * Lugares da cena: Pedraverde (a clareira com o Golem sentado) fica ao lado do setor 6 da Floresta.
+ * `spots` = pontos dentro do lugar que também viram visita (C5: "golem", a ~4 m dele, sem arma).
+ */
 const PLACES_BY_DOMAIN = Object.freeze({
-  floresta: Object.freeze([Object.freeze({ id: "pedraverde", sector: 6 })]),
+  floresta: Object.freeze([Object.freeze({ id: "pedraverde", sector: 6, spots: Object.freeze(["golem"]) })]),
 });
+
+/**
+ * C5: o lugar já está ao alcance? A clareira fica ao lado do setor dela, então abre
+ * junto com o setor (o anterior vencido). Devolve o lugar ou null.
+ */
+function placeOf(domainId, placeId) {
+  return (PLACES_BY_DOMAIN[domainId] || []).find((p) => p.id === placeId) || null;
+}
+function placeOpen(domainId, placeId, best = {}, bypass = false) {
+  const p = placeOf(domainId, placeId);
+  if (!p) return false;
+  return !!bypass || p.sector <= (Number(best[domainId]) || 0) + 1;
+}
 
 /** Os três palcos de luta por Domínio (entrada, setores fundos, palácio do deus). */
 function stageOf(sector) {
@@ -193,7 +209,7 @@ function view(trainerLevel, best, bypass = false) {
       best: top,
       crossed: top >= SECTORS,
       // trecho de passagem: aparece depois do setor 10 vencido
-      places: (PLACES_BY_DOMAIN[d.id] || []).map((p) => ({ ...p })),
+      places: (PLACES_BY_DOMAIN[d.id] || []).map((p) => ({ id: p.id, sector: p.sector, spots: [...(p.spots || [])] })),
       passage: next && top >= SECTORS ? { to: next.id, open: !lockOf(next.id, trainerLevel, best, bypass) } : null,
       sectors: Array.from({ length: SECTORS }, (_, k) => {
         const s = k + 1;
@@ -221,6 +237,8 @@ module.exports = {
   FOES_BY_DOMAIN,
   LEVELS_BY_DOMAIN,
   PLACES_BY_DOMAIN,
+  placeOf,
+  placeOpen,
   TARGET,
   heroOf,
   foeOf,

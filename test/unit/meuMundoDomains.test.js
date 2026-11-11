@@ -154,7 +154,7 @@ test("D2: robô — com o Poder recomendado vence quase sempre o setor 1 e menos
 
 test("D2: Pedraverde é um lugar da cena da Floresta (ao lado do setor 6), mandado pela tela", () => {
   const fl = D.view(5, {})[0];
-  assert.deepEqual(fl.places, [{ id: "pedraverde", sector: 6 }]);
+  assert.deepEqual(fl.places, [{ id: "pedraverde", sector: 6, spots: ["golem"] }]);
   assert.deepEqual(D.view(30, {}, true)[1].places, [], "o Cânion ainda não tem lugar");
   assert.equal(fl.sectors[5].foe.id, "sonambulo");
 });

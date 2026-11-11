@@ -46,6 +46,8 @@ const NPCS = Object.freeze({
   // (07-falas §12, pergunta 3, pela recomendação: ninguém entra no bairro do outro povo).
   ciborgue: Object.freeze({ places: Object.freeze(["laminas", "laminas_fundo"]) }),
   fulvo: Object.freeze({ places: Object.freeze(["praca", "estatua_morkhan"]), hours: "night" }),
+  // C5 (cap. 8): Pipa grita para o ringue, na frente do Boxe (porta ou o lugar dela).
+  pipa: Object.freeze({ places: Object.freeze(["boxe", "boxe_pipa"]) }),
 });
 
 /** Ponto circular (`r`) ou quadrado (`half`). */

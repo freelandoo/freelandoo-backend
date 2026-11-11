@@ -119,6 +119,7 @@ router.post("/buildings/mission", ...admin, asyncHandler(MeuMundoController.buil
 // Lore v2 D1: Domínios — a tela do portal e a entrada na cena (travas: treinador + travessia)
 router.get("/domains", ...admin, asyncHandler(MeuMundoController.domainsGet));
 router.post("/domains/enter", ...admin, asyncHandler(MeuMundoController.domainsEnter));
+router.post("/domains/place", ...admin, asyncHandler(MeuMundoController.domainsPlace));
 router.post("/archive/read", ...admin, asyncHandler(MeuMundoController.archiveRead));
 const videoAdmin = [authMiddleware, roleMiddleware("Administrator")];
 router.get("/videos", ...videoAdmin, asyncHandler(MeuMundoController.videosList));
