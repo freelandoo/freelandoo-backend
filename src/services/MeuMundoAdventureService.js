@@ -19,13 +19,13 @@ const Life = require("../utils/meuMundoLife");
 const Soul = require("../utils/meuMundoSoul");
 const Adv = require("../utils/meuMundoAdventure");
 const FightSim = require("../utils/meuMundoFight");
-const Gear = require("../utils/meuMundoGear");
 const TrainerService = require("./MeuMundoTrainerService");
 const Scores = require("../utils/meuMundoScores");
 const ScoreStore = require("../storages/MeuMundoScoreStorage");
 const { clanOfBody, usesHammer, usesBow, usesGun } = require("../utils/meuMundoClans");
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
+const RewardService = () => require("./MeuMundoRewardService");
 
 /** Derrota só dá o drop garantido com esta participação (tempo ativo conferido); vitória sempre dá. */
 const LOOT_MIN_ACTIVE_MS = 15000;
@@ -133,11 +133,11 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   ctx.coins += coins;
   const xpGain = verdict.abandoned ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
   // Drop: recompensa básica GARANTIDA com participação válida; vitória aumenta.
-  const family = Adv.ACTIVITIES[activity].loot;
+  // E3: porta única do saque, pela tabela nomeada da atividade (fight:laminas / fight:boxe)
   const drops =
     verdict.abandoned || (!verdict.win && practice.activeMs < LOOT_MIN_ACTIVE_MS)
       ? []
-      : await GearService().deliver(c, idUser, Gear.rollLoot(family, { win: verdict.win, activeMs: practice.activeMs }, GearService().R), ctx);
+      : await RewardService().grant(c, idUser, { table: RewardService().tableOf(activity), ctx, R: GearService().R, roll: { win: verdict.win, activeMs: practice.activeMs, level: setup.level } });
   const level = addXp(adv, xpGain);
   // F2: o treinador (a conta) leva uma fração do XP da luta, com teto do dia
   const trainer = await TrainerService.grant(c, idUser, "fight", level.xp, ctx.now);
@@ -241,7 +241,7 @@ class MeuMundoAdventureService {
       const trainer = await TrainerService.grant(c, idUser, "minigame", level.xp, ctx.now);
       const drops =
         practice.activeMs >= MINIGAME_LOOT_MIN_MS
-          ? await GearService().deliver(c, idUser, Gear.rollLoot(def.loot, { win, activeMs: practice.activeMs }, GearService().R), ctx)
+          ? await RewardService().grant(c, idUser, { table: RewardService().tableOf(activity), ctx, R: GearService().R, roll: { win, activeMs: practice.activeMs } })
           : [];
       // mm3d-60k: o minijogo também DROPA moedas (pelo tempo ativo conferido)
       const coins = Adv.minigameCoins(practice.activeMs, win, GearService().R);

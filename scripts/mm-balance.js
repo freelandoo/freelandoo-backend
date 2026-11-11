@@ -4,6 +4,8 @@
 //   node scripts/mm-balance.js          as 7 seções (A…G) do §6 do plano, em texto
 //   node scripts/mm-balance.js --md     as tabelas do GDD (MEU MUNDO 3D/gdd/economia-e-equipamentos.md)
 //   node scripts/mm-balance.js --json   tudo, em JSON (o teste meuMundoEquidade.test.js usa as funções)
+//   node scripts/mm-balance.js --loot   E3: cada tabela de saque EM USO — esperado e pior caso por vitória,
+//                                       por derrota e por minuto ativo (o nível não muda nada)
 //
 // Lê src/utils/meuMundoFight.js (cópia gerada da luta), meuMundoAdventure.js, meuMundoGear.js e a régua
 // src/utils/mmItems/rules/budget.js. Não muda nenhuma regra: só mede. A proposta de itens novos (§7)
@@ -595,7 +597,39 @@ function printMd(x) {
 
 module.exports = { duel, evenFight, ruler, dropPace, levelForFactor, STREET_FACTORS, all, proposalItems, proposalRecipes, proposalLoot, bossWinsByRarity, craftWins, setWins, todayGear, I1_LEVELS, LEVELS };
 
+/** E3: as tabelas de saque em uso (catalog/loot.js), por vitória e por minuto ativo. */
+function lootLive() {
+  const Items = require("../src/utils/mmItems");
+  const out = {};
+  for (const table of Object.keys(Items.LOOT_TABLES)) {
+    const at = (win, min) => Items.lootExpectation(table, { win, activeMs: min * 60000 });
+    out[table] = { win4: at(true, 4), lose4: at(false, 4), win1: at(true, 1), win8: at(true, 8) };
+  }
+  return out;
+}
+
+function printLoot(x) {
+  const fmt = (e) => Object.entries(e).map(([id, v]) => `${id} ${v.expected} (mín ${v.min}, máx ${v.max})`).join(" · ") || "nada";
+  console.log("Saque em uso (E3): esperado por luta/partida; o nível não entra na conta.");
+  console.log();
+  for (const [table, t] of Object.entries(x)) {
+    console.log(table);
+    console.log("  vitória, 4 min ativos:", fmt(t.win4));
+    console.log("  derrota, 4 min ativos:", fmt(t.lose4));
+    console.log("  vitória, 1 min / 8 min:", fmt(t.win1), "|", fmt(t.win8));
+    const perMin = Object.fromEntries(Object.entries(t.win4).map(([id, v]) => [id, Math.round((v.expected / 4) * 1000) / 1000]));
+    console.log("  por minuto ativo (vitória, 4 min):", Object.entries(perMin).map(([k, v]) => `${k} ${v}`).join(" · "));
+  }
+}
+module.exports.lootLive = lootLive;
+
 if (require.main === module) {
+  if (process.argv.includes("--loot")) {
+    const l = lootLive();
+    if (process.argv.includes("--json")) console.log(JSON.stringify(l, null, 2));
+    else printLoot(l);
+    return;
+  }
   const x = all();
   if (process.argv.includes("--json")) console.log(JSON.stringify(x, null, 2));
   else if (process.argv.includes("--md")) printMd(x);

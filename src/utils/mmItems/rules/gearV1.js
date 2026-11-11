@@ -6,7 +6,7 @@
 const Items = require("../index");
 const Forge = require("./forgeV1");
 
-const { GEAR, GEAR_BY_ID, RECIPES, LOOT, DESCRIPTIONS } = Items;
+const { GEAR, GEAR_BY_ID, RECIPES, DESCRIPTIONS } = Items;
 
 const SLOTS = Object.freeze(["weapon", "shield", "armor", "acc1", "acc2"]);
 
@@ -93,15 +93,9 @@ function upgradeCost(item, level) {
  * `R` = sorteio 0–1 (o servidor passa o seu).
  */
 function rollLoot(family, { win, activeMs }, R) {
-  const t = LOOT[family];
-  if (!t) return [];
-  const out = new Map();
-  const add = (id, n) => id && n > 0 && out.set(id, (out.get(id) || 0) + n);
-  const minutes = Math.max(0, activeMs) / 60000;
-  add(t.base, Math.max(1, Math.min(4, Math.round(minutes / 2))) + (win ? 1 : 0));
-  if (win && t.uncommon && R() < 0.35) add(t.uncommon, 1);
-  if (win && t.rare && R() < 0.06) add(t.rare, 1);
-  return [...out.entries()].map(([id, qty]) => ({ id, qty, rarity: GEAR_BY_ID.get(id).rarity }));
+  // E3: a família de antes aponta a sua tabela nomeada (catalog/loot.js); mesma regra e ordem.
+  const table = Items.FAMILY_TABLE[family];
+  return table ? Items.rollTable(table, { win, activeMs }, R) : [];
 }
 
 /** Catálogo público (o front traduz o nome por id; aqui vai o pt como reserva). */

@@ -553,7 +553,10 @@ MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {
     const { got } = it ? await putItem(c, idUser, it, d.qty, "loot") : { got: 0 };
     const over = d.qty - got;
     if (over > 0 && ctx) ctx.coins += over * (it?.sell || 0);
-    out.push({ ...d, qty: got, overflowCoins: over > 0 ? over * (it?.sell || 0) : 0 });
+    const line = { ...d, qty: got, overflowCoins: over > 0 ? over * (it?.sell || 0) : 0 };
+    // E3: fragmento mostra o progresso até o item ("42/60") no recibo
+    if (it && it.category === "fragment" && it.fragment) line.progress = { of: it.fragment.of, have: (await GearStore.lockItem(c, idUser, it.id))?.qty || 0, need: it.fragment.need };
+    out.push(line);
   }
   return out;
 };
