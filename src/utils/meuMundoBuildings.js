@@ -61,25 +61,26 @@ const isOpen = (id, level, bypass = false) => bypass || Number(level) >= minLeve
 /**
  * Uma missão curta por prédio quando ele abre, mostrando como funciona.
  * Mesmo motor dos capítulos (check de MeuMundoQuestService.satisfied), guardada
- * em tb_mm_quest com quest_id "pr_<id>". XP 0 até o Alex decidir o valor
- * (proposta: 30 por missão).
+ * em tb_mm_quest com quest_id "pr_<id>". Vale MISSION_XP para o personagem e
+ * o treinador (o XP de missão não tem teto do dia; 12 missões = 360, ~2,6% do nível 30).
  */
+const MISSION_XP = 30;
 const BUILDING_QUESTS = Object.freeze(
   [
-    { id: "pr_gincana", minLevel: 3, place: "gincana", check: "game:gincana", xp: 0 },
-    { id: "pr_jetpack", minLevel: 5, place: "jetpack", check: "game:jetpack", xp: 0 },
-    { id: "pr_corrida", minLevel: 7, place: "corrida", check: "game:corrida", xp: 0 },
-    { id: "pr_noturno", minLevel: 9, place: "noturno", check: "game:noturno", xp: 0 },
-    { id: "pr_boxe", minLevel: 11, place: "boxe", check: "game:boxe", xp: 0 },
-    { id: "pr_paint", minLevel: 13, place: "paint", check: "game:paint", xp: 0 },
-    { id: "pr_estudo", minLevel: 8, place: "universidade", check: "practice:studying", xp: 0 },
-    { id: "pr_forja", minLevel: 8, place: "forja", check: "forge", xp: 0 },
-    { id: "pr_arsenal", minLevel: 8, place: "arsenal", check: "visit:arsenal", xp: 0 },
-    { id: "pr_igreja", minLevel: 8, place: "igreja", check: "practice:praying", xp: 0 },
-    { id: "pr_hall", minLevel: 10, place: "laminas", check: "hallChallenge", xp: 0 },
-    { id: "pr_laboratorio", minLevel: 10, place: "criolab", check: "ack", xp: 0 },
+    { id: "pr_gincana", minLevel: 3, place: "gincana", check: "game:gincana", xp: MISSION_XP },
+    { id: "pr_jetpack", minLevel: 5, place: "jetpack", check: "game:jetpack", xp: MISSION_XP },
+    { id: "pr_corrida", minLevel: 7, place: "corrida", check: "game:corrida", xp: MISSION_XP },
+    { id: "pr_noturno", minLevel: 9, place: "noturno", check: "game:noturno", xp: MISSION_XP },
+    { id: "pr_boxe", minLevel: 11, place: "boxe", check: "game:boxe", xp: MISSION_XP },
+    { id: "pr_paint", minLevel: 13, place: "paint", check: "game:paint", xp: MISSION_XP },
+    { id: "pr_estudo", minLevel: 8, place: "universidade", check: "practice:studying", xp: MISSION_XP },
+    { id: "pr_forja", minLevel: 8, place: "forja", check: "forge", xp: MISSION_XP },
+    { id: "pr_arsenal", minLevel: 8, place: "arsenal", check: "visit:arsenal", xp: MISSION_XP },
+    { id: "pr_igreja", minLevel: 8, place: "igreja", check: "practice:praying", xp: MISSION_XP },
+    { id: "pr_hall", minLevel: 10, place: "laminas", check: "hallChallenge", xp: MISSION_XP },
+    { id: "pr_laboratorio", minLevel: 10, place: "criolab", check: "ack", xp: MISSION_XP },
   ].map((q) => Object.freeze(q))
 );
 const BUILDING_QUEST_BY_ID = new Map(BUILDING_QUESTS.map((q) => [q.id, q]));
 
-module.exports = { BUILDING_LEVELS, FEATURE_LEVELS, ALWAYS_OPEN, minLevelOf, featureLevelOf, isOpen, BUILDING_QUESTS, BUILDING_QUEST_BY_ID };
+module.exports = { BUILDING_LEVELS, FEATURE_LEVELS, ALWAYS_OPEN, minLevelOf, featureLevelOf, isOpen, BUILDING_QUESTS, BUILDING_QUEST_BY_ID, MISSION_XP };

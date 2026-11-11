@@ -155,7 +155,11 @@ async function main() {
   s5 = await Bld.state(nu);
   check("jogou o Jetpack → missão pronta", s5.missions.find((x) => x.id === "pr_jetpack").ready);
   check("…e não cumpre a da Gincana", !s5.missions.find((x) => x.id === "pr_gincana").ready);
+  const tBefore = Number((await pool.query(`SELECT xp FROM tb_mm_trainer WHERE id_user = $1`, [nu])).rows[0].xp);
   const d1 = await Bld.deliver(nu, { id: "pr_jetpack" });
+  const tAfter = Number((await pool.query(`SELECT xp FROM tb_mm_trainer WHERE id_user = $1`, [nu])).rows[0].xp);
+  check("missão de prédio vale 30 XP do treinador (sem teto do dia)", tAfter - tBefore === 30, `${tBefore} → ${tAfter}`);
+  check("…e o recibo traz os 30 XP do personagem", d1.receipt && d1.receipt.deltas && d1.receipt.deltas.xp && d1.receipt.deltas.xp.xp === 30, JSON.stringify(d1.receipt && d1.receipt.deltas));
   check("entrega com recibo único", !!d1.receipt && d1.replay === false && d1.receipt.actionKey === "pr:pr_jetpack", JSON.stringify(d1.error || d1.receipt && d1.receipt.actionKey));
   const d2 = await Bld.deliver(nu, { id: "pr_jetpack" });
   check("reenvio devolve o MESMO recibo (sem prêmio de novo)", d2.replay === true && d2.receipt.eventId === d1.receipt.eventId);
