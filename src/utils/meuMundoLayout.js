@@ -21,7 +21,7 @@ const MEU_MUNDO_RELEASE = "mm3d-17";
 
 // Versão do DESENHO do bairro. Posição guardada num desenho anterior não vale
 // neste (o que era calçada pode ter virado quintal): quem a lê confere a versão.
-const LAYOUT_VERSION = 4; // 4 = estátua do Aurion e as 4 pracinhas (mm3d-50)
+const LAYOUT_VERSION = 5; // 5 = o vizinho da praça (lore v2 C1); 4 = estátua do Aurion e as 4 pracinhas (mm3d-50)
 const LOTS_PER_NEIGHBORHOOD = 20;
 
 // ═══ O LOTE ═══ — coordenadas LOCAIS, em metros, origem no centro do terreno
@@ -192,6 +192,22 @@ function lawnPositions() {
 // do bairro (os outros deuses são só skins; pedido do Alex). Os quatro bancos
 // da praça continuam nas diagonais, virados para ele.
 const PLAZA_STATUES = Object.freeze([statue("aurion", 0, 0, 0, 10, { kind: "pedestal", r: 3.6, h: 1.4 })]);
+// Lore v2 C1 (cap. 2, "O Bairro"): no bairro dos Vampiros o pedestal fica VAZIO
+// ("o nosso deus mora no centro; eles não deixaram trazer"). Mesma base e mesma
+// colisão do Aurion (a sala não muda): só o id troca, e o id sem modelo publicado
+// faz o cliente desenhar só a base, com a placa de bronze na frente.
+const EMPTY_PEDESTAL = Object.freeze([statue("pedestal_vazio", 0, 0, 0, 0, PLAZA_STATUES[0].base)]);
+const statuesFor = (clan) => (clan === "vampiro" ? EMPTY_PEDESTAL : PLAZA_STATUES);
+// O vizinho da praça: Vizinha (Raposa) no Bairro das Matas, Vizinho (Vampiro) na
+// Cidade Baixa — o MESMO ponto nos dois (a caixa de colisão não depende da classe;
+// historia/v2/07-falas-e-arquivo.md §1.1). Só ambiente: fala solta, sem passo.
+const NEIGHBOR_SPOT = Object.freeze({ x: -6, z: -1.5, facing: round((3 * Math.PI) / 4), radius: 2.4 }); // olhando para quem chega do sul
+function npcsFor(clan) {
+  const vamp = clan === "vampiro";
+  return [Object.freeze({ id: vamp ? "vizinho_vampiro" : "vizinha_raposa", body: vamp ? "vampiro_adulto" : "raposa_adulta", ...NEIGHBOR_SPOT })];
+}
+/** A placa do pedestal vazio (só na Cidade Baixa): o texto mora no front (qw_pedestal). */
+const signsFor = (clan) => (clan === "vampiro" ? [Object.freeze({ id: "pedestal", text: "qw_pedestal", x: 0, z: -4.4, radius: 2.2 })] : []);
 // Lore v2 F4 — pontos de visita do bairro (visit:<id>; meuMundoPlaces.js). "bairro"
 // e "casa" a sala grava na entrada (titular / dono da casa).
 const VISIT_POINTS = Object.freeze([Object.freeze({ id: "estatua_aurion", x: 0, z: 0, r: 7 })]);
@@ -369,6 +385,8 @@ function buildObstacles(levels = null) {
   // Praça: Aurion (mm3d-50), os bancos e os postes do miolo; no gramado, as
   // quatro pracinhas, os postes das esquinas da calçada e as árvores.
   boxes.push(...statueBoxes(PLAZA_STATUES));
+  // o vizinho da praça (lore v2 C1): parado, mesma caixa dos NPCs do centro
+  push(NEIGHBOR_SPOT.x, NEIGHBOR_SPOT.z, 0.35, 0.35, 0, 1.9);
   for (const [x, z] of [[4.6, 4.6], [-4.6, 4.6], [4.6, -4.6], [-4.6, -4.6]]) {
     push(x, z, 1.05, 0.38, Math.atan2(x, z), 1);
   }
@@ -423,7 +441,7 @@ function isSafeSpot(x, z, resolveCircle, radius, obstacles = OBSTACLES) {
  * [{ number, variant, ownerName|null, isMine }]. Nenhum id de usuário sai
  * daqui — só o nome público do titular.
  */
-function buildNeighborhoodPayload({ code, name, houses, residents }) {
+function buildNeighborhoodPayload({ code, name, houses, residents, clan = null }) {
   const byNumber = new Map(houses.map((h) => [h.number, h]));
   const levels = new Map(houses.map((h) => [h.number, levelDef(h.level).level]));
   const lots = [];
@@ -461,7 +479,11 @@ function buildNeighborhoodPayload({ code, name, houses, residents }) {
     lots,
     houses: out,
     lotPlan: { ...LOT_PLAN, house: HOUSE_L1, buildable: buildableArea() },
-    dims: DIMS,
+    dims: { ...DIMS, statues: statuesFor(clan) },
+    // lore v2 C1: a classe do bairro, o vizinho da praça e a placa do pedestal vazio
+    clan: clan === "vampiro" || clan === "raposa" ? clan : null,
+    npcs: npcsFor(clan),
+    signs: signsFor(clan),
     spawn: { x: 0, z: -15, rotationY: 0 },
     exit: { id: "exit-centro", x: GATE_X - 3, z: EXIT_Z, label: "Centro da cidade" },
     obstacles: buildObstacles(levels),

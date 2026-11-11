@@ -182,7 +182,7 @@ class MeuMundoService {
   }
 
   static async neighborhoodPayload(idUser, residence, target, body, name, life) {
-    const nbRow = await pool.query(`SELECT id_neighborhood, seq, name FROM tb_mm_neighborhood WHERE id_neighborhood = $1`, [
+    const nbRow = await pool.query(`SELECT id_neighborhood, seq, name, clan FROM tb_mm_neighborhood WHERE id_neighborhood = $1`, [
       target.nbId,
     ]);
     const nb = nbRow.rows[0];
@@ -214,7 +214,7 @@ class MeuMundoService {
       release: MEU_MUNDO_RELEASE,
       demo: false,
       environment: "dev",
-      neighborhood: buildNeighborhoodPayload({ code: code(nb.seq), name: nb.name, houses, residents }),
+      neighborhood: buildNeighborhoodPayload({ code: code(nb.seq), name: nb.name, houses, residents, clan: nb.clan }),
       me: {
         name,
         body,

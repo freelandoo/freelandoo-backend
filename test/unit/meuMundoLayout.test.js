@@ -235,3 +235,38 @@ test("árvores de canto não ficam dentro de lote", () => {
     }
   }
 });
+
+// ── lore v2 C1 (cap. 2, "O Bairro") ──
+const nbOf = (clan) => L.buildNeighborhoodPayload({ code: "bairro-0002", name: "Bairro 02", residents: 0, houses: [], clan });
+
+test("C1: Cidade Baixa tem o pedestal VAZIO com a placa; Bairro das Matas tem o Aurion", () => {
+  const v = nbOf("vampiro");
+  const r = nbOf("raposa");
+  assert.equal(v.dims.statues.length, 1);
+  assert.equal(v.dims.statues[0].id, "pedestal_vazio");
+  assert.equal(r.dims.statues[0].id, "aurion");
+  // mesma base = mesma colisão (a sala não sabe de classe)
+  assert.deepEqual(v.dims.statues[0].base, r.dims.statues[0].base);
+  assert.deepEqual(v.signs.map((s) => s.text), ["qw_pedestal"]);
+  assert.equal(r.signs.length, 0);
+  // o modelo do pedestal vazio nunca é publicado (o cliente desenha só a base)
+  assert.ok(!L.buildNeighborhoodPayload({ code: "x", name: "x", residents: 0, houses: [] }).statueAssets?.models?.pedestal_vazio);
+});
+
+test("C1: o vizinho da praça muda com a classe do bairro, no mesmo ponto e com colisão", () => {
+  const v = nbOf("vampiro").npcs;
+  const r = nbOf("raposa").npcs;
+  const old = nbOf(null);
+  assert.deepEqual(v.map((n) => n.id), ["vizinho_vampiro"]);
+  assert.deepEqual(r.map((n) => n.id), ["vizinha_raposa"]);
+  assert.deepEqual(old.npcs.map((n) => n.id), ["vizinha_raposa"]);
+  assert.equal(old.clan, null);
+  assert.equal(v[0].x, r[0].x);
+  assert.equal(v[0].z, r[0].z);
+  const box = L.OBSTACLES.find((b) => b.x === v[0].x && b.z === v[0].z);
+  assert.ok(box, "o vizinho precisa de caixa de colisão (a sala e a predição usam a mesma lista)");
+  // quem chega pelo sul até a praça não esbarra nele (spawn livre)
+  const s = L.buildNeighborhoodPayload({ code: "x", name: "x", residents: 0, houses: [] }).spawn;
+  const p = resolveCircle(s.x, s.z, MOTION.RADIUS, L.OBSTACLES);
+  assert.ok(Math.hypot(p.x - s.x, p.z - s.z) < 1e-6);
+});
