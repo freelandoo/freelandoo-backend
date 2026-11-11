@@ -8,7 +8,11 @@ const Forge = require("./forgeV1");
 
 const { GEAR, GEAR_BY_ID, RECIPES, DESCRIPTIONS } = Items;
 
-const SLOTS = Object.freeze(["weapon", "shield", "armor", "acc1", "acc2"]);
+/** Trilha E6 (A4): os 8 slots. Até a E5 eram weapon, shield, armor, acc1, acc2 (LEGACY_SLOTS). */
+const SLOTS = Object.freeze(["weapon", "offhand", "helm", "chest", "gloves", "boots", "amulet", "relic"]);
+/** Slot antigo → novo (acc1/acc2 vão para o slot da peça; sem peça, amulet). */
+const LEGACY_SLOTS = Object.freeze({ shield: "offhand", armor: "chest", acc1: null, acc2: null });
+const normalizeSlot = (slot, item) => (slot in LEGACY_SLOTS ? LEGACY_SLOTS[slot] || (item && item.slot) || "amulet" : slot);
 
 /**
  * Teto dos bônus SOMADOS de tudo que está equipado (frações). Trilha E4 (A12): as 10 chaves do §6.3
@@ -41,14 +45,9 @@ function itemDetails(item) {
 /** Qual arma de aprendiz é a da classe. */
 const starterOf = (clan) => (clan === "raposa" ? "cajado_aprendiz" : clan === "vampiro" ? "espada_aprendiz" : null);
 
-/** Slot onde um item entra (acessório escolhe 1 ou 2). */
+/** Slot onde um item entra (E6: um só, o `slot` do catálogo). */
 function slotsFor(item) {
-  if (!item) return [];
-  if (item.category === "weapon") return ["weapon"];
-  if (item.category === "shield") return ["shield"];
-  if (item.category === "armor") return ["armor"];
-  if (item.category === "accessory") return ["acc1", "acc2"];
-  return [];
+  return item && item.slot && SLOTS.includes(item.slot) ? [item.slot] : [];
 }
 
 /** Pode equipar? (classe, nível, posse) — devolve o código do motivo ou null. */
@@ -66,8 +65,15 @@ function canEquip(item, { clan, level, owned }) {
  */
 function gearBonus(equipped) {
   const sum = Object.fromEntries(Object.keys(GEAR_CAP).map((k) => [k, 0]));
+  // E6: aceita também as chaves de antes (shield/armor/acc1/acc2), já levadas para os 8 slots;
+  // duas peças no mesmo slot: vale a primeira
+  const bySlot = {};
+  for (const [k, e] of Object.entries(equipped || {})) {
+    const s = normalizeSlot(k, e && GEAR_BY_ID.get(e.id));
+    if (SLOTS.includes(s) && !bySlot[s]) bySlot[s] = e;
+  }
   for (const slot of SLOTS) {
-    const e = equipped && equipped[slot];
+    const e = bySlot[slot];
     const it = e && GEAR_BY_ID.get(e.id);
     if (!it || !it.bonus) continue;
     for (const [k, v] of Object.entries(it.bonus)) sum[k] += v || 0;
@@ -107,9 +113,9 @@ function publicGear() {
     slots: SLOTS,
     cap: GEAR_CAP,
     upgrade: { max: UPGRADE.MAX, dmg: UPGRADE.DMG, def: UPGRADE.DEF, secondary: UPGRADE.SECONDARY, rulesVersion: Forge.RULES_VERSION },
-    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
+    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
     recipes: RECIPES,
   };
 }
 
-module.exports = { SLOTS, GEAR_CAP, UPGRADE, STACK_MAX, starterOf, slotsFor, canEquip, gearBonus, upgradeCost, rollLoot, itemDetails, publicGear };
+module.exports = { SLOTS, LEGACY_SLOTS, normalizeSlot, GEAR_CAP, UPGRADE, STACK_MAX, starterOf, slotsFor, canEquip, gearBonus, upgradeCost, rollLoot, itemDetails, publicGear };

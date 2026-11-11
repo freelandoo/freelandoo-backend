@@ -51,6 +51,7 @@ const ERRORS = {
   key_conflict: ["Essa chave já foi usada para outra ação", 409],
   use: ["Use esse item na ação indicada no catálogo", 409],
   instance: ["Equipamento não encontrado", 404],
+  twohanded: ["Sua arma usa as duas mãos", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -64,8 +65,23 @@ const iso = (value) => (value == null ? null : new Date(value).toISOString());
 /** E2: o que vira instância (equipamento que não empilha). Recibo e cosmético seguem em pilha. */
 const isInstanceItem = (it) => !!it && !it.stack && Gear.slotsFor(it).length > 0;
 const INSTANCE_ITEMS = Gear.GEAR.filter(isInstanceItem).map((g) => g.id);
-/** Começo de toda operação: a pilha antiga de equipamento vira instância (uma vez). */
-const prepare = (c, idUser) => GearStore.materialize(c, idUser, INSTANCE_ITEMS);
+const TWO_HANDED = Gear.GEAR.filter((g) => g.twoHanded).map((g) => g.id);
+/**
+ * Começo de toda operação: a pilha antiga de equipamento vira instância (E2) e o loadout nos
+ * slots de antes da E6 vai para os 8 slots (shield → offhand, armor → chest, acc1/acc2 → o slot
+ * da peça; dois no mesmo slot: fica o primeiro). Arma de duas mãos tira o offhand. Uma vez só:
+ * depois disso as consultas não acham nada para mexer.
+ */
+async function prepare(c, idUser) {
+  const moved = await GearStore.materialize(c, idUser, INSTANCE_ITEMS);
+  const legacy = await GearStore.legacyLoadout(c, idUser, Object.keys(Gear.LEGACY_SLOTS));
+  for (const row of legacy) {
+    const to = Gear.normalizeSlot(row.slot, Gear.GEAR_BY_ID.get(row.item_id));
+    await GearStore.moveSlot(c, row.id_character, row.slot, to);
+  }
+  if (legacy.length) for (const ch of await GearStore.twoHandedClash(c, idUser, TWO_HANDED)) await GearStore.unequipSlot(c, ch, "offhand");
+  return moved;
+}
 
 /**
  * A instância do pedido: `instance` explícita (tem de ser da pessoa e do item) ou, sem ela,
@@ -302,9 +318,10 @@ class MeuMundoGearService {
 
   /** Mochila: equipa (ou tira, com item vazio) um slot do personagem vivo. `instance` escolhe a cópia. */
   static async equip(idUser, body = {}) {
-    const slot = String(body.slot || "");
-    if (!Gear.SLOTS.includes(slot)) return fail("slot");
     const id = body.item ? String(body.item) : null;
+    // E6: o aparelho antigo ainda manda shield/armor/acc1/acc2
+    const slot = Gear.normalizeSlot(String(body.slot || ""), id ? Gear.GEAR_BY_ID.get(id) : null);
+    if (!Gear.SLOTS.includes(slot)) return fail("slot");
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
       const c = ctx.client;
       await prepare(c, idUser);
@@ -337,7 +354,13 @@ class MeuMundoGearService {
       const clan = await wornClan(c, idUser);
       const why = Gear.canEquip(it, { clan, level: await levelOf(c, idUser), owned: true });
       if (why) return fail(why);
+      // E6 (A5): arma de duas mãos ocupa também o offhand (avisa isso antes do "outra classe")
+      if (slot === "offhand" && live.weapon && Gear.GEAR_BY_ID.get(live.weapon.item)?.twoHanded) return fail("twohanded");
       if (weaponBlocked(it, await MeuMundoStorage.getBody(c, idUser))) return fail("clan");
+      if (slot === "weapon" && it.twoHanded && live.offhand) {
+        if (await hasPending(c, idUser, [live.offhand.instance], ctx.now)) return fail("locked");
+        await GearStore.unequipSlot(c, idCharacter, "offhand");
+      }
       // a mesma cópia não ocupa dois slots (equipInstance tira de onde estava)
       await GearStore.equipInstance(c, idUser, idCharacter, slot, inst.id);
       return { bag: await bagState(c, idUser, ctx.coins) };
@@ -540,7 +563,7 @@ MeuMundoGearService.fightGear = async (c, idUser, clan) => {
 /** Aparência só visual, congelada no ticket; não altera a simulação da luta. */
 MeuMundoGearService.fightAppearance = async (c, idUser, clan) => {
   await prepare(c, idUser);
-  const { weapon, shield } = await equippedFull(c, idUser, clan);
+  const { weapon, offhand: shield } = await equippedFull(c, idUser, clan);
   const cosmetic = (await GearStore.unlocks(c, idUser)).find((u) => u.kind === "cosmetic" && u.active);
   return { weaponId: weapon?.id || null, level: weapon?.level || 0, shieldId: shield?.id || null, cosmetic: cosmetic?.item_id || null };
 };

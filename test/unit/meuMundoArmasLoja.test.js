@@ -83,7 +83,7 @@ test("escudos: 16 à venda, preço crescente, sem classe, slot próprio e dentro
   assert.equal(shields.length, 16);
   shields.forEach((s, i) => {
     assert.ok(s.id.startsWith("escudo_") && s.clan === null && s.category === "shield", s.id);
-    assert.deepEqual(Gear.slotsFor(s), ["shield"]);
+    assert.deepEqual(Gear.slotsFor(s), ["offhand"]); // E6: o escudo mora no offhand
     assert.equal(s.use, "equip");
     assert.ok(s.bonus.def > 0, s.id);
     assert.ok(Gear.itemDetails(s).description, s.id);

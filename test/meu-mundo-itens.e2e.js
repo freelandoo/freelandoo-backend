@@ -86,7 +86,8 @@ async function main() {
     check("bônus da luta igual antes e depois", JSON.stringify(bonusAfter) === JSON.stringify(bonusBefore));
     const live = (await pool.query(`SELECT id_character FROM tb_mm_character WHERE id_user=$1 AND status='alive'`, [id])).rows[0].id_character;
     const lo = await Store.loadout(pool, live);
-    check("tb_mm_equip copiado para o loadout do personagem vivo", Object.keys(lo).sort().join() === "acc1,armor,weapon");
+    // E6: e já nos 8 slots (acc1 → slot da peça, armor → chest)
+    check("tb_mm_equip copiado para o loadout do personagem vivo", Object.keys(lo).sort().join() === [acc.slot, "chest", "weapon"].sort().join());
 
     // ── livro: soma dos delta = qty da pilha ──
     const ledgerOk = async () => {
@@ -164,6 +165,34 @@ async function main() {
     const eqB = await Service.equip(id, { slot: "weapon", item: "espada_latao", instance: second });
     check("B pega a cópia: ela sai do A", eqB.bag.equippedInstances.weapon === second && Object.keys(await Store.loadout(pool, live)).indexOf("weapon") === -1);
     assert.ok(other);
+
+    // ══ E6: 8 slots, duas mãos, loadout antigo levado para os slots novos ══
+    const h = key();
+    await pool.query(`INSERT INTO tb_user VALUES ($1, 'h', 'h@mm.test')`, [h]);
+    await Life.peek(h);
+    await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm')`, [h]);
+    await pool.query(`UPDATE tb_mm_character SET species = 'kragor' WHERE id_user = $1 AND status = 'alive'`, [h]); // usa arma pesada
+    await pool.query(`INSERT INTO tb_mm_char_adventure (id_character, id_user, xp) SELECT id_character, $1, 500000 FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'`, [h]);
+    // conta antiga: espada + escudo + luvas (acc1) + relógio (acc2) + colete (armor)
+    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty,level) VALUES ($1,'pesada_ferreiro',1,0),($1,'escudo_ferro',1,0),($1,'luvas_precisao',1,0),($1,'relogio_bolso',1,0),($1,'colete_couro',1,0),($1,'medalhao_lunar',1,0)`, [h]);
+    await pool.query(`INSERT INTO tb_mm_equip (id_user,slot,item_id) VALUES ($1,'shield','escudo_ferro'),($1,'acc1','luvas_precisao'),($1,'acc2','relogio_bolso'),($1,'armor','colete_couro')`, [h]);
+    const bonusOld = Gear.gearBonus({ acc1: { id: "luvas_precisao", level: 0 }, acc2: { id: "relogio_bolso", level: 0 }, armor: { id: "colete_couro", level: 0 } });
+    const bagH = (await Service.get(h)).bag;
+    check("E6: slots antigos viram os 8 (acc1 luvas → gloves, acc2 relógio → amulet, armor → chest, shield → offhand)",
+      bagH.equipped.gloves === "luvas_precisao" && bagH.equipped.amulet === "relogio_bolso" && bagH.equipped.chest === "colete_couro" && bagH.equipped.offhand === "escudo_ferro" && !bagH.equipped.acc1 && !bagH.equipped.shield);
+    check("E6: bônus total igual só pela troca de slots (escudo não vale para quem usa pesada)", JSON.stringify(bagH.bonus) === JSON.stringify(bonusOld));
+    const two = await Service.equip(h, { slot: "weapon", item: "pesada_ferreiro" });
+    check("E6: arma de duas mãos tira o offhand", two.bag && two.bag.equipped.weapon === "pesada_ferreiro" && !two.bag.equipped.offhand);
+    const off = await Service.equip(h, { slot: "offhand", item: "escudo_ferro" });
+    check("E6: offhand com arma de duas mãos é recusado com erro", off.code === "twohanded" && off.statusCode === 409);
+    const amu = await Service.equip(h, { slot: "amulet", item: "medalhao_lunar" });
+    check("E6: um amuleto só (o novo troca o relógio)", amu.bag.equipped.amulet === "medalhao_lunar");
+    const legacySlot = await Service.equip(h, { slot: "acc2", item: "relogio_bolso" });
+    check("E6: aparelho antigo (acc2) cai no slot da peça", legacySlot.bag.equipped.amulet === "relogio_bolso");
+    const sword = await Service.equip(h, { slot: "weapon", item: "espada_latao" });
+    check("E6: item de outra família recusado com erro", sword.code === "owned" || sword.code === "clan");
+    const wrong = await Service.equip(h, { slot: "boots", item: "luvas_precisao" });
+    check("E6: peça fora do slot dela é recusada", wrong.code === "slot");
 
     console.log(`${checks} verificações de integração passaram.`);
   } finally {

@@ -18,6 +18,8 @@ const Rules = require("./mmItems/rules/gearV1");
 
 module.exports = {
   SLOTS: Rules.SLOTS,
+  LEGACY_SLOTS: Rules.LEGACY_SLOTS,
+  normalizeSlot: Rules.normalizeSlot,
   CATEGORIES: Items.CATEGORIES,
   RARITIES: Items.RARITIES,
   GEAR_CAP: Rules.GEAR_CAP,

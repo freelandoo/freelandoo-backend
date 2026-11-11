@@ -210,6 +210,43 @@ class MeuMundoGearStorage {
     );
   }
 
+  /** E6: linhas do loadout (vivos e cápsula) ainda nos slots de antes da E6. */
+  static async legacyLoadout(c, idUser, legacySlots) {
+    const r = await c.query(
+      `SELECT l.id_character, l.slot, l.id_instance, i.item_id FROM tb_mm_loadout l
+         JOIN tb_mm_character ch ON ch.id_character = l.id_character
+         JOIN tb_mm_gear_instance i ON i.id_instance = l.id_instance
+        WHERE ch.id_user = $1 AND l.slot = ANY($2::text[])
+        ORDER BY l.id_character, l.slot`,
+      [idUser, legacySlots]
+    );
+    return r.rows;
+  }
+
+  /** Muda a linha de slot; se o destino já está ocupado, a linha antiga sai (a peça volta à mochila). */
+  static async moveSlot(c, idCharacter, from, to) {
+    const r = await c.query(
+      `UPDATE tb_mm_loadout SET slot = $3, updated_at = NOW() WHERE id_character = $1 AND slot = $2
+         AND NOT EXISTS (SELECT 1 FROM tb_mm_loadout x WHERE x.id_character = $1 AND x.slot = $3)`,
+      [idCharacter, from, to]
+    );
+    if (!r.rowCount) await c.query(`DELETE FROM tb_mm_loadout WHERE id_character = $1 AND slot = $2`, [idCharacter, from]);
+    return r.rowCount === 1;
+  }
+
+  /** E6: personagens (vivos e cápsula) com arma de duas mãos E algo no offhand. */
+  static async twoHandedClash(c, idUser, twoHandedItems) {
+    const r = await c.query(
+      `SELECT w.id_character FROM tb_mm_loadout w
+         JOIN tb_mm_character ch ON ch.id_character = w.id_character
+         JOIN tb_mm_gear_instance i ON i.id_instance = w.id_instance
+         JOIN tb_mm_loadout o ON o.id_character = w.id_character AND o.slot = 'offhand'
+        WHERE ch.id_user = $1 AND w.slot = 'weapon' AND i.item_id = ANY($2::text[])`,
+      [idUser, twoHandedItems]
+    );
+    return r.rows.map((x) => x.id_character);
+  }
+
   static async unequipSlot(c, idCharacter, slot) {
     await c.query(`DELETE FROM tb_mm_loadout WHERE id_character = $1 AND slot = $2`, [idCharacter, slot]);
   }

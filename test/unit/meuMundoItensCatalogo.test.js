@@ -13,13 +13,19 @@ const Items = require("../../src/utils/mmItems");
 const { TIER } = require("../../src/utils/mmItems/rules/budget");
 
 const ANTES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "gear-antes.json"), "utf8"));
-/** JSON de agora sem o campo novo `tier` dos ITENS (o único acréscimo da E1; montagem já tinha `tier`). */
-const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) { return k === "tier" && typeof this.rarity === "string" ? undefined : x; }));
+/**
+ * JSON de agora sem os campos novos dos ITENS: `tier` (E1) e `slot`/`twoHanded` (E6, os 8 slots).
+ * Montagem já tinha `tier`; só sai o de quem tem `rarity`.
+ */
+const NOVOS = new Set(["tier", "slot", "twoHanded"]);
+const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) { return NOVOS.has(k) && typeof this.rarity === "string" ? undefined : x; }));
 
 test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () => {
   const agora = semTier(Gear.publicGear());
   assert.deepEqual(Object.keys(agora), Object.keys(ANTES.publicGear));
-  assert.deepEqual(agora.slots, ANTES.publicGear.slots);
+  // E6 (A4): os 5 slots de antes viraram os 8 do pedido
+  assert.deepEqual(ANTES.publicGear.slots, ["weapon", "shield", "armor", "acc1", "acc2"]);
+  assert.deepEqual(agora.slots, ["weapon", "offhand", "helm", "chest", "gloves", "boots", "amulet", "relic"]);
   // E4 (A12) acrescentou as chaves hp/acc/spd/int/dex ao teto; as 5 de antes não mudam
   assert.deepEqual(Object.fromEntries(Object.keys(ANTES.publicGear.cap).map((k) => [k, agora.cap[k]])), ANTES.publicGear.cap);
   assert.deepEqual(Object.keys(agora.cap).filter((k) => !(k in ANTES.publicGear.cap)), ["hp", "acc", "spd", "int", "dex"]);
@@ -31,7 +37,7 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
 
 test("E1: GEAR, saque e constantes de equipamento iguais aos de antes", () => {
   assert.deepEqual(semTier(Gear.GEAR), ANTES.gear.GEAR);
-  for (const k of ["SLOTS", "UPGRADE"]) assert.deepEqual(semTier(Gear[k]), ANTES.gear[k], k);
+  assert.deepEqual(semTier(Gear.UPGRADE), ANTES.gear.UPGRADE, "UPGRADE");
   for (const [k, v] of Object.entries(ANTES.gear.GEAR_CAP)) assert.equal(Gear.GEAR_CAP[k], v, "GEAR_CAP." + k);
   // E2 (mig 446) subiu a pilha de propósito: 999 → 9.999 (objetivo da fatia, §8 E2).
   assert.equal(ANTES.gear.STACK_MAX, 999);
@@ -44,7 +50,8 @@ test("E1: a forja (peças, montagens, conversões e refino) igual à de antes", 
 });
 
 test("E1: fachadas mantêm os mesmos exports", () => {
-  assert.deepEqual(Object.keys(Gear), ["SLOTS", "CATEGORIES", "RARITIES", "GEAR_CAP", "UPGRADE", "STACK_MAX", "GEAR", "GEAR_BY_ID", "LOOT", "RECIPES", "RECIPE_BY_ID", "starterOf", "slotsFor", "canEquip", "gearBonus", "upgradeCost", "rollLoot", "itemDetails", "publicGear"]);
+  // E6 acrescentou LEGACY_SLOTS e normalizeSlot; os de antes continuam todos
+  assert.deepEqual(Object.keys(Gear).filter((k) => !["LEGACY_SLOTS", "normalizeSlot"].includes(k)), ["SLOTS", "CATEGORIES", "RARITIES", "GEAR_CAP", "UPGRADE", "STACK_MAX", "GEAR", "GEAR_BY_ID", "LOOT", "RECIPES", "RECIPE_BY_ID", "starterOf", "slotsFor", "canEquip", "gearBonus", "upgradeCost", "rollLoot", "itemDetails", "publicGear"]);
   assert.deepEqual(Object.keys(Forge), ["RULES_VERSION", "MAX_LEVEL", "PROPOSAL_TTL_MS", "COINS", "MATERIALS", "NUCLEI", "SEALS", "SECONDARY_PER_LEVEL", "COMPONENTS", "ASSEMBLIES", "CONVERSIONS", "PART_RECIPES", "assemblyParts", "quote", "roll"]);
   assert.equal(Gear.GEAR_BY_ID.size, Gear.GEAR.length);
   assert.equal(Gear.RECIPE_BY_ID.size, Gear.RECIPES.length);
