@@ -31,7 +31,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_nectar_award, tb_mm_nectar_wallet, tb_mm_nectar_week, tb_mm_score, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_domain_pact, tb_mm_nectar_award, tb_mm_nectar_wallet, tb_mm_nectar_week, tb_mm_score, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -158,6 +158,50 @@ async function main() {
 
   await pool.query(fs.readFileSync(path.join(__dirname, "../src/databases/migrations/441_meu_mundo_nectar.sql"), "utf8"));
   check("mig 441 idempotente", true);
+
+  // ── D4: o pacto do deus vencido — +50% no jogável do deus para o povo, pela fração da semana ──
+  {
+    const W2 = "2026-11-15";
+    const AFTER2 = Date.parse("2026-11-22T03:05:00Z");
+    const t2 = Date.parse("2026-11-17T12:00:00Z");
+    const score2 = (id, game, best, atMs) =>
+      pool.query(`INSERT INTO tb_mm_score (id_user, game, week, best, plays, best_at) VALUES ($1, $2, $3, $4, 1, $5)`, [id, game, W2, best, new Date(atMs)]);
+    await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'm'), ($2, 'vampiro', 'f') ON CONFLICT (id_user) DO UPDATE SET clan = EXCLUDED.clan`, [P[0], P[1]]);
+    // pacto das Raposas com Noctis começando quarta 00:00 de Brasília: 4 dias nesta semana
+    const starts = Date.parse("2026-11-18T03:00:00Z");
+    await pool.query(
+      `INSERT INTO tb_mm_domain_pact (domain, god, game, clan, id_user, id_fight, starts_at, ends_at) VALUES ('floresta', 'noctis', 'noturno', 'raposa', $1, $2, $3, $4)`,
+      [P[2], crypto.randomUUID(), new Date(starts), new Date(starts + 7 * 24 * 3600e3)]
+    );
+    await score2(P[0], "noturno", 900, t2);
+    await score2(P[1], "noturno", 800, t2);
+    await score2(P[0], "jetpack", 900, t2);
+    const before = Number((await wallet(P[0])).pending_ml);
+    const done2 = await Nectar.closeWeek(W2, AFTER2);
+    check("D4: semana com pacto fecha", done2.week === W2 && !done2.skipped, JSON.stringify(done2));
+    const a2 = async (id, game) => (await pool.query(`SELECT ml, pact_ml FROM tb_mm_nectar_award WHERE id_user = $1 AND week = $2 AND game = $3`, [id, W2, game])).rows[0];
+    const rap = await a2(P[0], "noturno");
+    const bonus = Math.round(10000 * 0.5 * (4 / 7));
+    check("D4: Raposa 1ª no Rolê com 4/7 da semana de pacto = 10 L + bônus", rap.ml === 10000 + bonus && rap.pact_ml === bonus, JSON.stringify(rap));
+    const vam = await a2(P[1], "noturno");
+    check("D4: Vampiro no mesmo jogo sem pacto do povo dele = sem bônus", vam.ml === 4000 && vam.pact_ml === 0, JSON.stringify(vam));
+    const jet = await a2(P[0], "jetpack");
+    check("D4: outro jogo (não é o do deus) = sem bônus", jet.ml === 10000 && jet.pact_ml === 0, JSON.stringify(jet));
+    const sum2 = Number((await pool.query(`SELECT COALESCE(SUM(ml), 0) s FROM tb_mm_nectar_award WHERE id_user = $1 AND week = $2`, [P[0], W2])).rows[0].s);
+    check("D4: carteira recebe o bônus (soma dos prêmios da semana, com o pacto)", Number((await wallet(P[0])).pending_ml) === before + sum2 && sum2 >= 20000 + bonus, JSON.stringify({ before, sum2 }));
+    const n2 = (await pool.query(`SELECT data FROM tb_mm_notice WHERE id_user = $1 AND code = 'nectar_week' AND data->>'week' = $2`, [P[0], W2])).rows[0];
+    check("D4: aviso no sino diz quanto veio do pacto", n2 && n2.data.pactMl === bonus, JSON.stringify(n2 && n2.data));
+    const v2 = await Nectar.wallet(P[0], starts + 3600e3);
+    check("D4: a aba Semana mostra o pacto de pé e o bônus", v2.pacts.length === 1 && v2.pacts[0].clan === "raposa" && v2.pacts[0].game === "noturno" && v2.pactBonus === 0.5, JSON.stringify(v2.pacts));
+    const v3 = await Nectar.wallet(P[0], AFTER2 + 60e3);
+    check("D4: a semana passada lista o mL do pacto por jogo", v3.last.awards.find((x) => x.game === "noturno").pactMl === bonus);
+    const v4 = await Nectar.wallet(P[0], starts + 8 * 24 * 3600e3);
+    check("D4: pacto vencido some da tela", v4.pacts.length === 0);
+    const mig = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/445_meu_mundo_pacto.sql"), "utf8");
+    await pool.query(mig);
+    await pool.query(mig);
+    check("mig 445 idempotente", true);
+  }
 
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);
   await pool.end();

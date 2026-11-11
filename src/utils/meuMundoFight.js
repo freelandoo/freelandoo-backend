@@ -276,6 +276,52 @@ const MOB_SKILLS                       = [
 const MOB_SHIELD = { cut: 0.7, dur: 4, below: 0.6 }
 
 /**
+ * Lore v2 D4: o DEUS chefão do setor 10 luta em FASES pela vida (100 → 66 → 33%). Cada fase
+ * deixa o deus mais rápido, descansa menos entre golpes e soma golpes novos; na troca ele para
+ * `BOSS_ROAR` s (estado "roar": grita, a arena muda) e não cambaleia logo depois. Só vale com
+ * `setup.boss` (o servidor grava no ticket do setor 10): lutas sem chefão não mudam nada, nem
+ * uma luta aberta antes desta regra (o ticket dela não tem `boss`), então sem RULES_VERSION.
+ * Os golpes novos entram DEPOIS da conta do dano (como os poderes): a força dos de sempre fica.
+ */
+                             
+const BOSS_IDS                    = ["noctis"]
+                            
+                                                                  
+               
+                                   
+              
+                                    
+               
+                                     
+                  
+ 
+const BOSS_ROAR = 1.2
+const BOSSES                                       = {
+  // Noctis, a Onça da Lua (historia/v2/04-mundo-exploravel.md §1: "a arena escurece a cada fase").
+  // Arma de fogo, tiro reto (regra do Alex). Fase 2 (Lua Minguante): o Eclipse, um tiro reto largo
+  // e pesado, também à queima-roupa. Fase 3 (Lua Nova): a onça solta a arma de lado — garra de
+  // perto e salto para quem foge.
+  noctis: [
+    {
+      below: 0.66,
+      rest: 0.8,
+      speed: 1.15,
+      add: [{ id: "eclipse", windup: 0.95, active: 0.16, recover: 0.8, range: 11, arc: 0, line: 0.6, dmg: 22, lunge: 0, weight: 4, minD: 0, maxD: 11.5, heavy: true }],
+    },
+    {
+      below: 0.33,
+      rest: 0.6,
+      speed: 1.3,
+      add: [
+        { id: "moonClaw", windup: 0.55, active: 0.2, recover: 0.6, range: 2.4, arc: 2.4, dmg: 16, lunge: 3, weight: 4, minD: 0, maxD: 3 },
+        { id: "moonPounce", windup: 0.8, active: 0.5, recover: 0.9, range: 2.2, arc: 2.2, dmg: 20, lunge: 11, leap: true, weight: 4, minD: 3, maxD: 22, heavy: true },
+      ],
+    },
+  ],
+}
+const bossIdOf = (b         )                => (BOSS_IDS.includes(b          ) ? (b          ) : null)
+
+/**
  * mm3d-72 (regras do Alex, 2026-11-08): a PERSONALIDADE mexe na luta por probabilidade, e o
  * afeto pelo dono muda a chance.
  *  - Psicopata: o Poder Máximo pode sair 3 vezes seguidas ("PSICOPATA" na tela). Contra
@@ -411,7 +457,7 @@ const MOBS                          = {
   },
 }
 
-                                                                                                               
+                                                                                                                        
                       
             
                
@@ -459,6 +505,10 @@ const MOBS                          = {
                                                                                   
                                  
                      
+                                                                                  
+               
+                 
+                  
  
 
                         
@@ -479,6 +529,7 @@ const MOBS                          = {
                    
                      
                                                  
+                                             
                                   
                                                          
                                                   
@@ -548,6 +599,8 @@ const MOBS                          = {
                                                                                                    
                       
                     
+                                                                                                     
+               
  
 
                             
@@ -767,6 +820,8 @@ class Fight {
   /** mm3d-72: personalidade e afeto (probabilidades da luta). */
            temper                    
            affection        
+  /** D4: o chefão com fases (null = luta comum). */
+           boss               
   /** Este Poder Máximo sai 3 vezes (psicopata). */
           psychoTriple = false
   /** Covarde: sai quando o relógio passar disto (0 = não vai sair). */
@@ -810,6 +865,7 @@ class Fight {
     this.R = rng(setup.seed ?? (Date.now() & 0x7fffffff))
     this.temper = setup.temper ?? null
     this.affection = Math.max(0, Number(setup.affection) || 0)
+    this.boss = bossIdOf(setup.boss)
     this.kind = setup.kind
     this.combo = setup.style === "mage" ? MAGE_COMBO : COMBO
     // O Golem de Pedra do menu tem só os níveis 1 e 2 (Alex, 29/10) — quem corta é o
@@ -901,6 +957,9 @@ class Fight {
         ramming: false,
         skillCd: {},
         shieldUntil: 0,
+        phase: 0,
+        restMul: 1,
+        speedMul: 1,
       }),
     )
   }
@@ -1419,6 +1478,7 @@ class Fight {
       m.t = 0
       return
     }
+    if (this.boss && this.bossPhase(m)) return
     m.hits++
     const def = MOBS[m.kind]
     // Cambaleia: sem postura, ou quando a postura quebra, ou no golpe forte — mas nunca no meio do golpe dele (só pancada).
@@ -1435,6 +1495,33 @@ class Fight {
     const push = heavy ? 0.9 : 0.35
     m.x += (dx / l) * push * (m.poise ? 0.5 : 1)
     m.z += (dz / l) * push * (m.poise ? 0.5 : 1)
+  }
+
+  /**
+   * D4: a vida do chefão passou de uma fase? Troca a pausa, o passo e soma os golpes; ele para
+   * gritando (`roar`) e não cambaleia logo em seguida. Pulo de duas fases num golpe só soma as duas.
+   */
+          bossPhase(m     )          {
+    const phases = BOSSES[this.boss ]
+    let changed = false
+    while (m.phase < phases.length && m.hp <= phases[m.phase].below * m.hpMax) {
+      const ph = phases[m.phase]
+      m.phase++
+      m.restMul = ph.rest
+      m.speedMul = ph.speed
+      m.attacks = [...m.attacks, ...ph.add]
+      changed = true
+    }
+    if (!changed) return false
+    m.hits = 0
+    m.y = 0
+    m.ramming = false
+    m.armorUntil = this.time + BOSS_ROAR + 1.8
+    m.restLeft = 0.4
+    this.setMob(m, "roar")
+    // a fase como se conta na tela: 2 (Lua Minguante), 3 (Lua Nova)
+    this.events.push({ t: "phase", id: m.id, phase: m.phase + 1 })
+    return true
   }
 
   /** Bando: só um lobo ataca por vez; os outros rodeiam. */
@@ -1462,7 +1549,7 @@ class Fight {
     const dz = p.z - m.z
     const dist = Math.hypot(dx, dz)
     const toMe = Math.atan2(dx, dz)
-    const speed = def.speed
+    const speed = def.speed * m.speedMul
     m.maxLeft -= DT
     for (const k in m.skillCd) m.skillCd[k] -= DT
     switch (m.state) {
@@ -1474,6 +1561,10 @@ class Fight {
         return
       case "hurt":
         if (m.t >= 0.5) this.setMob(m, def.flies ? "fly" : "chase")
+        return
+      case "roar":
+        m.facing = turnTo(m.facing, toMe, 3 * DT)
+        if (m.t >= BOSS_ROAR) this.setMob(m, "chase")
         return
       case "fly":
       case "chase":
@@ -1597,7 +1688,7 @@ class Fight {
         const a = m.attacks[m.atk]
         if (def.flies) m.y = Math.max(0, m.y - 4 * DT)
         if (m.t >= a.recover) {
-          m.restLeft = def.rest[0] + (def.rest[1] - def.rest[0]) * this.R()
+          m.restLeft = (def.rest[0] + (def.rest[1] - def.rest[0]) * this.R()) * m.restMul
           this.setMob(m, def.flies ? "fly" : "chase")
           if (this.kind === "wolf") this.token = -1
         }
@@ -1868,4 +1959,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, SOUL_FIGHT, MOBS, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, BOSS_IDS, BOSS_ROAR, BOSSES, bossIdOf, SOUL_FIGHT, MOBS, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

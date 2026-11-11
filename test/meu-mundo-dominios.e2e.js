@@ -34,7 +34,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_domain_pact, tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -77,6 +77,10 @@ async function main() {
   await pool.query(mig);
   await pool.query(mig);
   check("mig 444 idempotente (rodou 3×)", true);
+  const mig445 = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/445_meu_mundo_pacto.sql"), "utf8");
+  await pool.query(mig445);
+  await pool.query(mig445);
+  check("mig 445 idempotente (rodou 3×)", true);
   const Life = require("../src/services/MeuMundoLifeService");
   Life.adminPerks = false;
   const Dom = require("../src/services/MeuMundoDomainService");
@@ -110,7 +114,7 @@ async function main() {
   /** Joga a luta do ticket como o aparelho (entrada quantizada) e fecha pelo servidor. */
   const play = async (id, ticket) => {
     const su = ticket.setup;
-    const fight = new F.Fight({ kind: su.kind, level: su.level, hero: su.hero || undefined, peer: su.peer || undefined, tier: su.tier || undefined, body: su.body || undefined, seed: su.seed, stats: su.stats, style: su.style || undefined, gear: su.gear || undefined, temper: su.temper || undefined, affection: su.affection || undefined });
+    const fight = new F.Fight({ kind: su.kind, level: su.level, hero: su.hero || undefined, peer: su.peer || undefined, tier: su.tier || undefined, body: su.body || undefined, seed: su.seed, stats: su.stats, style: su.style || undefined, gear: su.gear || undefined, temper: su.temper || undefined, affection: su.affection || undefined, boss: su.boss || undefined });
     const frames = [];
     for (let i = 0; i < 40000 && !fight.over; i++) {
       const q = F.quantizeInput({ mx: Math.sin(i / 45) * 0.5, mz: 0.85, run: false, attack: i % 9 === 0, dodge: i % 61 === 0 });
@@ -119,6 +123,21 @@ async function main() {
     }
     await pool.query(`UPDATE tb_mm_fight SET started_at = NOW() - INTERVAL '30 minutes' WHERE id_fight = $1`, [ticket.ticket]);
     return { win: !!(fight.over && fight.over.win), frames, done: await Adv.fightFinish(id, { ticket: ticket.ticket, frames }) };
+  };
+
+  /**
+   * D4: o chefão com fases às vezes derruba a entrada roteirizada (semente sorteada pelo servidor):
+   * abre e joga de novo até vencer (no máximo 5 lutas). Derrota nunca abre setor nem pacto.
+   */
+  const playBoss = async (id) => {
+    let last = null;
+    for (let k = 0; k < 5; k++) {
+      const t = (await call("fightStart", id, { body: { origin: "domain", domain: "floresta", sector: 10 } })).body.fight;
+      last = { ticket: t, ...(await play(id, t)) };
+      if (last.win) return last;
+      if (last.done.receipt && last.done.receipt.pact) throw new Error("derrota abriu pacto");
+    }
+    return last;
   };
 
   // ── conta nova: nível 1 ──
@@ -235,11 +254,57 @@ async function main() {
   // ── setor 10: a travessia ──
   await strong(nu);
   await setBest(nu, "floresta", 9);
+  // D4: o povo da conta (o pacto vai para ele)
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'm')`, [nu]);
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 10 } });
+  check("D4: o ticket do setor 10 traz o chefão com fases (Noctis)", r.status === 200 && r.body.fight.setup.boss === "noctis", JSON.stringify(r.body.fight && r.body.fight.setup.boss));
+  {
+    const t = (await pool.query(`SELECT setup FROM tb_mm_fight WHERE id_fight = $1`, [r.body.fight.ticket])).rows[0];
+    check("D4: o chefão fica gravado no ticket (a re-simulação lê dele)", t && t.setup.boss === "noctis");
+  }
   check("setor 10 = Noctis (regra do Ciborgue, D2), nível calibrado, palco do palácio", r.status === 200 && r.body.fight.setup.kind === "ciborgue" && r.body.fight.setup.level === D.LEVELS_BY_DOMAIN.floresta[9] && D.stageOf(10) === "palacio", JSON.stringify(r.body.fight && r.body.fight.setup).slice(0, 160));
-  const p10 = await play(nu, r.body.fight);
+  let p10 = await play(nu, r.body.fight);
+  if (!p10.win) {
+    check("D4: derrota contra o chefão não abre pacto", !p10.done.receipt.pact);
+    p10 = await playBoss(nu);
+    r = { body: { fight: p10.ticket } };
+  }
   check("vitória no setor 10 marca a travessia", p10.win && p10.done.receipt.domain && p10.done.receipt.domain.crossed === true && p10.done.receipt.domain.crossedNow === true, JSON.stringify(p10.done.receipt && p10.done.receipt.domain));
   check("crossed_at gravado", (await best(nu, "floresta")).crossed === true);
+  // D4: o pacto de 7 dias para as Raposas no Rolê Noturno (jogável de Noctis)
+  {
+    const pact = p10.done.receipt.pact;
+    check("D4: vitória sobre o chefão abre o pacto do povo", pact && pact.fresh === true && pact.clan === "raposa" && pact.domain === "floresta" && pact.god === "noctis" && pact.game === "noturno", JSON.stringify(pact));
+    check("D4: o pacto dura 7 dias", pact && Date.parse(pact.endsAt) - Date.parse(pact.startsAt) === 7 * 24 * 3600 * 1000);
+    const again = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames: p10.frames });
+    check("D4: reenvio do mesmo ticket não abre outro pacto", again.replay === true && Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_domain_pact`)).rows[0].count) === 1);
+    st = await Dom.state(nu);
+    check("D4: GET /domains mostra o pacto de pé", st.pacts.length === 1 && st.pacts[0].clan === "raposa" && st.pacts[0].game === "noturno", JSON.stringify(st.pacts));
+    // outra Raposa vence enquanto o pacto está de pé: não estica
+    const r2 = await user("mmd_raposa2");
+    await setLevel(r2, 5);
+    await strong(r2);
+    await setBest(r2, "floresta", 9);
+    await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'f')`, [r2]);
+    const q2 = await playBoss(r2);
+    check("D4: outra vitória do mesmo povo com pacto de pé não estica", q2.win && q2.done.receipt.pact && q2.done.receipt.pact.fresh === false && q2.done.receipt.pact.endsAt === pact.endsAt, JSON.stringify(q2.done.receipt.pact));
+    // um Vampiro vence: o outro povo ganha o seu pacto
+    const v = await user("mmd_vamp");
+    await setLevel(v, 5);
+    await strong(v);
+    await setBest(v, "floresta", 9);
+    await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm')`, [v]);
+    const qv = await playBoss(v);
+    check("D4: os dois povos podem ter pacto com o mesmo deus", qv.win && qv.done.receipt.pact && qv.done.receipt.pact.fresh === true && qv.done.receipt.pact.clan === "vampiro");
+    check("D4: dois pactos gravados (um por povo)", Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_domain_pact`)).rows[0].count) === 2);
+    // derrota contra o chefão não abre pacto; setor que não é o 10 também não
+    const sem = await user("mmd_semclan");
+    await setLevel(sem, 5);
+    await strong(sem);
+    await setBest(sem, "floresta", 9);
+    const qs = await playBoss(sem);
+    check("D4: conta sem povo vence e não abre pacto", qs.win && !qs.done.receipt.pact, JSON.stringify({ win: qs.win, pact: qs.done.receipt && qs.done.receipt.pact, clan: (await pool.query(`SELECT clan FROM tb_mm_clan WHERE id_user = $1`, [sem])).rows }));
+  }
   st = await Dom.state(nu);
   check("nível 5 atravessou: a passagem existe, mas o Cânion pede o nível 9", st.domains[0].passage && st.domains[0].passage.to === "canion" && st.domains[0].passage.open === false && st.domains[1].lock.code === "trainer" && st.domains[1].lock.level === 9, JSON.stringify(st.domains[1].lock));
   await setLevel(nu, 9);
@@ -249,6 +314,7 @@ async function main() {
   check("quem atravessou volta direto ao começo da Floresta", r.status === 200 && r.body.domain.sectors.every((s) => s.open));
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 3 } });
   check("setor vencido fica livre para lutar de novo", r.status === 200);
+  check("D4: setor que não é o 10 não tem chefão", r.body.fight.setup.boss === null);
   r = await call("domainsEnter", nu, { body: { domain: "gelo" } });
   check("Mar de Gelo segue fechado (o Cânion não foi atravessado)", r.status === 403 && r.body.need === "crossing");
   // um setor mais baixo vencido depois não desce o progresso

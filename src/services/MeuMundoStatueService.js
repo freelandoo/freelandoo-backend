@@ -16,6 +16,7 @@
 const pool = require("../databases");
 const Store = require("../storages/MeuMundoStatueStorage");
 const NectarStore = require("../storages/MeuMundoNectarStorage");
+const PactStore = require("../storages/MeuMundoPactStorage");
 const PlaceService = require("./MeuMundoPlaceService");
 const S = require("../utils/meuMundoScores");
 const St = require("../utils/meuMundoStatue");
@@ -101,7 +102,7 @@ class MeuMundoStatueService {
   static async race(idUser, now = Date.now()) {
     const week = St.raceWeek(now);
     const sunday = St.isSunday(now);
-    const [race, clan, wallet, last] = await Promise.all([raceOf(pool, week), clanOf(pool, idUser), NectarStore.wallet(pool, idUser), PlaceService.lastVisit(pool, idUser)]);
+    const [race, clan, wallet, last, pacts] = await Promise.all([raceOf(pool, week), clanOf(pool, idUser), NectarStore.wallet(pool, idUser), PlaceService.lastVisit(pool, idUser), PactStore.active(pool, now)]);
     const mine = clan ? await Store.deliveredThisWeek(pool, idUser, week) : 0;
     return {
       week,
@@ -110,6 +111,8 @@ class MeuMundoStatueService {
       endsAt: new Date(St.sundayEndsAt(week)).toISOString(),
       stages: St.STAGES,
       race,
+      // D4: os pactos de pé (o povo que venceu o deus ganha néctar extra no jogo dele)
+      pacts,
       me: {
         clan,
         god: clan ? St.GOD_OF[clan] : null,

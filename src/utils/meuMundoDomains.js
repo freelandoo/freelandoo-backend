@@ -51,7 +51,7 @@ const SECTOR_KINDS = Object.freeze(["cavaleiro", "cavaleiro", "cavaleiro", "garr
  *   1–2 Mariposas Cinzentas · 3–4 Cervos Ocos / Corujas de Mil Olhos (placeholders)
  *   5–6 Sonâmbulos (Raposas de olhos fechados: corpo da Raposa adulta, lutando de mão)
  *   7–8 Lobos de Ferrugem (elite, já existem) · 9 Selene de Sombra (Vampira adulta, espada)
- *   10 NOCTIS (o corpo do deus, de arma de fogo: a regra do Ciborgue até a D4 dar as fases)
+ *   10 NOCTIS (o corpo do deus, de arma de fogo: a regra do Ciborgue + as fases da D4, BOSS_BY_DOMAIN)
  */
 const KINDS_BY_DOMAIN = Object.freeze({
   floresta: Object.freeze(["cavaleiro", "cavaleiro", "garras", "garras", "brute", "brute", "wolf", "wolf", "cavaleiro", "ciborgue"]),
@@ -87,6 +87,13 @@ const FOES_BY_DOMAIN = Object.freeze({
 const LEVELS_BY_DOMAIN = Object.freeze({
   floresta: Object.freeze([2, 2, 2, 2, 4, 4, 5, 6, 7, 7]),
 });
+/**
+ * D4: o deus do setor 10 luta em FASES (regra `BOSSES` em meuMundoFight.js, setup.boss no
+ * ticket). Domínio sem chefão com fases (ainda sem fatia) luta como antes.
+ */
+const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis" });
+/** O chefão com fases do setor (só o 10), ou null. */
+const bossOf = (domainId, sector) => (sector === SECTORS && BOSS_BY_DOMAIN[domainId]) || null;
 /** Vitórias do robô com o Poder recomendado, do setor 1 ao 10 (o fim fica no deus). */
 const TARGET = Object.freeze([0.9, 0.86, 0.82, 0.78, 0.74, 0.7, 0.66, 0.62, 0.56, 0.5]);
 /** Nível de aventura que o robô usa em cada setor (quem chega ao fundo já lutou mais). */
@@ -217,6 +224,7 @@ function view(trainerLevel, best, bypass = false) {
           n: s,
           kind: kindOf(d.id, s),
           foe: foeOf(d.id, s),
+          boss: bossOf(d.id, s),
           level: sectorLevel(d.id, s),
           power: recommendedPower(d.id, s),
           stage: stageOf(s),
@@ -237,6 +245,8 @@ module.exports = {
   FOES_BY_DOMAIN,
   LEVELS_BY_DOMAIN,
   PLACES_BY_DOMAIN,
+  BOSS_BY_DOMAIN,
+  bossOf,
   placeOf,
   placeOpen,
   TARGET,

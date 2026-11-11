@@ -144,7 +144,7 @@ test("D2: níveis da Floresta calibrados com robô (sobem, nunca descem; o deus 
 
 test("D2: robô — com o Poder recomendado vence quase sempre o setor 1 e menos da metade contra Noctis", () => {
   const C = require("../../scripts/mm-domain-calibrate");
-  const at = (s) => C.winRate(D.kindOf("floresta", s), D.sectorLevel("floresta", s), D.recommendedPower("floresta", s), D.heroOf("floresta", s), 24);
+  const at = (s) => C.winRate(D.kindOf("floresta", s), D.sectorLevel("floresta", s), D.recommendedPower("floresta", s), D.heroOf("floresta", s), 24, D.bossOf("floresta", s));
   const first = at(1);
   const last = at(10);
   assert.ok(first >= 0.8, `setor 1: ${first}`);

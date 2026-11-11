@@ -165,6 +165,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       mobId: setup.mobId ?? null,
       domain: setup.domain ?? undefined,
       sector: setup.sector ?? undefined,
+      boss: setup.boss ?? undefined,
       gainMult: mult,
       condition: Adv.conditionFactor(before.energy, before.stress),
       dropCondition: Adv.dropCondition(before.health, before.vitality, before.stress),
@@ -186,7 +187,13 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   if (rec && verdict.win && !verdict.abandoned && Scores.FIGHT_GAMES.includes(origin)) await recordScore(c, idUser, origin, 1, ctx.now);
   // D1: vitória conferida no setor do Domínio sobe o progresso na MESMA transação do recibo
   if (origin === "domain" && rec && verdict.win && !verdict.abandoned && setup.domain && setup.sector) {
-    rec.domain = await require("./MeuMundoDomainService").advance(c, idUser, setup.domain, setup.sector, ctx.now);
+    const Dom = require("./MeuMundoDomainService");
+    rec.domain = await Dom.advance(c, idUser, setup.domain, setup.sector, ctx.now);
+    // D4: o chefão vencido abre o pacto de 7 dias do povo (na mesma transação do recibo)
+    if (setup.boss) {
+      const pact = await Dom.openPact(c, idUser, setup.domain, setup.sector, fight.id_fight, ctx.now);
+      if (pact) rec.pact = pact;
+    }
   }
   // B5: inventário de monstros (só luta de verdade; recibo repetido = já contou).
   const trophy = Adv.trophyKind(origin, setup.kind);
@@ -382,6 +389,8 @@ class MeuMundoAdventureService {
         // D1: o setor fica no ticket (o fim sobe o progresso por ele, nunca pelo aparelho)
         domain: domain ? domain.domain : undefined,
         sector: domain ? domain.sector : undefined,
+        // D4: o deus chefão do setor 10 luta em fases (a regra lê do ticket; luta antiga não tem)
+        boss: domain && domain.boss ? domain.boss : undefined,
         // mm3d-72: personalidade e afeto mexem na luta por probabilidade (psicopata, covarde)
         temper: origin === "tutorial" ? undefined : Soul.temperOf(s),
         affection: origin === "tutorial" ? undefined : Math.floor(Soul.soulOf(s).affection),
@@ -398,7 +407,7 @@ class MeuMundoAdventureService {
         fight: {
           ticket: t.id_fight,
           origin,
-          setup: { kind, level, hero, domain: setup.domain ?? null, sector: setup.sector ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
+          setup: { kind, level, hero, domain: setup.domain ?? null, sector: setup.sector ?? null, boss: setup.boss ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
           expiresAt: new Date(t.expires_at).toISOString(),
         },
         abandoned,
@@ -424,7 +433,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined, boss: setup.boss || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");

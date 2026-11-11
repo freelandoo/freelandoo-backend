@@ -50,13 +50,13 @@ class MeuMundoNectarStorage {
    * Grava o recibo de um prêmio. Devolve true só se for NOVO (a chave conta ×
    * semana × jogo impede o segundo crédito).
    */
-  static async insertAward(c, { idUser, week, game, position, value, ml }) {
+  static async insertAward(c, { idUser, week, game, position, value, ml, pactMl = 0 }) {
     const r = await c.query(
-      `INSERT INTO tb_mm_nectar_award (id_user, week, game, position, value, ml)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO tb_mm_nectar_award (id_user, week, game, position, value, ml, pact_ml)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (id_user, week, game) DO NOTHING
        RETURNING id_user`,
-      [idUser, week, game, position, value, ml]
+      [idUser, week, game, position, value, ml, pactMl]
     );
     return r.rowCount > 0;
   }
@@ -92,10 +92,10 @@ class MeuMundoNectarStorage {
 
   /** Os prêmios de uma conta numa semana, na ordem dos jogos. */
   static async awards(db, idUser, week) {
-    const r = await db.query(`SELECT game, position, value, ml FROM tb_mm_nectar_award WHERE id_user = $1 AND week = $2`, [idUser, week]);
+    const r = await db.query(`SELECT game, position, value, ml, pact_ml FROM tb_mm_nectar_award WHERE id_user = $1 AND week = $2`, [idUser, week]);
     const order = new Map(S.GAMES.map((g, i) => [g.id, i]));
     return r.rows
-      .map((x) => ({ game: x.game, position: Number(x.position), value: Number(x.value), ml: Number(x.ml) }))
+      .map((x) => ({ game: x.game, position: Number(x.position), value: Number(x.value), ml: Number(x.ml), pactMl: Number(x.pact_ml) || 0 }))
       .sort((a, b) => order.get(a.game) - order.get(b.game));
   }
 }

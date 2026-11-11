@@ -84,10 +84,11 @@ function persona(P, hero) {
   return { strength: each, speed: each, intelligence: each, dexterity: each };
 }
 
-function winRate(kind, level, P, hero, n = N) {
+/** `boss` (D4) = o deus do setor 10 com fases (D.bossOf). */
+function winRate(kind, level, P, hero, n = N, boss = undefined) {
   let wins = 0;
   for (let i = 0; i < n; i++) {
-    const f = new F.Fight({ kind, level, hero, tier: "domain", seed: 1000 + i * 7919, stats: persona(P, hero), body: null });
+    const f = new F.Fight({ kind, level, hero, tier: "domain", seed: 1000 + i * 7919, stats: persona(P, hero), body: null, boss: boss || undefined });
     const mem = { react: 0 };
     for (let k = 0; k < MAX_STEPS && !f.over; k++) f.step(botInput(f, mem));
     if (f.over && f.over.win) wins++;
@@ -113,10 +114,11 @@ function fit(domainId, n = N) {
     const hero = D.heroOf(domainId, s);
     const P = D.recommendedPower(domainId, s);
     const want = D.TARGET[s - 1];
+    const boss = D.bossOf(domainId, s);
     let L = prev;
-    let w = winRate(kind, L, P, hero, n);
+    let w = winRate(kind, L, P, hero, n, boss);
     while (L < 120) {
-      const next = winRate(kind, L + 1, P, hero, n);
+      const next = winRate(kind, L + 1, P, hero, n, boss);
       if (next < want) break;
       L++;
       w = next;
@@ -141,7 +143,7 @@ if (require.main === module && args.includes("--fit")) {
     const level = D.sectorLevel(domain, s);
     const hero = D.heroOf ? D.heroOf(domain, s) : 1;
     const shown = D.recommendedPower(domain, s);
-    const w = winRate(kind, level, shown, hero);
+    const w = winRate(kind, level, shown, hero, N, D.bossOf(domain, s));
     const p60 = powerFor(kind, level, hero, 0.6);
     out.push({ sector: s, kind, level, hero, shown, winAtShown: w, power60: p60 });
     console.log(`setor ${String(s).padStart(2)} ${kind.padEnd(9)} nv ${String(level).padStart(2)} herói ${hero} · Poder mostrado ${shown} → robô vence ${(w * 100).toFixed(0)}% · 60% a partir de ${p60}`);

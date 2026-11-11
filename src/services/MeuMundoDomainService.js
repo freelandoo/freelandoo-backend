@@ -17,6 +17,12 @@ const Trainer = require("../utils/meuMundoTrainer");
 const D = require("../utils/meuMundoDomains");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const MeuMundoPlaceService = require("./MeuMundoPlaceService");
+const PactStore = require("../storages/MeuMundoPactStorage");
+const Pact = require("../utils/meuMundoPact");
+
+/** D4: namespace do advisory lock do pacto (Domínio × povo; fixo, não colide com outros). */
+const PACT_LOCK_NS = 44501;
+const pactKey = (domain, clan) => (D.DOMAIN_IDS.indexOf(domain) + 1) * 10 + Pact.CLANS.indexOf(clan) + 1;
 
 const ERRORS = {
   domain: ["Domínio desconhecido", 404],
@@ -62,7 +68,7 @@ class MeuMundoDomainService {
     const trainer = await levelOf(db, idUser);
     const bypass = await bypassOf(db, idUser);
     const best = await bestOf(db, idUser);
-    return { trainer, bypass, power: await powerOf(db, idUser), sectors: D.SECTORS, domains: D.view(trainer, best, bypass) };
+    return { trainer, bypass, power: await powerOf(db, idUser), sectors: D.SECTORS, domains: D.view(trainer, best, bypass), pacts: await PactStore.active(db, Date.now()) };
   }
 
   /** POST /domains/enter { domain } — só entra na cena de um Domínio aberto. */
@@ -75,7 +81,7 @@ class MeuMundoDomainService {
     const lock = D.lockOf(id, trainer, best, bypass);
     if (lock) return lockFail(lock);
     const domain = D.view(trainer, best, bypass).find((d) => d.id === id);
-    return { trainer, bypass, power: await powerOf(db, idUser), domain };
+    return { trainer, bypass, power: await powerOf(db, idUser), domain, pacts: (await PactStore.active(db, Date.now())).filter((p) => p.domain === id) };
   }
 
   /**
@@ -92,7 +98,7 @@ class MeuMundoDomainService {
     const lock = D.lockOf(id, trainer, best, bypass);
     if (lock) return lockFail(lock);
     if (!D.sectorOpen(id, sector, trainer, best, bypass)) return fail("sector", { sector, best: best[id] || 0 });
-    return { domain: id, sector, kind: D.kindOf(id, sector), level: D.sectorLevel(id, sector) };
+    return { domain: id, sector, kind: D.kindOf(id, sector), level: D.sectorLevel(id, sector), boss: D.bossOf(id, sector) };
   }
 
   /**
@@ -156,6 +162,28 @@ class MeuMundoDomainService {
     return { domain: row.domain, sector, best, crossed: best >= D.SECTORS, opened: fresh && best < D.SECTORS ? best + 1 : null, crossedNow: fresh && best >= D.SECTORS };
   }
 }
+
+/**
+ * D4 — vitória conferida contra o chefão do setor 10 (dentro do withLife, recibo NOVO): abre o
+ * pacto de 7 dias para o povo da conta naquele Domínio. Pacto do povo ainda de pé = não estica
+ * (devolve o de pé com `fresh: false`). Conta sem povo escolhido não abre. Trava por Domínio ×
+ * povo (duas vitórias ao mesmo tempo não abrem dois). Devolve o pacto ou null.
+ */
+MeuMundoDomainService.openPact = async function openPact(c, idUser, domain, sector, idFight, now) {
+  if (!D.bossOf(domain, sector)) return null;
+  const d = D.domainOf(domain);
+  const game = Pact.gameOfGod(d.god);
+  if (!game) return null;
+  const k = await c.query(`SELECT clan FROM tb_mm_clan WHERE id_user = $1`, [idUser]);
+  const clan = k.rows[0] && k.rows[0].clan;
+  if (!Pact.CLANS.includes(clan)) return null;
+  await c.query("SELECT pg_advisory_xact_lock($1, $2)", [PACT_LOCK_NS, pactKey(domain, clan)]);
+  const cur = await PactStore.current(c, domain, clan, now);
+  if (cur) return { ...cur, fresh: false };
+  const w = Pact.window(now);
+  const made = await PactStore.insert(c, { domain, god: d.god, game, clan, idUser, idFight, startsAt: w.startsAt, endsAt: w.endsAt });
+  return made ? { ...made, fresh: true } : null;
+};
 
 /** Administrador passa direto (os testes desligam para ver a trava). */
 MeuMundoDomainService.adminBypass = true;

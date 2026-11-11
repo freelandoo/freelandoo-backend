@@ -18,6 +18,8 @@ const Store = require("../storages/MeuMundoNectarStorage");
 const Inbox = require("../storages/MeuMundoInboxStorage");
 const S = require("../utils/meuMundoScores");
 const N = require("../utils/meuMundoNectar");
+const Pact = require("../utils/meuMundoPact");
+const PactStore = require("../storages/MeuMundoPactStorage");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.nectar");
@@ -57,16 +59,31 @@ class MeuMundoNectarService {
         await c.query("ROLLBACK");
         return { week: w, skipped: "closed" };
       }
+      const boards = [];
+      for (const g of S.GAMES) boards.push([g, await Store.standings(c, g.id, w)]);
+      // D4: pactos dos deuses que cruzam a semana → fração do bônus por jogo × povo
+      const range = S.weekRange(w);
+      const groups = new Map();
+      for (const p of await PactStore.overlapping(c, range.start, range.end)) {
+        const k = `${p.game}:${p.clan}`;
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push({ startsAt: p.start, endsAt: p.end });
+      }
+      const shares = new Map([...groups].map(([k, list]) => [k, Pact.weekShare(w, list)]));
+      const pactGames = new Set([...shares.keys()].map((k) => k.split(":")[0]));
+      const clans = await PactStore.clansOf(c, [...new Set(boards.filter(([g]) => pactGames.has(g.id)).flatMap(([, rows]) => rows.map((r) => r.idUser)))]);
       // conta → prêmios novos desta semana
       const byUser = new Map();
-      for (const g of S.GAMES) {
-        for (const r of await Store.standings(c, g.id, w)) {
-          const ml = N.mlFor(r.position, r.scored);
-          if (ml <= 0) continue;
-          const fresh = await Store.insertAward(c, { idUser: r.idUser, week: w, game: g.id, position: r.position, value: r.value, ml });
+      for (const [g, rows] of boards) {
+        for (const r of rows) {
+          const base = N.mlFor(r.position, r.scored);
+          if (base <= 0) continue;
+          const pactMl = Pact.bonusMl(base, shares.get(`${g.id}:${clans.get(r.idUser)}`) || 0);
+          const ml = base + pactMl;
+          const fresh = await Store.insertAward(c, { idUser: r.idUser, week: w, game: g.id, position: r.position, value: r.value, ml, pactMl });
           if (!fresh) continue;
           if (!byUser.has(r.idUser)) byUser.set(r.idUser, []);
-          byUser.get(r.idUser).push({ game: g.id, position: r.position, ml });
+          byUser.get(r.idUser).push({ game: g.id, position: r.position, ml, pactMl });
         }
       }
       let total = 0;
@@ -79,7 +96,7 @@ class MeuMundoNectarService {
           kind: "life",
           code: "nectar_week",
           priority: 2,
-          data: { week: w, ml, games: awards.length, best: { game: best.game, position: best.position }, pendingMl: wallet.pendingMl },
+          data: { week: w, ml, games: awards.length, best: { game: best.game, position: best.position }, pendingMl: wallet.pendingMl, pactMl: N.totalMl(awards.map((a) => ({ ml: a.pactMl }))) || undefined },
           dedupeKey: `nectar:${w}`,
         });
         if (n) notices.push([idUser, n]);
@@ -101,7 +118,7 @@ class MeuMundoNectarService {
   static async wallet(idUser, now = Date.now()) {
     const current = S.weekOf(now);
     const last = S.previousWeek(current);
-    const [w, closed, awards] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last)]);
+    const [w, closed, awards, pacts] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last), PactStore.active(pool, now)]);
     return {
       pendingMl: w.pendingMl,
       earnedMl: w.earnedMl,
@@ -109,6 +126,9 @@ class MeuMundoNectarService {
       week: current,
       closesAt: new Date(N.closesAt(current)).toISOString(),
       last: { week: last, closed: !!closed, ml: N.totalMl(awards), awards },
+      // D4: os pactos de pé (os dois povos) e quanto valem
+      pacts,
+      pactBonus: Pact.PACT_BONUS,
     };
   }
 }
