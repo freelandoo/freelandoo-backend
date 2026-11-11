@@ -83,13 +83,18 @@ test("E0 — proposta do §7: 71 definições novas, sem id repetido nem colisã
   // o que já entrou no catálogo (E7: as 12 peças dos conjuntos) tem de ser a MESMA peça da proposta
   for (const i of items) {
     const c = Gear.GEAR_BY_ID.get(i.id);
-    if (c) assert.ok(c.set === i.set && c.slot === i.slot && c.rarity === i.rarity && String(c.keys) === String(i.keys), `colide com o catálogo: ${i.id}`);
+    if (c) assert.ok((c.set ?? null) === (i.set ?? null) && (c.slot ?? null) === (i.slot ?? null) && c.rarity === i.rarity && c.category === i.category && String(c.keys || []) === String(i.keys || []), `colide com o catálogo: ${i.id}`);
   }
   for (const i of items.filter((x) => x.slot)) {
     assert.equal(i.keys.length, 2, `${i.id}: chaves ${i.keys}`);
     for (const k of i.keys) assert.ok(B.WEIGHT[k][i.slot], `${i.id}: ${k} fora do slot ${i.slot}`);
   }
   const known = new Set(ids);
+  // E8: as 21 receitas por fragmento do catálogo são as da proposta (mesmos ingredientes e custo)
+  for (const rc of Bal.proposalRecipes()) {
+    const real = Gear.RECIPE_BY_ID.get(rc.id);
+    assert.ok(real && real.out === rc.out && real.recipe === rc.recipe && real.coins === rc.coins && JSON.stringify(real.needs) === JSON.stringify(rc.needs), `receita ${rc.id}`);
+  }
   for (const rc of Bal.proposalRecipes()) {
     assert.ok(known.has(rc.out) && known.has(rc.recipe), rc.id);
     for (const k of Object.keys(rc.needs)) assert.ok(known.has(k), `${rc.id}: ${k}`);
@@ -198,5 +203,27 @@ test("I6 — a mesma faixa do sorteio da rua dá a mesma distância de régua (�
 });
 test("I7 — fabricar → desmontar → fabricar perde pelo menos 50% dos materiais", { todo: "E11" }, () => {});
 test("I8 — vitórias para +15 nunca abaixo de 270; cruzamento moeda × material nos níveis 6, 17, 31, 53, 80, 114 (±2)", { todo: "E9" }, () => {});
-test("I9 — vitórias de chefão para fabricar: 3 a 20 por raridade; pior caso ≤ 1,5 × o esperado", { todo: "E8, E12" }, () => {});
+test("I9 (armas) — vitórias de chefão para fabricar: 3 a 20 por raridade; pior caso ≤ 1,5 × o esperado", () => {
+  const Items = require("../../src/utils/mmItems");
+  const { BOSS_FRAGMENTS, NEED } = Items.LINES;
+  const [lo, hi] = BOSS_FRAGMENTS.qty;
+  // a primeira vitória já paga os 10 a mais e um sorteio normal
+  const wins = (need, per) => { let have = BOSS_FRAGMENTS.first + per, n = 1; while (have < need) { have += per; n++; } return n; };
+  const want = { rare: [3, 4], epic: [8, 10], legendary: [13, 17], mythic: [18, 24] };
+  for (const [rarity, need] of Object.entries(NEED)) {
+    const expected = wins(need, (lo + hi) / 2), worst = wins(need, lo);
+    assert.deepEqual([expected, worst], want[rarity], rarity);
+    assert.ok(expected >= 3 && expected <= 20, `${rarity}: ${expected} vitórias`);
+    assert.ok(worst <= 1.5 * expected, `${rarity}: pior ${worst} > 1,5 × ${expected}`);
+  }
+  // toda arma de linha pede exatamente o `need` da raridade dela, e o fragmento aponta a arma
+  for (const r of Items.RECIPES.filter((x) => x.kind === "fragment" && x.out.startsWith("linha_"))) {
+    const out = Items.GEAR_BY_ID.get(r.out);
+    const frag = Object.keys(r.needs).map((id) => Items.GEAR_BY_ID.get(id)).find((g) => g.category === "fragment");
+    assert.equal(frag.fragment.of, out.id, r.id);
+    assert.equal(r.needs[frag.id], NEED[out.rarity], r.id);
+    assert.equal(frag.fragment.need, NEED[out.rarity], frag.id);
+  }
+});
+test("I9 (conjuntos) — fragmento dos setores 7 a 10 com a tabela real do Domínio", { todo: "E12" }, () => {});
 test("I10 — nenhum item de combate existe só em fonte de PvP", { todo: "E17" }, () => {});

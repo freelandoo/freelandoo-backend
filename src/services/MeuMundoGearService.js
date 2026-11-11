@@ -53,6 +53,7 @@ const ERRORS = {
   use: ["Use esse item na ação indicada no catálogo", 409],
   instance: ["Equipamento não encontrado", 404],
   twohanded: ["Sua arma usa as duas mãos", 409],
+  notfragment: ["Esse item não é um fragmento", 400],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -487,6 +488,28 @@ class MeuMundoGearService {
       const updated = await GearStore.resolveProposal(c, idUser, p.id_proposal, status, key, receipt.eventId, ctx.now);
       if (!updated) return fail("resolved");
       return { receipt, proposal: publicProposal(updated), replay: false, bag: await bagState(c, idUser, ctx.coins, ctx.now) };
+    });
+  }
+
+  /**
+   * E8: fragmento que sobra vira Pó de Refino (2 × tier por fragmento, §6.5). Só o servidor diz
+   * quanto vale; a pilha do Pó não passa de 9.999 (o pedido que estouraria é recusado inteiro).
+   */
+  static async convertFragments(idUser, body = {}) {
+    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
+    if (!it) return fail("item");
+    if (it.category !== "fragment" || !it.fragment) return fail("notfragment");
+    const qty = Math.floor(Number(body.qty));
+    if (!Number.isInteger(qty) || qty < 1 || qty > Gear.STACK_MAX) return fail("owned");
+    const powder = qty * it.fragment.powder;
+    return withReceipt(idUser, "fragment_convert", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      const owned = await GearStore.owned(c, idUser);
+      if ((owned[it.id]?.qty || 0) < qty) return fail("owned");
+      if ((owned.po_refino?.qty || 0) + powder > Gear.STACK_MAX) return fail("max");
+      if ((await GearStore.addStack(c, idUser, it.id, -qty)) == null) return fail("owned");
+      await GearStore.addStack(c, idUser, "po_refino", powder, null, Gear.STACK_MAX);
+      return { result: { item: it.id, qty, powder }, deltas: {}, items: lines({ [it.id]: -qty, po_refino: powder }) };
     });
   }
 

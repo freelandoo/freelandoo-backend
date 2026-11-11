@@ -448,8 +448,8 @@ function todayMax(it) {
 const ruleBonus = (slot, rarity, keys, plus, grade) => Object.fromEntries(keys.map((k, i) => [k, r(B.piece(k, slot, rarity, plus, grade, i === 0 ? 1 : B.SECONDARY), 4)]));
 
 function todayGear() {
-  // os equipamentos DE ANTES da trilha (as peças de conjunto da E7 são da proposta do §7)
-  const eq = Gear.GEAR.filter((g) => ["weapon", "shield", "armor", "accessory"].includes(g.category) && !g.set);
+  // os equipamentos DE ANTES da trilha (as peças de conjunto da E7 e as armas de linha da E8 são da proposta do §7)
+  const eq = Gear.GEAR.filter((g) => ["weapon", "shield", "armor", "accessory"].includes(g.category) && !g.set && !g.line);
   return eq.map((it) => {
     const slot = slotOfToday(it);
     const keys = keysOfToday(it, slot);

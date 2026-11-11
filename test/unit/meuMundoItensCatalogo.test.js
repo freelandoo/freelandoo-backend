@@ -25,8 +25,9 @@ const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) {
   if (k === "bonus" && ["weapon", "shield", "armor", "accessory"].includes(this.category)) return undefined;
   return x;
 }));
-/** As peças de antes (os conjuntos da E7 entram no fim). */
-const deAntes = (list) => list.filter((g) => !g.set);
+/** As peças de antes (os conjuntos da E7 e as linhas/fragmentos/materiais da E8 entram no fim). */
+const IDS_ANTES = new Set(ANTES.publicGear.items.map((i) => i.id));
+const deAntes = (list) => list.filter((g) => IDS_ANTES.has(g.id));
 
 test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () => {
   const agora = semTier(Gear.publicGear());
@@ -41,7 +42,9 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   agora.items = deAntes(agora.items);
   assert.deepEqual(agora.items.map((i) => i.id), ANTES.publicGear.items.map((i) => i.id), "mesma ordem de itens");
   semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual(agora.items[n], antes, antes.id));
-  assert.deepEqual(agora.recipes, ANTES.publicGear.recipes);
+  // E8: as receitas por fragmento entram no fim; as de antes não mudam
+  assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
+  assert.ok(agora.recipes.slice(ANTES.publicGear.recipes.length).every((r) => r.kind === "fragment"));
 });
 
 test("E1: GEAR, saque e constantes de equipamento iguais aos de antes", () => {

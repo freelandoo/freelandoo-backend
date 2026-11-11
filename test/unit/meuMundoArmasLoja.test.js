@@ -7,7 +7,7 @@ const Gear = require("../../src/utils/meuMundoGear");
 const { clanOfBody, usesSword, usesHammer } = require("../../src/utils/meuMundoClans");
 const { CENTER_INTERIORS } = require("../../src/utils/meuMundoCenterInteriors");
 
-const swords = Gear.GEAR.filter((g) => g.shop === "weapons");
+const swords = Gear.GEAR.filter((g) => g.shop === "weapons" && !g.line) /* E8: arma de linha não se vende */;
 
 test("16 espadas à venda, todas com preço, descrição e prefixo espada_", () => {
   assert.equal(swords.length, 16);
@@ -52,7 +52,7 @@ test("as espadas da loja podem ser refinadas como as outras armas", () => {
 });
 
 test("aba Hammers: 18 armas, preço crescente, sem classe e dentro do teto", () => {
-  const heavy = Gear.GEAR.filter((g) => g.shop === "hammers");
+  const heavy = Gear.GEAR.filter((g) => g.shop === "hammers" && !g.line) /* E8: arma de linha não se vende */;
   assert.equal(heavy.length, 18);
   heavy.forEach((h, i) => {
     assert.ok(h.id.startsWith("pesada_") && h.clan === null, h.id);
@@ -79,7 +79,7 @@ test("Arsenal tem dois balcões e dois vendedores", () => {
 });
 
 test("escudos: 16 à venda, preço crescente, sem classe, slot próprio e dentro do teto", () => {
-  const shields = Gear.GEAR.filter((g) => g.shop === "shields");
+  const shields = Gear.GEAR.filter((g) => g.shop === "shields" && !g.line) /* E8: arma de linha não se vende */;
   assert.equal(shields.length, 16);
   shields.forEach((s, i) => {
     assert.ok(s.id.startsWith("escudo_") && s.clan === null && s.category === "shield", s.id);
@@ -97,7 +97,7 @@ test("escudos: 16 à venda, preço crescente, sem classe, slot próprio e dentro
 
 test("arcos: 19 à venda, preço crescente, sem classe e dentro do teto; só Íris e Aeryn", () => {
   const { usesBow } = require("../../src/utils/meuMundoClans");
-  const bows = Gear.GEAR.filter((g) => g.shop === "bows");
+  const bows = Gear.GEAR.filter((g) => g.shop === "bows" && !g.line) /* E8: arma de linha não se vende */;
   assert.equal(bows.length, 19);
   bows.forEach((b, i) => {
     assert.ok(b.id.startsWith("arco_") && b.clan === null && b.category === "weapon", b.id);
@@ -115,7 +115,7 @@ test("arcos: 19 à venda, preço crescente, sem classe e dentro do teto; só Ír
 
 test("guns: 19 à venda, preço crescente, sem classe e dentro do teto; só Ciborgue e Noctis", () => {
   const { usesBow, usesGun } = require("../../src/utils/meuMundoClans");
-  const guns = Gear.GEAR.filter((g) => g.shop === "guns");
+  const guns = Gear.GEAR.filter((g) => g.shop === "guns" && !g.line) /* E8: arma de linha não se vende */;
   assert.equal(guns.length, 19);
   guns.forEach((b, i) => {
     assert.ok(b.id.startsWith("fogo_") && b.clan === null && b.category === "weapon", b.id);
