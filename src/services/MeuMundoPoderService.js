@@ -16,6 +16,9 @@ const RankingStorage = require("../storages/RankingStorage");
 const TABS = Object.freeze(["poder", "nivel", "freelandoo"]);
 const Scores = require("../utils/meuMundoScores");
 const ScoreStore = require("../storages/MeuMundoScoreStorage");
+const Nectar = require("../utils/meuMundoNectar");
+// N2: cada linha do placar semanal diz quanto néctar a posição vale
+const withMl = (r) => (r ? { ...r, ml: Nectar.mlFor(r.position) } : r);
 const TOP = 100;
 
 const PowerService = () => require("./MeuMundoPowerService");
@@ -53,10 +56,10 @@ class MeuMundoPoderService {
     const head = { tab: "semana", game, kind: g.kind, dir: g.dir, unit: g.unit, week: w, current: w === current, endsAt: new Date(range.end).toISOString(), scope: "br", games: Scores.GAMES.map((x) => x.id) };
     if (g.kind === "live") {
       const r = await MeuMundoPoderService.ranking(idUser, "poder");
-      return { ...head, top: r.top, me: r.me ? { ...r.me, parts: undefined } : null };
+      return { ...head, top: r.top.map(withMl), me: r.me ? withMl({ ...r.me, parts: undefined }) : null };
     }
     const [top, me] = await Promise.all([ScoreStore.top(pool, game, w, TOP), ScoreStore.mine(pool, game, w, idUser)]);
-    return { ...head, top, me };
+    return { ...head, top: top.map(withMl), me: withMl(me) };
   }
 
   /** Parcelas do meu Poder agora (a mesma conta que o servidor grava). */

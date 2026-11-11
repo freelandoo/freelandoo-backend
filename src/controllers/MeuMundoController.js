@@ -215,6 +215,10 @@ async function weeklyRanking(req, res) {
   return reply(res, await require("../services/MeuMundoPoderService").weekly(req.user.id_user, String(req.params.game || ""), req.query.week ? String(req.query.week) : null));
 }
 
+async function nectarWallet(req, res) {
+  return reply(res, await require("../services/MeuMundoNectarService").wallet(req.user.id_user));
+}
+
 async function ranking(req, res) {
   return reply(res, await require("../services/MeuMundoPoderService").ranking(req.user.id_user, String(req.params.tab || "")));
 }
@@ -477,6 +481,7 @@ module.exports = {
   gearGet,
   ranking,
   weeklyRanking,
+  nectarWallet,
   shareLink,
   gearBuy,
   gearEquip,

@@ -26,6 +26,8 @@ const server = app.listen(PORT, () => {
   // mm3d-09: convites pendentes expiram e visitas com alguém fora além da
   // tolerância terminam (parâmetros em src/utils/meuMundoVisits.js).
   require("./src/services/MeuMundoService").startSweeper();
+  // lore v2 N2: depois do sábado 23:59 (Brasília) fecha a semana e credita o néctar (com trava)
+  require("./src/services/MeuMundoNectarService").startSweeper();
 
   // F4.S1 — worker de mídia (fork): todo ffmpeg/sharp pesado roda fora deste
   // processo, com fila (concorrência 1) + status em media_jobs. Se o worker

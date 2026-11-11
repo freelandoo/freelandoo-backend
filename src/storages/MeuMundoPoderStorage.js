@@ -145,3 +145,4 @@ module.exports.WHO = WHO;
 module.exports.WHO_JOIN = WHO_JOIN;
 module.exports.CHAR_ACTIVE = CHAR_ACTIVE;
 module.exports.who = who;
+module.exports.BEST_POWER = BEST_POWER;
