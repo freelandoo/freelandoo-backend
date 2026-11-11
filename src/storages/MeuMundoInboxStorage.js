@@ -14,6 +14,20 @@ const NOTICE_FILTERS = Object.freeze({
   rewards: `n.kind IN ('gift', 'purchase')`,
   official: `n.kind IN ('official', 'promo')`,
 });
+/**
+ * O que FICA no histórico do sino (Alex, 2026-11-10): "não precisa guardar
+ * histórico de notificação, serão apenas interações; só se for algo como foi ao
+ * médico ou caiu muito a energia". O resto (fome leve, sono, desejo, dica) segue
+ * virando card na hora, mas não entra na lista nem no contador. Filtro de
+ * LEITURA: nada é apagado, e mudar a lista não pede migration.
+ */
+const NEED_HISTORY = Object.freeze(["hospital", "unwell", "exhausted", "starving"]);
+const LIFE_INTERACTION = Object.freeze(["wish", "wish_ok", "wish_fail", "colors_hint"]);
+const sqlList = (l) => l.map((c) => `'${c}'`).join(", ");
+const historySql = (a) =>
+  `(${a}kind NOT IN ('need', 'life')
+    OR (${a}kind = 'need' AND ${a}code IN (${sqlList(NEED_HISTORY)}))
+    OR (${a}kind = 'life' AND ${a}code NOT IN (${sqlList(LIFE_INTERACTION)})))`;
 const MAIL_TABS = Object.freeze({
   all: null,
   gift: `m.kind = 'gift'`,
@@ -84,7 +98,7 @@ class MeuMundoInboxStorage {
   }
 
   static async listNotices(db, idUser, { filter = "all", before = null, limit = 30 } = {}) {
-    const where = [`n.id_user = $1`];
+    const where = [`n.id_user = $1`, historySql("n.")];
     const args = [idUser];
     if (NOTICE_FILTERS[filter]) where.push(NOTICE_FILTERS[filter]);
     if (before) {
@@ -114,7 +128,7 @@ class MeuMundoInboxStorage {
   static async counts(db, idUser) {
     const r = await db.query(
       `SELECT
-         (SELECT COUNT(*)::int FROM tb_mm_notice WHERE id_user = $1 AND read_at IS NULL) AS notices,
+         (SELECT COUNT(*)::int FROM tb_mm_notice WHERE id_user = $1 AND read_at IS NULL AND ${historySql("")}) AS notices,
          (SELECT COUNT(*)::int FROM tb_mm_mail WHERE id_user = $1 AND read_at IS NULL) AS mail,
          (SELECT COUNT(*)::int FROM tb_mm_mail WHERE id_user = $1 AND kind = 'gift' AND claimed_at IS NULL) AS gifts`,
       [idUser]
@@ -233,6 +247,8 @@ class MeuMundoInboxStorage {
 }
 
 MeuMundoInboxStorage.NOTICE_FILTERS = Object.keys(NOTICE_FILTERS);
+MeuMundoInboxStorage.NEED_HISTORY = NEED_HISTORY;
+MeuMundoInboxStorage.LIFE_INTERACTION = LIFE_INTERACTION;
 MeuMundoInboxStorage.MAIL_TABS = Object.keys(MAIL_TABS);
 
 module.exports = MeuMundoInboxStorage;
