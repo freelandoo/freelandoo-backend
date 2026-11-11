@@ -264,3 +264,19 @@ test("vão entre o supermercado e a corrida: cabe um golem do anel até a Rua do
     assert.ok(Math.abs(p.x - 31.5) < 1e-6 && Math.abs(p.z - z) < 1e-6, `vão fechado em z ${z}`);
   }
 });
+
+// ── lore v2 C2 (cap. 3, "Néctar") ──
+test("C2: o Arauto da Lua fica em cima do pedestal de Morkhan, só de noite, sem caixa própria", () => {
+  const a = C.STREET_NPCS.find((n) => n.id === "arauto");
+  assert.ok(a, "o Arauto está na praça");
+  assert.equal(a.hours, "night");
+  assert.equal(a.body, "vampiro_adulto");
+  assert.ok(a.y > 1 && a.y < 2, "em pé no topo da base");
+  // dentro da colisão do monumento: de dia some sem deixar parede invisível
+  assert.ok(Math.hypot(a.x, a.z) < 4.5 * 0.88);
+  assert.ok(!C.OBSTACLES.some((b) => b.x === a.x && b.z === a.z));
+  // quem chega pela frente (oeste, o portal) para entregar não cai no alcance dele
+  const front = resolveCircle(-3, 0, MOTION.RADIUS, C.OBSTACLES);
+  assert.ok(Math.hypot(front.x - a.x, front.z - a.z) > a.radius);
+  assert.ok(C.CENTER_VERSION >= 17);
+});

@@ -21,7 +21,7 @@ const MEU_MUNDO_RELEASE = "mm3d-17";
 
 // Versão do DESENHO do bairro. Posição guardada num desenho anterior não vale
 // neste (o que era calçada pode ter virado quintal): quem a lê confere a versão.
-const LAYOUT_VERSION = 5; // 5 = o vizinho da praça (lore v2 C1); 4 = estátua do Aurion e as 4 pracinhas (mm3d-50)
+const LAYOUT_VERSION = 5; // (C2: a Sacerdotisa no pedestal NÃO sobe: nenhum obstáculo mudou e subir zera os carros estacionados) 5 = o vizinho da praça (lore v2 C1); 4 = estátua do Aurion e as 4 pracinhas (mm3d-50)
 const LOTS_PER_NEIGHBORHOOD = 20;
 
 // ═══ O LOTE ═══ — coordenadas LOCAIS, em metros, origem no centro do terreno
@@ -202,9 +202,15 @@ const statuesFor = (clan) => (clan === "vampiro" ? EMPTY_PEDESTAL : PLAZA_STATUE
 // Cidade Baixa — o MESMO ponto nos dois (a caixa de colisão não depende da classe;
 // historia/v2/07-falas-e-arquivo.md §1.1). Só ambiente: fala solta, sem passo.
 const NEIGHBOR_SPOT = Object.freeze({ x: -6, z: -1.5, facing: round((3 * Math.PI) / 4), radius: 2.4 }); // olhando para quem chega do sul
+// Lore v2 C2 (cap. 3, "Néctar"): a Sacerdotisa do Sol, só no Bairro das Matas, EM
+// CIMA do pedestal do Aurion (y = altura da base), de lado (60° da frente, para não
+// roubar o "Entregar" de quem chega pela frente), olhando para fora. Fica dentro da
+// colisão do pedestal: sem caixa própria (a lista de obstáculos não muda com a classe).
+const PRIESTESS = Object.freeze({ id: "sacerdotisa", body: "raposa_adulta", x: 2.6, z: -1.5, y: PLAZA_STATUES[0].base.h, facing: round(Math.atan2(2.6, -1.5)), radius: 2.4 });
 function npcsFor(clan) {
   const vamp = clan === "vampiro";
-  return [Object.freeze({ id: vamp ? "vizinho_vampiro" : "vizinha_raposa", body: vamp ? "vampiro_adulto" : "raposa_adulta", ...NEIGHBOR_SPOT })];
+  const neighbor = Object.freeze({ id: vamp ? "vizinho_vampiro" : "vizinha_raposa", body: vamp ? "vampiro_adulto" : "raposa_adulta", ...NEIGHBOR_SPOT });
+  return vamp ? [neighbor] : [neighbor, PRIESTESS];
 }
 /** A placa do pedestal vazio (só na Cidade Baixa): o texto mora no front (qw_pedestal). */
 const signsFor = (clan) => (clan === "vampiro" ? [Object.freeze({ id: "pedestal", text: "qw_pedestal", x: 0, z: -4.4, radius: 2.2 })] : []);

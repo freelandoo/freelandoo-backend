@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 16; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 17; // sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -220,6 +220,12 @@ const STREET_NPCS = Object.freeze(
   [
     { id: "vampiro_velho", x: -12, z: 9.5, facing: -Math.PI / 2, body: "vampiro_adulto" },
     { id: "raposa_velha", x: -12, z: -9.5, facing: -Math.PI / 2, body: "raposa_adulto" },
+    // Lore v2 C2 (cap. 3, "Néctar"): o Arauto da Lua, EM CIMA do pedestal de Morkhan
+    // (y = altura da base), de lado (60° da frente, para não roubar o "Entregar" de
+    // quem chega pela frente) e olhando para fora. Só de noite (18h–6h, Brasília; o
+    // cliente esconde de dia). Fica dentro da colisão do pedestal: sem caixa própria,
+    // então de dia não sobra parede invisível.
+    { id: "arauto", x: -1.9, z: 3.3, y: MONUMENT.h, facing: Math.atan2(-1.9, 3.3), body: "vampiro_adulto", hours: "night" },
   ].map((n) => Object.freeze({ ...n, facing: round(n.facing), radius: 2.4 }))
 );
 const PLAZA_LAMPS = Object.freeze([[11.6, 15.2], [-11.6, 15.2], [11.6, -15.2], [-11.6, -15.2], [15.2, 11.6], [-15.2, 11.6], [15.2, -11.6], [-15.2, -11.6]].map((p) => Object.freeze(p)));
@@ -401,7 +407,7 @@ function buildObstacles() {
   for (const [x, z] of PLAZA_EDGES.bollards) push(x, z, BOLLARD, BOLLARD, 0, 0.9);
   for (const [x, z, rot] of PLAZA_BENCHES) push(x, z, 1.05, 0.38, rot, 1);
   for (const [x, z] of PLAZA_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
-  for (const n of STREET_NPCS) push(n.x, n.z, 0.35, 0.35, 0, 1.9);
+  for (const n of STREET_NPCS) if (!n.y) push(n.x, n.z, 0.35, 0.35, 0, 1.9); // em cima do pedestal (C2) = já dentro da colisão dele
   for (const [x, z, s] of PLAZA_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
   for (const [x, z] of STREET_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
   for (const [x, z, s] of STREET_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);

@@ -34,6 +34,9 @@ const NPCS = Object.freeze({
   // os dois velhos da praça, perto de Morkhan
   raposa_velha: Object.freeze({ places: Object.freeze(["praca", "estatua_morkhan"]) }),
   vampiro_velho: Object.freeze({ places: Object.freeze(["praca", "estatua_morkhan"]) }),
+  // C2: o Arauto da Lua, no pedestal de Morkhan (só ambiente: nenhum passo pede talk: dele).
+  // A Sacerdotisa do Sol fica no bairro (meuMundoLayout.js) e também é só ambiente.
+  arauto: Object.freeze({ places: Object.freeze(["praca", "estatua_morkhan"]) }),
 });
 
 /** Ponto circular (`r`) ou quadrado (`half`). */

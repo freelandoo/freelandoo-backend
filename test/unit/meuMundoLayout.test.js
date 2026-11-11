@@ -258,8 +258,9 @@ test("C1: o vizinho da praça muda com a classe do bairro, no mesmo ponto e com 
   const r = nbOf("raposa").npcs;
   const old = nbOf(null);
   assert.deepEqual(v.map((n) => n.id), ["vizinho_vampiro"]);
-  assert.deepEqual(r.map((n) => n.id), ["vizinha_raposa"]);
-  assert.deepEqual(old.npcs.map((n) => n.id), ["vizinha_raposa"]);
+  // C2: nas Matas (e no bairro sem classe, que mostra o Aurion) entra também a Sacerdotisa
+  assert.deepEqual(r.map((n) => n.id), ["vizinha_raposa", "sacerdotisa"]);
+  assert.deepEqual(old.npcs.map((n) => n.id), ["vizinha_raposa", "sacerdotisa"]);
   assert.equal(old.clan, null);
   assert.equal(v[0].x, r[0].x);
   assert.equal(v[0].z, r[0].z);
@@ -269,4 +270,24 @@ test("C1: o vizinho da praça muda com a classe do bairro, no mesmo ponto e com 
   const s = L.buildNeighborhoodPayload({ code: "x", name: "x", residents: 0, houses: [] }).spawn;
   const p = resolveCircle(s.x, s.z, MOTION.RADIUS, L.OBSTACLES);
   assert.ok(Math.hypot(p.x - s.x, p.z - s.z) < 1e-6);
+});
+
+// ── lore v2 C2 (cap. 3, "Néctar") ──
+test("C2: a Sacerdotisa fica em cima do pedestal do Aurion, de lado, sem caixa própria", () => {
+  const s = nbOf("raposa").npcs.find((n) => n.id === "sacerdotisa");
+  const base = nbOf("raposa").dims.statues[0].base;
+  assert.equal(s.y, base.h, "em pé no topo da base");
+  const d = Math.hypot(s.x, s.z);
+  // dentro da colisão do pedestal (octógono de apótema r × 0,93): quem anda não a atravessa
+  assert.ok(d < base.r * 0.93, `fora do pedestal (${d})`);
+  // nenhuma caixa nova: a lista de obstáculos não depende da classe
+  assert.ok(!L.OBSTACLES.some((b) => b.x === s.x && b.z === s.z));
+  // quem chega pela FRENTE (sul) para entregar fica mais longe dela que o alcance da conversa,
+  // então o "Entregar" da estátua continua sendo o mais perto
+  const front = resolveCircle(0, -3, MOTION.RADIUS, L.OBSTACLES);
+  assert.ok(Math.hypot(front.x - s.x, front.z - s.z) > s.radius, "rouba a entrega de quem chega pela frente");
+  // olha para fora (rumo = atan2(dx, dz) a partir do centro)
+  assert.ok(Math.abs(s.facing - Math.atan2(s.x, s.z)) < 0.01);
+  // nunca na Cidade Baixa
+  assert.ok(!nbOf("vampiro").npcs.some((n) => n.id === "sacerdotisa"));
 });
