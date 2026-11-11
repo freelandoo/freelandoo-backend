@@ -20,6 +20,7 @@ const MeuMundoLifeService = require("./MeuMundoLifeService");
 const Gear = require("../utils/meuMundoGear");
 const Items = require("../utils/mmItems");
 const Upgrade = require("../utils/mmItems/rules/upgrade");
+const Salvage = require("../utils/mmItems/rules/salvage");
 const Adv = require("../utils/meuMundoAdventure");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const AdvStore = require("../storages/MeuMundoAdventureStorage");
@@ -56,6 +57,10 @@ const ERRORS = {
   notfragment: ["Esse item não é um fragmento", 400],
   ascend: ["A peça precisa da Ascensão para passar do +10", 409],
   gone: ["O refino sorteado acabou: use o aprimoramento garantido", 410],
+  pinned: ["Peça travada: destrave antes de desmontar", 409],
+  worn: ["Tire a peça de quem a veste antes de desmontar", 409],
+  confirm: ["Confirme a desmontagem de uma peça rara ou acima", 400],
+  transmute: ["Esses materiais não se transmutam um no outro", 400],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -203,7 +208,9 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   for (const x of all) {
     const it = Gear.GEAR_BY_ID.get(x.item);
     if (!Upgrade.upgradable(it)) continue;
-    forge[x.id] = { upgrade: upgradeView(it, x), grade: gradeView(it, x) };
+    forge[x.id] = { upgrade: upgradeView(it, x), grade: gradeView(it, x),
+      // E11: o que a desmontagem devolve (o servidor recusa travada ou vestida)
+      salvage: Salvage.salvageYield(it, x.plus, Gear.RECIPES, Gear.GEAR_BY_ID) };
   }
   const stacks = {};
   for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
@@ -445,6 +452,74 @@ class MeuMundoGearService {
     });
   }
 
+  /**
+   * E11: DESMONTAR uma cópia: 35% dos materiais da receita + Pó de Refino (10 × tier × (1 + plus/5));
+   * nunca Esmeralda. Travada, vestida por QUALQUER personagem da conta (vivo ou na cápsula) ou com
+   * proposta aberta: recusa. Raro ou acima pede `confirm: true`. Pilha cheia: recusa inteiro.
+   */
+  static async salvage(idUser, body = {}) {
+    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
+    if (!it || !isInstanceItem(it)) return fail("item");
+    if (body.instance == null || body.instance === "") return fail("instance");
+    if (it.tier >= Salvage.CONFIRM_TIER && body.confirm !== true) return fail("confirm");
+    return withReceipt(idUser, "gear_salvage", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
+      if (picked.error) return picked;
+      const inst = picked.inst;
+      if (inst.locked) return fail("pinned");
+      const held = ((await GearStore.instancesByItem(c, idUser))[it.id] || []).find((x) => x.id === inst.id);
+      if (held && held.equippedBy) return fail("worn");
+      if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
+      const back = Salvage.salvageYield(it, inst.plus, Gear.RECIPES, Gear.GEAR_BY_ID);
+      const owned = await GearStore.owned(c, idUser);
+      for (const [id, n] of Object.entries(back)) if ((owned[id]?.qty || 0) + n > Gear.STACK_MAX) return fail("max");
+      if (!(await GearStore.removeInstance(c, idUser, inst.id))) return fail("instance");
+      for (const [id, n] of Object.entries(back)) await GearStore.addStack(c, idUser, id, n, null, Gear.STACK_MAX);
+      return {
+        result: { item: it.id, instance: inst.id, plus: inst.plus, grade: inst.grade, back },
+        deltas: {},
+        items: lines({ [it.id]: -1, ...back }),
+      };
+    });
+  }
+
+  /** E11: TRANSMUTAR `qty` vezes: 3 de `from` → 1 de `to` (mesmo tier e categoria) + 20 × tier Esmeraldas cada. */
+  static async transmute(idUser, body = {}) {
+    const from = Gear.GEAR_BY_ID.get(String(body.from || ""));
+    const to = Gear.GEAR_BY_ID.get(String(body.to || ""));
+    if (!from || !to) return fail("item");
+    const cost = Salvage.transmuteCost(from, to, body.qty == null ? 1 : body.qty);
+    if (cost.error) return fail(cost.error);
+    return withReceipt(idUser, "gear_transmute", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      const owned = await GearStore.owned(c, idUser);
+      for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
+      for (const [id, n] of Object.entries(cost.gives)) if ((owned[id]?.qty || 0) + n > Gear.STACK_MAX) return fail("max");
+      if (ctx.coins < cost.coins) return fail("coins");
+      ctx.coins -= cost.coins;
+      for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
+      for (const [id, n] of Object.entries(cost.gives)) await GearStore.addStack(c, idUser, id, n, null, Gear.STACK_MAX);
+      return {
+        result: { from: from.id, to: to.id, qty: cost.gives[to.id] },
+        deltas: { coins: -cost.coins },
+        items: lines({ ...Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n])), ...cost.gives }),
+      };
+    });
+  }
+
+  /** E11: trava/destrava a cópia (protege de desmontar e reciclar). Não é prêmio: sem recibo. */
+  static async lock(idUser, body = {}) {
+    if (!KEY.test(String(body.instance || ""))) return fail("instance");
+    if (typeof body.locked !== "boolean") return fail("decision");
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      await prepare(c, idUser);
+      if (!(await GearStore.setLocked(c, idUser, String(body.instance), body.locked))) return fail("instance");
+      return { bag: await bagState(c, idUser, ctx.coins) };
+    });
+  }
+
   /** E9: o refino sorteado (forge-v1) acabou — o aparelho antigo recebe 410 e recarrega. */
   static async refine() {
     return fail("gone");
@@ -531,8 +606,8 @@ class MeuMundoGearService {
         } else {
           pool = ((await GearStore.instancesByItem(c, idUser))[it.id] || []).slice().sort((a, b) => a.plus - b.plus);
         }
-        const free = pool.filter((x) => !x.equippedBy);
-        if (free.length < qty) return fail(pool.some((x) => x.equippedBy) ? "equipped" : "owned");
+        const free = pool.filter((x) => !x.equippedBy && !x.locked); // E11: travada não recicla
+        if (free.length < qty) return fail(pool.some((x) => x.equippedBy) ? "equipped" : pool.some((x) => x.locked) ? "pinned" : "owned");
         for (const x of free.slice(0, qty)) {
           if (!(await GearStore.removeInstance(c, idUser, x.id))) return fail("owned");
           removed.push(x.id);

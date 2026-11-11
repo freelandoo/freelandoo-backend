@@ -201,7 +201,35 @@ test("I6 — a mesma faixa do sorteio da rua dá a mesma distância de régua (�
     }
   }
 });
-test("I7 — fabricar → desmontar → fabricar perde pelo menos 50% dos materiais", { todo: "E11" }, () => {});
+test("I7 — fabricar → desmontar → fabricar perde pelo menos 50% dos materiais", () => {
+  // E11: a regra em uso (rules/salvage.js) sobre toda receita que fabrica equipamento
+  const S = require("../../src/utils/mmItems/rules/salvage");
+  const recipes = Gear.RECIPES.filter((r) => Gear.GEAR_BY_ID.get(r.out)?.slot);
+  assert.ok(recipes.length >= 30, `${recipes.length} receitas de equipamento`);
+  for (const rc of recipes) {
+    const out = Gear.GEAR_BY_ID.get(rc.out);
+    for (const plus of [0, 15]) {
+      const back = S.salvageYield(out, plus, Gear.RECIPES, Gear.GEAR_BY_ID);
+      for (const [id, n] of Object.entries(rc.needs)) assert.ok((back[id] || 0) <= 0.5 * n, `${rc.id}: ${id} volta ${back[id]} de ${n}`);
+      assert.ok(!("coins" in back), `${rc.id}: desmontar nunca dá Esmeralda`);
+    }
+    // laço fabricar → desmontar 10 vezes: o estoque de cada material só cai
+    const stock = Object.fromEntries(Object.entries(rc.needs).map(([id, n]) => [id, n * 10]));
+    let prev = { ...stock };
+    for (let i = 0; i < 10; i++) {
+      if (!Object.entries(rc.needs).every(([id, n]) => stock[id] >= n)) break;
+      for (const [id, n] of Object.entries(rc.needs)) stock[id] -= n;
+      const back = S.salvageYield(out, 0, Gear.RECIPES, Gear.GEAR_BY_ID);
+      for (const id of Object.keys(rc.needs)) stock[id] += back[id] || 0;
+      for (const id of Object.keys(rc.needs)) assert.ok(stock[id] < prev[id], `${rc.id} volta ${i}: ${id} não caiu`);
+      prev = { ...stock };
+    }
+  }
+  // transmutar: 3 → 1 do mesmo tier e categoria, com Esmeralda; peça da forja e outro tier recusam
+  assert.deepEqual(S.transmuteCost(Gear.GEAR_BY_ID.get("fragmento_lamina"), Gear.GEAR_BY_ID.get("po_de_lua"), 2), { needs: { fragmento_lamina: 6 }, coins: 40, gives: { po_de_lua: 2 } });
+  assert.equal(S.transmuteCost(Gear.GEAR_BY_ID.get("fragmento_lamina"), Gear.GEAR_BY_ID.get("seiva_de_prata")).error, "transmute");
+  assert.equal(S.transmuteCost(Gear.GEAR_BY_ID.get("peca_lamina"), Gear.GEAR_BY_ID.get("peca_fio")).error, "transmute");
+});
 test("I8 — vitórias para +15 nunca abaixo de 270; cruzamento moeda × material nos níveis 6, 17, 31, 53, 80, 114 (±2)", () => {
   // E9: a regra em uso (rules/upgrade.js). Moeda: o total de Esmeraldas do +0 ao +15 ÷ o que uma vitória
   // paga no nível L; material: as Pedras do +0 ao +15 ÷ a queda por vitória (0,5) — não depende do nível.

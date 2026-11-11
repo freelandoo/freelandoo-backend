@@ -6,6 +6,7 @@
 const Items = require("../index");
 const Forge = require("./forgeV1");
 const Upgrade = require("./upgrade");
+const Salvage = require("./salvage");
 const B = require("./budget");
 
 const { GEAR, GEAR_BY_ID, RECIPES, DESCRIPTIONS } = Items;
@@ -35,6 +36,8 @@ function itemDetails(item) {
   if (item.use === "equip") uses.push("Equipar no slot compatível; bônus de aventura sujeitos ao teto.");
   // E9: aprimoramento garantido (forge-v2) em todo equipamento
   if (Upgrade.upgradable(item)) uses.push("Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.");
+  if (Upgrade.upgradable(item)) uses.push("Desmontar na Forja: devolve parte dos materiais e Pó de Refino, nunca Esmeralda.");
+  if (Salvage.transmutable(item)) uses.push("Transmutar na Forja: 3 viram 1 de outro material do mesmo tier.");
   if (item.use === "learn_recipe") uses.push("Aprender uma vez; o projeto consumido fica registrado permanentemente.");
   if (item.use === "inspect_quest") uses.push("Examinar a inscrição e registrar a leitura na coleção; não conclui missão automaticamente.");
   if (item.use === "apply_weapon_cosmetic") uses.push("Ativar o visual cosmético da arma, sem bônus de combate.");
@@ -108,7 +111,9 @@ function publicGear() {
     cap: GEAR_CAP,
     // E9: aprimoramento garantido +0…+15; do +11 em diante só ascendida
     upgrade: { max: Upgrade.MAX_PLUS, ascendFrom: B.ASCEND_FROM, stone: Upgrade.STONE, rulesVersion: Upgrade.RULES_VERSION },
-    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.origin ? { origin: g.origin } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
+    // E11: desmontar (35% da receita + Pó) e transmutar (3 → 1 do mesmo tier, + Esmeraldas × tier)
+    salvage: { share: Salvage.SALVAGE_SHARE, confirmTier: Salvage.CONFIRM_TIER, transmuteIn: Salvage.TRANSMUTE_IN, transmuteCoins: Salvage.TRANSMUTE_COINS },
+    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.origin ? { origin: g.origin } : {}), ...(Salvage.transmutable(g) ? { transmutable: true } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
     recipes: RECIPES,
     // E7: conjuntos (2 ou 3 peças = 40% da fatia, 4 = 100%)
     sets: Items.SETS.map((s) => ({ id: s.id, name: s.name, domain: s.domain, keys: s.keys, pieces: s.pieces, steps: Items.SET_STEPS })),

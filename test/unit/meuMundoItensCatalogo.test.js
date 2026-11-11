@@ -17,7 +17,7 @@ const ANTES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "gear-
  * JSON de agora sem os campos novos dos ITENS: `tier` (E1) e `slot`/`twoHanded` (E6, os 8 slots).
  * Montagem já tinha `tier`; só sai o de quem tem `rarity`.
  */
-const NOVOS = new Set(["tier", "slot", "twoHanded", "keys"]);
+const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable"]); // E11: `transmutable`
 /** E7: o `bonus` do equipamento passou a sair da régua (rules/bonus.js) — sai da comparação. */
 const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) {
   if (typeof this.rarity !== "string") return x;
@@ -31,7 +31,7 @@ const deAntes = (list) => list.filter((g) => IDS_ANTES.has(g.id));
 
 test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () => {
   const agora = semTier(Gear.publicGear());
-  assert.deepEqual(Object.keys(agora).filter((k) => k !== "sets"), Object.keys(ANTES.publicGear)); // E7 acrescentou `sets`
+  assert.deepEqual(Object.keys(agora).filter((k) => k !== "sets" && k !== "salvage"), Object.keys(ANTES.publicGear)); // E7 `sets`, E11 `salvage` // E7 acrescentou `sets`
   // E6 (A4): os 5 slots de antes viraram os 8 do pedido
   assert.deepEqual(ANTES.publicGear.slots, ["weapon", "shield", "armor", "acc1", "acc2"]);
   assert.deepEqual(agora.slots, ["weapon", "offhand", "helm", "chest", "gloves", "boots", "amulet", "relic"]);
@@ -41,12 +41,15 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   // E9 (A2): o refino sorteado +0…+10 virou o aprimoramento garantido +0…+15
   assert.equal(ANTES.publicGear.upgrade.rulesVersion, "forge-v1");
   assert.deepEqual(agora.upgrade, { max: 15, ascendFrom: 11, stone: "pedra_aprimoramento", rulesVersion: "forge-v2" });
+  assert.deepEqual(agora.salvage, { share: 0.35, confirmTier: 3, transmuteIn: 3, transmuteCoins: 20 }); // E11
   agora.items = deAntes(agora.items);
   assert.deepEqual(agora.items.map((i) => i.id), ANTES.publicGear.items.map((i) => i.id), "mesma ordem de itens");
   // E9: o texto de uso do refino mudou junto com a regra (e todo equipamento passou a aprimorar)
   const V1 = ["Refinar de +0 a +10 mediante proposta, com custo, pisos e proteção opcionais.", "Custo de refinamento ou proteção; a cotação informa a quantidade exata."];
   const V2 = "Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.";
-  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2);
+  // E11: desmontar e transmutar entram nos usos de todo equipamento e material
+  const E11 = ["Desmontar na Forja: devolve parte dos materiais e Pó de Refino, nunca Esmeralda.", "Transmutar na Forja: 3 viram 1 de outro material do mesmo tier."];
+  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u));
   semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses) }, { ...antes, uses: usesV1(antes.uses) }, antes.id));
   // E8: as receitas por fragmento entram no fim; as de antes não mudam
   assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
