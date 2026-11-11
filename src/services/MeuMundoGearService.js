@@ -19,6 +19,7 @@ const crypto = require("crypto");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const Gear = require("../utils/meuMundoGear");
 const Forge = require("../utils/meuMundoForge");
+const Items = require("../utils/mmItems");
 const Adv = require("../utils/meuMundoAdventure");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const AdvStore = require("../storages/MeuMundoAdventureStorage");
@@ -179,7 +180,7 @@ async function equippedFull(c, idUser, clan) {
   for (const [slot, x] of Object.entries(live)) {
     const it = Gear.GEAR_BY_ID.get(x.item);
     if (!it || (it.clan && it.clan !== clan) || weaponBlocked(it, body)) continue;
-    out[slot] = { id: x.item, level: x.plus };
+    out[slot] = { id: x.item, level: x.plus, grade: x.grade };
   }
   return out;
 }
@@ -221,6 +222,8 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   const unlocks = await GearStore.unlocks(c, idUser);
   const body = await MeuMundoStorage.getBody(c, idUser);
   return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full), refinement,
+    // E7: bônus de cada slot pela régua (plus e grau da cópia vestida), para a tela de equipar
+    pieces: Object.fromEntries(Object.entries(full).map(([slot, e]) => [slot, Items.pieceBonus(Gear.GEAR_BY_ID.get(e.id), e.level || 0, e.grade || 1)])),
     instances: all.map((x) => ({
       id: x.id, item: x.item, plus: x.plus, grade: x.grade, locked: x.locked || lockedInst.has(x.id),
       equippedBy: x.equippedBy, equippedSlot: x.equippedSlot, equippedHere: liveIds.has(x.id),

@@ -60,33 +60,23 @@ function canEquip(item, { clan, level, owned }) {
 }
 
 /**
- * Bônus do que está equipado, SOMADO e com teto. `equipped` = { slot: { id, level } }.
- * O aprimoramento entra aqui (arma: dano; proteção: defesa).
+ * Bônus do que está equipado, com teto. `equipped` = { slot: { id, level, grade } }.
+ * Trilha E7: sai da RÉGUA (rules/bonus.js): cada peça soma budget.piece() nas duas chaves dela
+ * (`level` = plus, `grade` = refinamento), depois o conjunto; subteto por fonte e teto por chave.
+ * Até a E6 era o `bonus` escrito à mão + dano/defesa por nível de refino.
+ * E6: aceita também as chaves de antes (shield/armor/acc1/acc2); duas peças no mesmo slot: vale a 1ª.
  */
 function gearBonus(equipped) {
-  const sum = Object.fromEntries(Object.keys(GEAR_CAP).map((k) => [k, 0]));
-  // E6: aceita também as chaves de antes (shield/armor/acc1/acc2), já levadas para os 8 slots;
-  // duas peças no mesmo slot: vale a primeira
   const bySlot = {};
   for (const [k, e] of Object.entries(equipped || {})) {
-    const s = normalizeSlot(k, e && GEAR_BY_ID.get(e.id));
-    if (SLOTS.includes(s) && !bySlot[s]) bySlot[s] = e;
-  }
-  for (const slot of SLOTS) {
-    const e = bySlot[slot];
     const it = e && GEAR_BY_ID.get(e.id);
-    if (!it || !it.bonus) continue;
-    for (const [k, v] of Object.entries(it.bonus)) sum[k] += v || 0;
-    const lv = Math.max(0, Math.min(UPGRADE.MAX, e.level || 0));
-    if (it.category === "weapon") sum.dmg += lv * UPGRADE.DMG;
-    if (it.category === "armor") sum.def += lv * UPGRADE.DEF;
-    if (it.category === "weapon" || it.category === "armor") {
-      const extra = Math.max(0, lv - 5);
-      for (const [k, v] of Object.entries(UPGRADE.SECONDARY)) sum[k] += extra * v;
-    }
+    const s = normalizeSlot(k, it);
+    if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Math.floor(e.level || 0)), grade: Math.max(1, Math.floor(e.grade || 1)) };
   }
-  for (const k of Object.keys(sum)) sum[k] = Math.round(Math.min(GEAR_CAP[k], sum[k]) * 10000) / 10000;
-  return sum;
+  const { bonus } = Items.bonusOf(Object.values(bySlot));
+  const out = {};
+  for (const k of Object.keys(GEAR_CAP)) out[k] = Math.min(GEAR_CAP[k], bonus[k] || 0);
+  return out;
 }
 
 /** Custo do próximo aprimoramento (null = no máximo / não aprimora). */
@@ -113,8 +103,10 @@ function publicGear() {
     slots: SLOTS,
     cap: GEAR_CAP,
     upgrade: { max: UPGRADE.MAX, dmg: UPGRADE.DMG, def: UPGRADE.DEF, secondary: UPGRADE.SECONDARY, rulesVersion: Forge.RULES_VERSION },
-    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
+    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
     recipes: RECIPES,
+    // E7: conjuntos (2 ou 3 peças = 40% da fatia, 4 = 100%)
+    sets: Items.SETS.map((s) => ({ id: s.id, name: s.name, domain: s.domain, keys: s.keys, pieces: s.pieces, steps: Items.SET_STEPS })),
   };
 }
 

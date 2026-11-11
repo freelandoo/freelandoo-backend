@@ -16,10 +16,10 @@ const useFor = (category, id) => category === "recipe" ? "learn_recipe" : catego
 
 /**
  * Trilha E6 (A4/A5): o SLOT de cada peça entre os 8 (weapon, offhand, helm, chest, gloves, boots,
- * amulet, relic). Escudo → offhand; proteção → chest; acessório → amulet, menos luvas/bracelete
+ * amulet, relic). Escudo → offhand; proteção → chest; acessório → amulet, menos luvas
  * (gloves), botas (boots) e óculos (helm). Pesadas, arcos e armas de fogo usam as duas mãos.
  */
-const ACC_SLOT = Object.freeze({ luvas_precisao: "gloves", bracelete_isolante: "gloves", botas_explorador: "boots", oculos_engenheiro: "helm" });
+const ACC_SLOT = Object.freeze({ luvas_precisao: "gloves", botas_explorador: "boots", oculos_engenheiro: "helm" });
 const TWO_HANDED_SHOPS = Object.freeze(["hammers", "bows", "guns"]);
 function slotOf(category, id) {
   if (category === "weapon") return "weapon";

@@ -32,7 +32,8 @@ const WEIGHT = Object.freeze({
   int: Object.freeze({ helm: 0.4, amulet: 0.3, relic: 0.3 }),
   dex: Object.freeze({ gloves: 0.5, boots: 0.2, relic: 0.3 }),
   stam: Object.freeze({ boots: 0.4, chest: 0.3, amulet: 0.3 }),
-  warn: Object.freeze({ helm: 0.5, relic: 0.5 }),
+  // E7: a mão secundária ganha a 2ª chave (recomendação do GDD): elmo 0,35 · relíquia 0,35 · mão secundária 0,30
+  warn: Object.freeze({ helm: 0.35, relic: 0.35, offhand: 0.3 }),
   power: Object.freeze({ weapon: 0.4, relic: 0.4, amulet: 0.2 }),
 });
 /** Os 8 slots da A4. */

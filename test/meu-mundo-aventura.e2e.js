@@ -142,6 +142,9 @@ async function main() {
 
   // ── slice 3: equipamento ──
   const Gear = require("../src/services/MeuMundoGearService");
+  // E7: o bônus de cada peça sai da régua; o teste compara com a regra, não com número escrito à mão
+  const GearRule = require("../src/utils/meuMundoGear");
+  const dmgOf = (id) => GearRule.gearBonus({ weapon: { id, level: 0 } }).dmg;
   const pool2 = pool;
   await pool2.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm') ON CONFLICT DO NOTHING`, [id]);
   const starter = await Life.withLife(id, async (s, ctx) => ({ got: await Gear.grantStarter(id, ctx) }));
@@ -180,11 +183,11 @@ async function main() {
   const wrong = await Gear.equip(id, { slot: "weapon", item: "cajado_latao" });
   check("arma de outra classe não equipa", wrong.code === "clan");
   const ok = await Gear.equip(id, { slot: "weapon", item: "espada_latao" });
-  check("equipa a espada de latão (bônus de dano)", ok.bag && ok.bag.bonus.dmg === 0.05, JSON.stringify(ok.bag && ok.bag.bonus));
+  check("equipa a espada de latão (bônus de dano)", ok.bag && ok.bag.bonus.dmg === dmgOf("espada_latao") && ok.bag.bonus.dmg > 0, JSON.stringify(ok.bag && ok.bag.bonus));
 
   // a luta seguinte leva o bônus no ticket
   const s5 = await Adv.fightStart(id, { origin: "laminas", kind: "cavaleiro", level: 1 });
-  check("ticket leva o bônus do equipamento", s5.fight.setup.gear && s5.fight.setup.gear.dmg === 0.05);
+  check("ticket leva o bônus do equipamento", s5.fight.setup.gear && s5.fight.setup.gear.dmg === dmgOf("espada_latao"));
 
   // forja: sem materiais recusa; com materiais, consome e entrega
   const nf = await Gear.forge(id, { recipe: "forjar_luvas", key: k() });
@@ -323,7 +326,7 @@ async function main() {
   const aurion = await Gear.buy(su, { item: "espada_aco", key: k() });
   check("conta raposa vestindo Aurion compra espada", !aurion.error, JSON.stringify(aurion));
   const auEq = await Gear.equip(su, { slot: "weapon", item: "espada_aco" });
-  check("Aurion equipa a espada da loja (+2% dano)", auEq.bag && auEq.bag.warrior === true && auEq.bag.bonus.dmg === 0.02, JSON.stringify(auEq.bag && auEq.bag.bonus));
+  check("Aurion equipa a espada da loja (+2% dano)", auEq.bag && auEq.bag.warrior === true && auEq.bag.bonus.dmg === dmgOf("espada_aco"), JSON.stringify(auEq.bag && auEq.bag.bonus));
   const auKit = await fightKit();
   check("Aurion luta com kit de espada e a espada comprada", !auKit.style && auKit.appearance.weaponId === "espada_aco", JSON.stringify(auKit.appearance));
   await wear("iris");
@@ -341,7 +344,7 @@ async function main() {
   const krSword = await Gear.equip(su, { slot: "weapon", item: "espada_aco" });
   check("Kragor não equipa espada", krSword.code === "clan", JSON.stringify(krSword));
   const krEq = await Gear.equip(su, { slot: "weapon", item: "pesada_ferreiro" });
-  check("Kragor equipa o machado (+2% dano)", krEq.bag && krEq.bag.hammer === true && krEq.bag.bonus.dmg === 0.02, JSON.stringify(krEq.bag && krEq.bag.bonus));
+  check("Kragor equipa o machado (+2% dano)", krEq.bag && krEq.bag.hammer === true && krEq.bag.bonus.dmg === dmgOf("pesada_ferreiro"), JSON.stringify(krEq.bag && krEq.bag.bonus));
   const krKit = await fightKit();
   check("Kragor luta com o kit do Brutamontes e a arma comprada", krKit.kit === "hammer" && !krKit.style && krKit.appearance.weaponId === "pesada_ferreiro", JSON.stringify(krKit));
   await wear("aurion");

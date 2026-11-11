@@ -80,7 +80,11 @@ test("E0 — proposta do §7: 71 definições novas, sem id repetido nem colisã
   assert.equal(items.length, 71);
   const ids = items.map((i) => i.id);
   assert.equal(new Set(ids).size, ids.length);
-  for (const id of ids) assert.ok(!Gear.GEAR_BY_ID.has(id), `colide com o catálogo: ${id}`);
+  // o que já entrou no catálogo (E7: as 12 peças dos conjuntos) tem de ser a MESMA peça da proposta
+  for (const i of items) {
+    const c = Gear.GEAR_BY_ID.get(i.id);
+    if (c) assert.ok(c.set === i.set && c.slot === i.slot && c.rarity === i.rarity && String(c.keys) === String(i.keys), `colide com o catálogo: ${i.id}`);
+  }
   for (const i of items.filter((x) => x.slot)) {
     assert.equal(i.keys.length, 2, `${i.id}: chaves ${i.keys}`);
     for (const k of i.keys) assert.ok(B.WEIGHT[k][i.slot], `${i.id}: ${k} fora do slot ${i.slot}`);
@@ -119,7 +123,40 @@ test("I2 — equipamento no teto multiplica a troca pelo mesmo valor (±2%) nos 
     assert.ok(Math.abs(l / 1.33 - 1) <= 0.02, `nível ${L}: lendária ×${l.toFixed(3)}`);
   }
 });
-test("I3 (catálogo) — todo item real sai da régua: build focado = teto, peça ≤ 50%, fonte ≤ subteto", { todo: "E7" }, () => {});
+test("I3 (catálogo) — todo item real sai da régua: build focado = teto, peça ≤ 50%, fonte ≤ subteto", () => {
+  const Items = require("../../src/utils/mmItems");
+  const eq = Gear.GEAR.filter((g) => g.slot);
+  assert.ok(eq.length >= 118, "106 de hoje + 12 dos conjuntos");
+  for (const it of eq) {
+    assert.ok(Array.isArray(it.keys) && it.keys.length === 2, it.id + " tem duas chaves");
+    for (const k of it.keys) assert.ok(B.WEIGHT[k][it.slot], `${it.id}: ${k} cabe no ${it.slot}`);
+    // o bônus do cartão é o da régua (+0 grau I), não escrito à mão
+    assert.deepStrictEqual({ ...it.bonus }, Items.pieceBonus(it, 0, 1), it.id);
+    // a maior peça do jogo (mítica +15 grau V) não passa de 50% do teto; a real, menos ainda
+    for (const k of it.keys) assert.ok(Items.pieceBonus(it, B.PLUS_MAX, B.GRADE_MAX)[k] <= B.CAP[k] * 0.5 + 1e-9, it.id + " ≤ 50%");
+  }
+  // tudo equipado, tudo no máximo: nenhuma fonte passa do subteto, nenhuma chave passa do teto
+  const best = {};
+  for (const it of eq) if (!best[it.slot] || it.rarity > best[it.slot].rarity) best[it.slot] = it;
+  const r = Items.bonusOf(Object.values(best).map((item) => ({ item, plus: 15, grade: 5 })));
+  for (const k of B.KEYS) {
+    assert.ok(r.bonus[k] <= B.CAP[k] + 1e-9, k);
+    for (const [s, v] of Object.entries(r.sources[k])) assert.ok(Math.min(v, B.sourceCap(k, s)) <= B.sourceCap(k, s) + 1e-9, k + " " + s);
+  }
+});
+
+test("E7 — conjunto: 1, 2, 3, 4 peças dão 0, 40%, 40%, 100% da fatia nas duas chaves", () => {
+  const Items = require("../../src/utils/mmItems");
+  const want = { vigilia: { def: 0.025, hp: 0.025 }, forja: { dmg: 0.035, power: 0.018 }, sentinela: { def: 0.025, stam: 0.012 } };
+  for (const set of Items.SETS) {
+    const pieces = set.pieces.map((id) => ({ item: Gear.GEAR_BY_ID.get(id), plus: 0, grade: 1 }));
+    for (let n = 1; n <= 4; n++) {
+      const r = Items.bonusOf(pieces.slice(0, n));
+      const step = n === 4 ? 1 : n >= 2 ? 0.4 : 0;
+      for (const k of set.keys) assert.ok(Math.abs(r.sources[k].set - want[set.id][k] * step) < 1e-9, `${set.id} ${n} peças ${k}`);
+    }
+  }
+});
 test("I4 — parcela do equipamento no Poder = o que ele soma à ficha", () => {
   const P = require("../../src/utils/meuMundoPower");
   const NO = {};

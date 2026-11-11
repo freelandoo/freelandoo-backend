@@ -14,10 +14,10 @@ const legacyIds = [
   "mola_precisao", "injetor_vapor", "capacitor", "rolamento", "receita_eter", "cristal_morkhan", "pintura_arma_eter",
 ];
 
-test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais", () => {
+test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 151);
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 151);
+  assert.equal(pub.items.length, 163);
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 163);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);
@@ -84,7 +84,8 @@ test("todas as receitas e peças são alcançáveis sem depender de sorte rara",
       }
     }
   }
-  assert.deepEqual(Gear.GEAR.filter((g) => !reachable.has(g.id)).map((g) => g.id), []);
+  // E7: as peças de conjunto chegam por fragmento (E8) e pelo saque dos setores 7–10 (E12)
+  assert.deepEqual(Gear.GEAR.filter((g) => !g.set && !reachable.has(g.id)).map((g) => g.id), []);
   for (const item of Gear.GEAR.filter((g) => g.category === "material")) {
     assert.ok(Gear.RECIPES.some((r) => r.needs[item.id]) || ["fragmento_lamina", "couro_reforcado", "nucleo_eter", "selo_forja"].includes(item.id), item.id);
   }
@@ -161,11 +162,11 @@ test("sorteio puro rejeita RNG inválido; resultado vem de uma única amostra", 
 });
 
 test("refino +6..10 permanece útil e os bônus obedecem aos tetos", () => {
+  // E7: o refino é a fatia de aprimoramento da régua (20% do teto); +10 vale mais que +5 nas duas chaves
   const legacy = Gear.gearBonus({ weapon: { id: "espada_eter", level: 5 } });
   const high = Gear.gearBonus({ weapon: { id: "espada_eter", level: 10 } });
-  assert.equal(legacy.dmg, 0.2);
-  assert.equal(high.dmg, 0.3);
-  assert.ok(high.stam > legacy.stam && high.warn > legacy.warn && high.power > legacy.power);
-  const max = Gear.gearBonus({ weapon: { id: "espada_solar", level: 10 }, armor: { id: "couraca_rebitada", level: 10 }, acc1: { id: "amuleto_aurion" }, acc2: { id: "bracelete_isolante" } });
+  const [k1, k2] = Gear.GEAR_BY_ID.get("espada_eter").keys;
+  assert.ok(high[k1] > legacy[k1] && high[k2] > legacy[k2]);
+  const max = Gear.gearBonus({ weapon: { id: "espada_solar", level: 10 }, chest: { id: "couraca_rebitada", level: 10 }, amulet: { id: "amuleto_aurion" }, gloves: { id: "luvas_precisao" } });
   for (const [key, cap] of Object.entries(Gear.GEAR_CAP)) assert.ok(max[key] <= cap, key);
 });

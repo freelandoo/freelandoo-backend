@@ -93,7 +93,10 @@ async function main() {
   await pool.query(`INSERT INTO tb_mm_equip (id_user, slot, item_id) VALUES ($1, 'armor', 'colete_couro')`, [A]);
   await Life.peek(A);
   const p1 = { ...(await powerOfRow(A)), parts: await Poder.myParts(A) };
-  check("equipamento entra: +5% de defesa no nível 1 = +5", p1.parts.gear === 5 && p1.poder - p0.poder >= 4 && p1.poder - p0.poder <= 6, JSON.stringify(p1));
+  // E7: o colete sai da régua (peça comum no peito); no nível 1 a base da ficha é 100
+  const vest = require("../src/utils/meuMundoGear").gearBonus({ chest: { id: "colete_couro", level: 0 } });
+  const wantVest = Math.round(100 * (vest.def + vest.hp + vest.acc + vest.spd + vest.dmg) + 1000 * (vest.stam + vest.warn + vest.power));
+  check("equipamento entra: o colete soma o que a régua dá no nível 1", wantVest > 0 && p1.parts.gear === wantVest && Math.abs(p1.poder - p0.poder - wantVest) <= 1, JSON.stringify({ p1, wantVest }));
 
   // ── nível: B treinou muito e subiu de nível
   await Life.peek(B);

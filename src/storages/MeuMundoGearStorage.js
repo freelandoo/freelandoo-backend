@@ -189,11 +189,11 @@ class MeuMundoGearStorage {
   /** { slot: { instance, item, plus } } do personagem vivo. */
   static async loadoutLive(c, idUser) {
     const r = await c.query(
-      `SELECT l.slot, i.id_instance, i.item_id, i.plus FROM tb_mm_loadout l JOIN tb_mm_gear_instance i ON i.id_instance = l.id_instance
+      `SELECT l.slot, i.id_instance, i.item_id, i.plus, i.grade FROM tb_mm_loadout l JOIN tb_mm_gear_instance i ON i.id_instance = l.id_instance
         WHERE l.id_character = ${LIVE} AND i.id_user = $1`,
       [idUser]
     );
-    return Object.fromEntries(r.rows.map((x) => [x.slot, { instance: x.id_instance, item: x.item_id, plus: x.plus }]));
+    return Object.fromEntries(r.rows.map((x) => [x.slot, { instance: x.id_instance, item: x.item_id, plus: x.plus, grade: x.grade }]));
   }
 
   /** Põe a instância no slot do personagem; ela sai de qualquer outro slot/personagem da pessoa. */

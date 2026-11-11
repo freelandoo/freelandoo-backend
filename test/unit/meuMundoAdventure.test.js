@@ -120,9 +120,9 @@ test("destreza: menos fôlego e ranque com 30% do peso", () => {
 // ── slice 3: equipamento ──
 const Gear = require("../../src/utils/meuMundoGear");
 
-test("equipamento: catálogo com ids únicos e os 151 itens da forja", () => {
-  assert.equal(Gear.GEAR.length, 151);
-  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 151);
+test("equipamento: catálogo com ids únicos e os 151 itens da forja (+12 dos conjuntos, E7)", () => {
+  assert.equal(Gear.GEAR.length, 163);
+  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 163);
   for (const g of Gear.GEAR) {
     assert.ok(Gear.CATEGORIES.includes(g.category), g.id);
     assert.ok(Gear.RARITIES.includes(g.rarity), g.id);
@@ -138,9 +138,12 @@ test("equipamento: arma da classe, independente de skin; bônus somados com teto
   assert.equal(Gear.canEquip(staff, { clan: "raposa", level: 1, owned: true }), "level");
   assert.equal(Gear.canEquip(staff, { clan: "raposa", level: 3, owned: true }), null);
   const b = Gear.gearBonus({ weapon: { id: "espada_eter", level: 5 }, armor: { id: "couraca_rebitada", level: 5 }, acc1: { id: "amuleto_aurion" }, acc2: { id: "luvas_precisao" } });
-  assert.equal(b.dmg, 0.2, "preserva a soma 0,10 + 5×0,02 dentro do novo teto");
-  assert.equal(b.def, 0.155, "proteção mantém o bônus anterior e o refinamento");
-  assert.equal(b.power, 0.15);
+  // E7: o bônus sai da régua (rules/bonus.js), peça a peça, com teto; o refino entra pelo plus
+  const Items = require("../../src/utils/mmItems");
+  const want = Items.bonusOf([["espada_eter", 5], ["couraca_rebitada", 5], ["amuleto_aurion", 0], ["luvas_precisao", 0]].map(([id, plus]) => ({ item: Gear.GEAR_BY_ID.get(id), plus, grade: 1 }))).bonus;
+  for (const k of Object.keys(Gear.GEAR_CAP)) assert.equal(b[k], Math.min(Gear.GEAR_CAP[k], want[k]), k);
+  assert.ok(b.dmg > 0 && b.def > 0 && b.power > 0);
+  assert.ok(Gear.gearBonus({ weapon: { id: "espada_eter", level: 5 } }).dmg > Gear.gearBonus({ weapon: { id: "espada_eter", level: 0 } }).dmg, "o plus soma");
 });
 
 test("drop: material comum garantido com participação; vitória aumenta; nunca vazio", () => {

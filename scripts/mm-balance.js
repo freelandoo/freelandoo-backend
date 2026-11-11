@@ -434,6 +434,7 @@ const TRANSLATE = Object.freeze({
   relic: {},
 });
 function keysOfToday(it, slot) {
+  if (Array.isArray(it.keys)) return [...it.keys]; // E7: as chaves já estão no catálogo
   const allowed = B.slotKeys(slot);
   const ordered = Object.entries(it.bonus || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k]) => (allowed.includes(k) ? k : TRANSLATE[slot][k] || allowed[0]));
   if (!ordered.length && it.category === "weapon") ordered.push("dmg");
@@ -447,7 +448,8 @@ function todayMax(it) {
 const ruleBonus = (slot, rarity, keys, plus, grade) => Object.fromEntries(keys.map((k, i) => [k, r(B.piece(k, slot, rarity, plus, grade, i === 0 ? 1 : B.SECONDARY), 4)]));
 
 function todayGear() {
-  const eq = Gear.GEAR.filter((g) => ["weapon", "shield", "armor", "accessory"].includes(g.category));
+  // os equipamentos DE ANTES da trilha (as peças de conjunto da E7 são da proposta do §7)
+  const eq = Gear.GEAR.filter((g) => ["weapon", "shield", "armor", "accessory"].includes(g.category) && !g.set);
   return eq.map((it) => {
     const slot = slotOfToday(it);
     const keys = keysOfToday(it, slot);
