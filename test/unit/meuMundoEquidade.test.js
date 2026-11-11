@@ -280,5 +280,26 @@ test("I9 (armas) — vitórias de chefão para fabricar: 3 a 20 por raridade; pi
     assert.equal(frag.fragment.need, NEED[out.rarity], frag.id);
   }
 });
-test("I9 (conjuntos) — fragmento dos setores 7 a 10 com a tabela real do Domínio", { todo: "E12" }, () => {});
+test("I9 (conjuntos) — fragmento dos setores 7 a 10 com a tabela real do Domínio", () => {
+  // E12: o conjunto inteiro (4 peças × 20 fragmentos) sai em 25 a 40 vitórias nos setores 7 a 10,
+  // pela tabela que o servidor sorteia (esperado e pior caso), e o pior ≤ 1,5 × o esperado
+  const Items = require("../../src/utils/mmItems");
+  const { NEED } = Items.LINES;
+  for (const set of Items.LINES.FRAGMENT_SETS) {
+    const frag = `frag_${set.id}`;
+    const pieces = Items.RECIPES.filter((r) => r.kind === "fragment" && r.needs[frag]);
+    assert.equal(pieces.length, 4, set.id);
+    const need = pieces.reduce((a, r) => a + r.needs[frag], 0);
+    assert.equal(need, 4 * NEED.rare, set.id);
+    for (let sector = 1; sector <= 10; sector++) {
+      const e = Items.lootExpectation(`domain:${set.domain}:${sector}`, { win: true })[frag];
+      if (sector < 7) { assert.equal(e, undefined, `${set.id} setor ${sector}`); continue; }
+      const expected = Math.ceil(need / e.expected), worst = Math.ceil(need / e.min);
+      assert.ok(expected >= 25 && expected <= 40 && worst >= 25 && worst <= 40, `${set.id} setor ${sector}: ${expected}/${worst} vitórias`);
+      assert.ok(worst <= 1.5 * expected, `${set.id}: pior ${worst} > 1,5 × ${expected}`);
+      // derrota não paga o fragmento do Domínio
+      assert.equal(Items.lootExpectation(`domain:${set.domain}:${sector}`, { win: false })[frag], undefined);
+    }
+  }
+});
 test("I10 — nenhum item de combate existe só em fonte de PvP", { todo: "E17" }, () => {});

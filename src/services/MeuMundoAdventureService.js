@@ -138,11 +138,16 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   ctx.coins += coins;
   const xpGain = verdict.abandoned || godLoss ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
   // Drop: recompensa básica GARANTIDA com participação válida; vitória aumenta.
-  // E3: porta única do saque, pela tabela nomeada da atividade (fight:laminas / fight:boxe)
-  const drops =
-    verdict.abandoned || godLoss || (!verdict.win && practice.activeMs < LOOT_MIN_ACTIVE_MS)
-      ? []
-      : await RewardService().grant(c, idUser, { table: RewardService().tableOf(activity), ctx, R: GearService().R, roll: { win: verdict.win, activeMs: practice.activeMs, level: setup.level } });
+  // E3: porta única do saque, pela tabela nomeada da atividade (fight:laminas / fight:boxe).
+  // E12: vitória num setor do Domínio usa a tabela do setor (`domain:<id>:<setor>`, paga por
+  // vitória) com o bônus da primeira vitória (mig 449); a derrota segue com a das Lâminas.
+  const domainWin = origin === "domain" && verdict.win && !verdict.abandoned && setup.domain && setup.sector;
+  const lootTable = (domainWin && RewardService().domainTableOf(setup.domain, setup.sector)) || RewardService().tableOf(activity);
+  const lootGiven = !(verdict.abandoned || godLoss || (!verdict.win && practice.activeMs < LOOT_MIN_ACTIVE_MS));
+  const lootFirst = lootGiven && verdict.win ? await RewardService().claimFirst(c, idUser, lootTable, fight.id_fight) : false;
+  const drops = lootGiven
+    ? await RewardService().grant(c, idUser, { table: lootTable, ctx, R: GearService().R, roll: { win: verdict.win, activeMs: practice.activeMs, level: setup.level, first: lootFirst } })
+    : [];
   const level = addXp(adv, xpGain);
   // F2: o treinador (a conta) leva uma fração do XP da luta, com teto do dia
   const trainer = await TrainerService.grant(c, idUser, "fight", level.xp, ctx.now);
@@ -172,6 +177,8 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       sector: setup.sector ?? undefined,
       boss: setup.boss ?? undefined,
       god: setup.god ?? undefined,
+      loot: lootGiven ? lootTable : undefined,
+      lootFirst: lootFirst || undefined,
       gainMult: mult,
       condition: Adv.conditionFactor(before.energy, before.stress),
       dropCondition: Adv.dropCondition(before.health, before.vitality, before.stress),

@@ -34,7 +34,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_domain_pact, tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_loot_first, tb_mm_domain_pact, tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -139,6 +139,17 @@ async function main() {
     }
     return last;
   };
+  /** E12: luta o setor até vencer (no máximo 5). */
+  const playWin = async (id, domain, sector) => {
+    let last = null;
+    for (let k = 0; k < 5; k++) {
+      const t = (await call("fightStart", id, { body: { origin: "domain", domain, sector } })).body.fight;
+      last = { ticket: t, ...(await play(id, t)) };
+      if (last.win) return last;
+    }
+    return last;
+  };
+  const qtyOf = (rec, id) => ((rec && rec.items) || []).filter((x) => x.id === id).reduce((a, x) => a + x.qty, 0);
 
   // ── conta nova: nível 1 ──
   const nu = await user("mmd_novo");
@@ -224,6 +235,12 @@ async function main() {
   const rec = p1.done.receipt;
   check("recibo da luta do Domínio (origem, setor e progresso)", rec && rec.result.origin === "domain" && rec.result.domain === "floresta" && rec.result.sector === 1 && rec.domain && rec.domain.best === 1 && rec.domain.opened === 2, JSON.stringify(p1.done).slice(0, 300));
   check("tb_mm_domain_progress: setor 1 vencido", (await best(nu, "floresta")).best === 1);
+  // E12: a vitória no setor paga pela tabela do setor (não mais a das Lâminas)
+  check("E12: setor 1 paga pela tabela domain:floresta:1 (1 Pó de Lua, sem material das Lâminas)", rec.result.loot === "domain:floresta:1" && qtyOf(rec, "po_de_lua") === 1 && qtyOf(rec, "fragmento_lamina") === 0 && !rec.result.lootFirst, JSON.stringify({ loot: rec.result.loot, items: rec.items }));
+  {
+    const s1 = (await Dom.state(nu)).domains[0].sectors;
+    check("E12: GET /domains manda a tabela de cada setor (consultável na tela)", s1.every((x) => x.loot && x.loot.table === `domain:floresta:${x.n}`) && s1[9].loot.sure.some((x) => x.id === "selo_dominio") && s1[9].loot.first.some((x) => x.id === "receita_garras_lunares") && s1[9].loot.firstDone === false && s1[7].loot.chance.some((x) => x.id === "catalisador_refino" && x.p === 0.1) && !s1[6].loot.chance.some((x) => x.id === "catalisador_refino"), JSON.stringify(s1[9].loot).slice(0, 300));
+  }
   const again = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames: p1.frames });
   check("reenvio = o mesmo recibo, sem subir de novo", again.replay === true && again.receipt.eventId === rec.eventId);
   const b1 = await best(nu, "floresta");
@@ -248,6 +265,7 @@ async function main() {
     await pool.query(`UPDATE tb_mm_fight SET started_at = NOW() - INTERVAL '60 minutes', expires_at = NOW() + INTERVAL '5 minutes' WHERE id_fight = $1`, [r.body.fight.ticket]);
     const lost = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames });
     check("derrota no setor 2: recibo sem progresso", fight.over && !fight.over.win && lost.receipt && lost.receipt.result.win === false && !lost.receipt.domain, JSON.stringify(lost).slice(0, 200));
+    check("E12: derrota não paga a tabela do setor (no máximo a das Lâminas)", lost.receipt && qtyOf(lost.receipt, "po_de_lua") === 0 && (lost.receipt.result.loot === undefined || lost.receipt.result.loot === "fight:laminas"), JSON.stringify(lost.receipt && { loot: lost.receipt.result.loot, items: lost.receipt.items }));
     check("derrota não abre o setor 3", (await best(nu, "floresta")).best === 1);
   }
 
@@ -271,6 +289,14 @@ async function main() {
   }
   check("vitória no setor 10 marca a travessia", p10.win && p10.done.receipt.domain && p10.done.receipt.domain.crossed === true && p10.done.receipt.domain.crossedNow === true, JSON.stringify(p10.done.receipt && p10.done.receipt.domain));
   check("crossed_at gravado", (await best(nu, "floresta")).crossed === true);
+  {
+    const rc = p10.done.receipt;
+    check("E12: setor 10 entrega o Selo, a Seiva e os fragmentos de Garras Lunares (3 a 5 + 10 na primeira) e a receita", qtyOf(rc, "selo_dominio") === 1 && qtyOf(rc, "seiva_de_prata") === 1 && qtyOf(rc, "frag_garras_lunares") >= 13 && qtyOf(rc, "frag_garras_lunares") <= 15 && qtyOf(rc, "receita_garras_lunares") === 1 && qtyOf(rc, "po_de_lua") === 4 && rc.result.lootFirst === true, JSON.stringify({ items: rc.items, first: rc.result.lootFirst }));
+    const lf = (await pool.query(`SELECT id_fight FROM tb_mm_loot_first WHERE id_user = $1 AND loot_table = 'domain:floresta:10'`, [nu])).rows;
+    check("E12: tb_mm_loot_first grava a primeira vitória (mig 449)", lf.length === 1 && !!lf[0].id_fight, JSON.stringify(lf));
+    check("E12: nenhum fragmento de deus no saque (A1)", !(rc.items || []).some((x) => x.id.startsWith("frag_deus")));
+    check("E12: a tela marca a primeira vitória do setor 10 como paga", (await Dom.state(nu)).domains[0].sectors[9].loot.firstDone === true);
+  }
   // D4: o pacto de 7 dias para as Raposas no Rolê Noturno (jogável de Noctis)
   {
     const pact = p10.done.receipt.pact;
@@ -320,6 +346,18 @@ async function main() {
   // um setor mais baixo vencido depois não desce o progresso
   const p3 = await play(nu, (await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 3 } })).body.fight);
   check("vencer um setor antigo não desce o progresso", p3.win && p3.done.receipt.domain.best === 10 && p3.done.receipt.domain.opened === null);
+  // E12: o chefão de novo — sem bônus da primeira; o setor 7 paga o projeto da Vigília uma vez
+  {
+    const b2 = await playBoss(nu);
+    const rc = b2.done.receipt;
+    check("E12: segunda vitória no 10: 3 a 5 fragmentos e o Selo, sem receita", b2.win && qtyOf(rc, "selo_dominio") === 1 && qtyOf(rc, "frag_garras_lunares") >= 3 && qtyOf(rc, "frag_garras_lunares") <= 5 && qtyOf(rc, "receita_garras_lunares") === 0 && !rc.result.lootFirst, JSON.stringify({ win: b2.win, items: rc && rc.items }));
+    const s7 = await playWin(nu, "floresta", 7);
+    check("E12: primeira vitória no setor 7 dá o projeto da Vigília e 2 a 3 fragmentos do conjunto", s7.win && qtyOf(s7.done.receipt, "projeto_vigilia") === 1 && qtyOf(s7.done.receipt, "frag_vigilia") >= 2 && qtyOf(s7.done.receipt, "frag_vigilia") <= 3 && qtyOf(s7.done.receipt, "po_de_lua") === 3, JSON.stringify({ win: s7.win, items: s7.done.receipt && s7.done.receipt.items }));
+    const s7b = await playWin(nu, "floresta", 7);
+    check("E12: a segunda vitória no 7 não repete o projeto", s7b.win && qtyOf(s7b.done.receipt, "projeto_vigilia") === 0 && qtyOf(s7b.done.receipt, "frag_vigilia") >= 2, JSON.stringify(s7b.done.receipt && s7b.done.receipt.items));
+    const again = await Adv.fightFinish(nu, { ticket: s7.ticket.ticket, frames: s7.frames });
+    check("E12: reenvio do ticket não paga de novo", again.replay === true && Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_loot_first WHERE id_user = $1`, [nu])).rows[0].count) === 2);
+  }
 
   // ── D5: o Cânion das Tempestades (a conta é Raposa, nível 9, Floresta atravessada) ──
   {

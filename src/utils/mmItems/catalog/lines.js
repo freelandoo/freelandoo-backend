@@ -6,8 +6,9 @@
 // • 12 fragmentos: um por arma (60 para fabricar) e um por conjunto (20 por peça).
 // • 24 materiais (9 universais + 15 de Domínio/deus) e 2 fichas (Pó de Refino, Selo de Domínio).
 // • 12 projetos (9 receitas de arma + 3 de conjunto) e as 21 receitas `kind: "fragment"`.
-// As tabelas de saque que entregam estes itens chegam com a E12 (Domínios) e a E17 (atividades);
-// até lá a origem é DECLARADA aqui (`source`) e o Índice de fragmentos lê `origin`.
+// E12: o que cai nos Domínios sai das tabelas `domain:<id>:<setor>` (catalog/loot.js) e perdeu a
+// origem declarada; o que ainda espera a E17 (Hall, rua, Paint, minijogos) segue DECLARADO aqui
+// (`source`). O Índice de fragmentos lê `origin`.
 "use strict";
 
 const { G } = require("./_base");
@@ -65,13 +66,12 @@ const LINE_FRAGMENTS = LINES.map((l) => G(`frag_${l.key}`, "fragment", `Fragment
   stack: true, domain: l.god, sell: 0,
   fragment: Object.freeze({ of: `linha_${l.key}`, need: NEED.legendary, powder: powderPerFragment(5) }),
   origin: Object.freeze({ region: l.region, boss: l.boss, table: l.table, kind: l.boss ? "boss" : "activity" }),
-  source: Object.freeze([`${bossLine(l)}.`]),
+  ...(DOMAIN_NAME[l.region] ? {} : { source: Object.freeze([`${bossLine(l)}.`]) }), // E12: Domínio = tabela
 }));
 const SET_FRAGMENT_ITEMS = SETS.map((s) => G(`frag_${s.id}`, "fragment", `Fragmento do conjunto ${s.name}`, "rare", {
   stack: true, domain: s.domain, set: s.id, sell: 0,
   fragment: Object.freeze({ of: SET_PIECES(s.id)[0], set: s.id, need: NEED.rare, powder: powderPerFragment(3) }),
   origin: Object.freeze({ region: s.domain, boss: null, table: `domain:${s.domain}:7-10`, kind: "sector" }),
-  source: Object.freeze([`Domínio ${DOMAIN_NAME[s.domain]}: setores 7 a 10 (2 a 3 por vitória).`]),
 }));
 
 // ── materiais e fichas (GDD I) ──
@@ -87,47 +87,43 @@ const NOTES = Object.freeze({
 const notes = (id) => (NOTES[id] ? { notes: Object.freeze([NOTES[id]]) } : {});
 // `where` null = a origem sai das tabelas de saque (catalog/loot.js), sem linha declarada
 const M = (id, name, rarity, domain, where) => G(id, "material", name, rarity, { domain, sell: 0, ...(where ? { source: Object.freeze([where]) } : {}), ...notes(id) });
-const DOM_COMMON = (d) => `Domínio ${DOMAIN_NAME[d]}: garantido em todo setor (1 a 4 por vitória).`;
-const DOM_RARE = (d) => `Domínio ${DOMAIN_NAME[d]}: chance nos setores 1 a 9 (5% + 3% por setor) e garantido no setor 10.`;
 const MATERIALS = Object.freeze([
   M("minerio_ferro", "Minério de Ferro", "common", null, "Minijogos e monstros da rua: 1 a 2 por partida validada."),
-  M("minerio_prata", "Minério de Prata", "uncommon", null, "Boxe e Domínios: garantido no Boxe, chance de 20% nos setores."),
-  M("lingote_refinado", "Lingote Refinado", "rare", null, "Lâminas (15%) e Domínios a partir do setor 4 (25%)."),
+  M("minerio_prata", "Minério de Prata", "uncommon", null, null), // E12: Domínios (Boxe na E17)
+  M("lingote_refinado", "Lingote Refinado", "rare", null, null), // E12: Domínios (Lâminas na E17)
   M("madeira_ancestral", "Madeira Ancestral", "uncommon", null, "Antigravidade e Gincana: chance de 25% por partida."),
-  M("cristal_bruto", "Cristal Bruto", "uncommon", null, "Jetpack, Rolê Noturno e Domínios: chance de 15% a 25%."),
+  M("cristal_bruto", "Cristal Bruto", "uncommon", null, null), // E12: Domínios (minijogos na E17)
   M("po_forja", "Pó de Forja", "common", null, "Lâminas (garantido), minijogos e monstros da rua (30%)."),
   M("pedra_aprimoramento", "Pedra de Aprimoramento", "uncommon", null, null), // E9: cai nas lutas (fight:laminas e fight:boxe)
-  M("catalisador_refino", "Catalisador de Refino", "epic", null, "Hall dos Campeões (20%) e Domínios a partir do setor 8 (10%)."),
-  M("essencia_primordial", "Essência Primordial", "legendary", null, "Hall dos Campeões (10%) e chefões dos Domínios (25%)."),
-  M("po_de_lua", "Pó de Lua", "common", "floresta", DOM_COMMON("floresta")),
-  M("seiva_de_prata", "Seiva de Prata", "rare", "floresta", DOM_RARE("floresta")),
-  M("areia_de_raio", "Areia de Raio", "common", "canion", DOM_COMMON("canion")),
-  M("pena_de_tempestade", "Pena de Tempestade", "rare", "canion", DOM_RARE("canion")),
-  M("gelo_negro", "Gelo Negro", "common", "gelo", DOM_COMMON("gelo")),
-  M("perola_de_afogado", "Pérola de Afogado", "rare", "gelo", DOM_RARE("gelo")),
-  M("engrenagem_fina", "Engrenagem Fina", "common", "fabrica", DOM_COMMON("fabrica")),
-  M("coracao_de_corda", "Coração de Corda", "rare", "fabrica", DOM_RARE("fabrica")),
-  M("escoria", "Escória", "common", "vulcao", DOM_COMMON("vulcao")),
-  M("ferro_de_basalto", "Ferro de Basalto", "rare", "vulcao", DOM_RARE("vulcao")),
-  M("vidro_colorido", "Vidro Colorido", "common", "orbital", DOM_COMMON("orbital")),
-  M("prisma_vivo", "Prisma Vivo", "rare", "orbital", DOM_RARE("orbital")),
+  M("catalisador_refino", "Catalisador de Refino", "epic", null, null), // E12: Domínios 8+ (Hall na E17)
+  M("essencia_primordial", "Essência Primordial", "legendary", null, null), // E12: chefões (Hall na E17)
+  M("po_de_lua", "Pó de Lua", "common", "floresta", null),
+  M("seiva_de_prata", "Seiva de Prata", "rare", "floresta", null),
+  M("areia_de_raio", "Areia de Raio", "common", "canion", null),
+  M("pena_de_tempestade", "Pena de Tempestade", "rare", "canion", null),
+  M("gelo_negro", "Gelo Negro", "common", "gelo", null),
+  M("perola_de_afogado", "Pérola de Afogado", "rare", "gelo", null),
+  M("engrenagem_fina", "Engrenagem Fina", "common", "fabrica", null),
+  M("coracao_de_corda", "Coração de Corda", "rare", "fabrica", null),
+  M("escoria", "Escória", "common", "vulcao", null),
+  M("ferro_de_basalto", "Ferro de Basalto", "rare", "vulcao", null),
+  M("vidro_colorido", "Vidro Colorido", "common", "orbital", null),
+  M("prisma_vivo", "Prisma Vivo", "rare", "orbital", null),
   M("brasa_solar", "Brasa Solar", "uncommon", "aurion", "Hall dos Campeões (1 a 2 por vitória) e Lâminas (35%)."),
   M("cinza_das_correntes", "Cinza das Correntes", "uncommon", "morkhan", "Monstros da rua de noite (35%); de elite, 1 a 2 garantidos."),
   M("barro_primordial", "Barro Primordial", "uncommon", "bastor", "Paint: 1 a 2 por vitória."),
 ]);
 const CURRENCY = Object.freeze([
   G("po_refino", "currency", "Pó de Refino", "uncommon", { stack: true, sell: 0, ...notes("po_refino"), source: Object.freeze(["Forja: converter fragmentos que sobram (2 × tier cada) e desmontar equipamento."]) }),
-  G("selo_dominio", "currency", "Selo de Domínio", "rare", { stack: true, sell: 0, ...notes("selo_dominio"), source: Object.freeze(["Chefão do setor 10 de qualquer Domínio: 1 por vitória."]) }),
+  G("selo_dominio", "currency", "Selo de Domínio", "rare", { stack: true, sell: 0, ...notes("selo_dominio") }), // E12: chefões
 ]);
 
 // ── projetos (GDD I) ──
 const BLUEPRINTS = Object.freeze([
   ...LINES.map((l) => G(`receita_${l.key}`, "recipe", `Receita: ${l.name}`, "legendary", {
-    sell: 0, domain: l.god, source: Object.freeze([`${l.where || `Domínio ${DOMAIN_NAME[l.region]}: chefão do setor 10`}, na primeira vitória.`]),
+    sell: 0, domain: l.god, ...(DOMAIN_NAME[l.region] ? {} : { source: Object.freeze([`${l.where}, na primeira vitória.`]) }),
   })),
-  ...SETS.map((s) => G(`projeto_${s.id}`, "recipe", `Projeto: conjunto ${s.name}`, "rare", {
-    sell: 0, domain: s.domain, set: s.id, source: Object.freeze([`Domínio ${DOMAIN_NAME[s.domain]}: primeira vitória no setor 7.`]),
-  })),
+  ...SETS.map((s) => G(`projeto_${s.id}`, "recipe", `Projeto: conjunto ${s.name}`, "rare", { sell: 0, domain: s.domain, set: s.id })),
 ]);
 
 // ── receitas por fragmento (GDD J) ──
@@ -179,7 +175,7 @@ const DESCRIPTIONS = Object.freeze({
 });
 
 module.exports = {
-  DOMAIN_NAME, DOMAIN_LEVEL, BOSS_FRAGMENTS, SET_FRAGMENTS, NEED, powderPerFragment, LINES, regionName,
+  DOMAIN_NAME, DOMAIN_LEVEL, BOSS_FRAGMENTS, SET_FRAGMENTS, NEED, powderPerFragment, LINES, FRAGMENT_SETS: SETS, regionName,
   LINE_WEAPONS, FRAGMENTS: Object.freeze([...LINE_FRAGMENTS, ...SET_FRAGMENT_ITEMS]), MATERIALS, CURRENCY, BLUEPRINTS,
   FRAGMENT_RECIPES, DESCRIPTIONS,
   ITEMS: Object.freeze([...LINE_WEAPONS, ...LINE_FRAGMENTS, ...SET_FRAGMENT_ITEMS, ...MATERIALS, ...CURRENCY, ...BLUEPRINTS]),

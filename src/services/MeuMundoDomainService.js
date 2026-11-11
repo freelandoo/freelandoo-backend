@@ -19,6 +19,7 @@ const GearStore = require("../storages/MeuMundoGearStorage");
 const MeuMundoPlaceService = require("./MeuMundoPlaceService");
 const PactStore = require("../storages/MeuMundoPactStorage");
 const Pact = require("../utils/meuMundoPact");
+const Items = require("../utils/mmItems");
 
 /** D4: namespace do advisory lock do pacto (Domínio × povo; fixo, não colide com outros). */
 const PACT_LOCK_NS = 44501;
@@ -51,6 +52,34 @@ async function bestOf(c, idUser) {
   return out;
 }
 
+/** E12: tabelas de saque com a primeira vitória já paga (mig 449). */
+async function firstsOf(c, idUser) {
+  const r = await c.query(`SELECT loot_table FROM tb_mm_loot_first WHERE id_user = $1 AND loot_table LIKE 'domain:%'`, [idUser]);
+  return new Set(r.rows.map((x) => x.loot_table));
+}
+
+/**
+ * E12: a tabela do setor para a tela (consultável antes de lutar): garantido, chance e o bônus
+ * da primeira vitória (e se já foi pago). Nome em pt de reserva; o front traduz por `gear_<id>`.
+ */
+function sectorLoot(domain, sector, firsts) {
+  const id = Items.domainTableId(domain, sector);
+  const t = id && Items.LOOT_TABLES[id];
+  if (!t) return null;
+  const row = (e) => {
+    const g = Items.GEAR_BY_ID.get(e.id);
+    return { id: e.id, name: g ? g.name : e.id, rarity: g ? g.rarity : "common", qty: Array.isArray(e.qty) ? [e.qty[0], e.qty[1]] : [1, 1], ...(e.p != null ? { p: e.p } : {}) };
+  };
+  return {
+    table: id,
+    sure: (t.sure || []).map(row),
+    chance: (t.chance || []).map(row),
+    first: (t.first || []).map(row),
+    firstDone: firsts.has(id),
+  };
+}
+const withLoot = (domains, firsts) => domains.map((d) => ({ ...d, sectors: d.sectors.map((s) => ({ ...s, loot: sectorLoot(d.id, s.n, firsts) })) }));
+
 async function powerOf(c, idUser) {
   const r = await c.query(`SELECT power FROM tb_mm_character WHERE id_user = $1 AND status = 'alive' ORDER BY born_at DESC LIMIT 1`, [idUser]);
   return r.rows[0] ? Number(r.rows[0].power) || 0 : 0;
@@ -68,7 +97,8 @@ class MeuMundoDomainService {
     const trainer = await levelOf(db, idUser);
     const bypass = await bypassOf(db, idUser);
     const best = await bestOf(db, idUser);
-    return { trainer, bypass, power: await powerOf(db, idUser), sectors: D.SECTORS, domains: D.view(trainer, best, bypass), pacts: await PactStore.active(db, Date.now()) };
+    const domains = withLoot(D.view(trainer, best, bypass), await firstsOf(db, idUser)); // E12: a tabela de cada setor
+    return { trainer, bypass, power: await powerOf(db, idUser), sectors: D.SECTORS, domains, pacts: await PactStore.active(db, Date.now()) };
   }
 
   /** POST /domains/enter { domain } — só entra na cena de um Domínio aberto. */
@@ -80,7 +110,7 @@ class MeuMundoDomainService {
     const best = await bestOf(db, idUser);
     const lock = D.lockOf(id, trainer, best, bypass);
     if (lock) return lockFail(lock);
-    const domain = D.view(trainer, best, bypass).find((d) => d.id === id);
+    const domain = withLoot(D.view(trainer, best, bypass).filter((d) => d.id === id), await firstsOf(db, idUser))[0];
     return { trainer, bypass, power: await powerOf(db, idUser), domain, pacts: (await PactStore.active(db, Date.now())).filter((p) => p.domain === id) };
   }
 

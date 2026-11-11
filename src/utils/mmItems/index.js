@@ -26,7 +26,7 @@ const lines = require("./catalog/lines");
 const { SETS, SET_STEPS } = setsCat;
 const { KEYS_BY_ID } = require("./catalog/keys");
 const Bonus = require("./rules/bonus");
-const { LOOT, TABLES: LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE } = require("./catalog/loot");
+const { LOOT, TABLES: LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE, domainTableId } = require("./catalog/loot");
 const LootRule = require("./rules/loot");
 
 const PARTS = [weapons, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines];
@@ -82,7 +82,7 @@ module.exports = {
   CATEGORIES, RARITIES,
   GEAR, GEAR_BY_ID, RECIPES, RECIPE_BY_ID, DESCRIPTIONS, SETS, SET_STEPS, LOOT,
   bonusOf: (pieces) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
-  rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation,
+  rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation, domainTableId,
   FORGE: recipes, LINES: lines,
   sourcesOf,
   validateCatalog: () => validateCatalog({ items: GEAR, recipes: RECIPES, loot: LOOT, sets: SETS, sources: sourcesOf }),

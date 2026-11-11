@@ -23,6 +23,25 @@ class MeuMundoRewardService {
     return drops.length ? GearService().deliver(c, idUser, drops, ctx) : [];
   }
 
+  /**
+   * E12: a PRIMEIRA vitória de uma tabela que tem `first` (mig 449). Marca e devolve true uma vez
+   * por conta × tabela, dentro da transação do recibo (desfeita junto se o recibo não sair).
+   */
+  static async claimFirst(c, idUser, table, idFight = null) {
+    const t = Items.LOOT_TABLES[table];
+    if (!t || !(t.first || []).length) return false;
+    const r = await c.query(
+      `INSERT INTO tb_mm_loot_first (id_user, loot_table, id_fight) VALUES ($1, $2, $3) ON CONFLICT (id_user, loot_table) DO NOTHING RETURNING loot_table`,
+      [idUser, table, idFight],
+    );
+    return r.rowCount > 0;
+  }
+
+  /** E12: tabela do setor do Domínio (`domain:<id>:<setor>`) ou null. */
+  static domainTableOf(domain, sector) {
+    return Items.domainTableId(domain, Number(sector));
+  }
+
   /** Tabela da atividade (Adv.ACTIVITIES): luta = `fight:<atividade>`, minijogo = `minigame:<jogo>`. */
   static tableOf(activity) {
     return Items.ACTIVITY_TABLE[activity] || null;
