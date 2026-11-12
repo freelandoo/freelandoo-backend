@@ -105,7 +105,12 @@ async function main() {
     return r ? { best: Number(r.best_sector), wins: Number(r.wins), crossed: !!r.crossed_at } : { best: 0, wins: 0, crossed: false };
   };
   // forte de verdade: a luta de teste termina em vitória
-  const strong = (id) => pool.query(`UPDATE tb_mm_character SET strength = 4000, speed = 4000, intelligence = 4000, dexterity = 4000, energy = 100, stress = 0 WHERE id_user = $1 AND status = 'alive'`, [id]);
+  const XP150 = (() => { const A = require("../src/utils/meuMundoAdventure"); let t = 0; for (let n = 1; n < 150; n++) t += Math.round(A.XP.BASE * Math.pow(n, A.XP.EXP)); return t; })();
+  // S14: os deuses viraram o muro de meses (Noctis nv. 97): o forte do teste tem nível de aventura 150
+  const strong = async (id) => {
+    await pool.query(`UPDATE tb_mm_character SET strength = 10000, speed = 10000, intelligence = 10000, dexterity = 10000, energy = 100, stress = 0 WHERE id_user = $1 AND status = 'alive'`, [id]);
+    await pool.query(`INSERT INTO tb_mm_char_adventure (id_character, id_user, xp, level) SELECT id_character, id_user, $2, 150 FROM tb_mm_character WHERE id_user = $1 AND status = 'alive' ON CONFLICT (id_character) DO UPDATE SET xp = EXCLUDED.xp, level = 150`, [id, XP150]);
+  };
   const call = async (fn, id, { params = {}, body = {} } = {}) => {
     const { res, out } = fakeRes();
     await Ctl[fn]({ user: { id_user: id }, params, body }, res);
@@ -276,6 +281,7 @@ async function main() {
   check("gravação falsa não fecha a luta nem sobe o setor", fake.code === "replay" && (await best(nu, "floresta")).best === 1, JSON.stringify(fake));
   // derrota: o mais fraco possível, sem apertar nada
   await pool.query(`UPDATE tb_mm_character SET strength = 1, speed = 1, intelligence = 1, dexterity = 1 WHERE id_user = $1 AND status = 'alive'`, [nu]);
+  await pool.query(`UPDATE tb_mm_char_adventure SET xp = 0, level = 1 WHERE id_user = $1`, [nu]);
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 2 } });
   {
     const su = r.body.fight.setup;

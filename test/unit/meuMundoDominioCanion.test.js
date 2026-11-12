@@ -32,7 +32,7 @@ test("D5: níveis do Cânion calibrados com robô (sobem, nunca descem; acima da
   const L = Array.from({ length: 10 }, (_, k) => D.sectorLevel("canion", k + 1));
   assert.deepEqual(L, [...D.LEVELS_BY_DOMAIN.canion]);
   for (let s = 1; s < 10; s++) assert.ok(L[s] >= L[s - 1], `setor ${s + 1}`);
-  assert.ok(L[0] >= D.sectorLevel("floresta", 10) - 2, "quem atravessou a Floresta não volta ao nível 1");
+  assert.ok(L[0] >= D.sectorLevel("floresta", 10) * 0.75, "quem atravessou a Floresta não volta lá embaixo");
   assert.equal(Math.max(...L), L[9]);
   const view = D.view(9, { floresta: 10 })[1];
   assert.equal(view.id, "canion");
@@ -41,9 +41,11 @@ test("D5: níveis do Cânion calibrados com robô (sobem, nunca descem; acima da
   assert.equal(view.sectors[9].foe.id, "zephyra");
 });
 
-test("D5: herói do robô sobe com a travessia (Floresta 1→5 sem mudar; Cânion 5→9)", () => {
-  assert.deepEqual([D.heroOf("floresta", 1), D.heroOf("floresta", 10)], [1, 5]);
-  assert.deepEqual([D.heroOf("canion", 1), D.heroOf("canion", 10)], [5, 9]);
+test("S14: herói do robô = o do dia-alvo (Floresta 5 → 70 em 180 dias; Cânion 72 → 90 em 270)", () => {
+  assert.deepEqual([D.heroOf("floresta", 1), D.heroOf("floresta", 10)], [5, 70]);
+  assert.deepEqual([D.heroOf("canion", 1), D.heroOf("canion", 10)], [72, 90]);
+  let prev = 0;
+  for (const id of D.DOMAIN_IDS) for (let s = 1; s <= 10; s++) assert.ok(D.heroOf(id, s) >= prev, `${id} ${s}`), (prev = D.heroOf(id, s));
 });
 
 test("D5: só o setor 10 do Cânion tem chefão (Zéphyra); a tela manda", () => {
@@ -76,8 +78,8 @@ test("D5: fases de Zéphyra — 66% Vento que Derruba (rajada reta), 33% Rastro 
 });
 
 test("D5: robô — com o Poder recomendado vence quase sempre o setor 1 e cerca de metade contra Zéphyra", () => {
-  const C = require("../../scripts/mm-domain-calibrate");
-  const at = (s) => C.winRate(D.kindOf("canion", s), D.sectorLevel("canion", s), D.recommendedPower("canion", s), D.heroOf("canion", s), 24, D.bossOf("canion", s));
+  const W = require("../../scripts/mm-boss-wall");
+  const at = (s) => W.sectorWinRate("canion", s, 24);
   const first = at(1);
   const last = at(10);
   assert.ok(first >= 0.8, `setor 1: ${first}`);

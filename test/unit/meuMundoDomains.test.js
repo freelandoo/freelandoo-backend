@@ -67,12 +67,25 @@ test("monstro e nível pelo setor: comuns, fortes, elite (Lobos na Floresta), gu
   for (const id of D.DOMAIN_IDS.filter((x) => !D.LEVELS_BY_DOMAIN[x])) for (let s = 1; s <= 10; s++) assert.ok(D.mobPower(D.kindOf(id, s), D.sectorLevel(id, s)) >= D.recommendedPower(id, s) - 1);
 });
 
-test("Poder recomendado sobe por setor e por Domínio (lore: 150 → 600 na Floresta, 2.200 → 3.000 na Orbital)", () => {
-  assert.equal(D.recommendedPower("floresta", 1), 150);
-  assert.equal(D.recommendedPower("floresta", 10), 600);
-  assert.equal(D.recommendedPower("orbital", 1), 2200);
-  assert.equal(D.recommendedPower("orbital", 10), 3000);
+test("S14: Poder recomendado = o Poder do herói do dia-alvo (Floresta 870 → 8.820; Orbital até 21.690), sobe sempre", () => {
+  assert.equal(D.recommendedPower("floresta", 1), 870);
+  assert.equal(D.recommendedPower("floresta", 10), 8820);
+  assert.equal(D.recommendedPower("orbital", 10), 21690);
   assert.equal(D.recommendedPower("floresta", 11), null);
+  let prev = 0;
+  for (const id of D.DOMAIN_IDS)
+    for (let s = 1; s <= 10; s++) {
+      const p = D.recommendedPower(id, s);
+      assert.ok(p > prev, `${id} setor ${s}: ${p}`);
+      prev = p;
+    }
+  for (const d of D.DOMAINS) assert.deepEqual([...d.power], [D.recommendedPower(d.id, 1), D.recommendedPower(d.id, 10)], d.id);
+});
+
+test("S14: os deuses são o muro de meses (Noctis 97, Zéphyra 135, Marú 192, Aeryn 221, Kragor 242, Íris 289); Floresta pela tabela medida", () => {
+  assert.deepEqual(D.DOMAIN_IDS.map((id) => D.sectorLevel(id, 10)), [97, 135, 192, 221, 242, 289]);
+  assert.deepEqual([...D.LEVELS_BY_DOMAIN.floresta], [6, 9, 15, 20, 23, 30, 44, 60, 66, 97]);
+  assert.deepEqual(D.DOMAINS.map((d) => d.need), [5, 9, 13, 17, 21, 25], "a trava de treinador fica");
 });
 
 test("três palcos de luta por Domínio: entrada, setores fundos, palácio", () => {
@@ -143,9 +156,9 @@ test("D2: níveis da Floresta calibrados com robô (sobem, nunca descem; o deus 
   assert.equal(D.view(5, {})[0].sectors[9].level, L[9], "a tela mostra o nível calibrado");
 });
 
-test("D2: robô — com o Poder recomendado vence quase sempre o setor 1 e menos da metade contra Noctis", () => {
-  const C = require("../../scripts/mm-domain-calibrate");
-  const at = (s) => C.winRate(D.kindOf("floresta", s), D.sectorLevel("floresta", s), D.recommendedPower("floresta", s), D.heroOf("floresta", s), 24, D.bossOf("floresta", s));
+test("S14: robô com o herói do dia-alvo vence quase sempre o setor 1 e cerca de metade contra Noctis", () => {
+  const W = require("../../scripts/mm-boss-wall");
+  const at = (s) => W.sectorWinRate("floresta", s, 24);
   const first = at(1);
   const last = at(10);
   assert.ok(first >= 0.8, `setor 1: ${first}`);

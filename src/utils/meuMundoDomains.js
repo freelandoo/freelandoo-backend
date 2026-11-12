@@ -29,12 +29,12 @@ const SECTORS = 10;
 
 const DOMAINS = Object.freeze(
   [
-    { id: "floresta", god: "noctis", need: 5, power: [150, 600], kit: "floresta" },
-    { id: "canion", god: "zephyra", need: 9, power: [500, 1000], kit: "canion" },
-    { id: "gelo", god: "maru", need: 13, power: [900, 1400], kit: "gelo" },
-    { id: "fabrica", god: "aeryn", need: 17, power: [1300, 1800], kit: "fabrica" },
-    { id: "vulcao", god: "kragor", need: 21, power: [1700, 2300], kit: "forja" },
-    { id: "orbital", god: "iris", need: 25, power: [2200, 3000], kit: "orbital" },
+    { id: "floresta", god: "noctis", need: 5, power: [870, 8820], kit: "floresta" },
+    { id: "canion", god: "zephyra", need: 9, power: [9260, 11540], kit: "canion" },
+    { id: "gelo", god: "maru", need: 13, power: [11800, 13900], kit: "gelo" },
+    { id: "fabrica", god: "aeryn", need: 17, power: [14130, 15970], kit: "fabrica" },
+    { id: "vulcao", god: "kragor", need: 21, power: [16140, 17860], kit: "forja" },
+    { id: "orbital", god: "iris", need: 25, power: [18390, 21690], kit: "orbital" },
   ].map((d) => Object.freeze({ ...d, power: Object.freeze(d.power) }))
 );
 const DOMAIN_IDS = Object.freeze(DOMAINS.map((d) => d.id));
@@ -166,19 +166,41 @@ const FOES_BY_DOMAIN = Object.freeze({
  * Poder recomendado do setor (a da lore) vence a fração TARGET do setor. Domínio sem tabela
  * cai na régua do B7 (sectorLevel).
  */
-// D2 (2026-11-11, 80 lutas por ponto): o robô vence 91% no setor 1 (nv. 2), ~75–90% no meio e
-// 35% contra Noctis (nv. 7, o chefão é mais duro de propósito).
+// S14 (2026-11-12, proposta aprovada pelo Alex "Aprovo, grava"): os deuses viram o muro de "6 meses de
+// jogo bem jogado" (20 vitórias/dia) e os setores 1–9 sobem junto. Conta: scripts/mm-boss-wall.js
+// (o herói do dia D pela regra real; robô do mm-domain-calibrate). Floresta medida (setor 1 no dia 2,
+// Noctis no dia 180); os outros com --fit: setores do deus anterior até perto do próprio, deus em
+// 270/365/455/545/730 dias. A trava de treinador (5, 9, 13, 17, 21, 25) fica.
 const LEVELS_BY_DOMAIN = Object.freeze({
-  floresta: Object.freeze([2, 2, 2, 2, 4, 4, 5, 6, 7, 7]),
-  // D5 (2026-11-11, 80 lutas por ponto, herói 5 → 9): o robô vence 96% no setor 1 (nv. 5), 68–98% no
-  // meio (setor 4 fica em 74%: o nível não desce do setor 3) e 54% contra Zéphyra com as fases (nv. 12).
-  canion: Object.freeze([5, 6, 7, 7, 7, 8, 9, 10, 10, 12]),
-  // Domínios v2 DV6–DV9 (2026-11-11, mm-domain-calibrate --fit, 40 lutas por ponto; heroOf +4 por Domínio):
-  // o robô vence 88–100% no setor 1 e 45–63% contra o deus em fases.
-  gelo: Object.freeze([9, 9, 11, 11, 13, 13, 13, 13, 15, 16]),
-  fabrica: Object.freeze([14, 14, 15, 16, 17, 17, 19, 20, 20, 20]),
-  vulcao: Object.freeze([18, 18, 19, 19, 22, 23, 23, 23, 24, 24]),
-  orbital: Object.freeze([21, 22, 25, 25, 26, 26, 30, 30, 30, 30]),
+  floresta: Object.freeze([6, 9, 15, 20, 23, 30, 44, 60, 66, 97]),
+  // --fit (40 lutas por ponto): robô no alvo do setor ou acima; deus 45–57% no dia dele.
+  canion: Object.freeze([79, 84, 108, 108, 112, 112, 131, 131, 131, 135]),
+  gelo: Object.freeze([104, 105, 124, 150, 150, 150, 150, 150, 175, 192]),
+  fabrica: Object.freeze([159, 164, 184, 184, 184, 184, 194, 194, 194, 221]),
+  vulcao: Object.freeze([204, 213, 213, 213, 213, 213, 213, 226, 232, 242]),
+  orbital: Object.freeze([225, 244, 244, 259, 259, 259, 267, 267, 288, 289]),
+});
+const tbl = (o) => Object.freeze(Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Object.freeze(v)])));
+/**
+ * Nível de aventura e Poder do herói no dia-alvo de cada setor (mm-boss-wall: 20 vitórias/dia;
+ * equipamento raro +10 até Noctis, épico +15 depois, lendário +15 na Orbital). O robô de calibrar
+ * luta com esse herói; o Poder vira o "Poder recomendado" do painel.
+ */
+const HEROES_BY_DOMAIN = tbl({
+  floresta: [5, 7, 11, 14, 19, 24, 30, 41, 55, 70],
+  canion: [72, 74, 76, 78, 80, 82, 84, 86, 88, 90],
+  gelo: [92, 93, 95, 97, 99, 101, 103, 104, 106, 108],
+  fabrica: [110, 111, 113, 114, 116, 118, 119, 121, 122, 124],
+  vulcao: [125, 127, 128, 130, 131, 133, 134, 135, 137, 138],
+  orbital: [141, 144, 147, 150, 152, 155, 158, 160, 163, 166],
+});
+const POWER_BY_DOMAIN = tbl({
+  floresta: [870, 1140, 1620, 2010, 2550, 3140, 3900, 5240, 6930, 8820],
+  canion: [9260, 9520, 9780, 10040, 10290, 10550, 10800, 11050, 11300, 11540],
+  gelo: [11800, 11990, 12250, 12490, 12750, 12980, 13230, 13420, 13670, 13900],
+  fabrica: [14130, 14310, 14540, 14720, 14940, 15170, 15350, 15570, 15750, 15970],
+  vulcao: [16140, 16360, 16530, 16750, 16920, 17140, 17310, 17480, 17690, 17860],
+  orbital: [18390, 18780, 19170, 19540, 19880, 20250, 20630, 20950, 21330, 21690],
 });
 /**
  * D4: o deus do setor 10 luta em FASES (regra `BOSSES` em meuMundoFight.js, setup.boss no
@@ -189,14 +211,10 @@ const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis", canion: "zephyra", ge
 const bossOf = (domainId, sector) => (sector === SECTORS && BOSS_BY_DOMAIN[domainId]) || null;
 /** Vitórias do robô com o Poder recomendado, do setor 1 ao 10 (o fim fica no deus). */
 const TARGET = Object.freeze([0.9, 0.86, 0.82, 0.78, 0.74, 0.7, 0.66, 0.62, 0.56, 0.5]);
-/**
- * Nível de aventura que o robô usa em cada setor (quem chega ao fundo já lutou mais). D5: a
- * travessia é em ordem, então quem chega a um Domínio já passou pelos anteriores — cada Domínio
- * começa 4 níveis acima do anterior (Floresta 1→5, Cânion 5→9, …; a Floresta não muda).
- */
+/** Nível de aventura que o robô usa em cada setor (S14: o herói do dia-alvo do setor). */
 const heroOf = (domainId, sector) => {
-  const d = domainOf(domainId);
-  return 1 + 4 * (d ? d.index : 0) + Math.floor((sector - 1) / 2);
+  const t = HEROES_BY_DOMAIN[domainId];
+  return t && sectorOk(sector) ? t[sector - 1] : 1;
 };
 
 /**
@@ -263,12 +281,11 @@ function stageOf(sector) {
 const domainOf = (id) => BY_ID.get(String(id || "")) || null;
 const sectorOk = (s) => Number.isInteger(s) && s >= 1 && s <= SECTORS;
 
-/** Poder recomendado do setor (linear de 1 a 10, de 10 em 10). */
+/** Poder recomendado do setor (S14: o Poder do herói do dia-alvo, de 10 em 10). */
 function recommendedPower(domainId, sector) {
   const d = domainOf(domainId);
   if (!d || !sectorOk(sector)) return null;
-  const [a, b] = d.power;
-  return Math.round((a + ((b - a) * (sector - 1)) / (SECTORS - 1)) / 10) * 10;
+  return POWER_BY_DOMAIN[d.id][sector - 1];
 }
 
 function foeOf(domainId, sector) {

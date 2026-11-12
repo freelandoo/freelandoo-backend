@@ -38,14 +38,15 @@ test("DV6–DV9: as criaturas da lore por setor, regra de tipo que já existe e 
   assert.equal(D.foeOf("canion", 10).id, "zephyra");
 });
 
-test("DV6–DV9: níveis calibrados com robô — sobem, nunca descem, e cada Domínio começa acima do fim do anterior − 4", () => {
+test("S14: níveis calibrados com robô — sobem dentro do Domínio, e cada Domínio começa perto do deus anterior (≥ 75%) e termina acima dele", () => {
   const order = ["canion", "gelo", "fabrica", "vulcao", "orbital"];
   for (let i = 1; i < order.length; i++) {
     const dom = order[i];
     const L = Array.from({ length: 10 }, (_, k) => D.sectorLevel(dom, k + 1));
     assert.deepEqual(L, [...D.LEVELS_BY_DOMAIN[dom]], dom);
     for (let s = 1; s < 10; s++) assert.ok(L[s] >= L[s - 1], `${dom} setor ${s + 1}`);
-    assert.ok(L[0] >= D.sectorLevel(order[i - 1], 10) - 4, `${dom}: quem atravessou ${order[i - 1]} não volta lá embaixo`);
+    assert.ok(L[0] >= D.sectorLevel(order[i - 1], 10) * 0.75, `${dom}: quem atravessou ${order[i - 1]} não volta lá embaixo`);
+    assert.ok(L[9] > D.sectorLevel(order[i - 1], 10), `${dom}: o deus acima do anterior`);
   }
 });
 
@@ -80,13 +81,13 @@ test("DV6–DV9: as fases entram na luta (66% → fase 2 com 1 golpe novo, 33% �
   }
 });
 
-test("DV6–DV9: robô — com o Poder recomendado vence bem mais o setor 1 do que o deus", () => {
-  const C = require("../../scripts/mm-domain-calibrate");
+test("S14: robô com o herói do dia-alvo vence bem mais o setor 1 do que o deus", () => {
+  const W = require("../../scripts/mm-boss-wall");
   for (const dom of Object.keys(GOD)) {
-    const at = (s) => C.winRate(D.kindOf(dom, s), D.sectorLevel(dom, s), D.recommendedPower(dom, s), D.heroOf(dom, s), 16, D.bossOf(dom, s));
+    const at = (s) => W.sectorWinRate(dom, s, 24);
     const first = at(1), last = at(10);
     assert.ok(first >= 0.75, `${dom} setor 1: ${first}`);
-    assert.ok(last <= 0.8, `${dom} setor 10: ${last}`);
+    assert.ok(last <= 0.7, `${dom} setor 10: ${last}`);
     assert.ok(first > last, dom);
   }
 });
