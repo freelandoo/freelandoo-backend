@@ -111,8 +111,12 @@ function rollLoot(family, { win, activeMs }, R) {
   return table ? Items.rollTable(table, { win, activeMs }, R) : [];
 }
 
-/** Catálogo público (o front traduz o nome por id; aqui vai o pt como reserva). */
-function publicGear() {
+/**
+ * Catálogo público (o front traduz o nome por id; aqui vai o pt como reserva). E18: item `hidden`
+ * (receita oculta) e a receita que pede ele só aparecem para quem já descobriu (`reveal(id)`).
+ */
+function publicGear({ reveal = () => false } = {}) {
+  const shown = (g) => !g.hidden || reveal(g.id);
   return {
     slots: SLOTS,
     cap: GEAR_CAP,
@@ -131,8 +135,8 @@ function publicGear() {
     // E13: runas — engastes por raridade (+1 ascendida, teto 3), fusão 3 → 1, valor de cada grau por chave
     runes: { sockets: Runes.SOCKETS, maxSockets: Runes.MAX_SOCKETS, fuseIn: Runes.FUSE_IN, grades: Runes.GRADES, kinds: Runes.RUNE_KINDS,
       value: Object.fromEntries(Object.values(Runes.RUNE_KINDS).map((k) => [k, Array.from({ length: Runes.GRADES }, (_, i) => Math.round(Runes.runeValue(k, i + 1) * 100000) / 100000)])) },
-    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.rune ? { rune: g.rune } : {}), ...(g.prep ? { prep: g.prep } : {}), ...(g.slot && g.tier ? { sockets: Runes.socketsOf(g) } : {}), ...(g.origin ? { origin: g.origin } : {}), ...(Salvage.transmutable(g) ? { transmutable: true } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
-    recipes: RECIPES,
+    items: GEAR.filter(shown).map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.rune ? { rune: g.rune } : {}), ...(g.prep ? { prep: g.prep } : {}), ...(g.slot && g.tier ? { sockets: Runes.socketsOf(g) } : {}), ...(g.origin ? { origin: g.origin } : {}), ...(Salvage.transmutable(g) ? { transmutable: true } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
+    recipes: RECIPES.filter((r) => !r.hidden || reveal(r.recipe)),
     // E7: conjuntos (2 ou 3 peças = 40% da fatia, 4 = 100%)
     sets: Items.SETS.map((s) => ({ id: s.id, name: s.name, domain: s.domain, keys: s.keys, pieces: s.pieces, steps: Items.SET_STEPS })),
   };

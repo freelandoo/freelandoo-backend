@@ -137,6 +137,7 @@ function lootSourceLines(itemId) {
   const dom = all.filter((s) => TABLES[s.table].domain);
   return all.filter((s) => !TABLES[s.table].domain).map((s) => {
     const t = TABLES[s.table];
+    if (t.chest) return `${t.label}: uma vez por conta, no lugar dele.`; // E18
     if (s.kind === "sure") return `${t.label}: material básico garantido de uma atividade validada.`;
     if (s.kind === "first") return `${t.label}: garantido na primeira vitória.`;
     const pct = Math.round(s.p * 1000) / 10;

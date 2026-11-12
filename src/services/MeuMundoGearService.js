@@ -78,6 +78,9 @@ const ERRORS = {
   nooffer: ["Nenhum encanto esperando escolha", 404],
   choice: ["Essa opção não saiu no sorteio", 400],
   offerid: ["Essa troca não existe", 404],
+  chest: ["Baú desconhecido", 404],
+  chestfar: ["Chegue perto do baú para abrir", 409],
+  chestopen: ["Você já abriu esse baú", 409],
   tokens: ["Fichas insuficientes", 402],
 };
 const fail = (code) => {
@@ -340,10 +343,50 @@ const lines = (m) => Object.entries(m).map(([id, qty]) => ({ id, qty, rarity: Ge
 class MeuMundoGearService {
   /** GET /gear — catálogo + mochila. */
   static async get(idUser) {
-    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => ({
-      gear: Gear.publicGear(),
-      bag: await bagState(ctx.client, idUser, ctx.coins),
-    }));
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const bag = await bagState(ctx.client, idUser, ctx.coins);
+      // E18: a receita oculta só entra no catálogo de quem já a descobriu
+      const found = await GearStore.collection(ctx.client, idUser);
+      return { gear: Gear.publicGear({ reveal: (id) => !!found[id] }), bag };
+    });
+  }
+
+  /**
+   * E18: COLEÇÃO — todo item do catálogo, descoberto ou não (o oculto aparece como "???" até ser
+   * achado), e os baús (onde ficam, abertos ou não). Liga ao Arquivo.
+   */
+  static async collection(idUser) {
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      await prepare(c, idUser);
+      const found = await GearStore.collection(c, idUser);
+      const opened = await GearStore.chestsOpened(c, idUser);
+      const items = Gear.GEAR.map((g) => {
+        const at = found[g.id] ? iso(found[g.id]) : null;
+        return g.hidden && !at ? { id: null, hidden: true, category: g.category, rarity: g.rarity, found: false } : { id: g.id, category: g.category, rarity: g.rarity, found: !!at, at, ...(g.hidden ? { hidden: true, name: g.name } : {}) };
+      });
+      return {
+        total: items.length, found: items.filter((x) => x.found).length, items,
+        chests: Items.CHESTS.CHESTS.map((ch) => ({ id: ch.id, where: ch.where, places: ch.places, opened: !!opened[ch.id], openedAt: opened[ch.id] ? iso(opened[ch.id]) : null })),
+      };
+    });
+  }
+
+  /**
+   * E18: ABRIR um baú: a última visita da pessoa foi ao ponto dele (há pouco) e ele nunca foi aberto
+   * pela conta. Conteúdo fixo pela porta única do saque; mesma chave = o mesmo recibo; outra chave no
+   * mesmo baú = "já abriu" (a chave primária impede a segunda entrega).
+   */
+  static async openChest(idUser, body = {}) {
+    const ch = Items.CHESTS.CHEST_BY_ID.get(String(body.chest || ""));
+    if (!ch) return fail("chest");
+    return withReceipt(idUser, "chest", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      if (!(await require("./MeuMundoPlaceService").isAt(c, idUser, ch.places, ctx.now))) return fail("chestfar");
+      if (!(await GearStore.openChest(c, idUser, ch.id))) return fail("chestopen");
+      const drops = await require("./MeuMundoRewardService").grant(c, idUser, { table: ch.table, ctx, R: MeuMundoGearService.R, roll: { win: true } });
+      return { result: { chest: ch.id, where: ch.where }, deltas: {}, items: drops };
+    });
   }
 
   /**

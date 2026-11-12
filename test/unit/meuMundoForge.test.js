@@ -49,7 +49,7 @@ test("cada montagem usa uma unidade de 10/12/15 partes diferentes", () => {
 });
 
 test("receitas têm referências válidas, fabricam uma unidade e não geram lucro de reciclagem", () => {
-  assert.equal(Gear.RECIPES.length, 106); // E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo
+  assert.equal(Gear.RECIPES.length, 107); // E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo; E18: receita oculta
   assert.equal(new Set(Gear.RECIPES.map((r) => r.id)).size, Gear.RECIPES.length);
   for (const r of Gear.RECIPES) {
     const out = Gear.GEAR_BY_ID.get(r.out);
@@ -93,6 +93,8 @@ test("todas as receitas e peças são alcançáveis sem depender de sorte rara",
   const optional = (g) => g.category === "rune" || g.category === "consumable"; // E16: preparo é opcional (nunca trava progresso)
   // E17: fichas caem nas partidas (garantido) — não são receita nem loja
   for (const g of Gear.GEAR.filter((x) => x.category === "currency" && x.token)) reachable.add(g.id);
+  // E18: o que sai de baú (conteúdo fixo, uma vez por conta) — a receita oculta só existe lá
+  for (const c of require("../../src/utils/mmItems/catalog/chests").CHESTS) for (const id of Object.keys(c.gives)) reachable.add(id);
   assert.deepEqual(Gear.GEAR.filter((g) => !g.set && !later.has(g.id) && !optional(g) && !reachable.has(g.id)).map((g) => g.id), []);
   for (const item of Gear.GEAR.filter((g) => g.category === "material")) {
     assert.ok(Gear.RECIPES.some((r) => r.needs[item.id]) || ["fragmento_lamina", "couro_reforcado", "nucleo_eter", "selo_forja",

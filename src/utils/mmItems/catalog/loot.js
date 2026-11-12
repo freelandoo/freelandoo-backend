@@ -18,6 +18,7 @@
 "use strict";
 
 const { DOMAIN_NAME, LINES, FRAGMENT_SETS, BOSS_FRAGMENTS, SET_FRAGMENTS } = require("./lines");
+const Chests = require("./chests");
 const Bestiary = require("./bestiary");
 
 // ── E12: o Domínio como masmorra (GDD, tabela L) ──
@@ -148,6 +149,8 @@ const TABLES = Object.freeze({
   "minigame:corrida": minigame("Antigravidade", "corrida", "capacitor", { wood: true }),
   "minigame:noturno": minigame("Rolê Noturno", "noturno", "rolamento"),
   ...DOMAIN_TABLES,
+  // E18: baús (conteúdo fixo, uma vez por conta)
+  ...Chests.TABLES,
 });
 
 /** Atividade (Adv.ACTIVITIES) → tabela. Luta: Lâminas/rua/Domínio = laminas; Boxe = boxe. */

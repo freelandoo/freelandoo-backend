@@ -112,7 +112,33 @@ class MeuMundoGearStorage {
   /** Nasce +0, grau I, na regra do aprimoramento garantido (E9). Devolve o id_instance. */
   static async createInstance(c, idUser, itemId, origin = null) {
     const r = await c.query(`INSERT INTO tb_mm_gear_instance (id_user, item_id, origin, rules) VALUES ($1, $2, $3, 'forge-v2') RETURNING id_instance`, [idUser, itemId, origin]);
+    await MeuMundoGearStorage.discover(c, idUser, itemId);
     return r.rows[0].id_instance;
+  }
+
+  // ── E18: coleção e baús (mig 450) ──
+
+  /** Marca o item como descoberto pela conta (o primeiro dia fica). */
+  static async discover(c, idUser, itemId) {
+    await c.query(`INSERT INTO tb_mm_collection (id_user, item_id) VALUES ($1, $2) ON CONFLICT (id_user, item_id) DO NOTHING`, [idUser, itemId]);
+  }
+
+  /** { item_id: primeira vez (Date) } da conta. */
+  static async collection(c, idUser) {
+    const r = await c.query(`SELECT item_id, first_at FROM tb_mm_collection WHERE id_user = $1`, [idUser]);
+    return Object.fromEntries(r.rows.map((x) => [x.item_id, x.first_at]));
+  }
+
+  /** { chest_id: aberto em } da conta. */
+  static async chestsOpened(c, idUser) {
+    const r = await c.query(`SELECT chest_id, opened_at FROM tb_mm_chest_open WHERE id_user = $1`, [idUser]);
+    return Object.fromEntries(r.rows.map((x) => [x.chest_id, x.opened_at]));
+  }
+
+  /** Abre o baú (true) ou ele já estava aberto para a conta (false). */
+  static async openChest(c, idUser, chestId) {
+    const r = await c.query(`INSERT INTO tb_mm_chest_open (id_user, chest_id) VALUES ($1, $2) ON CONFLICT (id_user, chest_id) DO NOTHING RETURNING chest_id`, [idUser, chestId]);
+    return r.rowCount === 1;
   }
 
   /**
@@ -212,6 +238,7 @@ class MeuMundoGearStorage {
     if (after !== had) {
       await c.query(`INSERT INTO tb_mm_item_ledger (id_user, item_id, delta, balance, id_receipt) VALUES ($1, $2, $3, $4, $5)`, [idUser, itemId, after - had, after, idReceipt]);
     }
+    if (after > had) await MeuMundoGearStorage.discover(c, idUser, itemId); // E18
     return after;
   }
 

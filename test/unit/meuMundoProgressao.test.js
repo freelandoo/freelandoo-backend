@@ -76,6 +76,32 @@ test("E13 — runas de grau I e II caem nos Domínios no fim da lista (os sortei
   for (const kind of Object.keys(Runes.RUNE_KINDS)) assert.ok(Items.lootSourcesOf(`runa_${kind}_1`).length > 0, kind);
 });
 
+// ── E18: baús e coleção ──
+const Chests = require("../../src/utils/mmItems/catalog/chests");
+
+test("E18 — baús nos pontos de visita do bairro e do centro, conteúdo fixo (sem sorteio)", () => {
+  const Center = require("../../src/utils/meuMundoCenter");
+  const Layout = require("../../src/utils/meuMundoLayout");
+  const points = new Set([...Center.VISIT_POINTS, ...Layout.VISIT_POINTS].map((p) => p.id));
+  assert.ok(Chests.CHESTS.some((c) => c.where === "bairro") && Chests.CHESTS.some((c) => c.where === "centro"));
+  for (const c of Chests.CHESTS) {
+    for (const p of c.places) assert.ok(points.has(p), `${c.id}: ponto ${p}`);
+    let calls = 0;
+    const got = Items.rollTable(c.table, { win: true }, () => { calls++; return 0.5; });
+    assert.strictEqual(calls, 0, `${c.id} não sorteia`);
+    assert.deepStrictEqual(Object.fromEntries(got.map((x) => [x.id, x.qty])), c.gives);
+  }
+});
+
+test("E18 — a receita oculta só sai de baú e fica fora do catálogo público até ser descoberta", () => {
+  const pub = Gear.publicGear();
+  assert.ok(!pub.items.some((i) => i.id === "receita_oculta_forca"));
+  assert.ok(!pub.recipes.some((r) => r.id === "gravar_runa_forca"));
+  const seen = Gear.publicGear({ reveal: (id) => id === "receita_oculta_forca" });
+  assert.ok(seen.items.some((i) => i.id === "receita_oculta_forca") && seen.recipes.some((r) => r.id === "gravar_runa_forca"));
+  assert.deepStrictEqual(Items.lootSourcesOf("receita_oculta_forca").map((s) => s.table), ["chest:bau_biblioteca"]);
+});
+
 // ── E17: tabelas por atividade, fichas e loja de troca ──
 const Exchange = require("../../src/utils/mmItems/catalog/exchange");
 const Reward = require("../../src/services/MeuMundoRewardService");

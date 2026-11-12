@@ -345,6 +345,13 @@ const gearEnchantResolve = forgeAction("enchantResolve");
 async function gearExchange(req, res) {
   return reply(res, await gear().exchange(req.user.id_user, req.body || {}));
 }
+// E18: coleção e baús
+async function gearCollection(req, res) {
+  return reply(res, await gear().collection(req.user.id_user));
+}
+async function gearChestOpen(req, res) {
+  return reply(res, await gear().openChest(req.user.id_user, req.body || {}));
+}
 
 // mm3d-72: o apelido da pessoa e o do hóspede
 async function lifeNickname(req, res) {
@@ -584,6 +591,8 @@ module.exports = {
   gearEnchant,
   gearEnchantResolve,
   gearExchange,
+  gearCollection,
+  gearChestOpen,
   questGet,
   questAdvance,
   questMark,

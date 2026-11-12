@@ -19,7 +19,7 @@ let checks = 0;
 function check(name, condition) { assert.ok(condition, name); checks++; console.log(`✓ ${name}`); }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_loadout, tb_mm_item_ledger, tb_mm_gear_instance, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_chest_open, tb_mm_collection, tb_mm_loadout, tb_mm_item_ledger, tb_mm_gear_instance, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
     tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned,
     tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day,
     tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail, tb_mm_visit, tb_mm_avatar_pref,
@@ -246,6 +246,30 @@ const STEPS = [
     check("E17: o Hall entrega só ficha (2 + 1 pela vitória)", out.hall.length === 1 && out.hall[0].id === "ficha_hall" && out.hall[0].qty === 3);
     check("E17: o elite da rua entrega o fragmento da Lâmina das Correntes e Cinza", out.elite.some((l) => l.id === "frag_lamina_correntes" && l.qty >= 3) && out.elite.some((l) => l.id === "cinza_das_correntes"));
     check("E17: a entrega passa pela mochila (com livro)", (await qty(id, "ficha_hall")) === 3);
+  },
+  // ── E18: baús e coleção ──
+  async ({ pool, Service, id, other, qty, liveOf }) => {
+    const visit = async (u, place) => pool.query(`INSERT INTO tb_mm_character_event (id_character, kind, data, at) VALUES ($1, 'visit', $2, NOW())`, [await liveOf(u), JSON.stringify({ place })]);
+    const before = await Service.collection(id);
+    check("E18: a coleção lista todo item, com o oculto como ???", before.items.length === before.total && before.items.some((x) => x.hidden && x.id === null) && before.found > 0);
+    check("E18: baú desconhecido recusa", (await Service.openChest(id, { chest: "bau_nada", key: key() })).code === "chest");
+    check("E18: longe do baú não abre", (await Service.openChest(id, { chest: "bau_biblioteca", key: key() })).code === "chestfar");
+    await visit(id, "biblioteca");
+    const ck = key();
+    const [a, b] = await Promise.all([Service.openChest(id, { chest: "bau_biblioteca", key: ck }), Service.openChest(id, { chest: "bau_biblioteca", key: ck })]);
+    check("E18: abre o baú no lugar dele (mesma chave = um recibo)", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "receita_oculta_forca")) === 1);
+    const again = await Service.openChest(id, { chest: "bau_biblioteca", key: key() });
+    check("E18: abrir o mesmo baú de novo (outra chave) não entrega", again.code === "chestopen" && (await qty(id, "receita_oculta_forca")) === 1);
+    const after = await Service.collection(id);
+    const hidden = after.items.find((x) => x.id === "receita_oculta_forca");
+    check("E18: a receita oculta entra na coleção com nome", hidden && hidden.found && hidden.name && after.found > before.found);
+    check("E18: o baú aparece aberto na coleção", after.chests.find((x) => x.id === "bau_biblioteca").opened === true);
+    const g = await Service.get(id);
+    check("E18: depois de achada, a receita oculta aparece no catálogo de quem achou", g.gear.recipes.some((r) => r.id === "gravar_runa_forca"));
+    const o = await Service.get(other);
+    check("E18: quem não achou não vê a receita oculta", !o.gear.recipes.some((r) => r.id === "gravar_runa_forca") && !o.gear.items.some((i) => i.id === "receita_oculta_forca"));
+    await visit(other, "biblioteca");
+    check("E18: o baú é um por conta (outra conta abre o dela)", !(await Service.openChest(other, { chest: "bau_biblioteca", key: key() })).error);
   },
 ];
 

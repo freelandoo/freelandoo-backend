@@ -30,8 +30,9 @@ const Bonus = require("./rules/bonus");
 const { LOOT, TABLES: LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE, domainTableId } = require("./catalog/loot");
 const LootRule = require("./rules/loot");
 const Exchange = require("./catalog/exchange");
+const chests = require("./catalog/chests");
 
-const PARTS = [weapons, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary];
+const PARTS = [weapons, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary, chests];
 
 /**
  * E7: equipamento ganha as duas chaves (catalog/keys.js; as peças de conjunto trazem as suas) e o
@@ -55,11 +56,13 @@ const GEAR = Object.freeze([
   ...lines.ITEMS,
   // S14: amuletos dos Domínios, fragmentos de acessório/personagem/deus e embriões (no fim)
   ...bestiary.ITEMS,
+  // E18: a receita oculta (fora do catálogo público até ser descoberta)
+  ...chests.ITEMS,
 ].map(withRule));
 const GEAR_BY_ID = new Map(GEAR.map((g) => [g.id, g]));
 
 /** Toda peça, montagem, conversão e receita direta (ordem pública de antes). */
-const RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES, ...consumables.RECIPES]); // E16: preparo no fim (a ordem de antes não muda)
+const RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES, ...consumables.RECIPES, ...chests.RECIPES]); // E16/E18: preparo e receita oculta no fim (a ordem de antes não muda)
 const RECIPE_BY_ID = new Map(RECIPES.map((r) => [r.id, r]));
 
 /** Descrição por id (a das peças da forja mora no próprio item). */
@@ -91,7 +94,7 @@ module.exports = {
   GEAR, GEAR_BY_ID, RECIPES, RECIPE_BY_ID, DESCRIPTIONS, SETS, SET_STEPS, LOOT,
   bonusOf: (pieces) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
   rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation, domainTableId,
-  FORGE: recipes, LINES: lines, EXCHANGE: Exchange,
+  FORGE: recipes, LINES: lines, EXCHANGE: Exchange, CHESTS: chests,
   sourcesOf,
   validateCatalog: () => validateCatalog({ items: GEAR, recipes: RECIPES, loot: LOOT, sets: SETS, sources: sourcesOf }),
 };

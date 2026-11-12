@@ -128,6 +128,9 @@ router.post("/gear/enchant", ...admin, asyncHandler(MeuMundoController.gearEncha
 router.post("/gear/enchant/resolve", ...admin, asyncHandler(MeuMundoController.gearEnchantResolve));
 // trilha E17: loja de troca (fichas → itens)
 router.post("/gear/exchange", ...admin, asyncHandler(MeuMundoController.gearExchange));
+// trilha E18: coleção (descobertos e não) e baús (um por conta, no lugar deles)
+router.get("/gear/collection", ...admin, asyncHandler(MeuMundoController.gearCollection));
+router.post("/gear/chest/open", ...admin, asyncHandler(MeuMundoController.gearChestOpen));
 // mm3d-59: missões — o servidor confere cada objetivo; recompensa por recibo único.
 router.get("/quest", ...admin, asyncHandler(MeuMundoController.questGet));
 router.post("/quest/advance", ...admin, asyncHandler(MeuMundoController.questAdvance));
