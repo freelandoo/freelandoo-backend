@@ -119,6 +119,11 @@ class MeuMundoAdventureStorage {
     return r.rows[0] || null;
   }
 
+  /** Trilha E16: regrava o setup do ticket aberto (o preparo escolhido na tela de versus). */
+  static async setFightSetup(c, idFight, setup) {
+    await c.query(`UPDATE tb_mm_fight SET setup = $2 WHERE id_fight = $1 AND closed_at IS NULL`, [idFight, JSON.stringify(setup)]);
+  }
+
   /** Tickets abertos da pessoa (para fechar como abandono). */
   static async openFights(c, idUser) {
     const r = await c.query(`SELECT * FROM tb_mm_fight WHERE id_user = $1 AND closed_at IS NULL ORDER BY started_at FOR UPDATE`, [idUser]);

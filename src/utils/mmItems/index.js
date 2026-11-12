@@ -58,7 +58,7 @@ const GEAR = Object.freeze([
 const GEAR_BY_ID = new Map(GEAR.map((g) => [g.id, g]));
 
 /** Toda peça, montagem, conversão e receita direta (ordem pública de antes). */
-const RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES]);
+const RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES, ...consumables.RECIPES]); // E16: preparo no fim (a ordem de antes não muda)
 const RECIPE_BY_ID = new Map(RECIPES.map((r) => [r.id, r]));
 
 /** Descrição por id (a das peças da forja mora no próprio item). */

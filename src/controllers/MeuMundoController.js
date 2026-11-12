@@ -186,6 +186,10 @@ async function fightStart(req, res) {
   const place = origin === "boxe" || origin === "laminas" ? origin : null;
   return gated(req, res, place, async () => reply(res, await adventure().fightStart(req.user.id_user, req.body || {})));
 }
+// trilha E16: preparo na tela de versus (ticket aberto)
+async function fightPrep(req, res) {
+  return reply(res, await adventure().fightPrep(req.user.id_user, req.body || {}));
+}
 async function fightFinish(req, res) {
   return reply(res, await adventure().fightFinish(req.user.id_user, req.body || {}));
 }
@@ -567,6 +571,7 @@ module.exports = {
   gearSalvage,
   gearTransmute,
   gearLock,
+  fightPrep,
   gearSocket,
   gearUnsocket,
   gearRuneFuse,

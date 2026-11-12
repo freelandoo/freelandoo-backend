@@ -82,6 +82,8 @@ router.get("/hall/board", ...admin, asyncHandler(MeuMundoController.hallBoard));
 router.post("/hall/challenge", ...admin, asyncHandler(MeuMundoController.hallChallenge));
 router.post("/fight/start", ...admin, asyncHandler(MeuMundoController.fightStart));
 router.post("/fight/finish", ...admin, asyncHandler(MeuMundoController.fightFinish));
+// trilha E16: consumível de preparo na tela de versus
+router.post("/fight/prep", ...admin, asyncHandler(MeuMundoController.fightPrep));
 router.post("/client-report", ...admin, asyncHandler(MeuMundoController.clientReport));
 // mm3d-59: equipamento — compras/forja com chave do pedido (recibo idempotente).
 router.get("/gear", ...admin, asyncHandler(MeuMundoController.gearGet));

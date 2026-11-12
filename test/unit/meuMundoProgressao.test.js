@@ -76,6 +76,37 @@ test("E13 — runas de grau I e II caem nos Domínios no fim da lista (os sortei
   for (const kind of Object.keys(Runes.RUNE_KINDS)) assert.ok(Items.lootSourcesOf(`runa_${kind}_1`).length > 0, kind);
 });
 
+// ── E16: Consumíveis de preparo ──
+const Fight = require("../../src/utils/meuMundoFight");
+
+test("E16 — 8 consumíveis de preparo, +5% cada numa chave, receita na Forja (kind prep)", () => {
+  const list = Items.GEAR.filter((g) => g.category === "consumable");
+  assert.strictEqual(list.length, 8);
+  assert.strictEqual(new Set(list.map((g) => g.prep.key)).size, 8);
+  for (const g of list) {
+    assert.ok(g.prep.v <= Fight.PREP_MAX + 1e-12, g.id);
+    assert.ok(Items.RECIPES.some((r) => r.out === g.id && r.kind === "prep"), g.id);
+  }
+});
+
+test("E16 — preparo soma DEPOIS do teto do equipamento, no máximo +5%, e re-simula igual", () => {
+  const base = { kind: "brute", level: 10, hero: 10, tier: "arena", seed: 1234, stats: { strength: 300, speed: 300, intelligence: 300, dexterity: 300 }, gear: { hp: 0.25, dmg: 0.35 } };
+  const plain = new Fight.Fight(base);
+  const prep = new Fight.Fight({ ...base, prep: { key: "hp", v: 0.05 } });
+  const cheat = new Fight.Fight({ ...base, prep: { key: "hp", v: 0.9 } });
+  assert.ok(near(plain.gear.hp, 0.25) && near(prep.gear.hp, 0.3), "passa do teto de 0,25");
+  assert.ok(prep.me.hpMax > plain.me.hpMax);
+  assert.strictEqual(cheat.me.hpMax, prep.me.hpMax, "valor acima de 5% é cortado");
+  assert.strictEqual(new Fight.Fight({ ...base, prep: { key: "xyz", v: 0.05 } }).me.hpMax, plain.me.hpMax, "chave desconhecida não vale");
+  // a mesma gravação com e sem preparo: cada lado re-simula sempre igual a si mesmo
+  const frames = { v: 1, n: 600, inputs: [] };
+  const a = Fight.replayFight({ ...base, prep: { key: "dmg", v: 0.05 } }, frames);
+  const b = Fight.replayFight({ ...base, prep: { key: "dmg", v: 0.05 } }, frames);
+  const c = Fight.replayFight(base, frames);
+  assert.deepStrictEqual(a, b);
+  assert.ok(c && typeof c.ok === "boolean");
+});
+
 // ── E15: Encantamento ──
 const Enchant = require("../../src/utils/mmItems/rules/enchant");
 

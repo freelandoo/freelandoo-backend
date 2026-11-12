@@ -50,11 +50,26 @@ const ERRORS = {
   clock: ["A gravação da luta não bate com o tempo", 422],
   dead: ["Hóspede sem vida", 409],
   tutorial: ["A luta de treino é só no prólogo", 403],
+  // trilha E16: preparo
+  prepitem: ["Isso não é um consumível de preparo", 400],
+  prepfight: ["Essa luta não aceita preparo", 409],
+  prepdone: ["Esta luta já tem um preparo", 409],
+  prepowned: ["Você não tem esse consumível", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
   return { error, statusCode, code };
 };
+
+/** O ticket como o aparelho recebe (abrir a luta e escolher o preparo devolvem o mesmo formato). */
+function publicTicket(t, setup) {
+  return {
+    ticket: t.id_fight,
+    origin: t.origin,
+    setup: { kind: setup.kind, level: setup.level, hero: setup.hero, domain: setup.domain ?? null, sector: setup.sector ?? null, boss: setup.boss ?? null, god: setup.god ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: setup.body, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null, prep: setup.prep ?? null },
+    expiresAt: new Date(t.expires_at).toISOString(),
+  };
+}
 
 const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -430,15 +445,34 @@ class MeuMundoAdventureService {
         const err = await internal.hall.onOpen(c, t.id_fight);
         if (err && err.error) return err;
       }
-      return {
-        fight: {
-          ticket: t.id_fight,
-          origin,
-          setup: { kind, level, hero, domain: setup.domain ?? null, sector: setup.sector ?? null, boss: setup.boss ?? null, god: setup.god ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: worn, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null },
-          expiresAt: new Date(t.expires_at).toISOString(),
-        },
-        abandoned,
-      };
+      return { fight: publicTicket({ id_fight: t.id_fight, origin, expires_at: t.expires_at }, setup), abandoned };
+    });
+  }
+
+  /**
+   * Trilha E16: PREPARO escolhido na tela de versus, com o ticket já aberto. Gasta 1 consumível (livro
+   * de itens), grava `setup.prep` no ticket e devolve o ticket como o `fightStart`. Um por luta;
+   * só Arena, rua e Domínio. O aparelho remonta a luta com o ticket novo (a re-simulação usa o mesmo).
+   */
+  static async fightPrep(idUser, body = {}) {
+    const ticket = String(body.ticket || "");
+    if (!UUID.test(ticket)) return fail("ticket");
+    const Items = require("../utils/mmItems");
+    const it = Items.GEAR_BY_ID.get(String(body.item || ""));
+    if (!it || it.category !== "consumable" || !it.prep) return fail("prepitem");
+    const { PREP_ORIGINS } = require("../utils/mmItems/catalog/consumables");
+    return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      const fight = await Store.lockFight(c, idUser, ticket);
+      if (!fight || fight.closed_at || fight.id_character !== ctx.row.id_character) return fail("ticket");
+      if (ctx.now > new Date(fight.expires_at).getTime()) return fail("expired");
+      if (!PREP_ORIGINS.includes(fight.origin) || fight.setup.god) return fail("prepfight");
+      if (fight.setup.prep) return fail("prepdone");
+      const GearStore = require("../storages/MeuMundoGearStorage");
+      if ((await GearStore.addStack(c, idUser, it.id, -1)) == null) return fail("prepowned");
+      const setup = { ...fight.setup, prep: { key: it.prep.key, v: it.prep.v, item: it.id } };
+      await Store.setFightSetup(c, fight.id_fight, setup);
+      return { fight: publicTicket(fight, setup) };
     });
   }
 
@@ -461,7 +495,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined, boss: setup.boss || undefined, god: setup.god || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined, boss: setup.boss || undefined, god: setup.god || undefined, prep: setup.prep || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");

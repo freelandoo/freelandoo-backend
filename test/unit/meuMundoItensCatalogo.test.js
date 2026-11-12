@@ -50,12 +50,14 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   const V2 = "Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.";
   // E11: desmontar e transmutar entram nos usos de todo equipamento e material
   const E11 = ["Desmontar na Forja: devolve parte dos materiais e Pó de Refino, nunca Esmeralda.", "Transmutar na Forja: 3 viram 1 de outro material do mesmo tier."];
+  // E16: materiais de antes viram ingrediente dos consumíveis de preparo
+  const PREPS = Gear.GEAR.filter((g) => g.category === "consumable").map((g) => g.name);
   // E14: a linha da Ascensão/Despertar entra nos usos de todo equipamento com chaves
-  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja"));
+  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja") && !PREPS.some((n) => u.startsWith("Ingrediente de " + n + ":")));
   semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses) }, { ...antes, uses: usesV1(antes.uses) }, antes.id));
   // E8: as receitas por fragmento entram no fim; as de antes não mudam
   assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
-  assert.ok(agora.recipes.slice(ANTES.publicGear.recipes.length).every((r) => r.kind === "fragment"));
+  assert.ok(agora.recipes.slice(ANTES.publicGear.recipes.length).every((r) => r.kind === "fragment" || r.kind === "prep")); // E16: receitas de preparo
 });
 
 test("E1: GEAR, saque e constantes de equipamento iguais aos de antes", () => {

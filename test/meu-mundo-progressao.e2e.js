@@ -191,6 +191,35 @@ const STEPS = [
     const shield = await give(id, off.id);
     check("E15: peça sem outra chave no slot não encanta", (await Service.enchant(id, { instance: shield, key: key() })).code === "noenchant");
   },
+  // ── E16: consumíveis de preparo ──
+  async ({ pool, id, other, qty, setQty }) => {
+    const Adv = require("../src/services/MeuMundoAdventureService");
+    await setQty(id, "tonico_vida", 2);
+    const open = await Adv.fightStart(id, { origin: "laminas", kind: "brute", level: 1 });
+    check("E16: a luta abre sem preparo", !open.error && open.fight.setup.prep === null);
+    const t = open.fight.ticket;
+    check("E16: item que não é de preparo recusa", (await Adv.fightPrep(id, { ticket: t, item: "pedra_aprimoramento" })).code === "prepitem");
+    check("E16: ticket de outra conta recusa", (await Adv.fightPrep(other, { ticket: t, item: "tonico_vida" })).code === "ticket");
+    const p = await Adv.fightPrep(id, { ticket: t, item: "tonico_vida" });
+    const row = (await pool.query(`SELECT setup FROM tb_mm_fight WHERE id_fight = $1`, [t])).rows[0].setup;
+    check("E16: o preparo gasta 1 e vai para o ticket", !p.error && (await qty(id, "tonico_vida")) === 1 && row.prep && row.prep.key === "hp" && row.prep.v === 0.05 && p.fight.setup.prep.key === "hp");
+    check("E16: o ticket devolvido é o mesmo, com o preparo", p.fight.ticket === t && p.fight.setup.seed === open.fight.setup.seed);
+    check("E16: um preparo por luta", (await Adv.fightPrep(id, { ticket: t, item: "tonico_vida" })).code === "prepdone" && (await qty(id, "tonico_vida")) === 1);
+    const ledger = (await pool.query(`SELECT delta FROM tb_mm_item_ledger WHERE id_user=$1 AND item_id='tonico_vida' ORDER BY id DESC LIMIT 1`, [id])).rows[0];
+    check("E16: o gasto entra no livro de itens", ledger && Number(ledger.delta) === -1);
+    const boxe = await Adv.fightStart(id, { origin: "boxe", kind: "brute", level: 1 });
+    check("E16: o Boxe recusa o preparo", !boxe.error && (await Adv.fightPrep(id, { ticket: boxe.fight.ticket, item: "tonico_vida" })).code === "prepfight" && (await qty(id, "tonico_vida")) === 1);
+    await setQty(id, "tonico_vida", 0);
+    const again = await Adv.fightStart(id, { origin: "laminas", kind: "brute", level: 1 });
+    check("E16: sem o consumível recusa", (await Adv.fightPrep(id, { ticket: again.fight.ticket, item: "tonico_vida" })).code === "prepowned");
+    // o Poder lê o equipamento (fightGear); o preparo mora só no ticket
+    const Gear = require("../src/services/MeuMundoGearService");
+    const c = await pool.connect();
+    try {
+      const gear = await Gear.fightGear(c, id, "vampiro");
+      check("E16: o preparo não entra no equipamento que o Poder lê", JSON.stringify(gear) === JSON.stringify(open.fight.setup.gear) && !("prep" in gear));
+    } finally { c.release(); }
+  },
 ];
 
 main().catch((error) => { console.error(error); process.exit(1); });
