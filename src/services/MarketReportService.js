@@ -9,6 +9,7 @@ const pool = require("../databases");
 const MarketReportStorage = require("../storages/MarketReportStorage");
 const { parseRequest, levelOf, compareLevels } = require("../utils/marketReport");
 const { createLogger, runWithLogs } = require("../utils/logger");
+const { vitrineContext } = require("../utils/vitrineCommunity");
 
 const log = createLogger("MarketReportService");
 
@@ -26,6 +27,14 @@ class MarketReportService {
         if (level === "community") {
           community = await MarketReportStorage.communityPlace(pool, req.id_community);
           if (!community) return { error: "Comunidade não encontrada.", statusCode: 404 };
+          // Segurança A1-22: a vitrine de uma comunidade é área interna
+          // (condomínio e bairro: morador; as outras: quem está dentro). O
+          // recorte "comunidade" dos ANÚNCIOS devolvia título e preço de cada
+          // um a qualquer conta logada. Mesma porta da própria vitrine.
+          if (req.kind === "listing") {
+            const ctx = await vitrineContext(pool, user?.id_user, req.id_community, { require: "resident" });
+            if (ctx.error) return ctx;
+          }
         }
 
         const place = {

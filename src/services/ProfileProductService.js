@@ -38,6 +38,28 @@ async function assertOwnerWithProfile(conn, id_profile, id_user) {
   return { profile };
 }
 
+// Segurança A1-20: o dono do perfil da URL não é o dono de QUALQUER produto.
+// As portas de mídia recebiam `id_profile` (conferido) e `id_profile_product`
+// (não conferido): com o próprio perfil na URL e o número do produto alheio
+// (sequencial), dava para listar, reordenar e APAGAR as fotos da loja de outra
+// pessoa. O produto tem que ser do perfil da URL, e não pode estar apagado.
+async function assertProductOfProfile(conn, id_profile, id_profile_product) {
+  const product = await ProfileProductStorage.getById(conn, Number(id_profile_product));
+  if (!product || String(product.id_profile) !== String(id_profile)) {
+    return { error: "Produto não encontrado", statusCode: 404 };
+  }
+  return { product };
+}
+
+// Projeção pública do produto: tudo menos o CEP de origem do vendedor (A1-21).
+// O CEP aponta a rua de quem vende (muitas vezes a casa) e só o servidor
+// precisa dele, para cotar o frete.
+function publicProduct(p) {
+  if (!p) return p;
+  const { origin_zipcode_override, ...rest } = p;
+  return rest;
+}
+
 // "Pago" no sentido de loja liberada: assinatura ativa OU perfil-conta.
 // A função MUDOU DE CASA para `utils/profilePaywall` — é a mesma pergunta que a
 // porta de publicar faz, e enquanto ela morou aqui dentro do serviço de
@@ -453,7 +475,7 @@ class ProfileProductService {
       const ids = products.map((p) => Number(p.id_profile_product));
       const mediaMap = await ProfileProductMediaStorage.listByProducts(pool, ids);
       const enriched = await Promise.all(products.map(async (p) => ({
-        ...p,
+        ...publicProduct(p),
         media: mediaMap.get(String(p.id_profile_product)) || [],
         pricing: await StoreGovernanceService.computeFeesFor(p.price_amount, {
           affiliatesAllowed: p.affiliates_allowed === true,
@@ -490,7 +512,7 @@ class ProfileProductService {
         affiliatesAllowed: product.affiliates_allowed === true,
         affiliatePercent: product.affiliate_percent,
       });
-      return { product: { ...product, media, pricing } };
+      return { product: { ...publicProduct(product), media, pricing } };
     });
   }
 
@@ -561,6 +583,8 @@ class ProfileProductService {
 
       const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
+      const prod = await assertProductOfProfile(pool, id_profile, id_profile_product);
+      if (prod.error) return prod;
 
       const media = await ProfileProductMediaStorage.findById(pool, Number(id_product_media));
       if (!media || String(media.id_profile_product) !== String(id_profile_product)) {
@@ -590,6 +614,8 @@ class ProfileProductService {
 
       const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
+      const prod = await assertProductOfProfile(pool, id_profile, id_profile_product);
+      if (prod.error) return prod;
 
       const media = await ProfileProductMediaStorage.listByProduct(pool, Number(id_profile_product));
       return { media };
@@ -610,6 +636,8 @@ class ProfileProductService {
 
       const own = await assertOwnerWithProfile(pool, id_profile, user.id_user);
       if (own.error) return { error: own.error };
+      const prod = await assertProductOfProfile(pool, id_profile, id_profile_product);
+      if (prod.error) return prod;
 
       await ProfileProductMediaStorage.reorder(pool, Number(id_profile_product), ordered_ids);
       const media = await ProfileProductMediaStorage.listByProduct(pool, Number(id_profile_product));

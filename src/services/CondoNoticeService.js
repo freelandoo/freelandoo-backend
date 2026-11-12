@@ -151,11 +151,16 @@ class CondoNoticeService {
       "markRead",
       () => ({ id_user: user?.id_user, id_notice: params?.id_notice }),
       async () => {
+        // A1-14/A1-15: recibo de leitura é de quem lê os avisos (morador ou
+        // administração, como a lista) e só de aviso DESTE condomínio — antes
+        // o id do aviso não era conferido contra o prédio da URL.
         const ctx = await CondoService._context(pool, user?.id_user, params?.id_condo, {
-          require: "member",
+          require: "resident",
         });
         if (ctx.error) return ctx;
-        await CondoNoticeStorage.markRead(pool, params.id_notice, user.id_user);
+        const notice = await CondoNoticeStorage.getById(pool, params.id_condo, params.id_notice);
+        if (!notice) return { error: "Aviso não encontrado", statusCode: 404 };
+        await CondoNoticeStorage.markRead(pool, notice.id_notice, user.id_user);
         return { ok: true };
       }
     );

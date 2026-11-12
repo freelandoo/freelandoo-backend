@@ -149,9 +149,12 @@ class ShippingService {
         }),
       ]);
 
+      // ⚠️ O CEP de origem NÃO sai na resposta (A1-21): a porta é anônima e
+      // ele aponta a rua de quem vende. `origin_zipcode: null` mantém o
+      // formato que o front já conhece.
       const result = {
         mode: "shipping",
-        origin_zipcode: originCep,
+        origin_zipcode: null,
         destination_zipcode: destCep,
         destination_address,
         options,

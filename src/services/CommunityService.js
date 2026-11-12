@@ -365,7 +365,24 @@ class CommunityService {
     if (!viewer?.id_user) return { locked: true, community };
     const membership = await CommunityStorage.getMembership(pool, id_community, viewer.id_user);
     if (!membership) return { locked: true, community };
+    if (!(await this._condoInsider(community, membership, viewer.id_user))) {
+      return { locked: true, community };
+    }
     return { community };
+  }
+
+  // Segurança A1-15 (decidido 2026-11-12, pela recomendação): no condomínio,
+  // a membresia NÃO basta para ver o lado de dentro. Reivindicar apartamento
+  // já ocupado põe a pessoa como membro PENDENTE, e qualquer conta podia fazer
+  // isso em qualquer prédio — o mural e os avisos ficavam a um clique. Dentro
+  // é morador reconhecido ou a administração (síndico/vice), a mesma régua do
+  // mural de bees (`communityInsideAccess`). Fora do condomínio, devolve true:
+  // o resto das modalidades segue a membresia de sempre.
+  static async _condoInsider(community, membership, id_user) {
+    if (community?.kind !== "condo") return true;
+    if (membership?.role === "leader" || membership?.role === "vice") return true;
+    const resident = await this._resolveResident(community, { id_user });
+    return !!resident?.confirmed;
   }
 
   // A listagem é pública, mas o RECORTE depende do viewer: contadores de
@@ -915,6 +932,14 @@ class CommunityService {
           if (!membership) {
             return { error: "Você precisa ser membro para publicar na comunidade." };
           }
+          // A1-13: no condomínio, pendente não publica (só morador ou síndico).
+          if (!(await this._condoInsider(community, membership, id_user))) {
+            return {
+              error: "Confirme sua unidade para publicar no condomínio.",
+              statusCode: 403,
+              needs_claim: true,
+            };
+          }
         }
         const id = await CommunityStorage.createRecado(pool, params.id_profile, {
           body: text,
@@ -1002,6 +1027,14 @@ class CommunityService {
           const membership = await CommunityStorage.getMembership(pool, params.id_profile, id_user);
           if (!membership) {
             return { error: "Você precisa ser membro para publicar na comunidade." };
+          }
+          // A1-13: no condomínio, pendente não publica (só morador ou síndico).
+          if (!(await this._condoInsider(community, membership, id_user))) {
+            return {
+              error: "Confirme sua unidade para publicar no condomínio.",
+              statusCode: 403,
+              needs_claim: true,
+            };
           }
         }
         // E o post tem que ser dele (anti-spoof). Vale para o Financeiro
@@ -1301,6 +1334,11 @@ class CommunityService {
         if (!viewer?.id_user) return { announcements: [] };
         const membership = await CommunityStorage.getMembership(pool, params.id_profile, viewer.id_user);
         if (!membership) return { announcements: [] };
+        const community = await CommunityStorage.getById(pool, params.id_profile);
+        // A1-15: pendente do condomínio não lê os avisos.
+        if (!(await this._condoInsider(community, membership, viewer.id_user))) {
+          return { announcements: [] };
+        }
         const announcements = await CommunityStorage.listAnnouncements(pool, params.id_profile);
         return { announcements };
       }
