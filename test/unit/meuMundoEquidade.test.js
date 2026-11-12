@@ -320,3 +320,32 @@ test("I10 — nenhum item de combate existe só em fonte de PvP", () => {
   // e a tabela do Hall (PvP) só paga ficha (A10)
   for (const e of [...(Items.LOOT_TABLES["fight:hall"].sure || []), ...(Items.LOOT_TABLES["fight:hall"].chance || [])]) assert.equal(Items.GEAR_BY_ID.get(e.id).category, "currency", e.id);
 });
+
+// ── trilha E20: simulador da economia (scripts/mm-economy-sim.js) ──
+const Sim = require("../../scripts/mm-economy-sim");
+
+test("E20 — o equipamento não abre a distância entre quem joga muito e pouco (com kit ÷ sem kit, 40 ÷ 5 vitórias: ×0,9 a ×1,1)", () => {
+  const amp = Sim.gearAmp([30, 90], 90);
+  for (const [d, v] of Object.entries(amp)) assert.ok(v >= 0.9 && v <= 1.1, `dia ${d}: ×${v}`);
+});
+
+test("E20 — mais vitórias por dia nunca chega depois: nível, Poder e marcos", () => {
+  const runs = Sim.PROFILES.map((p) => Sim.simulate(p, 90));
+  for (let i = 1; i < runs.length; i++) {
+    const a = runs[i - 1], b = runs[i];
+    for (const d of [30, 60, 90]) {
+      assert.ok(b.series[d - 1].level >= a.series[d - 1].level, `nível dia ${d}`);
+      assert.ok(b.series[d - 1].power >= a.series[d - 1].power, `Poder dia ${d}`);
+    }
+    for (const k of ["rare", "epic", "legendary"]) if (a.first[k] != null) assert.ok(b.first[k] != null && b.first[k] <= a.first[k], k);
+  }
+});
+
+test("E20 — a distância de Poder 40 ÷ 5 vem do nível (registrada no GDD; o alvo de 1,6 pede regra de XP por dia, decisão do Alex)", () => {
+  const r = Sim.powerRatio([30, 90], 90);
+  // o número do GDD (seção N): se a regra de XP, de atributo ou do Poder mudar, este teste avisa para atualizar o GDD
+  assert.ok(r[30] > 2.5 && r[30] < 3.6 && r[90] > 2.8 && r[90] < 4, JSON.stringify(r));
+  // e a hipótese registrada: XP e atributo a 10% depois da 8ª vitória do dia leva ao alvo
+  const fix = Sim.powerRatio([30, 90], 90, { after: 8, mult: 0.1 });
+  assert.ok(fix[30] <= 1.6 && fix[90] <= 1.6, JSON.stringify(fix));
+});
