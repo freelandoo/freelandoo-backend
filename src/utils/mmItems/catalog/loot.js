@@ -18,6 +18,7 @@
 "use strict";
 
 const { DOMAIN_NAME, LINES, FRAGMENT_SETS, BOSS_FRAGMENTS, SET_FRAGMENTS } = require("./lines");
+const Bestiary = require("./bestiary");
 
 // ── E12: o Domínio como masmorra (GDD, tabela L) ──
 // Material comum por vitória = 1 + ⌊setor ÷ 3⌋ · raro = 5% + 3% × setor (garantido no chefão) ·
@@ -59,6 +60,11 @@ function domainTable(domain, sector) {
   const first = [];
   if (set && sector === 7) first.push({ id: `projeto_${set.id}`, qty: q(1) });
   if (boss) first.push({ id: `frag_${line.key}`, qty: q(BOSS_FRAGMENTS.first) }, { id: `receita_${line.key}`, qty: q(1) });
+  // S14: fragmentos de acessório, de personagem e do deus — sempre no FIM de cada lista
+  const adds = Bestiary.domainAdds(domain, sector);
+  sure.push(...adds.sure);
+  chance.push(...adds.chance);
+  first.push(...adds.first);
   const name = `Domínio ${DOMAIN_NAME[domain]}, setor ${sector}`;
   return Object.freeze({
     label: name, winLabel: name, domain, sector,

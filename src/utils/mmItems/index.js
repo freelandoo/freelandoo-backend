@@ -23,13 +23,14 @@ const currency = require("./catalog/currency");
 const recipes = require("./catalog/recipes");
 const setsCat = require("./catalog/sets");
 const lines = require("./catalog/lines");
+const bestiary = require("./catalog/bestiary");
 const { SETS, SET_STEPS } = setsCat;
 const { KEYS_BY_ID } = require("./catalog/keys");
 const Bonus = require("./rules/bonus");
 const { LOOT, TABLES: LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE, domainTableId } = require("./catalog/loot");
 const LootRule = require("./rules/loot");
 
-const PARTS = [weapons, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines];
+const PARTS = [weapons, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary];
 
 /**
  * E7: equipamento ganha as duas chaves (catalog/keys.js; as peças de conjunto trazem as suas) e o
@@ -51,11 +52,13 @@ const GEAR = Object.freeze([
   ...setsCat.ITEMS,
   // E8: armas de linha, fragmentos, materiais novos, fichas e projetos (no fim; a ordem de antes não muda)
   ...lines.ITEMS,
+  // S14: amuletos dos Domínios, fragmentos de acessório/personagem/deus e embriões (no fim)
+  ...bestiary.ITEMS,
 ].map(withRule));
 const GEAR_BY_ID = new Map(GEAR.map((g) => [g.id, g]));
 
 /** Toda peça, montagem, conversão e receita direta (ordem pública de antes). */
-const RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES]);
+const RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES]);
 const RECIPE_BY_ID = new Map(RECIPES.map((r) => [r.id, r]));
 
 /** Descrição por id (a das peças da forja mora no próprio item). */

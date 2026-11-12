@@ -324,7 +324,7 @@ async function main() {
     check("E12: setor 10 entrega o Selo, a Seiva e os fragmentos de Garras Lunares (3 a 5 + 10 na primeira) e a receita", qtyOf(rc, "selo_dominio") === 1 && qtyOf(rc, "seiva_de_prata") === 1 && qtyOf(rc, "frag_garras_lunares") >= 13 && qtyOf(rc, "frag_garras_lunares") <= 15 && qtyOf(rc, "receita_garras_lunares") === 1 && qtyOf(rc, "po_de_lua") === 4 && rc.result.lootFirst === true, JSON.stringify({ items: rc.items, first: rc.result.lootFirst }));
     const lf = (await pool.query(`SELECT id_fight FROM tb_mm_loot_first WHERE id_user = $1 AND loot_table = 'domain:floresta:10'`, [nu])).rows;
     check("E12: tb_mm_loot_first grava a primeira vitória (mig 449)", lf.length === 1 && !!lf[0].id_fight, JSON.stringify(lf));
-    check("E12: nenhum fragmento de deus no saque (A1)", !(rc.items || []).some((x) => x.id.startsWith("frag_deus")));
+    check("S14: o deus deixa 1 fragmento + 5 na primeira vitória (A1 respondida)", qtyOf(rc, "frag_deus_noctis") === 6, JSON.stringify(rc.items));
     check("E12: a tela marca a primeira vitória do setor 10 como paga", (await Dom.state(nu)).domains[0].sectors[9].loot.firstDone === true);
   }
   // D4: o pacto de 7 dias para as Raposas no Rolê Noturno (jogável de Noctis)

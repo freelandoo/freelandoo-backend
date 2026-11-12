@@ -7,6 +7,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Items = require("../../src/utils/mmItems");
 const Loot = require("../../src/utils/mmItems/catalog/loot");
+const D = require("../../src/utils/meuMundoDomains");
+const Gear = require("../../src/utils/meuMundoGear");
 
 const DOMAINS = ["floresta", "canion", "gelo", "fabrica", "vulcao", "orbital"];
 const seeded = (seed) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -49,11 +51,39 @@ test("E12: contas do GDD — comum 1 + ⌊s/3⌋, raro 5% + 3%·s, Lingote 4+, C
     const first = Items.lootExpectation(`domain:${d}:10`, { win: true, first: true });
     assert.deepEqual([first[`frag_${line.key}`].min, first[`frag_${line.key}`].max], [13, 15]);
     assert.equal(first[`receita_${line.key}`].min, 1);
-    // nenhum fragmento de deus (A1 é do Alex)
+    // S14 (A1 respondida pelo Alex em 2026-11-12): fragmento do deus só no setor 10 — 1 por vitória, +5 na primeira
+    const god = Items.GEAR_BY_ID.get(`frag_deus_${D.BOSS_BY_DOMAIN[d]}`);
+    assert.ok(god && god.fragment.need === 100 && god.fragment.of === `embriao_${D.BOSS_BY_DOMAIN[d]}`, d);
     for (let s = 1; s <= 10; s++) {
       const t = Items.LOOT_TABLES[`domain:${d}:${s}`];
-      for (const x of [...t.sure, ...t.chance, ...(t.first || [])]) assert.ok(!x.id.startsWith("frag_deus"), x.id);
+      for (const x of [...t.sure, ...t.chance, ...(t.first || [])]) if (x.id.startsWith("frag_deus")) assert.equal(s, 10, x.id);
     }
+    assert.deepEqual(boss[god.id], { expected: 1, min: 1, max: 1 });
+    assert.equal(first[god.id].min, 6);
+    // S14: fragmento de acessório no setor 3 (×1) e no 7 (×1–2), garantido na vitória; 40 fazem o amuleto épico
+    const acc = `frag_amuleto_${d}`;
+    assert.deepEqual(Items.lootExpectation(`domain:${d}:3`, { win: true })[acc], { expected: 1, min: 1, max: 1 });
+    assert.deepEqual([Items.lootExpectation(`domain:${d}:7`, { win: true })[acc].min, Items.lootExpectation(`domain:${d}:7`, { win: true })[acc].max], [1, 2]);
+    assert.equal(Items.lootExpectation(`domain:${d}:3`, { win: false })[acc], undefined, "derrota não paga");
+    const amu = Items.GEAR_BY_ID.get(`amuleto_${d}`);
+    assert.ok(amu && amu.slot === "amulet" && amu.rarity === "epic" && amu.keys.length === 2, d);
+    assert.equal(Items.GEAR_BY_ID.get(acc).fragment.need, 40);
+    // S14: guardião do setor 9 dá 1 fragmento de personagem por vitória (100 fazem o embrião)
+    const g9 = Object.keys(Items.lootExpectation(`domain:${d}:9`, { win: true })).filter((k) => k.startsWith("frag_personagem_"));
+    assert.equal(g9.length, 1, d);
+    assert.equal(Items.lootExpectation(`domain:${d}:9`, { win: true })[g9[0]].min, 1);
+  }
+  // S14: elite que é personagem jogável — 25% por vitória nos setores 7 e 8
+  for (const [d, id] of [["gelo", "ciborgue"], ["fabrica", "garras"], ["vulcao", "golem"], ["orbital", "cavaleiro"]])
+    for (const s of [7, 8]) {
+      const e = Items.lootExpectation(`domain:${d}:${s}`, { win: true })[`frag_personagem_${id}`];
+      assert.ok(e && e.expected === 0.25 && e.min === 0 && e.max === 1, `${d} ${s}`);
+    }
+  assert.ok(Items.lootExpectation("domain:vulcao:9", { win: true }).frag_personagem_brutamontes.min === 1, "Brutamontes é o guardião do Vulcão");
+  // o embrião ainda não tem uso (Criogenia é a fatia seguinte) e vem da receita de fragmento
+  for (const id of ["embriao_selene", "embriao_noctis"]) {
+    assert.equal(Items.GEAR_BY_ID.get(id).use, null, id);
+    assert.ok(Gear.RECIPES.some((r) => r.kind === "fragment" && r.out === id), id);
   }
   // conjunto: projeto na primeira vitória do 7, fragmento 2 a 3 do 7 ao 10
   for (const set of Items.LINES.FRAGMENT_SETS) {

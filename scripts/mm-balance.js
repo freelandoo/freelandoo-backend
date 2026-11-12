@@ -449,7 +449,7 @@ const ruleBonus = (slot, rarity, keys, plus, grade) => Object.fromEntries(keys.m
 
 function todayGear() {
   // os equipamentos DE ANTES da trilha (as peças de conjunto da E7 e as armas de linha da E8 são da proposta do §7)
-  const eq = Gear.GEAR.filter((g) => ["weapon", "shield", "armor", "accessory"].includes(g.category) && !g.set && !g.line);
+  const eq = Gear.GEAR.filter((g) => ["weapon", "shield", "armor", "accessory"].includes(g.category) && !g.set && !g.line && !g.bestiary); // S14: amuletos dos Domínios
   return eq.map((it) => {
     const slot = slotOfToday(it);
     const keys = keysOfToday(it, slot);

@@ -14,10 +14,10 @@ const legacyIds = [
   "mola_precisao", "injetor_vapor", "capacitor", "rolamento", "receita_eter", "cristal_morkhan", "pintura_arma_eter",
 ];
 
-test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8)", () => {
+test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 222);
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 222);
+  assert.equal(pub.items.length, 266);
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 266);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);
@@ -49,7 +49,7 @@ test("cada montagem usa uma unidade de 10/12/15 partes diferentes", () => {
 });
 
 test("receitas têm referências válidas, fabricam uma unidade e não geram lucro de reciclagem", () => {
-  assert.equal(Gear.RECIPES.length, 76); // E8: +21 receitas por fragmento
+  assert.equal(Gear.RECIPES.length, 98); // E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões)
   assert.equal(new Set(Gear.RECIPES.map((r) => r.id)).size, Gear.RECIPES.length);
   for (const r of Gear.RECIPES) {
     const out = Gear.GEAR_BY_ID.get(r.out);
@@ -87,11 +87,15 @@ test("todas as receitas e peças são alcançáveis sem depender de sorte rara",
   // E7/E8: peças de conjunto, armas de linha, fragmentos e materiais novos chegam pelo saque dos
   // Domínios (E12) e das atividades (E17); até lá a origem é declarada no catálogo
   const later = new Set(require("../../src/utils/mmItems").LINES.ITEMS.map((g) => g.id));
+  // S14: amuletos, fragmentos do bestiário e embriões também chegam pelo saque dos Domínios
+  for (const g of require("../../src/utils/mmItems/catalog/bestiary").ITEMS) later.add(g.id);
   assert.deepEqual(Gear.GEAR.filter((g) => !g.set && !later.has(g.id) && !reachable.has(g.id)).map((g) => g.id), []);
   for (const item of Gear.GEAR.filter((g) => g.category === "material")) {
     assert.ok(Gear.RECIPES.some((r) => r.needs[item.id]) || ["fragmento_lamina", "couro_reforcado", "nucleo_eter", "selo_forja",
       // E8: custo do aprimoramento (E9) e do refinamento (E10); Madeira, Cristal e Pó de Forja são das runas e consumíveis (fase 4)
-      "pedra_aprimoramento", "catalisador_refino", "madeira_ancestral", "cristal_bruto", "po_forja"].includes(item.id), item.id);
+      "pedra_aprimoramento", "catalisador_refino", "madeira_ancestral", "cristal_bruto", "po_forja"].includes(item.id)
+      // S14: o embrião é usado na Criogenia (fatia seguinte)
+      || !!item.embryo, item.id);
   }
   assert.ok(Forge.CONVERSIONS.some((r) => r.out === "selo_forja"));
   assert.ok(!Gear.RECIPES.some((r) => r.needs.chave_subestacao), "chave é leitura/coleção, não loot genérico");
