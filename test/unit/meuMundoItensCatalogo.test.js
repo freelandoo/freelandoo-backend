@@ -53,7 +53,7 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   // E16: materiais de antes viram ingrediente dos consumíveis de preparo
   const PREPS = Gear.GEAR.filter((g) => g.category === "consumable").map((g) => g.name);
   // E17: a rua ganhou tabela própria (mesmo saque das Lâminas): o "onde conseguir" de antes ganha as linhas dela
-  const E17 = (s) => s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
+  const E17 = (s) => s.startsWith("Loja de troca:") || s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
   // E14: a linha da Ascensão/Despertar entra nos usos de todo equipamento com chaves
   const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja") && !PREPS.some((n) => u.startsWith("Ingrediente de " + n + ":")));
   semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses), source: (agora.items[n].source || []).filter((s) => !E17(s)) }, { ...antes, uses: usesV1(antes.uses), source: antes.source }, antes.id));

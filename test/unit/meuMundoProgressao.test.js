@@ -76,6 +76,20 @@ test("E13 — runas de grau I e II caem nos Domínios no fim da lista (os sortei
   for (const kind of Object.keys(Runes.RUNE_KINDS)) assert.ok(Items.lootSourcesOf(`runa_${kind}_1`).length > 0, kind);
 });
 
+// ── E19: eventos ──
+const Events = require("../../src/utils/mmItems/catalog/events");
+
+test("E19 — loja de evento: ofertas em ficha_evento presas a um evento do catálogo; baú não paga ficha de evento", () => {
+  const ev = Items.EXCHANGE.OFFERS.filter((o) => o.event);
+  assert.ok(ev.length >= 3);
+  for (const o of ev) {
+    assert.strictEqual(o.token, Events.EVENT_TOKEN, o.id);
+    assert.ok(Events.EVENT_BY_ID.has(o.event), o.id);
+  }
+  assert.ok(Events.PAYS_EVENT("minigame:paint") && Events.PAYS_EVENT("domain:floresta:3") && Events.PAYS_EVENT("mob:elite"));
+  assert.ok(!Events.PAYS_EVENT("chest:bau_ninho"));
+});
+
 // ── E18: baús e coleção ──
 const Chests = require("../../src/utils/mmItems/catalog/chests");
 

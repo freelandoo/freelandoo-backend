@@ -16,8 +16,8 @@ const legacyIds = [
 
 test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16; +6 fichas da E17)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 315);
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 315);
+  assert.equal(pub.items.length, 316); // E19: + ficha de evento (a receita oculta da E18 fica fora do público)
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 316);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);

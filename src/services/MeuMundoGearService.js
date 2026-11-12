@@ -253,6 +253,8 @@ async function bagState(c, idUser, coins, now = Date.now()) {
     })),
     equippedInstances: Object.fromEntries(Object.entries(live).map(([slot, x]) => [slot, x.instance])),
     stacks, forge,
+    // E19: eventos ligados agora (a loja de evento só mostra as ofertas deles)
+    events: await require("./MeuMundoEventService").openIds(c, now),
     pendingProposals: pending.map(publicProposal),
     learnedRecipes: unlocks.filter((u) => u.kind === "recipe").map((u) => u.item_id),
     unlockedEmotes: unlocks.filter((u) => u.kind === "emote").map((u) => u.item_id),
@@ -914,8 +916,8 @@ MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {
   return out;
 };
 MeuMundoGearService.R = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
-/** E19 sobrescreve: a loja de evento só abre com o evento ligado pelo admin. */
-MeuMundoGearService.eventOpen = async () => false;
+/** E19: a loja de evento só abre com o evento ligado pelo admin. */
+MeuMundoGearService.eventOpen = (c, event, now) => require("./MeuMundoEventService").isOpen(c, event, now);
 MeuMundoGearService.isInstanceItem = isInstanceItem;
 MeuMundoGearService.prepare = prepare;
 

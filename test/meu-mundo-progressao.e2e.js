@@ -19,7 +19,7 @@ let checks = 0;
 function check(name, condition) { assert.ok(condition, name); checks++; console.log(`✓ ${name}`); }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_chest_open, tb_mm_collection, tb_mm_loadout, tb_mm_item_ledger, tb_mm_gear_instance, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_event, tb_mm_chest_open, tb_mm_collection, tb_mm_loadout, tb_mm_item_ledger, tb_mm_gear_instance, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
     tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan, tb_mm_car_paint_owned,
     tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day,
     tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail, tb_mm_visit, tb_mm_avatar_pref,
@@ -270,6 +270,33 @@ const STEPS = [
     check("E18: quem não achou não vê a receita oculta", !o.gear.recipes.some((r) => r.id === "gravar_runa_forca") && !o.gear.items.some((i) => i.id === "receita_oculta_forca"));
     await visit(other, "biblioteca");
     check("E18: o baú é um por conta (outra conta abre o dela)", !(await Service.openChest(other, { chest: "bau_biblioteca", key: key() })).error);
+  },
+  // ── E19: eventos (ligado e desligado) ──
+  async ({ Service, Life, id, qty, setQty }) => {
+    const Events = require("../src/services/MeuMundoEventService");
+    const Reward = require("../src/services/MeuMundoRewardService");
+    const play = async () => (await Life.withLife(id, async (s, ctx) => ({ drops: await Reward.grant(ctx.client, id, { table: "minigame:jetpack", ctx, R: () => 0.5, roll: { win: true, activeMs: 4 * 60000 } }) }))).drops;
+    const cfg = await Events.config();
+    check("E19: o evento nasce desligado", cfg.events.length >= 1 && cfg.events.every((e) => !e.active && !e.open));
+    const off = await play();
+    check("E19: desligado, a partida não paga ficha de evento", !off.some((l) => l.id === "ficha_evento"));
+    await setQty(id, "ficha_evento", 100);
+    check("E19: desligado, a loja de evento não abre", (await Service.exchange(id, { offer: "festa_lumen:selo", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 100);
+    check("E19: evento desconhecido e pedido sem ligar/desligar recusam", (await Events.save(id, { event: "nada", active: true })).code === "event" && (await Events.save(id, { event: "festa_lumen" })).code === "active");
+    const on = await Events.save(id, { event: "festa_lumen", active: true, hours: 48 });
+    check("E19: o admin liga o evento (com fim)", on.events.find((e) => e.id === "festa_lumen").open === true && !!on.events.find((e) => e.id === "festa_lumen").endsAt);
+    const paid = await play();
+    check("E19: ligado, a partida paga ficha de evento (2 + 1 pela vitória)", paid.some((l) => l.id === "ficha_evento" && l.qty === 3) && (await qty(id, "ficha_evento")) === 103);
+    const bag = (await Service.get(id)).bag;
+    check("E19: a mochila diz quais eventos estão ligados", Array.isArray(bag.events) && bag.events.includes("festa_lumen"));
+    const buy = await Service.exchange(id, { offer: "festa_lumen:selo", key: key() });
+    check("E19: ligado, a loja de evento troca (80 fichas → 1 Selo)", !buy.error && (await qty(id, "ficha_evento")) === 23);
+    await Events.save(id, { event: "festa_lumen", active: false });
+    check("E19: desligado de novo, a loja fecha e a ficha fica guardada", (await Service.exchange(id, { offer: "festa_lumen:catalisador", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 23);
+    await Events.save(id, { event: "festa_lumen", active: true, hours: 1 });
+    const later = (await Life.withLife(id, async (s, ctx) => ({ open: await Events.isOpen(ctx.client, "festa_lumen", Date.now() + 2 * 3600 * 1000) }))).open;
+    check("E19: o evento com fim fecha sozinho depois do prazo", later === false);
+    await Events.save(id, { event: "festa_lumen", active: false });
   },
 ];
 

@@ -345,6 +345,13 @@ const gearEnchantResolve = forgeAction("enchantResolve");
 async function gearExchange(req, res) {
   return reply(res, await gear().exchange(req.user.id_user, req.body || {}));
 }
+// E19: eventos (admin liga e desliga)
+async function eventConfigGet(req, res) {
+  return reply(res, await require("../services/MeuMundoEventService").config());
+}
+async function eventConfigSave(req, res) {
+  return reply(res, await require("../services/MeuMundoEventService").save(req.user.id_user, req.body || {}));
+}
 // E18: coleção e baús
 async function gearCollection(req, res) {
   return reply(res, await gear().collection(req.user.id_user));
@@ -593,6 +600,8 @@ module.exports = {
   gearExchange,
   gearCollection,
   gearChestOpen,
+  eventConfigGet,
+  eventConfigSave,
   questGet,
   questAdvance,
   questMark,

@@ -10,6 +10,9 @@
 const Items = require("../utils/mmItems");
 
 const GearService = () => require("./MeuMundoGearService");
+const EventService = () => require("./MeuMundoEventService");
+const Events = require("../utils/mmItems/catalog/events");
+const LootRule = require("../utils/mmItems/rules/loot");
 
 class MeuMundoRewardService {
   /**
@@ -20,6 +23,11 @@ class MeuMundoRewardService {
   static async grant(c, idUser, { table, ctx, R, roll = {} }) {
     if (!Items.LOOT_TABLES[table]) throw new Error(`Tabela de saque desconhecida: ${table}`);
     const drops = Items.rollTable(table, roll, R || GearService().R);
+    // E19: com um evento ligado, a atividade também paga a ficha de evento (mesma conta das fichas)
+    if (Events.PAYS_EVENT(table) && (await EventService().openIds(c, ctx && ctx.now)).length) {
+      const n = LootRule.qtyOf({ tokens: true }, roll, () => 0);
+      if (n > 0) drops.push({ id: Events.EVENT_TOKEN, qty: n, rarity: "common" });
+    }
     return drops.length ? GearService().deliver(c, idUser, drops, ctx) : [];
   }
 

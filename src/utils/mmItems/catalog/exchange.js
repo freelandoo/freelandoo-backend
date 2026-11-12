@@ -41,6 +41,14 @@ const OFFERS = Object.freeze([
   offer("hall", "frag_chama", 30, { frag_primeira_chama: 3 }),
   offer("hall", "receita_chama", 90, { receita_primeira_chama: 1 }),
   offer("hall", "runa_forca", 30, { runa_forca_1: 1 }),
+  // E19: loja de evento (só abre com o evento ligado pelo admin)
+  ...[
+    offer("evento", "cosmetico_rastro", 40, { rastro_eter: 1 }),
+    offer("evento", "runa_forca_2", 40, { runa_forca_2: 1 }),
+    offer("evento", "catalisador", 30, { catalisador_refino: 1 }),
+    offer("evento", "essencia", 60, { essencia_primordial: 1 }),
+    offer("evento", "selo", 80, { selo_dominio: 1 }),
+  ].map((o) => Object.freeze({ ...o, id: o.id.replace("evento:", "festa_lumen:"), event: "festa_lumen" })),
 ]);
 const OFFER_BY_ID = new Map(OFFERS.map((o) => [o.id, o]));
 
