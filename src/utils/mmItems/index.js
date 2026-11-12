@@ -29,6 +29,7 @@ const { KEYS_BY_ID } = require("./catalog/keys");
 const Bonus = require("./rules/bonus");
 const { LOOT, TABLES: LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE, domainTableId } = require("./catalog/loot");
 const LootRule = require("./rules/loot");
+const Exchange = require("./catalog/exchange");
 
 const PARTS = [weapons, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary];
 
@@ -74,6 +75,8 @@ function sourcesOf(item) {
   if (Array.isArray(item.source)) source.push(...item.source); // origem declarada (ex.: conjunto antes da E12)
   if (item.price != null) source.push(`${item.shop ? "Loja de Armas do Arsenal" : "Loja de equipamentos"}: ${item.price} moedas.`);
   source.push(...LootRule.lootSourceLines(item.id)); // E3: derivado das tabelas
+  // E17: Loja de troca (fichas)
+  for (const o of Exchange.OFFERS) if (o.gives[item.id]) source.push(`Loja de troca: ${o.gives[item.id]} por ${o.cost} fichas do ${Exchange.GAME_NAME[o.token.replace("ficha_", "")]}.`);
   // E13: runa de grau II em diante sai da fusão de 3 do grau abaixo
   if (item.rune && item.rune.grade > 1) source.push(`Fusão de runas: 3 runas de ${runes.KIND_NAME[item.rune.kind]} grau ${runes.ROMAN[item.rune.grade - 2]} viram 1 de grau ${runes.ROMAN[item.rune.grade - 1]}.`);
   for (const r of RECIPES) if (r.out === item.id) source.push(`Ferreiro: ${r.kind === "assembly" ? "montar" : r.kind === "part" ? "fabricar uma peça de" : "produzir"} ${item.name} (${r.coins} moedas e ingredientes da receita).`);
@@ -88,7 +91,7 @@ module.exports = {
   GEAR, GEAR_BY_ID, RECIPES, RECIPE_BY_ID, DESCRIPTIONS, SETS, SET_STEPS, LOOT,
   bonusOf: (pieces) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
   rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation, domainTableId,
-  FORGE: recipes, LINES: lines,
+  FORGE: recipes, LINES: lines, EXCHANGE: Exchange,
   sourcesOf,
   validateCatalog: () => validateCatalog({ items: GEAR, recipes: RECIPES, loot: LOOT, sets: SETS, sources: sourcesOf }),
 };

@@ -52,9 +52,11 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   const E11 = ["Desmontar na Forja: devolve parte dos materiais e Pó de Refino, nunca Esmeralda.", "Transmutar na Forja: 3 viram 1 de outro material do mesmo tier."];
   // E16: materiais de antes viram ingrediente dos consumíveis de preparo
   const PREPS = Gear.GEAR.filter((g) => g.category === "consumable").map((g) => g.name);
+  // E17: a rua ganhou tabela própria (mesmo saque das Lâminas): o "onde conseguir" de antes ganha as linhas dela
+  const E17 = (s) => s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
   // E14: a linha da Ascensão/Despertar entra nos usos de todo equipamento com chaves
   const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja") && !PREPS.some((n) => u.startsWith("Ingrediente de " + n + ":")));
-  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses) }, { ...antes, uses: usesV1(antes.uses) }, antes.id));
+  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses), source: (agora.items[n].source || []).filter((s) => !E17(s)) }, { ...antes, uses: usesV1(antes.uses), source: antes.source }, antes.id));
   // E8: as receitas por fragmento entram no fim; as de antes não mudam
   assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
   assert.ok(agora.recipes.slice(ANTES.publicGear.recipes.length).every((r) => r.kind === "fragment" || r.kind === "prep")); // E16: receitas de preparo

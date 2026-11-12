@@ -76,6 +76,42 @@ test("E13 — runas de grau I e II caem nos Domínios no fim da lista (os sortei
   for (const kind of Object.keys(Runes.RUNE_KINDS)) assert.ok(Items.lootSourcesOf(`runa_${kind}_1`).length > 0, kind);
 });
 
+// ── E17: tabelas por atividade, fichas e loja de troca ──
+const Exchange = require("../../src/utils/mmItems/catalog/exchange");
+const Reward = require("../../src/services/MeuMundoRewardService");
+
+test("E17 — fichas por partida = minutos ativos ÷ 2 (arredondado) + 1 se venceu", () => {
+  const roll = (activeMs, win) => (Items.rollTable("minigame:jetpack", { win, activeMs }, () => 0.99).find((x) => x.id === "ficha_jetpack") || { qty: 0 }).qty;
+  assert.strictEqual(roll(5 * 60000, true), 4); // 2,5 → 3, +1
+  assert.strictEqual(roll(5 * 60000, false), 3);
+  assert.strictEqual(roll(12 * 60000, true), 7);
+  assert.strictEqual(roll(30000, false), 0);
+});
+
+test("E17 — o item mais caro de cada loja de minijogo custa entre 40 e 60 partidas", () => {
+  for (const game of Exchange.GAMES) {
+    const max = Math.max(...Exchange.OFFERS.filter((o) => o.token === `ficha_${game}`).map((o) => o.cost));
+    const matches = max / Exchange.TOKENS_PER_MATCH;
+    assert.ok(matches >= 40 && matches <= 60, `${game}: ${matches} partidas`);
+  }
+  for (const o of Exchange.OFFERS) for (const id of [o.token, ...Object.keys(o.gives)]) assert.ok(Items.GEAR_BY_ID.has(id), `${o.id}: ${id}`);
+  assert.strictEqual(new Set(Exchange.OFFERS.map((o) => o.id)).size, Exchange.OFFERS.length);
+});
+
+test("E17 — tabela da luta: Hall só ficha; rua comum × elite pela régua (fator ≥ 1,40)", () => {
+  assert.strictEqual(Reward.fightTableOf("hall"), "fight:hall");
+  assert.strictEqual(Reward.fightTableOf("laminas"), null);
+  const A = require("../../src/utils/meuMundoAdventure");
+  for (const L of [1, 10, 30, 100]) {
+    // o sorteio da rua: ×1,00 e ×1,10 e ×1,25 são comuns; ×1,40 e ×1,60 são elite
+    const lv = [0.1, 0.4, 0.6, 0.8, 0.95].map((r) => A.rollMobLevel(L, () => r));
+    assert.deepStrictEqual(lv.map((M) => Reward.fightTableOf("mob", { level: M, hero: L })), ["mob:common", "mob:common", "mob:common", "mob:elite", "mob:elite"], `nível ${L}`);
+  }
+  const elite = Items.lootExpectation("mob:elite", { win: true, activeMs: 240000, first: true });
+  assert.ok(elite.frag_lamina_correntes.min >= 3 + 10 && elite.receita_lamina_correntes.min === 1);
+  assert.ok(!Items.lootExpectation("mob:common", { win: true, activeMs: 240000 }).frag_lamina_correntes);
+});
+
 // ── E16: Consumíveis de preparo ──
 const Fight = require("../../src/utils/meuMundoFight");
 

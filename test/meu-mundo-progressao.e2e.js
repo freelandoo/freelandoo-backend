@@ -220,6 +220,33 @@ const STEPS = [
       check("E16: o preparo não entra no equipamento que o Poder lê", JSON.stringify(gear) === JSON.stringify(open.fight.setup.gear) && !("prep" in gear));
     } finally { c.release(); }
   },
+  // ── E17: fichas e loja de troca ──
+  async ({ Service, id, qty, setQty }) => {
+    await setQty(id, "ficha_paint", 40);
+    check("E17: troca inexistente recusa", (await Service.exchange(id, { offer: "paint:nada", key: key() })).code === "offerid");
+    const xk = key();
+    const [a, b] = await Promise.all([
+      Service.exchange(id, { offer: "paint:frag_moldes", qty: 1, key: xk }),
+      Service.exchange(id, { offer: "paint:frag_moldes", qty: 1, key: xk }),
+    ]);
+    check("E17: troca 30 fichas por 3 fragmentos uma vez (mesma chave)", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "ficha_paint")) === 10 && (await qty(id, "frag_cajado_moldes")) === 3);
+    check("E17: fichas insuficientes recusa", (await Service.exchange(id, { offer: "paint:frag_moldes", key: key() })).code === "tokens" && (await qty(id, "ficha_paint")) === 10);
+    const two = await Service.exchange(id, { offer: "paint:minerio", qty: 1, key: key() });
+    check("E17: o recibo mostra fichas gastas e itens recebidos", !two.error && two.receipt.items.some((l) => l.id === "ficha_paint" && l.qty === -6) && two.receipt.items.some((l) => l.id === "minerio_ferro" && l.qty === 3));
+    check("E17: ficha de outro jogo não paga", (await Service.exchange(id, { offer: "jetpack:pedra", key: key() })).code === "tokens");
+  },
+  // ── E17: tabelas da luta (Hall só ficha; rua comum × elite) ──
+  async ({ pool, id, qty }) => {
+    const Reward = require("../src/services/MeuMundoRewardService");
+    const Life = require("../src/services/MeuMundoLifeService");
+    const out = await Life.withLife(id, async (s, ctx) => ({
+      hall: await Reward.grant(ctx.client, id, { table: "fight:hall", ctx, R: () => 0.5, roll: { win: true, activeMs: 180000 } }),
+      elite: await Reward.grant(ctx.client, id, { table: "mob:elite", ctx, R: () => 0.5, roll: { win: true, activeMs: 180000 } }),
+    }));
+    check("E17: o Hall entrega só ficha (2 + 1 pela vitória)", out.hall.length === 1 && out.hall[0].id === "ficha_hall" && out.hall[0].qty === 3);
+    check("E17: o elite da rua entrega o fragmento da Lâmina das Correntes e Cinza", out.elite.some((l) => l.id === "frag_lamina_correntes" && l.qty >= 3) && out.elite.some((l) => l.id === "cinza_das_correntes"));
+    check("E17: a entrega passa pela mochila (com livro)", (await qty(id, "ficha_hall")) === 3);
+  },
 ];
 
 main().catch((error) => { console.error(error); process.exit(1); });

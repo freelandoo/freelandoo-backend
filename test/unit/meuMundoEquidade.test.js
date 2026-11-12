@@ -302,4 +302,21 @@ test("I9 (conjuntos) — fragmento dos setores 7 a 10 com a tabela real do Domí
     }
   }
 });
-test("I10 — nenhum item de combate existe só em fonte de PvP", { todo: "E17" }, () => {});
+test("I10 — nenhum item de combate existe só em fonte de PvP", () => {
+  const Items = require("../../src/utils/mmItems");
+  const PVP_TABLES = new Set(["fight:hall"]);
+  const PVP_TOKENS = new Set(["ficha_hall"]);
+  // item de combate: equipamento, fragmento de equipamento, runa e preparo
+  const combat = Items.GEAR.filter((g) => g.slot || g.category === "rune" || g.category === "consumable" || (g.category === "fragment" && Items.GEAR_BY_ID.get(g.fragment.of)?.slot));
+  assert.ok(combat.length > 150);
+  const made = new Set(Items.RECIPES.map((r) => r.out));
+  for (const g of combat) {
+    const nonPvp = g.price != null || g.starter || made.has(g.id) || Array.isArray(g.source)
+      || Items.lootSourcesOf(g.id).some((s) => !PVP_TABLES.has(s.table))
+      || Items.EXCHANGE.OFFERS.some((o) => o.gives[g.id] && !PVP_TOKENS.has(o.token))
+      || (g.rune && g.rune.grade > 1);
+    assert.ok(nonPvp, `${g.id} só existe em fonte de PvP`);
+  }
+  // e a tabela do Hall (PvP) só paga ficha (A10)
+  for (const e of [...(Items.LOOT_TABLES["fight:hall"].sure || []), ...(Items.LOOT_TABLES["fight:hall"].chance || [])]) assert.equal(Items.GEAR_BY_ID.get(e.id).category, "currency", e.id);
+});

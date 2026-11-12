@@ -42,6 +42,24 @@ class MeuMundoRewardService {
     return Items.domainTableId(domain, Number(sector));
   }
 
+  /**
+   * E17: tabela própria da origem da luta (ou null = a da atividade): Hall = `fight:hall` (PvP, só
+   * ficha); rua = `mob:elite` quando a régua do monstro passa de 1,40 × a de quem joga, senão `mob:common`.
+   */
+  static fightTableOf(origin, setup = {}) {
+    if (origin === "hall") return "fight:hall";
+    if (origin === "mob") return MeuMundoRewardService.isElite(setup.level, setup.hero) ? "mob:elite" : "mob:common";
+    return null;
+  }
+
+  /** E17: monstro de elite da rua (A15: fator ×1,40 ou ×1,60 sobre a régua de quem joga). */
+  static isElite(mobLevel, heroLevel) {
+    const { mobBase } = require("../utils/meuMundoFight");
+    const { ELITE_FACTOR } = require("../utils/mmItems/catalog/loot");
+    const ruler = (L) => mobBase(Math.max(1, Math.round(Number(L) || 1))).rate;
+    return ruler(mobLevel) >= ELITE_FACTOR * ruler(heroLevel) - 1e-9;
+  }
+
   /** Tabela da atividade (Adv.ACTIVITIES): luta = `fight:<atividade>`, minijogo = `minigame:<jogo>`. */
   static tableOf(activity) {
     return Items.ACTIVITY_TABLE[activity] || null;

@@ -32,7 +32,7 @@ const powderPerFragment = (tier) => 2 * tier;
 // ── as 9 linhas (GDD H e J) ──
 // region: onde a fonte principal mora (Domínio, Hall, rua de noite, Paint) · boss: quem paga o fragmento
 const LINES = Object.freeze([
-  { key: "primeira_chama", name: "Espada da Primeira Chama", god: "aurion", shop: "weapons", clan: "vampiro", keys: ["dmg", "power"], region: "hall", boss: "aurion", table: "fight:hall", level: 10, mats: { brasa_solar: 18 }, where: "Hall dos Campeões: vitória contra o campeão" },
+  { key: "primeira_chama", name: "Espada da Primeira Chama", god: "aurion", shop: "weapons", clan: "vampiro", keys: ["dmg", "power"], region: "arena", boss: null, table: "fight:laminas", level: 10, mats: { brasa_solar: 18 }, where: "Arena das Lâminas (vitória) e Loja de troca do Hall" }, // E17 (A9/A10): o Hall é PvP e só paga ficha
   { key: "tridente_mares", name: "Tridente das Marés", god: "maru", shop: "hammers", keys: ["dmg", "power"], region: "gelo", boss: "maru", table: "domain:gelo:10", mats: { gelo_negro: 20, perola_de_afogado: 3 } },
   { key: "lamina_correntes", name: "Lâmina das Correntes", god: "morkhan", shop: "weapons", clan: "vampiro", keys: ["dmg", "power"], region: "rua", boss: "elite", table: "mob:elite", level: 10, mats: { cinza_das_correntes: 18 }, where: "Monstros de elite da rua, de noite" },
   { key: "martelo_incandescente", name: "Martelo Incandescente", god: "kragor", shop: "hammers", keys: ["dmg", "power"], region: "vulcao", boss: "kragor", table: "domain:vulcao:10", mats: { escoria: 20, ferro_de_basalto: 3 } },
@@ -45,8 +45,7 @@ const LINES = Object.freeze([
 const LINE_COINS = 2360;
 const UNIVERSAL_LINE = Object.freeze({ lingote_refinado: 4, essencia_primordial: 1 });
 
-const regionName = (r) => DOMAIN_NAME[r] || ({ hall: "Hall dos Campeões", rua: "Rua de noite", paint: "Paint" })[r] || r;
-const bossLine = (l) => l.where || `Domínio ${DOMAIN_NAME[l.region]}: chefão do setor 10 (3 a 5 por vitória, 10 na primeira)`;
+const regionName = (r) => DOMAIN_NAME[r] || ({ hall: "Hall dos Campeões", arena: "Arena das Lâminas", rua: "Rua de noite", paint: "Paint" })[r] || r;
 
 const LINE_WEAPONS = LINES.map((l) => G(`linha_${l.key}`, "weapon", l.name, "legendary", {
   shop: l.shop || undefined, clan: l.clan || null, keys: Object.freeze(l.keys), domain: l.god, line: true,
@@ -66,7 +65,7 @@ const LINE_FRAGMENTS = LINES.map((l) => G(`frag_${l.key}`, "fragment", `Fragment
   stack: true, domain: l.god, sell: 0,
   fragment: Object.freeze({ of: `linha_${l.key}`, need: NEED.legendary, powder: powderPerFragment(5) }),
   origin: Object.freeze({ region: l.region, boss: l.boss, table: l.table, kind: l.boss ? "boss" : "activity" }),
-  ...(DOMAIN_NAME[l.region] ? {} : { source: Object.freeze([`${bossLine(l)}.`]) }), // E12: Domínio = tabela
+  // E12: Domínio = tabela · E17: Arena, rua e Paint também (a origem sai das tabelas)
 }));
 const SET_FRAGMENT_ITEMS = SETS.map((s) => G(`frag_${s.id}`, "fragment", `Fragmento do conjunto ${s.name}`, "rare", {
   stack: true, domain: s.domain, set: s.id, sell: 0,
@@ -78,9 +77,7 @@ const SET_FRAGMENT_ITEMS = SETS.map((s) => G(`frag_${s.id}`, "fragment", `Fragme
 const NOTES = Object.freeze({
   pedra_aprimoramento: "Custo de cada passo do aprimoramento garantido (+1 a +15).",
   catalisador_refino: "Custo do refinamento dos graus II a V.",
-  madeira_ancestral: "Reservado às runas e aos preparos, que chegam depois.",
-  cristal_bruto: "Reservado às runas e aos preparos, que chegam depois.",
-  po_forja: "Reservado às runas e aos preparos, que chegam depois.",
+  cristal_bruto: "Custo do sorteio do encantamento (tier por sorteio).", // E15
   po_refino: "Custo do refinamento dos graus II a V.",
   selo_dominio: "Custo da Ascensão, que libera o +11 ao +15.",
 });
@@ -88,12 +85,12 @@ const notes = (id) => (NOTES[id] ? { notes: Object.freeze([NOTES[id]]) } : {});
 // `where` null = a origem sai das tabelas de saque (catalog/loot.js), sem linha declarada
 const M = (id, name, rarity, domain, where) => G(id, "material", name, rarity, { domain, sell: 0, ...(where ? { source: Object.freeze([where]) } : {}), ...notes(id) });
 const MATERIALS = Object.freeze([
-  M("minerio_ferro", "Minério de Ferro", "common", null, "Minijogos e monstros da rua: 1 a 2 por partida validada."),
+  M("minerio_ferro", "Minério de Ferro", "common", null, null), // E17: minijogos e rua
   M("minerio_prata", "Minério de Prata", "uncommon", null, null), // E12: Domínios (Boxe na E17)
   M("lingote_refinado", "Lingote Refinado", "rare", null, null), // E12: Domínios (Lâminas na E17)
-  M("madeira_ancestral", "Madeira Ancestral", "uncommon", null, "Antigravidade e Gincana: chance de 25% por partida."),
+  M("madeira_ancestral", "Madeira Ancestral", "uncommon", null, null), // E17: Antigravidade e Gincana
   M("cristal_bruto", "Cristal Bruto", "uncommon", null, null), // E12: Domínios (minijogos na E17)
-  M("po_forja", "Pó de Forja", "common", null, "Lâminas (garantido), minijogos e monstros da rua (30%)."),
+  M("po_forja", "Pó de Forja", "common", null, null), // E17: Lâminas, minijogos e rua
   M("pedra_aprimoramento", "Pedra de Aprimoramento", "uncommon", null, null), // E9: cai nas lutas (fight:laminas e fight:boxe)
   M("catalisador_refino", "Catalisador de Refino", "epic", null, null), // E12: Domínios 8+ (Hall na E17)
   M("essencia_primordial", "Essência Primordial", "legendary", null, null), // E12: chefões (Hall na E17)
@@ -109,9 +106,9 @@ const MATERIALS = Object.freeze([
   M("ferro_de_basalto", "Ferro de Basalto", "rare", "vulcao", null),
   M("vidro_colorido", "Vidro Colorido", "common", "orbital", null),
   M("prisma_vivo", "Prisma Vivo", "rare", "orbital", null),
-  M("brasa_solar", "Brasa Solar", "uncommon", "aurion", "Hall dos Campeões (1 a 2 por vitória) e Lâminas (35%)."),
-  M("cinza_das_correntes", "Cinza das Correntes", "uncommon", "morkhan", "Monstros da rua de noite (35%); de elite, 1 a 2 garantidos."),
-  M("barro_primordial", "Barro Primordial", "uncommon", "bastor", "Paint: 1 a 2 por vitória."),
+  M("brasa_solar", "Brasa Solar", "uncommon", "aurion", null), // E17: Lâminas e troca do Hall
+  M("cinza_das_correntes", "Cinza das Correntes", "uncommon", "morkhan", null), // E17: rua
+  M("barro_primordial", "Barro Primordial", "uncommon", "bastor", null), // E17: Paint
 ]);
 const CURRENCY = Object.freeze([
   G("po_refino", "currency", "Pó de Refino", "uncommon", { stack: true, sell: 0, ...notes("po_refino"), source: Object.freeze(["Forja: converter fragmentos que sobram (2 × tier cada) e desmontar equipamento."]) }),
@@ -121,7 +118,7 @@ const CURRENCY = Object.freeze([
 // ── projetos (GDD I) ──
 const BLUEPRINTS = Object.freeze([
   ...LINES.map((l) => G(`receita_${l.key}`, "recipe", `Receita: ${l.name}`, "legendary", {
-    sell: 0, domain: l.god, ...(DOMAIN_NAME[l.region] ? {} : { source: Object.freeze([`${l.where}, na primeira vitória.`]) }),
+    sell: 0, domain: l.god, // E17: a primeira vitória da tabela entrega (Arena, elite da rua, Paint)
   })),
   ...SETS.map((s) => G(`projeto_${s.id}`, "recipe", `Projeto: conjunto ${s.name}`, "rare", { sell: 0, domain: s.domain, set: s.id })),
 ]);

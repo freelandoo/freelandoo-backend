@@ -122,6 +122,8 @@ function publicGear() {
     salvage: { share: Salvage.SALVAGE_SHARE, confirmTier: Salvage.CONFIRM_TIER, transmuteIn: Salvage.TRANSMUTE_IN, transmuteCoins: Salvage.TRANSMUTE_COINS },
     // E14: Ascensão (no +10: 2 × tier Selos) e Despertar (ascendida: tier Essências + tier Selos)
     ascend: { at: Ascend.ASCEND_AT, seal: Ascend.SEAL, essence: Ascend.ESSENCE, sealPerTier: 2 },
+    // E17: loja de troca (fichas → itens); `tokensPerMatch` = fichas de uma partida típica
+    exchange: { offers: require("../catalog/exchange").OFFERS, tokensPerMatch: require("../catalog/exchange").TOKENS_PER_MATCH },
     // E16: preparo — um por luta, só nestas origens (Boxe, Hall, deus e prólogo recusam)
     prep: { origins: require("../catalog/consumables").PREP_ORIGINS, max: require("../catalog/consumables").PREP_VALUE },
     // E15: encanto — sorteio de até `options` chaves do slot, custo 10 × tier Pó + tier Cristal

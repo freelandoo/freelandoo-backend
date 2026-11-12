@@ -23,6 +23,10 @@ function rollLootAntes(family, { win, activeMs }, R) {
   return [...out.entries()].map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id).rarity }));
 }
 
+/** O que entrou nas tabelas de antes depois da E3 (E9: Pedra; E17: o resto), sempre no fim da lista. */
+const NOVOS = new Set(["pedra_aprimoramento", "po_forja", "brasa_solar", "frag_primeira_chama", "minerio_prata", "minerio_ferro", "madeira_ancestral",
+  "barro_primordial", "frag_cajado_moldes", "receita_primeira_chama", "receita_cajado_moldes", "ficha_paint", "ficha_jetpack", "ficha_noturno", "ficha_corrida", "ficha_gincana"]);
+
 /** Sorteio determinístico (mulberry32) que também conta as chamadas. */
 function seeded(seed) {
   let a = seed >>> 0;
@@ -53,10 +57,10 @@ test("E3: as tabelas dão o mesmo saque da regra antiga com o mesmo R (10 mil so
       const A = seeded(i * 7919 + family.length), B = seeded(i * 7919 + family.length);
       const antes = rollLootAntes(family, ctx, A);
       const agora = Items.rollTable(Items.FAMILY_TABLE[family], ctx, B);
-      // E9: a Pedra de Aprimoramento entrou no FIM das lutas (Lâminas e Boxe): os sorteios de antes não mudam
-      const stone = ctx.win && (family === "forja" || family === "couro") ? 1 : 0;
-      assert.deepEqual(agora.filter((x) => x.id !== "pedra_aprimoramento"), antes, `${family} #${i}`);
-      assert.equal(B.calls, A.calls + stone, `${family} #${i}: mesma quantidade de sorteios (+1 da pedra)`);
+      // E9: a Pedra de Aprimoramento entrou no FIM das lutas (Lâminas e Boxe) · E17: Pó de Forja, Aurion,
+      // Prata, fichas, Minério, Madeira e Bastor também no FIM (ou sem sorteio): os sorteios de antes não mudam
+      assert.deepEqual(agora.filter((x) => !NOVOS.has(x.id)), antes, `${family} #${i}`);
+      assert.ok(B.calls >= A.calls, `${family} #${i}: os sorteios de antes vêm primeiro`);
       assert.deepEqual(Gear.rollLoot(family, ctx, seeded(i * 7919 + family.length)), agora);
     }
   }
@@ -89,5 +93,5 @@ test("E3: esperado por vitória confere com a regra (lâminas, 4 min, vitória)"
   assert.equal(e.selo_forja.expected, 0.06);
   assert.equal(e.selo_forja.min, 0);
   const lost = Items.lootExpectation("fight:laminas", { win: false, activeMs: 240000 });
-  assert.deepEqual(Object.keys(lost), ["fragmento_lamina"]);
+  assert.deepEqual(Object.keys(lost), ["fragmento_lamina", "po_forja"]); // E17: o Pó de Forja garantido
 });

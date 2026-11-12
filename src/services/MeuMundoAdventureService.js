@@ -157,7 +157,8 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   // E12: vitória num setor do Domínio usa a tabela do setor (`domain:<id>:<setor>`, paga por
   // vitória) com o bônus da primeira vitória (mig 449); a derrota segue com a das Lâminas.
   const domainWin = origin === "domain" && verdict.win && !verdict.abandoned && setup.domain && setup.sector;
-  const lootTable = (domainWin && RewardService().domainTableOf(setup.domain, setup.sector)) || RewardService().tableOf(activity);
+  // E17: Hall (PvP) paga só ficha; a rua tem tabela própria (elite = fator ≥ 1,40 da régua)
+  const lootTable = (domainWin && RewardService().domainTableOf(setup.domain, setup.sector)) || RewardService().fightTableOf(origin, setup) || RewardService().tableOf(activity);
   const lootGiven = !(verdict.abandoned || godLoss || (!verdict.win && practice.activeMs < LOOT_MIN_ACTIVE_MS));
   const lootFirst = lootGiven && verdict.win ? await RewardService().claimFirst(c, idUser, lootTable, fight.id_fight) : false;
   const drops = lootGiven

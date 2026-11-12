@@ -15,6 +15,8 @@ function qtyOf(q, { win, activeMs }, R) {
     const minutes = Math.max(0, activeMs || 0) / 60000;
     return Math.max(1, Math.min(4, Math.round(minutes / 2))) + (win ? q.win || 0 : 0);
   }
+  // E17: fichas = minutos ativos ÷ 2 (arredondado) + 1 se venceu, sem teto nem sorteio
+  if (q && q.tokens) return Math.round(Math.max(0, activeMs || 0) / 120000) + (win ? 1 : 0);
   return 0;
 }
 
@@ -41,7 +43,7 @@ function rollTable(tableId, ctx, R, rarityOf) {
 /** Faixa [mín, máx] de uma linha para um contexto (sem sorteio). */
 function rangeOf(q, ctx) {
   if (Array.isArray(q)) return [q[0], q[1]];
-  if (q && q.byMinutes) {
+  if (q && (q.byMinutes || q.tokens)) {
     const n = qtyOf(q, ctx, () => 0);
     return [n, n];
   }

@@ -14,10 +14,10 @@ const legacyIds = [
   "mola_precisao", "injetor_vapor", "capacitor", "rolamento", "receita_eter", "cristal_morkhan", "pintura_arma_eter",
 ];
 
-test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16)", () => {
+test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16; +6 fichas da E17)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 309);
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 309);
+  assert.equal(pub.items.length, 315);
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 315);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);
@@ -91,6 +91,8 @@ test("todas as receitas e peças são alcançáveis sem depender de sorte rara",
   for (const g of require("../../src/utils/mmItems/catalog/bestiary").ITEMS) later.add(g.id);
   // E13: runas caem por chance nos Domínios e sobem pela fusão — não travam progresso nenhum
   const optional = (g) => g.category === "rune" || g.category === "consumable"; // E16: preparo é opcional (nunca trava progresso)
+  // E17: fichas caem nas partidas (garantido) — não são receita nem loja
+  for (const g of Gear.GEAR.filter((x) => x.category === "currency" && x.token)) reachable.add(g.id);
   assert.deepEqual(Gear.GEAR.filter((g) => !g.set && !later.has(g.id) && !optional(g) && !reachable.has(g.id)).map((g) => g.id), []);
   for (const item of Gear.GEAR.filter((g) => g.category === "material")) {
     assert.ok(Gear.RECIPES.some((r) => r.needs[item.id]) || ["fragmento_lamina", "couro_reforcado", "nucleo_eter", "selo_forja",

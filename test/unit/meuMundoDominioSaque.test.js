@@ -128,9 +128,9 @@ test("E12: itens que passaram a cair perderam a origem declarada e mostram a tab
     const src = Items.sourcesOf(g);
     assert.ok(src.some((x) => /Domínio/.test(x)), `${id}: ${JSON.stringify(src)}`);
   }
-  // o que ainda espera a E17 segue declarado
-  for (const id of ["minerio_ferro", "brasa_solar", "frag_primeira_chama", "receita_lamina_correntes"]) assert.ok(Array.isArray(Items.GEAR_BY_ID.get(id).source), id);
+  // E17: o que esperava a E17 também saiu das tabelas (Arena, rua, minijogos) e perdeu a origem declarada
+  for (const id of ["minerio_ferro", "brasa_solar", "frag_primeira_chama", "receita_lamina_correntes"]) assert.ok(!Array.isArray(Items.GEAR_BY_ID.get(id).source) && Items.sourcesOf(Items.GEAR_BY_ID.get(id)).length > 0, id);
   // agrupado: a Pedra não vira 60 linhas
-  assert.ok(Items.sourcesOf(Items.GEAR_BY_ID.get("pedra_aprimoramento")).length <= 4);
+  assert.ok(Items.sourcesOf(Items.GEAR_BY_ID.get("pedra_aprimoramento")).filter((x) => /Domínio/.test(x)).length <= 4); // E17: rua e troca somam linhas fora dos Domínios
   assert.deepEqual(Items.sourcesOf(Items.GEAR_BY_ID.get("po_de_lua")), ["Domínio Floresta da Lua: garantido em todo setor (1 a 4 por vitória)."]);
 });

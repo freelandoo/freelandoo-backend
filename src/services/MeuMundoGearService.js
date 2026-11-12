@@ -77,6 +77,8 @@ const ERRORS = {
   offer: ["Há um encanto sorteado esperando a sua escolha", 409],
   nooffer: ["Nenhum encanto esperando escolha", 404],
   choice: ["Essa opção não saiu no sorteio", 400],
+  offerid: ["Essa troca não existe", 404],
+  tokens: ["Fichas insuficientes", 402],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -715,6 +717,29 @@ class MeuMundoGearService {
     });
   }
 
+  /**
+   * E17: LOJA DE TROCA — `qty` vezes a oferta `offer` (fichas → itens). Pilha cheia recusa inteiro.
+   * Mesma chave = o mesmo recibo. A E19 acrescenta a loja de evento (só com o evento ligado).
+   */
+  static async exchange(idUser, body = {}) {
+    const o = Items.EXCHANGE.OFFER_BY_ID.get(String(body.offer || ""));
+    if (!o) return fail("offerid");
+    const qty = body.qty == null ? 1 : Math.floor(Number(body.qty));
+    if (!Number.isInteger(qty) || qty < 1 || qty > 999) return fail("owned");
+    return withReceipt(idUser, "exchange", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      if (o.event && !(await MeuMundoGearService.eventOpen(c, o.event, ctx.now))) return fail("offerid");
+      const owned = await GearStore.owned(c, idUser);
+      const cost = o.cost * qty;
+      if ((owned[o.token]?.qty || 0) < cost) return fail("tokens");
+      for (const [id, n] of Object.entries(o.gives)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id)) && (owned[id]?.qty || 0) + n * qty > Gear.STACK_MAX) return fail("max");
+      if ((await GearStore.addStack(c, idUser, o.token, -cost)) == null) return fail("tokens");
+      const got = {};
+      for (const [id, n] of Object.entries(o.gives)) { await putItem(c, idUser, Gear.GEAR_BY_ID.get(id), n * qty, "exchange"); got[id] = n * qty; }
+      return { result: { offer: o.id, qty, token: o.token, cost }, deltas: {}, items: lines({ [o.token]: -cost, ...got }) };
+    });
+  }
+
   /** E9: o refino sorteado (forge-v1) acabou — o aparelho antigo recebe 410 e recarrega. */
   static async refine() {
     return fail("gone");
@@ -846,6 +871,8 @@ MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {
   return out;
 };
 MeuMundoGearService.R = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
+/** E19 sobrescreve: a loja de evento só abre com o evento ligado pelo admin. */
+MeuMundoGearService.eventOpen = async () => false;
 MeuMundoGearService.isInstanceItem = isInstanceItem;
 MeuMundoGearService.prepare = prepare;
 

@@ -341,6 +341,10 @@ const gearAwaken = forgeAction("awaken");
 // E15: encanto (sortear e escolher)
 const gearEnchant = forgeAction("enchant");
 const gearEnchantResolve = forgeAction("enchantResolve");
+// E17: loja de troca (dentro da Loja; não depende da Forja)
+async function gearExchange(req, res) {
+  return reply(res, await gear().exchange(req.user.id_user, req.body || {}));
+}
 
 // mm3d-72: o apelido da pessoa e o do hóspede
 async function lifeNickname(req, res) {
@@ -579,6 +583,7 @@ module.exports = {
   gearAwaken,
   gearEnchant,
   gearEnchantResolve,
+  gearExchange,
   questGet,
   questAdvance,
   questMark,
