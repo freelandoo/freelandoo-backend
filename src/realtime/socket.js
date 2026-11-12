@@ -1,5 +1,5 @@
 const { Server } = require("socket.io");
-const jwt = require("jsonwebtoken");
+const { verifySession } = require("../utils/sessionToken");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("realtime");
@@ -140,13 +140,10 @@ function init(httpServer) {
       socket.handshake.auth?.token ||
       (socket.handshake.headers?.authorization || "").split(" ")[1];
     if (!token || typeof token !== "string") return next(new Error("missing_token"));
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
-    } catch {
-      return next(new Error("invalid_token"));
-    }
-    if (!decoded?.id_user) return next(new Error("invalid_token"));
+    // Só token de SESSÃO (HS256, com validade, sem `purpose`) — sessionToken.js.
+    const v = verifySession(token);
+    if (!v.ok) return next(new Error("invalid_token"));
+    const decoded = v.claims;
     // Conta sancionada ou desativada não abre socket (o JWT sozinho não sabe).
     accountUsable(decoded.id_user)
       .then((usable) => {

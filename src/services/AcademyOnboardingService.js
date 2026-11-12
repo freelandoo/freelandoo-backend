@@ -12,7 +12,7 @@
 // Até aceitar, a conta fica invisível no resto da plataforma
 // (utils/academyOnboarding.notPendingAcademyUserSql).
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
+const { signSession } = require("../utils/sessionToken");
 const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const AcademyStorage = require("../storages/AcademyStorage");
@@ -116,9 +116,7 @@ class AcademyOnboardingService {
       return { error: "Esta conta está bloqueada. Fale com o suporte da Freelandoo.", reason: "account_blocked", statusCode: 403 };
     }
     const email = String(user.email || "").trim().toLowerCase();
-    const token = jwt.sign({ id_user: user.id_user, email }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || "1d",
-    });
+    const token = signSession({ id_user: user.id_user, email });
     const isAdmin = await AuthStorage.isAdmin(pool, user.id_user);
     const tourSettings = await TourSettingsStorage.getSettings(pool);
     const pending = user.academy_onboarding_state === ESTADO_AGUARDANDO;

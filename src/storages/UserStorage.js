@@ -267,10 +267,14 @@ module.exports = {
     const values = [];
     let index = 1;
 
+    // Lista FECHADA. `data_nascimento` saiu (A3/A1-02): trocar a data pela
+    // conta furava o gate de idade das profissões (categoryMinAge). A data é a
+    // do cadastro; quem não tem preenche UMA vez pelo onboarding
+    // (OnboardingService grava só se estiver vazia). A tela /account nunca
+    // mandou este campo (manda `idade`, ignorado).
     const allowed = [
       "nome",
       "username",
-      "data_nascimento",
       "sexo",
       "telefone",
       "bio",

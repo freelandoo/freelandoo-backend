@@ -1,7 +1,8 @@
 // src/services/AuthService.js
 const bcrypt = require("bcrypt");
 const ContentReferralService = require("./ContentReferralService");
-const jwt = require("jsonwebtoken");
+const { signSession } = require("../utils/sessionToken");
+const loginThrottle = require("../utils/loginThrottle");
 const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
 const pool = require("../databases");
@@ -14,6 +15,12 @@ const ConsentStorage = require("../storages/ConsentStorage");
 const FraudService = require("./FraudService");
 const { SIGNUP_TERMS_VERSION, SIGNUP_ACTION_KEY } = require("../utils/terms");
 const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
+
+// Hash fixo para a conferência "de mentira" quando o e-mail não existe: o
+// login responde no mesmo tempo para conta que existe e que não existe (sem
+// isto, a resposta rápida entregava quem NÃO tem conta).
+let dummyHashPromise = null;
+const dummyHash = () => (dummyHashPromise ||= bcrypt.hash("freelandoo-sem-conta", 10));
 
 // Conta bloqueada no painel de fraude (mig 201) não entra. Checado no login —
 // e só nele: o authMiddleware é puro JWT (zero I/O) e colocar uma consulta lá
@@ -360,18 +367,27 @@ class AuthService {
           return { error: "Email e senha são obrigatórios" };
         }
 
-        const user = await AuthStorage.findUserAuthByEmail(pool, email);
-
-        if (!user) {
-          return { error: "Email ou senha inválidos" };
+        // Bloqueio progressivo por CONTA (A3) — antes de qualquer consulta,
+        // igual para e-mail que existe e que não existe.
+        const lock = loginThrottle.check(email);
+        if (lock.locked) {
+          log.warn("signin.account_throttled", { retryAfterSeconds: lock.retryAfterSeconds });
+          return { error: loginThrottle.lockedMessage(lock.retryAfterSeconds), statusCode: 429 };
         }
+
+        const user = await AuthStorage.findUserAuthByEmail(pool, email);
 
         // Conta sem senha (só Google, ou criada pela academia antes do primeiro
         // acesso, mig 296): bcrypt.compare com hash nulo lança — vira 500.
-        const senhaValida = user.senha ? await bcrypt.compare(senha, user.senha) : false;
-        if (!senhaValida) {
+        // Sem conta ou sem senha, compara com o hash fixo: mesmo tempo de resposta.
+        const senhaValida = user?.senha
+          ? await bcrypt.compare(senha, user.senha)
+          : (await bcrypt.compare(senha, await dummyHash()), false);
+        if (!user || !senhaValida) {
+          loginThrottle.fail(email);
           return { error: "Email ou senha inválidos" };
         }
+        loginThrottle.clear(email);
 
         // Checado DEPOIS da senha de propósito: responder "bloqueada" antes de
         // validar a credencial entregaria a existência da conta a quem só está
@@ -381,11 +397,7 @@ class AuthService {
           return { error: BLOCKED_MESSAGE, reason: "account_blocked", statusCode: 403 };
         }
 
-        const token = jwt.sign(
-          { id_user: user.id_user, email },
-          process.env.JWT_SECRET,
-          { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
-        );
+        const token = signSession({ id_user: user.id_user, email });
 
 
         // "Esteve online agora" (mig 228). O pulso normal é o heartbeat de
@@ -485,7 +497,14 @@ class AuthService {
           if (!user) {
             user = await AuthStorage.findUserForGoogleByEmail(client, email);
             if (user) {
-              await AuthStorage.linkGoogleSub(client, user.id_user, googleSub);
+              // Conta NUNCA confirmada (ativo = false): quem pôs a senha nunca
+              // provou ser dono do e-mail — pode ser alguém que cadastrou o
+              // e-mail alheio esperando a dona chegar (pré-sequestro). O Google
+              // acaba de provar a dona: a senha de antes cai. Ela cria outra
+              // por "Esqueci a senha" se quiser.
+              const dropPassword = !user.ativo;
+              await AuthStorage.linkGoogleSub(client, user.id_user, googleSub, { dropPassword });
+              if (dropPassword) log.warn("googleSignin.unverified_password_dropped", { id_user: user.id_user });
               user.google_sub = googleSub;
               user.ativo = true;
             }
@@ -530,11 +549,7 @@ class AuthService {
             return { error: BLOCKED_MESSAGE, reason: "account_blocked", statusCode: 403 };
           }
 
-          const token = jwt.sign(
-            { id_user: user.id_user, email },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
-          );
+          const token = signSession({ id_user: user.id_user, email });
 
           if (isNew) {
             FraudService.evaluateUser(user.id_user).catch(() => {});
@@ -853,6 +868,9 @@ class AuthService {
     if (!token || !novaSenha) {
       return { error: "Token e nova senha são obrigatórios" };
     }
+    // Mesma régua do cadastro (antes, o link aceitava "1").
+    const passCheck = validatePasswordStrength(novaSenha);
+    if (!passCheck.ok) return { error: passCheck.error, statusCode: 400 };
 
     const client = await pool.connect();
     return runWithLogs(
@@ -863,10 +881,9 @@ class AuthService {
         try {
           await client.query("BEGIN");
 
-          const reset = await AuthStorage.findValidPasswordResetByToken(
-            client,
-            token
-          );
+          // Consome o link numa tacada só (UPDATE … WHERE used = false): dois
+          // envios ao mesmo tempo não trocam a senha duas vezes.
+          const reset = await AuthStorage.consumePasswordResetToken(client, token);
           if (!reset) {
             await client.query("ROLLBACK");
             return { error: "Token inválido ou expirado" };
@@ -875,9 +892,15 @@ class AuthService {
           const senhaHash = await bcrypt.hash(novaSenha, 10);
 
           await AuthStorage.updateUserPassword(client, reset.id_user, senhaHash);
-          await AuthStorage.markPasswordResetUsed(client, reset.id_reset);
+          // Os outros pedidos em aberto desta conta caem junto: o link velho
+          // que ficou numa caixa de e-mail não troca a senha nova.
+          await AuthStorage.revokeOpenPasswordResets(client, reset.id_user);
 
           await client.query("COMMIT");
+
+          // Quem trocou a senha pelo e-mail sai da trava de login.
+          const owner = await client.query(`SELECT email FROM tb_user WHERE id_user = $1`, [reset.id_user]);
+          if (owner.rows[0]?.email) loginThrottle.clear(owner.rows[0].email);
 
           return { message: "Senha redefinida com sucesso" };
         } catch (err) {

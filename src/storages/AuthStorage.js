@@ -102,10 +102,14 @@ class AuthStorage {
     return r.rowCount ? r.rows[0] : null;
   }
 
-  static async linkGoogleSub(db, id_user, googleSub) {
+  static async linkGoogleSub(db, id_user, googleSub, { dropPassword = false } = {}) {
     await db.query(
-      `UPDATE tb_user SET google_sub = $2, ativo = TRUE WHERE id_user = $1`,
-      [id_user, googleSub]
+      `UPDATE tb_user
+          SET google_sub = $2,
+              ativo = TRUE,
+              senha = CASE WHEN $3::boolean THEN NULL ELSE senha END
+        WHERE id_user = $1`,
+      [id_user, googleSub, !!dropPassword]
     );
   }
 
@@ -297,6 +301,26 @@ class AuthStorage {
       senhaHash,
       id_user,
     ]);
+  }
+
+  static async consumePasswordResetToken(client, token) {
+    const r = await client.query(
+      `UPDATE tb_user_password_reset
+          SET used = true
+        WHERE token = $1
+          AND used = false
+          AND expires_at > now()
+        RETURNING id_reset, id_user`,
+      [token]
+    );
+    return r.rowCount ? r.rows[0] : null;
+  }
+
+  static async revokeOpenPasswordResets(client, id_user) {
+    await client.query(
+      `UPDATE tb_user_password_reset SET used = true WHERE id_user = $1 AND used = false`,
+      [id_user]
+    );
   }
 
   static async markPasswordResetUsed(client, id_reset) {

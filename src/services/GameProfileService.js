@@ -22,7 +22,7 @@
 //    (`visibility`, que decide quem vê a estante aqui dentro). As duas são
 //    checadas, e a segunda no SERVICE — nunca só no front.
 
-const jwt = require("jsonwebtoken");
+const { signPurposeToken, verifyPurposeToken } = require("../utils/sessionToken");
 const pool = require("../databases");
 const GameProfileStorage = require("../storages/GameProfileStorage");
 const SubjectCommunityStorage = require("../storages/SubjectCommunityStorage");
@@ -119,10 +119,12 @@ class GameProfileService {
         return { error: "Conexão indisponível no momento.", statusCode: 503 };
       }
 
-      const state = jwt.sign(
-        { id_user, provider, purpose: "game_connect", back: this._safeReturn(returnPath) },
-        process.env.JWT_SECRET,
-        { expiresIn: STATE_TTL }
+      // Chave própria do propósito (sessionToken.js): o estado viaja na URL
+      // de volta da Steam e NÃO pode valer como login.
+      const state = signPurposeToken(
+        "game_connect",
+        { id_user, provider, back: this._safeReturn(returnPath) },
+        STATE_TTL
       );
       // ⚠️ `/gamer` e não `/games`: é onde a rota de callback está montada. O
       // erro aqui não aparece no nosso lado — ele vira um 404 DEPOIS de a
@@ -141,13 +143,11 @@ class GameProfileService {
       const adapter = providers.get(provider);
       if (!adapter) return { error: "Plataforma desconhecida.", statusCode: 404 };
 
-      let claim;
-      try {
-        claim = jwt.verify(String(query.state || ""), process.env.JWT_SECRET);
-      } catch {
+      const claim = verifyPurposeToken("game_connect", query.state);
+      if (!claim) {
         return { error: "O pedido de conexão expirou. Tente de novo.", statusCode: 400 };
       }
-      if (claim.purpose !== "game_connect" || claim.provider !== provider) {
+      if (claim.provider !== provider) {
         return { error: "Pedido de conexão inválido.", statusCode: 400 };
       }
 

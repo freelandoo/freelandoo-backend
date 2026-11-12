@@ -1,4 +1,4 @@
-const jwt = require("jsonwebtoken");
+const { verifySession } = require("../utils/sessionToken");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("authMiddleware");
@@ -16,26 +16,25 @@ function authMiddleware(req, res, next) {
 
   const [, token] = authHeader.split(" ");
 
-  try {
-    // 🔐 valida token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // 🧠 anexa o usuário na request
-    req.user = {
-      id_user: decoded.id_user,
-      email: decoded.email,
-    };
-
-    return next();
-  } catch (err) {
+  // 🔐 só token de SESSÃO (HS256, com validade, sem `purpose`) — ver sessionToken.js
+  const v = verifySession(token);
+  if (!v.ok) {
     log.warn("invalid_token", {
       path: req.originalUrl || req.url,
-      message: err?.message,
+      message: v.reason,
     });
     return res.status(401).json({
       error: "Token inválido ou expirado",
     });
   }
+
+  // 🧠 anexa o usuário na request
+  req.user = {
+    id_user: v.claims.id_user,
+    email: v.claims.email,
+  };
+
+  return next();
 }
 
 module.exports = authMiddleware;

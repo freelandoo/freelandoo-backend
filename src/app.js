@@ -119,6 +119,9 @@ app.use(
 // pra não devolver 429 em retry legítimo do provedor.
 app.use("/webhooks", webhooksRoutes);
 
+// Teto global de requisições por IP (A3) — depois dos webhooks, antes de tudo.
+app.use(require("./middlewares/rateLimit").global);
+
 // Limite de 1MB cobre praticamente todo POST/PUT JSON do projeto
 // (signin, perfil, comentário, etc). Uploads de arquivo usam multer
 // em outras rotas e têm seu próprio limite.

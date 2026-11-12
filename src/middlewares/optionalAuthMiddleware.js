@@ -1,6 +1,7 @@
-const jwt = require("jsonwebtoken");
+const { verifySession } = require("../utils/sessionToken");
 
-// Anexa req.user se houver token válido. Não bloqueia requests anônimos.
+// Anexa req.user se houver token de sessão válido. Não bloqueia requests
+// anônimos: token inválido (ou de outro propósito) segue como anônimo.
 function optionalAuthMiddleware(req, _res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return next();
@@ -8,12 +9,8 @@ function optionalAuthMiddleware(req, _res, next) {
   const [, token] = authHeader.split(" ");
   if (!token) return next();
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { id_user: decoded.id_user, email: decoded.email };
-  } catch {
-    // ignora token inválido — segue como anônimo
-  }
+  const v = verifySession(token);
+  if (v.ok) req.user = { id_user: v.claims.id_user, email: v.claims.email };
   return next();
 }
 

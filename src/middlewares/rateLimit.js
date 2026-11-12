@@ -87,4 +87,22 @@ const checkout = makeLimiter({
   max: 30,
 });
 
-module.exports = { auth, lookup, upload, chat, checkout };
+// Teto GLOBAL por IP (A3/A4.6), por baixo dos limitadores acima: segura a
+// enxurrada de UMA máquina sem tocar no uso normal. Folgado de propósito —
+// parte das chamadas chega pelo proxy da Vercel (`app/api/*`), e aí o IP é o
+// da Vercel, compartilhado por muita gente. Webhooks ficam de fora (montados
+// antes), assim como o socket.io e o Colyseus (não passam pelo Express) e o
+// /health. Ajuste fino sem deploy de código: RATE_LIMIT_GLOBAL_MAX.
+const GLOBAL_MAX = Number(process.env.RATE_LIMIT_GLOBAL_MAX) > 0
+  ? Number(process.env.RATE_LIMIT_GLOBAL_MAX)
+  : 1200;
+const global = rateLimit({
+  windowMs: 60 * 1000,
+  limit: GLOBAL_MAX,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  handler: buildHandler("global"),
+  skip: (req) => isDev || req.method === "OPTIONS" || req.path === "/health",
+});
+
+module.exports = { auth, lookup, upload, chat, checkout, global };
