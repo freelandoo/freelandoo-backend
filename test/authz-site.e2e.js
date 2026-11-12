@@ -371,7 +371,7 @@ const FORBIDDEN_SERVICE_KEYS = ["affiliate_percent", "affiliates_allowed", "crea
       ["GET", "/admin/managed-sites"], ["GET", "/admin/managed-sites/requests"], ["GET", "/admin/managed-sites/templates"],
       ["GET", `/admin/managed-sites/${pub}`],
       ["GET", "/admin/booking-payouts"], ["POST", "/admin/booking-payouts/1/mark-paid"],
-      ["GET", "/admin/booking-fees"], ["GET", "/admin/site-assets"], ["GET", "/admin/site-texts"],
+      ["GET", "/admin/booking-fees"], ["POST", "/admin/site-assets/hero"], ["DELETE", "/admin/site-assets/hero"], ["POST", "/admin/site-texts/hero"],
     ];
     for (const [m, p] of ADMIN_ROUTES) {
       r = await call(m, p, { token: tB, body: m === "GET" ? undefined : {} });
