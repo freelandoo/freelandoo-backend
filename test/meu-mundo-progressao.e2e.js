@@ -157,6 +157,40 @@ const STEPS = [
       check("E14: a luta soma a passiva da arma desperta", g.dmg > Gear.gearBonus({ weapon: { id: "espada_carmesim", level: 11, grade: 1 } }).dmg);
     } finally { c.release(); }
   },
+  // ── E15: Encantamento ──
+  async ({ pool, Service, id, other, qty, setQty, inst, give }) => {
+    const helm = require("../src/utils/mmItems").GEAR_BY_ID.get("oculos_engenheiro"); // T2: 20 Pó + 2 Cristal
+    const piece = await give(id, helm.id);
+    await setQty(id, "po_refino", 25);
+    await setQty(id, "cristal_bruto", 2);
+    check("E15: sem sorteio não há o que escolher", (await Service.enchantResolve(id, { instance: piece, choice: null, key: key() })).code === "nooffer");
+    const R0 = Service.R;
+    Service.R = () => 0;
+    const ek = key();
+    const [a, b] = await Promise.all([Service.enchant(id, { instance: piece, key: ek }), Service.enchant(id, { instance: piece, key: ek })]);
+    Service.R = R0;
+    check("E15: sortear cobra 10 × tier Pó e tier Cristal uma vez", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "po_refino")) === 5 && (await qty(id, "cristal_bruto")) === 0);
+    const options = a.receipt.result.options;
+    check("E15: o sorteio traz opções do slot sem repetir a principal nem a secundária", options.length >= 1 && options.every((k) => !helm.keys.includes(k)));
+    const view = a.bag.forge[piece].enchant;
+    check("E15: a bancada mostra o sorteio com o bônus de cada opção", view.offer && view.offer.length === options.length && view.offer.every((o) => o.bonus[o.key] > 0));
+    check("E15: com sorteio esperando, outro sorteio recusa", (await Service.enchant(id, { instance: piece, key: key() })).code === "offer");
+    const before = JSON.stringify((await inst(piece)).affixes);
+    check("E15: opção que não saiu recusa", (await Service.enchantResolve(id, { instance: piece, choice: "dmg", key: key() })).code === "choice");
+    const keep = await Service.enchantResolve(id, { instance: piece, choice: null, key: key() });
+    check("E15: recusar não muda nada e não cobra de novo", !keep.error && keep.receipt.result.kept === true && !(await inst(piece)).affixes.enchant && (await qty(id, "po_refino")) === 5 && JSON.stringify(keep.receipt.result.bonusAfter) === JSON.stringify(keep.receipt.result.bonusBefore));
+    check("E15: depois de recusar não há sorteio esperando", !(await inst(piece)).affixes.offer && before.includes("offer"));
+    await setQty(id, "cristal_bruto", 2);
+    await setQty(id, "po_refino", 20);
+    const roll = await Service.enchant(id, { instance: piece, key: key() });
+    const pick = roll.receipt.result.options[0];
+    const take = await Service.enchantResolve(id, { instance: piece, choice: pick, key: key() });
+    check("E15: aceitar troca a chave secundária pela escolhida", !take.error && (await inst(piece)).affixes.enchant === pick && take.receipt.result.to === pick && take.receipt.result.bonusAfter[pick] > 0);
+    check("E15: outra conta não encanta a cópia", (await Service.enchant(other, { instance: piece, key: key() })).code === "instance");
+    const off = require("../src/utils/mmItems").GEAR.find((g) => g.slot === "offhand" && g.keys);
+    const shield = await give(id, off.id);
+    check("E15: peça sem outra chave no slot não encanta", (await Service.enchant(id, { instance: shield, key: key() })).code === "noenchant");
+  },
 ];
 
 main().catch((error) => { console.error(error); process.exit(1); });

@@ -16,7 +16,7 @@ const HOLDERS = `SELECT l.id_instance, l.id_character, l.slot FROM tb_mm_loadout
 const instOut = (x) => x && ({
   id: x.id_instance, item: x.item_id, plus: x.plus, grade: x.grade, ascended: x.ascended, awakened: x.awakened,
   sockets: x.sockets || [], locked: x.locked, refineFailures: x.refine_failures, version: Number(x.version),
-  rules: x.rules, origin: x.origin,
+  rules: x.rules, origin: x.origin, affixes: x.affixes || {},
   equippedBy: x.equipped_by || null, equippedSlot: x.equipped_slot || null,
 });
 
@@ -168,6 +168,11 @@ class MeuMundoGearStorage {
   /** E13: as runas engastadas (lista de ids, na ordem dos engastes). */
   static async setSockets(c, idUser, idInstance, sockets) {
     await c.query(`UPDATE tb_mm_gear_instance SET sockets = $3::jsonb, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, JSON.stringify(sockets)]);
+  }
+
+  /** E15: `affixes` da cópia (encanto escolhido e o sorteio que espera escolha). */
+  static async setAffixes(c, idUser, idInstance, affixes) {
+    await c.query(`UPDATE tb_mm_gear_instance SET affixes = $3::jsonb, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, JSON.stringify(affixes)]);
   }
 
   /** E14: Ascensão (libera +11…+15 e um engaste). */

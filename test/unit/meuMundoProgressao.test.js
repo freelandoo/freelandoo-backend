@@ -76,6 +76,47 @@ test("E13 — runas de grau I e II caem nos Domínios no fim da lista (os sortei
   for (const kind of Object.keys(Runes.RUNE_KINDS)) assert.ok(Items.lootSourcesOf(`runa_${kind}_1`).length > 0, kind);
 });
 
+// ── E15: Encantamento ──
+const Enchant = require("../../src/utils/mmItems/rules/enchant");
+
+test("E15 — sorteio: até 3 chaves do slot, nunca a principal nem a secundária de agora; custo 10 × tier Pó + tier Cristal", () => {
+  const helm = Items.GEAR.find((g) => g.slot === "helm" && g.keys);
+  const seq = [0.1, 0.9, 0.5];
+  let i = 0;
+  const opts = Enchant.rollOptions(helm, null, () => seq[i++ % 3]);
+  assert.ok(opts.length >= 1 && opts.length <= 3);
+  assert.strictEqual(new Set(opts).size, opts.length);
+  for (const k of opts) assert.ok(!helm.keys.includes(k) && B.slotKeys("helm").includes(k), k);
+  assert.deepStrictEqual(Enchant.enchantCost(helm).needs, { po_refino: 10 * helm.tier, cristal_bruto: helm.tier });
+  // mão secundária só tem 2 chaves: não encanta
+  const off = Items.GEAR.find((g) => g.slot === "offhand" && g.keys);
+  assert.strictEqual(Enchant.enchantCost(off).error, "noenchant");
+});
+
+test("E15 — encantada: a secundária vira a chave nova (ênfase 0,5) e soma a fatia 0,05 pelo peso do slot", () => {
+  const sword = Items.GEAR_BY_ID.get("linha_garras_lunares"); // dmg, acc
+  const eff = Enchant.effectiveKeys(sword, "power");
+  assert.deepStrictEqual(eff, ["dmg", "power"]);
+  const plain = Items.pieceBonus(sword, 0, 1);
+  const enc = Items.pieceBonus(sword, 0, 1, { enchant: "power" });
+  assert.ok(!enc.acc, "a secundária de antes sai");
+  const expected = B.piece("power", "weapon", "legendary", 0, 1, 0.5) + B.sourceCap("power", "enchant") * B.WEIGHT.power.weapon;
+  assert.ok(near(enc.power, expected, 1e-4), enc.power + " × " + expected);
+  assert.ok(near(enc.dmg, plain.dmg, 1e-9));
+  // chave que não é do slot é ignorada (vale a de antes)
+  assert.deepStrictEqual(Enchant.effectiveKeys(sword, "hp"), sword.keys);
+  const g = Gear.gearBonus({ weapon: { id: sword.id, level: 0, grade: 1, enchant: "power" } });
+  assert.ok(g.power > 0 && !g.acc);
+});
+
+test("E15 — todos os slots de uma chave encantados = a fatia inteira", () => {
+  for (const k of B.KEYS) {
+    let sum = 0;
+    for (const slot of Object.keys(B.WEIGHT[k])) sum += Enchant.enchantValue({ slot, tier: 6, keys: ["x", "y"] }, k)[k];
+    assert.ok(near(sum, B.sourceCap(k, "enchant"), 1e-9), k);
+  }
+});
+
 // ── E14: Ascensão e Despertar ──
 const Ascend = require("../../src/utils/mmItems/rules/ascend");
 

@@ -10,6 +10,7 @@ const Salvage = require("./salvage");
 const B = require("./budget");
 const Runes = require("./runes");
 const Ascend = require("./ascend");
+const Enchant = require("./enchant");
 
 const { GEAR, GEAR_BY_ID, RECIPES, DESCRIPTIONS } = Items;
 
@@ -39,6 +40,8 @@ function itemDetails(item) {
   // E9: aprimoramento garantido (forge-v2) em todo equipamento
   if (Upgrade.upgradable(item)) uses.push("Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.");
   if (Upgrade.upgradable(item)) uses.push("Desmontar na Forja: devolve parte dos materiais e Pó de Refino, nunca Esmeralda.");
+  // E15: encanto
+  if (Enchant.enchantable(item) && Enchant.pool(item).length) uses.push(`Encantar na Forja: troca a chave secundária por outra do slot (${10 * item.tier} Pó de Refino e ${item.tier} Cristal Bruto por sorteio de até 3 opções; recusar não muda nada).`);
   // E14: Ascensão e Despertar
   if (Ascend.ascendable(item)) uses.push(`Ascender no +${Ascend.ASCEND_AT} com ${2 * item.tier} Selo(s) de Domínio: libera o +11 ao +15 e um engaste a mais; depois, Despertar liga a passiva da peça.`);
   if (Salvage.transmutable(item)) uses.push("Transmutar na Forja: 3 viram 1 de outro material do mesmo tier.");
@@ -82,7 +85,7 @@ function gearBonus(equipped) {
   for (const [k, e] of Object.entries(equipped || {})) {
     const it = e && GEAR_BY_ID.get(e.id);
     const s = normalizeSlot(k, it);
-    if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Math.floor(e.level || 0)), grade: Math.max(1, Math.floor(e.grade || 1)), sockets: Array.isArray(e.sockets) ? e.sockets.slice(0, Runes.MAX_SOCKETS) : [], awakened: !!e.awakened };
+    if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Math.floor(e.level || 0)), grade: Math.max(1, Math.floor(e.grade || 1)), sockets: Array.isArray(e.sockets) ? e.sockets.slice(0, Runes.MAX_SOCKETS) : [], awakened: !!e.awakened, enchant: e.enchant || null };
   }
   const { bonus } = Items.bonusOf(Object.values(bySlot));
   const out = {};
@@ -119,6 +122,8 @@ function publicGear() {
     salvage: { share: Salvage.SALVAGE_SHARE, confirmTier: Salvage.CONFIRM_TIER, transmuteIn: Salvage.TRANSMUTE_IN, transmuteCoins: Salvage.TRANSMUTE_COINS },
     // E14: Ascensão (no +10: 2 × tier Selos) e Despertar (ascendida: tier Essências + tier Selos)
     ascend: { at: Ascend.ASCEND_AT, seal: Ascend.SEAL, essence: Ascend.ESSENCE, sealPerTier: 2 },
+    // E15: encanto — sorteio de até `options` chaves do slot, custo 10 × tier Pó + tier Cristal
+    enchant: { options: Enchant.OPTIONS, powder: Enchant.POWDER, crystal: Enchant.CRYSTAL },
     // E13: runas — engastes por raridade (+1 ascendida, teto 3), fusão 3 → 1, valor de cada grau por chave
     runes: { sockets: Runes.SOCKETS, maxSockets: Runes.MAX_SOCKETS, fuseIn: Runes.FUSE_IN, grades: Runes.GRADES, kinds: Runes.RUNE_KINDS,
       value: Object.fromEntries(Object.values(Runes.RUNE_KINDS).map((k) => [k, Array.from({ length: Runes.GRADES }, (_, i) => Math.round(Runes.runeValue(k, i + 1) * 100000) / 100000)])) },

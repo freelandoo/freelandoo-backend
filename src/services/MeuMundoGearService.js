@@ -23,6 +23,7 @@ const Upgrade = require("../utils/mmItems/rules/upgrade");
 const Salvage = require("../utils/mmItems/rules/salvage");
 const Runes = require("../utils/mmItems/rules/runes");
 const Ascend = require("../utils/mmItems/rules/ascend");
+const Enchant = require("../utils/mmItems/rules/enchant");
 const Adv = require("../utils/meuMundoAdventure");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const AdvStore = require("../storages/MeuMundoAdventureStorage");
@@ -72,6 +73,10 @@ const ERRORS = {
   plus: ["A Ascensão pede a peça no +10", 409],
   awakened: ["Essa peça já despertou", 409],
   notascended: ["O Despertar pede a peça ascendida", 409],
+  noenchant: ["Essa peça não tem outra chave para encantar", 409],
+  offer: ["Há um encanto sorteado esperando a sua escolha", 409],
+  nooffer: ["Nenhum encanto esperando escolha", 404],
+  choice: ["Essa opção não saiu no sorteio", 400],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -195,7 +200,7 @@ async function equippedFull(c, idUser, clan) {
   for (const [slot, x] of Object.entries(live)) {
     const it = Gear.GEAR_BY_ID.get(x.item);
     if (!it || (it.clan && it.clan !== clan) || weaponBlocked(it, body)) continue;
-    out[slot] = { id: x.item, level: x.plus, grade: x.grade, sockets: x.sockets || [], awakened: !!x.awakened };
+    out[slot] = { id: x.item, level: x.plus, grade: x.grade, sockets: x.sockets || [], awakened: !!x.awakened, enchant: (x.affixes && x.affixes.enchant) || null };
   }
   return out;
 }
@@ -223,7 +228,10 @@ async function bagState(c, idUser, coins, now = Date.now()) {
       // E11: o que a desmontagem devolve (o servidor recusa travada ou vestida)
       salvage: salvageBack(it, x),
       // E14: o que a Ascensão e o Despertar pedem (ou por que ainda não)
-      ascend: Ascend.ascendCost(it, x), awaken: { ...Ascend.awakenCost(it, x), bonus: Ascend.awakenValue(it) } };
+      ascend: Ascend.ascendCost(it, x), awaken: { ...Ascend.awakenCost(it, x), bonus: Ascend.awakenValue(it) },
+      // E15: custo do sorteio do encanto e o sorteio esperando escolha (cada opção com o bônus que daria)
+      enchant: { ...Enchant.enchantCost(it, enchantOf(x)), current: Enchant.effectiveKeys(it, enchantOf(x))[1] || null,
+        offer: offerOf(x) ? offerOf(x).map((k) => ({ key: k, bonus: Items.pieceBonus(it, x.plus, x.grade, { sockets: x.sockets, awakened: x.awakened, enchant: k }) })) : null } };
   }
   const stacks = {};
   for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
@@ -231,9 +239,9 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   const body = await MeuMundoStorage.getBody(c, idUser);
   return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full),
     // E7: bônus de cada slot pela régua (plus e grau da cópia vestida), para a tela de equipar
-    pieces: Object.fromEntries(Object.entries(full).map(([slot, e]) => [slot, Items.pieceBonus(Gear.GEAR_BY_ID.get(e.id), e.level || 0, e.grade || 1, { sockets: e.sockets, awakened: e.awakened })])),
+    pieces: Object.fromEntries(Object.entries(full).map(([slot, e]) => [slot, Items.pieceBonus(Gear.GEAR_BY_ID.get(e.id), e.level || 0, e.grade || 1, { sockets: e.sockets, awakened: e.awakened, enchant: e.enchant })])),
     instances: all.map((x) => ({
-      id: x.id, item: x.item, plus: x.plus, grade: x.grade, ascended: !!x.ascended, awakened: !!x.awakened, locked: x.locked || lockedInst.has(x.id),
+      id: x.id, item: x.item, plus: x.plus, grade: x.grade, ascended: !!x.ascended, awakened: !!x.awakened, enchant: enchantOf(x), locked: x.locked || lockedInst.has(x.id),
       // E13: runas engastadas e engastes da cópia; `version` confere o pedido de engaste
       sockets: x.sockets || [], socketsMax: Runes.socketsOf(Gear.GEAR_BY_ID.get(x.item), !!x.ascended), version: x.version,
       equippedBy: x.equippedBy, equippedSlot: x.equippedSlot, equippedHere: liveIds.has(x.id),
@@ -287,6 +295,10 @@ function salvageBack(it, inst) {
   for (const id of inst.sockets || []) if (Runes.parseRune(id)) back[id] = (back[id] || 0) + 1;
   return back;
 }
+
+/** E15: a chave encantada da cópia e o sorteio que espera escolha (em `affixes`). */
+const enchantOf = (inst) => (inst.affixes && inst.affixes.enchant) || null;
+const offerOf = (inst) => (inst.affixes && Array.isArray(inst.affixes.offer) && inst.affixes.offer.length ? inst.affixes.offer : null);
 
 /** E13: confere o `version` que o aparelho viu (opcional; diferente = a cópia mudou noutra aba). */
 const staleVersion = (body, inst) => body.version != null && body.version !== "" && Number(body.version) !== Number(inst.version);
@@ -658,6 +670,49 @@ class MeuMundoGearService {
       awakened: true, bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade, { sockets: inst.sockets }),
       bonusAfter: Items.pieceBonus(it, inst.plus, inst.grade, { sockets: inst.sockets, awakened: true }),
     }));
+  }
+
+  /**
+   * E15: SORTEAR o encanto da cópia: paga 10 × tier Pó + tier Cristal e grava até 3 opções (chaves do
+   * slot). Com sorteio esperando escolha, recusa (resolva antes). Mesma chave = o mesmo sorteio.
+   */
+  static async enchant(idUser, body = {}) {
+    return pieceStep(idUser, body, "gear_enchant", (it, inst) => Enchant.enchantCost(it, enchantOf(inst), !!offerOf(inst)),
+      async (c, inst) => {
+        const it = Gear.GEAR_BY_ID.get(inst.item);
+        const options = Enchant.rollOptions(it, enchantOf(inst), MeuMundoGearService.R);
+        await GearStore.setAffixes(c, idUser, inst.id, { ...(inst.affixes || {}), offer: options });
+        return options;
+      },
+      (it, inst, cost, options) => ({ current: Enchant.effectiveKeys(it, enchantOf(inst))[1] || null, options }));
+  }
+
+  /**
+   * E15: ESCOLHER uma opção do sorteio (`choice` = a chave) ou manter a atual (`choice: null`).
+   * Não cobra nada: o custo foi pago no sorteio. Manter não muda o bônus.
+   */
+  static async enchantResolve(idUser, body = {}) {
+    if (!KEY.test(String(body.instance || ""))) return fail("instance");
+    const choice = body.choice == null || body.choice === "" ? null : String(body.choice);
+    return withReceipt(idUser, "gear_enchant_resolve", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      const inst = await GearStore.lockInstance(c, idUser, String(body.instance));
+      if (!inst) return fail("instance");
+      const offer = offerOf(inst);
+      if (!offer) return fail("nooffer");
+      if (choice && !offer.includes(choice)) return fail("choice");
+      const it = Gear.GEAR_BY_ID.get(inst.item);
+      const before = enchantOf(inst);
+      const rest = { ...(inst.affixes || {}) };
+      delete rest.offer;
+      await GearStore.setAffixes(c, idUser, inst.id, choice ? { ...rest, enchant: choice } : rest);
+      const extra = { sockets: inst.sockets, awakened: inst.awakened };
+      return {
+        result: { item: it.id, instance: inst.id, kept: !choice, from: Enchant.effectiveKeys(it, before)[1] || null, to: Enchant.effectiveKeys(it, choice || before)[1] || null,
+          bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade, { ...extra, enchant: before }), bonusAfter: Items.pieceBonus(it, inst.plus, inst.grade, { ...extra, enchant: choice || before }) },
+        deltas: {}, items: [],
+      };
+    });
   }
 
   /** E9: o refino sorteado (forge-v1) acabou — o aparelho antigo recebe 410 e recarrega. */

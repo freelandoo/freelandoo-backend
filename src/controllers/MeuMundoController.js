@@ -334,6 +334,9 @@ const gearRuneFuse = forgeAction("fuseRunes");
 // E14: Ascensão e Despertar
 const gearAscend = forgeAction("ascend");
 const gearAwaken = forgeAction("awaken");
+// E15: encanto (sortear e escolher)
+const gearEnchant = forgeAction("enchant");
+const gearEnchantResolve = forgeAction("enchantResolve");
 
 // mm3d-72: o apelido da pessoa e o do hóspede
 async function lifeNickname(req, res) {
@@ -569,6 +572,8 @@ module.exports = {
   gearRuneFuse,
   gearAscend,
   gearAwaken,
+  gearEnchant,
+  gearEnchantResolve,
   questGet,
   questAdvance,
   questMark,
