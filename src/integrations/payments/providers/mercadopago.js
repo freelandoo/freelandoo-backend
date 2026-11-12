@@ -152,6 +152,24 @@ function buildItems(req) {
  * a ordem que a mig 231 desenhou, e invertê-la deixaria cobrança de pé no
  * gateway sem linha nenhuma aqui.
  */
+/**
+ * Cobrança com cupom Gold VENCE antes da reserva do cupom (3 h, GoldCouponService).
+ * Sem prazo, um Pix/boleto pago depois de a reserva cair usava o mesmo cupom
+ * numa segunda compra aberta nesse meio-tempo: dois descontos, um cupom.
+ */
+const COUPON_PAY_WINDOW_MS = 2.5 * 60 * 60 * 1000;
+function couponExpiry(req) {
+  if (!(req && req.payload && req.payload.gold_coupon_id)) return {};
+  const now = new Date();
+  const until = new Date(now.getTime() + COUPON_PAY_WINDOW_MS).toISOString();
+  return {
+    expires: true,
+    expiration_date_from: now.toISOString(),
+    expiration_date_to: until,
+    date_of_expiration: until,
+  };
+}
+
 async function createCheckout(req, { intentId, customerId } = {}) {
   const successUrl = resolveReturnUrl(req.successUrl, intentId);
   const cancelUrl = resolveReturnUrl(req.cancelUrl, intentId);
@@ -216,6 +234,7 @@ async function createCheckout(req, { intentId, customerId } = {}) {
         pending: successUrl,
       },
       ...(canAutoReturn(successUrl) ? { auto_return: "approved" } : {}),
+      ...couponExpiry(req),
       ...(req.customerEmail ? { payer: { email: String(req.customerEmail).trim() } } : {}),
       ...(notificationUrl() ? { notification_url: notificationUrl() } : {}),
     },

@@ -127,7 +127,9 @@ class CommunityListingOrderService {
           ctx.community.id_profile,
           params.id_listing
         );
-        if (!listing || listing.status !== "active") {
+        // A1-24/A2: só vende o que a vitrine MOSTRA (ativo E pago em dia).
+        // Rascunho (paid_until nulo) e anúncio vencido não vendem pelo id.
+        if (!listing || !listing.is_live) {
           return { error: "Anúncio não encontrado.", statusCode: 404 };
         }
         if (String(listing.id_user) === String(user.id_user)) {

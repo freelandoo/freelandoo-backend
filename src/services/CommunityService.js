@@ -976,18 +976,28 @@ class CommunityService {
   }
 
   // Registra o retorno de um link de share (público; chamado pela rota /cs).
-  static async logShareReturn(params, body) {
+  /**
+   * Visita pelo link de share. A marca do visitante (dedupe) é HMAC do IP real
+   * + navegador com chave do servidor — quem compartilhou não consegue
+   * fabricá-la (A1-12). Ids que não são UUID nem chegam ao banco.
+   */
+  static async logShareVisit(params, { ip, userAgent }) {
     return runWithLogs(
       log,
-      "logShareReturn",
-      () => ({ id_profile: params?.id_profile, member: body?.id_member_user }),
+      "logShareVisit",
+      () => ({ id_profile: params?.id_profile, member: params?.id_member_user }),
       async () => {
-        const id_member_user = body?.id_member_user;
-        const id_portfolio_item = body?.id_portfolio_item;
-        const visitor_hash = body?.visitor_hash;
-        if (!id_member_user || !id_portfolio_item || !visitor_hash) {
+        const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const id_member_user = String(params?.id_member_user || "");
+        const id_portfolio_item = String(params?.id_portfolio_item || "");
+        if (!UUID.test(String(params?.id_profile || "")) || !UUID.test(id_member_user) || !UUID.test(id_portfolio_item)) {
           return { ok: false };
         }
+        const visitor_hash = require("crypto")
+          .createHmac("sha256", String(process.env.JWT_SECRET || "freelandoo"))
+          .update(`share-visitor|${ip || ""}|${String(userAgent || "").slice(0, 300)}`)
+          .digest("hex")
+          .slice(0, 40);
         const counted = await CommunityStorage.logShareReturn(pool, {
           id_community: params.id_profile,
           id_member_user,

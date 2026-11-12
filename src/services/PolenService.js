@@ -90,7 +90,14 @@ class PolenService {
       if (!user?.id_user) return { error: "Não autenticado" };
       const settings = await PolenStorage.getSettings(pool);
       if (!settings?.is_active) return { error: "Sistema de Poléns inativo" };
-      const usage = await PolenStorage.countRewardedToday(pool, user.id_user);
+      // A2: contar e criar sob uma trava POR PESSOA. Sem ela, 20 pedidos em
+      // paralelo liam o mesmo "0 hoje" e passavam todos pelo limite diário e
+      // pela espera entre anúncios — 20 recompensas no lugar de N.
+      const client = await pool.connect();
+      try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`rewarded_ad:${user.id_user}`]);
+      const usage = await PolenStorage.countRewardedToday(client, user.id_user);
       if (usage.ads >= settings.ads_per_day_per_user || usage.polens >= settings.daily_polens_limit) {
         return {
           error: "Você atingiu o limite de anúncios de hoje. Volte amanhã para ganhar mais Poléns.",
@@ -113,7 +120,7 @@ class PolenService {
       );
       if (reward <= 0) return { error: "Limite diário de Poléns atingido", code: "daily_limit" };
       const token = crypto.randomUUID();
-      const event = await PolenStorage.createRewardEvent(pool, {
+      const event = await PolenStorage.createRewardEvent(client, {
         user_id: user.id_user,
         provider: settings.rewarded_provider || "mock",
         ad_unit_id: settings.rewarded_ad_unit_id || null,
@@ -123,6 +130,7 @@ class PolenService {
         user_agent_hash: hashValue(req?.headers?.["user-agent"]),
         metadata: { provider_mode: settings.rewarded_provider || "mock" },
       });
+      await client.query("COMMIT");
       return {
         event,
         reward_token: token,
@@ -132,6 +140,11 @@ class PolenService {
         currency: "emerald",
         message: `Assista a um anúncio para ganhar ${reward} Esmeraldas.`,
       };
+      } finally {
+        // Os "return" de limite acima saem sem COMMIT: o ROLLBACK só solta a trava.
+        await client.query("ROLLBACK").catch(() => {});
+        client.release();
+      }
     });
   }
 

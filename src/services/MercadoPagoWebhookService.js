@@ -249,6 +249,27 @@ function buildSubscriptionLike(preapproval) {
 
 // ─────────────────────────── Os três tópicos ────────────────────────────────
 
+/**
+ * Pagou menos do que a intenção pede, ou noutra moeda? Devolve o porquê (para
+ * o log) ou null. Intenção sem valor (legado) não tem com o que comparar.
+ * Pagar A MAIS não bloqueia: o produto é entregue e a diferença aparece na
+ * reconciliação.
+ */
+function amountMismatch(intent, paidReais, paidCurrency) {
+  const expected = Math.round(Number(intent && intent.amount_cents) || 0);
+  if (expected <= 0) return null;
+  const currency = String((intent && intent.currency) || "BRL").toUpperCase();
+  if (paidCurrency && String(paidCurrency).toUpperCase() !== currency) {
+    return { expected_cents: expected, currency, paid_currency: String(paidCurrency) };
+  }
+  if (paidReais === undefined || paidReais === null || paidReais === "") {
+    return { expected_cents: expected, paid_cents: null };
+  }
+  const paid = mp.reaisToCents(paidReais);
+  if (!Number.isFinite(paid) || paid < expected) return { expected_cents: expected, paid_cents: paid };
+  return null;
+}
+
 async function handlePaymentTopic(event, dataId) {
   const payment = await mp.getPayment(dataId);
   const kind = kindOfPaymentStatus(payment && payment.status);
@@ -273,6 +294,14 @@ async function handlePaymentTopic(event, dataId) {
   const firstCharge = intent.status === "created";
 
   if (kind === EVENT_KIND.CHECKOUT_PAID) {
+    // A2: o valor e a moeda PAGOS são reconferidos no provedor antes de
+    // entregar. Sem isto, qualquer pagamento aprovado com a nossa
+    // external_reference entregava o produto da intenção, pagasse o que pagasse.
+    const mismatch = amountMismatch(intent, payment && payment.transaction_amount, payment && payment.currency_id);
+    if (mismatch) {
+      log.error("payment.amount_mismatch", { payment_id: dataId, intent_id: intent.id_payment_intent, ...mismatch });
+      return { ignored: true, reason: "amount_mismatch" };
+    }
     const session = buildSessionLike(intent, payment);
     await StripeWebhookService.fulfillCheckoutSession(session);
     await PaymentIntentStorage.setStatus(pool, intent.id_payment_intent, "paid");
@@ -400,6 +429,11 @@ async function handleAuthorizedPaymentTopic(event, dataId) {
   // A PRIMEIRA cobrança passa pelo confirmador de checkout (é ela que cria a
   // assinatura do lado de cá); as seguintes têm caminho próprio de renovação.
   if (firstCharge) {
+    const mismatch = amountMismatch(intent, authorized && authorized.transaction_amount, authorized && authorized.currency_id);
+    if (mismatch) {
+      log.error("authorized_payment.amount_mismatch", { id: dataId, intent_id: intent.id_payment_intent, ...mismatch });
+      return { ignored: true, reason: "amount_mismatch" };
+    }
     const session = {
       ...buildSessionLike(intent, { id: paymentId, transaction_amount: amountReais }),
       subscription: String(subscriptionId),
@@ -500,6 +534,7 @@ module.exports = {
   buildChargeLike,
   buildSubscriptionLike,
   eventKey,
+  amountMismatch,
   dispatchEvent,
   processEvent,
 };

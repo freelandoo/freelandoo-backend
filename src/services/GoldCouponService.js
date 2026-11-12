@@ -211,6 +211,16 @@ class GoldCouponService {
         RETURNING id_coupon`,
       [couponId, String(sessionId)]
     );
+    if (!rows[0]) {
+      const prev = await pool.query(
+        `SELECT redeemed_ref FROM public.tb_coupon WHERE id_coupon = $1`,
+        [couponId]
+      );
+      const ref = prev.rows[0] && prev.rows[0].redeemed_ref;
+      if (ref && String(ref) !== String(sessionId)) {
+        log.error("gold_coupon.double_use", { id_coupon: couponId, redeemed_ref: ref, session_id: String(sessionId) });
+      }
+    }
     return rows[0] || null;
   }
 

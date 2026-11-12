@@ -153,9 +153,18 @@ class CommunityController {
     return sendServiceResult(res, result);
   }
 
-  static async logShareReturn(req, res) {
-    const result = await CommunityService.logShareReturn(req.params, req.body || {});
-    return sendServiceResult(res, result);
+  static async shareVisit(req, res) {
+    const id = String(req.params.id_profile || "");
+    try {
+      await CommunityService.logShareVisit(req.params, {
+        ip: req.ip,
+        userAgent: req.headers["user-agent"] || "",
+      });
+    } catch {
+      /* nunca quebra o redirecionamento */
+    }
+    const front = String(process.env.FRONTEND_URL || "https://freelandoo.com.br").replace(/\/$/, "");
+    return res.redirect(302, `${front}/comunidades/${encodeURIComponent(id)}`);
   }
 
   static async createRecado(req, res) {

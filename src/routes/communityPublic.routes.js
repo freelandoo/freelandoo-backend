@@ -99,10 +99,19 @@ router.get(
   optionalAuthMiddleware,
   asyncHandler(CommunityController.getFeedPosts)
 );
-// Retorno de link de share (1 ponto pro membro). Público — chamado pela rota /cs.
-router.post(
-  "/:id_profile/share-return",
-  asyncHandler(CommunityController.logShareReturn)
+// Retorno de link de share (1 ponto pro membro; a temporada "shares" paga
+// Esmeraldas). A2/A1-12: o NAVEGADOR do visitante chega aqui (a rota /cs do
+// front redireciona) e a marca do visitante é calculada AQUI, do IP real e do
+// navegador, com chave do servidor. O POST antigo recebia a marca pronta no
+// corpo — um membro inventava marcas e ganhava a temporada — e agora só
+// responde 410.
+router.get(
+  "/:id_profile/s/:id_member_user/:id_portfolio_item",
+  lookup,
+  asyncHandler(CommunityController.shareVisit)
+);
+router.post("/:id_profile/share-return", (_req, res) =>
+  res.status(410).json({ error: "Use o link de compartilhamento." })
 );
 
 // "Meu Site" (mig 212). Auth OPCIONAL: site publicado é página pública e
