@@ -165,6 +165,21 @@ class MeuMundoGearStorage {
     return r.rowCount === 1;
   }
 
+  /** E13: as runas engastadas (lista de ids, na ordem dos engastes). */
+  static async setSockets(c, idUser, idInstance, sockets) {
+    await c.query(`UPDATE tb_mm_gear_instance SET sockets = $3::jsonb, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, JSON.stringify(sockets)]);
+  }
+
+  /** E14: Ascensão (libera +11…+15 e um engaste). */
+  static async setAscended(c, idUser, idInstance) {
+    await c.query(`UPDATE tb_mm_gear_instance SET ascended = TRUE, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance]);
+  }
+
+  /** E14: Despertar (liga a passiva). */
+  static async setAwakened(c, idUser, idInstance) {
+    await c.query(`UPDATE tb_mm_gear_instance SET awakened = TRUE, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance]);
+  }
+
   /** E10: grau de refinamento (I…V; CHECK da mig 446). */
   static async setGrade(c, idUser, idInstance, grade) {
     await c.query(`UPDATE tb_mm_gear_instance SET grade = $3, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, grade]);
@@ -214,11 +229,11 @@ class MeuMundoGearStorage {
   /** { slot: { instance, item, plus } } do personagem vivo. */
   static async loadoutLive(c, idUser) {
     const r = await c.query(
-      `SELECT l.slot, i.id_instance, i.item_id, i.plus, i.grade FROM tb_mm_loadout l JOIN tb_mm_gear_instance i ON i.id_instance = l.id_instance
+      `SELECT l.slot, i.id_instance, i.item_id, i.plus, i.grade, i.sockets, i.ascended, i.awakened, i.affixes FROM tb_mm_loadout l JOIN tb_mm_gear_instance i ON i.id_instance = l.id_instance
         WHERE l.id_character = ${LIVE} AND i.id_user = $1`,
       [idUser]
     );
-    return Object.fromEntries(r.rows.map((x) => [x.slot, { instance: x.id_instance, item: x.item_id, plus: x.plus, grade: x.grade }]));
+    return Object.fromEntries(r.rows.map((x) => [x.slot, { instance: x.id_instance, item: x.item_id, plus: x.plus, grade: x.grade, sockets: x.sockets || [], ascended: !!x.ascended, awakened: !!x.awakened, affixes: x.affixes || {} }]));
   }
 
   /** Põe a instância no slot do personagem; ela sai de qualquer outro slot/personagem da pessoa. */

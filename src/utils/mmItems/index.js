@@ -74,6 +74,8 @@ function sourcesOf(item) {
   if (Array.isArray(item.source)) source.push(...item.source); // origem declarada (ex.: conjunto antes da E12)
   if (item.price != null) source.push(`${item.shop ? "Loja de Armas do Arsenal" : "Loja de equipamentos"}: ${item.price} moedas.`);
   source.push(...LootRule.lootSourceLines(item.id)); // E3: derivado das tabelas
+  // E13: runa de grau II em diante sai da fusão de 3 do grau abaixo
+  if (item.rune && item.rune.grade > 1) source.push(`Fusão de runas: 3 runas de ${runes.KIND_NAME[item.rune.kind]} grau ${runes.ROMAN[item.rune.grade - 2]} viram 1 de grau ${runes.ROMAN[item.rune.grade - 1]}.`);
   for (const r of RECIPES) if (r.out === item.id) source.push(`Ferreiro: ${r.kind === "assembly" ? "montar" : r.kind === "part" ? "fabricar uma peça de" : "produzir"} ${item.name} (${r.coins} moedas e ingredientes da receita).`);
   return source;
 }

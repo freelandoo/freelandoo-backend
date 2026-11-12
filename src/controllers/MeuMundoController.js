@@ -325,6 +325,15 @@ async function gearFragmentConvert(req, res) {
 async function gearRecycle(req, res) {
   return reply(res, await gear().recycle(req.user.id_user, req.body || {}));
 }
+// Trilha E, fase 4 (E13…): ação da bancada da Forja, gateada pelo prédio (o mesmo das outras da forja)
+const forgeAction = (method) => async (req, res) => gated(req, res, "forja", async () => reply(res, await gear()[method](req.user.id_user, req.body || {})));
+// E13: runas
+const gearSocket = forgeAction("socket");
+const gearUnsocket = forgeAction("unsocket");
+const gearRuneFuse = forgeAction("fuseRunes");
+// E14: Ascensão e Despertar
+const gearAscend = forgeAction("ascend");
+const gearAwaken = forgeAction("awaken");
 
 // mm3d-72: o apelido da pessoa e o do hóspede
 async function lifeNickname(req, res) {
@@ -555,6 +564,11 @@ module.exports = {
   gearSalvage,
   gearTransmute,
   gearLock,
+  gearSocket,
+  gearUnsocket,
+  gearRuneFuse,
+  gearAscend,
+  gearAwaken,
   questGet,
   questAdvance,
   questMark,

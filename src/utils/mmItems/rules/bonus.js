@@ -3,20 +3,25 @@
 // Nada é escrito à mão: cada peça soma budget.piece() nas DUAS chaves dela (principal com ênfase 1,
 // secundária com 0,5), separado por fonte (base pela raridade, aprimoramento, refinamento); depois
 // o conjunto. Cada fonte tem subteto (a fatia dela do teto) e a soma tem o teto da chave.
-// Runas, despertar e encanto entram nas fatias deles quando existirem (E13–E15).
+// E13: as RUNAS engastadas (`sockets` da cópia) entram na fatia `runes` (subteto CAP × 0,10).
+// E14: a cópia DESPERTA soma a fatia `awaken` na chave principal (pesada pelo slot; rules/ascend.js).
+// O encanto entra na fatia dele (E15).
 "use strict";
 
 const B = require("./budget");
+const Runes = require("./runes");
+const Ascend = require("./ascend");
 
 const r4 = (v) => Math.round(v * 10000) / 10000;
 
 /**
- * `pieces` = [{ item, plus, grade }] (item do catálogo, com `slot`, `rarity`, `keys`, `set`).
+ * `pieces` = [{ item, plus, grade, sockets, awakened }] (item do catálogo, com `slot`, `rarity`, `keys`, `set`;
+ * `sockets` = ids das runas engastadas na cópia; `awakened` = cópia desperta, E14).
  * `sets` = catálogo de conjuntos; `steps` = { nº de peças: fração da fatia }.
- * Devolve { bonus: { chave: fração }, sources: { chave: { base, plus, grade, set } }, sets: { id: nº } }.
+ * Devolve { bonus: { chave: fração }, sources: { chave: { base, plus, grade, set, runes, awaken } }, sets: { id: nº } }.
  */
 function bonusOf(pieces, { sets = [], steps = {} } = {}) {
-  const src = Object.fromEntries(B.KEYS.map((k) => [k, { base: 0, plus: 0, grade: 0, set: 0 }]));
+  const src = Object.fromEntries(B.KEYS.map((k) => [k, { base: 0, plus: 0, grade: 0, set: 0, runes: 0, awaken: 0 }]));
   const count = {};
   for (const p of pieces) {
     const it = p && p.item;
@@ -27,6 +32,8 @@ function bonusOf(pieces, { sets = [], steps = {} } = {}) {
       for (const s of B.PIECE_SOURCES) src[k][s] += parts[s];
     });
     if (it.set) count[it.set] = (count[it.set] || 0) + 1;
+    for (const [k, v] of Object.entries(Runes.runeSum(p.sockets))) if (src[k]) src[k].runes += v;
+    if (p.awakened) for (const [k, v] of Object.entries(Ascend.awakenValue(it))) if (src[k]) src[k].awaken += v;
   }
   for (const set of sets) {
     const step = steps[Math.min(4, count[set.id] || 0)] || 0;
@@ -41,13 +48,18 @@ function bonusOf(pieces, { sets = [], steps = {} } = {}) {
   return { bonus, sources: src, sets: count };
 }
 
-/** Bônus de UMA peça (para o cartão: +0 grau I, ou o plus/grau da cópia). */
-function pieceBonus(item, plus = 0, grade = 1) {
+/**
+ * Bônus de UMA peça (para o cartão: +0 grau I, ou o plus/grau da cópia). `extra.sockets` (E13) soma as
+ * runas engastadas na cópia e `extra.awakened` (E14) a passiva (cada fonte no seu subteto).
+ */
+function pieceBonus(item, plus = 0, grade = 1, extra = {}) {
   const out = {};
   if (!item || !item.slot || !Array.isArray(item.keys)) return out;
   item.keys.forEach((k, i) => {
     out[k] = r4((out[k] || 0) + B.piece(k, item.slot, item.rarity, plus, grade, i === 0 ? 1 : B.SECONDARY));
   });
+  for (const [k, v] of Object.entries(Runes.runeSum(extra.sockets))) out[k] = r4((out[k] || 0) + Math.min(v, B.sourceCap(k, "runes")));
+  if (extra.awakened) for (const [k, v] of Object.entries(Ascend.awakenValue(item))) out[k] = r4((out[k] || 0) + Math.min(v, B.sourceCap(k, "awaken")));
   return out;
 }
 

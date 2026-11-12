@@ -14,10 +14,10 @@ const legacyIds = [
   "mola_precisao", "injetor_vapor", "capacitor", "rolamento", "receita_eter", "cristal_morkhan", "pintura_arma_eter",
 ];
 
-test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14)", () => {
+test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 266);
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 266);
+  assert.equal(pub.items.length, 301);
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 301);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);
@@ -89,7 +89,9 @@ test("todas as receitas e peças são alcançáveis sem depender de sorte rara",
   const later = new Set(require("../../src/utils/mmItems").LINES.ITEMS.map((g) => g.id));
   // S14: amuletos, fragmentos do bestiário e embriões também chegam pelo saque dos Domínios
   for (const g of require("../../src/utils/mmItems/catalog/bestiary").ITEMS) later.add(g.id);
-  assert.deepEqual(Gear.GEAR.filter((g) => !g.set && !later.has(g.id) && !reachable.has(g.id)).map((g) => g.id), []);
+  // E13: runas caem por chance nos Domínios e sobem pela fusão — não travam progresso nenhum
+  const optional = (g) => g.category === "rune";
+  assert.deepEqual(Gear.GEAR.filter((g) => !g.set && !later.has(g.id) && !optional(g) && !reachable.has(g.id)).map((g) => g.id), []);
   for (const item of Gear.GEAR.filter((g) => g.category === "material")) {
     assert.ok(Gear.RECIPES.some((r) => r.needs[item.id]) || ["fragmento_lamina", "couro_reforcado", "nucleo_eter", "selo_forja",
       // E8: custo do aprimoramento (E9) e do refinamento (E10); Madeira, Cristal e Pó de Forja são das runas e consumíveis (fase 4)

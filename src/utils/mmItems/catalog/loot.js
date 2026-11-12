@@ -34,6 +34,9 @@ const DOMAIN_MATS = Object.freeze({
   vulcao: Object.freeze({ common: "escoria", rare: "ferro_de_basalto" }),
   orbital: Object.freeze({ common: "vidro_colorido", rare: "prisma_vivo" }),
 });
+/** E13: a runa de cada Domínio (a de Acuracidade cai em todos, mais rara). */
+const DOMAIN_RUNE = Object.freeze({ floresta: "destreza", canion: "velocidade", gelo: "vitalidade", fabrica: "defesa", vulcao: "ataque", orbital: "inteligencia" });
+const RUNE_CHANCE = Object.freeze({ domain: 0.2, forca: 0.05, boss: 0.35 });
 const domainCommonQty = (sector) => 1 + Math.floor(sector / 3);
 const domainRareChance = (sector) => (5 + 3 * sector) / 100;
 
@@ -57,6 +60,10 @@ function domainTable(domain, sector) {
   if (sector >= 4) chance.push({ id: "lingote_refinado", qty: q(1), p: 0.25, win: true });
   if (sector >= 8) chance.push({ id: "catalisador_refino", qty: q(1), p: 0.1, win: true });
   if (boss) chance.push({ id: "essencia_primordial", qty: q(1), p: 0.25, win: true });
+  // E13: runas no FIM da lista (os sorteios de antes não mudam): a do Domínio (grau I em todo setor,
+  // grau II no chefão) e a de Acuracidade (rara, em todo Domínio)
+  chance.push({ id: `runa_${DOMAIN_RUNE[domain]}_1`, qty: q(1), p: RUNE_CHANCE.domain, win: true }, { id: "runa_forca_1", qty: q(1), p: RUNE_CHANCE.forca, win: true });
+  if (boss) chance.push({ id: `runa_${DOMAIN_RUNE[domain]}_2`, qty: q(1), p: RUNE_CHANCE.boss, win: true });
   const first = [];
   if (set && sector === 7) first.push({ id: `projeto_${set.id}`, qty: q(1) });
   if (boss) first.push({ id: `frag_${line.key}`, qty: q(BOSS_FRAGMENTS.first) }, { id: `receita_${line.key}`, qty: q(1) });
@@ -140,4 +147,4 @@ const FAMILY_TABLE = Object.freeze({
   rolamento: "minigame:noturno",
 });
 
-module.exports = { TABLES, ACTIVITY_TABLE, LOOT, FAMILY_TABLE, DOMAIN_SECTORS, DOMAIN_MATS, domainCommonQty, domainRareChance, domainTableId };
+module.exports = { TABLES, ACTIVITY_TABLE, LOOT, FAMILY_TABLE, DOMAIN_SECTORS, DOMAIN_MATS, DOMAIN_RUNE, RUNE_CHANCE, domainCommonQty, domainRareChance, domainTableId };

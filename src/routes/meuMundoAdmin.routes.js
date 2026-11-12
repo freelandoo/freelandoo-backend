@@ -114,6 +114,13 @@ router.post("/gear/grade", ...admin, asyncHandler(MeuMundoController.gearGrade))
 router.post("/gear/salvage", ...admin, asyncHandler(MeuMundoController.gearSalvage));
 router.post("/gear/transmute", ...admin, asyncHandler(MeuMundoController.gearTransmute));
 router.post("/gear/lock", ...admin, asyncHandler(MeuMundoController.gearLock));
+// trilha E13: runas (engastar, tirar, fundir)
+router.post("/gear/socket", ...admin, asyncHandler(MeuMundoController.gearSocket));
+router.post("/gear/unsocket", ...admin, asyncHandler(MeuMundoController.gearUnsocket));
+router.post("/gear/rune/fuse", ...admin, asyncHandler(MeuMundoController.gearRuneFuse));
+// trilha E14: Ascensão e Despertar
+router.post("/gear/ascend", ...admin, asyncHandler(MeuMundoController.gearAscend));
+router.post("/gear/awaken", ...admin, asyncHandler(MeuMundoController.gearAwaken));
 // mm3d-59: missões — o servidor confere cada objetivo; recompensa por recibo único.
 router.get("/quest", ...admin, asyncHandler(MeuMundoController.questGet));
 router.post("/quest/advance", ...admin, asyncHandler(MeuMundoController.questAdvance));

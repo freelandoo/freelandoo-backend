@@ -8,6 +8,8 @@ const Forge = require("./forgeV1");
 const Upgrade = require("./upgrade");
 const Salvage = require("./salvage");
 const B = require("./budget");
+const Runes = require("./runes");
+const Ascend = require("./ascend");
 
 const { GEAR, GEAR_BY_ID, RECIPES, DESCRIPTIONS } = Items;
 
@@ -37,6 +39,8 @@ function itemDetails(item) {
   // E9: aprimoramento garantido (forge-v2) em todo equipamento
   if (Upgrade.upgradable(item)) uses.push("Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.");
   if (Upgrade.upgradable(item)) uses.push("Desmontar na Forja: devolve parte dos materiais e Pó de Refino, nunca Esmeralda.");
+  // E14: Ascensão e Despertar
+  if (Ascend.ascendable(item)) uses.push(`Ascender no +${Ascend.ASCEND_AT} com ${2 * item.tier} Selo(s) de Domínio: libera o +11 ao +15 e um engaste a mais; depois, Despertar liga a passiva da peça.`);
   if (Salvage.transmutable(item)) uses.push("Transmutar na Forja: 3 viram 1 de outro material do mesmo tier.");
   if (item.use === "learn_recipe") uses.push("Aprender uma vez; o projeto consumido fica registrado permanentemente.");
   if (item.use === "inspect_quest") uses.push("Examinar a inscrição e registrar a leitura na coleção; não conclui missão automaticamente.");
@@ -78,7 +82,7 @@ function gearBonus(equipped) {
   for (const [k, e] of Object.entries(equipped || {})) {
     const it = e && GEAR_BY_ID.get(e.id);
     const s = normalizeSlot(k, it);
-    if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Math.floor(e.level || 0)), grade: Math.max(1, Math.floor(e.grade || 1)) };
+    if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Math.floor(e.level || 0)), grade: Math.max(1, Math.floor(e.grade || 1)), sockets: Array.isArray(e.sockets) ? e.sockets.slice(0, Runes.MAX_SOCKETS) : [], awakened: !!e.awakened };
   }
   const { bonus } = Items.bonusOf(Object.values(bySlot));
   const out = {};
@@ -113,7 +117,12 @@ function publicGear() {
     upgrade: { max: Upgrade.MAX_PLUS, ascendFrom: B.ASCEND_FROM, stone: Upgrade.STONE, rulesVersion: Upgrade.RULES_VERSION },
     // E11: desmontar (35% da receita + Pó) e transmutar (3 → 1 do mesmo tier, + Esmeraldas × tier)
     salvage: { share: Salvage.SALVAGE_SHARE, confirmTier: Salvage.CONFIRM_TIER, transmuteIn: Salvage.TRANSMUTE_IN, transmuteCoins: Salvage.TRANSMUTE_COINS },
-    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.origin ? { origin: g.origin } : {}), ...(Salvage.transmutable(g) ? { transmutable: true } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
+    // E14: Ascensão (no +10: 2 × tier Selos) e Despertar (ascendida: tier Essências + tier Selos)
+    ascend: { at: Ascend.ASCEND_AT, seal: Ascend.SEAL, essence: Ascend.ESSENCE, sealPerTier: 2 },
+    // E13: runas — engastes por raridade (+1 ascendida, teto 3), fusão 3 → 1, valor de cada grau por chave
+    runes: { sockets: Runes.SOCKETS, maxSockets: Runes.MAX_SOCKETS, fuseIn: Runes.FUSE_IN, grades: Runes.GRADES, kinds: Runes.RUNE_KINDS,
+      value: Object.fromEntries(Object.values(Runes.RUNE_KINDS).map((k) => [k, Array.from({ length: Runes.GRADES }, (_, i) => Math.round(Runes.runeValue(k, i + 1) * 100000) / 100000)])) },
+    items: GEAR.map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.rune ? { rune: g.rune } : {}), ...(g.slot && g.tier ? { sockets: Runes.socketsOf(g) } : {}), ...(g.origin ? { origin: g.origin } : {}), ...(Salvage.transmutable(g) ? { transmutable: true } : {}), name: g.name, rarity: g.rarity, tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
     recipes: RECIPES,
     // E7: conjuntos (2 ou 3 peças = 40% da fatia, 4 = 100%)
     sets: Items.SETS.map((s) => ({ id: s.id, name: s.name, domain: s.domain, keys: s.keys, pieces: s.pieces, steps: Items.SET_STEPS })),

@@ -17,7 +17,7 @@ const ANTES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "gear-
  * JSON de agora sem os campos novos dos ITENS: `tier` (E1) e `slot`/`twoHanded` (E6, os 8 slots).
  * Montagem já tinha `tier`; só sai o de quem tem `rarity`.
  */
-const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable"]); // E11: `transmutable`
+const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable", "sockets", "rune"]); // E11: `transmutable` · E13: `sockets`, `rune`
 /** E7: o `bonus` do equipamento passou a sair da régua (rules/bonus.js) — sai da comparação. */
 const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) {
   if (typeof this.rarity !== "string") return x;
@@ -31,7 +31,8 @@ const deAntes = (list) => list.filter((g) => IDS_ANTES.has(g.id));
 
 test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () => {
   const agora = semTier(Gear.publicGear());
-  assert.deepEqual(Object.keys(agora).filter((k) => k !== "sets" && k !== "salvage"), Object.keys(ANTES.publicGear)); // E7 `sets`, E11 `salvage` // E7 acrescentou `sets`
+  // as chaves de antes continuam todas, na mesma ordem (as fatias acrescentam: E7 `sets`, E11 `salvage`, E13 `runes`, E14 `ascend`…)
+  assert.deepEqual(Object.keys(agora).filter((k) => k in ANTES.publicGear), Object.keys(ANTES.publicGear));
   // E6 (A4): os 5 slots de antes viraram os 8 do pedido
   assert.deepEqual(ANTES.publicGear.slots, ["weapon", "shield", "armor", "acc1", "acc2"]);
   assert.deepEqual(agora.slots, ["weapon", "offhand", "helm", "chest", "gloves", "boots", "amulet", "relic"]);
@@ -49,7 +50,8 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   const V2 = "Aprimorar de +0 a +15 com custo fixo, sempre subindo; do +11 em diante, depois da Ascensão.";
   // E11: desmontar e transmutar entram nos usos de todo equipamento e material
   const E11 = ["Desmontar na Forja: devolve parte dos materiais e Pó de Refino, nunca Esmeralda.", "Transmutar na Forja: 3 viram 1 de outro material do mesmo tier."];
-  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u));
+  // E14: a linha da Ascensão/Despertar entra nos usos de todo equipamento com chaves
+  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10"));
   semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses) }, { ...antes, uses: usesV1(antes.uses) }, antes.id));
   // E8: as receitas por fragmento entram no fim; as de antes não mudam
   assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
