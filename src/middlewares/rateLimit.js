@@ -81,6 +81,14 @@ const chat = makeLimiter({
 });
 
 // 30 checkout calls/min — Stripe tem rate-limit próprio bem acima disso.
+// Trilha E21: 90 ações/min por IP nas rotas de itens do Meu Mundo (runas, Ascensão, encanto,
+// troca, baú, preparo, evento). Folgado para quem clica rápido na Forja; corta robô de repetição.
+const mmItems = makeLimiter({
+  name: "mmItems",
+  windowMs: 60 * 1000,
+  max: 90,
+});
+
 const checkout = makeLimiter({
   name: "checkout",
   windowMs: 60 * 1000,
@@ -105,4 +113,4 @@ const global = rateLimit({
   skip: (req) => isDev || req.method === "OPTIONS" || req.path === "/health",
 });
 
-module.exports = { auth, lookup, upload, chat, checkout, global };
+module.exports = { auth, lookup, upload, chat, checkout, mmItems, global };

@@ -83,7 +83,7 @@ router.post("/hall/challenge", ...admin, asyncHandler(MeuMundoController.hallCha
 router.post("/fight/start", ...admin, asyncHandler(MeuMundoController.fightStart));
 router.post("/fight/finish", ...admin, asyncHandler(MeuMundoController.fightFinish));
 // trilha E16: consumível de preparo na tela de versus
-router.post("/fight/prep", ...admin, asyncHandler(MeuMundoController.fightPrep));
+router.post("/fight/prep", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.fightPrep));
 router.post("/client-report", ...admin, asyncHandler(MeuMundoController.clientReport));
 // mm3d-59: equipamento — compras/forja com chave do pedido (recibo idempotente).
 router.get("/gear", ...admin, asyncHandler(MeuMundoController.gearGet));
@@ -117,23 +117,23 @@ router.post("/gear/salvage", ...admin, asyncHandler(MeuMundoController.gearSalva
 router.post("/gear/transmute", ...admin, asyncHandler(MeuMundoController.gearTransmute));
 router.post("/gear/lock", ...admin, asyncHandler(MeuMundoController.gearLock));
 // trilha E13: runas (engastar, tirar, fundir)
-router.post("/gear/socket", ...admin, asyncHandler(MeuMundoController.gearSocket));
-router.post("/gear/unsocket", ...admin, asyncHandler(MeuMundoController.gearUnsocket));
-router.post("/gear/rune/fuse", ...admin, asyncHandler(MeuMundoController.gearRuneFuse));
+router.post("/gear/socket", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearSocket));
+router.post("/gear/unsocket", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearUnsocket));
+router.post("/gear/rune/fuse", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearRuneFuse));
 // trilha E14: Ascensão e Despertar
-router.post("/gear/ascend", ...admin, asyncHandler(MeuMundoController.gearAscend));
-router.post("/gear/awaken", ...admin, asyncHandler(MeuMundoController.gearAwaken));
+router.post("/gear/ascend", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearAscend));
+router.post("/gear/awaken", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearAwaken));
 // trilha E15: encanto (sortear e escolher)
-router.post("/gear/enchant", ...admin, asyncHandler(MeuMundoController.gearEnchant));
-router.post("/gear/enchant/resolve", ...admin, asyncHandler(MeuMundoController.gearEnchantResolve));
+router.post("/gear/enchant", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearEnchant));
+router.post("/gear/enchant/resolve", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearEnchantResolve));
 // trilha E17: loja de troca (fichas → itens)
-router.post("/gear/exchange", ...admin, asyncHandler(MeuMundoController.gearExchange));
+router.post("/gear/exchange", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearExchange));
 // trilha E18: coleção (descobertos e não) e baús (um por conta, no lugar deles)
 router.get("/gear/collection", ...admin, asyncHandler(MeuMundoController.gearCollection));
-router.post("/gear/chest/open", ...admin, asyncHandler(MeuMundoController.gearChestOpen));
+router.post("/gear/chest/open", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearChestOpen));
 // trilha E19: eventos (o admin liga a ficha e a loja de evento)
 router.get("/evento/config", ...admin, asyncHandler(MeuMundoController.eventConfigGet));
-router.post("/evento/config", ...admin, asyncHandler(MeuMundoController.eventConfigSave));
+router.post("/evento/config", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.eventConfigSave));
 // mm3d-59: missões — o servidor confere cada objetivo; recompensa por recibo único.
 router.get("/quest", ...admin, asyncHandler(MeuMundoController.questGet));
 router.post("/quest/advance", ...admin, asyncHandler(MeuMundoController.questAdvance));
