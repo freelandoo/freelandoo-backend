@@ -1,4 +1,5 @@
 const MercadoPagoWebhookService = require("../services/MercadoPagoWebhookService");
+const TenkaWebhookForward = require("../services/TenkaWebhookForwardService");
 const mp = require("../integrations/payments/mercadoPagoClient");
 const { createLogger } = require("../utils/logger");
 
@@ -71,6 +72,15 @@ class MercadoPagoController {
       type: readTopic(req),
       data: { id: readDataId(req) },
     };
+
+    // Loja da TENKA (mesma conta MP): aviso de recurso `tenka:` vai para o back
+    // dela e NÃO desce para o fluxo da Freelandoo. Desligado sem TENKA_WEBHOOK_URL.
+    if (TenkaWebhookForward.isEnabled() && (await TenkaWebhookForward.belongsToTenka(event))) {
+      const delivered = await TenkaWebhookForward.forward(req);
+      log.info("webhook.tenka_forward", { type: event.type, delivered });
+      if (!delivered) return res.status(500).json({ error: "Falha ao repassar evento" });
+      return res.json({ received: true, forwarded: "tenka" });
+    }
 
     try {
       const result = await MercadoPagoWebhookService.processEvent(event);
