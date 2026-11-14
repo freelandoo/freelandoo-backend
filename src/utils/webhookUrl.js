@@ -23,7 +23,10 @@ function isPrivateIp(ip) {
 }
 
 async function validateWebhookUrl(raw) {
-  const allowInsecure = process.env.ALLOW_INSECURE_WEBHOOK === "1";
+  // A6: em produção a chave é ignorada — uma variável esquecida no painel
+  // reabriria o SSRF para IP interno (Postgres, metadados da nuvem).
+  const allowInsecure =
+    process.env.ALLOW_INSECURE_WEBHOOK === "1" && process.env.NODE_ENV !== "production";
   let url;
   try {
     url = new URL(String(raw || ""));

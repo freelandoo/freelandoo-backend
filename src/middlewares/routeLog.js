@@ -16,6 +16,7 @@
 const ArchitectureStorage = require("../storages/ArchitectureStorage");
 const pool = require("../databases");
 const { createLogger } = require("../utils/logger");
+const { redactPath } = require("../utils/redactUrl");
 
 const log = createLogger("routeLog");
 
@@ -75,7 +76,8 @@ function routeLog(req, res, next) {
     const entry = {
       request_id: req.requestId || null,
       method: req.method,
-      path: pathname.slice(0, 500),
+      // A6: link com chave (primeiro acesso, confirmação…) não vai inteiro para o banco.
+      path: redactPath(pathname).slice(0, 500),
       route_pattern: ((req.baseUrl || "") + (req.route?.path || "")).slice(0, 500) || null,
       status_code: status,
       duration_ms: Date.now() - start,

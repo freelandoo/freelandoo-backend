@@ -1,11 +1,12 @@
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const path = require("path");
 const routes = require("./routes");
 const webhooksRoutes = require("./routes/webhooks.routes");
 const requestId = require("./middlewares/requestId");
 const { createLogger } = require("./utils/logger");
+const { redactUrl } = require("./utils/redactUrl");
+const { errorHandler, notFound } = require("./middlewares/errorHandler");
 
 const appLog = createLogger("app");
 
@@ -16,15 +17,15 @@ const app = express();
 // rate limiter e pelo audit log.
 app.set("trust proxy", 1);
 
+// A6: v0.dev saiu (nenhuma tela roda lá; qualquer projeto do v0 virava origem
+// aceita). localhost:3000 fica para o front local de desenvolvimento.
 const allowedOrigins = [
-  "https://v0.dev",
   "http://localhost:3000",
   "https://freelandoo.com.br",
   "https://www.freelandoo.com.br",
 ];
 
 const allowedOriginPatterns = [
-  /^https:\/\/([a-z0-9-]+\.)*v0\.dev$/i,
   // Vercel: só o alias do projeto e os previews do time freelandoos-projects
   // (ex.: freelandoo-frontend-<hash>-freelandoos-projects.vercel.app).
   // Nunca *.vercel.app inteiro — qualquer conta Vercel poderia chamar a API.
@@ -97,7 +98,8 @@ app.use(
 
 app.use(requestId);
 
-app.use("/storage", express.static(path.join(__dirname, "..", "storage")));
+// A6: o `express.static("/storage")` saiu — nada grava nessa pasta (uploads vão
+// para o R2) e servir pasta do disco do servidor sem dono é porta à toa.
 // Delegate (e não `cors(corsOptions)` direto) porque a decisão depende do
 // CAMINHO: só o contador do site aceita qualquer origem — ver SITE_EVENT_PATH.
 app.use(
@@ -136,7 +138,7 @@ app.use((req, res, next) => {
     appLog.info("request.complete", {
       requestId: req.requestId,
       method: req.method,
-      url: req.originalUrl || req.url,
+      url: redactUrl(req.originalUrl || req.url),
       status: res.statusCode,
       ms: Date.now() - start,
       user: req.user?.id_user,
@@ -159,43 +161,8 @@ app.use(routeLog);
 // rotas
 routes(app);
 
-app.use((err, req, res, next) => {
-  if (res.headersSent) {
-    return next(err);
-  }
-
-  const isUploadError =
-    err.name === "MulterError" ||
-    ["Formato nao aceito", "Tipo de arquivo nao permitido"].some((msg) =>
-      String(err.message || "").includes(msg)
-    );
-  const isPayloadTooLarge =
-    err.type === "entity.too.large" || err.status === 413;
-  const statusCode =
-    err.statusCode ||
-    (isPayloadTooLarge ? 413 : isUploadError ? 400 : 500);
-  const message =
-    err.code === "LIMIT_FILE_SIZE"
-      ? "Arquivo muito grande para upload."
-      : isPayloadTooLarge
-      ? "Payload acima do limite permitido."
-      : err.message || "Erro interno no servidor";
-
-  if (statusCode >= 500) {
-    appLog.error("error_handler", {
-      requestId: req.requestId,
-      statusCode,
-      message: err?.message,
-      stack: err?.stack,
-      method: req.method,
-      url: req.originalUrl || req.url,
-    });
-  }
-
-  // Detalhe do erro para o routeLog persistir em arch_route_logs (Painel de Arquitetura).
-  res.locals.archError = { message: err?.message, stack: err?.stack };
-
-  return res.status(statusCode).json({ error: message });
-});
+// Rota inexistente → JSON; erro → JSON sem detalhe interno (A6-03).
+app.use(notFound);
+app.use(errorHandler);
 
 module.exports = app;

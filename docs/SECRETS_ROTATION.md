@@ -1,5 +1,8 @@
 # Relatório de credenciais — Freelandoo
 
+> **Substituído em 2026-11-14 pela etapa A6** da frente de segurança: o inventário atual e o roteiro de rotação estão em
+> `freelandoo/docs/auditoria/A6.md` (fora do repositório). Este arquivo fica como histórico, sem valores.
+
 Gerado em 2026-05-23 pela Frente 1 do hardening.
 
 > **Como ler:** cada credencial tem **origem** (de onde veio), **escopo**
@@ -21,7 +24,7 @@ Convenção:
 - **Escopo:** servidor (app + migrations + scripts utilitários como
   `migrate-remote.js`, `check-schema.js`).
 - **Estado:** **VAZADA.** Arquivo `.env.migrate` (única linha:
-  `DATABASE_URL=postgresql://postgres:IcjFQksHzGHMfDVNYjoCiwGATOhuTLFc@monorail.proxy.rlwy.net:55621/railway`)
+  `DATABASE_URL=postgresql://<usuário>:<senha antiga, já recusada pelo banco>@<host>/railway`)
   foi adicionado no commit `4fe0e8f` (2026-04-25) e permaneceu rastreado
   até esta auditoria.
 - **Ação:**
@@ -96,7 +99,7 @@ Convenção:
 - **Origem:** Mercado Pago (gateway que **não** está mais em uso — projeto
   migrou para Stripe).
 - **Estado:** **VAZADA.** Arquivo `env.download`
-  (`NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY=APP_USR-495b19e5-...`) foi
+  (`NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY=APP_USR-<oculto>`) foi
   rastreado pelo commit `56eec270` (2026-05-09).
 - **Risco real:** chave é uma `public key` do MP — projetada para ser
   embarcada no browser, então o leak por si só não permite cobrança.
