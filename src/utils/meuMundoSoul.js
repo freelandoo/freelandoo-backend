@@ -28,7 +28,7 @@ const TEMPERS = Object.freeze([...LEGACY_TEMPERS, "preguicoso", "vaidoso", "rabu
  * As que um personagem NOVO pode tirar: só as que já têm as falas prontas no
  * front (cada fatia de falas acrescenta a dela aqui), para ninguém nascer mudo.
  */
-const BORN_TEMPERS = Object.freeze([...LEGACY_TEMPERS, "narcisista"]);
+const BORN_TEMPERS = Object.freeze([...LEGACY_TEMPERS, "narcisista", "preguicoso"]);
 /** Nascido a partir daqui sorteia em BORN_TEMPERS (2026-11-15 00:00 de Brasília). */
 const NEW_FROM = Date.UTC(2026, 10, 15, 3);
 
