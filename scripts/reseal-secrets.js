@@ -34,6 +34,12 @@ const ALVOS = [
   // Recebimentos da academia (mig 310): chave PIX e documento do titular.
   { tabela: "tb_academy_payout_account", pk: "id_academy", coluna: "pix_key_sealed" },
   { tabela: "tb_academy_payout_account", pk: "id_academy", coluna: "holder_doc_sealed" },
+  // A6 (2026-11-14): segredo do reencaminhamento de WhatsApp da academia (já era selado, faltava aqui)
+  // e o segredo de assinatura do webhook das conexões de API (passou a ser selado; o antigo, em texto
+  // puro, é selado na primeira leitura do despacho).
+  { tabela: "tb_academy", pk: "id_academy", coluna: "whatsapp_webhook_secret_sealed" },
+  // legadoTexto: a coluna ainda pode ter linha de antes da selagem, em texto puro — o script sela.
+  { tabela: "tb_api_connection", pk: "id_connection", coluna: "webhook_secret", legadoTexto: true },
 ];
 
 const APPLY = process.argv.includes("--apply");
@@ -49,7 +55,7 @@ const APPLY = process.argv.includes("--apply");
   let reselados = 0;
   let presos = 0;
 
-  for (const { tabela, pk, coluna } of ALVOS) {
+  for (const { tabela, pk, coluna, legadoTexto } of ALVOS) {
     const existe = await pool.query(
       `SELECT 1 FROM information_schema.columns
         WHERE table_schema='public' AND table_name=$1 AND column_name=$2`,
@@ -58,6 +64,26 @@ const APPLY = process.argv.includes("--apply");
     if (!existe.rowCount) {
       console.log(`- ${tabela}.${coluna}: coluna não existe neste banco, pulando.`);
       continue;
+    }
+
+    if (legadoTexto) {
+      // Linha antiga em texto puro: sela com a chave preferida (não depende de abrir nada).
+      const t = await pool.query(
+        `SELECT ${pk} AS id, ${coluna} AS valor FROM public.${tabela}
+          WHERE ${coluna} IS NOT NULL AND ${coluna} <> '' AND ${coluna}::text NOT LIKE 'v1:%'`
+      );
+      total += t.rowCount;
+      for (const linha of t.rows) {
+        if (APPLY) {
+          await pool.query(`UPDATE public.${tabela} SET ${coluna} = $2 WHERE ${pk} = $1 AND ${coluna} = $3`, [
+            linha.id,
+            seal(linha.valor),
+            linha.valor,
+          ]);
+        }
+        reselados += 1;
+        console.log(`  ${APPLY ? "selado" : "selaria"} (era texto puro) ${tabela}.${pk}=${linha.id}`);
+      }
     }
 
     const r = await pool.query(

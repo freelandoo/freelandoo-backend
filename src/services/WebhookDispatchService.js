@@ -11,6 +11,7 @@ const ExtMessagingStorage = require("../storages/ExtMessagingStorage");
 const { createLogger } = require("../utils/logger");
 // A4 (SSRF): valida a URL de novo em cada envio e não segue redirecionamento
 const { safeFetch } = require("../utils/safeFetch");
+const sealedSecret = require("../utils/sealedSecret");
 
 const log = createLogger("WebhookDispatchService");
 
@@ -86,7 +87,19 @@ async function listActiveConnectionsWithWebhook(id_user) {
       WHERE id_user = $1 AND status = 'active' AND webhook_url IS NOT NULL`,
     [id_user]
   );
-  return rows;
+  // A6: o segredo vem selado; linha antiga em texto puro é selada aqui, na primeira leitura
+  for (const r of rows) {
+    if (r.webhook_secret && !sealedSecret.isSealed(r.webhook_secret)) {
+      await pool
+        .query(`UPDATE public.tb_api_connection SET webhook_secret = $2 WHERE id_connection = $1 AND webhook_secret = $3`, [
+          r.id_connection,
+          sealedSecret.seal(r.webhook_secret),
+          r.webhook_secret,
+        ])
+        .catch(() => {});
+    }
+  }
+  return rows.map((r) => ({ ...r, webhook_secret: sealedSecret.open(r.webhook_secret) }));
 }
 
 class WebhookDispatchService {
@@ -183,5 +196,8 @@ class WebhookDispatchService {
     log.info("sweeper.scheduled", { interval_s: 60 });
   }
 }
+
+// só para o teste da A6 (test/webhook-secret-sealed.e2e.js)
+WebhookDispatchService._listForTest = listActiveConnectionsWithWebhook;
 
 module.exports = WebhookDispatchService;

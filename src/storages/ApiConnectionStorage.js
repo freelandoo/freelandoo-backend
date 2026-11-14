@@ -1,5 +1,9 @@
 // src/storages/ApiConnectionStorage.js
 // SQL puro das conexões de API (tokens pessoais) e da fila de webhook.
+// A6: o segredo de assinatura do webhook (`webhook_secret`) é guardado SELADO (secretBox) e aberto
+// aqui na leitura; valor antigo em texto puro ainda abre (utils/sealedSecret).
+const sealedSecret = require("../utils/sealedSecret");
+const withSecret = (row) => (row && row.webhook_secret !== undefined ? { ...row, webhook_secret: sealedSecret.open(row.webhook_secret) } : row);
 
 class ApiConnectionStorage {
   // kind opcional: filtra por 'atendimento' | 'data'. Sem kind = todos (compat).
@@ -35,7 +39,7 @@ class ApiConnectionStorage {
          (id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind, managed_by)
        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'atendimento'), $8)
        RETURNING id_connection, name, token_prefix, scope_personal, kind, status, managed_by, created_at`,
-      [id_user, name, token_hash, token_prefix, scope_personal, webhook_secret, kind || null, managed_by || null]
+      [id_user, name, token_hash, token_prefix, scope_personal, sealedSecret.seal(webhook_secret), kind || null, managed_by || null]
     );
     return rows[0] || null;
   }
@@ -60,7 +64,7 @@ class ApiConnectionStorage {
         WHERE token_hash = $1 AND status = 'active'`,
       [token_hash]
     );
-    return rows[0] || null;
+    return withSecret(rows[0] || null);
   }
 
   static async getByIdForUser(conn, { id_connection, id_user }) {
@@ -103,7 +107,7 @@ class ApiConnectionStorage {
         RETURNING id_connection, webhook_url, webhook_secret`,
       [id_connection, webhook_url]
     );
-    return rows[0] || null;
+    return withSecret(rows[0] || null);
   }
 
   // ── Fila de webhook ────────────────────────────────────────────────────────
@@ -127,7 +131,7 @@ class ApiConnectionStorage {
         LIMIT $1`,
       [limit]
     );
-    return rows;
+    return rows.map(withSecret);
   }
 
   static async markDelivered(conn, id_delivery) {
