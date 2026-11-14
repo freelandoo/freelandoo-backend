@@ -29,7 +29,9 @@ const videoUpload = (req, res, next) =>
   });
 
 const router = Router();
-const admin = [authMiddleware, roleMiddleware("Administrator")];
+// Porta do JOGADOR (jogo fechado = só admin joga): sem trilha de admin (A1 lote 7), senão cada passo
+// do jogo viraria linha em tb_admin_audit_log. As FERRAMENTAS abaixo mantêm a trilha.
+const admin = [authMiddleware, roleMiddleware("Administrator", { audit: false })];
 // Segurança A1 lote 8 (2026-11-14): as FERRAMENTAS de administração do jogo (soltar o deus, metas da
 // estátua, eventos, personagem de teste, nível da casa, status do servidor) têm trava PRÓPRIA. Hoje a
 // trava do jogador (`admin`) e a das ferramentas são o mesmo papel porque o jogo é fechado; no dia em

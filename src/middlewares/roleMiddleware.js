@@ -1,9 +1,13 @@
 const pool = require("../databases");
 const { createLogger } = require("../utils/logger");
+const adminAudit = require("../utils/adminAudit");
 
 const log = createLogger("roleMiddleware");
 
-function roleMiddleware(requiredRoles) {
+// `audit` (padrão: ligado): toda ação que muda algo e passou pela trava vira uma linha em
+// tb_admin_audit_log (utils/adminAudit.js, Segurança A1 lote 7). Só a porta do JOGADOR do
+// Meu Mundo (o jogo fechado usa o papel como porta) desliga, para a trilha não virar log de jogo.
+function roleMiddleware(requiredRoles, { audit = true } = {}) {
   const roles = Array.isArray(requiredRoles) ? requiredRoles : [requiredRoles];
 
   return async (req, res, next) => {
@@ -40,6 +44,7 @@ function roleMiddleware(requiredRoles) {
           .json({ error: "Acesso negado: permissão insuficiente" });
       }
 
+      if (audit) adminAudit.arm(req, res);
       return next();
     } catch (err) {
       log.error("handler.fail", err);
