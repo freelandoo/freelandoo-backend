@@ -3,6 +3,8 @@
 // O software da academia (Coliseu é a 1ª implementação) expõe 3 endpoints GET;
 // aqui só montamos URL + Bearer + timeout e normalizamos erros em { error }.
 const { createLogger } = require("../../utils/logger");
+// A4 (SSRF): a URL da API é da academia — valida em cada chamada e não segue redirecionamento
+const { safeFetch } = require("../../utils/safeFetch");
 
 const log = createLogger("gym-provider");
 const TIMEOUT_MS = 10_000;
@@ -23,7 +25,7 @@ async function call(baseUrl, token, path, params, { method = "GET", body } = {})
   try {
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

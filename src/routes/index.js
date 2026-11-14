@@ -1,4 +1,5 @@
 const authRoutes = require("./auth.routes");
+const cspReportRoutes = require("./cspReport.routes");
 const addressRoutes = require("./address.routes");
 const socialMediaRoutes = require("./socialmedia.routes");
 const usersRoutes = require("./users.routes");
@@ -162,6 +163,9 @@ module.exports = (app) => {
     res.json({ status: "ok" });
   });
 
+  // A4 (CSP): relatórios de violação da CSP do front (agregados) e a leitura do admin
+  app.use("/csp-report", cspReportRoutes.report);
+  app.use("/admin/csp-reports", cspReportRoutes.admin);
   app.use("/auth", authRoutes);
   app.use("/address", addressRoutes);
   // Antes de /users: rota mais específica (redes do perfil-conta do user)

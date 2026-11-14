@@ -9,6 +9,8 @@ const pool = require("../databases");
 const ApiConnectionStorage = require("../storages/ApiConnectionStorage");
 const ExtMessagingStorage = require("../storages/ExtMessagingStorage");
 const { createLogger } = require("../utils/logger");
+// A4 (SSRF): valida a URL de novo em cada envio e não segue redirecionamento
+const { safeFetch } = require("../utils/safeFetch");
 
 const log = createLogger("WebhookDispatchService");
 
@@ -23,7 +25,7 @@ function sign(secret, timestamp, body) {
 async function postWebhook({ url, secret, payload }) {
   const body = JSON.stringify(payload);
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const res = await fetch(url, {
+  const res = await safeFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

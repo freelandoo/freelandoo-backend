@@ -11,6 +11,7 @@
 // Respostas no formato do contrato da API de parceiro: { status, body } com
 // `erro` de código estável (docs/API_PARTNER.md).
 const crypto = require("crypto");
+const { validateWebhookUrl } = require("../utils/webhookUrl");
 const pool = require("../databases");
 const WhatsappStorage = require("../storages/WhatsappStorage");
 const WhatsappForwardStorage = require("../storages/WhatsappForwardStorage");
@@ -62,6 +63,9 @@ class PartnerWhatsappService {
       return fail(400, "url_invalida");
     }
     if (url.protocol !== "https:") return fail(400, "url_invalida", { detalhe: "Use https." });
+    // A4 (SSRF): a mesma regra do webhook de saída — o host não pode resolver para rede privada
+    const check = await validateWebhookUrl(url.toString());
+    if (check.error) return fail(400, "url_invalida", { detalhe: check.error });
     const secret = crypto.randomBytes(32).toString("hex");
     await WhatsappForwardStorage.setWebhook(pool, academy.id_academy, {
       url: url.toString(),

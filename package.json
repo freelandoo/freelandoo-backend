@@ -90,6 +90,7 @@
     "test:auth-sessao": "node test/auth-sessao.e2e.js",
     "test:dinheiro": "node test/dinheiro-a2.e2e.js",
     "test:payout-devido": "node test/payout-devido.e2e.js",
+    "test:csp-report": "node test/csp-report.e2e.js",
     "reconcile:wallets": "node scripts/reconcile-wallets.js",
     "test:authz:comercio": "node test/authz-comercio.e2e.js",
     "test:authz:atendimento": "node test/authz-atendimento.e2e.js",

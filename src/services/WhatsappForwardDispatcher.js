@@ -14,6 +14,8 @@
 // sweeper re-tenta com espera crescente. At-least-once: o Coliseu deduplica
 // pelo wa_message_id, como já fazia com a reentrega da Evolution.
 const crypto = require("crypto");
+// A4 (SSRF): valida a URL de novo em cada envio e não segue redirecionamento
+const { safeFetch } = require("../utils/safeFetch");
 const pool = require("../databases");
 const WhatsappForwardStorage = require("../storages/WhatsappForwardStorage");
 const secretBox = require("../utils/secretBox");
@@ -33,7 +35,7 @@ function sign(secret, timestamp, body) {
 async function post(url, secret, payload) {
   const body = JSON.stringify(payload);
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const res = await fetch(url, {
+  const res = await safeFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
