@@ -166,8 +166,8 @@ module.exports = {
   async revertPayoutByDonation(db, donationId) {
     const r = await db.query(
       `UPDATE public.tb_vaquinha_payout
-          SET status = 'revertido', reverted_at = NOW(), updated_at = NOW()
-        WHERE id_donation = $1 AND status <> 'revertido' RETURNING *`,
+          SET status = CASE WHEN status = 'pago' THEN 'devido' ELSE 'revertido' END, reverted_at = NOW(), updated_at = NOW()
+        WHERE id_donation = $1 AND status IN ('aguardando', 'aprovado', 'pago') RETURNING *`,
       [donationId]
     );
     return r.rows[0] || null;

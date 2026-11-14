@@ -71,7 +71,8 @@ class ClanPayoutStorage {
           COALESCE(SUM(CASE WHEN status='aguardando' THEN amount_cents END), 0) AS aguardando_cents,
           COALESCE(SUM(CASE WHEN status='aprovado'   THEN amount_cents END), 0) AS aprovado_cents,
           COALESCE(SUM(CASE WHEN status='pago'       THEN amount_cents END), 0) AS pago_cents,
-          COALESCE(SUM(CASE WHEN status='revertido'  THEN amount_cents END), 0) AS revertido_cents
+          COALESCE(SUM(CASE WHEN status='revertido'  THEN amount_cents END), 0) AS revertido_cents,
+          COALESCE(SUM(CASE WHEN status='devido'     THEN amount_cents END), 0) AS devido_cents
          FROM public.tb_clan_payout
         WHERE id_owner_user = $1`,
       [id_owner_user]
@@ -92,8 +93,8 @@ class ClanPayoutStorage {
   static async revertBySource(conn, source_type, source_id) {
     const r = await conn.query(
       `UPDATE public.tb_clan_payout
-          SET status='revertido', reverted_at=NOW(), updated_at=NOW()
-        WHERE source_type=$1 AND source_id=$2 AND status IN ('aguardando','aprovado')
+          SET status = CASE WHEN status = 'pago' THEN 'devido' ELSE 'revertido' END, reverted_at = NOW(), updated_at = NOW()
+        WHERE source_type=$1 AND source_id=$2 AND status IN ('aguardando','aprovado','pago')
         RETURNING id_clan_payout`,
       [source_type, String(source_id)]
     );

@@ -41,6 +41,17 @@ async function context(client, kind, id, actor) {
   return { owner: r.owner, settings };
 }
 
+/**
+ * A2-07: trava o PAR (ator e dono) até o fim da transação, em ordem FIXA, antes de ler o teto.
+ * Sem ela, duas ações em paralelo liam o mesmo "quanto já ganhou hoje" e as duas pagavam (teto
+ * furado). Ordem fixa porque a mesma transação credita o ator e o dono: A engajando em B enquanto
+ * B engaja em A travaria em ordens trocadas (deadlock). Reentrante na mesma transação.
+ */
+async function lockPair(client, a, b) {
+  const ids = [...new Set([a, b].filter(Boolean).map(String))].sort();
+  for (const id of ids) await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`emerald:engajamento:${id}`]);
+}
+
 /** Quanto ainda cabe hoje para esta pessoa (ator ou dono). */
 async function room(client, user_id, settings) {
   const cap = Math.max(0, Number(settings.engagement_daily_cap) || 0);
@@ -72,6 +83,7 @@ class EngagementEmerald {
     if (!ctx) return null;
     if (action === "comment" && (Number(chars) || 0) < (Number(ctx.settings.comment_min_chars) || 0)) return null;
     const points = Math.max(0, Number(ctx.settings[key]) || 0);
+    await lockPair(client, actor, ctx.owner);
     const amount = Math.min(points, await room(client, actor, ctx.settings));
     if (amount <= 0) return null;
     const wallet = await EmeraldStorage.getOrCreateWallet(client, actor);
@@ -88,6 +100,7 @@ class EngagementEmerald {
     if (p <= 0) return null;
     const ctx = await context(client, kind, id, actor);
     if (!ctx) return null;
+    await lockPair(client, actor, ctx.owner);
     const t = TABLES[kind];
     const per = Math.max(1, Number(ctx.settings.reach_points_per_emerald) || 10);
     const { rows } = await client.query(

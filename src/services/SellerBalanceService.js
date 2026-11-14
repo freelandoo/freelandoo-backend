@@ -18,6 +18,7 @@ class SellerBalanceService {
             COALESCE(SUM(CASE WHEN status='aprovado'   THEN net_cents END), 0) AS aprovado_cents,
             COALESCE(SUM(CASE WHEN status='pago'       THEN net_cents END), 0) AS pago_cents,
             COALESCE(SUM(CASE WHEN status='revertido'  THEN net_cents END), 0) AS revertido_cents,
+            COALESCE(SUM(CASE WHEN status='devido'     THEN net_cents END), 0) AS devido_cents,
             COUNT(*) FILTER (WHERE status='aguardando') AS aguardando_count,
             COUNT(*) FILTER (WHERE status='aprovado')   AS aprovado_count,
             COUNT(*) FILTER (WHERE status='pago')       AS pago_count

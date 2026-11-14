@@ -458,8 +458,8 @@ class CommunityDeliveryStorage {
   static async revertPayout(conn, id_delivery) {
     const r = await conn.query(
       `UPDATE public.tb_community_delivery_payout
-          SET status = 'revertido', reverted_at = NOW(), updated_at = NOW()
-        WHERE id_delivery = $1 AND status IN ('aguardando', 'aprovado')
+          SET status = CASE WHEN status = 'pago' THEN 'devido' ELSE 'revertido' END, reverted_at = NOW(), updated_at = NOW()
+        WHERE id_delivery = $1 AND status IN ('aguardando', 'aprovado', 'pago')
         RETURNING *`,
       [id_delivery]
     );
@@ -486,6 +486,7 @@ class CommunityDeliveryStorage {
           COALESCE(SUM(CASE WHEN status='aprovado'   THEN net_cents END), 0)::int AS aprovado_cents,
           COALESCE(SUM(CASE WHEN status='pago'       THEN net_cents END), 0)::int AS pago_cents,
           COALESCE(SUM(CASE WHEN status='revertido'  THEN net_cents END), 0)::int AS revertido_cents,
+          COALESCE(SUM(CASE WHEN status='devido'     THEN net_cents END), 0)::int AS devido_cents,
           COUNT(*) FILTER (WHERE status IN ('aprovado','pago'))::int AS corridas
          FROM public.tb_community_delivery_payout
         WHERE id_courier = $1`,

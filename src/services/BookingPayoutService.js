@@ -81,6 +81,7 @@ class BookingPayoutService {
             COALESCE(SUM(CASE WHEN status='aprovado'   THEN net_cents END), 0) AS aprovado_cents,
             COALESCE(SUM(CASE WHEN status='pago'       THEN net_cents END), 0) AS pago_cents,
             COALESCE(SUM(CASE WHEN status='revertido'  THEN net_cents END), 0) AS revertido_cents,
+            COALESCE(SUM(CASE WHEN status='devido'     THEN net_cents END), 0) AS devido_cents,
             COUNT(*) FILTER (WHERE status='aguardando') AS aguardando_count,
             COUNT(*) FILTER (WHERE status='aprovado')   AS aprovado_count,
             COUNT(*) FILTER (WHERE status='pago')       AS pago_count
@@ -94,6 +95,7 @@ class BookingPayoutService {
         aprovado_cents: Number(bSum.aprovado_cents) + Number(cSum.aprovado_cents),
         pago_cents: Number(bSum.pago_cents) + Number(cSum.pago_cents),
         revertido_cents: Number(bSum.revertido_cents) + Number(cSum.revertido_cents),
+        devido_cents: Number(bSum.devido_cents) + Number(cSum.devido_cents),
         aguardando_count: Number(bSum.aguardando_count),
         aprovado_count: Number(bSum.aprovado_count),
         pago_count: Number(bSum.pago_count),
@@ -116,9 +118,11 @@ class BookingPayoutService {
             COALESCE(SUM(CASE WHEN status='aguardando' THEN net_cents END), 0) AS aguardando_cents,
             COALESCE(SUM(CASE WHEN status='aprovado'   THEN net_cents END), 0) AS aprovado_cents,
             COALESCE(SUM(CASE WHEN status='pago'       THEN net_cents END), 0) AS pago_cents,
+            COALESCE(SUM(CASE WHEN status='devido'     THEN net_cents END), 0) AS devido_cents,
             COUNT(*) FILTER (WHERE status='aguardando') AS aguardando_count,
             COUNT(*) FILTER (WHERE status='aprovado')   AS aprovado_count,
-            COUNT(*) FILTER (WHERE status='pago')       AS pago_count
+            COUNT(*) FILTER (WHERE status='pago')       AS pago_count,
+            COUNT(*) FILTER (WHERE status='devido')     AS devido_count
            FROM public.tb_booking_payout`
       );
       return { items, summary: summary.rows[0] };

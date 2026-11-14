@@ -99,11 +99,12 @@ class BookingPayoutStorage {
     return r.rows[0] || null;
   }
 
+  // A2-06: repasse já PAGO vira 'devido' (quem recebeu deve; o admin resolve), o resto 'revertido'.
   static async revertByBooking(conn, id_booking) {
     const r = await conn.query(
       `UPDATE public.tb_booking_payout
-          SET status = 'revertido', reverted_at = NOW(), updated_at = NOW()
-        WHERE id_booking = $1 AND status IN ('aguardando','aprovado')
+          SET status = CASE WHEN status = 'pago' THEN 'devido' ELSE 'revertido' END, reverted_at = NOW(), updated_at = NOW()
+        WHERE id_booking = $1 AND status IN ('aguardando','aprovado','pago')
         RETURNING *`,
       [id_booking]
     );

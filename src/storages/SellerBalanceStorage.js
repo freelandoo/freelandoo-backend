@@ -134,8 +134,8 @@ class SellerBalanceStorage {
   static async revertByOrder(conn, id_order) {
     const r = await conn.query(
       `UPDATE public.tb_seller_balance
-          SET status = 'revertido', reverted_at = NOW(), updated_at = NOW()
-        WHERE id_order = $1 AND status IN ('aguardando','aprovado')
+          SET status = CASE WHEN status = 'pago' THEN 'devido' ELSE 'revertido' END, reverted_at = NOW(), updated_at = NOW()
+        WHERE id_order = $1 AND status IN ('aguardando','aprovado','pago')
         RETURNING *`,
       [id_order]
     );

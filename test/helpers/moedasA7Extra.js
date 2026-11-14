@@ -161,4 +161,77 @@ add("engajamento: teto diário (500) somando ator e dono", async ({ pool, users 
   assert.equal(s.rows[0].engagement_daily_cap, 500);
 });
 
+// A2-07: o teto era lido sem trava — salvar 10 posts EM PARALELO passava do teto.
+add("engajamento: teto diário segura com ações em paralelo (A2-07)", async ({ pool, users }) => {
+  const Reach = require("../../src/storages/ReachStorage");
+  await pool.query(`UPDATE emerald_settings SET engagement_daily_cap = 4`);
+  try {
+    const r = await pool.query(`INSERT INTO tb_user (nome, email, senha, username, ativo, data_nascimento) VALUES ('capp', $1, 'x', $2, TRUE, '1990-01-01') RETURNING id_user`, [`capp${Date.now()}@ex.com`, `capp${Date.now()}`]);
+    const fan = r.rows[0].id_user;
+    // posts de DONOS diferentes: com o mesmo dono, a trava da carteira dele enfileirava tudo e escondia a corrida
+    const posts = [];
+    for (let i = 0; i < 10; i++) {
+      const o = await pool.query(`INSERT INTO tb_user (nome, email, senha, username, ativo, data_nascimento) VALUES ('dono', $1, 'x', $2, TRUE, '1990-01-01') RETURNING id_user`, [`dono${i}${Date.now()}@ex.com`, `dono${i}${Date.now()}`]);
+      posts.push(await post(pool, o.rows[0].id_user));
+    }
+    await Promise.all(posts.map((p) => Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", p.id_portfolio_item, "save", 1, { actor: fan }))));
+    assert.ok((await emerald(pool, fan)) <= 4, `passou do teto: ${await emerald(pool, fan)}`);
+  } finally {
+    await pool.query(`UPDATE emerald_settings SET engagement_daily_cap = 500`);
+  }
+});
+
+// A2-07, prova determinística: duas transações abertas ao mesmo tempo. A 1ª credita (sem
+// COMMIT); a 2ª entra e calcula o teto; aí a 1ª faz COMMIT. Sem trava, a 2ª lia o teto antigo
+// e pagava de novo (teto 2, "salvar" vale 2 → 4).
+add("engajamento: duas transações abertas não passam do teto (A2-07)", async ({ pool }) => {
+  const EE = require("../../src/services/EngagementEmerald");
+  await pool.query(`UPDATE emerald_settings SET engagement_daily_cap = 2`);
+  const mk = async (n) => (await pool.query(`INSERT INTO tb_user (nome, email, senha, username, ativo, data_nascimento) VALUES ($3, $1, 'x', $2, TRUE, '1990-01-01') RETURNING id_user`, [`${n}${Date.now()}@ex.com`, `${n}${Date.now()}`, n])).rows[0].id_user;
+  const c1 = await pool.connect();
+  const c2 = await pool.connect();
+  try {
+    const fan = await mk("fan2tx");
+    const p1 = await post(pool, await mk("donoa"));
+    const p2 = await post(pool, await mk("donob"));
+    await EE.actor(pool, { kind: "post", id: p1.id_portfolio_item, actor: fan, action: "save" }).catch(() => null); // cria a carteira
+    await pool.query(`DELETE FROM emerald_transactions WHERE user_id = $1`, [fan]);
+    const base = await emerald(pool, fan); // o saldo da carteira fica; o teto conta o que foi lançado hoje (zerado acima)
+    await c1.query("BEGIN");
+    await c2.query("BEGIN");
+    await EE.actor(c1, { kind: "post", id: p1.id_portfolio_item, actor: fan, action: "save", ref: "t1" });
+    const second = EE.actor(c2, { kind: "post", id: p2.id_portfolio_item, actor: fan, action: "save" });
+    await new Promise((r) => setTimeout(r, 300));
+    await c1.query("COMMIT");
+    await second;
+    await c2.query("COMMIT");
+    const ganho = (await emerald(pool, fan)) - base;
+    assert.ok(ganho <= 2, `passou do teto: ganhou ${ganho} (teto 2)`);
+  } finally {
+    await c1.query("ROLLBACK").catch(() => {});
+    await c2.query("ROLLBACK").catch(() => {});
+    c1.release();
+    c2.release();
+    await pool.query(`UPDATE emerald_settings SET engagement_daily_cap = 500`);
+  }
+});
+
+// A2-07: a trava é do PAR em ordem fixa — A engajando em B enquanto B engaja em A não trava (deadlock).
+add("engajamento: A e B um no outro ao mesmo tempo não dá deadlock", async ({ pool, users }) => {
+  const Reach = require("../../src/storages/ReachStorage");
+  const pa = [], pb = [];
+  for (let i = 0; i < 8; i++) {
+    pa.push(await post(pool, users[0]));
+    pb.push(await post(pool, users[1]));
+  }
+  const jobs = [];
+  for (let i = 0; i < 8; i++) {
+    jobs.push(Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", pb[i].id_portfolio_item, "like", 1, { actor: users[0] })));
+    jobs.push(Reach.inTx(pool, (c) => Reach.addWeighted(c, "post", pa[i].id_portfolio_item, "like", 1, { actor: users[1] })));
+  }
+  const out = await Promise.allSettled(jobs);
+  const bad = out.filter((x) => x.status === "rejected").map((x) => String(x.reason && x.reason.message));
+  assert.equal(bad.length, 0, `falharam: ${bad.slice(0, 2).join(" | ")}`);
+});
+
 module.exports = { checks };
