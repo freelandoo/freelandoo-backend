@@ -15,6 +15,7 @@ const FraudService = require("./FraudService");
 const SocialMediaStorage = require("../storages/SocialMediaStorage");
 const { calculateAge } = require("../utils/validateSignup");
 const { normalizeCPF } = require("../utils/documents");
+const { categoryMinAgeError } = require("../utils/categoryMinAge");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("OnboardingService");
@@ -52,12 +53,19 @@ class OnboardingService {
             : null;
 
         const current = await pool.query(
-          `SELECT data_nascimento, cpf FROM public.tb_user WHERE id_user = $1 LIMIT 1`,
+          `SELECT data_nascimento, cpf,
+                  COALESCE(cpf_waived_until > NOW(), FALSE) AS cpf_waived
+             FROM public.tb_user WHERE id_user = $1 LIMIT 1`,
           [user.id_user],
         );
         if (!current.rowCount) return { error: "Usuário não encontrado" };
         const hasBirthdate = !!current.rows[0].data_nascimento;
         const hasCpf = !!current.rows[0].cpf;
+        // Dispensa dos admins (mig 326): o modal PULA o passo de identidade e
+        // manda só a atuação. Exigir nascimento/CPF aqui deixava a conta presa
+        // num modal que não fecha (B1-01). Dispensa só adia: o que vier é
+        // validado e gravado normalmente, e nada é inventado.
+        const identityWaived = !!current.rows[0].cpf_waived;
 
         // Perfil-conta: alvo do passo 2. Pode não existir em conta muito antiga
         // (ensureUserAccountProfile só roda no signup/login) — nesse caso a
@@ -80,7 +88,7 @@ class OnboardingService {
         // Nascimento: só valida/grava se ainda falta. Quem já tem não pode
         // trocar por aqui (mudaria a idade e furaria o gate de menoridade).
         let age = null;
-        if (!hasBirthdate) {
+        if (!hasBirthdate && (dataNascimento || !identityWaived)) {
           if (!dataNascimento) {
             return { error: "Data de nascimento é obrigatória" };
           }
@@ -92,7 +100,7 @@ class OnboardingService {
 
         // CPF: idem. Obrigatório, validado por dígito verificador e único.
         let cpf = null;
-        if (!hasCpf) {
+        if (!hasCpf && (body?.cpf || !identityWaived)) {
           if (!body?.cpf) {
             return { error: "CPF é obrigatório.", reason: "cpf_required" };
           }
@@ -155,6 +163,16 @@ class OnboardingService {
             };
           }
 
+          // Enxame com idade mínima (mig 338): a frase antes do trigger, que
+          // sozinho virava 500 no meio do modal (B1-03). A idade é a que está
+          // sendo declarada agora ou a que a conta já tem.
+          const ageDenied = await categoryMinAgeError(pool, {
+            id_category,
+            id_user: user.id_user,
+            age: age != null ? age : undefined,
+          });
+          if (ageDenied) return ageDenied;
+
           taxonomy = {
             id_category,
             estado,
@@ -184,7 +202,7 @@ class OnboardingService {
                                            THEN cpf_added_at ELSE NOW() END,
                     updated_at      = NOW()
               WHERE id_user = $3`,
-            [hasBirthdate ? null : dataNascimento, cpf, user.id_user],
+            [hasBirthdate ? null : age != null ? dataNascimento : null, cpf, user.id_user],
           );
 
           // Passo 2: taxonomia + cidade no perfil-conta. id_region é resolvido

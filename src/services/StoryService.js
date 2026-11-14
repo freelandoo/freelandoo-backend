@@ -270,8 +270,11 @@ class StoryService {
       }),
       async () => {
         if (!user?.id_user) return { error: "Usuário não autenticado" };
-        // Supervisão: stories são posts no feed/bees — respeita can_post_feed.
-        const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
+        // Supervisão: tb_story é o BEE — respeita o "Usar Bees" do responsável,
+        // a mesma chave do bee pelo portfólio (PortfolioService) e do feed de
+        // bees (BeeFeedService). Com can_post_feed, o menor sem bees postava
+        // bee pela câmera (B1-05).
+        const minorBlock = await assertMinorPermission(user.id_user, "can_use_bees");
         if (minorBlock) return minorBlock;
         if (!id_profile || !UUID_RE.test(id_profile)) {
           return { error: "id_profile inválido" };
@@ -474,7 +477,8 @@ class StoryService {
   // Regra do antigo 'rest': qualquer perfil ativo do dono pode postar.
   static async _assertCanPost(user, id_profile) {
     if (!user?.id_user) return { error: "Usuário não autenticado" };
-    const minorBlock = await assertMinorPermission(user.id_user, "can_post_feed");
+    // Bee = "Usar Bees" (B1-05; ver createStory).
+    const minorBlock = await assertMinorPermission(user.id_user, "can_use_bees");
     if (minorBlock) return minorBlock;
     if (!id_profile || !UUID_RE.test(id_profile)) {
       return { error: "id_profile inválido" };

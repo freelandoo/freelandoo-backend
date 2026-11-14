@@ -15,6 +15,7 @@ const ConsentStorage = require("../storages/ConsentStorage");
 const FraudService = require("./FraudService");
 const { SIGNUP_TERMS_VERSION, SIGNUP_ACTION_KEY } = require("../utils/terms");
 const { sanitizeAvatarUrl } = require("../utils/avatarUrl");
+const { categoryMinAgeError } = require("../utils/categoryMinAge");
 
 // Hash fixo para a conferência "de mentira" quando o e-mail não existe: o
 // login responde no mesmo tempo para conta que existe e que não existe (sem
@@ -132,8 +133,10 @@ class AuthService {
 
           // Idade: se ≥18, fluxo normal. Se <18, exige responsible_code
           // (validado abaixo dentro da transação para evitar race no consumo).
+          // Mesma faixa do onboarding (OnboardingService): data no futuro ou de
+          // mais de 120 anos é erro de digitação, não "menor de idade" (B1-07).
           const age = calculateAge(data_nascimento);
-          if (age == null) {
+          if (age == null || age < 0 || age > 120) {
             return { error: "Data de nascimento inválida." };
           }
           const isMinorSignup = age < 18;
@@ -188,6 +191,10 @@ class AuthService {
                 error: "A profissão selecionada não pertence ao enxame escolhido",
               };
             }
+            // Enxame com idade mínima (mig 338): a frase antes do trigger, que
+            // sozinho virava 500 "category_min_age:18" no meio do cadastro (B1-03).
+            const ageDenied = await categoryMinAgeError(client, { id_category, age });
+            if (ageDenied) return ageDenied;
           }
 
           // Região (opcional): se informada, precisa existir e bater com o estado.
@@ -237,42 +244,47 @@ class AuthService {
             }
           }
 
+          // "Criar meu perfil" no cadastro (B1-02): a atuação escolhida vai para
+          // o PERFIL-CONTA — o perfil único da pessoa, que publica de graça
+          // (utils/profilePaywall) — e conta como declarada (mig 200). Antes
+          // nascia um SEGUNDO perfil, que caía na regra do perfil adicional (só
+          // publicava com assinatura), enquanto o onboarding ainda pedia
+          // enxame/profissão/cidade de novo para o perfil-conta vazio.
           if (id_category) {
             const profileDisplayName =
               (display_name && String(display_name).trim()) || nome;
 
-            // sub_profile_slug é NOT-NULL (mig 020). Resolve com o mesmo helper
-            // do CRUD de perfis (cuida de colisão por usuário).
-            const sub_profile_slug = await ProfileStorage.resolveUniqueSubProfileSlug(
-              client,
-              { id_user: user.id_user, display_name: profileDisplayName }
-            );
-
             // id_region (mig 121): usa o informado; senão resolve pela cidade.
-            // ::text nas posições de $6/$7 — mesmo motivo de createProfile (F5.S1).
-            await client.query(
-              `INSERT INTO tb_profile
-                 (id_user, id_category, display_name, bio, avatar_url,
-                  estado, municipio, sub_profile_slug, id_region, is_active)
-               VALUES
-                 ($1, $2, $3, $4, $5, $6::text, $7::text, $8,
-                  COALESCE($9::int,
-                    (SELECT rc.id_region FROM public.tb_region_city rc
-                      WHERE rc.uf = $6::text
-                        AND rc.municipio_norm = fl_norm_city($7::text))),
-                  false)`,
+            const upd = await client.query(
+              `UPDATE public.tb_profile
+                  SET id_category          = $2,
+                      display_name         = $3,
+                      bio                  = $4,
+                      estado               = $5::text,
+                      municipio            = $6::text,
+                      id_region            = COALESCE($7::int,
+                        (SELECT rc.id_region FROM public.tb_region_city rc
+                          WHERE rc.uf = $5::text
+                            AND rc.municipio_norm = fl_norm_city($6::text))),
+                      taxonomy_declared_at = NOW(),
+                      updated_at           = NOW()
+                WHERE id_user = $1 AND is_user_account = TRUE AND deleted_at IS NULL
+                RETURNING id_profile`,
               [
                 user.id_user,
                 id_category,
                 profileDisplayName,
                 (bio && String(bio).trim()) || null,
-                sanitizeAvatarUrl(avatar_url),
                 estado,
                 municipio,
-                sub_profile_slug,
                 id_region,
               ]
             );
+            // Foto pelo caminho único (espelha em tb_user.avatar).
+            const avatar = sanitizeAvatarUrl(avatar_url);
+            if (avatar && upd.rows[0]) {
+              await ProfileStorage.setAvatar(client, upd.rows[0].id_profile, avatar);
+            }
           }
 
           const token = crypto.randomBytes(32).toString("hex");
@@ -324,11 +336,20 @@ class AuthService {
 
           const activationLink = `${process.env.FRONTEND_URL}/activate?token=${token}`;
 
-          await sendActivationEmail({
+          // A conta JÁ EXISTE aqui (COMMIT acima). Falha ou demora do provedor
+          // de e-mail não pode virar erro de cadastro: a pessoa tentava de novo
+          // e lia "Email já cadastrado" (B1-04). Sai em segundo plano; quem não
+          // receber entra e usa o "reenviar" da tela de confirmação.
+          sendActivationEmail({
             to: user.email,
             name: user.nome,
             link: activationLink,
-          });
+          }).catch((err) =>
+            log.error("signup.activation_email_fail", {
+              id_user: user.id_user,
+              message: err?.message,
+            })
+          );
 
           return {
             message: "Usuário cadastrado com sucesso",
@@ -345,6 +366,14 @@ class AuthService {
                 "Este CPF já tem uma conta na Freelandoo. Use essa conta — dentro dela você pode criar quantos perfis quiser.",
               reason: "cpf_taken",
             };
+          }
+          // Mesma corrida para e-mail e nome de usuário (B1-06): a mesma frase
+          // da checagem prévia, não um 500.
+          if (err?.code === "23505" && String(err.constraint) === "tb_user_email_key") {
+            return { error: "Email já cadastrado" };
+          }
+          if (err?.code === "23505" && String(err.constraint) === "idx_tb_user_username_lower") {
+            return { error: "Este nome de usuário já está em uso", reason: "username_taken" };
           }
           throw err;
         } finally {
