@@ -367,7 +367,7 @@ function view(trainerLevel, best, bypass = false) {
       crossed: top >= SECTORS,
       // trecho de passagem: aparece depois do setor 10 vencido
       places: (PLACES_BY_DOMAIN[d.id] || []).map((p) => ({ id: p.id, sector: p.sector, spots: [...(p.spots || [])] })),
-      passage: next && top >= SECTORS ? { to: next.id, open: !lockOf(next.id, trainerLevel, best, bypass) } : null,
+      passage: next && (bypass || top >= SECTORS) ? { to: next.id, open: !lockOf(next.id, trainerLevel, best, bypass) } : null,
       // DV1: as 3 cenas do mundo aberto (o aparelho monta `name`; `passage` = a saída para a próxima)
       scenes: (scenesOf(d.id) || []).map((c, ci, list) => {
         const open = !lock && (bypass || c.sectors[0] <= top + 1);

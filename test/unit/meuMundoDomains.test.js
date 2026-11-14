@@ -172,3 +172,14 @@ test("D2: Pedraverde é um lugar da cena da Floresta (ao lado do setor 6), manda
   assert.deepEqual(D.view(30, {}, true)[1].places, [], "o Cânion não tem lugar ao lado do caminho");
   assert.equal(fl.sectors[5].foe.id, "sonambulo");
 });
+
+test("administrador vê a passagem para o próximo Domínio sem ter atravessado (para conferir as cenas)", () => {
+  const D = require("../../src/utils/meuMundoDomains");
+  const comum = D.view(1, {}, false);
+  assert.equal(comum[0].passage, null, "jogador comum: só depois do setor 10");
+  const adm = D.view(1, {}, true);
+  for (let i = 0; i < adm.length - 1; i++) {
+    assert.deepEqual(adm[i].passage, { to: adm[i + 1].id, open: true }, adm[i].id);
+    assert.ok(adm[i].open && adm[i].sectors.every((s) => s.open) && adm[i].scenes.every((c) => c.open && (!c.passage || c.passage.open)), adm[i].id);
+  }
+});
