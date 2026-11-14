@@ -2,8 +2,10 @@
 //
 // Pedido do Alex (2026-11-07): "quero humanizar o personagem". Regra única (o
 // cliente só mostra):
-//  - PERSONALIDADE nova, uma de cinco: psicopata, covarde, comilão, bondoso,
-//    competitivo. Os 6 números antigos (meuMundoLife `personality`) seguem por
+//  - PERSONALIDADE nova. Desde 2026-11-15 (pedido do Alex) é SÓ VOZ: não mexe
+//    em luta, monstro, fome, gosto nem desejo — muda só as falas (front,
+//    banter.ts). Treze: as cinco de antes + preguiçoso, vaidoso, rabugento,
+//    palhaço, carente, pão-duro, fofoqueiro e narcisista. Os 6 números antigos (meuMundoLife `personality`) seguem por
 //    baixo mexendo no corpo; o que aparece é o tipo. Quem já existia recebe o
 //    tipo pela própria semente (fixo, sem sorteio novo).
 //  - AFETO: quanto ele gosta do dono, de 0 sem teto (nasce em 50). Sobe quando o
@@ -18,7 +20,17 @@
 
 const HOUR = 3600 * 1000;
 
-const TEMPERS = Object.freeze(["psicopata", "covarde", "comilao", "bondoso", "competitivo"]);
+/** As cinco primeiras: quem nasceu antes de NEW_FROM sorteia SÓ entre elas (o sorteio pela semente não muda). */
+const LEGACY_TEMPERS = Object.freeze(["psicopata", "covarde", "comilao", "bondoso", "competitivo"]);
+/** Todas que existem (uma alma gravada com qualquer uma delas vale). */
+const TEMPERS = Object.freeze([...LEGACY_TEMPERS, "preguicoso", "vaidoso", "rabugento", "palhaco", "carente", "paoduro", "fofoqueiro", "narcisista"]);
+/**
+ * As que um personagem NOVO pode tirar: só as que já têm as falas prontas no
+ * front (cada fatia de falas acrescenta a dela aqui), para ninguém nascer mudo.
+ */
+const BORN_TEMPERS = Object.freeze([...LEGACY_TEMPERS]);
+/** Nascido a partir daqui sorteia em BORN_TEMPERS (2026-11-15 00:00 de Brasília). */
+const NEW_FROM = Date.UTC(2026, 10, 15, 3);
 
 /** Comidas que entram no sorteio do gosto/ódio (ids de meuMundoLife ITEMS). */
 const FOODS = Object.freeze([
@@ -47,18 +59,18 @@ const AFFECTION = Object.freeze({
   WIN: 3,
   WISH_OK: 8,
   WISH_FAIL: -6,
-  /** Comilão: refeição a mais (fora das 4) também agrada. */
-  SNACK_COMILAO: 2,
 });
 
-/** Desejos por personalidade: o que ele pede e em quanto tempo (h). */
-const WISHES = Object.freeze({
-  psicopata: [{ id: "fight", h: 6 }],
-  covarde: [{ id: "home_night", h: 12 }],
-  comilao: [{ id: "eat_more", h: 4 }, { id: "fav_food", h: 8 }],
-  bondoso: [{ id: "pray", h: 12 }, { id: "rest", h: 10 }],
-  competitivo: [{ id: "minigame", h: 6 }, { id: "fight", h: 8 }],
-});
+/** Desejos: o que ele pede e em quanto tempo (h). Iguais para todos (a personalidade é só voz). */
+const WISH_LIST = Object.freeze([
+  { id: "fight", h: 6 },
+  { id: "eat_more", h: 4 },
+  { id: "fav_food", h: 8 },
+  { id: "pray", h: 12 },
+  { id: "rest", h: 10 },
+  { id: "minigame", h: 6 },
+]);
+const WISHES = Object.freeze(Object.fromEntries(TEMPERS.map((k) => [k, WISH_LIST])));
 /** Intervalo entre um desejo e o próximo (h). */
 const WISH_GAP_H = 10;
 
@@ -73,8 +85,12 @@ function rng(seed) {
   };
 }
 
-/** Sorteio da alma (mesma semente = mesma alma; não mexe no sorteio da vida). */
-function bornSoul(seed) {
+/**
+ * Sorteio da alma (mesma semente = mesma alma; não mexe no sorteio da vida).
+ * `bornAt` (opcional): nascido a partir de NEW_FROM sorteia entre BORN_TEMPERS;
+ * sem ele, ou antes, entre as cinco de sempre — quem já existia não muda.
+ */
+function bornSoul(seed, bornAt) {
   const r = rng((seed ^ 0x5f3759df) >>> 0);
   const pick = (list, not) => {
     let x;
@@ -82,12 +98,13 @@ function bornSoul(seed) {
     while (x === not);
     return x;
   };
-  const temper = TEMPERS[Math.floor(r() * TEMPERS.length)];
+  const pool = Number(bornAt) >= NEW_FROM ? BORN_TEMPERS : LEGACY_TEMPERS;
+  const temper = pool[Math.floor(r() * pool.length)];
   const likeFood = pick(FOODS);
   const hateFood = pick(FOODS, likeFood);
-  // o psicopata e o competitivo gostam de lutar/minijogo; o covarde odeia lutar
-  const likeAct = temper === "psicopata" ? "fight" : temper === "competitivo" ? "minigame" : temper === "bondoso" ? "praying" : pick(ACTS);
-  const hateAct = temper === "covarde" ? "fight" : pick(ACTS, likeAct);
+  // gostos sorteados para todos (antes o psicopata gostava de lutar etc.: saiu, é só voz)
+  const likeAct = pick(ACTS);
+  const hateAct = pick(ACTS, likeAct);
   return {
     temper,
     affection: AFFECTION.START,
@@ -102,11 +119,9 @@ function bornSoul(seed) {
 
 /** A alma do hóspede (cria/completa; quem é de antes da mig 327 nasce aqui pela semente). */
 function soulOf(s) {
-  if (!s.soul || !TEMPERS.includes(s.soul.temper)) s.soul = { ...bornSoul(s.seed), ...(s.soul && s.soul.petName ? { petName: s.soul.petName } : {}) };
+  if (!s.soul || !TEMPERS.includes(s.soul.temper)) s.soul = { ...bornSoul(s.seed, s.bornAt), ...(s.soul && s.soul.petName ? { petName: s.soul.petName } : {}) };
   const so = s.soul;
   if (!(so.affection >= 0)) so.affection = AFFECTION.START;
-  // comilão tem fome de verdade: o apetite do corpo vai para o alto
-  if (so.temper === "comilao" && s.personality && s.personality.appetite < 0.85) s.personality = { ...s.personality, appetite: 0.9 };
   return so;
 }
 
@@ -142,7 +157,6 @@ function applyEvents(s, events, t) {
       case "consume":
         if (d.item === so.likes.food) feel(so, AFFECTION.FAV_FOOD, at);
         else if (d.item === so.hates.food) feel(so, AFFECTION.HATED_FOOD, at);
-        if (so.temper === "comilao" && FOODS.includes(d.item)) feel(so, AFFECTION.SNACK_COMILAO, at);
         wishCheck(so, "consume", d, at, out);
         break;
       case "hospital_in":
@@ -178,11 +192,6 @@ function applyEvents(s, events, t) {
   return { delta: Math.round((so.affection - before) * 10) / 10, events: out };
 }
 
-/** Hora de Brasília (0–23) do instante `t`. */
-function brtHour(t) {
-  return new Date(t - 3 * HOUR).getUTCHours();
-}
-
 /** O desejo foi atendido por este acontecimento? */
 function wishCheck(so, what, d, at, out) {
   const w = so.wish;
@@ -201,7 +210,8 @@ function wishCheck(so, what, d, at, out) {
 }
 
 /**
- * Prazo do desejo e o próximo. O covarde quer ficar em casa à noite: o desejo
+ * Prazo do desejo e o próximo. "home_night" (o antigo desejo do covarde) só
+ * termina os que já estavam em curso; ninguém pede mais. Era: o desejo
  * dele é cumprido se não lutou até o prazo (luta conta como falha em wishCheck).
  */
 function wishTick(s, so, t, out) {
@@ -213,12 +223,7 @@ function wishTick(s, so, t, out) {
     so.nextWishAt = w.until + WISH_GAP_H * HOUR;
   }
   if (so.wish || (so.nextWishAt && t < so.nextWishAt)) return;
-  const list = WISHES[so.temper];
-  // o covarde só pede "ficar em casa" quando escurece (18 h às 6 h de Brasília)
-  const h = brtHour(t);
-  const night = h >= 18 || h < 6;
-  const opts = so.temper === "covarde" ? (night ? list : []) : list;
-  if (!opts.length) return;
+  const opts = WISH_LIST;
   const r = rng(Math.floor(t / HOUR) ^ (s.seed >>> 0));
   const pick = opts[Math.floor(r() * opts.length)];
   so.wish = { id: pick.id, at: t, until: t + pick.h * HOUR };
@@ -227,7 +232,7 @@ function wishTick(s, so, t, out) {
 
 /** Covarde que lutou durante o "ficar em casa": o desejo falha na hora. */
 function cowardFought(so, at, out) {
-  if (so.temper === "covarde" && so.wish && so.wish.id === "home_night" && at <= so.wish.until) {
+  if (so.wish && so.wish.id === "home_night" && at <= so.wish.until) {
     out.push({ at, kind: "wish_fail", data: { wish: "home_night" } });
     so.wish = null;
     so.nextWishAt = at + WISH_GAP_H * HOUR;
@@ -266,6 +271,9 @@ function temperOf(s) {
 
 module.exports = {
   TEMPERS,
+  LEGACY_TEMPERS,
+  BORN_TEMPERS,
+  NEW_FROM,
   FOODS,
   ACTS,
   AFFECTION,

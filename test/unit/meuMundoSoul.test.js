@@ -17,20 +17,39 @@ test("mesma semente = mesma alma; quem é de antes nasce pela semente", () => {
   assert.equal(a.affection, Soul.AFFECTION.START);
 });
 
-test("as cinco personalidades aparecem no sorteio", () => {
+test("quem já existia sorteia entre as cinco de sempre (o sorteio pela semente não muda)", () => {
   const seen = new Set();
-  for (let i = 1; i < 400; i++) seen.add(Soul.bornSoul(i).temper);
-  assert.deepEqual([...seen].sort(), [...Soul.TEMPERS].sort());
+  for (let i = 1; i < 400; i++) {
+    const t = Soul.bornSoul(i).temper;
+    seen.add(t);
+    // com data de nascimento antiga ou sem data: a mesma alma
+    assert.deepEqual(Soul.bornSoul(i, Soul.NEW_FROM - 1), Soul.bornSoul(i));
+  }
+  assert.deepEqual([...seen].sort(), [...Soul.LEGACY_TEMPERS].sort());
 });
 
-test("comilão tem o apetite do corpo no alto; covarde odeia lutar; psicopata gosta", () => {
+test("personagem novo sorteia só entre as personalidades com fala pronta", () => {
+  for (let i = 1; i < 400; i++) assert.ok(Soul.BORN_TEMPERS.includes(Soul.bornSoul(i, Soul.NEW_FROM + 1).temper));
+  for (const t of Soul.BORN_TEMPERS) assert.ok(Soul.TEMPERS.includes(t));
+  assert.equal(Soul.TEMPERS.length, 13);
+});
+
+test("alma gravada com uma personalidade nova vale (não renasce)", () => {
+  const s = life(42);
+  s.soul = { ...Soul.bornSoul(42), temper: "narcisista" };
+  assert.equal(Soul.soulOf(s).temper, "narcisista");
+});
+
+test("personalidade é só voz: não mexe no apetite, nos gostos nem nos desejos", () => {
   for (let i = 1; i < 300; i++) {
     const s = life(i);
     const so = Soul.soulOf(s);
-    if (so.temper === "comilao") assert.ok(s.personality.appetite >= 0.85);
-    if (so.temper === "covarde") assert.equal(so.hates.act, "fight");
-    if (so.temper === "psicopata") assert.equal(so.likes.act, "fight");
+    assert.equal(s.personality.appetite, 0.3);
+    assert.notEqual(so.likes.act, so.hates.act);
   }
+  const lists = Object.values(Soul.WISHES).map((w) => JSON.stringify(w));
+  assert.equal(new Set(lists).size, 1, "a mesma lista de desejos para todas");
+  assert.ok(!Soul.WISHES.psicopata.some((w) => w.id === "home_night"));
 });
 
 test("afeto: cuidar sobe, deixar com fome e internar desce; piso 0, sem teto", () => {
@@ -58,7 +77,7 @@ test("comida favorita agrada, a odiada desagrada", () => {
   assert.ok(up >= Soul.AFFECTION.FAV_FOOD);
   const mid = so.affection;
   Soul.applyEvents(s, [{ at: T0, kind: "consume", data: { item: so.hates.food } }], T0);
-  assert.ok(so.affection < mid + (so.temper === "comilao" ? Soul.AFFECTION.SNACK_COMILAO : 0));
+  assert.ok(so.affection < mid);
 });
 
 test("apelido: ≥ 200 = o que mais gosta; zerado há um dia = o que mais odeia", () => {
@@ -73,10 +92,17 @@ test("apelido: ≥ 200 = o que mais gosta; zerado há um dia = o que mais odeia"
   assert.deepEqual(Soul.callName(so, T0 + 25 * H), { kind: "hate", food: so.hates.food });
 });
 
-test("desejo: nasce pela personalidade; atendido sobe, vencido desce", () => {
-  // um hóspede competitivo: quer minijogo ou luta
+test("desejo: atendido sobe, vencido desce", () => {
+  // um hóspede que quer minijogo ou luta (o desejo é sorteado igual para todos)
   let seed = 1;
-  while (Soul.bornSoul(seed).temper !== "competitivo") seed++;
+  for (;;) {
+    const probe = life(seed);
+    Soul.applyEvents(probe, [], T0);
+    const w = probe.soul.wish;
+    // sem o ódio pela mesma atividade (que tiraria afeto na mesma hora)
+    if (w && ["minigame", "fight"].includes(w.id) && probe.soul.hates.act !== w.id) break;
+    seed++;
+  }
   const s = life(seed);
   const so = Soul.soulOf(s);
   const r = Soul.applyEvents(s, [], T0);
@@ -98,23 +124,18 @@ test("desejo: nasce pela personalidade; atendido sobe, vencido desce", () => {
   assert.ok(so.affection <= mid + Soul.AFFECTION.WISH_FAIL + 0.01);
 });
 
-test("covarde: de noite quer ficar em casa; lutar quebra, não lutar cumpre", () => {
-  let seed = 1;
-  while (Soul.bornSoul(seed).temper !== "covarde") seed++;
+test("ninguém pede mais \"ficar em casa\"; um pedido antigo em curso ainda termina", () => {
   const night = Date.UTC(2026, 10, 7, 23, 0); // 20 h em Brasília
-  const s = life(seed);
+  for (let seed = 1; seed < 200; seed++) {
+    const s = life(seed);
+    Soul.applyEvents(s, [], night);
+    assert.ok(!s.soul.wish || s.soul.wish.id !== "home_night");
+  }
+  const s = life(3);
   const so = Soul.soulOf(s);
-  Soul.applyEvents(s, [], T0); // de dia: nada
-  assert.equal(so.wish, null);
-  Soul.applyEvents(s, [], night);
-  assert.equal(so.wish.id, "home_night");
+  so.wish = { id: "home_night", at: night, until: night + 12 * H };
   const r = Soul.applyEvents(s, [{ at: night + H, kind: "fight", data: { win: true } }], night + H);
   assert.ok(r.events.some((e) => e.kind === "wish_fail"));
-  const s2 = life(seed);
-  const so2 = Soul.soulOf(s2);
-  Soul.applyEvents(s2, [], night);
-  const r2 = Soul.applyEvents(s2, [], so2.wish.until + 1);
-  assert.ok(r2.events.some((e) => e.kind === "wish_ok"));
 });
 
 test("luta abandonada não conta", () => {

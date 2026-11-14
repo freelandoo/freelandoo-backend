@@ -434,9 +434,9 @@ class MeuMundoAdventureService {
         boss: domain && domain.boss ? domain.boss : undefined,
         // N4: o deus solto (a regra dá a ele 2× a ficha de quem enfrenta: GOD_PEER)
         god: god ? god.god : undefined,
-        // mm3d-72: personalidade e afeto mexem na luta por probabilidade (psicopata, covarde)
-        temper: origin === "tutorial" ? undefined : Soul.temperOf(s),
-        affection: origin === "tutorial" ? undefined : Math.floor(Soul.soulOf(s).affection),
+        // mm3d-72 → 2026-11-15: a personalidade é só voz. O ticket não leva mais
+        // temper/afeto, então a luta nova não tem Poder Máximo triplo nem
+        // desistência do covarde; ticket antigo (que tem) re-simula igual.
       };
       // tutorial: o inimigo entra enfraquecido (pedido do prólogo)
       if (origin === "tutorial") setup.stats = { ...setup.stats, strength: Math.max(setup.stats.strength, 400) };

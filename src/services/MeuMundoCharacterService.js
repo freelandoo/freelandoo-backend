@@ -60,16 +60,10 @@ const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 /** Quantas genéticas a pessoa guarda sem usar. */
 const GENE_SLOTS = 10;
 
-/** A alma com o temperamento trocado e os gostos que vêm com ele (o psicopata gosta de lutar…). */
+/** A alma com o temperamento trocado (herança). Só voz desde 2026-11-15: os gostos ficam os sorteados. */
 function withTemper(soul, temper) {
   if (!temper || temper === soul.temper) return soul;
-  const out = { ...soul, temper, likes: { ...soul.likes }, hates: { ...soul.hates } };
-  if (temper === "psicopata") out.likes.act = "fight";
-  else if (temper === "competitivo") out.likes.act = "minigame";
-  else if (temper === "bondoso") out.likes.act = "praying";
-  if (temper === "covarde") out.hates.act = "fight";
-  if (out.likes.act === out.hates.act) out.hates.act = out.likes.act === "studying" ? "working" : "studying";
-  return out;
+  return { ...soul, temper };
 }
 
 /** Maior valor já alcançado em cada atributo (o que a fusão e a herança olham). */
