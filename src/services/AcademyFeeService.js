@@ -144,11 +144,11 @@ class AcademyFeeService {
       if (holderName.length < 3) return { error: "Informe o nome do titular.", statusCode: 400 };
 
       const doc = digits(body?.holder_doc);
+      const ownerCpf = (await pool.query(`SELECT cpf FROM public.tb_user WHERE id_user = $1`, [user.id_user])).rows[0]?.cpf || null;
       let docType;
       if (doc.length === 11) {
         if (!isValidCPF(doc)) return { error: "CPF do titular inválido.", statusCode: 400 };
-        const r = await pool.query(`SELECT cpf FROM public.tb_user WHERE id_user = $1`, [user.id_user]);
-        if (!r.rows[0]?.cpf || r.rows[0].cpf !== doc) {
+        if (!ownerCpf || ownerCpf !== doc) {
           return {
             error: "O CPF do titular tem que ser o CPF da sua conta. Para outra pessoa, use o CNPJ da academia.",
             statusCode: 400,
@@ -160,6 +160,18 @@ class AcademyFeeService {
         docType = "cnpj";
       } else {
         return { error: "Informe o CPF ou o CNPJ do titular.", statusCode: 400 };
+      }
+
+      // A2-10: conferir o titular não basta — a chave PIX é para onde o dinheiro
+      // VAI. Chave CPF/CNPJ identifica o dono da conta de destino: CPF só o do
+      // dono da academia; CNPJ só o da própria academia (o titular declarado).
+      // E-mail, celular e aleatória não dizem de quem são: o admin confere o
+      // nome que o banco mostra antes do PIX.
+      if (type === "cpf" && (!ownerCpf || pix.key !== ownerCpf)) {
+        return { error: "A chave PIX do tipo CPF tem que ser o CPF da sua conta.", statusCode: 400 };
+      }
+      if (type === "cnpj" && (docType !== "cnpj" || pix.key !== doc)) {
+        return { error: "A chave PIX do tipo CNPJ tem que ser o CNPJ do titular (a academia).", statusCode: 400 };
       }
 
       const saved = await AcademyFeeStorage.upsertAccount(pool, {
@@ -524,6 +536,7 @@ class AcademyFeeService {
 
   static async markPaidOut(admin, id_payout, body) {
     return runWithLogs(log, "markPaidOut", () => ({ id_payout }), async () => {
+      if (!/^\d{1,18}$/.test(String(id_payout || ""))) return { error: "Repasse não encontrado.", statusCode: 404 };
       const row = await AcademyFeeStorage.markPayoutPaid(pool, id_payout, {
         note: body?.note,
         by: admin?.id_user,

@@ -305,6 +305,16 @@ class FraudService {
       };
     }
 
+    // A2-11: chave do tipo CNPJ é o CNPJ de quem recebe — só vale se for o
+    // próprio CNPJ declarado. Sem isto, "meu CPF + chave CNPJ de terceiro" (ou
+    // "meu CNPJ + chave de outro CNPJ") desviava o repasse.
+    if (String(pix_key_type || "").toLowerCase() === "cnpj" && (digits.length !== 14 || keyDigits !== digits)) {
+      return {
+        error: "A chave Pix do tipo CNPJ precisa ser o CNPJ do recebedor informado.",
+        reason: "payout_pix_mismatch",
+      };
+    }
+
     return { ok: true, is_cnpj: digits.length === 14 };
   }
 }
