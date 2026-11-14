@@ -30,6 +30,12 @@ const videoUpload = (req, res, next) =>
 
 const router = Router();
 const admin = [authMiddleware, roleMiddleware("Administrator")];
+// Segurança A1 lote 8 (2026-11-14): as FERRAMENTAS de administração do jogo (soltar o deus, metas da
+// estátua, eventos, personagem de teste, nível da casa, status do servidor) têm trava PRÓPRIA. Hoje a
+// trava do jogador (`admin`) e a das ferramentas são o mesmo papel porque o jogo é fechado; no dia em
+// que o jogo abrir, troca-se só o `admin` — as ferramentas continuam só do Administrator.
+// test/authz-meu-mundo.e2e.js confere que estas rotas usam `ferramenta`.
+const ferramenta = [authMiddleware, Object.defineProperty(roleMiddleware("Administrator"), "name", { value: "mmFerramenta" })];
 
 router.get("/neighborhood", ...admin, asyncHandler(MeuMundoController.adminNeighborhood));
 router.post("/session", ...admin, asyncHandler(MeuMundoController.adminSession));
@@ -37,9 +43,9 @@ router.post("/session", ...admin, asyncHandler(MeuMundoController.adminSession))
 router.get("/clan", ...admin, asyncHandler(MeuMundoController.clanGet));
 router.post("/clan", ...admin, asyncHandler(MeuMundoController.clanChoose));
 router.post("/clan/change", ...admin, asyncHandler(MeuMundoController.clanChange));
-router.post("/clan/artifact", ...admin, asyncHandler(MeuMundoController.clanTestArtifact));
+router.post("/clan/artifact", ...ferramenta, asyncHandler(MeuMundoController.clanTestArtifact));
 // Troca o nível da PRÓPRIA casa (teste). Dono = residência ativa do token.
-router.post("/house/level", ...admin, asyncHandler(MeuMundoController.adminHouseLevel));
+router.post("/house/level", ...ferramenta, asyncHandler(MeuMundoController.adminHouseLevel));
 // Entrar (lote no bairro em que você está) e sair pela porta.
 router.post("/house/enter", ...admin, asyncHandler(MeuMundoController.houseEnter));
 router.post("/house/exit", ...admin, asyncHandler(MeuMundoController.houseExit));
@@ -95,11 +101,11 @@ router.get("/nectar", ...admin, asyncHandler(MeuMundoController.nectarWallet));
 // N3: domingo na estátua — corrida Raposas × Vampiros, entrega (recibo pela chave) e a meta no admin
 router.get("/estatua", ...admin, asyncHandler(MeuMundoController.statueRace));
 router.post("/estatua/entregar", ...admin, asyncHandler(MeuMundoController.statueDeliver));
-router.get("/estatua/config", ...admin, asyncHandler(MeuMundoController.statueConfigGet));
-router.post("/estatua/config", ...admin, asyncHandler(MeuMundoController.statueConfigSave));
+router.get("/estatua/config", ...ferramenta, asyncHandler(MeuMundoController.statueConfigGet));
+router.post("/estatua/config", ...ferramenta, asyncHandler(MeuMundoController.statueConfigSave));
 // N4: o deus solto — quem está solto, os próximos e as quedas; o admin solta para conferir
 router.get("/deus", ...admin, asyncHandler(MeuMundoController.godState));
-router.post("/deus/soltar", ...admin, asyncHandler(MeuMundoController.godRelease));
+router.post("/deus/soltar", ...ferramenta, asyncHandler(MeuMundoController.godRelease));
 router.get("/ranking/:tab", ...admin, asyncHandler(MeuMundoController.ranking));
 // A8: link de afiliado do Meu Mundo (10% do que o convidado gastar em dinheiro)
 router.get("/share", ...admin, asyncHandler(MeuMundoController.shareLink));
@@ -132,8 +138,8 @@ router.post("/gear/exchange", ...admin, rateLimit.mmItems, asyncHandler(MeuMundo
 router.get("/gear/collection", ...admin, asyncHandler(MeuMundoController.gearCollection));
 router.post("/gear/chest/open", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearChestOpen));
 // trilha E19: eventos (o admin liga a ficha e a loja de evento)
-router.get("/evento/config", ...admin, asyncHandler(MeuMundoController.eventConfigGet));
-router.post("/evento/config", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.eventConfigSave));
+router.get("/evento/config", ...ferramenta, asyncHandler(MeuMundoController.eventConfigGet));
+router.post("/evento/config", ...ferramenta, rateLimit.mmItems, asyncHandler(MeuMundoController.eventConfigSave));
 // mm3d-59: missões — o servidor confere cada objetivo; recompensa por recibo único.
 router.get("/quest", ...admin, asyncHandler(MeuMundoController.questGet));
 router.post("/quest/advance", ...admin, asyncHandler(MeuMundoController.questAdvance));
@@ -149,7 +155,7 @@ router.get("/domains", ...admin, asyncHandler(MeuMundoController.domainsGet));
 router.post("/domains/enter", ...admin, asyncHandler(MeuMundoController.domainsEnter));
 router.post("/domains/place", ...admin, asyncHandler(MeuMundoController.domainsPlace));
 router.post("/archive/read", ...admin, asyncHandler(MeuMundoController.archiveRead));
-const videoAdmin = [authMiddleware, roleMiddleware("Administrator")];
+const videoAdmin = ferramenta; // vídeos e capas do Arquivo (F5): ferramenta do admin
 router.get("/videos", ...videoAdmin, asyncHandler(MeuMundoController.videosList));
 router.post("/videos/:kind/:ref", ...videoAdmin, videoUpload, asyncHandler(MeuMundoController.videosUpload));
 router.post("/videos/:kind/:ref/clear", ...videoAdmin, asyncHandler(MeuMundoController.videosClear));
@@ -165,7 +171,7 @@ router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewc
 // B3 (mig 340): personagens no lugar das skins — o ativo + a cápsula, trocar e fundir.
 router.get("/characters", ...admin, asyncHandler(MeuMundoController.characters));
 router.post("/characters/fuse", ...admin, asyncHandler(MeuMundoController.characterFuse));
-router.post("/characters/test-grant", ...admin, asyncHandler(MeuMundoController.characterTestGrant));
+router.post("/characters/test-grant", ...ferramenta, asyncHandler(MeuMundoController.characterTestGrant));
 router.post("/characters/:id/use", ...admin, asyncHandler(MeuMundoController.characterUse));
 // B12 (mig 410): Laboratório de Criogenia — embrião na cápsula e acelerador (15 anos).
 router.post("/characters/embryo", ...admin, asyncHandler(MeuMundoController.characterEmbryo));
@@ -197,6 +203,6 @@ router.get("/chat/global", ...admin, asyncHandler(MeuMundoController.chatHistory
 router.post("/chat/global", ...admin, rateLimit.chat, asyncHandler(MeuMundoController.chatSend));
 router.post("/chat/global/:id/report", ...admin, rateLimit.chat, asyncHandler(MeuMundoController.chatReport));
 router.post("/chat/direct", ...admin, asyncHandler(MeuMundoController.chatDirect));
-router.get("/status", ...admin, asyncHandler(MeuMundoController.adminStatus));
+router.get("/status", ...ferramenta, asyncHandler(MeuMundoController.adminStatus));
 
 module.exports = router;
