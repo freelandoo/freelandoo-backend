@@ -1516,7 +1516,7 @@ function adminTopUp(s) {
 }
 function adminView(snap) {
   if (snap.status !== "alive") return snap;
-  return { ...snap, pace: PACE.NORMAL, stamina: ADMIN_STAMINA, ailments: (snap.ailments || []).filter((a) => a.id === "junta"), needs: (snap.needs || []).filter((n) => !/energ|exhaust|exaust|tired|sleep|sono|unwell|stress|hospital/i.test(String(n.id || n.kind || ""))) };
+  return { ...snap, pace: PACE.NORMAL, stamina: ADMIN_STAMINA, ailments: (snap.ailments || []).filter((a) => a.id === "lesao"), needs: (snap.needs || []).filter((n) => !/energ|exhaust|exaust|tired|sleep|sono|unwell|stress|hospital/i.test(String(n.id || n.kind || ""))) };
 }
 
 // ═══ CINZA E MALES (VS1, 2026-11-14 — vida em steampunk fantasia) ═══
@@ -1525,16 +1525,16 @@ function adminView(snap) {
 // exposições, até 100; as consequências são as do longTerm (nenhuma regra nova).
 // Males = nomes do mundo para estados que a regra já tem; o servidor decide, a tela desenha.
 const CINZA = Object.freeze({ K: 2.5, AILMENT_AT: 25, SEVERE_AT: 60 });
-// Nomes na tela: cinza = Cinza acordada · corrosao = Corrosão no sangue (toxicidade) ·
-// desgaste = Coração em Desgaste (cardiac) · engrenagens = Engrenagens travadas (exausto) ·
-// febre = Febre de vapor (saúde baixa) · junta = Junta rachada (lesão).
+// ids neutros (VS3): o NOME de cada mal muda pela classe na tela (Raposa: Cinza na chama, Chama
+// esfumaçada, Brasa rachada, Chama fraca, Febre de brasa, Pata ferida; Vampiro: Cinza nas veias,
+// Sangue amargo, Coração de pedra, Sangue ralo, Palidez de prata, Osso trincado).
 const AILMENT = Object.freeze({
   CORROSAO_AT: 30, // toxicidade: trava a recuperação (ok < 30)
   CORROSAO_SEVERE: 40, // começa o dano "overdose" (Corrosão por tônico demais)
   DESGASTE_AT: 60,
   DESGASTE_SEVERE: 85, // perto do 100 (o coração cede: −55 de saúde e Enfermaria)
-  FEBRE_AT: 40,
-  FEBRE_SEVERE: 25,
+  DOENTE_AT: 40,
+  DOENTE_SEVERE: 25,
 });
 const cinzaOf = (s) => Math.min(100, CINZA.K * EXPOSURE.KEYS.reduce((n, k) => n + ((s.exposure && s.exposure[k]) || 0), 0));
 /** Males de agora, do mais grave para o mais leve: [{ id, level }] (level 2 = grave). */
@@ -1546,9 +1546,9 @@ function ailments(s, t) {
   if (s.toxicity >= AILMENT.CORROSAO_AT) out.push({ id: "corrosao", level: s.toxicity > AILMENT.CORROSAO_SEVERE ? 2 : 1 });
   if (s.cardiac >= AILMENT.DESGASTE_AT) out.push({ id: "desgaste", level: s.cardiac >= AILMENT.DESGASTE_SEVERE ? 2 : 1 });
   const resting = s.activity.kind === "sleeping" || s.activity.kind === "hospital";
-  if (!resting && (s.energy < 10 || s.zeroEnergyH > 0)) out.push({ id: "engrenagens", level: s.energy <= 0.01 ? 2 : 1 });
-  if (s.health <= AILMENT.FEBRE_AT) out.push({ id: "febre", level: s.health <= AILMENT.FEBRE_SEVERE ? 2 : 1 });
-  if (effectOn(s, "injury", t)) out.push({ id: "junta", level: 1 });
+  if (!resting && (s.energy < 10 || s.zeroEnergyH > 0)) out.push({ id: "exausto", level: s.energy <= 0.01 ? 2 : 1 });
+  if (s.health <= AILMENT.DOENTE_AT) out.push({ id: "doente", level: s.health <= AILMENT.DOENTE_SEVERE ? 2 : 1 });
+  if (effectOn(s, "injury", t)) out.push({ id: "lesao", level: 1 });
   return out.sort((a, b) => b.level - a.level);
 }
 

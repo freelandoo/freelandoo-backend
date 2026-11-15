@@ -519,7 +519,7 @@ test("VS1: males saem do estado que a regra já tem (o servidor decide)", () => 
   s.energy = 5;
   s.exposure = { hunger: 10, sleep: 0, stress: 0, health: 0 };
   s.effects.push({ id: "injury", until: T0 + H });
-  assert.deepEqual(new Set(ids(s)), new Set(["cinza", "corrosao", "desgaste", "engrenagens", "febre", "junta"]));
+  assert.deepEqual(new Set(ids(s)), new Set(["cinza", "corrosao", "desgaste", "exausto", "doente", "lesao"]));
   assert.ok(L.ailments(s, T0).every((a) => a.level === 1), "tudo leve");
   s.toxicity = 50;
   s.cardiac = 90;
@@ -527,11 +527,11 @@ test("VS1: males saem do estado que a regra já tem (o servidor decide)", () => 
   s.energy = 0;
   s.exposure.hunger = 30;
   const grave = L.ailments(s, T0);
-  assert.deepEqual(grave.filter((a) => a.level === 2).map((a) => a.id).sort(), ["cinza", "corrosao", "desgaste", "engrenagens", "febre"]);
-  assert.equal(grave[grave.length - 1].id, "junta", "graves primeiro");
-  // dormindo as engrenagens não contam; morto não tem mal
+  assert.deepEqual(grave.filter((a) => a.level === 2).map((a) => a.id).sort(), ["cinza", "corrosao", "desgaste", "doente", "exausto"]);
+  assert.equal(grave[grave.length - 1].id, "lesao", "graves primeiro");
+  // dormindo não conta como exausto; morto não tem mal
   s.activity = { kind: "sleeping", startedAt: T0, until: T0 + 8 * H, bed: BED, resume: null };
-  assert.equal(ids(s).includes("engrenagens"), false);
+  assert.equal(ids(s).includes("exausto"), false, "dormindo não está exausto");
   s.status = "dead";
   assert.deepEqual(L.ailments(s, T0), []);
   assert.deepEqual(L.snapshot(s, T0).ailments, []);
@@ -542,5 +542,5 @@ test("VS1: admin não vê males do corpo (vive cheio)", () => {
   s.toxicity = 50;
   s.effects.push({ id: "injury", until: T0 + H });
   const v = L.adminView(L.snapshot(s, T0));
-  assert.deepEqual(v.ailments.map((a) => a.id), ["junta"]);
+  assert.deepEqual(v.ailments.map((a) => a.id), ["lesao"]);
 });
