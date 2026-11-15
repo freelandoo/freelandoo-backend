@@ -376,6 +376,8 @@ const PACE = Object.freeze({ NORMAL: 1, TIRED: 0.7, EXHAUSTED: 0.42 });
 // natural, mais cara; nunca passa da vitalidade).
 // VS1 (2026-11-14): `name` = o nome da tela em pt (apresentação 06: Empório, tônicos, elixires,
 // comida de taverna); os ids ficam (despensa, recibos, fotos). A tela traduz por `item_<id>`.
+// VS7 (2026-11-15): a cozinha da Raposa mágica = povo do Sol, terra de Lúmen (caça pequena, javali,
+// mel de girassol, frutas do bosque; o prato mais caro é assado na Chama do Sol).
 // VS5 (2026-11-15, pedido do Alex: "bolsa de sangue ao invés de salmão"): cada CLASSE come o seu.
 // `diet` = "carne" (Raposa: Açougue, caça, mel e frutas) ou "sangue" (Vampiro: Banco de Sangue);
 // null = de todos (água da fonte, café, tônicos, elixires). Deus, Sergio, Ekaterina e os
@@ -388,31 +390,31 @@ const I = (id, kind, name, price, o = {}) =>
 
 const BASE_ITEMS = [
   // Comida saudável (cara)
-  I("salmao_legumes", "food", "Peixe do rio na brasa com raízes", 75, { diet: "carne", meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6, heal: 3 }),
-  I("frango_salada", "food", "Coelho na brasa com folhas", 55, { diet: "carne", meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4, heal: 3 }),
-  I("prato_integral", "food", "Prato do caçador (grãos, carne seca e folhas)", 34, { diet: "carne", meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
-  I("bowl_frutas", "food", "Cesto de frutas silvestres", 38, { diet: "carne", meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6, heal: 3 }),
-  I("omelete_legumes", "food", "Omelete de ovos da granja", 26, { diet: "carne", meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
-  I("iogurte_aveia", "food", "Mingau de aveia com mel", 24, { diet: "carne", meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
-  I("sopa_legumes", "food", "Sopa de raízes com osso", 32, { diet: "carne", meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3, heal: 3 }),
+  I("salmao_legumes", "food", "Truta dourada assada na Chama do Sol", 75, { diet: "carne", meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6, heal: 3 }),
+  I("frango_salada", "food", "Coelho do campo com ervas de Lúmen", 55, { diet: "carne", meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4, heal: 3 }),
+  I("prato_integral", "food", "Prato da toca (grãos, carne de caça e folhas)", 34, { diet: "carne", meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
+  I("bowl_frutas", "food", "Cesto de amoras e frutas de Lúmen", 38, { diet: "carne", meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6, heal: 3 }),
+  I("omelete_legumes", "food", "Ovos de codorna na frigideira", 26, { diet: "carne", meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
+  I("iogurte_aveia", "food", "Mingau de aveia com mel de girassol", 24, { diet: "carne", meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
+  I("sopa_legumes", "food", "Sopa de raízes do bosque", 32, { diet: "carne", meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3, heal: 3 }),
   I("agua_coco", "drink", "Água da fonte", 12, { meal: 0.1, kcal: 60, sat: 4, sugar: 2, nutri: 4, energy: 3 }),
   // Comida do dia a dia
-  I("prato_feito", "food", "Prato do açougue (carne, feijão e batata)", 18, { diet: "carne", meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
+  I("prato_feito", "food", "Prato do caçador (carne assada, feijão e batata)", 18, { diet: "carne", meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
   // Porcaria (barata)
-  I("hamburguer", "food", "Torta de carne com batata", 12, { diet: "carne", meal: 1, kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
-  I("pizza", "food", "Costela gorda na brasa", 10, { diet: "carne", meal: 1, kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
-  I("cachorro_quente", "food", "Espeto de linguiça", 8, { diet: "carne", meal: 0.7, kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
-  I("coxinha", "food", "Bolinho de carne", 5, { diet: "carne", meal: 0.4, kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
-  I("chocolate", "food", "Favo de mel", 5, { diet: "carne", meal: 0.2, kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
-  I("miojo", "food", "Caldo de osso", 4, { diet: "carne", meal: 0.6, kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
-  I("salgadinho", "food", "Torresmo", 4, { diet: "carne", meal: 0.2, kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
-  I("biscoito_recheado", "food", "Biscoito de mel", 3, { diet: "carne", meal: 0.2, kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
-  I("refrigerante", "drink", "Sidra borbulhante", 3, { diet: "carne", kcal: 150, sat: 3, sugar: 10, nutri: -7, mood: 7, energy: 2 }),
-  // Suplementos (na tela: tônicos e pó de pedra)
-  I("albumina", "supplement", "Tônico de clara", 15, { meal: 0.2, kcal: 110, sat: 6, nutri: 3, protein: 25, effect: ["albumin", 4] }),
-  I("whey", "supplement", "Tônico de soro", 45, { meal: 0.2, kcal: 130, sat: 8, sugar: 1, nutri: 4, protein: 25, effect: ["whey", 4] }),
+  I("hamburguer", "food", "Empadão de caça", 12, { diet: "carne", meal: 1, kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
+  I("pizza", "food", "Costela de javali na brasa", 10, { diet: "carne", meal: 1, kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
+  I("cachorro_quente", "food", "Linguiça de javali no espeto", 8, { diet: "carne", meal: 0.7, kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
+  I("coxinha", "food", "Bolinho de caça frito", 5, { diet: "carne", meal: 0.4, kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
+  I("chocolate", "food", "Favo de mel de girassol", 5, { diet: "carne", meal: 0.2, kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
+  I("miojo", "food", "Caldo de osso da toca", 4, { diet: "carne", meal: 0.6, kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
+  I("salgadinho", "food", "Pele de galinha frita", 4, { diet: "carne", meal: 0.2, kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
+  I("biscoito_recheado", "food", "Biscoito de amora", 3, { diet: "carne", meal: 0.2, kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
+  I("refrigerante", "drink", "Sidra de maçã do sol", 3, { diet: "carne", kcal: 150, sat: 3, sugar: 10, nutri: -7, mood: 7, energy: 2 }),
+  // Suplementos (VS7, 2026-11-15: do mundo — Leite de Mamute, Hidromel da Forja de Kragor, Sal da Pedraverde)
+  I("albumina", "supplement", "Leite de Mamute", 15, { meal: 0.2, kcal: 110, sat: 6, nutri: 3, protein: 25, effect: ["albumin", 4] }),
+  I("whey", "supplement", "Hidromel da Forja", 45, { meal: 0.2, kcal: 130, sat: 8, sugar: 1, nutri: 4, protein: 25, effect: ["whey", 4] }),
   I("pre_treino", "supplement", "Tônico de faísca", 30, { energy: 15, tox: 5, effect: ["preworkout", 3] }),
-  I("creatina", "supplement", "Pó de pedra", 35, { nutri: 1, effect: ["creatine", 24] }),
+  I("creatina", "supplement", "Sal da Pedraverde", 35, { nutri: 1, effect: ["creatine", 24] }),
   I("multivitaminico", "supplement", "Elixir das sete ervas", 25, { nutri: 2, effect: ["multivit", 24] }),
   // Remédios
   // apresentação 05 (D9, 2026-11-11): Metformina e Losartana saíram junto com o diabetes e a

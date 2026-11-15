@@ -606,3 +606,11 @@ test("VS5: a rotina do Vampiro come o sangue da despensa e compra o par de sangu
   const meal = r.events.find((e) => e.kind === "routine_meal");
   assert.ok(meal && L.ITEM_BY_ID.get(meal.data.item).diet === "sangue", JSON.stringify(meal));
 });
+
+test("VS7: a cozinha da Raposa é de Lúmen e os tônicos são do mundo (ids iguais)", () => {
+  assert.equal(L.ITEM_BY_ID.get("salmao_legumes").name, "Truta dourada assada na Chama do Sol");
+  assert.equal(L.ITEM_BY_ID.get("albumina").name, "Leite de Mamute");
+  assert.equal(L.ITEM_BY_ID.get("whey").name, "Hidromel da Forja");
+  assert.equal(L.ITEM_BY_ID.get("creatina").name, "Sal da Pedraverde");
+  assert.equal(L.ITEM_BY_ID.get("bolsa_sangue").price, L.ITEM_BY_ID.get("salmao_legumes").price, "o par segue igual");
+});
