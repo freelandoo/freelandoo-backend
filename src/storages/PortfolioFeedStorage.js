@@ -86,13 +86,18 @@ const ELIGIBILITY_SQL = `
 // propósito — perfil aparece na vitrine sem pagar, mas publicar no feed
 // global com perfil ADICIONAL exige assinatura (ver utils/profilePaywall).
 function buildCandidateQuery(mode) {
+  // "ids" (Feed Interativo, mig 456): os posts pedidos pelo id ($16), com a
+  // MESMA elegibilidade do feed global — post de comunidade privada, banido,
+  // de conta inativa ou de perfil pago sem assinatura não sai por aqui.
   const newClause =
     mode === "new"
       ? `AND (
             ppi.published_at > NOW() - INTERVAL '72 hours'
             OR ppi.impressions_count < 200
           )`
-      : "";
+      : mode === "ids"
+        ? `AND ppi.id_portfolio_item = ANY($16::uuid[])`
+        : "";
 
   // Primeiro a faixa de alcance, depois a régua de sempre. A ordenação (e o
   // LIMIT) acontece no CTE só com colunas baratas — os LATERAL pesados de
@@ -329,6 +334,7 @@ function buildCandidateQuery(mode) {
 
 const TOP_QUERY = buildCandidateQuery("top");
 const NEW_QUERY = buildCandidateQuery("new");
+const IDS_QUERY = buildCandidateQuery("ids");
 
 function buildParams({
   id_machine,
@@ -377,5 +383,18 @@ module.exports = {
   async listNewCandidates(db, params) {
     const r = await db.query(NEW_QUERY, buildParams(params));
     return r.rows;
+  },
+
+  /**
+   * Posts pelo id com a régua do feed global, no shape de candidato (o
+   * service passa por shapeRow). Ordem = a de `ids`. Fora da régua = some.
+   */
+  async listEligibleByIds(db, { ids, viewer_id_user = null }) {
+    const list = [...new Set((ids || []).filter(Boolean))].slice(0, 60);
+    if (list.length === 0) return [];
+    const params = buildParams({ viewer_id_user, limit: list.length, reach_off: true });
+    const r = await db.query(IDS_QUERY, [...params, list]);
+    const byId = new Map(r.rows.map((row) => [row.post_id, row]));
+    return list.map((id) => byId.get(id)).filter(Boolean);
   },
 };
