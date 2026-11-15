@@ -18,5 +18,8 @@ router.get("/targets", asyncHandler(C.targets));
 router.post("/throw", asyncHandler(C.throwPost));
 router.get("/inbox", asyncHandler(C.inbox));
 router.post("/seen", asyncHandler(C.seen));
+router.post("/gift", asyncHandler(C.gift));
+router.post("/drops/:id_drop/open", asyncHandler(C.openGift));
+router.get("/stickers", asyncHandler(C.stickers));
 
 module.exports = router;

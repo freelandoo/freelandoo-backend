@@ -267,6 +267,50 @@ class FeedInterativoStorage {
     return r.rowCount;
   }
 
+  // ── baú (mig 457) ──
+  /** Abre o baú uma vez só: troca o estado e marca a recompensa na mesma linha. */
+  static async openGift(db, id_drop, id_receiver) {
+    const r = await db.query(
+      `UPDATE public.tb_feed_drop
+          SET status = 'opened', opened_at = NOW(), reward_applied = TRUE
+        WHERE id_drop = $1 AND id_receiver = $2 AND kind = 'gift'
+          AND status IN ('delivered', 'seen') AND reward_applied = FALSE
+        RETURNING *`,
+      [id_drop, id_receiver]
+    );
+    return r.rows[0] || null;
+  }
+
+  static async addSticker(db, id_user, sticker_id, from) {
+    await db.query(
+      `INSERT INTO public.tb_feed_sticker_owned (id_user, sticker_id, last_from)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id_user, sticker_id) DO UPDATE
+          SET qty = tb_feed_sticker_owned.qty + 1, last_at = NOW(), last_from = $3`,
+      [id_user, sticker_id, from]
+    );
+  }
+
+  static async listStickers(db, id_user) {
+    const r = await db.query(
+      `SELECT sticker_id, qty, first_at, last_at FROM public.tb_feed_sticker_owned
+        WHERE id_user = $1 ORDER BY first_at`,
+      [id_user]
+    );
+    return r.rows;
+  }
+
+  static async acceptsGifts(db, ids) {
+    if (!ids.length) return new Set();
+    const r = await db.query(
+      `SELECT u.id FROM UNNEST($1::uuid[]) AS u(id)
+         LEFT JOIN public.tb_feed_fx_prefs p ON p.id_user = u.id
+        WHERE COALESCE(p.accept_gifts, TRUE) = TRUE`,
+      [ids]
+    );
+    return new Set(r.rows.map((x) => x.id));
+  }
+
   static async getDropForReceiver(db, id_drop, id_receiver) {
     const r = await db.query(
       `SELECT * FROM public.tb_feed_drop WHERE id_drop = $1 AND id_receiver = $2`,

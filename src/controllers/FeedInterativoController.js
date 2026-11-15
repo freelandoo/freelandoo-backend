@@ -14,4 +14,7 @@ module.exports = {
   throwPost: wrap((req) => FeedInterativoService.throwPost(req.user, req.body || {})),
   inbox: wrap((req) => FeedInterativoService.inbox(req.user)),
   seen: wrap((req) => FeedInterativoService.markSeen(req.user, req.body || {})),
+  gift: wrap((req) => FeedInterativoService.sendGift(req.user, req.body || {})),
+  openGift: wrap((req) => FeedInterativoService.openGift(req.user, req.params.id_drop)),
+  stickers: wrap((req) => FeedInterativoService.stickers(req.user)),
 };

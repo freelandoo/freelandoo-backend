@@ -229,3 +229,56 @@ async function f2() {
 // As fases seguintes (baú, cápsula, Paths, Sync) se registram aqui.
 module.exports.phases = [];
 module.exports.helpers = { call, check, createUser, tokenOf, mkPost, pool };
+
+// ── F3 · Baú ────────────────────────────────────────────────────────────────
+async function linkPair(S, R) {
+  const inv = await call("POST", "/feed-interativo/links", { token: tokenOf(S), body: { username: R.username } });
+  await call("POST", `/feed-interativo/links/${inv.body.link.id_link}/accept`, { token: tokenOf(R) });
+  return inv.body.link.id_link;
+}
+
+async function f3() {
+  console.log("━━━ F3 · Baú ━━━");
+  const S = await createUser("Manda S");
+  const R = await createUser("Recebe R");
+  const Q = await createUser("Recebe Q");
+  const tS = tokenOf(S);
+  const tR = tokenOf(R);
+  const tQ = tokenOf(Q);
+  check("sem vínculo, baú é recusado", (await call("POST", "/feed-interativo/gift", { token: tS, body: { to: R.id_user, sticker: "coroa" } })).status === 403);
+  await linkPair(S, R);
+  await linkPair(S, Q);
+  check("baú vazio é recusado", (await call("POST", "/feed-interativo/gift", { token: tS, body: { to: R.id_user } })).status === 400);
+  check("figurinha inventada é recusada", (await call("POST", "/feed-interativo/gift", { token: tS, body: { to: R.id_user, sticker: "dinheiro" } })).status === 400);
+
+  const g = await call("POST", "/feed-interativo/gift", {
+    token: tS,
+    body: { to: R.id_user, chest: "ouro", sticker: "gema", reaction: "confete", message: "  oi\u0007 R\n\n\n\nbeijo  " },
+  });
+  check("S manda baú para R", g.status === 200 && g.body?.sent === 1, JSON.stringify(g.body));
+  const inbox = await call("GET", "/feed-interativo/inbox", { token: tR });
+  const gift = inbox.body?.items?.find((x) => x.kind === "gift");
+  check("baú chega fechado (sem revelar o conteúdo)", gift && gift.post === null && gift.payload?.chest === "ouro" && gift.payload.sticker === undefined && gift.payload.message === undefined, JSON.stringify(gift));
+  await call("POST", "/feed-interativo/seen", { token: tR, body: { ids: [gift?.id_drop] } });
+  check("visto não tira o baú da fila (só abrir tira)", (await call("GET", "/feed-interativo/inbox", { token: tR })).body?.items?.some((x) => x.id_drop === gift?.id_drop));
+  check("Q não abre o baú do R", (await call("POST", `/feed-interativo/drops/${gift?.id_drop}/open`, { token: tQ })).status === 404);
+  const op = await call("POST", `/feed-interativo/drops/${gift?.id_drop}/open`, { token: tR });
+  check("R abre: figurinha, raridade, reação e mensagem limpa", op.status === 200 && op.body?.gift?.sticker === "gema" && op.body.gift.rarity === "lendario" && op.body.gift.reaction === "confete" && op.body.gift.message === "oi R\n\nbeijo", JSON.stringify(op.body));
+  check("abrir de novo → 409", (await call("POST", `/feed-interativo/drops/${gift?.id_drop}/open`, { token: tR })).status === 409);
+  const st = await call("GET", "/feed-interativo/stickers", { token: tR });
+  check("a figurinha entra na coleção (1×)", st.body?.stickers?.length === 1 && st.body.stickers[0].sticker_id === "gema" && st.body.stickers[0].qty === 1);
+  check("aberto sai da fila", !(await call("GET", "/feed-interativo/inbox", { token: tR })).body?.items?.some((x) => x.id_drop === gift?.id_drop));
+
+  // limite por par: 2 por dia
+  await call("POST", "/feed-interativo/gift", { token: tS, body: { to: R.id_user, sticker: "raio" } });
+  check("3º baú para o mesmo par no dia → 429", (await call("POST", "/feed-interativo/gift", { token: tS, body: { to: R.id_user, sticker: "raio" } })).status === 429);
+
+  // na sorte: R está no limite, então a sorte só pode cair no Q
+  const lucky = await call("POST", "/feed-interativo/gift", { token: tS, body: { to: "sorte", reaction: "fogos" } });
+  check("na sorte cai em quem ainda cabe (Q)", lucky.status === 200 && lucky.body?.to?.id_user === Q.id_user, JSON.stringify(lucky.body));
+
+  // quem não aceita presentes
+  await call("PUT", "/feed-interativo/prefs", { token: tQ, body: { accept_gifts: false } });
+  check("Q fecha presentes → baú direto recusado", (await call("POST", "/feed-interativo/gift", { token: tS, body: { to: Q.id_user, sticker: "sol" } })).status === 403);
+}
+module.exports.phases.push(f3);

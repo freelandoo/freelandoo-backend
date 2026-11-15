@@ -20,6 +20,7 @@ const PortfolioFeedStorage = require("../storages/PortfolioFeedStorage");
 const UserBlockStorage = require("../storages/UserBlockStorage");
 const { shapeRow } = require("./portfolioFeed/PortfolioFeedService");
 const { isMinorUser, assertMinorPermission } = require("../utils/supervision");
+const { STICKERS, REACTIONS, CHESTS, MESSAGE_MAX } = require("../utils/feedGifts");
 const { createLogger, runWithLogs } = require("../utils/logger");
 
 const log = createLogger("FeedInterativoService");
@@ -32,7 +33,19 @@ const LIMITS = {
   reinviteDays: 7,
   throwsPerHour: 30,
   throwsPerPairPerHour: 10,
+  giftsPerDay: 10,
+  giftsPerPairPerDay: 2,
 };
+
+/** Texto curto, sem caractere de controle e sem pilha de linhas em branco. */
+function cleanMessage(raw, max = MESSAGE_MAX) {
+  if (typeof raw !== "string") return null;
+  const v = raw
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return v ? v.slice(0, max) : null;
+}
 
 function realtime() {
   // require tardio: realtime/socket → services → realtime (ciclo).
@@ -316,6 +329,121 @@ class FeedInterativoService {
     if (kind === "gift") return { chest: p.chest || "madeira", opened: false };
     if (kind === "capsule") return { message: p.message || null, scheduled_for: p.scheduled_for || null, written_at: p.written_at || null };
     return {};
+  }
+
+  // ── baú (F3) ─────────────────────────────────────────────────────────────
+  /**
+   * Manda um baú. `to` = id_user de um alvo ou 'sorte' (sorteia entre quem
+   * aceitou receber meus lançamentos E aceita presentes). O conteúdo é de
+   * quem manda: { chest, sticker, reaction, message }.
+   */
+  static async sendGift(user, body = {}) {
+    return runWithLogs(log, "sendGift", () => ({ id_user: user?.id_user, to: body?.to === "sorte" ? "sorte" : "one" }), async () => {
+      if (!user?.id_user) return notAuth();
+      if (await isMinorUser(user.id_user)) {
+        return { error: "Lançar no feed não está disponível para contas de menores", statusCode: 403 };
+      }
+      const chest = CHESTS.includes(body.chest) ? body.chest : "madeira";
+      const sticker = Object.prototype.hasOwnProperty.call(STICKERS, body.sticker) ? body.sticker : null;
+      const reaction = REACTIONS.includes(body.reaction) ? body.reaction : null;
+      const message = cleanMessage(body.message);
+      if (body.sticker != null && !sticker) return { error: "Figurinha inválida" };
+      if (body.reaction != null && !reaction) return { error: "Reação inválida" };
+      if (!sticker && !reaction && !message) return { error: "Coloque alguma coisa dentro do baú" };
+
+      const to = body.to === "sorte" ? "sorte" : String(body.to || "");
+      if (to !== "sorte" && !UUID_RE.test(to)) return { error: "Destino inválido" };
+
+      let targets = await FeedInterativoStorage.throwTargets(pool, user.id_user);
+      const accepting = await FeedInterativoStorage.acceptsGifts(pool, targets.map((x) => x.id_user));
+      if (to !== "sorte") {
+        targets = targets.filter((x) => x.id_user === to);
+        if (targets.length === 0) return { error: "Essa pessoa não está na sua lista", statusCode: 403 };
+        if (!accepting.has(to)) return { error: "Essa pessoa não está recebendo presentes", statusCode: 403 };
+      } else {
+        targets = targets.filter((x) => accepting.has(x.id_user));
+        if (targets.length === 0) return { error: "Ninguém da sua lista está recebendo presentes", statusCode: 403 };
+      }
+
+      if ((await FeedInterativoStorage.countRecentDrops(pool, { id_sender: user.id_user, kind: "gift", interval: "1 day" })) >= LIMITS.giftsPerDay) {
+        return { error: "Você já mandou muitos baús hoje", statusCode: 429 };
+      }
+      // Na sorte: só entre quem ainda cabe no limite por par.
+      const open = [];
+      for (const tg of targets) {
+        const n = await FeedInterativoStorage.countRecentDrops(pool, {
+          id_sender: user.id_user,
+          kind: "gift",
+          interval: "1 day",
+          id_receiver: tg.id_user,
+        });
+        if (n < LIMITS.giftsPerPairPerDay) open.push(tg);
+      }
+      if (open.length === 0) return { error: "Essa pessoa já recebeu baús seus hoje", statusCode: 429 };
+      const pick = to === "sorte" ? open[require("node:crypto").randomInt(open.length)] : open[0];
+
+      const status = pick.link_status === "silenced" ? "muted" : "delivered";
+      const drop = await FeedInterativoStorage.insertDrop(pool, {
+        kind: "gift",
+        id_sender: user.id_user,
+        id_receiver: pick.id_user,
+        payload: { chest, sticker, reaction, message, lucky: to === "sorte" },
+        status,
+      });
+      if (status === "delivered") realtime().emitToUser(pick.id_user, "fi:drop", { id_drop: drop.id_drop, kind: "gift" });
+      // Na sorte, quem mandou fica sabendo quem a sorte escolheu.
+      return { sent: 1, to: to === "sorte" ? publicCard(pick) : null };
+    });
+  }
+
+  /** Abre o baú (uma vez). Devolve o conteúdo e soma a figurinha na coleção. */
+  static async openGift(user, id_drop) {
+    return runWithLogs(log, "openGift", () => ({ id_user: user?.id_user, id_drop }), async () => {
+      if (!user?.id_user) return notAuth();
+      if (!UUID_RE.test(String(id_drop || ""))) return { error: "id_drop inválido" };
+      const client = await pool.connect();
+      let opened;
+      try {
+        await client.query("BEGIN");
+        opened = await FeedInterativoStorage.openGift(client, id_drop, user.id_user);
+        if (!opened) {
+          await client.query("ROLLBACK");
+          const d = await FeedInterativoStorage.getDropForReceiver(pool, id_drop, user.id_user);
+          if (!d || d.kind !== "gift") return { error: "Baú não encontrado", statusCode: 404 };
+          if (d.status === "opened") return { error: "Esse baú já foi aberto", statusCode: 409 };
+          return { error: "Esse baú não pode ser aberto", statusCode: 409 };
+        }
+        const p = opened.payload || {};
+        if (p.sticker && Object.prototype.hasOwnProperty.call(STICKERS, p.sticker)) {
+          await FeedInterativoStorage.addSticker(client, user.id_user, p.sticker, opened.id_sender);
+        }
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+      const p = opened.payload || {};
+      const me = await FeedInterativoStorage.userCard(pool, user.id_user);
+      realtime().emitToUser(opened.id_sender, "fi:notice", { type: "gift-opened", by: publicCard(me), sticker: p.sticker || null });
+      return {
+        gift: {
+          chest: p.chest || "madeira",
+          sticker: p.sticker || null,
+          rarity: p.sticker ? STICKERS[p.sticker] : null,
+          reaction: p.reaction || null,
+          message: p.message || null,
+          lucky: !!p.lucky,
+        },
+      };
+    });
+  }
+
+  static async stickers(user) {
+    if (!user?.id_user) return notAuth();
+    const rows = await FeedInterativoStorage.listStickers(pool, user.id_user);
+    return { stickers: rows, catalog: STICKERS };
   }
 
   static async markSeen(user, body = {}) {
