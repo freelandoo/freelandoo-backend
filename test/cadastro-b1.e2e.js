@@ -227,6 +227,27 @@ async function inviteStatus(code) {
     });
     check("sem dispensa, o nascimento continua obrigatório", r.status === 400, `veio ${r.status}`);
 
+    // Ponte de site parceiro (/conectar/russamaisrussa): só identidade.
+    const P = await googleLikeUser({ waived: false });
+    r = await call("POST", "/me/onboarding/birthdate", {
+      token: sessionOf(P),
+      body: { data_nascimento: anosAtras(30), cpf: cpfValido() },
+    });
+    check("sem identity_only, a atuação continua obrigatória", r.status === 400, `veio ${r.status}`);
+    r = await call("POST", "/me/onboarding/birthdate", {
+      token: sessionOf(P),
+      body: { data_nascimento: anosAtras(30), cpf: cpfValido(), identity_only: true },
+    });
+    check("identity_only grava nascimento + CPF sem atuação", r.status === 200, `veio ${r.status} ${JSON.stringify(r.body)}`);
+    const pRow = await pool.query(
+      `SELECT u.cpf IS NOT NULL AS cpf, u.data_nascimento IS NOT NULL AS nasc,
+              p.taxonomy_declared_at IS NOT NULL AS tax
+         FROM tb_user u JOIN tb_profile p ON p.id_user = u.id_user AND p.is_user_account
+        WHERE u.id_user = $1`, [P.id_user]);
+    check("a atuação segue pendente (o modal pede depois)",
+      pRow.rows[0]?.cpf === true && pRow.rows[0]?.nasc === true && pRow.rows[0]?.tax === false,
+      JSON.stringify(pRow.rows[0]));
+
     // ═══ 2. cadastro de vendedor ═════════════════════════════════════════
     console.log("\n━━━ 2. B1-02 'Criar meu perfil' no cadastro = o perfil-conta ━━━");
     const sb = signupBody({

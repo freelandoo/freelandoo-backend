@@ -78,8 +78,16 @@ class OnboardingService {
           [user.id_user],
         );
         const accountProfileId = accountProfile.rows[0]?.id_profile || null;
+        // `identity_only` (ponte de site parceiro, /conectar/<site>): quem
+        // entra só para usar outro serviço (ex.: aluno da A Russa Mais Russa)
+        // informa nascimento + CPF e NÃO declara atuação. A atuação fica
+        // pendente e o modal da Freelandoo pede quando a pessoa usar a
+        // plataforma — mesma regra das contas vindas de academia.
+        const identityOnly = body?.identity_only === true;
         const hasTaxonomy =
-          !accountProfileId || !!accountProfile.rows[0].taxonomy_declared_at;
+          identityOnly ||
+          !accountProfileId ||
+          !!accountProfile.rows[0].taxonomy_declared_at;
 
         if (hasBirthdate && hasCpf && hasTaxonomy) {
           return { error: "Onboarding já foi concluído" };
