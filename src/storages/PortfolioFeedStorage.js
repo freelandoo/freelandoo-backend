@@ -129,6 +129,10 @@ function buildCandidateQuery(mode) {
     SELECT
       cand.reach_band,
       ppi.id_portfolio_item                                AS post_id,
+      -- Paths (mig 458): história publicada presa a este post.
+      (SELECT ps.id_story FROM tb_path_story ps
+        WHERE ps.id_portfolio_item = ppi.id_portfolio_item AND ps.status = 'published'
+        LIMIT 1)                                           AS path_story_id,
       ppi.title,
       ppi.description,
       ppi.project_url,

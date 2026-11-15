@@ -158,6 +158,8 @@ function shapeRow(row) {
       : null,
     // Vaquinha de onde o post saiu (mig 272) — alimenta o botão "Ver vaquinha"
     // no header do card. Null se o post não nasceu numa vaquinha.
+    // Paths (mig 458): este post abre uma história com caminhos.
+    path_story_id: row.path_story_id || null,
     vaquinha: row.vaquinha_slug
       ? { slug: row.vaquinha_slug, title: row.vaquinha_title || null }
       : null,

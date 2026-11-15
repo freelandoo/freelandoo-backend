@@ -344,3 +344,76 @@ async function f4() {
   check("S vê a lista das cápsulas com o estado", list.body?.capsules?.length === 4 && list.body.capsules.some((c) => c.status === "canceled"));
 }
 module.exports.phases.push(f4);
+
+// ── F5 · Paths ─────────────────────────────────────────────────────────────
+async function f5() {
+  console.log("━━━ F5 · Paths ━━━");
+  const AU = await createUser("Autor P");
+  const V = await createUser("Leitor V");
+  const tAU = tokenOf(AU);
+  const tV = tokenOf(V);
+  const carrier = await mkPost(AU.id_profile, "Post que carrega");
+  const scene = await mkPost(AU.id_profile, "Cena com mídia");
+  const notMine = await mkPost(V.id_profile, "Post do leitor");
+
+  check("anônimo não cria história", (await call("POST", "/paths", { body: { title: "x" } })).status === 401);
+  const cr = await call("POST", "/paths", { token: tAU, body: { title: "A casa" } });
+  const id = cr.body?.story?.id_story;
+  check("autor cria a história (nasce com o começo)", cr.status === 200 && cr.body.story.nodes.length === 1 && cr.body.story.root === cr.body.story.nodes[0].id, JSON.stringify(cr.body));
+  check("outro não abre o rascunho", (await call("GET", `/paths/${id}`, { token: tV })).status === 404);
+
+  const root = cr.body.story.root;
+  const graph = {
+    title: "A casa",
+    root,
+    nodes: [
+      { id: root, title: "A porta", body: "Uma porta rangendo.", media_post_id: scene, choices: [{ id: "c:abrir", label: "Abrir a porta", target: "n:dentro" }, { id: "c:fugir", label: "Fugir", target: "n:fuga" }] },
+      { id: "n:dentro", title: "Lá dentro", body: "Escuro.", media_post_id: notMine, is_ending: true },
+      { id: "n:fuga", title: "Fugiu", body: "Salvo.", is_ending: true, choices: [{ label: "ignorado", target: root }] },
+    ],
+  };
+  const sv = await call("PUT", `/paths/${id}`, { token: tAU, body: graph });
+  const g = sv.body?.story;
+  check("salva o grafo (ids novos viram uuid)", sv.status === 200 && g.nodes.length === 3 && g.nodes.every((n) => /^[0-9a-f-]{36}$/.test(n.id)), JSON.stringify(sv.body));
+  const porta = g?.nodes.find((n) => n.title === "A porta");
+  const dentro = g?.nodes.find((n) => n.title === "Lá dentro");
+  const fuga = g?.nodes.find((n) => n.title === "Fugiu");
+  check("botões apontam para os uuids certos", porta?.choices.length === 2 && porta.choices[0].target === dentro?.id && porta.choices[1].target === fuga?.id);
+  check("mídia de post alheio é ignorada; a própria fica", porta?.media_post_id === scene && dentro?.media_post_id === null);
+  check("final não guarda botão", fuga?.choices.length === 0);
+
+  const tooMany = { ...graph, root: porta.id, nodes: [{ ...graph.nodes[0], id: porta.id, choices: Array.from({ length: 5 }, (_, i) => ({ label: `b${i}`, target: porta.id })) }] };
+  check("mais de 4 botões → 400", (await call("PUT", `/paths/${id}`, { token: tAU, body: tooMany })).status === 400);
+  check("outro não salva o grafo do autor", (await call("PUT", `/paths/${id}`, { token: tV, body: graph })).status === 404);
+
+  check("publicar em post alheio → 403", (await call("POST", `/paths/${id}/publish`, { token: tAU, body: { post_id: notMine } })).status === 403);
+  const pub = await call("POST", `/paths/${id}/publish`, { token: tAU, body: { post_id: carrier } });
+  check("publica preso ao post do autor", pub.status === 200 && pub.body?.story?.status === "published", JSON.stringify(pub.body));
+
+  // Re-salvar com o MESMO id mantém o nó (e os contadores)
+  const again = await call("PUT", `/paths/${id}`, { token: tAU, body: { ...g, nodes: g.nodes } });
+  check("re-salvar mantém os ids", again.status === 200 && again.body.story.nodes.find((n) => n.id === porta.id));
+  const broken = { ...g, nodes: g.nodes.map((n) => (n.id === porta.id ? { ...n, choices: [] } : n)) };
+  check("publicada não aceita ficar incompleta", (await call("PUT", `/paths/${id}`, { token: tAU, body: broken })).status === 400);
+
+  const play = await call("GET", `/paths/by-post/${carrier}`, { token: tV });
+  const pn = play.body?.story?.nodes?.find((n) => n.id === porta.id);
+  check("leitor recebe a história pelo post, com a mídia da cena", play.status === 200 && play.body.story.root === porta.id && pn?.media?.url === "https://r2.test/a.jpg" && pn.reach === undefined, JSON.stringify(play.body));
+  check("anônimo também assiste", (await call("GET", `/paths/by-post/${carrier}`)).status === 200);
+  await call("POST", `/paths/${id}/play`, {});
+  const pk = await call("POST", `/paths/${id}/pick`, { body: { id_choice: porta.choices[0].id } });
+  check("escolha conta e devolve o destino", pk.status === 200 && pk.body?.target === dentro.id);
+  const stats = await call("GET", `/paths/${id}`, { token: tAU });
+  check("autor vê plays, escolhas e chegadas", stats.body?.story?.plays === 1 && stats.body.story.nodes.find((n) => n.id === porta.id).choices[0].picks === 1 && stats.body.story.nodes.find((n) => n.id === dentro.id).reach === 1);
+
+  // feed: o post carrega o id da história
+  const PortfolioFeedStorage = require("../src/storages/PortfolioFeedStorage");
+  const { shapeRow } = require("../src/services/portfolioFeed/PortfolioFeedService");
+  const rows = await PortfolioFeedStorage.listEligibleByIds(pool, { ids: [carrier] });
+  check("shape do feed traz path_story_id", shapeRow(rows[0]).path_story_id === id);
+
+  await call("POST", `/paths/${id}/unpublish`, { token: tAU });
+  check("despublicada some do player", (await call("GET", `/paths/by-post/${carrier}`)).status === 404);
+  check("apagar só pelo autor", (await call("DELETE", `/paths/${id}`, { token: tV })).status === 404 && (await call("DELETE", `/paths/${id}`, { token: tAU })).body?.ok === true);
+}
+module.exports.phases.push(f5);
