@@ -36,6 +36,8 @@ const SOURCES = [
   { flow: "agendamento",    table: "public.tb_profile_bookings",      session_col: "stripe_checkout_session_id", pending: "status = 'pending_payment'" },
   // Baú de doação do Feed Interativo (mig 460).
   { flow: "bau_doacao",     table: "public.tb_feed_bau_donation",     session_col: "session_id",                 pending: "status = 'pending_payment'" },
+  // Freelandoo Ads — impulsionar post (mig 461).
+  { flow: "ads_impulso",    table: "public.tb_ads_campaign",          session_col: "session_id",                 pending: "status = 'pending_payment'" },
 ];
 
 class PaymentOpsStorage {

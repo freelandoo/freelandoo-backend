@@ -158,6 +158,8 @@ function shapeRow(row) {
       : null,
     // Vaquinha de onde o post saiu (mig 272) — alimenta o botão "Ver vaquinha"
     // no header do card. Null se o post não nasceu numa vaquinha.
+    // Freelandoo Ads: só o feed preenche (pickForViewer); aqui sai sempre nulo.
+    sponsored: null,
     // Paths (mig 458): este post abre uma história com caminhos.
     path_story_id: row.path_story_id || null,
     vaquinha: row.vaquinha_slug
@@ -260,6 +262,22 @@ class PortfolioFeedService {
         const items = slice.map((row) =>
           shapeRow({ ...row, hot_tier: hotTiers.get(row.post_id) || null })
         );
+        // Freelandoo Ads (mig 461): impulsionados da área do leitor, 1 a cada
+        // `slot_every` posts (no feed misto/feed; bees não). Falha = feed sem anúncio.
+        if (viewer?.id_user && (!params.feed_kind || params.feed_kind === "feed") && items.length) {
+          const AdsService = require("../AdsService");
+          const every = await AdsService.slotEvery().catch(() => 6);
+          const ads = await AdsService.pickForViewer({
+            viewer_id: viewer.id_user,
+            place: params.viewer_place,
+            excludeIds: items.map((x) => x.post_id),
+            count: Math.max(1, Math.floor(items.length / every)),
+          });
+          ads.forEach((ad, i) => {
+            const at = Math.min(items.length, (i + 1) * every - 1 + i);
+            items.splice(at, 0, ad);
+          });
+        }
         const has_more = ordered.length > 0;
         const next_cursor = has_more ? `${nextSeed}:${nextIndex}` : null;
 

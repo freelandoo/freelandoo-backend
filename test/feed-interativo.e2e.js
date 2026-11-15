@@ -624,3 +624,110 @@ async function f7() {
   check("o fluxo está no radar de pagamentos (SOURCES)", require("../src/storages/PaymentOpsStorage").SOURCES.some((x) => x.flow === "bau_doacao"));
 }
 module.exports.phases.push(f7);
+
+// ── F8 · Freelandoo Ads (mig 461) ──────────────────────────────────────────
+async function f8() {
+  console.log("━━━ F8 · Freelandoo Ads ━━━");
+  const PG = require("../src/integrations/payments");
+  const gw = { n: 0, last: null };
+  PG.createCheckout = async (req) => {
+    gw.last = req;
+    gw.n++;
+    return { id: `pref_ads_${gw.n}_${uid()}`, url: "https://mp.test/ads" };
+  };
+  const W = require("../src/services/StripeWebhookService");
+  const AdsService = require("../src/services/AdsService");
+
+  const A = await createUser("Anunciante A");
+  const V = await createUser("Vê V");
+  const O = await createUser("Outro estado O");
+  const tA = tokenOf(A);
+  const tV = tokenOf(V);
+  const tO = tokenOf(O);
+  await pool.query(`UPDATE tb_profile SET estado = 'PR' WHERE id_user = ANY($1::uuid[]) AND is_user_account`, [[A.id_user, V.id_user]]);
+  await pool.query(`UPDATE tb_profile SET estado = 'BA' WHERE id_user = $1 AND is_user_account`, [O.id_user]);
+  const post = await mkPost(A.id_profile, "Promo da padaria");
+  await pool.query(`UPDATE tb_profile_portfolio_item SET reach_uf = 'PR', reach_city_key = 'curitiba', reach_city_name = 'Curitiba' WHERE id_portfolio_item = $1`, [post]);
+  const sessOf = async (id) => (await pool.query(`SELECT session_id FROM tb_ads_campaign WHERE id_campaign = $1`, [id])).rows[0].session_id;
+  const statusOf = async (id) => (await pool.query(`SELECT status FROM tb_ads_campaign WHERE id_campaign = $1`, [id])).rows[0].status;
+
+  const cfg = await call("GET", "/impulsos/config", { token: tA });
+  const cpms = cfg.body?.tiers?.map((x) => x.cpm_cents);
+  check("cada degrau custa mais (cidade < região < estado < Brasil)", cpms?.length === 4 && cpms[0] < cpms[1] && cpms[1] < cpms[2] && cpms[2] < cpms[3], JSON.stringify(cfg.body));
+
+  const est = await call("GET", `/impulsos/estimativa?post_id=${post}&tier=estado&budget_cents=1400&days=2`, { token: tA });
+  check("estimativa: R$ 14 no estado = 1.000 visualizações, público contado", est.status === 200 && est.body.impressions === 1000 && est.body.audience >= 2 && est.body.place.uf === "PR", JSON.stringify(est.body));
+  check("post alheio não estima", (await call("GET", `/impulsos/estimativa?post_id=${post}&tier=estado&budget_cents=1400&days=2`, { token: tV })).status === 403);
+  check("orçamento abaixo do mínimo → 400", (await call("POST", "/impulsos", { token: tA, body: { post_id: post, tier: "estado", budget_cents: 500, days: 2 } })).status === 400);
+  check("região sem região no post → 400", (await call("POST", "/impulsos", { token: tA, body: { post_id: post, tier: "regiao", budget_cents: 1400, days: 2 } })).status === 400);
+  const priv = await mkPrivateCommunity(A.id_user, `Priv ads ${uid()}`);
+  const postX = await mkPost(A.id_profile, "Exclusivo", priv);
+  check("post de comunidade privada não vira anúncio", (await call("POST", "/impulsos", { token: tA, body: { post_id: postX, tier: "brasil", budget_cents: 2200, days: 1 } })).status === 403);
+
+  const cr = await call("POST", "/impulsos", { token: tA, body: { post_id: post, objective: "profile", tier: "estado", budget_cents: 1400, days: 2 } });
+  const id = cr.body?.id_campaign;
+  check("cria a campanha e abre o checkout", cr.status === 200 && !!cr.body.checkout_url && gw.last?.amount_cents === 1400 && gw.last?.metadata?.type === "ads_impulso", JSON.stringify(cr.body));
+  check("antes de pagar, nada no feed", (await AdsService.pickForViewer({ viewer_id: V.id_user, place: { uf: "PR" } })).length === 0);
+  const session = { id: await sessOf(id), metadata: { type: "ads_impulso", id_campaign: id }, payment_intent: `pay_${uid()}` };
+  await W.fulfillCheckoutSession(session);
+  await W.fulfillCheckoutSession(session);
+  check("webhook põe no ar (idempotente)", (await statusOf(id)) === "active");
+  check("segunda campanha no mesmo post → 409", (await call("POST", "/impulsos", { token: tA, body: { post_id: post, tier: "estado", budget_cents: 1400, days: 2 } })).status === 409);
+
+  const pick = await AdsService.pickForViewer({ viewer_id: V.id_user, place: { uf: "PR" } });
+  check("quem está no estado recebe o post impulsionado (shape do card)", pick.length === 1 && pick[0].post_id === post && pick[0].sponsored?.id_campaign === id && pick[0].sponsored.objective === "profile");
+  check("de outro estado não recebe", (await AdsService.pickForViewer({ viewer_id: O.id_user, place: { uf: "BA" } })).length === 0);
+  check("o dono não vê o próprio anúncio", (await AdsService.pickForViewer({ viewer_id: A.id_user, place: { uf: "PR" } })).length === 0);
+
+  // Orgânico na mesma página = não repete como anúncio; tirando o orgânico, o anúncio entra.
+  const feed = await call("GET", `/feed/portfolio?limit=12&exclude_ids=${post}`, { token: tV });
+  const items = feed.body?.items || [];
+  const adAt = items.findIndex((x) => x.sponsored?.id_campaign === id);
+  check("no feed de verdade ele entra marcado como impulsionado, na 6ª posição", adAt === 5, `pos=${adAt} itens=${items.length}`);
+  check("sem repetir o mesmo post na página", items.filter((x) => x.post_id === post).length === 1);
+
+  for (let i = 0; i < 4; i++) await call("POST", "/impulsos/eventos", { token: tV, body: { id_campaign: id, type: "impression" } });
+  await call("POST", "/impulsos/eventos", { token: tA, body: { id_campaign: id, type: "impression" } });
+  await call("POST", "/impulsos/eventos", { token: tV, body: { id_campaign: id, type: "profile" } });
+  await call("POST", "/impulsos/eventos", { token: tV, body: { id_campaign: id, type: "profile" } });
+  await call("POST", "/impulsos/eventos", { token: tO, body: { id_campaign: id, type: "profile" } });
+  const det = await call("GET", `/impulsos/${id}`, { token: tA });
+  const c = det.body?.campaign;
+  check("3 por dia por pessoa; o dono não conta; 1 pessoa alcançada", c?.impressions === 3 && c.reach === 1, JSON.stringify(c));
+  check("clique só de quem viu e uma vez", c?.clicks_profile === 1);
+  check("série diária para o gráfico", det.body?.daily?.length === 1 && det.body.daily[0].impressions === 3);
+  check("depois de 3 no dia, sai do feed dessa pessoa", (await AdsService.pickForViewer({ viewer_id: V.id_user, place: { uf: "PR" } })).length === 0);
+  check("outro não abre a campanha", (await call("GET", `/impulsos/${id}`, { token: tV })).status === 404);
+
+  check("pausar", (await call("POST", `/impulsos/${id}/pause`, { token: tA })).body?.campaign?.status === "paused");
+  check("pausada não entrega", (await AdsService.pickForViewer({ viewer_id: O.id_user, place: { uf: "PR" } })).length === 0);
+  check("retomar", (await call("POST", `/impulsos/${id}/resume`, { token: tA })).body?.campaign?.status === "active");
+  const cancel = await call("POST", `/impulsos/${id}/cancel`, { token: tA });
+  check("cancelar devolve o não entregue como crédito (R$ 13,96)", cancel.body?.campaign?.status === "canceled" && cancel.body.campaign.credited_back_cents === 1396 && cancel.body.credit_cents === 1396, JSON.stringify(cancel.body?.campaign));
+
+  // crédito paga a próxima inteira: entra no ar sem checkout
+  const n0 = gw.n;
+  const c2 = await call("POST", "/impulsos", { token: tA, body: { post_id: post, tier: "cidade", budget_cents: 1000, days: 1 } });
+  check("crédito cobre tudo → no ar na hora, sem checkout", c2.body?.active === true && gw.n === n0 && (await statusOf(c2.body.id_campaign)) === "active");
+  check("saldo de crédito baixa (R$ 3,96)", (await call("GET", "/impulsos/config", { token: tA })).body?.credit_cents === 396);
+  await pool.query(`UPDATE tb_ads_campaign SET end_at = NOW() - INTERVAL '1 minute' WHERE id_campaign = $1`, [c2.body.id_campaign]);
+  await AdsService.sweep();
+  check("prazo acabou → completed com o resto em crédito", (await statusOf(c2.body.id_campaign)) === "completed" && (await call("GET", "/impulsos/config", { token: tA })).body?.credit_cents === 1396);
+
+  // crédito parcial + checkout que expira: o crédito volta
+  const c3 = await call("POST", "/impulsos", { token: tA, body: { post_id: post, tier: "brasil", budget_cents: 4400, days: 3 } });
+  check("crédito parcial: checkout só do resto (R$ 30,04)", gw.last?.amount_cents === 3004 && (await call("GET", "/impulsos/config", { token: tA })).body?.credit_cents === 0);
+  await W.expireCheckoutSession({ id: await sessOf(c3.body.id_campaign), metadata: { type: "ads_impulso", id_campaign: c3.body.id_campaign } }, "test");
+  check("checkout abandonado → expired e o crédito volta", (await statusOf(c3.body.id_campaign)) === "expired" && (await call("GET", "/impulsos/config", { token: tA })).body?.credit_cents === 1396);
+
+  // estorno: sai do ar
+  const c4 = await call("POST", "/impulsos", { token: tA, body: { post_id: post, tier: "brasil", budget_cents: 22000, days: 3 } });
+  const s4 = { id: await sessOf(c4.body.id_campaign), metadata: { type: "ads_impulso", id_campaign: c4.body.id_campaign }, payment_intent: `pay_${uid()}` };
+  await W.fulfillCheckoutSession(s4);
+  await W.dispatchEvent({ type: "charge.refunded", data: { object: { id: `ch_${uid()}`, payment_intent: s4.payment_intent, amount: 20604, amount_refunded: 20604, refunded: true } } });
+  check("estorno → refunded e fora do feed", (await statusOf(c4.body.id_campaign)) === "refunded" && (await AdsService.pickForViewer({ viewer_id: O.id_user, place: { uf: "BA" } })).length === 0);
+  check("o fluxo está no radar de pagamentos", require("../src/storages/PaymentOpsStorage").SOURCES.some((x) => x.flow === "ads_impulso"));
+  const list = await call("GET", "/impulsos", { token: tA });
+  check("painel lista as campanhas com totais", list.body?.campaigns?.length >= 3 && list.body.totals?.impressions >= 3 && typeof list.body.credit_cents === "number");
+}
+module.exports.phases.push(f8);

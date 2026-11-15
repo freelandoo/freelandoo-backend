@@ -912,6 +912,10 @@ async function fulfillCheckoutSession(session) {
   } else if (meta.type === "donation") {
     const VaquinhaService = require("./VaquinhaService");
     result = await VaquinhaService.confirmStripeSession(session);
+  } else if (meta.type === "ads_impulso") {
+    // Freelandoo Ads (mig 461): pago → a campanha entra no ar.
+    const AdsService = require("./AdsService");
+    result = await AdsService.confirmStripeSession(session);
   } else if (meta.type === "feed_bau") {
     // Baú de doação (mig 460): pago → entra no poço da região para o sorteio.
     const FeedBauService = require("./FeedBauService");
@@ -1086,6 +1090,12 @@ async function expireCheckoutSession(session, reason) {
         if (ex) log.info("expire.vaquinha_sponsorship", { session_id: session.id, reason });
         break;
       }
+      case "ads_impulso": {
+        const AdsService = require("./AdsService");
+        const ex = await AdsService.expireBySession(session.id);
+        if (ex) log.info("expire.ads_impulso", { session_id: session.id, reason });
+        break;
+      }
       case "feed_bau": {
         const FeedBauService = require("./FeedBauService");
         const ex = await FeedBauService.expireBySession(session.id);
@@ -1226,6 +1236,9 @@ async function dispatchEvent(event) {
       const FeedBauService = require("./FeedBauService");
       const bauResult = await FeedBauService.handleChargeRefunded(charge);
       if (bauResult && !bauResult.ignored) break;
+      const AdsService = require("./AdsService");
+      const adsResult = await AdsService.handleChargeRefunded(charge);
+      if (adsResult && !adsResult.ignored) break;
       const membershipResult = await CommunityMembershipService.handleChargeRefunded(charge);
       if (membershipResult && !membershipResult.ignored) break;
       const atendimentoIaResult = await AtendimentoIaService.handleChargeRefunded(charge);

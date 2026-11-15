@@ -66,6 +66,8 @@ const server = app.listen(PORT, () => {
   require("./src/services/FeedInterativoService").startCapsuleWorker();
   // Baú de doação (mig 460): baú parado volta ao sorteio; repasse vencido é liberado.
   require("./src/services/FeedBauService").startSweeper();
+  // Freelandoo Ads (mig 461): meta batida / prazo / post fora da régua → fim com crédito.
+  require("./src/services/AdsService").startSweeper();
 
   // WhatsApp oficial de academia (mig 307): re-tenta o repasse ao sistema da
   // academia que falhou na hora. Sem isto, mensagem que pegou o sistema dela
