@@ -41,6 +41,7 @@ const LIMITS = {
 function cleanMessage(raw, max = MESSAGE_MAX) {
   if (typeof raw !== "string") return null;
   const v = raw
+    // eslint-disable-next-line no-control-regex -- tirar caractere de controle é o objetivo
     .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
