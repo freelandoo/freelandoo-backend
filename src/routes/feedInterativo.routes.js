@@ -28,5 +28,8 @@ router.post("/sync", asyncHandler(C.syncInvite));
 router.get("/sync/:id_session", asyncHandler(C.syncGet));
 router.post("/sync/:id_session/:action", asyncHandler(C.syncAct));
 router.get("/posts", asyncHandler(C.posts));
+router.get("/baus/settings", asyncHandler(C.bauSettings));
+router.get("/baus", asyncHandler(C.bauMine));
+router.post("/baus", asyncHandler(C.bauCreate));
 
 module.exports = router;

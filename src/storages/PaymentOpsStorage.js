@@ -34,6 +34,8 @@ const SOURCES = [
   // Mensalidade de academia pela Freelandoo (mig 310).
   { flow: "mensalidade_academia", table: "public.tb_academy_fee_order", session_col: "session_id",          pending: "status = 'pending'" },
   { flow: "agendamento",    table: "public.tb_profile_bookings",      session_col: "stripe_checkout_session_id", pending: "status = 'pending_payment'" },
+  // Baú de doação do Feed Interativo (mig 460).
+  { flow: "bau_doacao",     table: "public.tb_feed_bau_donation",     session_col: "session_id",                 pending: "status = 'pending_payment'" },
 ];
 
 class PaymentOpsStorage {

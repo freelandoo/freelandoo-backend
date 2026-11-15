@@ -16,7 +16,36 @@
  *   - "reversed"  → revertido / reembolsado
  */
 
-const KINDS = ["service", "product", "course", "affiliate"];
+const KINDS = ["service", "product", "course", "affiliate", "bau"];
+
+// Baú de doação do Feed Interativo (mig 460). Bruto = o valor do baú; líquido =
+// depois de 5% da doação, tarifa do MP e 5% do saque (detalhe no meta).
+const BAU_QUERY = `
+  SELECT
+    'bau'::text                                              AS kind,
+    bp.id_payout::text                                       AS id,
+    bp.id_bau::text                                          AS ref_id,
+    'Baú de doação'::text                                    AS title,
+    CASE
+      WHEN bp.status IN ('revertido', 'devido') THEN 'reversed'
+      WHEN bp.status = 'pago'      THEN 'paid'
+      WHEN bp.status = 'aprovado'  THEN 'available'
+      ELSE 'pending'
+    END                                                      AS status,
+    bp.gross_cents::int                                      AS gross_cents,
+    bp.net_cents::int                                        AS net_cents,
+    bp.created_at                                            AS created_at,
+    bp.available_at                                          AS available_at,
+    bp.paid_out_at                                           AS paid_at,
+    jsonb_build_object(
+      'platform_fee_cents',  bp.platform_fee_cents,
+      'processor_fee_cents', bp.processor_fee_cents,
+      'withdraw_fee_cents',  bp.withdraw_fee_cents
+    )                                                        AS meta
+  FROM public.tb_feed_bau_payout bp
+  WHERE bp.id_receiver_user = $1
+    AND $2::uuid IS NULL
+`;
 
 function normalizeKindFilter(kind) {
   if (!kind || kind === "all") return null;
@@ -151,6 +180,7 @@ function buildUnion(kindFilter) {
   if (!kindFilter || kindFilter === "service")   parts.push(SERVICE_QUERY);
   if (!kindFilter || kindFilter === "course")    parts.push(COURSE_QUERY);
   if (!kindFilter || kindFilter === "affiliate") parts.push(AFFILIATE_QUERY);
+  if (!kindFilter || kindFilter === "bau")       parts.push(BAU_QUERY);
   if (parts.length === 0) return null;
   return parts.join("\nUNION ALL\n");
 }
@@ -208,7 +238,7 @@ async function aggregates(db, userId, profileId = null) {
 
   // Reshape: { totals: { received, pending, available, reversed }, by_kind: { service: { received, pending, ... }, ... } }
   const out = {
-    by_kind: { service: {}, product: {}, course: {}, affiliate: {} },
+    by_kind: { service: {}, product: {}, course: {}, affiliate: {}, bau: {} },
     totals: { received: 0, pending: 0, available: 0, reversed: 0, count: 0 },
   };
   for (const row of r.rows) {

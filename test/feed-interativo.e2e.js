@@ -514,3 +514,113 @@ async function f6() {
   }
 }
 module.exports.phases.push(f6);
+
+// ── F7 · Baú de doação (mig 460) ───────────────────────────────────────────
+async function f7() {
+  console.log("━━━ F7 · Baú de doação ━━━");
+  const PG = require("../src/integrations/payments");
+  const gw = { n: 0, last: null };
+  PG.createCheckout = async (req) => {
+    gw.last = req;
+    gw.n++;
+    return { id: `pref_bau_${gw.n}_${uid()}`, url: "https://mp.test/pay" };
+  };
+  PG.getChargeFee = async () => ({ fee_cents: 99, source: "test" });
+  const W = require("../src/services/StripeWebhookService");
+  const FeedBauService = require("../src/services/FeedBauService");
+
+  const D = await createUser("Doador D");
+  const R = await createUser("Recebe R");
+  const N = await createUser("Sem CPF N");
+  const O = await createUser("Outro estado O");
+  const tD = tokenOf(D);
+  const tR = tokenOf(R);
+  const setPlace = async (u, uf, cpf) => {
+    await pool.query(`UPDATE tb_profile SET estado = $2 WHERE id_user = $1 AND is_user_account`, [u.id_user, uf]);
+    if (cpf) await pool.query(`UPDATE tb_user SET cpf = $2 WHERE id_user = $1`, [u.id_user, cpf]);
+  };
+  const cpf = () => String(Math.floor(1e10 + Math.random() * 8.9e10)).slice(0, 11);
+  await setPlace(D, "PR", cpf());
+  await setPlace(R, "PR", cpf());
+  await setPlace(N, "PR", null);
+  await setPlace(O, "BA", cpf());
+  // Poço limpo: só os baús deste caso.
+  await pool.query(`UPDATE tb_feed_bau_donation SET status = 'expired' WHERE status = 'paid'`);
+
+  check("abaixo de R$ 1 → 400", (await call("POST", "/feed-interativo/baus", { token: tD, body: { amount_cents: 50, uf: "PR" } })).status === 400);
+  check("acima de R$ 1 milhão → 400", (await call("POST", "/feed-interativo/baus", { token: tD, body: { amount_cents: 100000001, uf: "PR" } })).status === 400);
+  check("estado inventado → 400", (await call("POST", "/feed-interativo/baus", { token: tD, body: { amount_cents: 1000, uf: "XX" } })).status === 400);
+  const cr = await call("POST", "/feed-interativo/baus", { token: tD, body: { amount_cents: 10000, uf: "PR", message: "pra alegrar seu dia", anonymous: true } });
+  check("doador compra o baú (checkout no gateway)", cr.status === 200 && !!cr.body?.checkout_url && gw.last?.amount_cents === 10000 && gw.last?.metadata?.type === "feed_bau", JSON.stringify(cr.body));
+  const id_bau = cr.body?.id_bau;
+  const sess = (await pool.query(`SELECT session_id FROM tb_feed_bau_donation WHERE id_bau = $1`, [id_bau])).rows[0].session_id;
+
+  check("não pago não cai para ninguém", (await FeedBauService.tryAssign(R.id_user, { force: true })) === false);
+  const session = { id: sess, metadata: { type: "feed_bau", id_bau }, payment_intent: `pay_${uid()}` };
+  await W.fulfillCheckoutSession(session);
+  await W.fulfillCheckoutSession(session);
+  const paid = (await pool.query(`SELECT status, processor_fee_cents FROM tb_feed_bau_donation WHERE id_bau = $1`, [id_bau])).rows[0];
+  check("webhook confirma (idempotente) e apura a tarifa", paid.status === "paid" && Number(paid.processor_fee_cents) === 99, JSON.stringify(paid));
+
+  check("o doador não recebe o próprio baú", (await FeedBauService.tryAssign(D.id_user, { force: true })) === false);
+  check("sem CPF não recebe", (await FeedBauService.tryAssign(N.id_user, { force: true })) === false);
+  check("outro estado não recebe (antes de alargar)", (await FeedBauService.tryAssign(O.id_user, { force: true })) === false);
+  check("alguém do PR recebe", (await FeedBauService.tryAssign(R.id_user, { force: true })) === true);
+  check("o mesmo baú não cai em dois", (await FeedBauService.tryAssign(O.id_user, { force: true })) === false);
+
+  const inbox = await call("GET", "/feed-interativo/inbox", { token: tR });
+  const gift = inbox.body?.items?.find((x) => x.kind === "gift" && x.payload?.donation);
+  check(
+    "chega fechado, como doação anônima, sem valor nem mensagem",
+    !!gift && gift.sender.username === null && gift.payload.anonymous === true && gift.payload.message === undefined && !JSON.stringify(gift.payload).includes("10000"),
+    JSON.stringify(gift)
+  );
+
+  const op = await call("POST", `/feed-interativo/drops/${gift?.id_drop}/open`, { token: tR });
+  const d = op.body?.gift?.donation;
+  check(
+    "abrir revela o valor e a conta (5% + MP + 5%)",
+    op.status === 200 && d?.gross_cents === 10000 && d.platform_fee_cents === 500 && d.processor_fee_cents === 99 && d.withdraw_fee_cents === 470 && d.net_cents === 8931 && op.body.gift.message === "pra alegrar seu dia",
+    JSON.stringify(op.body)
+  );
+  check("abrir de novo → 409", (await call("POST", `/feed-interativo/drops/${gift?.id_drop}/open`, { token: tR })).status === 409);
+
+  const earn = await call("GET", "/me/earnings?kind=bau", { token: tR });
+  check("cai em Recebimentos como 'bau' (pendente, holdback)", earn.body?.items?.length === 1 && earn.body.items[0].net_cents === 8931 && earn.body.items[0].status === "pending", JSON.stringify(earn.body));
+  const all = await call("GET", "/me/earnings", { token: tR });
+  check("os agregados de Recebimentos trazem o baú", all.status === 200 && !!all.body?.aggregates?.by_kind?.bau, JSON.stringify(all.body?.aggregates));
+
+  const mine = await call("GET", "/feed-interativo/baus", { token: tD });
+  check("doador vê o baú aberto, sem saber quem recebeu", mine.body?.baus?.[0]?.status === "opened" && !("id_receiver" in mine.body.baus[0]));
+
+  await pool.query(`UPDATE tb_feed_bau_payout SET available_at = NOW() - INTERVAL '1 minute' WHERE id_bau = $1`, [id_bau]);
+  const sw = await FeedBauService.sweep();
+  check("varredura libera o repasse vencido", sw.released >= 1);
+  const pid = (await pool.query(`SELECT id_payout FROM tb_feed_bau_payout WHERE id_bau = $1`, [id_bau])).rows[0].id_payout;
+  check("usuário comum não marca pago", (await call("POST", `/admin/feed-bau/payouts/${pid}/mark-paid`, { token: tR })).status === 403);
+  const mk = await FeedBauService.adminMarkPaid(pid, "pix ok");
+  check("admin marca pago", mk.payout?.status === "pago");
+
+  await W.dispatchEvent({ type: "charge.refunded", data: { object: { id: `ch_${uid()}`, payment_intent: session.payment_intent, amount: 10000, amount_refunded: 10000, refunded: true } } });
+  const after = (await pool.query(`SELECT d.status AS ds, p.status AS ps FROM tb_feed_bau_donation d JOIN tb_feed_bau_payout p USING (id_bau) WHERE d.id_bau = $1`, [id_bau])).rows[0];
+  check("estorno: baú refunded e repasse já pago vira 'devido'", after?.ds === "refunded" && after?.ps === "devido", JSON.stringify(after));
+
+  const c2 = await call("POST", "/feed-interativo/baus", { token: tD, body: { amount_cents: 500, uf: "PR" } });
+  const s2 = (await pool.query(`SELECT session_id FROM tb_feed_bau_donation WHERE id_bau = $1`, [c2.body.id_bau])).rows[0].session_id;
+  await W.fulfillCheckoutSession({ id: s2, metadata: { type: "feed_bau", id_bau: c2.body.id_bau }, payment_intent: `pay_${uid()}` });
+  const R2 = await createUser("Recebe R2");
+  await setPlace(R2, "PR", cpf());
+  check("R2 recebe o segundo baú", (await FeedBauService.tryAssign(R2.id_user, { force: true })) === true);
+  await pool.query(`UPDATE tb_feed_bau_donation SET assigned_at = NOW() - INTERVAL '4 days' WHERE id_bau = $1`, [c2.body.id_bau]);
+  const sw2 = await FeedBauService.sweep();
+  const back = (await pool.query(`SELECT status FROM tb_feed_bau_donation WHERE id_bau = $1`, [c2.body.id_bau])).rows[0];
+  check("não aberto em 3 dias volta ao poço", sw2.returned >= 1 && back.status === "paid");
+  check("…e não cai de novo no R2", (await FeedBauService.tryAssign(R2.id_user, { force: true })) === false);
+
+  const c3 = await call("POST", "/feed-interativo/baus", { token: tD, body: { amount_cents: 700, uf: "BA" } });
+  const s3 = (await pool.query(`SELECT session_id FROM tb_feed_bau_donation WHERE id_bau = $1`, [c3.body.id_bau])).rows[0].session_id;
+  await W.expireCheckoutSession({ id: s3, metadata: { type: "feed_bau", id_bau: c3.body.id_bau } }, "test");
+  check("checkout abandonado → expired", (await pool.query(`SELECT status FROM tb_feed_bau_donation WHERE id_bau = $1`, [c3.body.id_bau])).rows[0].status === "expired");
+  check("o fluxo está no radar de pagamentos (SOURCES)", require("../src/storages/PaymentOpsStorage").SOURCES.some((x) => x.flow === "bau_doacao"));
+}
+module.exports.phases.push(f7);

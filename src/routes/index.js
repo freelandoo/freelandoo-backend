@@ -116,6 +116,7 @@ const storePricePreviewRoutes = require("./storePricePreview.routes");
 const bookmarkRoutes = require("./bookmark.routes");
 const feedInterativoRoutes = require("./feedInterativo.routes");
 const pathsRoutes = require("./paths.routes");
+const feedBauAdminRoutes = require("./feedBauAdmin.routes");
 const consentRoutes = require("./consent.routes");
 const siteAssetRoutes = require("./siteAsset.routes");
 const siteAssetAdminRoutes = require("./siteAssetAdmin.routes");
@@ -342,6 +343,7 @@ module.exports = (app) => {
   app.use("/me/bookmarks", bookmarkRoutes);
   app.use("/feed-interativo", feedInterativoRoutes);
   app.use("/paths", pathsRoutes);
+  app.use("/admin/feed-bau", feedBauAdminRoutes);
   app.use("/me/consents", consentRoutes);
   app.use("/site-assets", siteAssetRoutes);
   app.use("/admin/site-assets", siteAssetAdminRoutes);

@@ -912,6 +912,10 @@ async function fulfillCheckoutSession(session) {
   } else if (meta.type === "donation") {
     const VaquinhaService = require("./VaquinhaService");
     result = await VaquinhaService.confirmStripeSession(session);
+  } else if (meta.type === "feed_bau") {
+    // Baú de doação (mig 460): pago → entra no poço da região para o sorteio.
+    const FeedBauService = require("./FeedBauService");
+    result = await FeedBauService.confirmStripeSession(session);
   } else if (meta.type === "vaquinha_sponsorship") {
     const VaquinhaService = require("./VaquinhaService");
     result = await VaquinhaService.confirmSponsorshipSession(session);
@@ -1082,6 +1086,12 @@ async function expireCheckoutSession(session, reason) {
         if (ex) log.info("expire.vaquinha_sponsorship", { session_id: session.id, reason });
         break;
       }
+      case "feed_bau": {
+        const FeedBauService = require("./FeedBauService");
+        const ex = await FeedBauService.expireBySession(session.id);
+        if (ex) log.info("expire.feed_bau", { session_id: session.id, reason });
+        break;
+      }
       case "atendimento_ia": {
         const ex = await AtendimentoIaService.expireBySession(session.id);
         if (ex) log.info("expire.atendimento_ia", { session_id: session.id, reason });
@@ -1213,6 +1223,9 @@ async function dispatchEvent(event) {
       const VaquinhaService = require("./VaquinhaService");
       const vaquinhaResult = await VaquinhaService.handleChargeRefunded(charge);
       if (vaquinhaResult && !vaquinhaResult.ignored) break;
+      const FeedBauService = require("./FeedBauService");
+      const bauResult = await FeedBauService.handleChargeRefunded(charge);
+      if (bauResult && !bauResult.ignored) break;
       const membershipResult = await CommunityMembershipService.handleChargeRefunded(charge);
       if (membershipResult && !membershipResult.ignored) break;
       const atendimentoIaResult = await AtendimentoIaService.handleChargeRefunded(charge);

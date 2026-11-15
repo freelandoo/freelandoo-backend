@@ -300,6 +300,10 @@ class FeedInterativoService {
     if (!user?.id_user) return notAuth();
     const minorBlock = await assertMinorPermission(user.id_user, "can_view_feed");
     if (minorBlock) return minorBlock;
+    // Baú de doação (mig 460): abrir o feed é a "chance" de um baú da região cair.
+    await require("./FeedBauService")
+      .tryAssign(user.id_user)
+      .catch((err) => log.warn("bau.try_assign_fail", { message: err?.message }));
     const rows = await FeedInterativoStorage.inbox(pool, user.id_user, 20);
     const postIds = rows.filter((r) => r.id_portfolio_item).map((r) => r.id_portfolio_item);
     const posts = postIds.length
@@ -321,7 +325,8 @@ class FeedInterativoService {
         id_drop: r.id_drop,
         kind: r.kind,
         created_at: r.delivered_at || r.created_at,
-        sender: publicCard(r),
+        // Doação anônima: quem mandou não aparece.
+        sender: r.payload?.doacao && r.payload?.anonymous ? { id_user: null, username: null, display_name: null, avatar_url: null } : publicCard(r),
         post,
         payload: FeedInterativoService.publicPayload(r.kind, r.payload),
       });
@@ -333,7 +338,7 @@ class FeedInterativoService {
   /** Só o que o receiver pode ver do payload (o baú fechado não revela o prêmio). */
   static publicPayload(kind, payload) {
     const p = payload && typeof payload === "object" ? payload : {};
-    if (kind === "gift") return { chest: p.chest || "madeira", opened: false };
+    if (kind === "gift") return { chest: p.chest || "madeira", opened: false, donation: !!p.doacao, anonymous: !!p.anonymous };
     if (kind === "capsule") return { message: p.message || null, scheduled_for: p.scheduled_for || null, written_at: p.written_at || null };
     return {};
   }
@@ -410,6 +415,7 @@ class FeedInterativoService {
       if (!UUID_RE.test(String(id_drop || ""))) return { error: "id_drop inválido" };
       const client = await pool.connect();
       let opened;
+      let receipt = null;
       try {
         await client.query("BEGIN");
         opened = await FeedInterativoStorage.openGift(client, id_drop, user.id_user);
@@ -424,6 +430,14 @@ class FeedInterativoService {
         if (p.sticker && Object.prototype.hasOwnProperty.call(STICKERS, p.sticker)) {
           await FeedInterativoStorage.addSticker(client, user.id_user, p.sticker, opened.id_sender);
         }
+        // Baú de doação (mig 460): o valor vira repasse em Recebimentos, na mesma transação.
+        if (p.doacao) {
+          receipt = await require("./FeedBauService").onOpened(client, opened, user.id_user);
+          if (!receipt) {
+            await client.query("ROLLBACK");
+            return { error: "Esse baú não está mais disponível", statusCode: 409 };
+          }
+        }
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK").catch(() => {});
@@ -432,8 +446,13 @@ class FeedInterativoService {
         client.release();
       }
       const p = opened.payload || {};
-      const me = await FeedInterativoStorage.userCard(pool, user.id_user);
-      realtime().emitToUser(opened.id_sender, "fi:notice", { type: "gift-opened", by: publicCard(me), sticker: p.sticker || null });
+      if (p.doacao) {
+        // Doação: o doador sabe que foi aberto, nunca POR QUEM.
+        realtime().emitToUser(opened.id_sender, "fi:notice", { type: "bau-opened", id_bau: p.id_bau });
+      } else {
+        const me = await FeedInterativoStorage.userCard(pool, user.id_user);
+        realtime().emitToUser(opened.id_sender, "fi:notice", { type: "gift-opened", by: publicCard(me), sticker: p.sticker || null });
+      }
       return {
         gift: {
           chest: p.chest || "madeira",
@@ -442,6 +461,17 @@ class FeedInterativoService {
           reaction: p.reaction || null,
           message: p.message || null,
           lucky: !!p.lucky,
+          donation: receipt
+            ? {
+                gross_cents: receipt.gross_cents,
+                platform_fee_cents: receipt.platform_fee_cents,
+                processor_fee_cents: receipt.processor_fee_cents,
+                received_cents: receipt.received_cents,
+                withdraw_fee_cents: receipt.withdraw_fee_cents,
+                net_cents: receipt.net_cents,
+                available_at: receipt.available_at,
+              }
+            : null,
         },
       };
     });
