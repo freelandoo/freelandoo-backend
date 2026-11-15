@@ -138,9 +138,9 @@ test("D9: quem tinha diabetes e pressão alta fica curado; os remédios saíram 
   assert.equal(s.hasHypertension, false);
   assert.equal(s.diabetesRisk, 0);
   assert.equal(s.bpRisk, 0);
+  // VS1: o snapshot nem tem mais os campos de diabetes/pressão (nem glicemia e pressão lidas).
   const h = L.snapshot(s, T0 + H).health;
-  assert.equal(h.diabetes, "none");
-  assert.equal(h.hypertension, "none");
+  for (const k of ["diabetes", "hypertension", "diabetesRisk", "bpRisk", "glucose", "systolic", "diastolic"]) assert.equal(k in h, false, k);
   assert.equal(L.ITEM_BY_ID.get("metformina"), undefined);
   assert.equal(L.ITEM_BY_ID.get("losartana"), undefined);
   assert.equal(L.consume(s, "losartana", T0 + H).code, "item");
@@ -486,4 +486,61 @@ test("crime: praça multa e depois prende; preso não age; a pena acaba sozinha"
   const hit = L.crime(fresh(14), "atropelamento", T0);
   assert.equal(hit.jailed, true);
   assert.equal(hit.minutes, L.CRIME.HIT_JAIL_MIN);
+});
+
+// ═══ VS1 (2026-11-14): vida em steampunk fantasia ═══
+test("VS1: catálogo sem farmácia nem seringa — ids iguais, nomes do mundo (os da tela)", () => {
+  const real = /anaboliz|injet|remédio|calmante|whey|pré-treino|creatina|albumina|multivit|energético|estimulante|cápsula|metformina|losartana|miojo|hambúrguer|refrigerante/i;
+  for (const it of L.ITEMS) assert.equal(real.test(it.name), false, `${it.id}: ${it.name}`);
+  for (const id of ["albumina", "whey", "pre_treino", "creatina", "multivitaminico", "calmante", "energetico", "estimulante", "anabolizante", "cafe"]) {
+    assert.ok(L.ITEM_BY_ID.get(id), `id ${id} continua (geladeira e recibos)`);
+  }
+  assert.equal(L.ITEM_BY_ID.get("anabolizante").name, "Elixir de Ferro");
+  assert.equal(L.ITEM_BY_ID.get("calmante").name, "Chá de Brasa Mansa");
+});
+
+test("VS1: a Cinza no sangue é a exposição acumulada, com teto 100", () => {
+  const s = fresh();
+  assert.equal(L.cinzaOf(s), 0);
+  s.exposure = { hunger: 4, sleep: 4, stress: 2, health: 0 };
+  assert.equal(L.cinzaOf(s), 25);
+  s.exposure = { hunger: 400, sleep: 0, stress: 0, health: 0 };
+  assert.equal(L.cinzaOf(s), 100);
+  assert.equal(L.snapshot(s, T0).health.cinza, 100);
+});
+
+test("VS1: males saem do estado que a regra já tem (o servidor decide)", () => {
+  const ids = (s) => L.ailments(s, T0).map((a) => a.id);
+  const s = fresh();
+  assert.deepEqual(ids(s), [], "recém-nascido não tem mal");
+  s.toxicity = 35;
+  s.cardiac = 70;
+  s.health = 30;
+  s.energy = 5;
+  s.exposure = { hunger: 10, sleep: 0, stress: 0, health: 0 };
+  s.effects.push({ id: "injury", until: T0 + H });
+  assert.deepEqual(new Set(ids(s)), new Set(["cinza", "corrosao", "desgaste", "engrenagens", "febre", "junta"]));
+  assert.ok(L.ailments(s, T0).every((a) => a.level === 1), "tudo leve");
+  s.toxicity = 50;
+  s.cardiac = 90;
+  s.health = 20;
+  s.energy = 0;
+  s.exposure.hunger = 30;
+  const grave = L.ailments(s, T0);
+  assert.deepEqual(grave.filter((a) => a.level === 2).map((a) => a.id).sort(), ["cinza", "corrosao", "desgaste", "engrenagens", "febre"]);
+  assert.equal(grave[grave.length - 1].id, "junta", "graves primeiro");
+  // dormindo as engrenagens não contam; morto não tem mal
+  s.activity = { kind: "sleeping", startedAt: T0, until: T0 + 8 * H, bed: BED, resume: null };
+  assert.equal(ids(s).includes("engrenagens"), false);
+  s.status = "dead";
+  assert.deepEqual(L.ailments(s, T0), []);
+  assert.deepEqual(L.snapshot(s, T0).ailments, []);
+});
+
+test("VS1: admin não vê males do corpo (vive cheio)", () => {
+  const s = L.adminTopUp(fresh());
+  s.toxicity = 50;
+  s.effects.push({ id: "injury", until: T0 + H });
+  const v = L.adminView(L.snapshot(s, T0));
+  assert.deepEqual(v.ailments.map((a) => a.id), ["junta"]);
 });

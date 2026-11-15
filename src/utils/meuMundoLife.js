@@ -371,47 +371,49 @@ const PACE = Object.freeze({ NORMAL: 1, TIRED: 0.7, EXHAUSTED: 0.42 });
 // (toxicidade), effect = [id, horas], meal = crédito de refeição (MEALS:
 // 1 quita, fração é lanche, 0 não conta), heal = saúde na hora (comida
 // natural, mais cara; nunca passa da vitalidade).
+// VS1 (2026-11-14): `name` = o nome da tela em pt (apresentação 06: Empório, tônicos, elixires,
+// comida de taverna); os ids ficam (despensa, recibos, fotos). A tela traduz por `item_<id>`.
 const I = (id, kind, name, price, o = {}) =>
   Object.freeze({ id, kind, name, price, currency: "coins", meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, heal: 0, effect: null, ...o });
 
 const ITEMS = Object.freeze([
   // Comida saudável (cara)
-  I("salmao_legumes", "food", "Salmão grelhado com legumes", 75, { meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6, heal: 3 }),
-  I("frango_salada", "food", "Frango grelhado com salada", 55, { meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4, heal: 3 }),
-  I("prato_integral", "food", "Arroz integral, feijão, ovo e salada", 34, { meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
-  I("bowl_frutas", "food", "Bowl de frutas", 38, { meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6, heal: 3 }),
-  I("omelete_legumes", "food", "Omelete de legumes", 26, { meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
-  I("iogurte_aveia", "food", "Iogurte natural com aveia", 24, { meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
-  I("sopa_legumes", "food", "Sopa de legumes", 32, { meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3, heal: 3 }),
-  I("agua_coco", "drink", "Água de coco", 12, { meal: 0.1, kcal: 60, sat: 4, sugar: 2, nutri: 4, energy: 3 }),
+  I("salmao_legumes", "food", "Peixe defumado com raízes", 75, { meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6, heal: 3 }),
+  I("frango_salada", "food", "Frango na brasa com folhas", 55, { meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4, heal: 3 }),
+  I("prato_integral", "food", "Prato do ferreiro (grãos, feijão, ovo e folhas)", 34, { meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
+  I("bowl_frutas", "food", "Cesto de frutas", 38, { meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6, heal: 3 }),
+  I("omelete_legumes", "food", "Omelete de raízes", 26, { meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
+  I("iogurte_aveia", "food", "Mingau de aveia com coalhada", 24, { meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
+  I("sopa_legumes", "food", "Sopa de raízes", 32, { meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3, heal: 3 }),
+  I("agua_coco", "drink", "Água da fonte", 12, { meal: 0.1, kcal: 60, sat: 4, sugar: 2, nutri: 4, energy: 3 }),
   // Comida do dia a dia
-  I("prato_feito", "food", "Prato feito (arroz, feijão, bife e fritas)", 18, { meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
+  I("prato_feito", "food", "Prato da taverna (arroz, feijão, bife e batata)", 18, { meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
   // Porcaria (barata)
-  I("hamburguer", "food", "Hambúrguer com fritas", 12, { meal: 1, kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
-  I("pizza", "food", "Pizza (3 fatias)", 10, { meal: 1, kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
-  I("cachorro_quente", "food", "Cachorro-quente", 8, { meal: 0.7, kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
-  I("coxinha", "food", "Coxinha", 5, { meal: 0.4, kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
-  I("chocolate", "food", "Barra de chocolate", 5, { meal: 0.2, kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
-  I("miojo", "food", "Miojo", 4, { meal: 0.6, kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
-  I("salgadinho", "food", "Salgadinho de pacote", 4, { meal: 0.2, kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
-  I("biscoito_recheado", "food", "Biscoito recheado", 3, { meal: 0.2, kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
-  I("refrigerante", "drink", "Refrigerante (lata)", 3, { kcal: 150, sat: 3, sugar: 10, nutri: -7, mood: 7, energy: 2 }),
-  // Suplementos
-  I("albumina", "supplement", "Albumina", 15, { meal: 0.2, kcal: 110, sat: 6, nutri: 3, protein: 25, effect: ["albumin", 4] }),
-  I("whey", "supplement", "Whey protein", 45, { meal: 0.2, kcal: 130, sat: 8, sugar: 1, nutri: 4, protein: 25, effect: ["whey", 4] }),
-  I("pre_treino", "supplement", "Pré-treino", 30, { energy: 15, tox: 5, effect: ["preworkout", 3] }),
-  I("creatina", "supplement", "Creatina", 35, { nutri: 1, effect: ["creatine", 24] }),
-  I("multivitaminico", "supplement", "Multivitamínico", 25, { nutri: 2, effect: ["multivit", 24] }),
+  I("hamburguer", "food", "Torta de carne com batata", 12, { meal: 1, kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
+  I("pizza", "food", "Pão de caldeira com queijo (3 fatias)", 10, { meal: 1, kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
+  I("cachorro_quente", "food", "Espeto de linguiça", 8, { meal: 0.7, kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
+  I("coxinha", "food", "Bolinho da taverna", 5, { meal: 0.4, kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
+  I("chocolate", "food", "Barra de cacau", 5, { meal: 0.2, kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
+  I("miojo", "food", "Caldo de caldeira", 4, { meal: 0.6, kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
+  I("salgadinho", "food", "Cascas fritas", 4, { meal: 0.2, kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
+  I("biscoito_recheado", "food", "Biscoito de melado", 3, { meal: 0.2, kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
+  I("refrigerante", "drink", "Sidra borbulhante", 3, { kcal: 150, sat: 3, sugar: 10, nutri: -7, mood: 7, energy: 2 }),
+  // Suplementos (na tela: tônicos e pó de pedra)
+  I("albumina", "supplement", "Tônico de clara", 15, { meal: 0.2, kcal: 110, sat: 6, nutri: 3, protein: 25, effect: ["albumin", 4] }),
+  I("whey", "supplement", "Tônico de soro", 45, { meal: 0.2, kcal: 130, sat: 8, sugar: 1, nutri: 4, protein: 25, effect: ["whey", 4] }),
+  I("pre_treino", "supplement", "Tônico de faísca", 30, { energy: 15, tox: 5, effect: ["preworkout", 3] }),
+  I("creatina", "supplement", "Pó de pedra", 35, { nutri: 1, effect: ["creatine", 24] }),
+  I("multivitaminico", "supplement", "Elixir das sete ervas", 25, { nutri: 2, effect: ["multivit", 24] }),
   // Remédios
   // apresentação 05 (D9, 2026-11-11): Metformina e Losartana saíram junto com o diabetes e a
   // pressão alta (mig 443 devolve as moedas de quem tinha na despensa).
-  I("calmante", "medicine", "Calmante", 25, { stress: -30, energy: -10, tox: 3, effect: ["calm", 8] }),
+  I("calmante", "medicine", "Chá de Brasa Mansa", 25, { stress: -30, energy: -10, tox: 3, effect: ["calm", 8] }),
   // Estimulantes (para não dormir)
   I("cafe", "stimulant", "Café", 2, { kcal: 5, energy: 8, tox: 1, effect: ["coffee", 2] }),
-  I("energetico", "stimulant", "Energético", 6, { kcal: 110, sugar: 7, energy: 15, tox: 4, mood: 4, effect: ["energy_drink", 3] }),
-  I("estimulante", "stimulant", "Estimulante (cápsula)", 40, { energy: 35, tox: 22, stress: 5, effect: ["stim", 8] }),
+  I("energetico", "stimulant", "Vapor engarrafado", 6, { kcal: 110, sugar: 7, energy: 15, tox: 4, mood: 4, effect: ["energy_drink", 3] }),
+  I("estimulante", "stimulant", "Pó de Faísca", 40, { energy: 35, tox: 22, stress: 5, effect: ["stim", 8] }),
   // Anabolizante
-  I("anabolizante", "anabolic", "Anabolizante injetável", 120, { tox: 15, mood: 4, effect: ["anabolic", 7 * 24] }),
+  I("anabolizante", "anabolic", "Elixir de Ferro", 120, { tox: 15, mood: 4, effect: ["anabolic", 7 * 24] }),
 ]);
 const ITEM_BY_ID = new Map(ITEMS.map((it) => [it.id, it]));
 
@@ -1514,7 +1516,40 @@ function adminTopUp(s) {
 }
 function adminView(snap) {
   if (snap.status !== "alive") return snap;
-  return { ...snap, pace: PACE.NORMAL, stamina: ADMIN_STAMINA, needs: (snap.needs || []).filter((n) => !/energ|exhaust|exaust|tired|sleep|sono|unwell|stress|hospital/i.test(String(n.id || n.kind || ""))) };
+  return { ...snap, pace: PACE.NORMAL, stamina: ADMIN_STAMINA, ailments: (snap.ailments || []).filter((a) => a.id === "junta"), needs: (snap.needs || []).filter((n) => !/energ|exhaust|exaust|tired|sleep|sono|unwell|stress|hospital/i.test(String(n.id || n.kind || ""))) };
+}
+
+// ═══ CINZA E MALES (VS1, 2026-11-14 — vida em steampunk fantasia) ═══
+// A Cinza da guerra dorme no sangue de quem saiu da cápsula (lore v2): o descuido longo
+// (fome, insônia, estresse, saúde baixa — a EXPOSIÇÃO) a acorda. Cinza = K × soma das
+// exposições, até 100; as consequências são as do longTerm (nenhuma regra nova).
+// Males = nomes do mundo para estados que a regra já tem; o servidor decide, a tela desenha.
+const CINZA = Object.freeze({ K: 2.5, AILMENT_AT: 25, SEVERE_AT: 60 });
+// Nomes na tela: cinza = Cinza acordada · corrosao = Corrosão no sangue (toxicidade) ·
+// desgaste = Coração em Desgaste (cardiac) · engrenagens = Engrenagens travadas (exausto) ·
+// febre = Febre de vapor (saúde baixa) · junta = Junta rachada (lesão).
+const AILMENT = Object.freeze({
+  CORROSAO_AT: 30, // toxicidade: trava a recuperação (ok < 30)
+  CORROSAO_SEVERE: 40, // começa o dano "overdose" (Corrosão por tônico demais)
+  DESGASTE_AT: 60,
+  DESGASTE_SEVERE: 85, // perto do 100 (o coração cede: −55 de saúde e Enfermaria)
+  FEBRE_AT: 40,
+  FEBRE_SEVERE: 25,
+});
+const cinzaOf = (s) => Math.min(100, CINZA.K * EXPOSURE.KEYS.reduce((n, k) => n + ((s.exposure && s.exposure[k]) || 0), 0));
+/** Males de agora, do mais grave para o mais leve: [{ id, level }] (level 2 = grave). */
+function ailments(s, t) {
+  if (s.status !== "alive") return [];
+  const out = [];
+  const c = cinzaOf(s);
+  if (c >= CINZA.AILMENT_AT) out.push({ id: "cinza", level: c >= CINZA.SEVERE_AT ? 2 : 1 });
+  if (s.toxicity >= AILMENT.CORROSAO_AT) out.push({ id: "corrosao", level: s.toxicity > AILMENT.CORROSAO_SEVERE ? 2 : 1 });
+  if (s.cardiac >= AILMENT.DESGASTE_AT) out.push({ id: "desgaste", level: s.cardiac >= AILMENT.DESGASTE_SEVERE ? 2 : 1 });
+  const resting = s.activity.kind === "sleeping" || s.activity.kind === "hospital";
+  if (!resting && (s.energy < 10 || s.zeroEnergyH > 0)) out.push({ id: "engrenagens", level: s.energy <= 0.01 ? 2 : 1 });
+  if (s.health <= AILMENT.FEBRE_AT) out.push({ id: "febre", level: s.health <= AILMENT.FEBRE_SEVERE ? 2 : 1 });
+  if (effectOn(s, "injury", t)) out.push({ id: "junta", level: 1 });
+  return out.sort((a, b) => b.level - a.level);
 }
 
 /** Fôlego de corrida pela condição (STAMINA): segundos de corrida e de recarga. */
@@ -1555,8 +1590,6 @@ function snapshot(s, t) {
   normalize(s);
   const fp = fatPct(s);
   const w = weightKg(s);
-  const stim = effectOn(s, "stim", t);
-  const pl = s.effects.filter((e) => e.id === "pleasure" && e.until > t).reduce((n, e) => n + e.mag, 0);
   const a = s.activity;
   return {
     status: s.status === "dead" ? "dead" : a.kind === "hospital" ? "hospital" : "alive",
@@ -1598,15 +1631,9 @@ function snapshot(s, t) {
       ),
     },
     health: {
-      // D9: campos de legado (cliente antigo); sempre "sem doença"
-      diabetes: "none",
-      hypertension: "none",
-      diabetesRisk: 0,
-      bpRisk: 0,
-      // Leituras derivadas (para os cards; não entram na conta).
-      glucose: Math.round(85 + Math.min(40, pl)),
-      systolic: Math.round(112 + s.stress * 0.1 + (stim ? 10 : 0)),
-      diastolic: Math.round(72 + (stim ? 6 : 0)),
+      // VS1: glicemia/pressão (resto do diabetes, sem regra) saíram. Na tela (apresentação 05):
+      // toxicity = Corrosão, cardiac = Desgaste; cinza = a exposição acumulada (CINZA).
+      cinza: r2(cinzaOf(s)),
       toxicity: r2(s.toxicity),
       cardiac: r2(s.cardiac),
       diet: r2(s.diet),
@@ -1656,6 +1683,7 @@ function snapshot(s, t) {
     })(),
     stamina: stamina(s),
     needs: needs(s, t),
+    ailments: ailments(s, t),
     today: { ...dayCondition(s.dayAcc), day: s.dayAcc.day, hours: Object.fromEntries(Object.entries(s.dayAcc.hours).map(([k, v]) => [k, r2(v)])) },
     pace: pace(s),
   };
@@ -1749,4 +1777,8 @@ module.exports = {
   normalize,
   stamina,
   needs,
+  CINZA,
+  AILMENT,
+  cinzaOf,
+  ailments,
 };
