@@ -57,27 +57,30 @@ function schoolDesk(x, chairZ) {
   ];
 }
 
-// ═══ PIZZARIA (13 × 12) ═════════════════════════════════════════════════════
+// ═══ BANCO DE SANGUE (13 × 12) — o prédio `pizzaria` (VS5, 2026-11-15) ═══════════
+// Pedido do Alex: pizzaria vira Banco de Sangue (Vampiro). O forno saiu: no fundo, as
+// geladeiras de bolsas; o balcão de pedido continua (cardápio de sangue em MENUS).
 function pizzaria() {
   const HW = 6.1;
   const BACK = 11.4;
   const SPLIT = 7.8;
   return {
     level: 0,
-    version: "centro-pizzaria-v1",
-    name: "Pizzaria",
+    version: "centro-pizzaria-v2",
+    name: "Banco de Sangue",
     theme: "pizzaria",
     door: D(0, 0, 1.6),
     floors: [
       {
-        rooms: [R("salao", "Salão", "wood", -HW, 0, HW, SPLIT), R("cozinha", "Cozinha", "tile", -HW, SPLIT, HW, BACK)],
+        rooms: [R("salao", "Salão", "wood", -HW, 0, HW, SPLIT), R("cozinha", "Câmara fria", "tile", -HW, SPLIT, HW, BACK)],
         open: [["salao", "cozinha"]],
         furniture: [
           // Balcão de ponta a ponta: o caixa no meio, a cozinha atrás.
           ["counter", -3.8, 7.45, 0, { w: 4.6, d: 0.7, h: 1.05 }],
           ["order_counter", 0, 7.45, 0],
           ["counter", 3.8, 7.45, 0, { w: 4.6, d: 0.7, h: 1.05 }],
-          ["pizza_oven", -3.2, 10.6, 0],
+          ["fridge_case", -4.3, 11.0, 0],
+          ["fridge_case", -1.5, 11.0, 0],
           ["counter", 2.6, 11.0, 0, { w: 2.4 }],
           ["menu_board", 2.6, 11.28, 0],
           ...cafeTable(-4.3, 2.0),
@@ -95,7 +98,9 @@ function pizzaria() {
   };
 }
 
-// ═══ HAMBURGUERIA (13 × 12) ═════════════════════════════════════════════════
+// ═══ AÇOUGUE (13 × 12) — o prédio `hamburgueria` (VS5, 2026-11-15) ═══════════════
+// Pedido do Alex: hamburgueria vira Açougue (Raposa). A máquina de refrigerante saiu: uma
+// vitrine refrigerada de carnes no salão; a grelha e o balcão continuam.
 function hamburgueria() {
   const HW = 6.1;
   const BACK = 11.4;
@@ -108,8 +113,8 @@ function hamburgueria() {
   ];
   return {
     level: 0,
-    version: "centro-hamburgueria-v1",
-    name: "Hamburgueria",
+    version: "centro-hamburgueria-v2",
+    name: "Açougue",
     theme: "hamburgueria",
     door: D(0, 0, 1.6),
     floors: [
@@ -124,7 +129,7 @@ function hamburgueria() {
           ["fryer", -0.6, 11.0, 0],
           ["counter", 2.6, 11.0, 0, { w: 2.4 }],
           ["menu_board", -4.4, 11.28, 0],
-          ["soda_machine", 5.45, 6.3, 0],
+          ["fridge_case", 4.7, 6.55, 0],
           ...boothPair(2.2),
           ...boothPair(5.2),
           ...cafeTable(3.6, 2.2),

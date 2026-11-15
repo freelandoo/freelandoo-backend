@@ -65,6 +65,8 @@ const ERRORS = {
   station: ["Esse aparelho ou curso não existe aqui", 400],
   tier: ["Ainda não dá para esse nível: falta atributo", 409],
   menu: ["Isso não tem no cardápio", 404],
+  // VS5: cada classe come o seu (Raposa: carne; Vampiro: sangue)
+  diet: ["Isso não alimenta a sua classe", 409],
   away: ["Você precisa estar lá dentro", 409],
   market: ["Compras para a geladeira são no supermercado do centro", 409],
   nick: ["O apelido precisa ter de 2 a 20 letras", 400],
@@ -280,12 +282,13 @@ class MeuMundoLifeService {
       // Geladeira (mig 301): travada junto (a carteira já serializa a pessoa).
       const pantry0 = await MeuMundoLifeStorage.pantry(c, idUser);
       const pantry = { ...pantry0 };
-      if (await MeuMundoLifeStorage.claimPantrySeed(c, idUser)) {
-        for (const [id, n] of Object.entries(Life.FRIDGE.STARTER)) pantry[id] = Math.min(Life.FRIDGE.MAX_STACK, (pantry[id] || 0) + n);
-      }
       const events = [];
       // B3: a classe do jogador dá a espécie de quem não tem (e do primeiro personagem).
       const clan0 = (await c.query(`SELECT clan, sex FROM tb_mm_clan WHERE id_user = $1`, [idUser])).rows[0] || { clan: null, sex: null };
+      if (await MeuMundoLifeStorage.claimPantrySeed(c, idUser)) {
+        // VS5: o kit de chegada vem na dieta da classe (Vampiro: sangue)
+        for (const [id, n] of Object.entries(Life.starterFor(Life.dietOf(clan0.clan)))) pantry[id] = Math.min(Life.FRIDGE.MAX_STACK, (pantry[id] || 0) + n);
+      }
       if (!row) {
         const s0 = Life.birth(crypto.randomInt(1, 2 ** 31 - 1), now);
         row = await MeuMundoLifeStorage.insert(c, idUser, await MeuMundoLifeStorage.nextGeneration(c, idUser), s0, {
@@ -305,11 +308,13 @@ class MeuMundoLifeService {
       if (admin) Life.adminTopUp(s);
       // A carteira entra na simulação: o trabalho rende e a rotina compra comida.
       const wallet = { coins, workCap: purse.workCap };
-      const sim = Life.simulate(s, now, wallet, pantry);
+      // VS5: a dieta da espécie do personagem ativo (Raposa: carne; Vampiro: sangue; o resto come tudo)
+      const diet = Life.dietOf(speciesOf(row.species, clan0.clan));
+      const sim = Life.simulate(s, now, wallet, pantry, diet);
       events.push(...sim.events);
       if (admin) Life.adminTopUp(s);
       coins = wallet.coins;
-      const ctx = { now, row, coins, events, client: c, pantry };
+      const ctx = { now, row, coins, events, client: c, pantry, diet };
       const extra = act ? await act(s, ctx) : {};
       if (extra && extra.error) {
         await c.query("ROLLBACK");
@@ -502,7 +507,7 @@ class MeuMundoLifeService {
     if (item.currency === "polens") return fail("currency");
     return MeuMundoLifeService.withLife(idUser, (s, ctx) => {
       if (ctx.coins < item.price) return fail("coins");
-      const r = Life.consume(s, itemId, ctx.now);
+      const r = Life.consume(s, itemId, ctx.now, ctx.diet);
       if (!r.ok) return fail(r.code);
       ctx.coins -= item.price;
       ctx.events.push(...r.events);
@@ -561,6 +566,8 @@ class MeuMundoLifeService {
     const key = String(rawKey || "");
     if (item.currency === "polens" && !/^[A-Za-z0-9_-]{8,64}$/.test(key)) return fail("key");
     return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
+      // VS5: o Empório não vende para a despensa o que a classe não come
+      if (!Life.canEat(item, ctx.diet)) return fail("diet");
       const cost = item.price * qty;
       const have = ctx.pantry[item.id] || 0;
       if (have + qty > Life.FRIDGE.MAX_STACK) return fail("stack");
@@ -594,7 +601,7 @@ class MeuMundoLifeService {
       const done = await MeuMundoLifeStorage.consumeKey(ctx.client, idUser, key);
       if (done) return { ate: done, replay: true };
       if (!((ctx.pantry[item.id] || 0) > 0)) return fail("empty");
-      const r = Life.consume(s, item.id, ctx.now);
+      const r = Life.consume(s, item.id, ctx.now, ctx.diet);
       if (!r.ok) return fail(r.code);
       ctx.pantry[item.id] -= 1;
       ctx.events.push(...r.events);

@@ -125,3 +125,19 @@ test("luta abandonada não conta", () => {
   Soul.applyEvents(s, [{ at: T0, kind: "fight", data: { win: false, abandoned: true } }], T0);
   assert.equal(so.affection, a);
 });
+
+test("VS5: o Vampiro gosta e odeia pelo PAR de sangue da comida", () => {
+  const s = life(9);
+  const so = Soul.soulOf(s);
+  so.nextWishAt = T0 + 1000 * H;
+  so.temper = "bondoso";
+  so.likes.food = "salmao_legumes";
+  so.hates.food = "miojo";
+  const a0 = so.affection;
+  Soul.applyEvents(s, [{ at: T0, kind: "consume", data: { item: "bolsa_sangue" } }], T0);
+  const up = so.affection - a0;
+  assert.ok(up > 0, "a bolsa de sangue é o peixe dele");
+  const a1 = so.affection;
+  Soul.applyEvents(s, [{ at: T0, kind: "consume", data: { item: "caldo_ralo" } }], T0);
+  assert.ok(so.affection < a1, "o caldo ralo é o miojo que ele odeia");
+});

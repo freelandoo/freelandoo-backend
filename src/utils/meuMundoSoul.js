@@ -17,6 +17,9 @@
 //    prazo; atendeu = afeto sobe, deixou passar = afeto cai.
 
 const HOUR = 3600 * 1000;
+// VS5 (2026-11-15): a comida do Vampiro é o PAR de sangue da comida da Raposa; gosto, ódio,
+// "comer mais" e "comida favorita" valem pelo par (slotOf devolve o id da Raposa).
+const { slotOf } = require("./meuMundoLife");
 
 const TEMPERS = Object.freeze(["psicopata", "covarde", "comilao", "bondoso", "competitivo"]);
 
@@ -139,12 +142,14 @@ function applyEvents(s, events, t) {
       case "meal_lost":
         feel(so, AFFECTION.MEAL_LOST, at);
         break;
-      case "consume":
-        if (d.item === so.likes.food) feel(so, AFFECTION.FAV_FOOD, at);
-        else if (d.item === so.hates.food) feel(so, AFFECTION.HATED_FOOD, at);
-        if (so.temper === "comilao" && FOODS.includes(d.item)) feel(so, AFFECTION.SNACK_COMILAO, at);
+      case "consume": {
+        const food = slotOf(d.item);
+        if (food === so.likes.food) feel(so, AFFECTION.FAV_FOOD, at);
+        else if (food === so.hates.food) feel(so, AFFECTION.HATED_FOOD, at);
+        if (so.temper === "comilao" && FOODS.includes(food)) feel(so, AFFECTION.SNACK_COMILAO, at);
         wishCheck(so, "consume", d, at, out);
         break;
+      }
       case "hospital_in":
         feel(so, AFFECTION.HOSPITAL, at);
         break;
@@ -190,8 +195,8 @@ function wishCheck(so, what, d, at, out) {
   const ok =
     (w.id === "fight" && what === "fight") ||
     (w.id === "minigame" && what === "minigame") ||
-    (w.id === "eat_more" && what === "consume" && FOODS.includes(d.item)) ||
-    (w.id === "fav_food" && what === "consume" && d.item === so.likes.food) ||
+    (w.id === "eat_more" && what === "consume" && FOODS.includes(slotOf(d.item))) ||
+    (w.id === "fav_food" && what === "consume" && slotOf(d.item) === so.likes.food) ||
     (w.id === "pray" && what === "activity" && d.kind === "praying") ||
     (w.id === "rest" && what === "activity" && (d.kind === "sleeping" || d.kind === "lying"));
   if (!ok) return;

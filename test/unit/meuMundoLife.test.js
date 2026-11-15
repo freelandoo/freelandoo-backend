@@ -544,3 +544,65 @@ test("VS1: admin não vê males do corpo (vive cheio)", () => {
   const v = L.adminView(L.snapshot(s, T0));
   assert.deepEqual(v.ailments.map((a) => a.id), ["lesao"]);
 });
+
+// ═══ VS5 (2026-11-15): cada classe come o seu (Raposa: carne; Vampiro: sangue) ═══
+test("VS5: todo prato da Raposa tem um par de sangue com os MESMOS números", () => {
+  const skip = new Set(["id", "name", "diet"]);
+  for (const [carne, [sangue]] of Object.entries(L.VAMPIRE_PAIRS)) {
+    const a = L.ITEM_BY_ID.get(carne);
+    const b = L.ITEM_BY_ID.get(sangue);
+    assert.ok(a && b, carne);
+    assert.equal(a.diet, "carne");
+    assert.equal(b.diet, "sangue");
+    for (const k of Object.keys(a)) if (!skip.has(k)) assert.deepEqual(b[k], a[k], `${sangue}.${k}`);
+    assert.equal(L.slotOf(sangue), carne);
+    assert.equal(L.slotOf(carne), carne);
+  }
+  assert.equal(L.ITEMS.length, 45);
+  for (const id of ["agua_coco", "cafe", "albumina", "calmante", "anabolizante"]) assert.equal(L.ITEM_BY_ID.get(id).diet, null, id);
+  assert.equal(L.ITEM_BY_ID.get("bolsa_sangue").name, "Bolsa de sangue fresco");
+});
+
+test("VS5: Vampiro não come carne e Raposa não bebe sangue; deus e água servem a todos", () => {
+  assert.equal(L.dietOf("vampiro"), "sangue");
+  assert.equal(L.dietOf("raposa"), "carne");
+  assert.equal(L.dietOf("aurion"), null);
+  assert.equal(L.consume(fresh(), "salmao_legumes", T0 + 3 * H, "sangue").code, "diet");
+  assert.equal(L.consume(fresh(), "bolsa_sangue", T0 + 3 * H, "carne").code, "diet");
+  assert.ok(L.consume(fresh(), "bolsa_sangue", T0 + 3 * H, "sangue").ok);
+  assert.ok(L.consume(fresh(), "salmao_legumes", T0 + 3 * H, "carne").ok);
+  assert.ok(L.consume(fresh(), "agua_coco", T0 + 3 * H, "sangue").ok);
+  assert.ok(L.consume(fresh(), "bolsa_sangue", T0 + 3 * H, null).ok, "sem dieta (deus) come tudo");
+  // o par rende igual
+  const a = fresh();
+  const b = fresh();
+  L.consume(a, "prato_feito", T0 + 3 * H, "carne");
+  L.consume(b, "prato_madrugada", T0 + 3 * H, "sangue");
+  assert.deepEqual(L.snapshot(a, T0 + 3 * H).vitals, L.snapshot(b, T0 + 3 * H).vitals);
+});
+
+test("VS5: Banco de Sangue serve sangue, Açougue serve carne; kit de chegada pela classe", () => {
+  for (const id of L.MENUS.pizzaria) assert.ok(L.canEat(L.ITEM_BY_ID.get(id), "sangue"), id);
+  for (const id of L.MENUS.hamburgueria) assert.ok(L.canEat(L.ITEM_BY_ID.get(id), "carne"), id);
+  assert.ok(L.MENUS.pizzaria.includes("bolinho_sangue") && L.MENUS.hamburgueria.includes("coxinha"));
+  const kit = L.starterFor("sangue");
+  for (const id of Object.keys(kit)) assert.ok(L.canEat(L.ITEM_BY_ID.get(id), "sangue"), id);
+  assert.deepEqual(L.starterFor(null), { ...L.FRIDGE.STARTER });
+  assert.equal(Object.values(kit).reduce((a, b) => a + b, 0), Object.values(L.FRIDGE.STARTER).reduce((a, b) => a + b, 0));
+});
+
+test("VS5: a rotina do Vampiro come o sangue da despensa e compra o par de sangue", () => {
+  // na janela das 10 h, estudando: com carne e sangue na despensa, o Vampiro pega o sangue
+  const s = fresh();
+  L.startActivity(s, "studying", 6, T0, null, "biblioteca");
+  const pantry = { prato_feito: 3, prato_madrugada: 1 };
+  L.simulate(s, T0 + 4 * H, { coins: 0 }, pantry, "sangue");
+  assert.equal(pantry.prato_feito, 3, "carne intocada");
+  assert.equal(pantry.prato_madrugada, 0, "comeu o sangue");
+  // sem despensa: compra o par de sangue
+  const v = fresh();
+  L.startActivity(v, "studying", 6, T0, null, "biblioteca");
+  const r = L.simulate(v, T0 + 4 * H, { coins: 500 }, {}, "sangue");
+  const meal = r.events.find((e) => e.kind === "routine_meal");
+  assert.ok(meal && L.ITEM_BY_ID.get(meal.data.item).diet === "sangue", JSON.stringify(meal));
+});

@@ -179,6 +179,8 @@ const FRIDGE = Object.freeze({
   MAX_STACK: 99, // por item
   MAX_BUY: 10, // por compra
 });
+/** VS5: o kit de chegada na dieta da classe do jogador (sem classe = o de carne). */
+const starterFor = (diet) => Object.fromEntries(Object.entries(FRIDGE.STARTER).map(([id, n]) => [forDiet(id, diet), n]));
 
 // ═══ CORPO ═══ — desde 2026-10-21 o tipo físico NÃO se escolhe: sai daqui.
 // Todo hóspede nasce MUITO magro (~8–10% de gordura); a comida soma gordura
@@ -319,9 +321,10 @@ const stationMul = (st) => TIER_MUL[(st ? st.tier : 1) - 1] || 1;
 // Cardápio dos restaurantes do centro (mm3d-37c): pede no balcão e come na
 // hora (vale a refeição como qualquer prato). Comprar para a geladeira é só
 // no supermercado.
+// VS5: o prédio `pizzaria` é o BANCO DE SANGUE e o `hamburgueria` é o AÇOUGUE (ids da planta iguais).
 const MENUS = Object.freeze({
-  pizzaria: Object.freeze(["pizza", "refrigerante", "agua_coco"]),
-  hamburgueria: Object.freeze(["hamburguer", "cachorro_quente", "coxinha", "refrigerante"]),
+  pizzaria: Object.freeze(["pao_sangue", "torta_sangue", "espeto_morcela", "bolinho_sangue", "soda_sangue", "agua_coco"]),
+  hamburgueria: Object.freeze(["hamburguer", "pizza", "cachorro_quente", "coxinha", "refrigerante", "agua_coco"]),
 });
 const MARKET_PLACE = "supermercado";
 
@@ -357,7 +360,7 @@ const ROUTINE = Object.freeze({
   // de dormir, dorme e retoma de manhã.
   BED_AT: 23,
   WAKE_AT: 7,
-  MEALS: ["prato_integral", "prato_feito", "miojo"], // o melhor que a carteira paga
+  MEALS: ["prato_integral", "prato_feito", "miojo"], // o melhor que a carteira paga (carne; o Vampiro come os pares)
 });
 
 // Ritmo de caminhada pelo estado do corpo (a sala aplica; o cliente espelha
@@ -373,31 +376,38 @@ const PACE = Object.freeze({ NORMAL: 1, TIRED: 0.7, EXHAUSTED: 0.42 });
 // natural, mais cara; nunca passa da vitalidade).
 // VS1 (2026-11-14): `name` = o nome da tela em pt (apresentação 06: Empório, tônicos, elixires,
 // comida de taverna); os ids ficam (despensa, recibos, fotos). A tela traduz por `item_<id>`.
+// VS5 (2026-11-15, pedido do Alex: "bolsa de sangue ao invés de salmão"): cada CLASSE come o seu.
+// `diet` = "carne" (Raposa: Açougue, caça, mel e frutas) ou "sangue" (Vampiro: Banco de Sangue);
+// null = de todos (água da fonte, café, tônicos, elixires). Deus, Sergio, Ekaterina e os
+// especiais comem tudo. Cada comida da Raposa tem um PAR do Vampiro com os MESMOS números
+// (preço, saciedade, kcal, nutrição, crédito de refeição): a economia não muda. A Raposa ficou
+// com os ids de antes (despensa, recibos, alma e fotos); o Vampiro tem ids novos (PAIR).
+// Plano: MEU MUNDO 3D/planos/2026-11-15-mercado-sangue-e-acougue.md.
 const I = (id, kind, name, price, o = {}) =>
-  Object.freeze({ id, kind, name, price, currency: "coins", meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, heal: 0, effect: null, ...o });
+  Object.freeze({ id, kind, name, price, currency: "coins", diet: null, meal: 0, kcal: 0, sat: 0, sugar: 0, sodium: 0, nutri: 0, protein: 0, mood: 0, energy: 0, stress: 0, tox: 0, heal: 0, effect: null, ...o });
 
-const ITEMS = Object.freeze([
+const BASE_ITEMS = [
   // Comida saudável (cara)
-  I("salmao_legumes", "food", "Peixe defumado com raízes", 75, { meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6, heal: 3 }),
-  I("frango_salada", "food", "Frango na brasa com folhas", 55, { meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4, heal: 3 }),
-  I("prato_integral", "food", "Prato do ferreiro (grãos, feijão, ovo e folhas)", 34, { meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
-  I("bowl_frutas", "food", "Cesto de frutas", 38, { meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6, heal: 3 }),
-  I("omelete_legumes", "food", "Omelete de raízes", 26, { meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
-  I("iogurte_aveia", "food", "Mingau de aveia com coalhada", 24, { meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
-  I("sopa_legumes", "food", "Sopa de raízes", 32, { meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3, heal: 3 }),
+  I("salmao_legumes", "food", "Peixe do rio na brasa com raízes", 75, { diet: "carne", meal: 1, kcal: 520, sat: 45, sodium: 3, nutri: 10, protein: 38, mood: 6, heal: 3 }),
+  I("frango_salada", "food", "Coelho na brasa com folhas", 55, { diet: "carne", meal: 1, kcal: 430, sat: 40, sodium: 3, nutri: 9, protein: 40, mood: 4, heal: 3 }),
+  I("prato_integral", "food", "Prato do caçador (grãos, carne seca e folhas)", 34, { diet: "carne", meal: 1, kcal: 560, sat: 48, sodium: 3, nutri: 8, protein: 24, mood: 4 }),
+  I("bowl_frutas", "food", "Cesto de frutas silvestres", 38, { diet: "carne", meal: 0.5, kcal: 260, sat: 22, sugar: 4, nutri: 7, protein: 3, mood: 6, heal: 3 }),
+  I("omelete_legumes", "food", "Omelete de ovos da granja", 26, { diet: "carne", meal: 0.8, kcal: 330, sat: 30, sodium: 3, nutri: 7, protein: 22, mood: 3 }),
+  I("iogurte_aveia", "food", "Mingau de aveia com mel", 24, { diet: "carne", meal: 0.5, kcal: 280, sat: 25, sugar: 2, nutri: 7, protein: 14, mood: 3 }),
+  I("sopa_legumes", "food", "Sopa de raízes com osso", 32, { diet: "carne", meal: 0.7, kcal: 220, sat: 28, sodium: 4, nutri: 7, protein: 8, mood: 3, heal: 3 }),
   I("agua_coco", "drink", "Água da fonte", 12, { meal: 0.1, kcal: 60, sat: 4, sugar: 2, nutri: 4, energy: 3 }),
   // Comida do dia a dia
-  I("prato_feito", "food", "Prato da taverna (arroz, feijão, bife e batata)", 18, { meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
+  I("prato_feito", "food", "Prato do açougue (carne, feijão e batata)", 18, { diet: "carne", meal: 1, kcal: 850, sat: 50, sodium: 6, nutri: 1, protein: 32, mood: 7 }),
   // Porcaria (barata)
-  I("hamburguer", "food", "Torta de carne com batata", 12, { meal: 1, kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
-  I("pizza", "food", "Pão de caldeira com queijo (3 fatias)", 10, { meal: 1, kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
-  I("cachorro_quente", "food", "Espeto de linguiça", 8, { meal: 0.7, kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
-  I("coxinha", "food", "Bolinho da taverna", 5, { meal: 0.4, kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
-  I("chocolate", "food", "Barra de cacau", 5, { meal: 0.2, kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
-  I("miojo", "food", "Caldo de caldeira", 4, { meal: 0.6, kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
-  I("salgadinho", "food", "Cascas fritas", 4, { meal: 0.2, kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
-  I("biscoito_recheado", "food", "Biscoito de melado", 3, { meal: 0.2, kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
-  I("refrigerante", "drink", "Sidra borbulhante", 3, { kcal: 150, sat: 3, sugar: 10, nutri: -7, mood: 7, energy: 2 }),
+  I("hamburguer", "food", "Torta de carne com batata", 12, { diet: "carne", meal: 1, kcal: 1100, sat: 45, sugar: 3, sodium: 8, nutri: -7, protein: 28, mood: 12 }),
+  I("pizza", "food", "Costela gorda na brasa", 10, { diet: "carne", meal: 1, kcal: 900, sat: 40, sugar: 2, sodium: 8, nutri: -6, protein: 30, mood: 12 }),
+  I("cachorro_quente", "food", "Espeto de linguiça", 8, { diet: "carne", meal: 0.7, kcal: 620, sat: 32, sugar: 2, sodium: 8, nutri: -6, protein: 16, mood: 9 }),
+  I("coxinha", "food", "Bolinho de carne", 5, { diet: "carne", meal: 0.4, kcal: 380, sat: 20, sodium: 6, nutri: -6, protein: 9, mood: 8 }),
+  I("chocolate", "food", "Favo de mel", 5, { diet: "carne", meal: 0.2, kcal: 540, sat: 12, sugar: 9, nutri: -6, protein: 5, mood: 14 }),
+  I("miojo", "food", "Caldo de osso", 4, { diet: "carne", meal: 0.6, kcal: 380, sat: 22, sodium: 10, nutri: -7, protein: 7, mood: 5 }),
+  I("salgadinho", "food", "Torresmo", 4, { diet: "carne", meal: 0.2, kcal: 450, sat: 12, sodium: 9, nutri: -8, protein: 5, mood: 9 }),
+  I("biscoito_recheado", "food", "Biscoito de mel", 3, { diet: "carne", meal: 0.2, kcal: 480, sat: 12, sugar: 9, nutri: -8, protein: 4, mood: 10 }),
+  I("refrigerante", "drink", "Sidra borbulhante", 3, { diet: "carne", kcal: 150, sat: 3, sugar: 10, nutri: -7, mood: 7, energy: 2 }),
   // Suplementos (na tela: tônicos e pó de pedra)
   I("albumina", "supplement", "Tônico de clara", 15, { meal: 0.2, kcal: 110, sat: 6, nutri: 3, protein: 25, effect: ["albumin", 4] }),
   I("whey", "supplement", "Tônico de soro", 45, { meal: 0.2, kcal: 130, sat: 8, sugar: 1, nutri: 4, protein: 25, effect: ["whey", 4] }),
@@ -414,8 +424,48 @@ const ITEMS = Object.freeze([
   I("estimulante", "stimulant", "Pó de Faísca", 40, { energy: 35, tox: 22, stress: 5, effect: ["stim", 8] }),
   // Anabolizante
   I("anabolizante", "anabolic", "Elixir de Ferro", 120, { tox: 15, mood: 4, effect: ["anabolic", 7 * 24] }),
-]);
+];
+/** id da Raposa → [id do Vampiro, nome]. O par herda todos os números. */
+const VAMPIRE_PAIRS = Object.freeze({
+  salmao_legumes: ["bolsa_sangue", "Bolsa de sangue fresco"],
+  frango_salada: ["sangue_cervo", "Taça de sangue de cervo"],
+  prato_integral: ["caldo_sangue_graos", "Caldo de sangue com grãos"],
+  bowl_frutas: ["ameixas_sangue", "Ameixas curtidas em sangue"],
+  omelete_legumes: ["chourico", "Chouriço de sangue"],
+  iogurte_aveia: ["pudim_sangue", "Pudim de sangue"],
+  sopa_legumes: ["sopa_sangue", "Sopa escura de sangue"],
+  prato_feito: ["prato_madrugada", "Prato da madrugada (sangue morno e pão preto)"],
+  hamburguer: ["torta_sangue", "Torta de sangue"],
+  pizza: ["pao_sangue", "Pão preto embebido em sangue"],
+  cachorro_quente: ["espeto_morcela", "Espeto de morcela"],
+  coxinha: ["bolinho_sangue", "Bolinho de sangue frito"],
+  chocolate: ["bala_sangue", "Bala de sangue doce"],
+  miojo: ["caldo_ralo", "Caldo ralo de sangue"],
+  salgadinho: ["lascas_sangue", "Lascas de sangue seco"],
+  biscoito_recheado: ["biscoito_sangue", "Biscoito de sangue doce"],
+  refrigerante: ["soda_sangue", "Sangue gaseificado"],
+});
+const ITEMS = Object.freeze(
+  BASE_ITEMS.flatMap((it) => {
+    const p = VAMPIRE_PAIRS[it.id];
+    return p ? [it, Object.freeze({ ...it, id: p[0], name: p[1], diet: "sangue" })] : [it];
+  }),
+);
 const ITEM_BY_ID = new Map(ITEMS.map((it) => [it.id, it]));
+/** Par da carne ↔ sangue (nos dois sentidos). */
+const PAIR = Object.freeze(Object.fromEntries(Object.entries(VAMPIRE_PAIRS).flatMap(([a, [b]]) => [[a, b], [b, a]])));
+/** O "lugar" da comida no cardápio (o id da Raposa): a alma gosta pelo par. */
+const slotOf = (id) => (ITEM_BY_ID.get(id) && ITEM_BY_ID.get(id).diet === "sangue" ? PAIR[id] : id);
+/** O item equivalente na dieta (sem par ou de todos = o mesmo). */
+const forDiet = (id, diet) => {
+  const it = ITEM_BY_ID.get(id);
+  if (!it || !it.diet || !diet || it.diet === diet) return id;
+  return PAIR[id] || id;
+};
+/** Dieta da espécie do personagem (null = come tudo). */
+const DIETS = Object.freeze({ raposa: "carne", vampiro: "sangue" });
+const dietOf = (species) => DIETS[species] || null;
+const canEat = (it, diet) => !it || !it.diet || !diet || it.diet === diet;
 
 // ═══ UTILIDADES ═══
 const clamp = (v, lo = 0, hi = 100) => (v < lo ? lo : v > hi ? hi : v);
@@ -1183,11 +1233,11 @@ function routine(s, t, events, out) {
   // tem na geladeira, senão compra o que a carteira paga (também no descanso
   // da rotina — dormindo, não).
   if (pendingMeal(s, t) && s.satiety <= RULES.FULL_SATIETY) {
-    const own = out.pantry ? pantryMeal(out.pantry) : null;
-    const buy = own ? null : out.wallet ? ROUTINE.MEALS.map((id) => ITEM_BY_ID.get(id)).find((it) => it.price <= out.wallet.coins) : null;
+    const own = out.pantry ? pantryMeal(out.pantry, out.diet) : null;
+    const buy = own ? null : out.wallet ? ROUTINE.MEALS.map((id) => ITEM_BY_ID.get(forDiet(id, out.diet))).find((it) => it.price <= out.wallet.coins) : null;
     const it = own || buy;
     if (it) {
-      const r = consume(s, it.id, t);
+      const r = consume(s, it.id, t, out.diet);
       if (r.ok && own) {
         out.pantry[it.id] -= 1;
         events.push(...r.events, { at: t, kind: "routine_meal", data: { item: it.id, price: 0, from: "fridge" } });
@@ -1221,11 +1271,11 @@ function routine(s, t, events, out) {
 }
 
 /** O melhor prato da geladeira para a rotina: o que mais quita, depois o mais saudável. */
-function pantryMeal(pantry) {
+function pantryMeal(pantry, diet = null) {
   let best = null;
   for (const [id, qty] of Object.entries(pantry)) {
     const it = ITEM_BY_ID.get(id);
-    if (!it || !(qty > 0) || it.kind !== "food" || it.meal < 0.5) continue;
+    if (!it || !(qty > 0) || it.kind !== "food" || it.meal < 0.5 || !canEat(it, diet)) continue;
     if (!best || it.meal > best.meal || (it.meal === best.meal && (it.nutri > best.nutri || (it.nutri === best.nutri && it.id < best.id)))) best = it;
   }
   return best;
@@ -1238,11 +1288,12 @@ function pantryMeal(pantry) {
  * compra o que ela paga, e ela é atualizada aqui (quem simula aos pedaços
  * passa a mesma carteira — o resultado é o mesmo).
  */
-function simulate(s, to, wallet = null, pantry = null) {
+function simulate(s, to, wallet = null, pantry = null, diet = null) {
   normalize(s);
   const events = [];
   // `pantry` ({ itemId: qtd }) é a geladeira: a rotina come dela antes de comprar.
-  const out = { days: [], coins: 0, earned: 0, wallet, pantry };
+  // `diet` (VS5): a rotina só come e compra o que é da classe (dietOf da espécie).
+  const out = { days: [], coins: 0, earned: 0, wallet, pantry, diet };
   if (to <= s.simAt) return { events, days: out.days, coins: 0, earned: 0 };
   let t = s.simAt;
   const stop = Math.min(to, t + MAX_CATCHUP_MS);
@@ -1315,7 +1366,7 @@ function thaw(s, t) {
 const fail = (code) => ({ ok: false, code });
 
 /** Comer / tomar um item do catálogo. Não mexe na carteira (o serviço cobra). */
-function consume(s, itemId, t) {
+function consume(s, itemId, t, diet = null) {
   normalize(s);
   const it = ITEM_BY_ID.get(itemId);
   if (!it) return fail("item");
@@ -1323,6 +1374,8 @@ function consume(s, itemId, t) {
   if (s.activity.kind === "hospital") return fail("hospital");
   if (s.activity.kind === "jail") return fail("jail");
   if (s.activity.kind === "sleeping") return fail("sleeping");
+  // VS5: Vampiro não come carne e Raposa não bebe sangue.
+  if (!canEat(it, diet)) return fail("diet");
   if ((it.kind === "food" || it.kind === "drink") && it.sat > 0 && s.satiety > RULES.FULL_SATIETY) return fail("full");
   const events = [];
   const before = { satiety: s.satiety, energy: s.energy, stress: s.stress, health: s.health };
@@ -1704,6 +1757,8 @@ function publicCatalog() {
     menus: MENUS,
     marketPlace: MARKET_PLACE,
     attributes: { max: ATTR.MAX, usefulH: ATTR.USEFUL_H, floor: ATTR.FLOOR },
+    diets: DIETS,
+    pairs: PAIR,
     routine: { meals: ROUTINE.MEALS, sleepAtEnergy: ROUTINE.SLEEP_AT_ENERGY, restAtStress: ROUTINE.REST_AT_STRESS },
     clock: { offsetMin: CLOCK.OFFSET_MIN, meals: CLOCK.MEALS, beforeH: MEALS.BEFORE_H, afterH: MEALS.AFTER_H, penaltyH: MEALS.PENALTY_H },
     mealPenalty: MEALS.PENALTY,
@@ -1777,6 +1832,14 @@ module.exports = {
   normalize,
   stamina,
   needs,
+  VAMPIRE_PAIRS,
+  PAIR,
+  slotOf,
+  forDiet,
+  DIETS,
+  dietOf,
+  canEat,
+  starterFor,
   CINZA,
   AILMENT,
   cinzaOf,
