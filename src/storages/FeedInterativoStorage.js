@@ -311,6 +311,94 @@ class FeedInterativoStorage {
     return new Set(r.rows.map((x) => x.id));
   }
 
+  // ── cápsula do tempo (F4; usa a fila da mig 456) ──
+  static async countScheduled(db, id_sender) {
+    const r = await db.query(
+      `SELECT COUNT(*)::int AS n FROM public.tb_feed_drop
+        WHERE id_sender = $1 AND kind = 'capsule' AND status = 'scheduled'`,
+      [id_sender]
+    );
+    return r.rows[0].n;
+  }
+
+  static async listCapsules(db, id_sender) {
+    const r = await db.query(
+      `SELECT d.id_drop, d.status, d.deliver_at, d.delivered_at, d.created_at, d.payload,
+              d.id_portfolio_item, ${USER_CARD}
+         FROM public.tb_feed_drop d
+         JOIN public.tb_user tu ON tu.id_user = d.id_receiver
+         ${USER_JOIN}
+        WHERE d.id_sender = $1 AND d.kind = 'capsule'
+        ORDER BY (d.status = 'scheduled') DESC, d.deliver_at DESC
+        LIMIT 60`,
+      [id_sender]
+    );
+    return r.rows;
+  }
+
+  static async cancelCapsule(db, id_drop, id_sender) {
+    const r = await db.query(
+      `UPDATE public.tb_feed_drop SET status = 'canceled'
+        WHERE id_drop = $1 AND id_sender = $2 AND kind = 'capsule' AND status = 'scheduled'
+        RETURNING id_drop`,
+      [id_drop, id_sender]
+    );
+    return r.rowCount > 0;
+  }
+
+  /**
+   * Entrega o que venceu (lote, FOR UPDATE SKIP LOCKED: duas instâncias não
+   * entregam a mesma). Decide na hora: para si mesmo = entregue; para outro,
+   * o vínculo de AGORA manda (ativo = entregue, silenciado = muted, sem
+   * vínculo ou com bloqueio social = failed).
+   */
+  static async deliverDue(db, limit = 100) {
+    const r = await db.query(
+      `WITH due AS (
+         SELECT d.id_drop
+           FROM public.tb_feed_drop d
+          WHERE d.status = 'scheduled' AND d.deliver_at <= NOW()
+          ORDER BY d.deliver_at
+          LIMIT $1
+          FOR UPDATE SKIP LOCKED
+       ), decided AS (
+         SELECT d.id_drop,
+                CASE
+                  WHEN d.id_sender = d.id_receiver THEN 'delivered'
+                  WHEN EXISTS (
+                    SELECT 1 FROM public.tb_user_block ub
+                     WHERE (ub.blocker_user_id = d.id_sender AND ub.blocked_user_id = d.id_receiver)
+                        OR (ub.blocker_user_id = d.id_receiver AND ub.blocked_user_id = d.id_sender)
+                  ) THEN 'failed'
+                  ELSE COALESCE((
+                    SELECT CASE l.status WHEN 'active' THEN 'delivered' WHEN 'silenced' THEN 'muted' END
+                      FROM public.tb_feed_throw_link l
+                     WHERE l.id_sender = d.id_sender AND l.id_receiver = d.id_receiver
+                       AND l.status IN ('active', 'silenced')
+                  ), 'failed')
+                END AS next
+           FROM public.tb_feed_drop d JOIN due ON due.id_drop = d.id_drop
+       )
+       UPDATE public.tb_feed_drop d
+          SET status = decided.next,
+              delivered_at = CASE WHEN decided.next IN ('delivered', 'muted') THEN NOW() ELSE NULL END
+         FROM decided
+        WHERE d.id_drop = decided.id_drop
+        RETURNING d.id_drop, d.id_sender, d.id_receiver, d.status, d.payload`,
+      [limit]
+    );
+    return r.rows;
+  }
+
+  static async accountProfileId(db, id_user) {
+    const r = await db.query(
+      `SELECT id_profile FROM public.tb_profile
+        WHERE id_user = $1 AND is_user_account = TRUE AND deleted_at IS NULL LIMIT 1`,
+      [id_user]
+    );
+    return r.rows[0]?.id_profile || null;
+  }
+
   static async getDropForReceiver(db, id_drop, id_receiver) {
     const r = await db.query(
       `SELECT * FROM public.tb_feed_drop WHERE id_drop = $1 AND id_receiver = $2`,

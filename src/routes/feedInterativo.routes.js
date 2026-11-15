@@ -21,5 +21,8 @@ router.post("/seen", asyncHandler(C.seen));
 router.post("/gift", asyncHandler(C.gift));
 router.post("/drops/:id_drop/open", asyncHandler(C.openGift));
 router.get("/stickers", asyncHandler(C.stickers));
+router.post("/capsules", asyncHandler(C.scheduleCapsule));
+router.get("/capsules", asyncHandler(C.listCapsules));
+router.post("/capsules/:id_drop/cancel", asyncHandler(C.cancelCapsule));
 
 module.exports = router;

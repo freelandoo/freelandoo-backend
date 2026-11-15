@@ -35,7 +35,13 @@ const LIMITS = {
   throwsPerPairPerHour: 10,
   giftsPerDay: 10,
   giftsPerPairPerDay: 2,
+  capsulesScheduled: 20,
+  capsuleMaxYears: 5,
+  capsuleMessageMax: 500,
 };
+
+const CAPSULE_TICK_MS = 30_000;
+let capsuleTimer = null;
 
 /** Texto curto, sem caractere de controle e sem pilha de linhas em branco. */
 function cleanMessage(raw, max = MESSAGE_MAX) {
@@ -445,6 +451,148 @@ class FeedInterativoService {
     if (!user?.id_user) return notAuth();
     const rows = await FeedInterativoStorage.listStickers(pool, user.id_user);
     return { stickers: rows, catalog: STICKERS };
+  }
+
+  // ── cápsula do tempo (F4) ────────────────────────────────────────────────
+  /**
+   * Agenda uma cápsula: { to: id_user | 'eu', deliver_at, message, post_id?,
+   * destino: 'feed' | 'mensagens' | 'ambos' }. Para outra pessoa precisa do
+   * mesmo vínculo do lançar; o vínculo é conferido de novo NA HORA da entrega.
+   */
+  static async scheduleCapsule(user, body = {}) {
+    return runWithLogs(log, "scheduleCapsule", () => ({ id_user: user?.id_user, to: body?.to === "eu" ? "eu" : "one" }), async () => {
+      if (!user?.id_user) return notAuth();
+      if (await isMinorUser(user.id_user)) {
+        return { error: "Lançar no feed não está disponível para contas de menores", statusCode: 403 };
+      }
+      const message = cleanMessage(body.message, LIMITS.capsuleMessageMax);
+      const post_id = body.post_id ? String(body.post_id) : null;
+      if (post_id && !UUID_RE.test(post_id)) return { error: "post_id inválido" };
+      if (!message && !post_id) return { error: "Escreva uma mensagem ou escolha um post" };
+      const destino = ["feed", "mensagens", "ambos"].includes(body.destino) ? body.destino : "feed";
+
+      const when = new Date(body.deliver_at);
+      if (Number.isNaN(when.getTime())) return { error: "Data de entrega inválida" };
+      const now = Date.now();
+      if (when.getTime() < now + 60_000) return { error: "A entrega precisa ser daqui a pelo menos 1 minuto" };
+      if (when.getTime() > now + LIMITS.capsuleMaxYears * 365.25 * 86400_000) {
+        return { error: "A entrega pode ser no máximo daqui a 5 anos" };
+      }
+
+      let id_receiver = user.id_user;
+      if (body.to !== "eu") {
+        const to = String(body.to || "");
+        if (!UUID_RE.test(to)) return { error: "Destino inválido" };
+        const targets = await FeedInterativoStorage.throwTargets(pool, user.id_user);
+        if (!targets.some((x) => x.id_user === to)) return { error: "Essa pessoa não está na sua lista", statusCode: 403 };
+        id_receiver = to;
+      }
+      if (post_id) {
+        const ok = await PortfolioFeedStorage.listEligibleByIds(pool, { ids: [post_id] });
+        if (ok.length === 0) return { error: "Esse post não pode ir numa cápsula", statusCode: 403 };
+      }
+      if ((await FeedInterativoStorage.countScheduled(pool, user.id_user)) >= LIMITS.capsulesScheduled) {
+        return { error: "Você já tem muitas cápsulas esperando a hora", statusCode: 429 };
+      }
+      const drop = await FeedInterativoStorage.insertDrop(pool, {
+        kind: "capsule",
+        id_sender: user.id_user,
+        id_receiver,
+        id_portfolio_item: post_id,
+        payload: {
+          message,
+          destino: id_receiver === user.id_user ? "feed" : destino,
+          scheduled_for: when.toISOString(),
+          written_at: new Date().toISOString(),
+        },
+        status: "scheduled",
+        deliver_at: when.toISOString(),
+      });
+      return { capsule: { id_drop: drop.id_drop, deliver_at: drop.deliver_at, status: drop.status } };
+    });
+  }
+
+  static async listCapsules(user) {
+    if (!user?.id_user) return notAuth();
+    const rows = await FeedInterativoStorage.listCapsules(pool, user.id_user);
+    return {
+      capsules: rows.map((r) => ({
+        id_drop: r.id_drop,
+        status: r.status,
+        deliver_at: r.deliver_at,
+        delivered_at: r.delivered_at,
+        created_at: r.created_at,
+        message: r.payload?.message || null,
+        destino: r.payload?.destino || "feed",
+        has_post: !!r.id_portfolio_item,
+        to: r.id_user === user.id_user ? null : publicCard(r),
+        // Silêncio do outro lado é segredo dele: para quem mandou, "entregue".
+        ...(r.status === "muted" ? { status: "delivered" } : {}),
+      })),
+    };
+  }
+
+  static async cancelCapsule(user, id_drop) {
+    if (!user?.id_user) return notAuth();
+    if (!UUID_RE.test(String(id_drop || ""))) return { error: "id_drop inválido" };
+    const ok = await FeedInterativoStorage.cancelCapsule(pool, id_drop, user.id_user);
+    if (!ok) return { error: "Essa cápsula não pode mais ser cancelada", statusCode: 409 };
+    return { ok: true };
+  }
+
+  /** Uma volta do worker: entrega o que venceu e avisa quem recebeu. */
+  static async deliverDueCapsules() {
+    const rows = await FeedInterativoStorage.deliverDue(pool, 100);
+    for (const r of rows) {
+      if (r.status !== "delivered") continue;
+      const destino = r.payload?.destino || "feed";
+      if (destino !== "feed" && r.id_sender !== r.id_receiver) {
+        const ok = await FeedInterativoService.capsuleToMessages(r).catch((err) => {
+          log.warn("capsule.dm_fail", { id_drop: r.id_drop, message: err?.message });
+          return false;
+        });
+        // Só mensagem e ela foi: não entra no feed.
+        if (ok && destino === "mensagens") {
+          await FeedInterativoStorage.markStatus(pool, r.id_receiver, [r.id_drop], ["delivered"], "seen");
+          continue;
+        }
+      }
+      realtime().emitToUser(r.id_receiver, "fi:drop", { id_drop: r.id_drop, kind: "capsule" });
+    }
+    return rows.length;
+  }
+
+  /** A cápsula como mensagem direta (do perfil-conta de quem mandou). Idempotente pelo id do drop. */
+  static async capsuleToMessages(drop) {
+    const ConversationService = require("./ConversationService");
+    const fromProfile = await FeedInterativoStorage.accountProfileId(pool, drop.id_sender);
+    const toProfile = await FeedInterativoStorage.accountProfileId(pool, drop.id_receiver);
+    if (!fromProfile || !toProfile) return false;
+    const sender = { id_user: drop.id_sender };
+    const opened = await ConversationService.openOrCreate(sender, { actor_type: "profile", actor_id: fromProfile, target_id: toProfile });
+    if (opened?.error || !opened?.conversation) return false;
+    const written = drop.payload?.written_at ? new Date(drop.payload.written_at) : null;
+    const stamp = written ? written.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "";
+    const text = drop.payload?.message || "";
+    const body = `⏳ ${stamp ? `(${stamp}) ` : ""}${text}`.trim().slice(0, 2000);
+    if (!text) return false;
+    const sent = await ConversationService.sendMessage(sender, {
+      id_conversation: opened.conversation.id_conversation,
+      actor_type: "profile",
+      actor_id: fromProfile,
+      body,
+      client_message_id: drop.id_drop,
+    });
+    return !sent?.error;
+  }
+
+  static startCapsuleWorker() {
+    if (capsuleTimer) return;
+    const tick = () =>
+      FeedInterativoService.deliverDueCapsules().catch((err) => log.warn("capsule.tick_fail", { message: err?.message }));
+    capsuleTimer = setInterval(tick, CAPSULE_TICK_MS);
+    capsuleTimer.unref?.();
+    setTimeout(tick, 5_000).unref?.();
   }
 
   static async markSeen(user, body = {}) {

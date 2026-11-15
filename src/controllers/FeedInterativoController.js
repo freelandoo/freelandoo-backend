@@ -17,4 +17,7 @@ module.exports = {
   gift: wrap((req) => FeedInterativoService.sendGift(req.user, req.body || {})),
   openGift: wrap((req) => FeedInterativoService.openGift(req.user, req.params.id_drop)),
   stickers: wrap((req) => FeedInterativoService.stickers(req.user)),
+  scheduleCapsule: wrap((req) => FeedInterativoService.scheduleCapsule(req.user, req.body || {})),
+  listCapsules: wrap((req) => FeedInterativoService.listCapsules(req.user)),
+  cancelCapsule: wrap((req) => FeedInterativoService.cancelCapsule(req.user, req.params.id_drop)),
 };

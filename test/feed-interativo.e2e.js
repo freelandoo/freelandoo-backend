@@ -282,3 +282,65 @@ async function f3() {
   check("Q fecha presentes → baú direto recusado", (await call("POST", "/feed-interativo/gift", { token: tS, body: { to: Q.id_user, sticker: "sol" } })).status === 403);
 }
 module.exports.phases.push(f3);
+
+// ── F4 · Cápsula do tempo ──────────────────────────────────────────────────
+async function f4() {
+  console.log("━━━ F4 · Cápsula do tempo ━━━");
+  const FeedInterativoService = require("../src/services/FeedInterativoService");
+  const S = await createUser("Escreve S");
+  const R = await createUser("Lê R");
+  const tS = tokenOf(S);
+  const tR = tokenOf(R);
+  const inTwo = () => new Date(Date.now() + 2 * 60_000).toISOString();
+  const due = (id) => pool.query(`UPDATE tb_feed_drop SET deliver_at = NOW() - INTERVAL '1 second' WHERE id_drop = $1`, [id]);
+
+  check("cápsula para quem não aceitou → 403", (await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: R.id_user, deliver_at: inTwo(), message: "oi" } })).status === 403);
+  check("entrega daqui a 30 s → 400", (await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: "eu", deliver_at: new Date(Date.now() + 30_000).toISOString(), message: "oi" } })).status === 400);
+  check("entrega daqui a 6 anos → 400", (await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: "eu", deliver_at: new Date(Date.now() + 6 * 366 * 86400_000).toISOString(), message: "oi" } })).status === 400);
+  check("cápsula vazia → 400", (await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: "eu", deliver_at: inTwo() } })).status === 400);
+
+  const self = await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: "eu", deliver_at: inTwo(), message: "carta para o futuro" } });
+  check("S agenda uma carta para si mesmo", self.status === 200 && self.body?.capsule?.status === "scheduled", JSON.stringify(self.body));
+  const idSelf = self.body?.capsule?.id_drop;
+  check("antes da hora, a inbox está vazia", (await call("GET", "/feed-interativo/inbox", { token: tS })).body?.items?.length === 0);
+  await due(idSelf);
+  const n = await FeedInterativoService.deliverDueCapsules();
+  check("o worker entrega o que venceu", n >= 1);
+  const inb = await call("GET", "/feed-interativo/inbox", { token: tS });
+  const cap = inb.body?.items?.find((x) => x.id_drop === idSelf);
+  check("a cápsula chega com a mensagem e as datas", cap?.kind === "capsule" && cap.payload?.message === "carta para o futuro" && !!cap.payload?.written_at, JSON.stringify(inb.body));
+  check("o worker não entrega duas vezes", (await FeedInterativoService.deliverDueCapsules()) === 0);
+
+  await linkPair(S, R);
+  const c2 = await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: R.id_user, deliver_at: inTwo(), message: "pra você" } });
+  const idC2 = c2.body?.capsule?.id_drop;
+  check("R não cancela a cápsula do S", (await call("POST", `/feed-interativo/capsules/${idC2}/cancel`, { token: tR })).status === 409);
+  check("S cancela antes da hora", (await call("POST", `/feed-interativo/capsules/${idC2}/cancel`, { token: tS })).body?.ok === true);
+  await due(idC2);
+  await FeedInterativoService.deliverDueCapsules();
+  check("cancelada não é entregue", !(await call("GET", "/feed-interativo/inbox", { token: tR })).body?.items?.some((x) => x.id_drop === idC2));
+
+  // vínculo revogado ANTES da hora: falha na entrega
+  const c3 = await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: R.id_user, deliver_at: inTwo(), message: "tarde demais" } });
+  const links = await call("GET", "/feed-interativo/links", { token: tR });
+  const lid = links.body?.receiving?.find((l) => l.user.id_user === S.id_user)?.id_link;
+  await call("POST", `/feed-interativo/links/${lid}/revoke`, { token: tR });
+  await due(c3.body?.capsule?.id_drop);
+  await FeedInterativoService.deliverDueCapsules();
+  const st3 = await pool.query(`SELECT status FROM tb_feed_drop WHERE id_drop = $1`, [c3.body?.capsule?.id_drop]);
+  check("permissão retirada antes da hora → failed", st3.rows[0]?.status === "failed");
+
+  // destino "mensagens": vira mensagem direta e não entra no feed
+  const M = await createUser("Mensagem M");
+  await linkPair(S, M);
+  const c4 = await call("POST", "/feed-interativo/capsules", { token: tS, body: { to: M.id_user, deliver_at: inTwo(), message: "chegou pelo chat", destino: "mensagens" } });
+  await due(c4.body?.capsule?.id_drop);
+  await FeedInterativoService.deliverDueCapsules();
+  const st4 = await pool.query(`SELECT status FROM tb_feed_drop WHERE id_drop = $1`, [c4.body?.capsule?.id_drop]);
+  const msg = await pool.query(`SELECT body FROM tb_message WHERE client_message_id = $1`, [c4.body?.capsule?.id_drop]).catch((e) => ({ rows: [], err: e.message }));
+  check("destino mensagens: mensagem direta criada e fora do feed", st4.rows[0]?.status === "seen" && msg.rows[0]?.body?.includes("chegou pelo chat"), JSON.stringify({ st: st4.rows[0], msg: msg.rows[0] || msg.err }));
+
+  const list = await call("GET", "/feed-interativo/capsules", { token: tS });
+  check("S vê a lista das cápsulas com o estado", list.body?.capsules?.length === 4 && list.body.capsules.some((c) => c.status === "canceled"));
+}
+module.exports.phases.push(f4);

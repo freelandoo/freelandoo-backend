@@ -61,6 +61,10 @@ const server = app.listen(PORT, () => {
   const AiReplyWorker = require("./src/services/AiReplyWorker");
   AiReplyWorker.start();
 
+  // Feed Interativo F4: a cápsula do tempo. Sem esta linha a cápsula fica
+  // 'scheduled' para sempre e ninguém vê erro (mesma lição do AiReplyWorker).
+  require("./src/services/FeedInterativoService").startCapsuleWorker();
+
   // WhatsApp oficial de academia (mig 307): re-tenta o repasse ao sistema da
   // academia que falhou na hora. Sem isto, mensagem que pegou o sistema dela
   // fora do ar nunca chega lá — e ninguém vê erro.
