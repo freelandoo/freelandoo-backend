@@ -24,5 +24,9 @@ router.get("/stickers", asyncHandler(C.stickers));
 router.post("/capsules", asyncHandler(C.scheduleCapsule));
 router.get("/capsules", asyncHandler(C.listCapsules));
 router.post("/capsules/:id_drop/cancel", asyncHandler(C.cancelCapsule));
+router.post("/sync", asyncHandler(C.syncInvite));
+router.get("/sync/:id_session", asyncHandler(C.syncGet));
+router.post("/sync/:id_session/:action", asyncHandler(C.syncAct));
+router.get("/posts", asyncHandler(C.posts));
 
 module.exports = router;

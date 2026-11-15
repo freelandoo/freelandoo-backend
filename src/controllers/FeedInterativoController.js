@@ -1,5 +1,6 @@
 // Feed Interativo (migs 456+): HTTP fino — regra no FeedInterativoService.
 const FeedInterativoService = require("../services/FeedInterativoService");
+const FeedSyncService = require("../services/FeedSyncService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 const wrap = (fn) => async (req, res) => sendServiceResult(res, await fn(req));
@@ -20,4 +21,8 @@ module.exports = {
   scheduleCapsule: wrap((req) => FeedInterativoService.scheduleCapsule(req.user, req.body || {})),
   listCapsules: wrap((req) => FeedInterativoService.listCapsules(req.user)),
   cancelCapsule: wrap((req) => FeedInterativoService.cancelCapsule(req.user, req.params.id_drop)),
+  syncInvite: wrap((req) => FeedSyncService.invite(req.user, req.body || {})),
+  syncGet: wrap((req) => FeedSyncService.get(req.user, req.params.id_session)),
+  syncAct: wrap((req) => FeedSyncService.act(req.user, req.params.id_session, req.params.action, req.body || {})),
+  posts: wrap((req) => FeedSyncService.posts(req.user, req.query.ids)),
 };

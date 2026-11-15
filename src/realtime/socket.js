@@ -173,6 +173,9 @@ function init(httpServer) {
 
     log.info("socket.connected", { id_user, sid: socket.id });
 
+    // Feed Interativo F6 (mig 459): sala do feed sincronizado (sync:*).
+    require("./feedSync").attach(io, socket);
+
     // Só participante escuta a conversa. Antes qualquer logado entrava na sala
     // com o id na mão e recebia as mensagens dos outros em tempo real.
     socket.on("conversation:subscribe", async (payload) => {

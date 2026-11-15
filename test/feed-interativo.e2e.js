@@ -212,6 +212,7 @@ async function f2() {
   const server = http.createServer(app);
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${server.address().port}`;
+  module.exports.server = server;
   try {
     const ctx = await f2();
     for (const extra of module.exports.phases) await extra(ctx);
@@ -417,3 +418,99 @@ async function f5() {
   check("apagar só pelo autor", (await call("DELETE", `/paths/${id}`, { token: tV })).status === 404 && (await call("DELETE", `/paths/${id}`, { token: tAU })).body?.ok === true);
 }
 module.exports.phases.push(f5);
+
+// ── F6 · Feed sincronizado ─────────────────────────────────────────────────
+async function f6() {
+  console.log("━━━ F6 · Feed sincronizado ━━━");
+  require("../src/realtime/socket").init(module.exports.server);
+  const { io: ioc } = require("socket.io-client");
+  const H = await createUser("Anfitrião H");
+  const G = await createUser("Convidado G");
+  const X = await createUser("Intruso X");
+  const tH = tokenOf(H);
+  const tG = tokenOf(G);
+  const tX = tokenOf(X);
+  const p1 = await mkPost(H.id_profile, "sync 1");
+  const p2 = await mkPost(H.id_profile, "sync 2");
+  const sock = (token) =>
+    new Promise((resolve, reject) => {
+      const s = ioc(base, { path: "/realtime", transports: ["websocket"], auth: { token }, reconnection: false });
+      s.on("connect", () => resolve(s));
+      s.on("connect_error", reject);
+    });
+  const wait = (s, ev, ms = 1500) =>
+    new Promise((resolve) => {
+      const t = setTimeout(() => {
+        s.off(ev, on);
+        resolve(null);
+      }, ms);
+      const on = (p) => {
+        clearTimeout(t);
+        s.off(ev, on);
+        resolve(p);
+      };
+      s.on(ev, on);
+    });
+  const sH = await sock(tH);
+  const sG = await sock(tG);
+  const sX = await sock(tX);
+  try {
+    check("sem vínculo, convite de sync é recusado", (await call("POST", "/feed-interativo/sync", { token: tX, body: { id_user: G.id_user } })).status === 403);
+    await linkPair(H, G);
+    const gotInvite = wait(sG, "fi:sync");
+    const inv = await call("POST", "/feed-interativo/sync", { token: tH, body: { id_user: G.id_user } });
+    const sid = inv.body?.session?.id_session;
+    check("H convida G", inv.status === 200 && inv.body.session.status === "invited" && inv.body.session.role === "host", JSON.stringify(inv.body));
+    const ev = await gotInvite;
+    check("G recebe o convite pelo socket", ev?.type === "invite" && ev.id_session === sid && ev.from?.username === H.username);
+    check("H não aceita o próprio convite", (await call("POST", `/feed-interativo/sync/${sid}/accept`, { token: tH })).status === 403);
+    check("X não vê a sessão", (await call("GET", `/feed-interativo/sync/${sid}`, { token: tX })).status === 404);
+    const started = wait(sH, "fi:sync");
+    const acc = await call("POST", `/feed-interativo/sync/${sid}/accept`, { token: tG });
+    check("G aceita → ativa", acc.body?.session?.status === "active");
+    check("H fica sabendo (started)", (await started)?.type === "started");
+
+    const peer = wait(sH, "fi:sync:peer");
+    sG.emit("sync:join", { id_session: sid });
+    sH.emit("sync:join", { id_session: sid });
+    sX.emit("sync:join", { id_session: sid });
+    check("H vê o G entrar", (await peer)?.online === true);
+    await new Promise((r) => setTimeout(r, 200));
+
+    const gotState = wait(sG, "fi:sync:state");
+    const gotX = wait(sX, "fi:sync:state", 500);
+    sH.emit("sync:state", { id_session: sid, seq: 1, index: 1, post_id: p2, post_ids: [p1, p2, "lixo"], video: { playing: true, t: 3.5 } });
+    const st = await gotState;
+    check("G recebe o estado do H (lixo filtrado)", st?.index === 1 && st.post_id === p2 && st.post_ids?.length === 2 && st.video?.playing === true && st.from === H.id_user, JSON.stringify(st));
+    check("X (fora da sessão) não recebe nada", (await gotX) === null);
+
+    const hNo = wait(sH, "fi:sync:state", 500);
+    sG.emit("sync:state", { id_session: sid, seq: 9, index: 0 });
+    check("com controle do anfitrião, o G não conduz", (await hNo) === null);
+    check("G não troca o controle", (await call("POST", `/feed-interativo/sync/${sid}/control`, { token: tG, body: { control: "shared" } })).status === 403);
+    await call("POST", `/feed-interativo/sync/${sid}/control`, { token: tH, body: { control: "shared" } });
+    const hYes = wait(sH, "fi:sync:state");
+    sG.emit("sync:state", { id_session: sid, seq: 10, index: 0, post_id: p1 });
+    check("controle dividido: o G também conduz", (await hYes)?.post_id === p1);
+
+    const posts = await call("GET", `/feed-interativo/posts?ids=${p1},${p2}`, { token: tG });
+    check("G carrega os posts do feed do H (régua com ele de leitor)", posts.body?.items?.length === 2);
+
+    const ended = wait(sG, "fi:sync");
+    await call("POST", `/feed-interativo/sync/${sid}/end`, { token: tH });
+    check("encerrar avisa o outro lado", (await ended)?.type === "ended");
+    const after = wait(sG, "fi:sync:state", 500);
+    sH.emit("sync:state", { id_session: sid, seq: 11, index: 1 });
+    check("depois de encerrada, nada passa", (await after) === null);
+
+    // convite vencido
+    const inv2 = await call("POST", "/feed-interativo/sync", { token: tH, body: { id_user: G.id_user } });
+    await pool.query(`UPDATE tb_feed_sync_session SET created_at = NOW() - INTERVAL '3 minutes' WHERE id_session = $1`, [inv2.body.session.id_session]);
+    check("convite com mais de 2 min não aceita", (await call("POST", `/feed-interativo/sync/${inv2.body.session.id_session}/accept`, { token: tG })).status === 409);
+  } finally {
+    sH.close();
+    sG.close();
+    sX.close();
+  }
+}
+module.exports.phases.push(f6);
