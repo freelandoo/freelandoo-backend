@@ -22,7 +22,6 @@ const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const presence = require("./meuMundoPresence");
-const { roomLook } = require("../utils/meuMundoColors");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.noturno");
@@ -54,7 +53,7 @@ const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os
 const { NoturnoBot } = require("../utils/meuMundoNoturnoBot");
 const { isRunPhase } = require("../utils/meuMundoNoturnoSim");
 const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
-const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
+const BOT_BODIES = ["sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina"];
 
 const NtPlayer = schema(
   {
@@ -120,9 +119,9 @@ class NoturnoRoom extends Room {
     }
     const prev = byUser.get(userId);
     if (prev && !(prev.room === this && prev.sessionId === client.sessionId)) prev.room.replace(prev.sessionId);
-    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "sergio";
     // as cores vêm da conta (o aparelho não escolhe a cor dos outros)
-    const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
+    const look = "";
     const ride = RIDES.includes(options.ride) ? options.ride : "skate";
     const slot = this.freeSlot();
     this.state.players.set(client.sessionId, new NtPlayer({ slot, name: String(options.name || "skatista").slice(0, 24), ride, online: true }));

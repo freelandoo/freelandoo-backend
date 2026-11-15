@@ -32,8 +32,6 @@
 const { Room, ServerError, matchMaker } = require("@colyseus/core");
 const { schema, t } = require("@colyseus/schema");
 const pool = require("../databases");
-const MeuMundoStorage = require("../storages/MeuMundoStorage");
-const { roomLook } = require("../utils/meuMundoColors");
 const AuthStorage = require("../storages/AuthStorage");
 const presence = require("./meuMundoPresence");
 const { PaintMatch, PAINT_MODES, modeCapacity, modeTeams, buildPaintMap, paintMapId, paintMapVersion, tallyPaintVotes } = require("../utils/meuMundoPaint");
@@ -72,7 +70,7 @@ const timing = { closeMs: 20000, lobbyMs: 20000 }; // espera de 20 s (regra do A
 const { PaintBot } = require("../utils/meuMundoPaintBot");
 const { TUNING: PAINT_T } = require("../utils/meuMundoPaint");
 const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
-const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
+const BOT_BODIES = ["sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina"];
 
 const PtPlayer = schema(
   {
@@ -206,9 +204,9 @@ class PaintRoom extends Room {
 
   async onJoin(client, options) {
     const userId = options.userId;
-    const body = String(options.body || "normal").slice(0, 16);
+    const body = String(options.body || "sergio").slice(0, 16);
     // Cores (mm3d-36): lidas do banco pela conta; falha = textura original.
-    const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
+    const look = "";
     const here = userId ? presence.get(userId) : null;
     const admin = userId && (await AuthStorage.isAdmin(pool, userId));
     const sameCenter = here && here.scene === "center" && here.id === this.centerRoomId;

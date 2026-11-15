@@ -229,15 +229,15 @@ async function expectViolation(pool, sql, params, label) {
   B.room.send("body", { body: "strong" });
   await sleep(500);
   check("escolher corpo pela sala é ignorado", pB().body === body0, pB().body);
-  realtime.applyLife(nb1user, { pace: 1, status: "alive", activity: "idle", body: "fat" });
-  await until(() => pB().body === "fat");
-  check("corpo vindo da vida chega ao outro jogador", pB().body === "fat");
+  realtime.applyLife(nb1user, { pace: 1, status: "alive", activity: "idle", body: "ekaterina" });
+  await until(() => pB().body === "ekaterina");
+  check("corpo vindo da vida chega ao outro jogador", pB().body === "ekaterina");
   realtime.applyLife(nb1user, { pace: 1, status: "alive", activity: "idle", body: "https://evil/x.glb" });
   await sleep(400);
-  check("corpo fora da lista permitida é recusado", pB().body === "fat");
-  // Sergio (mig 294): a preferência gravada continua passando pelo CHECK do banco.
-  await Storage.setBody(pool, nb1user, "sergio");
-  check("corpo sergio persistido (CHECK da mig 294)", (await Storage.getBody(pool, nb1user)) === "sergio");
+  check("corpo fora da lista permitida é recusado", pB().body === "ekaterina");
+  realtime.applyLife(nb1user, { pace: 1, status: "alive", activity: "idle", body: "fat" });
+  await sleep(400);
+  check("o personagem padrão saiu: corpo \"fat\" é recusado", pB().body === "ekaterina");
 
   // ── Carros (mm3d-11) ─────────────────────────────────────────────────────
   {

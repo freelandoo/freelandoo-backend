@@ -39,7 +39,7 @@ function who(r) {
     name: r.name || r.username || "",
     username: r.username || null,
     avatar: r.avatar_url || null,
-    body: characterBody({ species: r.species, sex: r.sex, stage: r.stage, clan: r.clan, clanSex: r.clan_sex, condition: r.pref_body || "normal" }),
+    body: characterBody({ species: r.species, sex: r.sex, stage: r.stage, clan: r.clan, clanSex: r.clan_sex }),
   };
 }
 

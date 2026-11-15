@@ -14,13 +14,14 @@ const speciesOf = (species, clan) => (Chars.speciesById(species) ? species : isC
 /**
  * Corpo que a sala desenha para o personagem ativo.
  *  { species, sex } do personagem, `stage` (young|adult) da vida, { clan, clanSex } do
- *  jogador e `condition` (corpo da condição física) para quem não tem nem uma nem outra.
+ *  jogador; sem nenhum dos dois (ninguém entra sem classe), Sergio. O personagem padrão (corpo pela
+ *  condição física, que trocava de cor) saiu em 2026-11-14.
  */
-function characterBody({ species = null, sex = null, stage = null, clan = null, clanSex = null, condition = null } = {}) {
+function characterBody({ species = null, sex = null, stage = null, clan = null, clanSex = null } = {}) {
   const sp = speciesOf(species, clan);
   const b = Chars.speciesBody(sp, sex || clanSex, stage);
   if (b) return b;
-  return clanBody(clan, clanSex, stage) || condition || "normal";
+  return clanBody(clan, clanSex, stage) || "sergio";
 }
 
 /** Altura de agora (m) pela espécie e pelo crescimento da vida (ver rules.ts speciesHeight). */

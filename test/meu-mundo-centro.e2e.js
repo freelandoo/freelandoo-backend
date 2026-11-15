@@ -277,7 +277,7 @@ async function mkUser(pool, admin = true, tag = "") {
   presence.setPlacement(plain, { scene: "center", roomId: null });
   let denied = false;
   try {
-    const seat = await realtime.reserveCenterSeat({ userId: plain, name: "x", body: "normal" });
+    const seat = await realtime.reserveCenterSeat({ userId: plain, name: "x", body: "sergio" });
     await client.consumeSeatReservation(seat);
   } catch {
     denied = true;
@@ -287,7 +287,7 @@ async function mkUser(pool, admin = true, tag = "") {
   presence.setPlacement(sneaky, { scene: "nb", nbId: nbOf.get(sneaky) });
   denied = false;
   try {
-    const seat = await realtime.reserveCenterSeat({ userId: sneaky, name: "x", body: "normal" });
+    const seat = await realtime.reserveCenterSeat({ userId: sneaky, name: "x", body: "sergio" });
     await client.consumeSeatReservation(seat);
   } catch {
     denied = true;

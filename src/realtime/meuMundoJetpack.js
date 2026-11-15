@@ -29,7 +29,6 @@ const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const presence = require("./meuMundoPresence");
-const { roomLook } = require("../utils/meuMundoColors");
 const { createLogger } = require("../utils/logger");
 const { PracticeMeter } = require("./meuMundoPractice");
 
@@ -70,7 +69,7 @@ const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os
 // e as vagas vazias viram computadores, rodados AQUI com a regra gerada do voo.
 const { JetpackBot } = require("../utils/meuMundoJetpackBot");
 const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
-const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
+const BOT_BODIES = ["sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina"];
 
 const JtPlayer = schema(
   {
@@ -137,8 +136,8 @@ class JetpackRoom extends Room {
     }
     const prev = byUser.get(userId);
     if (prev && !(prev.room === this && prev.sessionId === client.sessionId)) prev.room.replace(prev.sessionId);
-    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
-    const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "sergio";
+    const look = "";
     const slot = this.freeSlot();
     this.state.players.set(client.sessionId, new JtPlayer({ slot, name: String(options.name || "piloto").slice(0, 24), online: true }));
     const k = speedFactor(options.speed);

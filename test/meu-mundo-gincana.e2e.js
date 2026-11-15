@@ -132,7 +132,7 @@ async function mkUser(pool, tag) {
     const s = [...room.sim.values()].find((x) => x.userId === u);
     Object.assign(s.body, { x: DOOR.x + dx, z: DOOR.z });
   }
-  async function join(u, body = "normal") {
+  async function join(u, body = "sergio") {
     const out = await Service.joinGincana(u, { body });
     if (out.error) return { out };
     const room = await consume(out);
@@ -161,7 +161,7 @@ async function mkUser(pool, tag) {
   for (let i = 0; i < 9; i++) nearDoor(users[i]);
 
   // ── Espera (encurtada); o computador completa as 8 vagas ─────────────────
-  const A = await join(users[0], "female");
+  const A = await join(users[0], "ekaterina");
   check("o 1º fica esperando, com o prazo da espera", A.room.state.phase === "lobby" && A.welcome.left > 0);
   const B = await join(users[1], "dragao");
   check("o 2º cai na mesma largada", B.room.roomId === A.room.roomId);
@@ -171,8 +171,8 @@ async function mkUser(pool, tag) {
   check("…8 vagas: 2 pessoas e 6 computadores", A.start.seats.length === 8 && A.start.seats.filter((s) => s.bot).length === 6, JSON.stringify(A.start.seats));
   const sa = A.start.seats.find((s) => s.slot === 0);
   const sb = A.start.seats.find((s) => s.slot === 1);
-  check("…corpo de cada um (desconhecido vira normal) e cores", sa.body === "female" && sb.body === "normal" && typeof sa.look === "string" && !sa.bot);
-  check("…computador com nome, corpo e cores válidas", A.start.seats.filter((s) => s.bot).every((s) => s.name && /^[0-9a-z]{4}$/.test(s.look)));
+  check("…corpo de cada um (desconhecido vira sergio), sem cores", sa.body === "ekaterina" && sb.body === "sergio" && sa.look === "" && !sa.bot);
+  check("…computador com nome e corpo (Sergio/Ekaterina), sem cores", A.start.seats.filter((s) => s.bot).every((s) => s.name && ["sergio", "ekaterina"].includes(s.body) && s.look === ""));
   const Cx = await join(users[2]);
   check("trancada: quem chega depois vai para outra largada", Cx.room && Cx.room.roomId !== A.room.roomId && Cx.room.state.phase === "lobby");
   check("sozinho depois do prazo: ele e 7 computadores", (await until(() => Cx.start, 4000)) && Cx.start.seats.length === 8 && Cx.start.seats.filter((s) => !s.bot).length === 1);

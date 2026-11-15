@@ -66,9 +66,7 @@ const {
 const { MOTION, sanitizeIntent, step, resolveCircle, paceSpeeds, freshStamina, setStamina, staminaIntent } = require("../utils/meuMundoMotion");
 const { bodyStride } = require("../utils/meuMundoHeights");
 const { publicCatalog } = require("../utils/meuMundoLife");
-const { roomLook } = require("../utils/meuMundoColors");
 /** Cores de quem entra (mm3d-36): lidas do banco pela conta; falha = textura original. */
-const lookOf = (body, userId) => MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
 /** Pose de indisposto (mm3d-28): saúde perto do hospital, pela lista de necessidades da vida. */
 const isUnwell = (life) => Array.isArray(life.needs) && life.needs.some((n) => n && n.id === "unwell");
 const { CAR, RIDE_KINDS, KIND_NAMES, vehicleId, kindOfId, spotFor, carBox, blocks, carFits, exitSpots } = require("../utils/meuMundoCars");
@@ -459,8 +457,8 @@ class BairroRoom extends Room {
       start = { x: home.x, z: home.z, facing: home.rotationY };
     }
 
-    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
-    const look = await lookOf(body, userId);
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "sergio";
+    const look = "";
     const b = { x: start.x, z: start.z, vx: 0, vz: 0, facing: start.facing };
     // Posição de partida também passa pela colisão (memória antiga num lugar
     // que virou obstáculo não pode prender ninguém).
@@ -532,7 +530,6 @@ class BairroRoom extends Room {
     setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
     p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
-    if (typeof life.look === "string") p.look = roomLook(p.body, life.look);
     if (life.height > 0) p.h = Math.round(life.height * 100);
     // mm3d-72: a personalidade e o afeto (o psicopata puxa briga com monstro na rua)
     if (life.soul && typeof life.soul.temper === "string") s.soul = { temper: life.soul.temper, aff: Number(life.soul.affection) || 0 };
@@ -1142,8 +1139,8 @@ class CasaRoom extends Room {
       }
     }
     const e = this.def.entry;
-    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
-    const look = await lookOf(body, userId);
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "sergio";
+    const look = "";
     const b = { x: e.x, z: e.z, vx: 0, vz: 0, facing: e.facing, floor: e.floor, y: 0 };
     stepInterior(b, { x: 0, z: 0, run: false }, 0, this.def);
     this.sim.set(client.sessionId, {
@@ -1509,7 +1506,6 @@ class CasaRoom extends Room {
     setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
     p.sk = isUnwell(life);
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
-    if (typeof life.look === "string") p.look = roomLook(p.body, life.look);
     if (life.height > 0) p.h = Math.round(life.height * 100);
     if (s.bedPending) return;
     const resting = life.status === "alive" && (life.activity === "lying" || life.activity === "sleeping");
@@ -1673,8 +1669,8 @@ class CentroRoom extends BairroRoom {
     if (start && !isCenterSafe(start.x, start.z, resolveCircle, MOTION.RADIUS, this.obstacles)) start = null;
     if (!start) start = { ...CENTER_ARRIVAL };
 
-    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
-    const look = await lookOf(body, userId);
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "sergio";
+    const look = "";
     const b = { x: start.x, z: start.z, vx: 0, vz: 0, facing: start.facing };
     step(b, { x: 0, z: 0, run: false }, 0, this.obstacles, this.limit);
     this.sim.set(client.sessionId, {

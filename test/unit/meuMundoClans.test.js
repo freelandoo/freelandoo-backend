@@ -22,11 +22,12 @@ test("todo corpo de classe é aceito pela sala", () => {
   for (const b of C.CLAN_BODIES) assert.ok(MeuMundoStorage.BODIES.includes(b), b);
 });
 
-test("prioridade (B3): espécie do personagem > classe > condição física", () => {
-  assert.equal(characterBody({ species: null, clan: "vampiro", clanSex: "f", stage: "young", condition: "fat" }), "vampira");
-  assert.equal(characterBody({ species: "sergio", clan: "raposa", condition: "fat" }), "sergio");
-  assert.equal(characterBody({ species: "aurion", clan: "raposa", condition: "fat" }), "aurion");
-  assert.equal(characterBody({ species: null, clan: null, condition: "fat" }), "fat");
+test("prioridade (B3): espécie do personagem > classe > Sergio", () => {
+  assert.equal(characterBody({ species: null, clan: "vampiro", clanSex: "f", stage: "young" }), "vampira");
+  assert.equal(characterBody({ species: "sergio", clan: "raposa" }), "sergio");
+  assert.equal(characterBody({ species: "aurion", clan: "raposa" }), "aurion");
+  // o personagem padrão (corpo pela condição física) saiu em 2026-11-14
+  assert.equal(characterBody({ species: null, clan: null, condition: "fat" }), "sergio");
   // as classes viraram espécies: o corpo segue sexo e fase
   assert.equal(characterBody({ species: "vampiro", sex: "f", stage: "adult" }), "vampira_adulta");
   assert.equal(characterBody({ species: "raposa", sex: "m", stage: "adult" }), "raposa_adulto");

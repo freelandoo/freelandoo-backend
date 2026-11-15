@@ -10,12 +10,7 @@
 // (`step`) e escolhem destinos entre os pontos livres do diretor de monstros.
 
 const BOT_BODIES = Object.freeze([
-  ["normal", "Padrão"],
-  ["slim", "Magro"],
-  ["fat", "Gordo"],
-  ["strong", "Forte"],
   ["sergio", "Sergio"],
-  ["female", "Menina"],
   ["ekaterina", "Ekaterina"],
   ["aurion", "Aurion"],
   ["morkhan", "Morkhan"],

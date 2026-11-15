@@ -218,7 +218,7 @@ class MeuMundoService {
       me: {
         name,
         body,
-        look: await MeuMundoStorage.getLook(pool, idUser),
+        look: "",
         // Visitante: "house" continua sendo a casa DELE (em outro bairro);
         // `visiting` diz qual casa daqui ele pode visitar.
         house: residence.lot_number,
@@ -260,7 +260,7 @@ class MeuMundoService {
         isMine: house.owner_id === idUser,
       },
       interior: publicInterior(def),
-      me: { name, body, look: await MeuMundoStorage.getLook(pool, idUser), role: house.owner_id === idUser ? "owner" : "guest" },
+      me: { name, body, look: "", role: house.owner_id === idUser ? "owner" : "guest" },
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer,
       visits: await MeuMundoService.visitState(idUser),
@@ -461,7 +461,7 @@ class MeuMundoService {
       release: MEU_MUNDO_RELEASE,
       environment: "dev",
       center: buildCenterPayload(),
-      me: { name, body, look: await MeuMundoStorage.getLook(pool, idUser), house: 0, driving: vehicle ? Number(vehicle.id) : 0 },
+      me: { name, body, look: "", house: 0, driving: vehicle ? Number(vehicle.id) : 0 },
       motion: { walkSpeed: MOTION.WALK_SPEED, runSpeed: MOTION.RUN_SPEED },
       multiplayer: { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation },
       visits: await MeuMundoService.visitState(idUser),

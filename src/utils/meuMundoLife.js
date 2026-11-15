@@ -183,8 +183,8 @@ const FRIDGE = Object.freeze({
 // ═══ CORPO ═══ — desde 2026-10-21 o tipo físico NÃO se escolhe: sai daqui.
 // Todo hóspede nasce MUITO magro (~8–10% de gordura); a comida soma gordura
 // (kcal), o gasto do dia tira, e só o TREINO soma massa magra. Comer sem
-// atividade física só engorda. O avatar da sala e os retratos seguem
-// `bodyHint` (a sala recebe pela vida — applyLife).
+// atividade física só engorda. `bodyHint` é só a leitura do físico (o corpo do personagem padrão,
+// que seguia ela, saiu em 2026-11-14).
 const BODY = Object.freeze({
   SLIM_BELOW: 13, // % de gordura
   FAT_AT: 25,

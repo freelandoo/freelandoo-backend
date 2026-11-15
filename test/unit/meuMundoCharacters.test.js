@@ -69,11 +69,11 @@ test("crescer: 1,00 m ao nascer → jovem em 30 dias ativos → altura final em 
 });
 
 test("corpo: espécie do personagem > classe do jogador > condição física", () => {
-  assert.equal(characterBody({ species: "aurion", clan: "raposa", condition: "fat" }), "aurion");
+  assert.equal(characterBody({ species: "aurion", clan: "raposa" }), "aurion");
   assert.equal(characterBody({ species: "vampiro", sex: "f", stage: "adult", clan: "raposa" }), "vampira_adulta");
   assert.equal(characterBody({ species: null, clan: "raposa", clanSex: "f", stage: "young" }), "raposa_f");
-  assert.equal(characterBody({ species: null, clan: null, condition: "fat" }), "fat");
-  assert.equal(characterBody({}), "normal");
+  // sem espécie nem classe (ninguém entra assim): Sergio — o personagem padrão saiu (2026-11-14)
+  assert.equal(characterBody({}), "sergio");
   // espécie de sexo fixo manda no sexo
   assert.equal(C.speciesSex("zephyra", "m"), "f");
 });

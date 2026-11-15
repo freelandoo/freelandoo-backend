@@ -172,7 +172,7 @@ async function mkUser(pool, tag, admin = true) {
   check("vizinho sem convite é bloqueado", nb1Try.statusCode === 403, JSON.stringify(nb1Try));
   let forged = false;
   try {
-    const seat = await realtime.reserveHouseSeat({ houseId: R.host.id_house, userId: nb1, name: "x", body: "normal" });
+    const seat = await realtime.reserveHouseSeat({ houseId: R.host.id_house, userId: nb1, name: "x", body: "sergio" });
     const r = await client.consumeSeatReservation(seat);
     await r.leave();
   } catch {
@@ -309,7 +309,7 @@ async function mkUser(pool, tag, admin = true) {
   check("…e volta à frente da própria casa, no próprio bairro", back.scene === "neighborhood" && back.sceneKey === `nb:${R.far.id_neighborhood}` && Math.hypot(back.me.home.x - L.frontOfHouse(R.far.lot_number).x, back.me.home.z - L.frontOfHouse(R.far.lot_number).z) < 0.01);
   check("a autorização temporária não fica: sala do bairro visitado recusa", await (async () => {
     try {
-      const seat = await realtime.reserveSeat({ neighborhoodId: R.host.id_neighborhood, userId: far, name: "x", body: "normal" });
+      const seat = await realtime.reserveSeat({ neighborhoodId: R.host.id_neighborhood, userId: far, name: "x", body: "sergio" });
       const r = await client.consumeSeatReservation(seat);
       await r.leave();
       return false;

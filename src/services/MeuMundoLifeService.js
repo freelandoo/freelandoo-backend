@@ -351,13 +351,10 @@ class MeuMundoLifeService {
       const emerald = await settleEmerald(c, idUser, purse, Math.max(0, ctx.coins), sim.earned, ctx.what);
       await MeuMundoLifeStorage.setCoins(c, idUser, emerald.frac);
       await MeuMundoLifeStorage.savePantry(c, idUser, pantry0, pantry);
-      // O tipo físico do avatar É o corpo da vida (não se escolhe desde
-      // 2026-10-21): gravado só quando muda — é o que as entradas leem.
-      await MeuMundoStorage.setBody(c, idUser, Life.bodyHint(state));
       // O que a sala desenha (B3): o corpo da espécie do personagem ativo (ou a condição).
       const avatar = await MeuMundoStorage.getBody(c, idUser);
-      // Cores da skin vestida (mm3d-36, mig 304): "" = visual próprio.
-      const look = await MeuMundoStorage.getLook(c, idUser);
+      // as cores do personagem padrão saíram (2026-11-14): ninguém é pintado
+      const look = "";
       // T3/B7 (migs 334/335): o PODER do hóspede, recalculado a cada mudança da vida
       // (regra gerada do front: src/utils/meuMundoPower.js; soma simples do permanente).
       const power = await MeuMundoPowerService().refresh(c, idUser, idCharacter, state, now);

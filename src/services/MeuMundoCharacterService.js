@@ -102,7 +102,7 @@ async function clanOf(db, idUser) {
 }
 
 /** Resumo de um personagem para a tela da cápsula e do ranking. `s` = estado (simulado se for o ativo). */
-function summary(row, s, k, condition, now) {
+function summary(row, s, k, now) {
   const active = row.status === "alive";
   // Congelado: tudo parado no instante em que foi guardado.
   const t = active ? now : s.simAt;
@@ -117,7 +117,7 @@ function summary(row, s, k, condition, now) {
     status: row.status,
     species: speciesOf(row.species, k.clan),
     sex: Chars.speciesSex(speciesOf(row.species, k.clan), row.sex || k.sex),
-    body: characterBody({ ...who, stage, condition }),
+    body: characterBody({ ...who, stage }),
     height: characterHeight({ ...who, growth: s.growth }, t),
     stage,
     adult: stage === "adult",
@@ -175,7 +175,6 @@ class MeuMundoCharacterService {
   /** Lista dentro de uma transação já aberta (o ativo usa o estado `s` simulado). */
   static async mine(c, idUser, s, ctx) {
     const k = await clanOf(c, idUser);
-    const condition = (await c.query(`SELECT body FROM tb_mm_avatar_pref WHERE id_user = $1`, [idUser])).rows[0]?.body || "normal";
     const rows = await LS.listMine(c, idUser);
     const activeId = (ctx.newRow || ctx.row).id_character;
     const list = [];
@@ -183,7 +182,7 @@ class MeuMundoCharacterService {
       // morto antigo: só o ativo (tela de morte) aparece
       if (row.status === "dead" && row.id_character !== activeId) continue;
       const st = row.id_character === activeId ? ctx.newState || s : rowToState(row);
-      list.push(summary(row, st, k, condition, ctx.now));
+      list.push(summary(row, st, k, ctx.now));
     }
     const used = list.filter((x) => x.status === "capsule").length;
     // B12: o acelerador serve para quem ainda não chegou aos 15 anos (o congelado mede no instante em que parou)

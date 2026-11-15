@@ -13,6 +13,6 @@ Estes são GERADOS a partir do TS do front (`features/meu-mundo/...`). Mudar aqu
 | `meuMundoPower.js` | `build-power-sim.js` | `power/` |
 | `meuMundoCharacters.js` | `build-characters-sim.js` | `characters/` |
 
-Regras do Meu Mundo que nascem AQUI e têm espelho no front (teste de espelho): `meuMundoLife.js` (vida, `gain()`, orçamento diário), `meuMundoLayout.js`, `meuMundoMotion.js`, `meuMundoHeights.js` ↔ `heights.ts`, `meuMundoSkins.js` ↔ `skins.ts`, `meuMundoColors.js` ↔ `avatar-colors.ts`, `meuMundoCenter.js` (planta; mudou → `CENTER_VERSION`). Detalhe: `features/meu-mundo/CLAUDE.md` do front.
+Regras do Meu Mundo que nascem AQUI e têm espelho no front (teste de espelho): `meuMundoLife.js` (vida, `gain()`, orçamento diário), `meuMundoLayout.js`, `meuMundoMotion.js`, `meuMundoHeights.js` ↔ `heights.ts`, `meuMundoSkins.js` ↔ `skins.ts`, `meuMundoCenter.js` (planta; mudou → `CENTER_VERSION`). Detalhe: `features/meu-mundo/CLAUDE.md` do front.
 
 Fontes únicas fora do jogo: `feedKind.js`, `feedReach.js`, `beeLife.js` (`BEE_ALIVE_SQL`), `communityPolicy.js`, `communitySite.js`, `spaceCaps.js`, `condoResidentSql.js`, `currency.js`, `aiAccess.js`, `aiQuota.js`, `bookingFee`, `profilePaywall.js`.

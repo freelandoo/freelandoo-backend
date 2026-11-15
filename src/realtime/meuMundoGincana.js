@@ -24,7 +24,6 @@ const pool = require("../databases");
 const AuthStorage = require("../storages/AuthStorage");
 const MeuMundoStorage = require("../storages/MeuMundoStorage");
 const presence = require("./meuMundoPresence");
-const { roomLook, PALETTE, PARTS } = require("../utils/meuMundoColors");
 const G = require("../utils/meuMundoGincana");
 const { createLogger } = require("../utils/logger");
 
@@ -47,7 +46,7 @@ const MIN_FINISH_S = 22;
 
 /** Computadores: nomes de doce (iguais nos três idiomas) e corpos variados. */
 const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
-const BOT_BODIES = ["normal", "female", "slim", "strong", "fat", "female", "normal", "slim"];
+const BOT_BODIES = ["sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina", "sergio", "ekaterina"];
 
 /** Prazos (a suíte e2e encurta). */
 const timing = { lobbyMs: 20000, closeMs: 20000 }; // espera de 20 s em todos os minijogos (Alex, 2026-11-08; antes 1 min)
@@ -116,9 +115,8 @@ class GincanaRoom extends Room {
     }
     const prev = byUser.get(userId);
     if (prev && !(prev.room === this && prev.sessionId === client.sessionId)) prev.room.replace(prev.sessionId);
-    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "normal";
-    // as cores vêm da conta (o aparelho não escolhe a cor dos outros)
-    const look = await MeuMundoStorage.getLook(pool, userId).then((l) => roomLook(body, l), () => "");
+    const body = MeuMundoStorage.BODIES.includes(options.body) ? options.body : "sergio";
+    const look = "";
     const slot = this.freeSlot();
     this.state.players.set(client.sessionId, new GnPlayer({ slot, name: String(options.name || "jogador").slice(0, 24), online: true }));
     this.seats.set(client.sessionId, { userId, slot, body, look, at: 0, gone: false, bucket: MAX_MSG_PER_SEC, lastRefill: Date.now(), drops: 0, dropsSince: Date.now() });
@@ -279,7 +277,7 @@ class GincanaRoom extends Room {
         continue;
       }
       const name = BOT_NAMES[(seed + bot++) % BOT_NAMES.length];
-      const look = PARTS.map((part, i) => Math.floor(G.botRand(seed, slot, 40 + i) * PALETTE[part].length).toString(36)).join("");
+      const look = "";
       this.names.set(slot, name);
       this.bots.add(slot);
       seats.push({ slot, name, body: BOT_BODIES[slot % BOT_BODIES.length], look, bot: true });
