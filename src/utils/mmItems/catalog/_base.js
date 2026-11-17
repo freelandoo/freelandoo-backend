@@ -6,6 +6,7 @@
 
 const { TIER } = require("../rules/budget");
 const { rankOf } = require("../rules/rank");
+const { classStatsOf } = require("../rules/classStats");
 
 const LORE = Object.freeze({
   cristal_morkhan: "Uma luz violeta atravessa a rachadura. As marcas lembram o nome apagado de Morkhan, o oitavo campeão dos Jogos Eternos de Lúmen. Esta recordação pode ser examinada sem avançar uma missão.",
@@ -44,7 +45,9 @@ const G = (id, category, name, rarity, o = {}) => {
     slot: slotOf(category, id), twoHanded: category === "weapon" && TWO_HANDED_SHOPS.includes(o.shop), ...o,
     tier: TIER[rarity] || null,
   };
-  return Object.freeze({ ...item, rank: rankOf(item) });
+  const ranked = { ...item, rank: rankOf(item) };
+  // status da classe (rules/classStats.js): número inteiro + porcentagem, divididos pelo tipo da peça
+  return Object.freeze({ ...ranked, stats: classStatsOf(ranked) });
 };
 
 /** Espada da loja: de guerreiro (classe vampiro), recicla por ~12% do preço. */

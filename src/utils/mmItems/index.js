@@ -9,6 +9,7 @@
 
 const { CATEGORIES, RARITIES, validateCatalog } = require("./validate");
 const Rank = require("./rules/rank");
+const ClassStats = require("./rules/classStats");
 const weapons = require("./catalog/weapons");
 const armor = require("./catalog/armor");
 const accessories = require("./catalog/accessories");
@@ -91,7 +92,7 @@ const ERRORS = validateCatalog({ items: GEAR, recipes: RECIPES, loot: LOOT, sets
 if (ERRORS.length) throw new Error(`Catálogo do Meu Mundo inválido:\n- ${ERRORS.join("\n- ")}`);
 
 module.exports = {
-  CATEGORIES, RARITIES, RANKS: Rank.RANKS, RANK_ORDER: Rank.RANK_ORDER, rankOf: Rank.rankOf,
+  CATEGORIES, RARITIES, RANKS: Rank.RANKS, RANK_ORDER: Rank.RANK_ORDER, rankOf: Rank.rankOf, CLASS_STATS: ClassStats,
   GEAR, GEAR_BY_ID, RECIPES, RECIPE_BY_ID, DESCRIPTIONS, SETS, SET_STEPS, LOOT,
   bonusOf: (pieces) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
   rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation, domainTableId,

@@ -17,7 +17,7 @@ const ANTES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "gear-
  * JSON de agora sem os campos novos dos ITENS: `tier` (E1) e `slot`/`twoHanded` (E6, os 8 slots).
  * Montagem já tinha `tier`; só sai o de quem tem `rarity`.
  */
-const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable", "sockets", "rune", "rank"]); // classe de raridade (2026-11-17): `rank` · E11: `transmutable` · E13: `sockets`, `rune`
+const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable", "sockets", "rune", "rank", "stats"]); // classe de raridade (2026-11-17): `rank`, `stats` · E11: `transmutable` · E13: `sockets`, `rune`
 /** E7: o `bonus` do equipamento passou a sair da régua (rules/bonus.js) — sai da comparação. */
 const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) {
   if (typeof this.rarity !== "string") return x;
