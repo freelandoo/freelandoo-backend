@@ -94,7 +94,7 @@ function pizzaria() {
         ],
       },
     ],
-    npcs: [{ role: "pizzaiolo", x: 0, z: 8.6, r: 0 }],
+    npcs: [{ role: "pizzaiolo", x: 0, z: 8.6, r: 0, talk: "atendente_sangue" }],
   };
 }
 
@@ -138,7 +138,7 @@ function hamburgueria() {
         ],
       },
     ],
-    npcs: [{ role: "atendente", x: 1.5, z: 8.4, r: 0 }],
+    npcs: [{ role: "atendente", x: 1.5, z: 8.4, r: 0, talk: "acougueiro" }],
   };
 }
 
@@ -193,8 +193,8 @@ function supermercado() {
       },
     ],
     npcs: [
-      { role: "caixa", x: 4.0, z: 4.85, r: 0 },
-      { role: "caixa", x: 8.0, z: 4.85, r: 0 },
+      { role: "caixa", x: 4.0, z: 4.85, r: 0, talk: "caixa" },
+      { role: "caixa", x: 8.0, z: 4.85, r: 0, talk: "caixa" },
     ],
   };
 }
@@ -243,8 +243,8 @@ function universidade() {
       },
     ],
     npcs: [
-      { role: "secretaria", x: -9.0, z: 5.25, r: 0 },
-      { role: "professor", x: -5.6, z: 19.9, r: 0 },
+      { role: "secretaria", x: -9.0, z: 5.25, r: 0, talk: "secretaria" },
+      { role: "professor", x: -5.6, z: 19.9, r: 0, talk: "professor" },
     ],
   };
 }
@@ -316,7 +316,7 @@ function escola() {
         ],
       },
     ],
-    npcs: [{ role: "professora", x: -1.9, z: 14.3, r: 0 }],
+    npcs: [{ role: "professora", x: -1.9, z: 14.3, r: 0, talk: "professora" }],
   };
 }
 
@@ -361,8 +361,8 @@ function academia() {
       },
     ],
     npcs: [
-      { role: "recepcionista", x: -6.5, z: 3.85, r: 0 },
-      { role: "personal", x: -2.8, z: 12.2, r: 0 },
+      { role: "recepcionista", x: -6.5, z: 3.85, r: 0, talk: "recepcionista" },
+      { role: "personal", x: -2.8, z: 12.2, r: 0, talk: "personal" },
     ],
   };
 }
@@ -396,7 +396,7 @@ function igreja() {
         ],
       },
     ],
-    npcs: [{ role: "padre", x: 0, z: 20.95, r: 0 }],
+    npcs: [{ role: "padre", x: 0, z: 20.95, r: 0, talk: "padre" }],
   };
 }
 
@@ -503,7 +503,7 @@ function arsenal() {
       ],
     }],
     // lore v2 C3: um NPC só fala, o Armeiro (a fala muda pela classe de quem ouve; 07-falas §0.2)
-    npcs: [{ role: "armeiro", x: -1.9, z: 10.2, r: 0, talk: "armeiro" }, { role: "armeira", x: 1.9, z: 10.2, r: 0 }],
+    npcs: [{ role: "armeiro", x: -1.9, z: 10.2, r: 0, talk: "armeiro" }, { role: "armeira", x: 1.9, z: 10.2, r: 0, talk: "armeira" }],
   };
 }
 

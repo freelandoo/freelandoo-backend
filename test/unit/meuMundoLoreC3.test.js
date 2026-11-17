@@ -65,7 +65,8 @@ test("C3: o registro do Ninho mora na ruína e na Biblioteca (pontos que existem
 test("C3: Forjador, Armeiro e a bibliotecária falam no prédio deles", () => {
   const talk = (place) => (CENTER_INTERIORS[place].npcs || []).map((n) => n.talk).filter(Boolean);
   assert.deepEqual(talk("forja"), ["forjador"]);
-  assert.deepEqual(talk("arsenal"), ["armeiro"]);
+  // 17/11: a armeira (balcão de equipamentos) também fala
+  assert.deepEqual(talk("arsenal"), ["armeiro", "armeira"]);
   assert.deepEqual(talk("biblioteca"), ["bibliotecaria"]);
   for (const [npc, place] of [["forjador", "forja"], ["armeiro", "arsenal"], ["bibliotecaria", "biblioteca"]]) assert.deepEqual([...P.NPCS[npc].places], [place]);
 });
