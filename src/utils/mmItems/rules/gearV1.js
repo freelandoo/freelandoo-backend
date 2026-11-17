@@ -80,14 +80,14 @@ function canEquip(item, { clan, level, owned }) {
  * Até a E6 era o `bonus` escrito à mão + dano/defesa por nível de refino.
  * E6: aceita também as chaves de antes (shield/armor/acc1/acc2); duas peças no mesmo slot: vale a 1ª.
  */
-function gearBonus(equipped) {
+function gearBonus(equipped, opts = {}) {
   const bySlot = {};
   for (const [k, e] of Object.entries(equipped || {})) {
     const it = e && GEAR_BY_ID.get(e.id);
     const s = normalizeSlot(k, it);
     if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Math.floor(e.level || 0)), grade: Math.max(1, Math.floor(e.grade || 1)), sockets: Array.isArray(e.sockets) ? e.sockets.slice(0, Runes.MAX_SOCKETS) : [], awakened: !!e.awakened, enchant: e.enchant || null };
   }
-  const { bonus } = Items.bonusOf(Object.values(bySlot));
+  const { bonus } = Items.bonusOf(Object.values(bySlot), opts);
   const out = {};
   for (const k of Object.keys(GEAR_CAP)) out[k] = Math.min(GEAR_CAP[k], bonus[k] || 0);
   return out;

@@ -11,10 +11,16 @@ test("escada: dobro da E até a A, triplo do S para cima, sem teto", () => {
   for (let i = 1; i < RANKS.length; i++) {
     const k = i <= 4 ? 2 : 3;
     assert.equal(CS.NUMBER[RANKS[i]], CS.NUMBER[RANKS[i - 1]] * k, RANKS[i]);
-    assert.ok(Math.abs(CS.PERCENT[RANKS[i]] - CS.PERCENT[RANKS[i - 1]] * k) < 1e-9, RANKS[i]);
+    // %: de 5 em 5 a partir de 20; a Divina +50 sobre a Lendária
+    assert.equal(CS.PERCENT[RANKS[i]] - CS.PERCENT[RANKS[i - 1]], RANKS[i] === "divine" ? 50 : 5, RANKS[i]);
+    // preço: 3× até a A, 5× do S para cima
+    assert.equal(CS.PRICE[RANKS[i]], CS.PRICE[RANKS[i - 1]] * (i <= 4 ? 3 : 5), RANKS[i]);
   }
   assert.equal(CS.NUMBER.E, 5);
-  assert.equal(CS.PERCENT.E, 0.1);
+  assert.equal(CS.PERCENT.E, 20);
+  assert.equal(CS.PERCENT.divine, 110);
+  assert.equal(CS.PRICE.E, 800);
+  assert.equal(CS.PRICE.SSR, 8100000);
   assert.equal(CS.NUMBER.divine, 19440);
 });
 
@@ -72,10 +78,14 @@ test("R2: a escada da luta é a mesma do catálogo (espelho)", () => {
   for (let l = 1; l <= 12; l++) assert.equal(F.classByLevel(l), rank.rankByLevel(l), `nível ${l}`);
 });
 
-test("R2: dano pela diferença, com piso de 10% (exemplos do Alex)", () => {
-  assert.equal(F.strike(200, 100), 100);
-  assert.equal(F.strike(100, 100), 10);
-  assert.equal(F.strike(100, 300), 10);
+test("filtro de dano: piso de 5% da força no empate (exemplos do Alex)", () => {
+  assert.equal(F.strike(200, 100), 105);
+  assert.equal(F.strike(100, 100), 5);
+  assert.equal(F.strike(100, 300), 5);
+  assert.equal(F.strike(100, 0), 100);
+  // Domínio: kit uma classe acima; chefão = Lendária
+  assert.equal(F.mobKit(5, false, true).flat.atk, Math.round(CS.NUMBER.S * 0.4));
+  assert.equal(F.mobKit(5, true).flat.atk, Math.round(CS.NUMBER.legendary * 0.4));
   assert.equal(F.hitChance(100, 200), 0.5);
   assert.equal(F.hitChance(200, 100), 1);
 });
@@ -101,4 +111,17 @@ test("R2: status de quem joga = (ficha + número) × (1 + %)", () => {
 test("R2: classGearOf soma as peças vestidas", () => {
   const sum = CS.classGearOf([{ stats: { flat: { atk: 2, acc: 2 }, pct: { dmg: 0.05 } } }, { stats: { flat: { atk: 3 }, pct: { dmg: 0.1 } } }, null]);
   assert.deepEqual(sum, { flat: { atk: 5, acc: 2 }, pct: { dmg: 0.15 } });
+});
+
+test("preço da loja pela classe e moedas por nível do monstro", () => {
+  for (const g of GEAR) if (g.price != null && (g.category === "weapon" || g.category === "shield")) assert.equal(g.price, CS.PRICE[g.rank], g.id);
+  const Adv = require("../../src/utils/meuMundoAdventure");
+  const mid = () => 0.5;
+  assert.equal(Adv.fightCoins("brute", 15, true, mid), 300);
+  assert.equal(Adv.fightCoins("wolf", 30, true, mid), 600);
+  assert.equal(Adv.fightCoins("wolf", 10, true, mid, true), 600);
+});
+
+test("% da classe não cruza: a pior peça de uma classe vale mais que a melhor da anterior", () => {
+  for (let i = 1; i < RANKS.length; i++) assert.ok(CS.PERCENT[RANKS[i]] * 0.98 > CS.PERCENT[RANKS[i - 1]] * 1.02, RANKS[i]);
 });

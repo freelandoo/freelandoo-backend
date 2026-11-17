@@ -23,6 +23,8 @@ const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) {
   if (typeof this.rarity !== "string") return x;
   if (NOVOS.has(k)) return undefined;
   if (k === "bonus" && ["weapon", "shield", "armor", "accessory"].includes(this.category)) return undefined;
+  // 2026-11-17: arma e escudo da loja custam pela classe (rules/classStats.js PRICE); a reciclagem segue o preço
+  if (["price", "sell"].includes(k) && this.shop) return undefined;
   return x;
 }));
 /** As peças de antes (os conjuntos da E7 e as linhas/fragmentos/materiais da E8 entram no fim). */
@@ -56,7 +58,9 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   const E17 = (s) => s.startsWith("Loja de troca:") || s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
   // E14: a linha da Ascensão/Despertar entra nos usos de todo equipamento com chaves
   const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja") && !PREPS.some((n) => u.startsWith("Ingrediente de " + n + ":")));
-  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: usesV1(agora.items[n].uses), source: (agora.items[n].source || []).filter((s) => !E17(s)) }, { ...antes, uses: usesV1(antes.uses), source: antes.source }, antes.id));
+  // arma/escudo da loja: preço pela classe muda os textos de preço e reciclagem (2026-11-17) — saem da comparação
+  const loja = (x, v) => (x.shop ? undefined : v);
+  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: loja(antes, usesV1(agora.items[n].uses)), source: loja(antes, (agora.items[n].source || []).filter((s) => !E17(s))) }, { ...antes, uses: loja(antes, usesV1(antes.uses)), source: loja(antes, antes.source) }, antes.id));
   // E8: as receitas por fragmento entram no fim; as de antes não mudam
   assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
   assert.ok(agora.recipes.slice(ANTES.publicGear.recipes.length).every((r) => r.kind === "fragment" || r.kind === "prep")); // E16: receitas de preparo

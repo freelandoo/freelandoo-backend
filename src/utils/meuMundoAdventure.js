@@ -16,7 +16,8 @@ const FightSim = require("./meuMundoFight");
 // R4 (trilha E4): equipamento proporcional (multiplica a ficha) e chaves hp/acc/spd/int/dex.
 // R5 (trilha E5): freio do drop de atributo pela régua e monstro da rua por fator da régua.
 // R6 (2026-11-17): status da classe (número + %) e dano = ataque − defesa com piso de 10% (setup.classGear).
-const RULES_VERSION = "R6";
+// R7 (2026-11-17): filtro de dano (piso 5%), % nova da classe, vida dos monstros ÷ 2, kit do Domínio uma classe acima, moedas 20 × nível do monstro (chefão 3×).
+const RULES_VERSION = "R7";
 
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,
@@ -170,11 +171,16 @@ function jitter(v, rand) {
   return Math.max(0, Math.round(v * (1 - COINS.spread + 2 * COINS.spread * rand())));
 }
 
-/** Moedas de uma luta (abandonada = 0). */
-function fightCoins(kind, level, win, rand) {
+/**
+ * Moedas de uma luta (abandonada = 0). Regra do Alex (2026-11-17): a vitória paga 20 moedas por NÍVEL
+ * DO MONSTRO (nível 15 = 300, 30 = 600, 150 = 3.000), igual na rua e nos Domínios; o chefão paga 3×.
+ * `kind` não pesa mais (fica na assinatura).
+ */
+const COINS_PER_LEVEL = 20;
+const BOSS_COINS = 3;
+function fightCoins(kind, level, win, rand, boss = false) {
   if (!win) return jitter(COINS.fightLoss, rand);
-  const b = COINS.fightWin[kind] || 10;
-  return jitter(b * (1 + COINS.fightLevelMul * (Math.max(1, level) - 1)), rand);
+  return jitter(COINS_PER_LEVEL * Math.max(1, Math.round(Number(level) || 1)) * (boss ? BOSS_COINS : 1), rand);
 }
 
 /** Moedas de um minijogo pelo tempo ativo elegível. */
@@ -371,6 +377,8 @@ module.exports = {
   dropCondition,
   rollFightDrop,
   COINS,
+  COINS_PER_LEVEL,
+  BOSS_COINS,
   fightCoins,
   rollMobLevel,
   minigameCoins,

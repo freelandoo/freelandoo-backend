@@ -94,7 +94,7 @@ if (ERRORS.length) throw new Error(`Catálogo do Meu Mundo inválido:\n- ${ERROR
 module.exports = {
   CATEGORIES, RARITIES, RANKS: Rank.RANKS, RANK_ORDER: Rank.RANK_ORDER, rankOf: Rank.rankOf, CLASS_STATS: ClassStats,
   GEAR, GEAR_BY_ID, RECIPES, RECIPE_BY_ID, DESCRIPTIONS, SETS, SET_STEPS, LOOT,
-  bonusOf: (pieces) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
+  bonusOf: (pieces, opts = {}) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS, ...opts }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
   rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation, domainTableId,
   FORGE: recipes, LINES: lines, EXCHANGE: Exchange, CHESTS: chests,
   sourcesOf,

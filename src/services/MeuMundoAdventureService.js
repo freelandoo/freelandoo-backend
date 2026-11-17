@@ -149,7 +149,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
     if (got > 0) gained[k] = r2(got);
   }
   const practice = { attrs: gained, activeMs: verdict.abandoned ? 0 : activeMs };
-  const coins = verdict.abandoned || godLoss ? 0 : Adv.fightCoins(setup.kind, setup.level, verdict.win, R);
+  const coins = verdict.abandoned || godLoss ? 0 : Adv.fightCoins(setup.kind, setup.level, verdict.win, R, !!setup.boss);
   ctx.coins += coins;
   const xpGain = verdict.abandoned || godLoss ? 0 : Adv.fightXp(setup.kind, setup.level, verdict.win);
   // Drop: recompensa básica GARANTIDA com participação válida; vitória aumenta.

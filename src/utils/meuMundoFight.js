@@ -867,7 +867,7 @@ function mobBase(level        )                               {
 // ═══ STATUS DA CLASSE E DANO PELA DIFERENÇA (regra do Alex, 2026-11-17, R2) ═══
 // Cada peça tem um número inteiro e uma porcentagem pela classe (E…Divina; dobro da E até a A, triplo do
 // S para cima, sem teto), divididos pelo tipo da peça. Na luta: status = (ficha + número) × (1 + %).
-// Dano = ataque do golpe − defesa de quem apanha, com PISO de 10% do ataque (luta igual continua andando).
+// Dano = ataque do golpe − defesa de quem apanha pelo FILTRO (strike): piso de 5% da força no empate.
 // Acerto = acerto ÷ esquiva (hitChance, já era assim). O fôlego deixa golpe e esquiva mais baratos.
                                                                             
                             
@@ -880,25 +880,31 @@ function mobBase(level        )                               {
 const CLASS_RANKS = ["E", "D", "C", "B", "A", "S", "SS", "SSR", "legendary", "divine"]         
                                                     
 const CLASS_NUMBER                            = { E: 5, D: 10, C: 20, B: 40, A: 80, S: 240, SS: 720, SSR: 2160, legendary: 6480, divine: 19440 }
-const CLASS_PERCENT                            = { E: 0.1, D: 0.2, C: 0.4, B: 0.8, A: 1.6, S: 4.8, SS: 14.4, SSR: 43.2, legendary: 129.6, divine: 388.8 }
+const CLASS_PERCENT                            = { E: 20, D: 25, C: 30, B: 35, A: 40, S: 45, SS: 50, SSR: 55, legendary: 60, divine: 110 }
 /** Classe de arma/escudo pelo nível: 1=E, 2=D, 3=C, 4=B, 5=A, 6=S, 7–8=SS, 9 em diante = SSR. */
 function classByLevel(level        )            {
   const n = Math.max(1, Math.round(Number(level) || 1))
   return n >= 9 ? "SSR" : (["E", "E", "D", "C", "B", "A", "S", "SS", "SS"]         )[n]
 }
-/** Piso do dano: o golpe sempre passa pelo menos isto do ataque. */
-const STRIKE_FLOOR = 0.1
-/** Dano que passa: ataque − defesa, nunca menos que o piso. */
+/** Piso do dano (Alex, 2026-11-17): com força = defesa passa 5% da força. */
+const STRIKE_FLOOR = 0.05
+/**
+ * FILTRO DE DANO: a diferença (força − defesa) passa filtrada — 5% da força + 95% da diferença; com a
+ * defesa igual ou maior, só os 5%. 100 contra 100 = 5; 200 contra 100 = 105; 100 contra 300 = 5.
+ */
 function strike(atk        , def        ) {
   const a = Math.max(0, atk)
-  return Math.max(STRIKE_FLOOR * a, a - Math.max(0, def))
+  const d = a - Math.max(0, def)
+  return STRIKE_FLOOR * a + (d > 0 ? (1 - STRIKE_FLOOR) * d : 0)
 }
 /**
  * Kit do monstro na luta nova: uma arma (espada) e um escudo da classe do nível dele (chefão de Domínio =
  * Lendária), na média da classe. Assim o monstro do seu nível tem o mesmo orçamento de quem está equipado.
  */
-function mobKit(level        , boss = false)                      {
-  const r            = boss ? "legendary" : classByLevel(level)
+function mobKit(level        , boss = false, domain = false)                      {
+  // Domínio (Alex, 2026-11-17): monstros hiper fortes — o kit vem uma classe acima do nível
+  const base = classByLevel(level)
+  const r            = boss ? "legendary" : domain ? CLASS_RANKS[Math.min(CLASS_RANKS.length - 1, CLASS_RANKS.indexOf(base) + 1)] : base
   const n = CLASS_NUMBER[r]
   const p = CLASS_PERCENT[r]
   return {
@@ -909,15 +915,16 @@ function mobKit(level        , boss = false)                      {
 /**
  * Fichas dos monstros na luta nova (R2). A ficha de MOB_SHEETS foi medida para o dano por razão; com o dano
  * pela diferença ela ficaria 2 a 6 vezes mais dura. Estas dão, no nível 1 e sem equipamento, o MESMO número
- * de golpes para cada lado que a ficha antiga dava (defesa 125 = quem tem ataque 100 bate no piso).
+ * de golpes para cada lado que a ficha antiga dava (defesa 125 = quem tem ataque 100 bate no piso). A vida é a
+ * metade da conta com piso de 10%: com o piso de 5% a luta igual volta aos mesmos ~15 golpes.
  */
 const MOB_SHEETS_V2                         = {
-  cavaleiro: [155, 124, 125, 90, 70],
-  stone: [155, 122, 125, 95, 60],
-  wolf: [151, 123, 125, 75, 100],
-  ciborgue: [145, 132, 125, 180, 80],
-  garras: [74, 128, 125, 120, 130],
-  brute: [150, 130, 125, 120, 90],
+  cavaleiro: [78, 124, 125, 90, 70],
+  stone: [78, 122, 125, 95, 60],
+  wolf: [76, 123, 125, 75, 100],
+  ciborgue: [73, 132, 125, 180, 80],
+  garras: [37, 128, 125, 120, 130],
+  brute: [75, 130, 125, 120, 90],
 }
 const pctOf = (c                       , k          ) => 1 + Math.max(0, Number(c?.pct?.[k]) || 0) / 100
 const flatOf = (c                       , k          ) => Math.max(0, Number(c?.flat?.[k]) || 0)
@@ -1167,7 +1174,7 @@ class Fight {
       else {
         // R2: ficha nova (MOB_SHEETS_V2), vida no passo do ataque e o kit da classe do nível
         const v = MOB_SHEETS_V2[setup.kind]
-        const kit = mobKit(foeLevel, !!this.boss)
+        const kit = mobKit(foeLevel, !!this.boss, setup.tier === "domain")
         foe = {
           acc: ((rated * v[3]) / 100 + flatOf(kit, "acc")) * pctOf(kit, "acc"),
           spd: ((rated * v[4]) / 100 + flatOf(kit, "spd")) * pctOf(kit, "spd"),

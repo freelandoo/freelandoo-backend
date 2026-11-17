@@ -38,7 +38,7 @@ test("guerreiros: vampiros, Aurion, Morkhan e Zéphyra; essas skins lutam com o 
 
 test("preço e nível sobem juntos; bônus respeita o teto", () => {
   for (let i = 1; i < swords.length; i++) {
-    assert.ok(swords[i].price > swords[i - 1].price, swords[i].id);
+    assert.ok(swords[i].price >= swords[i - 1].price, swords[i].id);
     assert.ok(swords[i].level >= swords[i - 1].level, swords[i].id);
   }
   for (const s of swords) {
@@ -57,7 +57,7 @@ test("aba Hammers: 18 armas, preço crescente, sem classe e dentro do teto", () 
   heavy.forEach((h, i) => {
     assert.ok(h.id.startsWith("pesada_") && h.clan === null, h.id);
     assert.ok(Gear.itemDetails(h).description, h.id);
-    if (i) assert.ok(h.price > heavy[i - 1].price && h.level >= heavy[i - 1].level, h.id);
+    if (i) assert.ok(h.price >= heavy[i - 1].price && h.level >= heavy[i - 1].level, h.id);
     const b = Gear.gearBonus({ weapon: { id: h.id, level: 10 } });
     for (const [k, v] of Object.entries(b)) assert.ok(v <= Gear.GEAR_CAP[k], `${h.id} ${k}`);
   });
@@ -88,7 +88,7 @@ test("escudos: 16 à venda, preço crescente, sem classe, slot próprio e dentro
     assert.ok(s.bonus.def > 0, s.id);
     assert.ok(Gear.itemDetails(s).description, s.id);
     assert.ok(Gear.upgradeCost(s, 0), "E9: escudo também aprimora (todo equipamento sobe)");
-    if (i) assert.ok(s.price > shields[i - 1].price && s.level >= shields[i - 1].level, s.id);
+    if (i) assert.ok(s.price >= shields[i - 1].price && s.level >= shields[i - 1].level, s.id);
   });
   const top = Gear.gearBonus({ weapon: { id: "espada_morkhan", level: 10 }, shield: { id: "escudo_fera", level: 0 }, armor: { id: "couraca_rebitada", level: 10 } });
   for (const [k, v] of Object.entries(top)) assert.ok(v <= Gear.GEAR_CAP[k], k);
@@ -102,7 +102,7 @@ test("arcos: 19 à venda, preço crescente, sem classe e dentro do teto; só Ír
   bows.forEach((b, i) => {
     assert.ok(b.id.startsWith("arco_") && b.clan === null && b.category === "weapon", b.id);
     assert.ok(Gear.itemDetails(b).description, b.id);
-    if (i) assert.ok(b.price > bows[i - 1].price && b.level >= bows[i - 1].level, b.id);
+    if (i) assert.ok(b.price >= bows[i - 1].price && b.level >= bows[i - 1].level, b.id);
     const g = Gear.gearBonus({ weapon: { id: b.id, level: 10 } });
     for (const [k, v] of Object.entries(g)) assert.ok(v <= Gear.GEAR_CAP[k], `${b.id} ${k}`);
   });
@@ -120,7 +120,7 @@ test("guns: 19 à venda, preço crescente, sem classe e dentro do teto; só Cibo
   guns.forEach((b, i) => {
     assert.ok(b.id.startsWith("fogo_") && b.clan === null && b.category === "weapon", b.id);
     assert.ok(Gear.itemDetails(b).description, b.id);
-    if (i) assert.ok(b.price > guns[i - 1].price && b.level >= guns[i - 1].level, b.id);
+    if (i) assert.ok(b.price >= guns[i - 1].price && b.level >= guns[i - 1].level, b.id);
     const g = Gear.gearBonus({ weapon: { id: b.id, level: 10 } });
     for (const [k, v] of Object.entries(g)) assert.ok(v <= Gear.GEAR_CAP[k], `${b.id} ${k}`);
   });

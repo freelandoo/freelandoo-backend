@@ -243,7 +243,9 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
   const unlocks = await GearStore.unlocks(c, idUser);
   const body = await MeuMundoStorage.getBody(c, idUser);
-  return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full),
+  return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full, { noBase: true }),
+    // R3: status da classe somados das peças vestidas (número + %); o `bonus` acima é só o que se faz na peça
+    classGear: ClassStats.classGearOf(Object.values(full).map((e) => Gear.GEAR_BY_ID.get(e.id))),
     // E7: bônus de cada slot pela régua (plus e grau da cópia vestida), para a tela de equipar
     pieces: Object.fromEntries(Object.entries(full).map(([slot, e]) => [slot, Items.pieceBonus(Gear.GEAR_BY_ID.get(e.id), e.level || 0, e.grade || 1, { sockets: e.sockets, awakened: e.awakened, enchant: e.enchant })])),
     instances: all.map((x) => ({
@@ -889,7 +891,9 @@ class MeuMundoGearService {
 /** Para a luta: o equipamento que vale (bônus com teto) — o do personagem vivo. */
 MeuMundoGearService.fightGear = async (c, idUser, clan) => {
   await prepare(c, idUser);
-  return Gear.gearBonus(await equippedFull(c, idUser, clan));
+  // R3: a luta nova leva o status da classe em `classGear`; do bônus antigo fica só aprimoramento, refino,
+  // conjunto, runas, despertar e encanto (o "base" pela raridade sai, senão a peça contaria duas vezes)
+  return Gear.gearBonus(await equippedFull(c, idUser, clan), { noBase: true });
 };
 /** R2 (2026-11-17): status da CLASSE das peças vestidas (número + %), somados para a luta. */
 MeuMundoGearService.fightClassGear = async (c, idUser, clan) => {

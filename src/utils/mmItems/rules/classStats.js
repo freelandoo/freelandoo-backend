@@ -5,7 +5,7 @@
 //
 //   classe   E    D    C    B    A    S     SS    SSR    Lendária  Divina
 //   número   5    10   20   40   80   240   720   2160   6480      19440
-//   %        0,1  0,2  0,4  0,8  1,6  4,8   14,4  43,2   129,6     388,8
+//   %        20   25   30   35   40   45    50    55     60        110   (Alex, 2026-11-17: de 5 em 5; a Divina +50)
 //
 // O número e a porcentagem se DIVIDEM entre até 3 status do TIPO da peça (SPLIT). Exemplo do Alex:
 // a espada divide o número em acerto 40% · força 40% · esquiva 20% e a porcentagem em dano 50% ·
@@ -14,7 +14,7 @@
 // Status (os da ficha da luta): hp (vida), atk (força = ataque), def (defesa), acc (acerto),
 // spd (esquiva), stam (fôlego). Porcentagem: as mesmas chaves + dmg (dano que passa).
 //
-// Cada peça varia ±10% em volta da média da classe (fixo por id), para duas peças da mesma classe
+// Cada peça varia ±10% no número e ±2% na porcentagem em volta da média da classe (fixo por id), para duas peças da mesma classe
 // não ficarem iguais. A luta usa isso na R2 (ataque − defesa com piso de 10%, acerto ÷ esquiva).
 "use strict";
 
@@ -23,7 +23,12 @@ const { RANKS } = require("./rank");
 /** Número inteiro médio de cada classe. */
 const NUMBER = Object.freeze({ E: 5, D: 10, C: 20, B: 40, A: 80, S: 240, SS: 720, SSR: 2160, legendary: 6480, divine: 19440 });
 /** Porcentagem média de cada classe (em %, não fração). */
-const PERCENT = Object.freeze({ E: 0.1, D: 0.2, C: 0.4, B: 0.8, A: 1.6, S: 4.8, SS: 14.4, SSR: 43.2, legendary: 129.6, divine: 388.8 });
+const PERCENT = Object.freeze({ E: 20, D: 25, C: 30, B: 35, A: 40, S: 45, SS: 50, SSR: 55, legendary: 60, divine: 110 });
+/**
+ * Preço da arma/escudo da loja pela classe (Alex, 2026-11-17): E = 800 e cada classe custa 3× a anterior
+ * até a A; do S para cima, 5×. A Lendária e a Divina não se vendem (o valor fica para comparar).
+ */
+const PRICE = Object.freeze({ E: 800, D: 2400, C: 7200, B: 21600, A: 64800, S: 324000, SS: 1620000, SSR: 8100000, legendary: 40500000, divine: 202500000 });
 
 /** Status que o número pode levar e chaves que a porcentagem pode levar. */
 const FLAT_KEYS = Object.freeze(["hp", "atk", "def", "acc", "spd", "stam"]);
@@ -74,7 +79,8 @@ function classStatsOf(item) {
   if (!kind || !RANKS.includes(item.rank)) return null;
   const k = spreadOf(item.id);
   const number = Math.max(1, Math.round(NUMBER[item.rank] * k));
-  const percent = r2(PERCENT[item.rank] * k);
+  // a % varia só ±2% (a escada da % anda de 5 em 5: com ±10% uma SS passaria uma SSR)
+  const percent = r2(PERCENT[item.rank] * (1 + (k - 1) * 0.2));
   const { n, p } = SPLIT[kind];
   const flat = {};
   for (const [s, w] of Object.entries(n)) flat[s] = Math.max(1, Math.round(number * w));
@@ -99,4 +105,4 @@ function classGearOf(items) {
   return { flat, pct };
 }
 
-module.exports = { NUMBER, PERCENT, FLAT_KEYS, PCT_KEYS, SPLIT, KINDS, kindOf, spreadOf, classStatsOf, classGearOf };
+module.exports = { PRICE, NUMBER, PERCENT, FLAT_KEYS, PCT_KEYS, SPLIT, KINDS, kindOf, spreadOf, classStatsOf, classGearOf };

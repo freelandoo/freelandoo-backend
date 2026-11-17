@@ -21,7 +21,7 @@ const r4 = (v) => Math.round(v * 10000) / 10000;
  * `sets` = catálogo de conjuntos; `steps` = { nº de peças: fração da fatia }.
  * Devolve { bonus: { chave: fração }, sources: { chave: { base, plus, grade, set, runes, awaken, enchant } }, sets: { id: nº } }.
  */
-function bonusOf(pieces, { sets = [], steps = {} } = {}) {
+function bonusOf(pieces, { sets = [], steps = {}, noBase = false } = {}) {
   const src = Object.fromEntries(B.KEYS.map((k) => [k, { base: 0, plus: 0, grade: 0, set: 0, runes: 0, awaken: 0, enchant: 0 }]));
   const count = {};
   for (const p of pieces) {
@@ -30,7 +30,8 @@ function bonusOf(pieces, { sets = [], steps = {} } = {}) {
     Enchant.effectiveKeys(it, p.enchant).forEach((k, i) => {
       if (!src[k]) return;
       const parts = B.pieceParts(k, it.slot, it.rarity, p.plus || 0, p.grade || 1, i === 0 ? 1 : B.SECONDARY);
-      for (const s of B.PIECE_SOURCES) src[k][s] += parts[s];
+      // R3 (2026-11-17): na luta nova o "base" da peça é o status da classe (classStats); fica só o que se faz nela
+      for (const s of B.PIECE_SOURCES) if (!(noBase && s === "base")) src[k][s] += parts[s];
     });
     if (it.set) count[it.set] = (count[it.set] || 0) + 1;
     for (const [k, v] of Object.entries(Runes.runeSum(p.sockets))) if (src[k]) src[k].runes += v;

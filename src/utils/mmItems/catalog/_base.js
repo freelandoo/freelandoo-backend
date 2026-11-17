@@ -6,7 +6,7 @@
 
 const { TIER } = require("../rules/budget");
 const { rankOf } = require("../rules/rank");
-const { classStatsOf } = require("../rules/classStats");
+const { classStatsOf, PRICE } = require("../rules/classStats");
 
 const LORE = Object.freeze({
   cristal_morkhan: "Uma luz violeta atravessa a rachadura. As marcas lembram o nome apagado de Morkhan, o oitavo campeão dos Jogos Eternos de Lúmen. Esta recordação pode ser examinada sem avançar uma missão.",
@@ -47,6 +47,11 @@ const G = (id, category, name, rarity, o = {}) => {
   };
   const ranked = { ...item, rank: rankOf(item) };
   // status da classe (rules/classStats.js): número inteiro + porcentagem, divididos pelo tipo da peça
+  // preço da loja pela classe (E 800, 3× até a A, 5× do S para cima); a reciclagem segue em ~12% do preço
+  if (ranked.price != null && (category === "weapon" || category === "shield") && PRICE[ranked.rank]) {
+    ranked.price = PRICE[ranked.rank];
+    ranked.sell = Math.round(ranked.price * 0.12);
+  }
   return Object.freeze({ ...ranked, stats: classStatsOf(ranked) });
 };
 
