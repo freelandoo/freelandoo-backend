@@ -125,3 +125,17 @@ test("preço da loja pela classe e moedas por nível do monstro", () => {
 test("% da classe não cruza: a pior peça de uma classe vale mais que a melhor da anterior", () => {
   for (let i = 1; i < RANKS.length; i++) assert.ok(CS.PERCENT[RANKS[i]] * 0.98 > CS.PERCENT[RANKS[i - 1]] * 1.02, RANKS[i]);
 });
+
+test("Poder soma o status da classe pelo que ele soma à ficha da luta", () => {
+  const P = require("../../src/utils/meuMundoPower");
+  const attrs = { strength: 300, speed: 300, dexterity: 300, intelligence: 300, accuracy: 0 };
+  const cg = (ids) => CS.classGearOf(ids.map((i) => GEAR.find((g) => g.id === i)));
+  const nada = P.powerOf(F, { attrs, level: 20, cls: cg([]) });
+  const e = P.powerOf(F, { attrs, level: 20, cls: cg(["espada_aco"]) });
+  const ssr = P.powerOf(F, { attrs, level: 20, cls: cg(["espada_morkhan"]) });
+  assert.equal(nada, P.powerOf(F, { attrs, level: 20 }));
+  assert.ok(e > nada && ssr > e * 2, `${nada} ${e} ${ssr}`);
+  // força: (base + número) × (1 + %) − base
+  const base = 100 + (900 * 19) / 59;
+  assert.ok(Math.abs(P.classPower({ flat: { atk: 100 }, pct: { atk: 10 } }, base, 0, 0) - ((base + 100) * 1.1 - base)) < 1e-9);
+});

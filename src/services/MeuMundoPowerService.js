@@ -38,7 +38,9 @@ class MeuMundoPowerService {
     const clan = clanOfBody(body) ?? (await MeuMundoStorage.getClan(c, idUser)).clan;
     const level = Adv.levelOf(Number((await AdvStore.getAdventure(c, idUser)).xp) || 0).level;
     const gear = await GearService().fightGear(c, idUser, clan);
-    return { attrs: attrsOf(s), level, gear };
+    // 2026-11-17: status da classe das peças vestidas (número + %), o mesmo que a luta nova recebe
+    const cls = await GearService().fightClassGear(c, idUser, clan);
+    return { attrs: attrsOf(s), level, gear, cls };
   }
 
   /** Poder com as parcelas: { total, parts }. */

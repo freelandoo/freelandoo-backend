@@ -10,6 +10,7 @@
 //   poder = força + velocidade + destreza + inteligência + acurácia
 //         + HP máx do nível de aventura
 //         + equipamento (trilha E4, A13: o que ele soma DE VERDADE à ficha naquele nível)
+//         + status da classe das peças (2026-11-17: classPower, o que o número + % somam à ficha da luta nova)
 //
 // Equipamento (A13, §6.3 do plano da trilha E), sem o peso da skin:
 //   g.dmg·base(L) + g.def·base(L) + g.hp·vida(L) + g.acc·(100 + força + 3(L−1))
@@ -55,7 +56,32 @@ const GEAR_FLAT = 1000
                                            
                
                          
+     
+                                                                                                             
+                                                                                            
+     
+                         
  
+                                                                                 
+                             
+                                               
+                                              
+ 
+
+/**
+ * Pontos de Poder do status da classe = o que ele soma à ficha da luta nova (personagem de peso 100):
+ *   força, defesa e vida: (base + número) × (1 + %) − base, com base = 100 + nível (a régua da luta);
+ *   acerto e esquiva: o mesmo sobre (100 + atributo + nível); fôlego: o número;
+ *   % de dano: a fração da força final (multiplica o dano que passa, como mais força).
+ */
+function classPower(cls                               , base        , accBase        , spdBase        )         {
+  if (!cls) return 0
+  const f = (k               ) => num(cls.flat?.[k])
+  const p = (k               ) => 1 + num(cls.pct?.[k]) / 100
+  const up = (b        , k               ) => (b + f(k)) * p(k) - b
+  const atk = (base + f("atk")) * p("atk")
+  return up(base, "atk") + up(base, "def") + up(base, "hp") + up(accBase, "acc") + up(spdBase, "spd") + f("stam") + (p("dmg") - 1) * atk
+}
 
 const num = (v         ) => {
   const n = Number(v)
@@ -87,7 +113,8 @@ function powerScore(rule                , input            )                    
     num(gear.spd) * (100 + at("speed") + lvAttr) +
     num(gear.int) * at("intelligence") +
     num(gear.dex) * at("dexterity") +
-    GEAR_FLAT * (num(gear.stam) + num(gear.warn) + num(gear.power))
+    GEAR_FLAT * (num(gear.stam) + num(gear.warn) + num(gear.power)) +
+    classPower(input.cls, base, 100 + at("strength") + lvAttr, 100 + at("speed") + lvAttr)
   parts.gear = Math.round(g)
   total += g
   return { total: Math.round(total), parts }
@@ -98,4 +125,4 @@ function powerOf(rule                , input            )         {
   return powerScore(rule, input).total
 }
 
-module.exports = { POWER_ATTRS, GEAR_FLAT, powerScore, powerOf };
+module.exports = { POWER_ATTRS, GEAR_FLAT, classPower, powerScore, powerOf };
