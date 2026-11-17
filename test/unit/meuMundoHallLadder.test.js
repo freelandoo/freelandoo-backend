@@ -77,3 +77,18 @@ test("hall — aparecia abaixo de quem venceu: sobe para a cadeira dele (como an
   const t = L.afterWin(new Map(), "me", "b", 1, 4);
   assert.equal(t.seatWon, 1);
 });
+
+// 2026-11-17 (bug do Alex): sentado na 2ª, venceu o 1º que aparecia só pelo Poder. O serviço
+// não apagava a 2ª (que ficou vazia) e o INSERT da 1ª batia no id_user único → 500 no fim da luta.
+test("hall — subir da 2ª para a 1ª vaga: a cadeira que ficou vazia entra nas mudadas", () => {
+  const before = new Map([[2, "me"]]);
+  const r = L.afterWin(before, "me", "taiz", 1, null);
+  assert.equal(r.seatWon, 1);
+  assert.deepEqual([...r.seats], [[1, "me"]]);
+  assert.deepEqual(L.changedSeats(before, r.seats), [1, 2]);
+  // troca com quem está sentado: as duas cadeiras mudam
+  const sw = new Map([[1, "a"], [4, "me"]]);
+  assert.deepEqual(L.changedSeats(sw, L.afterWin(sw, "me", "a").seats), [1, 4]);
+  // nada mudou
+  assert.deepEqual(L.changedSeats(sw, new Map(sw)), []);
+});

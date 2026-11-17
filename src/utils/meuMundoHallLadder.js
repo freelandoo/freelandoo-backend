@@ -82,4 +82,10 @@ function afterWin(seats, challenger, defender, target = null, shown = null) {
   return { seats: out, seatWon: null };
 }
 
-module.exports = { SEATS, LIMITS, PEER, peerOf, topTen, afterWin };
+/** As cadeiras que mudaram entre `before` e `after` (inclui a que ficou vazia), em ordem. */
+function changedSeats(before, after) {
+  const keys = new Set([...before.keys(), ...after.keys()]);
+  return [...keys].filter((k) => before.get(k) !== after.get(k)).sort((a, b) => a - b);
+}
+
+module.exports = { SEATS, LIMITS, PEER, peerOf, topTen, afterWin, changedSeats };

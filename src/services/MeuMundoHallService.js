@@ -224,10 +224,12 @@ class MeuMundoHallService {
       const after = Ladder.afterWin(before, h.challenger, h.defender, h.target_seat == null ? null : Number(h.target_seat), shown);
       seatWon = after.seatWon;
       if (seatWon != null) {
-        // regrava só as cadeiras que mudaram (DELETE + INSERT: id_user é único)
-        const changed = [...after.seats].filter(([k, u]) => before.get(k) !== u).map(([k]) => k);
+        // regrava só as cadeiras que mudaram (DELETE + INSERT: id_user é único). Conta também a
+        // cadeira que ficou VAZIA (quem sobe da 2ª para a 1ª pelo top do Poder deixa a 2ª):
+        // sem apagá-la o INSERT da nova batia no id_user único e o fim da luta inteiro caía.
+        const changed = Ladder.changedSeats(before, after.seats);
         await c.query(`DELETE FROM tb_mm_hall_seat WHERE seat = ANY($1::int[])`, [changed]);
-        for (const k of changed) await c.query(`INSERT INTO tb_mm_hall_seat (seat, id_user, since, defenses) VALUES ($1, $2, NOW(), 0)`, [k, after.seats.get(k)]);
+        for (const k of changed) if (after.seats.has(k)) await c.query(`INSERT INTO tb_mm_hall_seat (seat, id_user, since, defenses) VALUES ($1, $2, NOW(), 0)`, [k, after.seats.get(k)]);
       }
     } else {
       await c.query(`UPDATE tb_mm_hall_seat SET defenses = defenses + 1 WHERE id_user = $1`, [h.defender]);
