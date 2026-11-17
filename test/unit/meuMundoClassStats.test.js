@@ -95,10 +95,12 @@ test("R2: ticket sem classGear re-simula igual (luta antiga); com classGear usa 
   assert.equal(old.v2, false);
   const nu = new F.Fight({ kind: "brute", level: 5, hero: 5, tier: "street", seed: 3, classGear: { flat: {}, pct: {} } });
   assert.equal(nu.v2, true);
-  // o monstro do nível 5 tem o kit da classe A (arma + escudo)
-  const kit = F.mobKit(5);
-  assert.equal(kit.flat.atk, Math.round(CS.NUMBER.A * 0.4));
-  assert.ok(nu.mobs[0].rate.def > old.mobs[0].rate.def);
+  // Alex (2026-11-17): monstros e deuses mantêm a ficha de antes — sem kit de classe
+  assert.deepEqual(nu.mobs[0].rate, old.mobs[0].rate);
+  assert.equal(nu.mobs[0].hpMax, old.mobs[0].hpMax);
+  const dom = new F.Fight({ kind: "wolf", level: 13, hero: 13, tier: "domain", seed: 3, classGear: { flat: {}, pct: {} } });
+  const domOld = new F.Fight({ kind: "wolf", level: 13, hero: 13, tier: "domain", seed: 3 });
+  assert.deepEqual(dom.mobs[0].rate, domOld.mobs[0].rate);
 });
 
 test("R2: status de quem joga = (ficha + número) × (1 + %)", () => {

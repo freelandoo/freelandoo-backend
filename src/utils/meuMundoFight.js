@@ -898,6 +898,7 @@ function strike(atk        , def        ) {
   return STRIKE_FLOOR * a + (d > 0 ? (1 - STRIKE_FLOOR) * d : 0)
 }
 /**
+ * (SEM USO desde a decisão do Alex de manter os monstros como estavam; fica para comparar.)
  * Kit do monstro na luta nova: uma arma (espada) e um escudo da classe do nível dele (chefão de Domínio =
  * Lendária), na média da classe. Assim o monstro do seu nível tem o mesmo orçamento de quem está equipado.
  */
@@ -1170,20 +1171,10 @@ class Fight {
     if (this.v2) {
       this.comboMean = mean(this.combo.map((c) => c.dmg))
       this.mobSwingRef = mean((setup.tier && def.arena ? def.arena : def).attacks.map((a) => a.dmg))
+      // Alex (2026-11-17): "os monstros e deuses mantêm como estavam" — monstro, chefão e Domínio ficam com a
+      // ficha de antes (MOB_SHEETS, vida de mobBase), SEM kit de classe; o deus solto e o Boxe copiam quem joga.
+      // Da regra nova eles só usam o dano pela diferença (strike). mobKit/MOB_SHEETS_V2 ficam sem uso.
       if (peer) this.foeDmgK = this.dmgK
-      else {
-        // R2: ficha nova (MOB_SHEETS_V2), vida no passo do ataque e o kit da classe do nível
-        const v = MOB_SHEETS_V2[setup.kind]
-        const kit = mobKit(foeLevel, !!this.boss, setup.tier === "domain")
-        foe = {
-          acc: ((rated * v[3]) / 100 + flatOf(kit, "acc")) * pctOf(kit, "acc"),
-          spd: ((rated * v[4]) / 100 + flatOf(kit, "spd")) * pctOf(kit, "spd"),
-          atk: ((rated * v[1]) / 100 + flatOf(kit, "atk")) * pctOf(kit, "atk"),
-          def: ((rated * v[2]) / 100 + flatOf(kit, "def")) * pctOf(kit, "def"),
-        }
-        hp = Math.round(((rated * v[0]) / 100 + flatOf(kit, "hp")) * pctOf(kit, "hp") / spots.length)
-        this.foeDmgK = pctOf(kit, "dmg")
-      }
     }
     const moves = setup.tier && def.arena ? def.arena : def
     const dmgMul = this.rated ? (mean(this.combo.map((c) => c.dmg)) * (normal / PLAYER.hp)) / mean(moves.attacks.map((a) => a.dmg)) : lv.dmg

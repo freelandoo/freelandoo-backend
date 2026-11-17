@@ -17,7 +17,8 @@ const FightSim = require("./meuMundoFight");
 // R5 (trilha E5): freio do drop de atributo pela régua e monstro da rua por fator da régua.
 // R6 (2026-11-17): status da classe (número + %) e dano = ataque − defesa com piso de 10% (setup.classGear).
 // R7 (2026-11-17): filtro de dano (piso 5%), % nova da classe, vida dos monstros ÷ 2, kit do Domínio uma classe acima, moedas 20 × nível do monstro (chefão 3×).
-const RULES_VERSION = "R7";
+// R8 (2026-11-17): monstros e deuses com a ficha de antes (sem kit de classe).
+const RULES_VERSION = "R8";
 
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,
