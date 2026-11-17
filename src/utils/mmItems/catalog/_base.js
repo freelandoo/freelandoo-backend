@@ -5,6 +5,7 @@
 "use strict";
 
 const { TIER } = require("../rules/budget");
+const { rankOf } = require("../rules/rank");
 
 const LORE = Object.freeze({
   cristal_morkhan: "Uma luz violeta atravessa a rachadura. As marcas lembram o nome apagado de Morkhan, o oitavo campeão dos Jogos Eternos de Lúmen. Esta recordação pode ser examinada sem avançar uma missão.",
@@ -34,13 +35,17 @@ function slotOf(category, id) {
 //  price: no Armeiro (null = não vende) · level: nível de aventura mínimo
 //  clan: só essa classe usa · bonus: { dmg, def, stam, warn, power } (frações)
 //  family: de onde o material cai · sell: moedas na reciclagem
-const G = (id, category, name, rarity, o = {}) => Object.freeze({
-  id, category, name, rarity, price: null, level: 1, clan: null, bonus: null,
-  family: null, sell: 0, stack: category === "material" || category === "quest", component: false,
-  use: useFor(category, id), action: useFor(category, id), cosmeticEffect: cosmeticEffect(id), lore: LORE[id] || null,
-  slot: slotOf(category, id), twoHanded: category === "weapon" && TWO_HANDED_SHOPS.includes(o.shop), ...o,
-  tier: TIER[rarity] || null,
-});
+//  rank: classe de raridade que a tela mostra (E…SSR, Lendária, Divina) — rules/rank.js; `rarity` fica por dentro.
+const G = (id, category, name, rarity, o = {}) => {
+  const item = {
+    id, category, name, rarity, price: null, level: 1, clan: null, bonus: null,
+    family: null, sell: 0, stack: category === "material" || category === "quest", component: false,
+    use: useFor(category, id), action: useFor(category, id), cosmeticEffect: cosmeticEffect(id), lore: LORE[id] || null,
+    slot: slotOf(category, id), twoHanded: category === "weapon" && TWO_HANDED_SHOPS.includes(o.shop), ...o,
+    tier: TIER[rarity] || null,
+  };
+  return Object.freeze({ ...item, rank: rankOf(item) });
+};
 
 /** Espada da loja: de guerreiro (classe vampiro), recicla por ~12% do preço. */
 const S = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { clan: "vampiro", level, price, bonus, sell: Math.round(price * 0.12), shop: "weapons" });

@@ -301,7 +301,7 @@ class MeuMundoQuestService {
       const level = addXp(adv, step.xp);
       await AdvStore.saveAdventure(c, idUser, { xp: adv.xp, level: adv.level, losses: adv.losses, lossesDay: adv.losses_day });
       const trainer = await TrainerService.grant(c, idUser, "quest", step.xp, ctx.now);
-      const items = step.items ? await GearService().deliver(c, idUser, step.items.map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id).rarity })), ctx) : [];
+      const items = step.items ? await GearService().deliver(c, idUser, step.items.map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id).rarity, rank: Gear.GEAR_BY_ID.get(id).rank })), ctx) : [];
       const last = row.step + 1 >= ch.steps.length;
       await c.query(
         `UPDATE tb_mm_quest SET step = $3, step_at = $5, done_at = CASE WHEN $4 THEN $5::timestamptz ELSE NULL END,

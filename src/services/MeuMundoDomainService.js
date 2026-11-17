@@ -69,7 +69,7 @@ function sectorLoot(domain, sector, firsts) {
   if (!t) return null;
   const row = (e) => {
     const g = Items.GEAR_BY_ID.get(e.id);
-    return { id: e.id, name: g ? g.name : e.id, rarity: g ? g.rarity : "common", qty: Array.isArray(e.qty) ? [e.qty[0], e.qty[1]] : [1, 1], ...(e.p != null ? { p: e.p } : {}) };
+    return { id: e.id, name: g ? g.name : e.id, rarity: g ? g.rarity : "common", rank: g ? g.rank : "E", qty: Array.isArray(e.qty) ? [e.qty[0], e.qty[1]] : [1, 1], ...(e.p != null ? { p: e.p } : {}) };
   };
   return {
     table: id,

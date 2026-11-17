@@ -340,7 +340,7 @@ function pieceStep(idUser, body, source, costOf, apply, story) {
 }
 
 /** Itens entregues/removidos → linhas do recibo. */
-const lines = (m) => Object.entries(m).map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id)?.rarity || "common" }));
+const lines = (m) => Object.entries(m).map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id)?.rarity || "common", rank: Gear.GEAR_BY_ID.get(id)?.rank || "E" }));
 
 class MeuMundoGearService {
   /** GET /gear — catálogo + mochila. */
@@ -365,7 +365,7 @@ class MeuMundoGearService {
       const opened = await GearStore.chestsOpened(c, idUser);
       const items = Gear.GEAR.map((g) => {
         const at = found[g.id] ? iso(found[g.id]) : null;
-        return g.hidden && !at ? { id: null, hidden: true, category: g.category, rarity: g.rarity, found: false } : { id: g.id, category: g.category, rarity: g.rarity, found: !!at, at, ...(g.hidden ? { hidden: true, name: g.name } : {}) };
+        return g.hidden && !at ? { id: null, hidden: true, category: g.category, rarity: g.rarity, rank: g.rank, found: false } : { id: g.id, category: g.category, rarity: g.rarity, rank: g.rank, found: !!at, at, ...(g.hidden ? { hidden: true, name: g.name } : {}) };
       });
       return {
         total: items.length, found: items.filter((x) => x.found).length, items,
@@ -406,7 +406,7 @@ class MeuMundoGearService {
     const inst = await GearStore.createInstance(c, idUser, id, "starter");
     const live = await GearStore.loadoutLive(c, idUser);
     if (!live.weapon && ctx.row && ctx.row.status === "alive") await GearStore.equipInstance(c, idUser, ctx.row.id_character, "weapon", inst);
-    return { id, qty: 1, rarity: Gear.GEAR_BY_ID.get(id).rarity };
+    return { id, qty: 1, rarity: Gear.GEAR_BY_ID.get(id).rarity, rank: Gear.GEAR_BY_ID.get(id).rank };
   }
 
   /** Armeiro: compra um item à venda (moedas do jogo). */
@@ -908,7 +908,8 @@ MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {
     const { got } = it ? await putItem(c, idUser, it, d.qty, "loot") : { got: 0 };
     const over = d.qty - got;
     if (over > 0 && ctx) ctx.coins += over * (it?.sell || 0);
-    const line = { ...d, qty: got, overflowCoins: over > 0 ? over * (it?.sell || 0) : 0 };
+    // classe de raridade (E…Divina) na linha do recibo: a tela mostra a letra
+    const line = { ...d, ...(it ? { rank: it.rank } : {}), qty: got, overflowCoins: over > 0 ? over * (it?.sell || 0) : 0 };
     // E3: fragmento mostra o progresso até o item ("42/60") no recibo
     if (it && it.category === "fragment" && it.fragment) line.progress = { of: it.fragment.of, have: (await GearStore.lockItem(c, idUser, it.id))?.qty || 0, need: it.fragment.need };
     out.push(line);

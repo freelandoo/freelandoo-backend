@@ -17,7 +17,7 @@ const ANTES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "gear-
  * JSON de agora sem os campos novos dos ITENS: `tier` (E1) e `slot`/`twoHanded` (E6, os 8 slots).
  * Montagem já tinha `tier`; só sai o de quem tem `rarity`.
  */
-const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable", "sockets", "rune"]); // E11: `transmutable` · E13: `sockets`, `rune`
+const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable", "sockets", "rune", "rank"]); // classe de raridade (2026-11-17): `rank` · E11: `transmutable` · E13: `sockets`, `rune`
 /** E7: o `bonus` do equipamento passou a sair da régua (rules/bonus.js) — sai da comparação. */
 const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) {
   if (typeof this.rarity !== "string") return x;
@@ -97,7 +97,7 @@ test("E1: mítica, tier e categorias novas aceitas", () => {
 
 test("E1: validateCatalog() pega os erros de catálogo", () => {
   const { validateCatalog } = require("../../src/utils/mmItems/validate");
-  const base = { category: "material", rarity: "common", tier: 1, name: "x" };
+  const base = { category: "material", rarity: "common", tier: 1, rank: "E", name: "x" };
   const src = () => ["teste"];
   const e = validateCatalog({
     items: [
@@ -106,12 +106,13 @@ test("E1: validateCatalog() pega os erros de catálogo", () => {
       { id: "g", ...base, category: "fragment", fragment: { of: "nada", need: 60 } },
       { id: "m", ...base, rarity: "mythic", tier: 5 },
       { id: "k", ...base, category: "weapon", slot: "weapon", keys: ["dmg", "spd"] },
+      { id: "z", ...base, rank: "X" },
     ],
     recipes: [{ id: "r", out: "zzz", needs: { yyy: 1 } }],
     sets: [{ id: "s", pieces: ["a", "a", "a"] }],
     sources: (it) => (it.id === "m" ? [] : src()),
   });
-  for (const pedaco of ["id repetido: a", "f: fragmento sem alvo", "g: fragmento aponta nada", "m: tier 5", "k: keys", "saída zzz", "ingrediente yyy", "conjunto s", "m: sem origem"]) {
+  for (const pedaco of ["id repetido: a", "f: fragmento sem alvo", "g: fragmento aponta nada", "m: tier 5", "k: keys", "saída zzz", "ingrediente yyy", "conjunto s", "m: sem origem", "z: classe de raridade desconhecida X"]) {
     assert.ok(e.some((x) => x.includes(pedaco)), `faltou erro: ${pedaco} em ${JSON.stringify(e)}`);
   }
   assert.deepEqual(validateCatalog({ items: [{ id: "k", ...base, category: "weapon", slot: "weapon", keys: ["dmg", "acc"] }], sources: src }), []);

@@ -8,6 +8,7 @@
 "use strict";
 
 const budget = require("./rules/budget");
+const { RANKS } = require("./rules/rank");
 
 const CATEGORIES = Object.freeze([
   "weapon", "shield", "armor", "accessory", "material", "recipe", "quest", "cosmetic",
@@ -26,6 +27,7 @@ function validateCatalog({ items, recipes = [], loot = {}, sets = [], sources = 
     byId.set(it.id, it);
     if (!CATEGORIES.includes(it.category)) errors.push(`${it.id}: categoria desconhecida ${it.category}`);
     if (!RARITIES.includes(it.rarity)) errors.push(`${it.id}: raridade desconhecida ${it.rarity}`);
+    if (!RANKS.includes(it.rank)) errors.push(`${it.id}: classe de raridade desconhecida ${it.rank}`);
     if (it.tier !== budget.TIER[it.rarity]) errors.push(`${it.id}: tier ${it.tier} não bate com ${it.rarity}`);
     if (typeof it.name !== "string" || !it.name) errors.push(`${it.id}: sem nome`);
     if (it.category === "fragment" && !(it.fragment && it.fragment.of && it.fragment.need > 0)) errors.push(`${it.id}: fragmento sem alvo`);
