@@ -663,7 +663,7 @@ class MeuMundoService {
 
   // ── Gincana em grupo (mm3d-47) ────────────────────────────────────────────
   /** Lugar na próxima largada da Gincana do centro em que a pessoa está (corpo para os outros a desenharem). */
-  static async joinGincana(idUser, { body } = {}) {
+  static async joinGincana(idUser, { body, phase } = {}) {
     const here = presence.get(idUser);
     if (!here || here.scene !== "center") return { error: "Você não está no centro", statusCode: 409 };
     const pos = realtime.positionIn("center", here.id, idUser);
@@ -673,7 +673,7 @@ class MeuMundoService {
     const name = await MeuMundoStorage.getPublicName(pool, idUser);
     let reservation;
     try {
-      reservation = await reserveGincanaSeat({ userId: idUser, name, centerRoomId: here.id, body: String(body || "") });
+      reservation = await reserveGincanaSeat({ userId: idUser, name, centerRoomId: here.id, body: String(body || ""), phase: String(phase || "cidade") });
     } catch (err) {
       log.error("gincana.reserve_fail", { message: err.message });
       return { error: "A gincana em grupo não abriu agora.", statusCode: 503 };

@@ -5,25 +5,26 @@
 "use strict";
 
 // ── sim/course.ts ────────────────────────────────────────────────────────────
-// features/meu-mundo/gincana/sim/course.ts — GINCANA (mm3d-47): o percurso.
+// features/meu-mundo/gincana/sim/course.ts — GINCANA (mm3d-47): o que um percurso É.
 //
-// Corrida de obstáculos sobre o mar, do gênero do vídeo do Alex, com
-// percurso próprio. Tudo aqui é FUNÇÃO DO TEMPO DA PROVA (`t`, s depois do
-// "vai"): barras que giram, pêndulos, luvas e bolas que rolam ficam no mesmo
+// Corrida de obstáculos do gênero dos "party games" de feijão (o vídeo do
+// Alex), com percursos próprios. Tudo aqui é FUNÇÃO DO TEMPO DA PROVA (`t`,
+// s depois do "vai"): barras que giram, pêndulos, luvas, bolas que rolam,
+// plataformas que andam, discos que giram e blocos que empurram ficam no mesmo
 // lugar em todos os aparelhos e na sala — ninguém precisa mandar onde estão.
+//
+// 2026-11-16 (Gincana 2.0, pedido do Alex): o percurso deixou de ser fixo no
+// código e virou DADO (`Course`), montado em courses.ts — a fase de sempre
+// ("cidade", com os mesmos números) e uma fase por Domínio. Peças novas:
+// cogumelo que lança (Post.b), porta falsa (Door), plataforma que anda e disco
+// que gira (Pad.mx/mz/spin), esteira (Pad.bx/bz), gelo (Pad.f), bloco que
+// empurra (Pusher) e hexágono (Tile.k = 1).
 //
 // Regra única: o navegador e a sala (src/utils/meuMundoGincana.js, GERADO
 // deste diretório por scripts/build-gincana-sim.js no back) usam os mesmos
 // números. Metros, segundos; y para cima; a prova corre para +z.
-//
-// Trechos:
-//  1. Carrossel   — discos infláveis com barras girando (pule a barra baixa).
-//  2. Passarelas  — vigas estreitas que se cruzam, bolas de pêndulo.
-//  3. Luvas       — campo rosa com luvas de boxe socando dos lados.
-//  4. Xadrez      — piso que treme e cai depois que alguém pisa.
-//  5. Subida      — rampa com bolas gigantes rolando para baixo; chegada no topo.
 
-/** Altura do tampo das plataformas; a água fica em y = 0. */
+/** Altura do tampo das plataformas; a água (ou lava, ou o vazio) fica em y = 0. */
 const DECK = 3
 
 const GINCANA = {
@@ -62,10 +63,29 @@ const GINCANA = {
   /** Prova: limite depois do "vai" e contagem antes. */
   timeLimit: 180,
   countdown: 3,
+  // ── Gincana 2.0 (2026-11-16) ──
+  /** Agarrar: alcance (m, de centro a centro, na frente), quanto tempo segura, a velocidade de quem é segurado e de quem segura. */
+  grabR: 1.3,
+  grabMax: 2.6,
+  grabCool: 0.8,
+  heldRun: 0.42,
+  grabRun: 0.32,
+  /** Beira: bateu de lado numa plataforma com o tampo até isto acima do pé = sobe (segurando AGARRAR, mais alto). */
+  ledge: 1.05,
+  ledgeGrab: 1.6,
+  climbT: 0.3,
+  /** Mergulho que acerta alguém: empurrão (m/s). */
+  tackle: 6.5,
+  /** Classificam (fração das vagas); a prova fecha quando esse tanto chega. */
+  qualify: 0.75,
 }         
 
-/** Paleta (índice = cor do tampo; as bordas infláveis usam a cor do par). Turquesa (3) é a cor do mar: nunca no tampo. */
+/** Paleta (índice = cor do tampo; as bordas usam a cor do par). Turquesa (3) é a cor do mar: nunca no tampo. */
 const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "#63E05A", "#2F7BFF", "#FFFFFF"]         
+
+/** As fases: a de sempre e uma por Domínio. */
+                                                                                                      
+const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -88,15 +108,28 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
              
                                                 
            
+                                                            
+           
+                                                  
+            
+            
+                                                               
+            
+            
+            
+             
+                                                               
+              
  
 
-/** Coluna (pilar do carrossel, frade do campo, poste da luva): empurra de lado e dá para subir. */
+/** Coluna (pilar, frade, poste da luva, cogumelo): empurra de lado e dá para subir; `b` > 0 = lança para cima (m/s) quem pousa. */
                        
            
            
            
             
             
+           
            
  
 
@@ -124,7 +157,7 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
             
  
 
-/** Luva de boxe que soca para dentro do campo a partir de x0 (dir = ±1). */
+/** Luva de boxe (ou pistão) que soca para dentro do campo a partir de x0 (dir = ±1). */
                         
             
            
@@ -136,15 +169,40 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
             
  
 
-/** Ladrilho do xadrez (cai `tileWarn` s depois de pisado, volta depois de `tileGone`). */
+/** Ladrilho que cai `warn` s depois de pisado e volta depois de `gone`; k 0 = quadrado (meia largura h), 1 = hexágono (raio h). */
                        
            
            
            
            
+           
+          
  
 
-/** Posto de volta (quem cai na água volta aqui). */
+/** Porta numa fileira: as falsas são parede; as de verdade abrem quando alguém encosta (a semente sorteia quais). */
+                       
+           
+           
+            
+           
+             
+ 
+
+/** Bloco que anda de um lado para o outro e empurra: centro (x, z) + (ax, az)·sen(w·t + ph). */
+                         
+           
+           
+            
+            
+           
+           
+            
+            
+           
+            
+ 
+
+/** Posto de volta (quem cai volta aqui). */
                              
            
            
@@ -153,128 +211,156 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
            
  
 
-const pads        = []
-const posts         = []
-const sweepers            = []
-const pendulums             = []
-const gloves          = []
-const tiles         = []
+                       
+           
+            
+            
+            
+            
+            
+ 
 
-function box(x        , z        , hx        , hz        , c        , rim        , s        , rot = 0, d = 1.4) {
-  pads.push({ k: 1, x, z, r: 0, hx, hz, rot, y: DECK, y2: DECK, d, c, rim, s })
-}
-function disc(x        , z        , r        , c        , rim        , s        ) {
-  pads.push({ k: 0, x, z, r, hx: r, hz: r, rot: 0, y: DECK, y2: DECK, d: 1.6, c, rim, s })
-}
-/** Viga de (x0, z0) a (x1, z1), largura `w`. */
-function beam(x0        , z0        , x1        , z1        , w        , c        , rim        , s        ) {
-  const L = Math.hypot(x1 - x0, z1 - z0)
-  box((x0 + x1) / 2, (z0 + z1) / 2, w / 2, L / 2, c, rim, s, Math.atan2(x1 - x0, z1 - z0), 0.7)
-}
+/** Bolas que descem a rampa: faixas (x), intervalo (s), velocidade, raio e onde somem. */
+                        
+                          
+               
+           
+           
+              
+ 
 
-// ── 0. largada ───────────────────────────────────────────────────────────────
-box(0, 0, 10, 8, 6, 7, 0)
-// ponte larga: quem larga na ponta e corre reto não cai na água
-box(0, 11.5, 7, 3.6, 0, 1, 0)
+/** Ponto da rota dos computadores; `m` = índice da plataforma que anda (mira nela onde estiver). */
+                             
+           
+           
+            
+ 
 
-// ── 1. carrossel ─────────────────────────────────────────────────────────────
-const carousel = (x        , z        , r        , w        , a0        , both         , c        ) => {
-  disc(x, z, r, c, 1, 1)
-  posts.push({ x, z, r: 0.8, y0: DECK, y1: DECK + 2.4, c: 1 })
-  sweepers.push({ x, z, y: DECK + 0.55, len: r + 0.3, r: 0.32, w, a0, both })
-}
-carousel(0, 24, 9, 1.15, 0, false, 0)
-for (const s of [-1, 1]) box(4.5 * s, 35.2, 1.6, 4.3, 2, 7, 1)
-carousel(-6.5, 46, 7, -1.4, 0.6, false, 4)
-carousel(6.5, 46, 7, 1.7, 1.9, false, 4)
-for (const s of [-1, 1]) box(4.5 * s, 55, 1.6, 3.2, 2, 7, 1)
-carousel(0, 66, 9.5, 0.95, 0.4, true, 0)
-box(0, 79, 2.2, 4, 6, 7, 1)
+                         
+                  
+             
+               
+                     
+                       
+                 
+               
+                                          
+               
+                                              
+                    
+                   
+                   
+                     
+                           
+                                              
+                 
+                 
+                                                                                                 
+                    
+                                                       
+                   
+                                                                            
+                                                      
+ 
 
-// ── 2. passarelas ────────────────────────────────────────────────────────────
-box(0, 87, 8, 4, 1, 0, 2)
-const LANES = [-5, 0, 5]
-for (const x of LANES) beam(x, 90.6, x, 105, 1.5, 0, 1, 2)
-for (const x of LANES) disc(x, 105, 1.7, 1, 0, 2)
-beam(-5, 105, -5, 119, 1.5, 0, 1, 2)
-beam(5, 105, 5, 119, 1.5, 0, 1, 2)
-beam(0, 105, -5, 119, 1.5, 0, 1, 2)
-beam(0, 105, 5, 119, 1.5, 0, 1, 2)
-for (const x of LANES) disc(x, 119, 1.7, 1, 0, 2)
-for (const x of LANES) beam(x, 119, x, 133.4, 1.5, 0, 1, 2)
-const swing = (x        , z        , ph        ) => pendulums.push({ x, z, py: DECK + 9, len: 7.4, R: 1.1, amp: 0.95, w: 2.2, ph })
-swing(-5, 98, 0)
-swing(0, 98, 2.1)
-swing(5, 98, 4.2)
-swing(-5, 112, 1.1)
-swing(-2.5, 112, 3.3)
-swing(2.5, 112, 0.2)
-swing(5, 112, 2.6)
-swing(-5, 126, 3.9)
-swing(0, 126, 1.6)
-swing(5, 126, 5.0)
+// ── montar um percurso ───────────────────────────────────────────────────────
 
-// ── 3. luvas ─────────────────────────────────────────────────────────────────
-box(0, 137, 8, 4, 6, 7, 3)
-box(0, 162, 7, 21, 2, 4, 3)
-for (let i = 0; i < 7; i++) {
-  const left = i % 2 === 0
-  const z = 146 + i * 5
-  const x0 = left ? -9.4 : 9.4
-  gloves.push({ x0, z, y: DECK + 1.0, dir: left ? 1 : -1, reach: 8.2, R: 1.15, period: 2.6, ph: i * 0.83 })
-  posts.push({ x: x0, z, r: 1.0, y0: -1, y1: DECK + 2.2, c: 6 })
-}
-for (const [x, z] of [[-3, 149], [3.5, 153], [0, 158], [-4, 164], [2.5, 168], [-1.5, 174], [4, 178]]                      ) {
-  posts.push({ x, z, r: 0.55, y0: DECK, y1: DECK + 1.1, c: 4 })
-}
+/** Ajudante de montagem (courses.ts): cada fase chama estes métodos em ordem e termina em `done`. */
+class CourseKit {
+           pads        = []
+           posts         = []
+           sweepers            = []
+           pendulums             = []
+           gloves          = []
+           tiles         = []
+           doors         = []
+           doorOpen           = []
+           pushers           = []
+           logos                                        = []
+  ramp              = null
+  balls               = null
 
-// ── 4. xadrez ────────────────────────────────────────────────────────────────
-box(0, 187.3, 7, 4.3, 1, 0, 4)
-const TILE_COLS = 6
-const TILE_ROWS = 7
-const TILE_PITCH = 2.9
-const TILE_HALF = 1.3
-const TILE_Z0 = 193
-for (let r = 0; r < TILE_ROWS; r++) {
-  for (let c = 0; c < TILE_COLS; c++) {
-    tiles.push({ x: (c - (TILE_COLS - 1) / 2) * TILE_PITCH, z: TILE_Z0 + r * TILE_PITCH, h: TILE_HALF, c: (r + c) % 2 === 0 ? 2 : 5 })
+  /** Caixa (tampo em `y`). Devolve o índice (para pôr esteira, gelo, movimento). */
+  box(x        , z        , hx        , hz        , c        , rim        , s        , rot = 0, d = 1.4, y = DECK) {
+    this.pads.push({ k: 1, x, z, r: 0, hx, hz, rot, y, y2: y, d, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0 })
+    return this.pads.length - 1
   }
-}
-box(0, 216.5, 7, 4.7, 6, 7, 4)
-
-// ── 5. subida e chegada ──────────────────────────────────────────────────────
-const RAMP = { z0: 221.2, z1: 257.2, y0: DECK, y1: DECK + 6, hx: 6 }         
-pads.push({ k: 2, x: 0, z: (RAMP.z0 + RAMP.z1) / 2, r: 0, hx: RAMP.hx, hz: (RAMP.z1 - RAMP.z0) / 2, rot: 0, y: RAMP.y0, y2: RAMP.y1, d: 1.4, c: 0, rim: 1, s: 5 })
-pads.push({ k: 1, x: 0, z: 265, r: 0, hx: 9, hz: 7.8, rot: 0, y: RAMP.y1, y2: RAMP.y1, d: 1.6, c: 1, rim: 0, s: 6 })
-/** Cruzou esta linha no alto = chegou. */
-const FINISH_Z = 266
-const FINISH_Y = RAMP.y1
-/** Bolas da subida: faixas, intervalo, velocidade, raio. */
-const BALLS = { lanes: [-4.3, -1.45, 1.45, 4.3], every: 0.95, v: 7.5, R: 1.2, zEnd: RAMP.z0 - 3 }         
-
-const PADS                 = pads
-const POSTS                  = posts
-const SWEEPERS                     = sweepers
-const PENDULUMS                      = pendulums
-const GLOVES                   = gloves
-const TILES                  = tiles
-/** Tempos do ladrilho: treme, cai e fica fora, depois volta. */
-const TILE_TIME = { warn: 0.7, gone: 4 }         
-
-const CHECKPOINTS                        = [
-  { x: 0, z: -3.5, y: DECK, w: 7 },
-  { x: 0, z: 87, y: DECK, w: 6 },
-  { x: 0, z: 137, y: DECK, w: 6 },
-  { x: 0, z: 187, y: DECK, w: 5.5 },
-  { x: 0, z: 216, y: DECK, w: 5.5 },
-]
-
-/** Lugar de largada da vaga (2 filas de 4) e de volta a um posto. */
-function spawnAt(cp        , slot        ) {
-  const c = CHECKPOINTS[Math.max(0, Math.min(CHECKPOINTS.length - 1, cp))]
-  const col = slot % 4
-  const row = Math.floor(slot / 4) % 2
-  return { x: c.x + (col - 1.5) * Math.min(3.4, (c.w * 2) / 4), z: c.z - row * 2.6, y: c.y }
+  disc(x        , z        , r        , c        , rim        , s        , y = DECK) {
+    this.pads.push({ k: 0, x, z, r, hx: r, hz: r, rot: 0, y, y2: y, d: 1.6, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0 })
+    return this.pads.length - 1
+  }
+  /** Viga de (x0, z0) a (x1, z1), largura `w`. */
+  beam(x0        , z0        , x1        , z1        , w        , c        , rim        , s        ) {
+    const L = Math.hypot(x1 - x0, z1 - z0)
+    return this.box((x0 + x1) / 2, (z0 + z1) / 2, w / 2, L / 2, c, rim, s, Math.atan2(x1 - x0, z1 - z0), 0.7)
+  }
+  /** Rampa de z0 (y0) a z1 (y1), meia largura hx; com bolas opcionais. */
+  slope(x        , z0        , z1        , y0        , y1        , hx        , c        , rim        , s        ) {
+    this.ramp = { x, z0, z1, y0, y1, hx }
+    this.pads.push({ k: 2, x, z: (z0 + z1) / 2, r: 0, hx, hz: (z1 - z0) / 2, rot: 0, y: y0, y2: y1, d: 1.4, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0 })
+    return this.pads.length - 1
+  }
+  post(x        , z        , r        , y0        , y1        , c        , b = 0) {
+    this.posts.push({ x, z, r, y0, y1, c, b })
+  }
+  sweep(x        , z        , y        , len        , r        , w        , a0        , both         ) {
+    this.sweepers.push({ x, z, y, len, r, w, a0, both })
+  }
+  swing(x        , z        , py        , len        , R        , amp        , w        , ph        ) {
+    this.pendulums.push({ x, z, py, len, R, amp, w, ph })
+  }
+  glove(x0        , z        , y        , dir        , reach        , R        , period        , ph        ) {
+    this.gloves.push({ x0, z, y, dir, reach, R, period, ph })
+  }
+  tile(x        , z        , h        , c        , k        = 0, y = DECK) {
+    this.tiles.push({ x, z, y, h, c, k })
+  }
+  /** Fileira de `n` portas de largura `w` centrada em x, em z; `open` abrem. */
+  doorRow(x        , z        , n        , w        , h        , open        ) {
+    const row = this.doorOpen.length
+    this.doorOpen.push(open)
+    for (let i = 0; i < n; i++) this.doors.push({ x: x + (i - (n - 1) / 2) * w, z, hw: w / 2, h, row })
+  }
+  pusher(x        , z        , hx        , hz        , h        , ax        , az        , w        , ph        , y = DECK) {
+    this.pushers.push({ x, z, hx, hz, y, h, ax, az, w, ph })
+  }
+  logo(x        , z        , y = DECK) {
+    this.logos.push({ x, z, y: y + 1.1 })
+  }
+  /** Fecha o percurso. */
+  done(o   
+                    
+                             
+                   
+                   
+                      
+                     
+                          
+                                             
+   )         {
+    return {
+      id: o.id,
+      pads: this.pads,
+      posts: this.posts,
+      sweepers: this.sweepers,
+      pendulums: this.pendulums,
+      gloves: this.gloves,
+      tiles: this.tiles,
+      tileTime: o.tileTime ?? { warn: 0.7, gone: 4 },
+      doors: this.doors,
+      doorOpen: this.doorOpen,
+      pushers: this.pushers,
+      ramp: this.ramp,
+      balls: this.balls,
+      checkpoints: o.checkpoints,
+      logos: this.logos,
+      finishZ: o.finishZ,
+      finishY: o.finishY,
+      sections: o.sections,
+      minFinish: o.minFinish,
+      route: o.route,
+    }
+  }
 }
 
 // ── o que se mexe ────────────────────────────────────────────────────────────
@@ -309,70 +395,764 @@ function gloveAt(g       , t        ) {
   return { x: g.x0 + g.dir * g.reach * e, e, hot, u }
 }
 
-/** Faixa do número sorteado (0–3) ou -1 = sem bola nesta vez. */
-function ballLane(seed        , i        ) {
-  let h = (Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(seed | 0, 0x85ebca77)) >>> 0
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0
-  h = (h ^ (h >>> 13)) >>> 0
-  if (h % 5 === 0) return -1
-  return (h >>> 3) % BALLS.lanes.length
+/** Deslocamento da plataforma que anda no tempo t (0,0 se parada). */
+function padShift(p     , t        ) {
+  if (p.mw === 0) return { dx: 0, dz: 0 }
+  const s = Math.sin(p.mw * t + p.mph)
+  return { dx: p.mx * s, dz: p.mz * s }
 }
 
-/**
- * Logos da Freelandoo (mm3d-47b): nos lugares abertos do caminho. Cada um é
- * de cada corredor (quem pega não tira dos outros): nada disso viaja na rede.
- */
-const LOGOS                                                 = [
-  [-4, 12.5], [0, 12.5], [4, 12.5],
-  [0, 79],
-  [-5, 87], [5, 87],
-  [-5, 105], [0, 105], [5, 105],
-  [0, 137],
-  [-3.5, 151], [3.5, 161], [-3.5, 171],
-  [0, 187.5],
-  [-2.9, 216.5], [2.9, 216.5],
-  [-4.3, 233], [0, 241], [4.3, 249],
-].map(([x, z]) => ({ x, z, y: (z > RAMP.z0 ? rampTop(z) : DECK) + 1.1 }))
+/** Giro da plataforma (caixa) no tempo t. */
+function padRot(p     , t        ) {
+  return p.rot + p.spin * t
+}
+
+/** Centro do bloco que empurra e a velocidade dele. */
+function pusherAt(q        , t        ) {
+  const s = Math.sin(q.w * t + q.ph)
+  const c = Math.cos(q.w * t + q.ph) * q.w
+  return { x: q.x + q.ax * s, z: q.z + q.az * s, vx: q.ax * c, vz: q.az * c }
+}
+
+/** Mistura de inteiros (semente das bolas e das portas). */
+function courseHash(seed        , i        ) {
+  let h = (Math.imul(i + 1, 0x9e3779b1) ^ Math.imul(seed | 0, 0x85ebca77)) >>> 0
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0
+  return (h ^ (h >>> 13)) >>> 0
+}
+
+/** Faixa do número sorteado (0–3) ou -1 = sem bola nesta vez. */
+function ballLane(c        , seed        , i        ) {
+  const h = courseHash(seed, i)
+  if (h % 5 === 0 || !c.balls) return -1
+  return (h >>> 3) % c.balls.lanes.length
+}
+
+/** Quais portas abrem (1) nesta semente: em cada fileira, `doorOpen[row]` sorteadas. */
+function doorsOpen(c        , seed        )             {
+  const out = new Uint8Array(c.doors.length)
+  for (let row = 0; row < c.doorOpen.length; row++) {
+    const idx           = []
+    for (let i = 0; i < c.doors.length; i++) if (c.doors[i].row === row) idx.push(i)
+    // embaralha pela semente e abre as primeiras
+    for (let k = idx.length - 1; k > 0; k--) {
+      const j = courseHash(seed ^ 0x5bd1e995, row * 31 + k) % (k + 1)
+      const tmp = idx[k]
+      idx[k] = idx[j]
+      idx[j] = tmp
+    }
+    for (let k = 0; k < Math.min(c.doorOpen[row], idx.length); k++) out[idx[k]] = 1
+  }
+  return out
+}
 
 /** Altura do tampo da rampa em z. */
-function rampTop(z        ) {
-  const u = Math.max(0, Math.min(1, (z - RAMP.z0) / (RAMP.z1 - RAMP.z0)))
-  return RAMP.y0 + (RAMP.y1 - RAMP.y0) * u
+function rampTop(c        , z        ) {
+  const R = c.ramp
+  if (!R) return DECK
+  const u = Math.max(0, Math.min(1, (z - R.z0) / (R.z1 - R.z0)))
+  return R.y0 + (R.y1 - R.y0) * u
 }
 
 /** Bolas rolando agora: [x, y, z, faixa, índice] por bola. */
-function ballsAt(seed        , t        , out          ) {
+function ballsAt(c        , seed        , t        , out          ) {
   out.length = 0
-  if (t < 0) return out
-  const span = (RAMP.z1 - BALLS.zEnd) / BALLS.v
-  const i1 = Math.floor(t / BALLS.every)
-  const i0 = Math.max(0, Math.floor((t - span) / BALLS.every))
+  const B = c.balls
+  const R = c.ramp
+  if (t < 0 || !B || !R) return out
+  const span = (R.z1 - B.zEnd) / B.v
+  const i1 = Math.floor(t / B.every)
+  const i0 = Math.max(0, Math.floor((t - span) / B.every))
   for (let i = i0; i <= i1; i++) {
-    const lane = ballLane(seed, i)
+    const lane = ballLane(c, seed, i)
     if (lane < 0) continue
-    const z = RAMP.z1 - BALLS.v * (t - i * BALLS.every)
-    if (z < BALLS.zEnd || z > RAMP.z1) continue
+    const z = R.z1 - B.v * (t - i * B.every)
+    if (z < B.zEnd || z > R.z1) continue
     // depois do pé da rampa a bola cai na água
-    const y = z >= RAMP.z0 ? rampTop(z) + BALLS.R : DECK + BALLS.R - ((RAMP.z0 - z) / BALLS.v) ** 2 * 12
-    out.push(BALLS.lanes[lane], y, z, lane, i)
+    const y = z >= R.z0 ? rampTop(c, z) + B.R : R.y0 + B.R - ((R.z0 - z) / B.v) ** 2 * 12
+    out.push(R.x + B.lanes[lane], y, z, lane, i)
   }
   return out
 }
 
 /** Ladrilho em pé (pode pisar) no tempo t, sabendo quando foi pisado (−1 = nunca). */
-function tileUp(stepped        , t        ) {
-  return stepped < 0 || t - stepped < TILE_TIME.warn || t - stepped >= TILE_TIME.warn + TILE_TIME.gone
+function tileUp(c        , stepped        , t        ) {
+  return stepped < 0 || t - stepped < c.tileTime.warn || t - stepped >= c.tileTime.warn + c.tileTime.gone
 }
 
-/** Trecho da prova em que z está (1–5; 0 largada, 6 chegada) — para a interface. */
-function sectionAt(z        ) {
-  if (z < 15) return 0
-  if (z < 83) return 1
-  if (z < 133.4) return 2
-  if (z < 183) return 3
-  if (z < 221.2) return 4
-  if (z < FINISH_Z) return 5
-  return 6
+/** O ponto (x, z) está em cima do ladrilho (com folga `e`)? */
+function onTile(q      , x        , z        , e        ) {
+  if (q.k === 1) return Math.hypot(x - q.x, z - q.z) <= q.h + e
+  return Math.abs(x - q.x) <= q.h + e && Math.abs(z - q.z) <= q.h + e
+}
+
+/** Trecho da prova em que z está (0 largada, 1…n, n + 1 chegada) — para a interface. */
+function sectionAt(c        , z        ) {
+  if (z >= c.finishZ) return c.sections.length + 1
+  let s = 0
+  while (s < c.sections.length && z >= c.sections[s]) s++
+  return s
+}
+
+/** Lugar de largada da vaga (2 filas de 4) e de volta a um posto. */
+function spawnAt(c        , cp        , slot        ) {
+  const p = c.checkpoints[Math.max(0, Math.min(c.checkpoints.length - 1, cp))]
+  const col = slot % 4
+  const row = Math.floor(slot / 4) % 2
+  return { x: p.x + (col - 1.5) * Math.min(3.4, (p.w * 2) / 4), z: p.z - row * 2.6, y: p.y }
+}
+
+// ── sim/courses.ts ───────────────────────────────────────────────────────────
+// features/meu-mundo/gincana/sim/courses.ts — GINCANA 2.0 (2026-11-16): as FASES.
+//
+// "cidade" é o percurso de sempre (mm3d-47), com os MESMOS números. As outras
+// seis são uma por Domínio (pedido do Alex: "6 fases como cada Domínio, com o
+// tema de cada um", inspiradas nas provas de corrida dos party games de
+// feijão — portas falsas, plataformas que andam, piso que cai, esteiras):
+//
+//  floresta — Floresta da Lua: cogumelos que lançam, raízes que giram, portas
+//             de cipó, ponte de folhas que cai, troncos rolando.
+//  canion   — Cânion: pedras flutuantes que andam, pêndulos de pedra, portões
+//             que empurram, desfiladeiro com pistões de rocha, avalanche.
+//  orbital  — Cidade Orbital: esteiras para trás, anéis que giram, hexágonos
+//             que somem, barreiras de energia, esferas rolando.
+//  forja    — Forja: martelos, pistões dos dois lados, esteiras de lado sobre
+//             a lava, grade que cai, rochas derretidas.
+//  fabrica  — Fábrica: esteira das prensas, engrenagens que giram, portas de
+//             aço, prensas deslizantes, barris.
+//  gelo     — Mar de Gelo: lago que escorrega, estalactites, placas de gelo
+//             que andam, gelo fino, bolas de neve.
+//
+// O desenho de cada fase (cores, cenário, nomes) fica no front
+// (engine/course-view.ts + engine/phase-themes.ts); aqui só a regra. Fase nova
+// = uma função aqui + a entrada em COURSES + o tema + GINCANA_PHASES.
+
+/** Largada (2 filas de 4) e a ponte larga: igual em todas as fases. */
+function kitStart(k           ) {
+  k.box(0, 0, 10, 8, 6, 7, 0)
+  // ponte larga: quem larga na ponta e corre reto não cai na água
+  k.box(0, 11.5, 7, 3.6, 0, 1, 0)
+  for (const x of [-4, 0, 4]) k.logo(x, 12.5)
+}
+
+/** Subida de 36 m com bolas e o patamar da chegada; devolve o z da linha. */
+function kitFinish(k           , z0        , every        , v        , R        ) {
+  const z1 = z0 + 36
+  k.slope(0, z0, z1, DECK, DECK + 6, 6, 0, 1, 5)
+  k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every, v, R, zEnd: z0 - 3 }
+  k.box(0, z1 + 7.8, 9, 7.8, 1, 0, 6, 0, 1.6, DECK + 6)
+  for (const [x, dz] of [[-4.3, 12], [0, 20], [4.3, 28]]                      ) k.logo(x, z0 + dz, DECK + (6 * dz) / 36)
+  return z1 + 8.8
+}
+
+/** Rota pela subida até a linha. */
+function routeFinish(add                                , z0        , finishZ        ) {
+  for (let z = z0 + 1; z <= z0 + 35; z += 2.5) add(0, z)
+  add(0, finishZ - 7)
+  add(0, finishZ - 2)
+  add(0, finishZ + 3)
+}
+
+/** Rota que só anda para +z (o computador mira o primeiro ponto adiante). */
+function routeOf(fill                                                           ) {
+  const out               = []
+  fill((x, z, m) => out.push(m === undefined ? { x, z } : { x, z, m }))
+  return out
+}
+
+// ═══ cidade — o percurso de sempre (mm3d-47) ═════════════════════════════════
+
+function courseCidade()         {
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. carrossel ──
+  const carousel = (x        , z        , r        , w        , a0        , both         , c        ) => {
+    k.disc(x, z, r, c, 1, 1)
+    k.post(x, z, 0.8, DECK, DECK + 2.4, 1)
+    k.sweep(x, z, DECK + 0.55, r + 0.3, 0.32, w, a0, both)
+  }
+  carousel(0, 24, 9, 1.15, 0, false, 0)
+  for (const s of [-1, 1]) k.box(4.5 * s, 35.2, 1.6, 4.3, 2, 7, 1)
+  carousel(-6.5, 46, 7, -1.4, 0.6, false, 4)
+  carousel(6.5, 46, 7, 1.7, 1.9, false, 4)
+  for (const s of [-1, 1]) k.box(4.5 * s, 55, 1.6, 3.2, 2, 7, 1)
+  carousel(0, 66, 9.5, 0.95, 0.4, true, 0)
+  k.box(0, 79, 2.2, 4, 6, 7, 1)
+  // ── 2. passarelas ──
+  k.box(0, 87, 8, 4, 1, 0, 2)
+  const LANES = [-5, 0, 5]
+  for (const x of LANES) k.beam(x, 90.6, x, 105, 1.5, 0, 1, 2)
+  for (const x of LANES) k.disc(x, 105, 1.7, 1, 0, 2)
+  k.beam(-5, 105, -5, 119, 1.5, 0, 1, 2)
+  k.beam(5, 105, 5, 119, 1.5, 0, 1, 2)
+  k.beam(0, 105, -5, 119, 1.5, 0, 1, 2)
+  k.beam(0, 105, 5, 119, 1.5, 0, 1, 2)
+  for (const x of LANES) k.disc(x, 119, 1.7, 1, 0, 2)
+  for (const x of LANES) k.beam(x, 119, x, 133.4, 1.5, 0, 1, 2)
+  const swing = (x        , z        , ph        ) => k.swing(x, z, DECK + 9, 7.4, 1.1, 0.95, 2.2, ph)
+  swing(-5, 98, 0)
+  swing(0, 98, 2.1)
+  swing(5, 98, 4.2)
+  swing(-5, 112, 1.1)
+  swing(-2.5, 112, 3.3)
+  swing(2.5, 112, 0.2)
+  swing(5, 112, 2.6)
+  swing(-5, 126, 3.9)
+  swing(0, 126, 1.6)
+  swing(5, 126, 5.0)
+  // ── 3. luvas ──
+  k.box(0, 137, 8, 4, 6, 7, 3)
+  k.box(0, 162, 7, 21, 2, 4, 3)
+  for (let i = 0; i < 7; i++) {
+    const left = i % 2 === 0
+    const z = 146 + i * 5
+    const x0 = left ? -9.4 : 9.4
+    k.glove(x0, z, DECK + 1.0, left ? 1 : -1, 8.2, 1.15, 2.6, i * 0.83)
+    k.post(x0, z, 1.0, -1, DECK + 2.2, 6)
+  }
+  for (const [x, z] of [[-3, 149], [3.5, 153], [0, 158], [-4, 164], [2.5, 168], [-1.5, 174], [4, 178]]                      ) {
+    k.post(x, z, 0.55, DECK, DECK + 1.1, 4)
+  }
+  // ── 4. xadrez ──
+  k.box(0, 187.3, 7, 4.3, 1, 0, 4)
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 6; c++) k.tile((c - 2.5) * 2.9, 193 + r * 2.9, 1.3, (r + c) % 2 === 0 ? 2 : 5)
+  k.box(0, 216.5, 7, 4.7, 6, 7, 4)
+  // ── 5. subida e chegada ──
+  const z0 = 221.2
+  k.slope(0, z0, 257.2, DECK, DECK + 6, 6, 0, 1, 5)
+  k.box(0, 265, 9, 7.8, 1, 0, 6, 0, 1.6, DECK + 6)
+  k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: 0.95, v: 7.5, R: 1.2, zEnd: z0 - 3 }
+  // logos (mm3d-47b), nos lugares abertos do caminho
+  for (const [x, z] of [[0, 79], [-5, 87], [5, 87], [-5, 105], [0, 105], [5, 105], [0, 137], [-3.5, 151], [3.5, 161], [-3.5, 171], [0, 187.5], [-2.9, 216.5], [2.9, 216.5]]                      ) k.logo(x, z)
+  for (const [x, z] of [[-4.3, 233], [0, 241], [4.3, 249]]                      ) k.logo(x, z, DECK + (6 * (z - z0)) / 36)
+  return k.done({
+    id: "cidade",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 87, y: DECK, w: 6 },
+      { x: 0, z: 137, y: DECK, w: 6 },
+      { x: 0, z: 187, y: DECK, w: 5.5 },
+      { x: 0, z: 216, y: DECK, w: 5.5 },
+    ],
+    finishZ: 266,
+    finishY: DECK + 6,
+    sections: [15, 83, 133.4, 183, 221.2],
+    minFinish: 22,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        add(side * 2.5, 20)
+        for (const z of [29, 33, 38.5, 42]) add(side * 4.5, z)
+        add(side * 4.6, 46)
+        for (const z of [50, 53, 57.5]) add(side * 4.5, z)
+        add(side * 3.5, 61)
+        add(side * 3.2, 66)
+        add(side * 2, 71)
+        add(0, 75.8)
+        add(0, 80)
+        add(0, 84)
+        const L = [-5, 0, 5][Math.floor(r(2) * 3)]
+        const D = L !== 0 ? L : r(3) < 0.5 ? -5 : 5
+        add(L * 0.6, 88)
+        add(L, 90.4)
+        for (const z of [94, 98, 102, 105]) add(L, z)
+        for (let i = 1; i <= 4; i++) add(L + (D - L) * (i / 4), 105 + 3.5 * i)
+        for (const z of [122, 126, 130, 133.6]) add(D, z)
+        add(D * 0.4, 137)
+        const F = [-2.2, 2.2, -4.8, 4.8][Math.floor(r(4) * 4)]
+        for (let z = 142; z <= 183; z += 3) add(F, z)
+        add(0, 187)
+        add(0, 190.8)
+        for (let i = 0; i < 7; i++) add(0, 193 + i * 2.9)
+        add(0, 213)
+        add(0, 216.5)
+        routeFinish(add, z0, 266)
+      }),
+  })
+}
+
+// ═══ floresta — Floresta da Lua ══════════════════════════════════════════════
+
+function courseFloresta()         {
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. cogumelos: lançam quem pousa; entre eles, o pântano ──
+  k.box(0, 19, 7, 3, 5, 1, 1)
+  const ROWS = [25.8, 30, 34.2, 38.4, 42.6, 46.8]
+  for (let i = 0; i < ROWS.length; i++) for (const x of [-4.5, 0, 4.5]) k.post(x, ROWS[i], 1.9, -1.2, DECK - 0.25, i % 2 ? 2 : 4, 10.5)
+  k.box(0, 53, 7, 5, 5, 1, 1)
+  // ── 2. raízes que giram ──
+  k.disc(0, 66.5, 8.5, 4, 1, 2)
+  k.post(0, 66.5, 0.8, DECK, DECK + 2.4, 5)
+  k.sweep(0, 66.5, DECK + 0.55, 8.8, 0.34, 1.0, 0, true)
+  k.box(0, 79, 7, 4.5, 5, 1, 2)
+  for (const s of [-1, 1]) {
+    k.disc(6.5 * s, 90.5, 7, 4, 1, 2)
+    k.post(6.5 * s, 90.5, 0.8, DECK, DECK + 2.4, 5)
+    k.sweep(6.5 * s, 90.5, DECK + 0.55, 7.3, 0.34, s * 1.55, s > 0 ? 1.9 : 0.6, false)
+  }
+  // ── 3. portas de cipó ──
+  k.box(0, 119.5, 8, 22.5, 5, 1, 3)
+  for (const z of [113, 123, 133]) k.doorRow(0, z, 5, 3.2, 3.4, 2)
+  // ── 4. ponte de folhas que cai ──
+  for (let r = 0; r < 10; r++) for (let c = 0; c < 3; c++) k.tile((c - 1) * 2.9, 143.6 + r * 2.9, 1.3, (r + c) % 2 ? 5 : 1)
+  k.box(0, 175, 7, 4, 5, 1, 4)
+  // ── 5. troncos rolando ──
+  const z0 = 179
+  const finishZ = kitFinish(k, z0, 1.05, 7, 1.1)
+  for (const [x, z] of [[0, 53], [0, 79], [0, 101], [-4.8, 118], [4.8, 128], [0, 138], [0, 175]]                      ) k.logo(x, z)
+  return k.done({
+    id: "floresta",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 53, y: DECK, w: 6 },
+      { x: 0, z: 101, y: DECK, w: 6 },
+      { x: 0, z: 138, y: DECK, w: 7 },
+      { x: 0, z: 175, y: DECK, w: 5.5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [16, 58, 104, 142, z0],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        const L = [-4.5, 0, 4.5][Math.floor(r(2) * 3)]
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        add(L * 0.7, 19)
+        add(L, 21.6)
+        for (const z of ROWS) add(L, z)
+        add(L * 0.5, 50)
+        add(0, 56)
+        add(side * 3.6, 61)
+        add(side * 4.4, 66.5)
+        add(side * 3, 72)
+        add(0, 76)
+        add(0, 80)
+        const D = r(3) < 0.5 ? -1 : 1
+        add(D * 3.5, 83)
+        add(D * 6.5, 86)
+        add(D * 6.5, 90.5)
+        add(D * 6.5, 95)
+        add(D * 3, 99.5)
+        for (const z of [104, 109, 113.6, 118, 123.6, 128, 133.6, 138]) add(0, z)
+        add(0, 141.6)
+        for (let i = 0; i < 10; i++) add(0, 143.6 + i * 2.9)
+        add(0, 173)
+        add(0, 177)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
+// ═══ canion — Cânion ═════════════════════════════════════════════════════════
+
+function courseCanion()         {
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. pedras flutuantes que andam de lado ──
+  k.box(0, 19, 7, 3, 0, 1, 1)
+  const FLOAT = [25.1, 30.7, 36.3, 41.9]
+  const floats           = []
+  for (let i = 0; i < FLOAT.length; i++) {
+    const p = k.box(0, FLOAT[i], 3, 2.5, i % 2 ? 0 : 2, 1, 1, 0, 1.2)
+    k.pads[p].mx = 4.5
+    k.pads[p].mw = 1.0
+    k.pads[p].mph = i * 1.3
+    floats.push(p)
+  }
+  k.box(0, 51, 7, 6, 0, 1, 1)
+  // ── 2. pêndulos de pedra sobre duas pontes ──
+  for (const x of [-3.5, 3.5]) k.beam(x, 56.5, x, 94.5, 1.8, 2, 1, 2)
+  let ph = 0
+  for (const z of [63, 71, 79, 87]) {
+    for (const x of [-3.5, 3.5]) {
+      k.swing(x, z, DECK + 9, 7.4, 1.25, 0.95, 2.0, ph)
+      ph += 1.7
+    }
+  }
+  // ── 3. portões que empurram ──
+  k.box(0, 118, 8, 24, 0, 1, 3)
+  const W = [1.3, 1.6, 1.1, 1.8]
+  ;[110, 118, 126, 134].forEach((z, i) => k.pusher(0, z, 2.6, 1.1, 2.2, 5.2, 0, W[i], i * 1.2))
+  // ── 4. desfiladeiro: vigas em zigue-zague, pistões de rocha ──
+  k.beam(0, 141.6, -4, 153, 2.0, 2, 1, 4)
+  k.disc(-4, 153, 1.8, 1, 0, 4)
+  k.beam(-4, 153, 4, 165, 2.0, 2, 1, 4)
+  k.disc(4, 165, 1.8, 1, 0, 4)
+  k.beam(4, 165, 0, 177, 2.0, 2, 1, 4)
+  for (const [mx, mz, x0] of [[-2, 147.3, 9], [0, 159, -9], [2, 171, -9]]                              ) {
+    const dir = x0 > 0 ? -1 : 1
+    k.glove(x0, mz, DECK + 1, dir, Math.abs(x0 - mx) + 1.2, 1.15, 2.8, mz * 0.37)
+    k.post(x0, mz, 1.0, -1, DECK + 2.2, 6)
+  }
+  k.box(0, 181, 6, 4, 0, 1, 4)
+  // ── 5. avalanche ──
+  const z0 = 185
+  const finishZ = kitFinish(k, z0, 0.9, 8, 1.25)
+  for (const [x, z] of [[0, 51], [-3.5, 59], [3.5, 59], [0, 98], [-5, 122], [5, 122], [0, 139], [0, 181]]                      ) k.logo(x, z)
+  return k.done({
+    id: "canion",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 51, y: DECK, w: 6 },
+      { x: 0, z: 98, y: DECK, w: 6 },
+      { x: 0, z: 139, y: DECK, w: 6 },
+      { x: 0, z: 181, y: DECK, w: 5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [22, 57, 102, 141.6, z0],
+    minFinish: 22,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        add(0, 19)
+        add(0, 21.6)
+        for (let i = 0; i < FLOAT.length; i++) add(0, FLOAT[i], floats[i])
+        add(0, 46.5)
+        add(0, 50)
+        const L = r(2) < 0.5 ? -3.5 : 3.5
+        add(L * 0.6, 54)
+        for (let z = 57; z <= 94; z += 3) add(L, z)
+        add(L * 0.5, 97)
+        add(0, 100)
+        for (let z = 104; z <= 139; z += 2) add(0, z)
+        add(0, 141.8)
+        add(-2, 147.3)
+        add(-4, 153)
+        add(0, 159)
+        add(4, 165)
+        add(2, 171)
+        add(0, 177)
+        add(0, 180)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
+// ═══ orbital — Cidade Orbital ════════════════════════════════════════════════
+
+function courseOrbital()         {
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. esteiras para trás, com caixas no caminho ──
+  k.box(0, 19, 7, 3, 6, 7, 1)
+  const belt = k.box(0, 35, 6, 13, 6, 3, 1)
+  k.pads[belt].bz = -3.2
+  for (const [x, z] of [[-3, 28], [2.5, 32], [-1, 37], [3.5, 41], [-3.5, 44.5]]                      ) k.post(x, z, 0.65, DECK, DECK + 1.2, 7)
+  k.box(0, 52, 7, 4, 6, 7, 1)
+  // ── 2. anéis que giram ──
+  const SPIN = [0.55, -0.75, 0.65]
+  ;[63.5, 77.5, 91.5].forEach((z, i) => {
+    const d = k.disc(0, z, 7.5, i === 1 ? 4 : 6, 7, 2)
+    k.pads[d].spin = SPIN[i]
+  })
+  k.post(0, 77.5, 0.7, DECK, DECK + 2.2, 7)
+  k.sweep(0, 77.5, DECK + 0.55, 7.7, 0.3, 1.45, 0, false)
+  k.box(0, 103, 7, 4, 6, 7, 2)
+  // ── 3. hexágonos que somem ──
+  for (let r = 0; r < 13; r++) {
+    for (let c = 0; c < 5; c++) {
+      const x = (c - 2) * 2.9 + (r % 2 ? 1.45 : -1.45) * 0.5
+      k.tile(x, 109.6 + r * 2.55, 1.45, (r + c) % 3 === 0 ? 4 : 6, 1)
+    }
+  }
+  k.box(0, 146, 7, 4, 6, 7, 3)
+  // ── 4. barreiras de energia ──
+  k.box(0, 173, 6, 23, 6, 7, 4)
+  ;[[159, 1.3, 0], [173, -1.5, 0.8], [187, 1.2, 1.6]].forEach(([z, w, a0]) => {
+    k.sweep(0, z, DECK + 0.55, 6.3, 0.3, w, a0, true)
+    k.post(0, z, 0.8, DECK, DECK + 2.2, 7)
+  })
+  k.pusher(0, 166, 1.4, 1.0, 2.4, 4.4, 0, 1.5, 0)
+  k.pusher(0, 180, 1.4, 1.0, 2.4, 4.4, 0, 1.9, 2.1)
+  k.box(0, 200, 7, 4, 6, 7, 4)
+  // ── 5. esferas rolando ──
+  const z0 = 204
+  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.15)
+  for (const [x, z] of [[0, 52], [-4, 49], [4, 49], [0, 103], [0, 146], [-4, 166], [4, 180], [0, 200]]                      ) k.logo(x, z)
+  return k.done({
+    id: "orbital",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 52, y: DECK, w: 6 },
+      { x: 0, z: 103, y: DECK, w: 6 },
+      { x: 0, z: 146, y: DECK, w: 6 },
+      { x: 0, z: 200, y: DECK, w: 5.5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [22, 56, 107, 150, z0],
+    minFinish: 22,
+    tileTime: { warn: 0.55, gone: 5 },
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        add(0, 20)
+        const F = [-1.5, 1, 5, -5][Math.floor(r(2) * 4)]
+        for (let z = 24; z <= 47; z += 2.5) add(F, z)
+        add(0, 50)
+        for (let z = 54; z <= 99; z += 1.6) add(0, z)
+        add(0, 103)
+        add(0, 107.5)
+        for (let i = 0; i < 13; i++) add(0, 109.6 + i * 2.55)
+        add(0, 143.5)
+        add(0, 147)
+        const B = r(3) < 0.5 ? -1 : 1
+        for (let z = 151; z <= 197; z += 2) add(B * (z > 166 && z < 180 ? -3.4 : 3.4), z)
+        add(0, 201)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
+// ═══ forja — Forja ═══════════════════════════════════════════════════════════
+
+function courseForja()         {
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. martelos ──
+  k.box(0, 19, 7, 3, 0, 1, 1)
+  k.box(0, 40, 7, 18, 0, 1, 1)
+  ;[29, 38, 47].forEach((z, row) => [-4, 0, 4].forEach((x, col) => k.swing(x, z, DECK + 9, 7.4, 1.1, 0.9, 2.3, row * 1.4 + col * 2.1)))
+  // ── 2. pistões dos dois lados ──
+  k.box(0, 81, 7, 23, 0, 1, 2)
+  for (let i = 0; i < 5; i++) {
+    const z = 66 + i * 8
+    k.glove(-9.4, z, DECK + 1, 1, 8.2, 1.15, 2.4, i * 0.9)
+    k.glove(9.4, z, DECK + 1, -1, 8.2, 1.15, 2.4, i * 0.9 + 1.2)
+    k.post(-9.4, z, 1.0, -1, DECK + 2.2, 4)
+    k.post(9.4, z, 1.0, -1, DECK + 2.2, 4)
+  }
+  // ── 3. esteiras de lado sobre a lava ──
+  k.box(0, 108, 7, 4, 0, 1, 3)
+  ;[118, 130, 142].forEach((z, i) => {
+    const b = k.box(0, z, 4, 6, 4, 0, 3)
+    k.pads[b].bx = i % 2 ? -3 : 3
+  })
+  k.box(0, 152, 7, 4, 0, 1, 3)
+  // ── 4. grade que cai ──
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 5; c++) k.tile((c - 2) * 2.9, 158.5 + r * 2.9, 1.3, (r + c) % 2 ? 2 : 0)
+  k.box(0, 187, 7, 4, 0, 1, 4)
+  // ── 5. rochas derretidas ──
+  const z0 = 191
+  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.2)
+  for (const [x, z] of [[0, 56], [0, 61], [0, 108], [-2.5, 118], [2.5, 130], [-2.5, 142], [0, 152], [0, 187]]                      ) k.logo(x, z)
+  return k.done({
+    id: "forja",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 61, y: DECK, w: 6 },
+      { x: 0, z: 108, y: DECK, w: 6 },
+      { x: 0, z: 152, y: DECK, w: 6 },
+      { x: 0, z: 187, y: DECK, w: 5.5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [22, 58, 112, 156, z0],
+    minFinish: 22,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        const L = [-2, 2, -6, 6][Math.floor(r(2) * 4)]
+        for (let z = 20; z <= 56; z += 2) add(L, z)
+        add(0, 59)
+        const F = [-0.2, 0.2, -5.5, 5.5][Math.floor(r(3) * 4)]
+        for (let z = 62; z <= 103; z += 2.5) add(F, z)
+        add(0, 106)
+        add(0, 110)
+        for (let z = 113; z <= 148; z += 1.5) add(0, z)
+        add(0, 152)
+        add(0, 156)
+        for (let i = 0; i < 9; i++) add(0, 158.5 + i * 2.9)
+        add(0, 185)
+        add(0, 188)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
+// ═══ fabrica — Fábrica ═══════════════════════════════════════════════════════
+
+function courseFabrica()         {
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. esteira das prensas ──
+  k.box(0, 19, 7, 3, 6, 1, 1)
+  const belt = k.box(0, 36, 5, 14, 6, 1, 1)
+  k.pads[belt].bz = -2.5
+  ;[27, 33, 39, 45].forEach((z, i) => {
+    const left = i % 2 === 0
+    const x0 = left ? -7.6 : 7.6
+    k.glove(x0, z, DECK + 1, left ? 1 : -1, 8, 1.15, 2.5, i * 0.85)
+    k.post(x0, z, 1.0, -1, DECK + 2.2, 1)
+  })
+  k.box(0, 54, 7, 4, 6, 1, 1)
+  // ── 2. engrenagens que giram ──
+  const GEAR                             = [[-3, 65, 0.5], [3, 77, -0.6], [-3, 89, 0.5]]
+  for (const [x, z, w] of GEAR) {
+    const d = k.disc(x, z, 7, 1, 0, 2)
+    k.pads[d].spin = w
+    k.post(x, z, 0.75, DECK, DECK + 2.3, 0)
+  }
+  k.sweep(3, 77, DECK + 0.55, 7.2, 0.3, 1.3, 0, false)
+  // ── 3. portas de aço ──
+  k.box(0, 120, 8, 24, 6, 1, 3)
+  for (const z of [112, 122, 132]) k.doorRow(0, z, 5, 3.2, 3.4, 2)
+  // ── 4. prensas deslizantes ──
+  k.box(0, 164, 6, 20, 6, 1, 4)
+  const PW = [1.4, 1.8, 1.2, 1.6, 2.0]
+  ;[151, 158, 165, 172, 179].forEach((z, i) => k.pusher(0, z, 2.2, 1.0, 2.4, 4, 0, PW[i], i * 1.1))
+  k.box(0, 188, 7, 4, 6, 1, 4)
+  // ── 5. barris ──
+  const z0 = 192
+  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.15)
+  for (const [x, z] of [[0, 54], [0, 100], [-4.8, 117], [4.8, 127], [0, 139], [0, 188]]                      ) k.logo(x, z)
+  return k.done({
+    id: "fabrica",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 54, y: DECK, w: 6 },
+      { x: 0, z: 100, y: DECK, w: 6 },
+      { x: 0, z: 139, y: DECK, w: 7 },
+      { x: 0, z: 188, y: DECK, w: 5.5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [22, 58, 104, 144, z0],
+    minFinish: 22,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        const F = r(2) < 0.5 ? -1.6 : 1.6
+        for (let z = 20; z <= 50; z += 2) add(F, z)
+        add(0, 54)
+        add(-3, 58.5)
+        add(-3, 65)
+        add(-1, 70.5)
+        add(3, 74)
+        add(3, 80)
+        add(1, 83.5)
+        add(-3, 86)
+        add(-3, 92)
+        add(-1, 96.5)
+        for (const z of [100, 105, 108, 112.6, 117, 122.6, 127, 132.6, 137, 141]) add(0, z)
+        for (let z = 145; z <= 183; z += 2) add(0, z)
+        add(0, 186)
+        add(0, 189)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
+// ═══ gelo — Mar de Gelo ══════════════════════════════════════════════════════
+
+function courseGelo()         {
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. lago que escorrega ──
+  k.box(0, 19, 7, 3, 7, 6, 1)
+  const lake = k.box(0, 37, 7, 15, 7, 6, 1)
+  k.pads[lake].f = 0.18
+  for (const [x, z] of [[-3.5, 29], [3, 33], [-1, 39], [4, 45], [-4, 48]]                      ) k.post(x, z, 0.7, DECK, DECK + 1.6, 6)
+  k.pusher(0, 41.5, 1.6, 1.2, 1.8, 4, 0, 1.2, 0)
+  k.box(0, 56, 7, 4, 7, 6, 1)
+  // ── 2. estalactites sobre três pontes ──
+  for (const x of [-5, 0, 5]) {
+    const b = k.beam(x, 59.5, x, 96.5, 1.6, 7, 6, 2)
+    k.pads[b].f = 0.6
+  }
+  let ph = 0
+  for (const z of [67, 77, 87]) {
+    for (const x of [-5, 0, 5]) {
+      k.swing(x, z, DECK + 9, 7.4, 1.0, 0.9, 2.1, ph)
+      ph += 2.3
+    }
+  }
+  k.box(0, 100, 8, 4, 7, 6, 2)
+  // ── 3. placas de gelo que andam ──
+  const FLOE = [107.1, 112.7, 118.3, 123.9, 129.5]
+  const floes           = []
+  for (let i = 0; i < FLOE.length; i++) {
+    const p = k.box(0, FLOE[i], 3.2, 2.5, 7, 6, 3, 0, 1.0)
+    Object.assign(k.pads[p], { mx: 4.5, mw: 0.9, mph: i * 1.3, f: 0.5 })
+    floes.push(p)
+  }
+  k.box(0, 138.8, 7, 6.2, 7, 6, 3)
+  // ── 4. gelo fino ──
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 6; c++) k.tile((c - 2.5) * 2.9, 146.4 + r * 2.9, 1.3, (r + c) % 2 ? 7 : 6)
+  k.box(0, 172, 7, 4, 7, 6, 4)
+  // ── 5. bolas de neve ──
+  const z0 = 176
+  const finishZ = kitFinish(k, z0, 1.0, 7.5, 1.2)
+  for (const [x, z] of [[0, 56], [-5, 62], [5, 62], [0, 100], [0, 140], [0, 172]]                      ) k.logo(x, z)
+  return k.done({
+    id: "gelo",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 56, y: DECK, w: 6 },
+      { x: 0, z: 100, y: DECK, w: 6 },
+      { x: 0, z: 140, y: DECK, w: 6 },
+      { x: 0, z: 172, y: DECK, w: 5.5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [22, 60, 104, 145, z0],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        add(0, 20)
+        const F = [-1.5, 1.5, -5.5, 5.5][Math.floor(r(2) * 4)]
+        for (let z = 24; z <= 50; z += 2) add(F, z)
+        add(0, 53)
+        add(0, 56)
+        const L = [-5, 0, 5][Math.floor(r(3) * 3)]
+        add(L * 0.6, 58)
+        for (let z = 60; z <= 96; z += 3) add(L, z)
+        add(L * 0.4, 99)
+        add(0, 102)
+        add(0, 104.2)
+        for (let i = 0; i < FLOE.length; i++) add(0, FLOE[i], floes[i])
+        add(0, 133.5)
+        add(0, 138)
+        add(0, 144)
+        for (let i = 0; i < 8; i++) add(0, 146.4 + i * 2.9)
+        add(0, 170)
+        add(0, 173)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
+/** Todas as fases (montadas uma vez). */
+const COURSES                               = {
+  cidade: courseCidade(),
+  floresta: courseFloresta(),
+  canion: courseCanion(),
+  orbital: courseOrbital(),
+  forja: courseForja(),
+  fabrica: courseFabrica(),
+  gelo: courseGelo(),
+}
+
+/** O percurso da fase (desconhecida = a de sempre). */
+function courseOf(id                           )         {
+  return (id && (COURSES                          )[id]) || COURSES.cidade
 }
 
 // ── sim/body.ts ──────────────────────────────────────────────────────────────
@@ -380,9 +1160,15 @@ function sectionAt(z        ) {
 //
 // Passo fixo (GINCANA.step). Anda pela intenção (direção no mundo, 0–1),
 // pula, MERGULHA (para a frente; desliza de barriga e levanta), é derrubado
-// pelo que se mexe (barra, pêndulo, luva, bola: voa, cai, levanta), cai na
-// água (volta ao último posto) e chega. Mesmo código no aparelho (o meu
+// pelo que se mexe (barra, pêndulo, luva, bola, bloco: voa, cai, levanta), cai
+// na água (volta ao último posto) e chega. Mesmo código no aparelho (o meu
 // corpo e os computadores do treino) e na sala (os computadores da partida).
+//
+// Gincana 2.0 (2026-11-16, "como o Fall Guys"): SOBE NA BEIRA quando bate de
+// lado numa plataforma pulando (segurando AGARRAR alcança mais alto), é levado
+// pela plataforma que anda, pelo disco que gira e pela esteira, escorrega no
+// gelo, é lançado pelo cogumelo, passa pela porta de verdade e bate na falsa,
+// e é empurrado pelos blocos. Quem é AGARRADO (race.ts decide) anda devagar.
 
 /** Estados do corpo. */
 const MODE = {
@@ -399,6 +1185,8 @@ const MODE = {
   WATER: 5,
   /** Chegou. */
   DONE: 6,
+  /** Subindo na beira de uma plataforma. */
+  CLIMB: 7,
 }         
 
                          
@@ -414,7 +1202,7 @@ const MODE = {
                                   
              
               
-                                                                               
+                                                                                      
                
                                                       
                 
@@ -436,6 +1224,23 @@ const MODE = {
             
             
             
+                                                                                                   
+             
+                                           
+              
+                                                                                          
+              
+               
+                  
+                                                                   
+              
+                                                   
+             
+             
+             
+             
+             
+             
  
 
                             
@@ -445,118 +1250,209 @@ const MODE = {
                                                        
                
                
+                           
+                
  
 
-/** O mundo num instante: tempo da prova, semente das bolas e os ladrilhos. */
+/** O mundo num instante: tempo da prova, semente, o percurso, os ladrilhos e as portas. */
                            
            
               
+                
                                                                     
                      
                                                                  
                  
+                                                          
+                  
+                                                                
+                     
  
 
 /** Acontecimentos de um passo (para som, aviso e animação). */
                       
                                   
                                   
-                                                                         
+                                                                                             
                                                           
                                   
                                             
                                                
                                
                                              
+                                    
+                                   
+                                                            
+                                                 
 
-const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false }
+const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
 
-function newRunner(slot        )         {
-  const p = spawnAt(0, slot)
-  return { slot, x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, facing: 0, ground: true, air: 0, mode: MODE.RUN, timer: 0, shield: 0, hitCool: 0, cp: 0, fin: -1, launch: GINCANA.jumpV, jumpBuf: 0, boost: 0, took: LOGOS.map(() => -99), px: p.x, py: p.y, pz: p.z }
+function newWorld(course        , seed        , t        )           {
+  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), doors: new Float64Array(course.doors.length).fill(-1) }
+}
+
+function newRunner(course        , slot        )         {
+  const p = spawnAt(course, 0, slot)
+  return {
+    slot,
+    x: p.x,
+    y: p.y,
+    z: p.z,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    facing: 0,
+    ground: true,
+    air: 0,
+    mode: MODE.RUN,
+    timer: 0,
+    shield: 0,
+    hitCool: 0,
+    cp: 0,
+    fin: -1,
+    launch: GINCANA.jumpV,
+    jumpBuf: 0,
+    boost: 0,
+    took: course.logos.map(() => -99),
+    px: p.x,
+    py: p.y,
+    pz: p.z,
+    pad: -1,
+    fric: 1,
+    grab: -1,
+    grabT: 0,
+    grabCool: 0,
+    held: 0,
+    cx0: 0,
+    cy0: 0,
+    cz0: 0,
+    cx1: 0,
+    cy1: 0,
+    cz1: 0,
+  }
 }
 
 const EDGE = 0.12
 
-/** Chão mais alto até `reach` sob (x, z): altura e ladrilho (−1 = não é ladrilho); y = −∞ sem chão. */
+/** (x, z) no referencial da caixa `p` no tempo t (centro e giro de agora). */
+function padLocal(p     , t        , x        , z        ) {
+  const sh = padShift(p, t)
+  const dx = x - (p.x + sh.dx)
+  const dz = z - (p.z + sh.dz)
+  const a = padRot(p, t)
+  const c = Math.cos(a)
+  const s = Math.sin(a)
+  return { lx: dx * c - dz * s, lz: dx * s + dz * c, cx: p.x + sh.dx, cz: p.z + sh.dz, c, s }
+}
+
+/**
+ * Chão mais alto até `reach` sob (x, z): altura, ladrilho (−1), plataforma
+ * (−1 = coluna/ladrilho) e o lançamento do cogumelo (0 = nenhum); y = −∞ sem chão.
+ */
 function groundUnder(w          , x        , z        , reach        ) {
+  const C = w.course
   let best = -Infinity
   let tile = -1
-  for (const p of PADS) {
+  let pad = -1
+  let bounce = 0
+  for (let i = 0; i < C.pads.length; i++) {
+    const p = C.pads[i]
     let top        
     if (p.k === 0) {
-      if (Math.hypot(x - p.x, z - p.z) > p.r + EDGE) continue
+      const sh = padShift(p, w.t)
+      if (Math.hypot(x - p.x - sh.dx, z - p.z - sh.dz) > p.r + EDGE) continue
       top = p.y
     } else {
-      const dx = x - p.x
-      const dz = z - p.z
-      const c = Math.cos(p.rot)
-      const s = Math.sin(p.rot)
-      const lx = dx * c - dz * s
-      const lz = dx * s + dz * c
-      if (Math.abs(lx) > p.hx + EDGE || Math.abs(lz) > p.hz + EDGE) continue
-      top = p.k === 2 ? rampTop(z) : p.y
+      const L = padLocal(p, w.t, x, z)
+      if (Math.abs(L.lx) > p.hx + EDGE || Math.abs(L.lz) > p.hz + EDGE) continue
+      top = p.k === 2 ? rampTop(C, z) : p.y
     }
     if (top <= reach && top > best) {
       best = top
       tile = -1
+      pad = i
+      bounce = 0
     }
   }
-  for (const q of POSTS) {
-    if (q.y1 <= reach && q.y1 > best && Math.hypot(x - q.x, z - q.z) <= q.r) {
+  for (const q of C.posts) {
+    if (q.y1 <= reach && q.y1 > best && Math.hypot(x - q.x, z - q.z) <= q.r + (q.b > 0 ? EDGE : 0)) {
       best = q.y1
       tile = -1
+      pad = -1
+      bounce = q.b
     }
   }
-  if (z > TILES[0].z - 2 && z < TILES[TILES.length - 1].z + 2) {
-    for (let i = 0; i < TILES.length; i++) {
-      const q = TILES[i]
-      if (Math.abs(x - q.x) > q.h + EDGE || Math.abs(z - q.z) > q.h + EDGE) continue
-      if (!tileUp(w.tiles[i], w.t)) continue
-      if (DECK <= reach && DECK > best) {
-        best = DECK
-        tile = i
-      }
+  for (let i = 0; i < C.tiles.length; i++) {
+    const q = C.tiles[i]
+    if (Math.abs(z - q.z) > q.h + 1 || !onTile(q, x, z, EDGE)) continue
+    if (!tileUp(C, w.tiles[i], w.t)) continue
+    if (q.y <= reach && q.y > best) {
+      best = q.y
+      tile = i
+      pad = -1
+      bounce = 0
     }
   }
-  return { y: best, tile }
+  return { y: best, tile, pad, bounce }
 }
 
-/** Empurra para fora das paredes (lado das plataformas acima do pé) e das colunas. */
-function pushWalls(b        , w          ) {
+/** Beira encontrada ao bater de lado: tampo e normal para fora. */
+                 
+             
+            
+            
+ 
+
+/**
+ * Empurra para fora das paredes (lado das plataformas acima do pé), das
+ * colunas, das portas falsas e dos blocos. Devolve a beira mais baixa em que
+ * bateu (para subir) e se um bloco empurrou forte.
+ */
+function pushWalls(b        , w          , out                   )               {
+  const C = w.course
   const R = GINCANA.bodyR
   const H = GINCANA.bodyH
   const lift = b.y + GINCANA.stepUp
-  for (const p of PADS) {
-    const top = p.k === 2 ? rampTop(b.z) : p.y
+  let ledge               = null
+  const sawLedge = (top        , nx        , nz        ) => {
+    if (!ledge || top < ledge.top) ledge = { top, nx, nz }
+  }
+  for (const p of C.pads) {
+    const top = p.k === 2 ? rampTop(C, b.z) : p.y
     if (top <= lift || top - p.d >= b.y + H) continue
     if (p.k === 0) {
-      const dx = b.x - p.x
-      const dz = b.z - p.z
+      const sh = padShift(p, w.t)
+      const cx = p.x + sh.dx
+      const cz = p.z + sh.dz
+      const dx = b.x - cx
+      const dz = b.z - cz
       const d = Math.hypot(dx, dz)
       if (d >= p.r + R || d < 1e-6) continue
-      // por dentro: só se veio de baixo (caiu ao lado) — empurra para fora
-      b.x = p.x + (dx / d) * (p.r + R)
-      b.z = p.z + (dz / d) * (p.r + R)
+      b.x = cx + (dx / d) * (p.r + R)
+      b.z = cz + (dz / d) * (p.r + R)
+      sawLedge(top, dx / d, dz / d)
       continue
     }
-    const c = Math.cos(p.rot)
-    const s = Math.sin(p.rot)
-    const dx = b.x - p.x
-    const dz = b.z - p.z
-    const lx = dx * c - dz * s
-    const lz = dx * s + dz * c
-    const ox = p.hx + R - Math.abs(lx)
-    const oz = p.hz + R - Math.abs(lz)
+    const L = padLocal(p, w.t, b.x, b.z)
+    const ox = p.hx + R - Math.abs(L.lx)
+    const oz = p.hz + R - Math.abs(L.lz)
     if (ox <= 0 || oz <= 0) continue
-    let nx = lx
-    let nz = lz
-    if (ox < oz) nx = Math.sign(lx || 1) * (p.hx + R)
-    else nz = Math.sign(lz || 1) * (p.hz + R)
-    b.x = p.x + nx * c + nz * s
-    b.z = p.z - nx * s + nz * c
+    let nx = L.lx
+    let nz = L.lz
+    let ux = 0
+    let uz = 0
+    if (ox < oz) {
+      nx = Math.sign(L.lx || 1) * (p.hx + R)
+      ux = Math.sign(L.lx || 1)
+    } else {
+      nz = Math.sign(L.lz || 1) * (p.hz + R)
+      uz = Math.sign(L.lz || 1)
+    }
+    b.x = L.cx + nx * L.c + nz * L.s
+    b.z = L.cz - nx * L.s + nz * L.c
+    sawLedge(top, ux * L.c + uz * L.s, -ux * L.s + uz * L.c)
   }
-  for (const q of POSTS) {
+  for (const q of C.posts) {
     if (q.y1 <= lift || q.y0 >= b.y + H) continue
     const dx = b.x - q.x
     const dz = b.z - q.z
@@ -566,19 +1462,70 @@ function pushWalls(b        , w          ) {
     b.z = q.z + (dz / d) * (q.r + R)
   }
   // ladrilhos caídos não seguram, e os de pé têm lado
-  if (b.z > TILES[0].z - 2 && b.z < TILES[TILES.length - 1].z + 2 && DECK > lift) {
-    for (let i = 0; i < TILES.length; i++) {
-      const q = TILES[i]
-      if (!tileUp(w.tiles[i], w.t) || DECK - 0.6 >= b.y + H) continue
-      const lx = b.x - q.x
-      const lz = b.z - q.z
-      const ox = q.h + R - Math.abs(lx)
-      const oz = q.h + R - Math.abs(lz)
-      if (ox <= 0 || oz <= 0) continue
-      if (ox < oz) b.x = q.x + Math.sign(lx || 1) * (q.h + R)
-      else b.z = q.z + Math.sign(lz || 1) * (q.h + R)
+  for (let i = 0; i < C.tiles.length; i++) {
+    const q = C.tiles[i]
+    if (q.y <= lift || Math.abs(b.z - q.z) > q.h + R + 0.2 || !tileUp(C, w.tiles[i], w.t) || q.y - 0.6 >= b.y + H) continue
+    const lx = b.x - q.x
+    const lz = b.z - q.z
+    if (q.k === 1) {
+      const d = Math.hypot(lx, lz)
+      if (d >= q.h + R || d < 1e-6) continue
+      b.x = q.x + (lx / d) * (q.h + R)
+      b.z = q.z + (lz / d) * (q.h + R)
+      continue
+    }
+    const ox = q.h + R - Math.abs(lx)
+    const oz = q.h + R - Math.abs(lz)
+    if (ox <= 0 || oz <= 0) continue
+    if (ox < oz) b.x = q.x + Math.sign(lx || 1) * (q.h + R)
+    else b.z = q.z + Math.sign(lz || 1) * (q.h + R)
+  }
+  // portas: a falsa é parede; a de verdade abre quando alguém encosta
+  for (let i = 0; i < C.doors.length; i++) {
+    const d = C.doors[i]
+    const T = 0.3
+    if (Math.abs(b.z - d.z) >= T + R || Math.abs(b.x - d.x) >= d.hw + R * 0.2 || b.y >= DECK + d.h || b.y + H <= DECK) continue
+    if (w.open[i]) {
+      if (w.doors[i] < 0) {
+        w.doors[i] = w.t
+        out?.push({ type: "door", i, open: true, slot: b.slot })
+      }
+      continue
+    }
+    if (w.doors[i] === -1) {
+      // bateu numa falsa: marca (a interface mostra o "tum") só uma vez por porta
+      w.doors[i] = -2
+      out?.push({ type: "door", i, open: false, slot: b.slot })
+    }
+    // empurra para trás (de onde veio) — as portas da mesma fileira se encostam: nunca de lado
+    b.z = d.z + Math.sign(b.z - d.z || -1) * (T + R)
+    b.vz = 0
+  }
+  // blocos que andam e empurram
+  for (const q of C.pushers) {
+    if (b.y >= q.y + q.h || b.y + H <= q.y) continue
+    const P = pusherAt(q, w.t)
+    const lx = b.x - P.x
+    const lz = b.z - P.z
+    const ox = q.hx + R - Math.abs(lx)
+    const oz = q.hz + R - Math.abs(lz)
+    if (ox <= 0 || oz <= 0) continue
+    let nx = 0
+    let nz = 0
+    if (ox < oz) {
+      nx = Math.sign(lx || 1)
+      b.x = P.x + nx * (q.hx + R)
+    } else {
+      nz = Math.sign(lz || 1)
+      b.z = P.z + nz * (q.hz + R)
+    }
+    const vn = P.vx * nx + P.vz * nz
+    if (vn > 1.5) {
+      const mag = Math.max(5.5, vn * 1.35)
+      knock(b, nx * mag, 3.5, nz * mag, "push", out)
     }
   }
+  return ledge
 }
 
 /** Distância do ponto ao segmento vertical do corpo (x, z, de y+R a y+H−R). */
@@ -588,7 +1535,7 @@ function sphereGap(b        , x        , y        , z        ) {
   return Math.hypot(b.x - x, b.z - z, cy - y)
 }
 
-function knock(b        , kx        , ky        , kz        , by                                    , out                   ) {
+function knock(b        , kx        , ky        , kz        , by                                                        , out                   ) {
   if (b.shield > 0 || b.hitCool > 0 || b.mode === MODE.WATER || b.mode === MODE.DONE) return
   b.vx = kx + b.vx * 0.15
   b.vz = kz + b.vz * 0.15
@@ -598,85 +1545,82 @@ function knock(b        , kx        , ky        , kz        , by                
   b.mode = MODE.KNOCK
   b.timer = GINCANA.stunT
   b.hitCool = 1.4
+  b.grab = -1
   out?.push({ type: "hit", slot: b.slot, by })
 }
 
 /** O que se mexe: barras, pêndulos, luvas e bolas. */
 function hazards(b        , w          , out                   ) {
+  const C = w.course
   const R = GINCANA.bodyR
   const H = GINCANA.bodyH
   const t = w.t
-  if (b.z < 100) {
-    for (const s of SWEEPERS) {
-      const cx = b.x - s.x
-      const cz = b.z - s.z
-      if (Math.hypot(cx, cz) > s.len + R + s.r) continue
-      if (b.y >= s.y + s.r || b.y + H <= s.y - s.r) continue
-      // quem acabou de levar (ou voltou agora) deixa a barra passar: não é arrastado até a beira
-      if (b.hitCool > 0 || b.shield > 0) continue
-      const a = sweeperAngle(s, t)
-      const dx = Math.sin(a)
-      const dz = Math.cos(a)
-      const along = Math.max(s.both ? -s.len : 0, Math.min(s.len, cx * dx + cz * dz))
-      const px = s.x + dx * along
-      const pz = s.z + dz * along
-      const gap = Math.hypot(b.x - px, b.z - pz)
-      if (gap >= R + s.r) continue
-      // velocidade da barra no ponto: ω × r (perpendicular à barra)
-      const sp = s.w * along
-      let tx = Math.cos(a) * Math.sign(sp || 1)
-      let tz = -Math.sin(a) * Math.sign(sp || 1)
-      if (Math.abs(along) < 0.6) {
-        const g = gap || 1
-        tx = (b.x - px) / g
-        tz = (b.z - pz) / g
-      }
-      const mag = Math.max(5, Math.abs(sp) * 0.75 + 2.5)
-      knock(b, tx * mag, 4.5, tz * mag, "bar", out)
-      // fora da barra de qualquer jeito (não atravessa)
+  for (const s of C.sweepers) {
+    const cx = b.x - s.x
+    const cz = b.z - s.z
+    if (Math.abs(cz) > s.len + 1 || Math.hypot(cx, cz) > s.len + R + s.r) continue
+    if (b.y >= s.y + s.r || b.y + H <= s.y - s.r) continue
+    // quem acabou de levar (ou voltou agora) deixa a barra passar: não é arrastado até a beira
+    if (b.hitCool > 0 || b.shield > 0) continue
+    const a = sweeperAngle(s, t)
+    const dx = Math.sin(a)
+    const dz = Math.cos(a)
+    const along = Math.max(s.both ? -s.len : 0, Math.min(s.len, cx * dx + cz * dz))
+    const px = s.x + dx * along
+    const pz = s.z + dz * along
+    const gap = Math.hypot(b.x - px, b.z - pz)
+    if (gap >= R + s.r) continue
+    // velocidade da barra no ponto: ω × r (perpendicular à barra)
+    const sp = s.w * along
+    let tx = Math.cos(a) * Math.sign(sp || 1)
+    let tz = -Math.sin(a) * Math.sign(sp || 1)
+    if (Math.abs(along) < 0.6) {
       const g = gap || 1
-      b.x = px + ((b.x - px) / g) * (R + s.r + 0.02)
-      b.z = pz + ((b.z - pz) / g) * (R + s.r + 0.02)
+      tx = (b.x - px) / g
+      tz = (b.z - pz) / g
+    }
+    const mag = Math.max(5, Math.abs(sp) * 0.75 + 2.5)
+    knock(b, tx * mag, 4.5, tz * mag, "bar", out)
+    // fora da barra de qualquer jeito (não atravessa)
+    const g = gap || 1
+    b.x = px + ((b.x - px) / g) * (R + s.r + 0.02)
+    b.z = pz + ((b.z - pz) / g) * (R + s.r + 0.02)
+  }
+  for (const p of C.pendulums) {
+    if (Math.abs(b.z - p.z) > p.R + R + 0.2) continue
+    const q = pendulumAt(p, t)
+    if (sphereGap(b, q.x, q.y, q.z) >= p.R + R) continue
+    const dir = Math.abs(q.vx) > 1 ? Math.sign(q.vx) : Math.sign(b.x - q.x || 1)
+    knock(b, dir * 9, 4.5, Math.sign(b.z - q.z || 1) * 1.5, "swing", out)
+  }
+  for (const g of C.gloves) {
+    if (Math.abs(b.z - g.z) > g.R + R + 0.2) continue
+    const q = gloveAt(g, t)
+    const gap = sphereGap(b, q.x, g.y, g.z)
+    if (gap >= g.R + R) continue
+    if (q.hot && q.e < 0.98) knock(b, g.dir * 12.5, 5, Math.sign(b.z - g.z || 1) * 1.2, "glove", out)
+    else {
+      // parada ou voltando: só não deixa atravessar
+      const dx = b.x - q.x
+      const dz = b.z - g.z
+      const d = Math.hypot(dx, dz) || 1
+      b.x = q.x + (dx / d) * (g.R + R)
+      b.z = g.z + (dz / d) * (g.R + R)
     }
   }
-  if (b.z > 85 && b.z < 140) {
-    for (const p of PENDULUMS) {
-      if (Math.abs(b.z - p.z) > p.R + R + 0.2) continue
-      const q = pendulumAt(p, t)
-      if (sphereGap(b, q.x, q.y, q.z) >= p.R + R) continue
-      const dir = Math.abs(q.vx) > 1 ? Math.sign(q.vx) : Math.sign(b.x - q.x || 1)
-      knock(b, dir * 9, 4.5, Math.sign(b.z - q.z || 1) * 1.5, "swing", out)
-    }
-  }
-  if (b.z > 140 && b.z < 185) {
-    for (const g of GLOVES) {
-      if (Math.abs(b.z - g.z) > g.R + R + 0.2) continue
-      const q = gloveAt(g, t)
-      const gap = sphereGap(b, q.x, g.y, g.z)
-      if (gap >= g.R + R) continue
-      if (q.hot && q.e < 0.98) knock(b, g.dir * 12.5, 5, Math.sign(b.z - g.z || 1) * 1.2, "glove", out)
-      else {
-        // parada ou voltando: só não deixa atravessar
-        const dx = b.x - q.x
-        const dz = b.z - g.z
-        const d = Math.hypot(dx, dz) || 1
-        b.x = q.x + (dx / d) * (g.R + R)
-        b.z = g.z + (dz / d) * (g.R + R)
-      }
-    }
-  }
-  if (b.z > 216 && w.balls.length) {
+  if (C.balls && w.balls.length && C.ramp && b.z > C.ramp.z0 - 5) {
     const bl = w.balls
+    const BR = C.balls.R
     for (let k = 0; k < bl.length; k += 5) {
-      if (sphereGap(b, bl[k], bl[k + 1], bl[k + 2]) >= BALLS.R + R) continue
+      if (sphereGap(b, bl[k], bl[k + 1], bl[k + 2]) >= BR + R) continue
       knock(b, Math.sign(b.x - bl[k] || 1) * 3, 5, -9, "ball", out)
     }
   }
 }
 
 /** Volta ao último posto (caiu na água ou ficou preso). */
-function respawn(b        ) {
-  const p = spawnAt(b.cp, b.slot)
+function respawn(b        , course        ) {
+  const p = spawnAt(course, b.cp, b.slot)
   b.x = p.x
   b.y = p.y
   b.z = p.z
@@ -688,14 +1632,51 @@ function respawn(b        ) {
   b.timer = 0
   b.shield = GINCANA.shieldT
   b.hitCool = 0
+  b.pad = -1
+  b.fric = 1
+  b.grab = -1
+}
+
+/** Leva quem está em cima da plataforma que anda, do disco que gira e da esteira. */
+function carry(b        , w          , dt        ) {
+  if (!b.ground || b.pad < 0) return
+  const p = w.course.pads[b.pad]
+  if (!p) return
+  if (p.mw !== 0) {
+    const a = padShift(p, w.t - dt)
+    const c = padShift(p, w.t)
+    b.x += c.dx - a.dx
+    b.z += c.dz - a.dz
+  }
+  if (p.spin !== 0) {
+    const sh = padShift(p, w.t)
+    const cx = p.x + sh.dx
+    const cz = p.z + sh.dz
+    const da = p.spin * dt
+    // giro para o mesmo lado da caixa (padLocal usa a mesma convenção)
+    const c = Math.cos(da)
+    const s = Math.sin(da)
+    const dx = b.x - cx
+    const dz = b.z - cz
+    b.x = cx + dx * c + dz * s
+    b.z = cz - dx * s + dz * c
+    b.facing += da
+  }
+  if (p.bx !== 0 || p.bz !== 0) {
+    b.x += p.bx * dt
+    b.z += p.bz * dt
+  }
 }
 
 function stepRunner(b        , it           , w          , out                   , dt = GINCANA.step) {
   const T = GINCANA
+  const C = w.course
   b.shield = Math.max(0, b.shield - dt)
   b.boost = Math.max(0, b.boost - dt)
   b.jumpBuf = it.jump ? T.jumpBuffer : Math.max(0, b.jumpBuf - dt)
   b.hitCool = Math.max(0, b.hitCool - dt)
+  b.held = Math.max(0, b.held - dt)
+  b.grabCool = Math.max(0, b.grabCool - dt)
   if (b.mode === MODE.WATER) {
     b.timer -= dt
     b.vy = Math.max(-3, b.vy - T.gravity * dt)
@@ -703,11 +1684,32 @@ function stepRunner(b        , it           , w          , out                  
     b.vx *= 0.9
     b.vz *= 0.9
     if (b.timer <= 0) {
-      respawn(b)
+      respawn(b, C)
       out?.push({ type: "back", slot: b.slot })
     }
     return
   }
+  if (b.mode === MODE.CLIMB) {
+    // sobe na beira: primeiro para cima, depois para dentro
+    b.timer -= dt
+    const k = Math.max(0, Math.min(1, 1 - b.timer / T.climbT))
+    const up = Math.min(1, k / 0.6)
+    const inn = Math.max(0, (k - 0.45) / 0.55)
+    b.x = b.cx0 + (b.cx1 - b.cx0) * inn
+    b.z = b.cz0 + (b.cz1 - b.cz0) * inn
+    b.y = b.cy0 + (b.cy1 - b.cy0) * (1 - (1 - up) * (1 - up))
+    b.vx = b.vy = b.vz = 0
+    if (b.timer <= 0) {
+      b.mode = MODE.RUN
+      b.ground = true
+      b.air = 0
+      b.y = b.cy1
+      const g = groundUnder(w, b.x, b.z, b.y + 0.1)
+      b.pad = g.pad
+    }
+    return
+  }
+  carry(b, w, dt)
   const done = b.mode === MODE.DONE
   const free = b.mode === MODE.RUN || done
   let mx = done ? 0 : it.mx
@@ -719,10 +1721,12 @@ function stepRunner(b        , it           , w          , out                  
   }
 
   if (free) {
-    const run = T.run * (b.boost > 0 ? T.boost : 1)
+    let run = T.run * (b.boost > 0 ? T.boost : 1)
+    if (b.held > 0) run *= T.heldRun
+    if (b.grab >= 0) run *= T.grabRun
     const tx = mx * run
     const tz = mz * run
-    const a = T.accel * (b.boost > 0 ? 1.3 : 1) * (b.ground ? 1 : T.airControl) * dt
+    const a = T.accel * (b.boost > 0 ? 1.3 : 1) * (b.ground ? b.fric : T.airControl) * dt
     const dvx = tx - b.vx
     const dvz = tz - b.vz
     const dl = Math.hypot(dvx, dvz)
@@ -754,29 +1758,53 @@ function stepRunner(b        , it           , w          , out                  
       b.ground = false
       b.air = T.coyote
       b.mode = MODE.DIVE
+      b.grab = -1
       out?.push({ type: "dive", slot: b.slot })
     }
   } else if (b.ground) {
-    // de barriga, levantando ou derrubado no chão: escorrega até parar
-    const k = Math.max(0, 1 - (b.mode === MODE.SLIDE ? 5 : 9) * dt)
+    // de barriga, levantando ou derrubado no chão: escorrega até parar (no gelo, bem mais)
+    const k = Math.max(0, 1 - (b.mode === MODE.SLIDE ? 5 : 9) * Math.max(0.15, b.fric) * dt)
     b.vx *= k
     b.vz *= k
   }
 
   b.x += b.vx * dt
   b.z += b.vz * dt
-  pushWalls(b, w)
+  const wasAirY = b.y
+  const ledge = pushWalls(b, w, out)
   hazards(b, w, out)
+
+  // bateu de lado numa plataforma no ar, com o tampo ao alcance: sobe na beira
+  if (ledge && !b.ground && (b.mode === MODE.RUN || b.mode === MODE.DIVE) && b.vy < 7) {
+    const L = ledge         
+    const high = L.top - wasAirY
+    if (high > 0 && high <= (it.grab ? T.ledgeGrab : T.ledge)) {
+      b.mode = MODE.CLIMB
+      b.timer = T.climbT
+      b.cx0 = b.x
+      b.cz0 = b.z
+      b.cy0 = b.y
+      b.cx1 = b.x - L.nx * (GINCANA.bodyR + 0.25)
+      b.cz1 = b.z - L.nz * (GINCANA.bodyR + 0.25)
+      b.cy1 = L.top
+      b.grab = -1
+      out?.push({ type: "climb", slot: b.slot })
+      return
+    }
+  }
 
   const wasGround = b.ground
   if (!b.ground) b.vy -= T.gravity * dt
   const prevY = b.y
   b.y += b.vy * dt
-  const reach = wasGround ? Math.max(prevY, b.y) + T.stepUp : Math.max(prevY, b.y) + 0.02
+  // no chão sobe degrau; caindo, pega uma beirinha (borda que ficou um pouco acima do pé)
+  const reach = wasGround ? Math.max(prevY, b.y) + T.stepUp : b.vy <= 0 ? b.y + 0.25 : Math.max(prevY, b.y) + 0.02
   const g = groundUnder(w, b.x, b.z, reach)
   if (b.vy <= 0 && g.y > -Infinity && b.y <= g.y + (wasGround ? 0.06 : 0)) {
     b.y = g.y
     b.vy = 0
+    b.pad = g.pad
+    b.fric = g.pad >= 0 ? C.pads[g.pad].f : 1
     if (!b.ground) {
       b.ground = true
       // pousou: mergulho vira deslize; derrubado fica no chão o resto do tempo
@@ -786,18 +1814,30 @@ function stepRunner(b        , it           , w          , out                  
       } else if (b.mode === MODE.KNOCK) b.timer = Math.max(b.timer, 0.35)
     }
     b.air = 0
-    if (g.tile >= 0 && (w.tiles[g.tile] < 0 || w.t - w.tiles[g.tile] >= TILE_TIME.warn + TILE_TIME.gone)) {
+    if (g.tile >= 0 && (w.tiles[g.tile] < 0 || w.t - w.tiles[g.tile] >= C.tileTime.warn + C.tileTime.gone)) {
       w.tiles[g.tile] = w.t
       out?.push({ type: "tile", i: g.tile })
+    }
+    if (g.bounce > 0) {
+      // cogumelo: lança para cima (o embalo de lado fica)
+      b.vy = g.bounce
+      b.launch = g.bounce
+      b.ground = false
+      b.air = T.coyote
+      b.pad = -1
+      if (b.mode === MODE.SLIDE) b.mode = MODE.RUN
+      out?.push({ type: "bounce", slot: b.slot })
     }
   } else if (wasGround && b.vy <= 0 && g.y > -Infinity && b.y - g.y <= 0.3) {
     // descendo a rampa: gruda
     b.y = g.y
     b.vy = 0
+    b.pad = g.pad
   } else {
     if (b.ground) b.vy = Math.min(b.vy, 0)
     b.ground = false
     b.air += dt
+    b.pad = -1
   }
 
   // relógio dos estados sem controle
@@ -816,41 +1856,43 @@ function stepRunner(b        , it           , w          , out                  
     b.mode = MODE.WATER
     b.timer = T.respawnT
     b.vy = Math.min(b.vy, -2)
+    b.grab = -1
     out?.push({ type: "splash", slot: b.slot, x: b.x, z: b.z })
     return
   }
   if (b.mode === MODE.DONE) return
   // logo da Freelandoo: turbo com brilho (cada corredor tem os seus)
-  for (let i = 0; i < LOGOS.length; i++) {
-    const L = LOGOS[i]
+  for (let i = 0; i < C.logos.length; i++) {
+    const L = C.logos[i]
     if (Math.abs(b.z - L.z) > T.logoR + 0.5 || w.t - b.took[i] < T.logoBack) continue
     if (Math.hypot(b.x - L.x, b.z - L.z) > T.logoR || b.y > L.y + 0.6 || b.y + T.bodyH < L.y - 0.6) continue
     b.took[i] = w.t
     b.boost = T.boostT
     out?.push({ type: "logo", slot: b.slot, i })
   }
-  const next = CHECKPOINTS[b.cp + 1]
+  const next = C.checkpoints[b.cp + 1]
   if (next && b.ground && b.z >= next.z - 1.5) {
     b.cp++
     out?.push({ type: "cp", slot: b.slot, cp: b.cp })
   }
-  if (b.z >= FINISH_Z && b.y >= FINISH_Y - 0.5) {
+  if (b.z >= C.finishZ && b.y >= C.finishY - 0.5) {
     b.fin = w.t
     b.mode = MODE.DONE
     b.timer = 0
+    b.grab = -1
     out?.push({ type: "finish", slot: b.slot, t: w.t })
   }
 }
 
 /** Dois corpos não ocupam o mesmo lugar: cada um sai metade (o que só aparece sai tudo). */
 function separate(a        , b        , moveB         ) {
-  if (a.mode === MODE.WATER || b.mode === MODE.WATER) return
-  if (Math.abs(a.y - b.y) > GINCANA.bodyH * 0.8) return
+  if (a.mode === MODE.WATER || b.mode === MODE.WATER) return false
+  if (Math.abs(a.y - b.y) > GINCANA.bodyH * 0.8) return false
   const dx = a.x - b.x
   const dz = a.z - b.z
   const d = Math.hypot(dx, dz)
   const min = GINCANA.bodyR * 1.8
-  if (d >= min) return
+  if (d >= min) return false
   const nx = d > 1e-4 ? dx / d : 1
   const nz = d > 1e-4 ? dz / d : 0
   const push = min - d
@@ -863,9 +1905,10 @@ function separate(a        , b        , moveB         ) {
     a.x += nx * push
     a.z += nz * push
   }
+  return true
 }
 
-/** Código de animação que viaja na rede. */
+/** Código de animação que viaja na rede (CLIMB usa o de levantar). */
 const ANIM = { IDLE: 0, RUN: 1, AIR: 2, DIVE: 3, SLIDE: 4, KNOCK: 5, RISE: 6, WATER: 7, WIN: 8 }         
 
 function runnerAnim(b        ) {
@@ -875,6 +1918,7 @@ function runnerAnim(b        ) {
     case MODE.SLIDE:
       return ANIM.SLIDE
     case MODE.RISE:
+    case MODE.CLIMB:
       return ANIM.RISE
     case MODE.KNOCK:
       return ANIM.KNOCK
@@ -891,11 +1935,15 @@ function runnerAnim(b        ) {
 // ── sim/bots.ts ──────────────────────────────────────────────────────────────
 // features/meu-mundo/gincana/sim/bots.ts — GINCANA (mm3d-47): os computadores.
 //
-// Cada computador tem uma rota sorteada pela semente (lado do carrossel, viga
-// das passarelas, faixa do campo, coluna do xadrez), um passo e uma
-// HABILIDADE (0,55–0,95) que decide quanto ele erra: pula a barra cedo ou
-// tarde, às vezes não espera o pêndulo nem a luva. Tudo determinístico pela
-// semente e pelo tempo — a sala e o treino no aparelho decidem igual.
+// Cada computador segue a ROTA da fase (courses.ts; a semente escolhe o lado,
+// a viga, a faixa), com um passo e uma HABILIDADE (0,55–0,95) que decide quanto
+// ele erra: pula a barra cedo ou tarde, às vezes não espera o pêndulo, a luva
+// ou o bloco. Gincana 2.0: o comportamento é genérico (vale em qualquer fase):
+// pula buraco quando o chão acaba e há chão adiante, espera a plataforma que
+// anda chegar, escolhe porta (as que já abriram primeiro; bateu numa falsa,
+// tenta a vizinha), troca de ladrilho quando o da frente treme, escolhe a
+// faixa sem bola na subida. Tudo determinístico pela semente e pelo tempo — a
+// sala e o treino no aparelho decidem igual.
 
 /** 0–1 determinístico. */
 function botRand(seed        , a        , b = 0) {
@@ -905,93 +1953,148 @@ function botRand(seed        , a        , b = 0) {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296
 }
 
-const tileX = (c        ) => (c - (TILE_COLS - 1) / 2) * TILE_PITCH
-
-function newBrain(seed        , slot        )           {
+function newBrain(w          , seed        , slot        )           {
   const r = (k        ) => botRand(seed, slot, k)
-  const side = r(1) < 0.5 ? -1 : 1
-  const route                             = []
-  const add = (x        , z        ) => route.push({ x, z })
-  // largada e carrossel
-  add(side * 1.2, 10)
-  add(side * 0.8, 15.5)
-  add(side * 2.5, 20)
-  add(side * 4.5, 29)
-  add(side * 4.5, 33)
-  add(side * 4.5, 38.5)
-  add(side * 4.5, 42)
-  add(side * 4.6, 46)
-  add(side * 4.5, 50)
-  add(side * 4.5, 53)
-  add(side * 4.5, 57.5)
-  add(side * 3.5, 61)
-  add(side * 3.2, 66)
-  add(side * 2, 71)
-  add(0, 75.8)
-  add(0, 80)
-  add(0, 84)
-  // passarelas
-  const L = [-5, 0, 5][Math.floor(r(2) * 3)]
-  const D = L !== 0 ? L : r(3) < 0.5 ? -5 : 5
-  add(L * 0.6, 88)
-  add(L, 90.4)
-  for (const z of [94, 98, 102, 105]) add(L, z)
-  for (let k = 1; k <= 4; k++) add(L + (D - L) * (k / 4), 105 + 3.5 * k)
-  for (const z of [122, 126, 130, 133.6]) add(D, z)
-  add(D * 0.4, 137)
-  // luvas
-  const F = [-2.2, 2.2, -4.8, 4.8][Math.floor(r(4) * 4)]
-  for (let z = 142; z <= 183; z += 3) add(F, z)
-  // xadrez (a coluna muda no caminho; aqui só o eixo z)
-  const col = Math.floor(r(5) * TILE_COLS)
-  add(tileX(col) * 0.6, 187)
-  add(tileX(col), 190.8)
-  for (let k = 0; k < TILE_ROWS; k++) add(tileX(col), TILE_Z0 + k * TILE_PITCH)
-  add(tileX(col) * 0.5, 213)
-  add(0, 216.5)
-  // subida e chegada
-  for (let z = 222; z <= 256; z += 2.5) add(0, z)
-  add(0, 259)
-  add(0, 264)
-  add(0, 269)
+  const route = w.course.route(r)
   const skill = 0.55 + r(6) * 0.4
-  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, col, laneX: 0, jumpCool: 0, stuck: 0, lastZ: -99, waited: 0, divesFinish: r(8) < skill - 0.35 }
+  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, lastZ: -99, waited: 0, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1 }
+}
+
+/** Escolhe a porta da fileira à frente: aberta (alguém passou) > desconhecida mais perto > a sorteada. */
+function pickDoor(br          , b        , w          , row        ) {
+  const C = w.course
+  let best = -1
+  let bestScore = -Infinity
+  for (let i = 0; i < C.doors.length; i++) {
+    const d = C.doors[i]
+    if (d.row !== row || br.bad.has(i)) continue
+    let score = -Math.abs(d.x - b.x) * 0.25 + botRand(br.seed, br.slot * 13 + i, row) * 1.5
+    if (w.doors[i] >= 0) score += 6 * br.skill + 1
+    if (w.doors[i] === -2) score -= 20
+    if (score > bestScore) {
+      bestScore = score
+      best = i
+    }
+  }
+  return best
 }
 
 /** Intenção do computador neste passo. */
 function botIntent(br          , b        , w          , dt = GINCANA.step)            {
-  const it            = { mx: 0, mz: 0, jump: false, dive: false }
+  const C = w.course
+  const it            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
   br.jumpCool = Math.max(0, br.jumpCool - dt)
   if (b.mode !== MODE.RUN || w.t < 0) return it
   const t = w.t
   // próximo ponto: o primeiro adiante (as rotas só andam para +z)
   let wi = 0
   while (wi < br.route.length - 1 && br.route[wi].z < b.z + 0.6) wi++
-  let tx = br.route[wi].x
-  const tz = br.route[wi].z
+  const wp = br.route[wi]
+  let tx = wp.x
+  let tz = wp.z
+  let go = br.pace
 
-  // xadrez: troca de coluna se o ladrilho da frente caiu ou está tremendo
-  if (b.z > 189 && b.z < 212) {
-    let row = 0
-    while (row < TILE_ROWS - 1 && TILE_Z0 + row * TILE_PITCH < b.z + 0.8) row++
-    const ok = (c        ) => {
-      if (c < 0 || c >= TILE_COLS) return false
-      const s = w.tiles[row * TILE_COLS + c]
-      return tileUp(s, t + 0.35) && !(s >= 0 && t - s < 0.8)
+  // plataforma que anda: mira onde ela está; espera ela chegar antes de passar
+  if (wp.m !== undefined) {
+    const p = C.pads[wp.m]
+    const sh = padShift(p, t)
+    tx = p.x + sh.dx
+    const edge = p.z + sh.dz - p.hz
+    const lead = (botRand(br.seed, br.slot * 7 + wp.m, Math.floor(t / 3)) - 0.5) * (1 - br.skill) * 2.5
+    if (b.z < edge && edge - b.z < 2.2 && Math.abs(tx + lead - b.x) > 1.4) go = 0
+    // em cima de uma que anda: acompanha a de baixo até alinhar
+    if (go === 0 && b.pad >= 0 && C.pads[b.pad].mw !== 0) {
+      const q = C.pads[b.pad]
+      tx = q.x + padShift(q, t).dx
     }
-    if (!ok(br.col)) {
-      const order = br.col < TILE_COLS / 2 ? [br.col + 1, br.col - 1, br.col + 2, br.col - 2] : [br.col - 1, br.col + 1, br.col - 2, br.col + 2]
-      for (const c of order) {
-        if (ok(c)) {
-          br.col = c
-          break
+  }
+
+  // portas: na fileira à frente, mira a escolhida; bateu numa falsa, troca
+  if (C.doors.length) {
+    for (let row = 0; row < C.doorOpen.length; row++) {
+      let dz = Infinity
+      for (const d of C.doors) if (d.row === row) dz = d.z
+      if (b.z > dz + 0.5 || dz - b.z > 7) continue
+      if (br.door < 0 || C.doors[br.door].row !== row || br.bad.has(br.door)) br.door = pickDoor(br, b, w, row)
+      // a escolhida se revelou falsa (alguém bateu) ou eu estou parado na frente dela
+      if (br.door >= 0 && w.doors[br.door] === -2 && !w.open[br.door] && botRand(br.seed, br.slot, row * 5 + br.door) < br.skill + 0.2) {
+        br.bad.add(br.door)
+        br.door = pickDoor(br, b, w, row)
+      }
+      if (br.door >= 0) {
+        const d = C.doors[br.door]
+        tx = d.x
+        tz = Math.max(tz, d.z + 1.2)
+        if (dz - b.z < 0.9 && Math.abs(b.x - d.x) < d.hw && !w.open[br.door]) {
+          br.bad.add(br.door)
+          br.door = pickDoor(br, b, w, row)
         }
       }
+      break
     }
-    tx = tileX(br.col)
   }
+
+  // ladrilhos: escolhe o próximo em pé (e não tremendo), perto da reta
+  if (C.tiles.length && !b.ground && br.tile >= 0) {
+    // no ar: segue mirando o ladrilho escolhido (freia no ar se for passar)
+    tx = C.tiles[br.tile].x
+    tz = C.tiles[br.tile].z
+  } else if (C.tiles.length && b.ground) {
+    let near = false
+    for (const q of C.tiles) if (Math.abs(q.z - b.z) < 3.2 && Math.abs(q.x - b.x) < 9) near = true
+    if (near) {
+      const ok = (i        ) => {
+        const s = w.tiles[i]
+        return tileUp(C, s, t + 0.35) && !(s >= 0 && t - s < 0.8)
+      }
+      let under = -1
+      for (let i = 0; i < C.tiles.length; i++) if (onTile(C.tiles[i], b.x, b.z, 0) && Math.abs(C.tiles[i].y - b.y) < 0.3) under = i
+      const cur = br.tile
+      const curQ = cur >= 0 ? C.tiles[cur] : null
+      if (!curQ || curQ.z < b.z + 0.8 || !ok(cur)) {
+        let best = -1
+        let bestScore = -Infinity
+        for (let i = 0; i < C.tiles.length; i++) {
+          const q = C.tiles[i]
+          const ahead = q.z - b.z
+          if (ahead < 1.2 || ahead > 3.6 || Math.abs(q.x - b.x) > 4.5 || !ok(i)) continue
+          const score = -Math.abs(q.x - b.x) - Math.abs(q.x) * 0.15 + botRand(br.seed, br.slot, i) * 0.8
+          if (score > bestScore) {
+            bestScore = score
+            best = i
+          }
+        }
+        // nada firme adiante e estou num ladrilho (que já treme): o firme mais perto, para qualquer lado
+        // chão firme (plataforma) logo à frente: segue a rota
+        const solid = groundUnder(w, b.x, b.z + 2.4, b.y + 0.5)
+        if (best < 0 && solid.pad >= 0 && solid.y > b.y - 0.5) under = -2
+        if (best < 0 && under >= 0) {
+          let bd = Infinity
+          for (let i = 0; i < C.tiles.length; i++) {
+            if (i === under || !ok(i)) continue
+            const dd = Math.hypot(C.tiles[i].x - b.x, C.tiles[i].z - b.z)
+            if (dd < 3.8 && dd < bd) {
+              bd = dd
+              best = i
+            }
+          }
+        }
+        br.tile = best
+      }
+      if (br.tile >= 0) {
+        tx = C.tiles[br.tile].x
+        tz = C.tiles[br.tile].z
+      } else if (under === -1) {
+        // na beira, sem ladrilho firme à frente: espera voltarem
+        let ahead = false
+        for (const q of C.tiles) if (q.z - b.z > 0.5 && q.z - b.z < 3.2) ahead = true
+        if (ahead && botRand(br.seed, br.slot, 900 + Math.floor(t)) < br.skill + 0.25) go = 0
+      }
+    } else br.tile = -1
+  }
+
   // subida: a faixa mais livre das bolas que vêm
-  if (b.z > RAMP.z0 - 2 && b.z < RAMP.z1 + 0.5) {
+  if (C.ramp && C.balls && b.z > C.ramp.z0 - 2 && b.z < C.ramp.z1 + 0.5) {
     const gaps = [-5.4, -2.9, 0, 2.9, 5.4]
     let best = br.laneX
     let bestScore = -Infinity
@@ -1002,7 +2105,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
         const ahead = bl[k + 2] - b.z
         if (ahead < -1 || ahead > 9) continue
         const dx = Math.abs(bl[k] - gx)
-        if (dx < BALLS.R + 1) score -= (10 - ahead) * (BALLS.R + 1 - dx)
+        if (dx < C.balls.R + 1) score -= (10 - ahead) * (C.balls.R + 1 - dx)
       }
       if (score > bestScore) {
         bestScore = score
@@ -1011,7 +2114,13 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     }
     // os menos hábeis demoram a perceber
     if (botRand(br.seed, br.slot, Math.floor(t * 4)) < br.skill) br.laneX = best
-    tx = br.laneX
+    tx = C.ramp.x + br.laneX
+  }
+
+  // esteira: corre contra ela (mira um pouco além)
+  if (b.pad >= 0) {
+    const p = C.pads[b.pad]
+    if (p.bx !== 0) tx -= p.bx * 0.35
   }
 
   let dx = tx - b.x
@@ -1019,9 +2128,9 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   const d = Math.hypot(dx, dz) || 1
   dx /= d
   dz /= d
-  // desvia das colunas (pilar do carrossel, frades do campo)
-  for (const q of POSTS) {
-    if (q.y1 <= b.y + GINCANA.stepUp || q.y0 > b.y + 1) continue
+  // desvia das colunas (pilar, frade, caixa) — o cogumelo é chão
+  for (const q of C.posts) {
+    if (q.b > 0 || q.y1 <= b.y + GINCANA.stepUp || q.y0 > b.y + 1) continue
     const ox = q.x - b.x
     const oz = q.z - b.z
     const ahead = ox * dx + oz * dz
@@ -1035,46 +2144,56 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     dz += -dx * s * k * 0.2
   }
   const m = Math.hypot(dx, dz) || 1
-  let go = br.pace
   it.mx = (dx / m) * go
   it.mz = (dz / m) * go
+  const vRun = GINCANA.run * Math.max(0.3, br.pace)
 
   // pêndulo adiante na mesma linha: espera passar (os menos hábeis às vezes vão)
-  if (b.z > 86 && b.z < 134) {
-    for (let i = 0; i < PENDULUMS.length; i++) {
-      const p = PENDULUMS[i]
-      const ahead = p.z - b.z
-      // decide entre 4,6 e 2,4 m (freia em ~0,6 m e fica fora do alcance); mais perto, vai
-      // (a bola do vizinho também alcança: confere todos os que balançam até aqui)
-      if (ahead < 2.4 || ahead > 4.6 || Math.abs(p.x - b.x) > p.len * Math.sin(p.amp) + 2) continue
-      // a bola passa pela faixa enquanto eu atravesso? (entrar e sair do alcance dela)
-      const reach = p.R + GINCANA.bodyR + 0.3
-      // onde eu estarei (na viga diagonal o x muda no caminho)
-      const slope = it.mx / Math.max(0.2, it.mz)
-      let near = false
-      for (let k = 0; k <= 4; k++) {
-        const dz = ahead - reach + (2 * reach * k) / 4
-        const q = pendulumAt(p, t + dz / (GINCANA.run * br.pace))
-        if (Math.abs(q.x - (b.x + slope * dz)) < reach) near = true
-      }
-      if (near && botRand(br.seed, br.slot * 97 + i, Math.floor(t / 2.86)) < br.skill + 0.05) go = 0
+  for (let i = 0; i < C.pendulums.length; i++) {
+    const p = C.pendulums[i]
+    const ahead = p.z - b.z
+    // decide entre 4,6 e 2,4 m (freia em ~0,6 m e fica fora do alcance); mais perto, vai
+    if (ahead < 2.4 || ahead > 4.6 || Math.abs(p.x - b.x) > p.len * Math.sin(p.amp) + 2) continue
+    const reach = p.R + GINCANA.bodyR + 0.3
+    const slope = it.mx / Math.max(0.2, it.mz)
+    let near = false
+    for (let k = 0; k <= 4; k++) {
+      const dz2 = ahead - reach + (2 * reach * k) / 4
+      const q = pendulumAt(p, t + dz2 / vRun)
+      if (Math.abs(q.x - (b.x + slope * dz2)) < reach) near = true
     }
+    if (near && botRand(br.seed, br.slot * 97 + i, Math.floor(t / 2.86)) < br.skill + 0.05) go = 0
   }
   // luva prestes a socar na faixa por onde vai passar: espera
-  if (b.z > 140 && b.z < 184) {
-    for (let i = 0; i < GLOVES.length; i++) {
-      const g = GLOVES[i]
-      const ahead = g.z - b.z
-      if (ahead < 1.3 || ahead > 3.4) continue
-      const enter = (ahead - 1.6) / GINCANA.run
-      const leave = (ahead + 1.6) / GINCANA.run
-      let hot = false
-      for (const f of [0, 0.5, 1]) {
-        const q = gloveAt(g, t + Math.max(0, enter + (leave - enter) * f))
-        if (q.hot || q.u > 0.5) hot = true
-      }
-      if (hot && botRand(br.seed, br.slot * 89 + i, Math.floor(t / 2.6)) < br.skill + 0.1) go = 0
+  for (let i = 0; i < C.gloves.length; i++) {
+    const g = C.gloves[i]
+    const ahead = g.z - b.z
+    if (ahead < 1.3 || ahead > 3.4) continue
+    // a luva alcança o meu x?
+    const tipMax = g.x0 + g.dir * (g.reach + g.R)
+    if ((g.dir > 0 && b.x > tipMax + 0.6) || (g.dir < 0 && b.x < tipMax - 0.6)) continue
+    const enter = (ahead - 1.6) / vRun
+    const leave = (ahead + 1.6) / vRun
+    let hot = false
+    for (const f of [0, 0.5, 1]) {
+      const q = gloveAt(g, t + Math.max(0, enter + (leave - enter) * f))
+      if (q.hot || q.u > 0.5) hot = true
     }
+    if (hot && botRand(br.seed, br.slot * 89 + i, Math.floor(t / g.period)) < br.skill + 0.1) go = 0
+  }
+  // bloco que anda cruzando a minha linha logo à frente: espera
+  for (let i = 0; i < C.pushers.length; i++) {
+    const q = C.pushers[i]
+    const ahead = q.z - b.z
+    if (ahead < q.hz + 0.5 || ahead > q.hz + 3) continue
+    const enter = (ahead - q.hz - 0.6) / vRun
+    const leave = (ahead + q.hz + 0.6) / vRun
+    let block = false
+    for (const f of [0, 0.33, 0.66, 1]) {
+      const P = pusherAt(q, t + Math.max(0, enter + (leave - enter) * f))
+      if (Math.abs(P.x - b.x) < q.hx + GINCANA.bodyR + 0.5) block = true
+    }
+    if (block && botRand(br.seed, br.slot * 71 + i, Math.floor((t * q.w) / 3.14)) < br.skill + 0.1) go = 0
   }
   if (go === 0) br.waited += dt
   if (go === 0 && br.waited < 6 + br.skill * 4) {
@@ -1082,37 +2201,64 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     it.mz = 0
   } else if (go > 0) br.waited = Math.max(0, br.waited - dt * 0.5)
 
-  // barra do carrossel chegando: pula na hora (com o erro da habilidade)
-  if (b.ground && br.jumpCool <= 0 && b.z < 80) {
-    for (let i = 0; i < SWEEPERS.length; i++) {
-      const s = SWEEPERS[i]
-      const cx = b.x - s.x
-      const cz = b.z - s.z
-      const r = Math.hypot(cx, cz)
-      if (r > s.len + 0.3 || r < 1.0) continue
+  // barra chegando: pula na hora (com o erro da habilidade)
+  if (b.ground && br.jumpCool <= 0) {
+    // prevê onde estarei (velocidade de agora) e onde a barra estará: pula ~0,15 s antes do contato
+    const vx = b.vx + (it.mx * GINCANA.run - b.vx) * 0.5
+    const vz = b.vz + (it.mz * GINCANA.run - b.vz) * 0.5
+    for (let i = 0; i < C.sweepers.length; i++) {
+      const s = C.sweepers[i]
+      if (Math.hypot(b.x - s.x, b.z - s.z) > s.len + 5) continue
+      let tc = -1
+      for (let k = 1; k <= 30 && tc < 0; k++) {
+        const h = k * 0.02
+        const px = b.x + vx * h - s.x
+        const pz = b.z + vz * h - s.z
+        const a = sweeperAngle(s, t + h)
+        const dx = Math.sin(a)
+        const dz = Math.cos(a)
+        const along = Math.max(s.both ? -s.len : 0, Math.min(s.len, px * dx + pz * dz))
+        if (Math.abs(along) < 0.9) continue
+        if (Math.hypot(px - dx * along, pz - dz * along) < s.r + GINCANA.bodyR + 0.08) tc = h
+      }
+      if (tc < 0) continue
       const span = s.both ? Math.PI : Math.PI * 2
-      const ang = Math.atan2(cx, cz)
-      const a = sweeperAngle(s, t)
-      const delta = ((((ang - a) * Math.sign(s.w)) % span) + span) % span
-      // contato antes do alinhamento: a grossura da barra e do corpo
-      const ttr = (delta - (s.r + GINCANA.bodyR) / Math.max(r, 1)) / Math.abs(s.w)
       const pass = Math.floor((s.w * t + s.a0) / span)
-      const err = (botRand(br.seed, br.slot * 31 + i, pass) - 0.5) * (1 - br.skill) * 0.7
-      if (ttr < 0.22 + err && ttr > 0.02) {
+      const err = (botRand(br.seed, br.slot * 31 + i, pass) - 0.5) * (1 - br.skill) * 0.3
+      if (tc < 0.2 + err && tc > 0.04) {
         it.jump = true
         br.jumpCool = 0.7
       }
     }
   }
   // ladrilho tremendo embaixo: pula para o próximo
-  if (b.ground && br.jumpCool <= 0 && b.z > 191 && b.z < 211) {
-    for (let i = 0; i < TILES.length; i++) {
-      const q = TILES[i]
+  if (b.ground && br.jumpCool <= 0) {
+    for (let i = 0; i < C.tiles.length; i++) {
+      const q = C.tiles[i]
       const s = w.tiles[i]
-      if (s < 0 || Math.abs(b.x - q.x) > q.h || Math.abs(b.z - q.z) > q.h) continue
-      if (t - s > 0.45 && botRand(br.seed, br.slot, i) < br.skill) {
+      if (s < 0 || !onTile(q, b.x, b.z, 0)) continue
+      if (t - s > C.tileTime.warn * 0.6 && botRand(br.seed, br.slot, i) < br.skill) {
         it.jump = true
         br.jumpCool = 0.6
+      }
+    }
+  }
+  // o chão acaba logo à frente e há chão adiante: pula o buraco
+  const sp = Math.hypot(it.mx, it.mz)
+  const tileNear = br.tile >= 0 && Math.hypot(C.tiles[br.tile].x - b.x, C.tiles[br.tile].z - b.z) < 2.6
+  if (b.ground && br.jumpCool <= 0 && sp > 0.3 && !tileNear) {
+    const fx = it.mx / sp
+    const fz = it.mz / sp
+    const near = groundUnder(w, b.x + fx * 1.0, b.z + fz * 1.0, b.y + 0.5)
+    if (near.y < b.y - 0.6 || near.y === -Infinity) {
+      let far = false
+      for (const k of [2.2, 3.2, 4.2, 5.0]) {
+        const g = groundUnder(w, b.x + fx * k, b.z + fz * k, b.y + 1.2)
+        if (g.y > b.y - 1.2) far = true
+      }
+      if (far) {
+        it.jump = true
+        br.jumpCool = 0.5
       }
     }
   }
@@ -1128,7 +2274,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     }
   }
   // reta final: os melhores mergulham para a linha
-  if (br.divesFinish && b.ground && b.z > 259 && b.z < 262 && Math.abs(b.facing) < 0.3) it.dive = true
+  if (br.divesFinish && b.ground && b.z > C.finishZ - 7 && b.z < C.finishZ - 4 && Math.abs(b.facing) < 0.3) it.dive = true
   return it
 }
 
@@ -1139,15 +2285,23 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
 //  - "local": o corpo deste aparelho (intenção do controle);
 //  - "bot": computador (bots.ts), rodado aqui;
 //  - "remote": alguém de fora (a pose chega pela rede; aqui só pisa nos
-//    ladrilhos e empurra os outros).
+//    ladrilhos, abre portas e empurra os outros).
 // No treino o aparelho tem o "local" e os computadores; na sala, os
 // jogadores são "remote" e os computadores "bot"; no multiplayer, o aparelho
 // tem o "local" e todo o resto é "remote" (os computadores vêm da sala).
 //
-// A ordem de chegada é de quem cruza primeiro; quem não chegou no tempo
-// limite fica pela distância. A prova acaba quando todos que contam (os de
-// fora e o local; computador não segura a prova) chegaram, caíram fora ou o
-// tempo acabou.
+// Gincana 2.0 (2026-11-16): a prova é de uma FASE (courses.ts). CLASSIFICAÇÃO
+// como nas provas de corrida dos party games: só os primeiros `quota`
+// (GINCANA.qualify das vagas) passam — quando esse tanto chega, a prova fecha
+// e o resto está eliminado. AGARRAR: quem segura a vaga de alguém na frente
+// (pose `g`) deixa os dois devagar; o efeito em quem é segurado é aplicado por
+// quem move aquele corpo (o aparelho dele ou a sala, para os computadores) —
+// por isso o `g` viaja na pose e nada mais precisa de mensagem nova.
+//
+// A ordem de chegada é de quem cruza primeiro; quem não chegou fica pela
+// distância. A prova acaba quando a vaga dos classificados enche, quando todos
+// que contam (os de fora e o local; computador não segura a prova) chegaram ou
+// saíram, ou o tempo acabou.
 
 /** Pose que viaja na rede (e que o "remote" recebe). */
                              
@@ -1160,6 +2314,8 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
             
                                           
              
+                                                
+            
  
 
                               
@@ -1168,10 +2324,18 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
              
                                                        
               
+                                             
+            
  
+
+/** Quantos classificam numa prova de `n` vagas. */
+function qualifyOf(n        ) {
+  return Math.max(1, Math.ceil(n * GINCANA.qualify))
+}
 
 class GincanaRace {
            seed        
+           course        
   /** s da prova (negativo na contagem). */
   t        
            runners           = []
@@ -1182,19 +2346,23 @@ class GincanaRace {
            world          
   /** Ordem de chegada (vagas). */
            order           = []
+  /** Classificam os primeiros `quota`. */
+           quota        
                    bySlot = new Map                ()
 
-  constructor(seed        , seats               , countdown         = GINCANA.countdown) {
+  constructor(seed        , seats               , countdown         = GINCANA.countdown, phase         = "cidade") {
     this.seed = seed >>> 0
+    this.course = courseOf(phase)
     this.t = -countdown
-    this.world = { t: this.t, seed: this.seed, tiles: new Float64Array(TILES.length).fill(-1), balls: [] }
+    this.world = newWorld(this.course, this.seed, this.t)
     for (const s of seats) {
       this.bySlot.set(s.slot, this.runners.length)
-      this.runners.push(newRunner(s.slot))
+      this.runners.push(newRunner(this.course, s.slot))
       this.ctl.push(s.ctl)
-      this.brains.push(s.ctl === "bot" ? newBrain(this.seed, s.slot) : null)
+      this.brains.push(s.ctl === "bot" ? newBrain(this.world, this.seed, s.slot) : null)
       this.gone.push(false)
     }
+    this.quota = qualifyOf(seats.length)
   }
 
   runner(slot        )                {
@@ -1202,20 +2370,35 @@ class GincanaRace {
     return i === undefined ? null : this.runners[i]
   }
 
+  /** A vaga dos classificados encheu. */
+  closed() {
+    return this.order.length >= this.quota
+  }
+
   /** Um passo fixo; `local` = intenção do corpo deste aparelho. */
   step(local            = IDLE_INTENT, out                    = null, dt         = GINCANA.step) {
     this.t += dt
     const w = this.world
+    const C = this.course
     w.t = this.t
-    ballsAt(this.seed, this.t, w.balls)
+    ballsAt(C, this.seed, this.t, w.balls)
     // ladrilhos que já voltaram
-    for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] >= 0 && this.t - w.tiles[i] >= TILE_TIME.warn + TILE_TIME.gone) w.tiles[i] = -1
+    for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] >= 0 && this.t - w.tiles[i] >= C.tileTime.warn + C.tileTime.gone) w.tiles[i] = -1
     for (const b of this.runners) {
       b.px = b.x
       b.py = b.y
       b.pz = b.z
     }
     if (this.t < 0) return
+    // quem está sendo segurado (por qualquer um, de fora também) anda devagar
+    for (let j = 0; j < this.runners.length; j++) {
+      const a = this.runners[j]
+      if (a.grab < 0 || this.gone[j]) continue
+      const v = this.runner(a.grab)
+      if (!v || this.ctl[this.bySlot.get(a.grab) ] === "remote") continue
+      if (Math.hypot(v.x - a.x, v.z - a.z) < GINCANA.grabR + 0.7 && Math.abs(v.y - a.y) < 1.2) v.held = 0.15
+    }
+    const closed = this.closed()
     for (let i = 0; i < this.runners.length; i++) {
       const b = this.runners[i]
       const c = this.ctl[i]
@@ -1224,16 +2407,67 @@ class GincanaRace {
       const it = c === "local" ? local : botIntent(this.brains[i] , b, w, dt)
       const wasFin = b.fin >= 0
       stepRunner(b, it, w, out, dt)
-      if (!wasFin && b.fin >= 0) this.order.push(b.slot)
+      if (!wasFin && b.fin >= 0) {
+        // chegou depois de a vaga encher: não conta (a prova já fechou)
+        if (closed) b.fin = -1
+        else this.order.push(b.slot)
+      }
+      this.grab(i, !!it.grab, out, dt)
     }
-    // ninguém atravessa ninguém (quem é movido aqui sai; o de fora não)
+    // ninguém atravessa ninguém (quem é movido aqui sai; o de fora não); mergulho em cima empurra
     for (let i = 0; i < this.runners.length; i++) {
       if (this.ctl[i] === "remote" || this.gone[i]) continue
       for (let j = 0; j < this.runners.length; j++) {
         if (i === j || this.gone[j]) continue
         if (j < i && this.ctl[j] !== "remote") continue
-        separate(this.runners[i], this.runners[j], this.ctl[j] !== "remote")
+        const a = this.runners[i]
+        const b = this.runners[j]
+        if (!separate(a, b, this.ctl[j] !== "remote")) continue
+        // mergulho que acerta alguém (movido aqui): empurrão
+        for (const [p, q, k] of [[a, b, j], [b, a, i]]                              ) {
+          if (p.mode !== MODE.DIVE || this.ctl[k] === "remote" || q.mode === MODE.DONE) continue
+          const sp = Math.hypot(p.vx, p.vz) || 1
+          knock(q, (p.vx / sp) * GINCANA.tackle, 3, (p.vz / sp) * GINCANA.tackle, "tackle", out)
+        }
       }
+    }
+  }
+
+  /** Segurar AGARRAR: pega a vaga da frente ao alcance; solta ao soltar, longe ou no tempo. */
+          grab(i        , held         , out                   , dt        ) {
+    const a = this.runners[i]
+    if (a.grab >= 0) {
+      const v = this.runner(a.grab)
+      a.grabT += dt
+      const far = !v || Math.hypot(v.x - a.x, v.z - a.z) > GINCANA.grabR + 0.9 || v.mode === MODE.WATER || v.mode === MODE.DONE
+      if (!held || far || a.grabT > GINCANA.grabMax || a.mode !== MODE.RUN) {
+        a.grab = -1
+        a.grabCool = GINCANA.grabCool
+      }
+      return
+    }
+    if (!held || a.grabCool > 0 || a.mode !== MODE.RUN) return
+    const fx = Math.sin(a.facing)
+    const fz = Math.cos(a.facing)
+    let best = -1
+    let bestD = Infinity
+    for (let j = 0; j < this.runners.length; j++) {
+      if (j === i || this.gone[j]) continue
+      const v = this.runners[j]
+      if (v.mode === MODE.WATER || v.mode === MODE.DONE || Math.abs(v.y - a.y) > 1.2) continue
+      const dx = v.x - a.x
+      const dz = v.z - a.z
+      const d = Math.hypot(dx, dz)
+      if (d > GINCANA.grabR || (dx * fx + dz * fz) / (d || 1) < 0.2) continue
+      if (d < bestD) {
+        bestD = d
+        best = v.slot
+      }
+    }
+    if (best >= 0) {
+      a.grab = best
+      a.grabT = 0
+      out?.push({ type: "grab", slot: a.slot, other: best })
     }
   }
 
@@ -1247,27 +2481,33 @@ class GincanaRace {
     return n
   }
 
-  /** Pose de alguém de fora (rede). Pisa nos ladrilhos como os outros. */
+  /** Pose de alguém de fora (rede). Pisa nos ladrilhos e abre portas como os outros. */
   setRemote(slot        , p            ) {
     const i = this.bySlot.get(slot)
     if (i === undefined) return
     const b = this.runners[i]
+    const C = this.course
     b.x = p.x
     b.y = p.y
     b.z = p.z
     b.facing = p.f
     b.cp = p.cp
-    b.mode = p.a === ANIM.WATER ? MODE.WATER : p.a === ANIM.WIN ? MODE.DONE : p.a === ANIM.KNOCK ? MODE.KNOCK : MODE.RUN
+    b.grab = p.g === undefined || !Number.isFinite(p.g) ? -1 : p.g
+    b.mode = p.a === ANIM.WATER ? MODE.WATER : p.a === ANIM.WIN ? MODE.DONE : p.a === ANIM.KNOCK ? MODE.KNOCK : p.a === ANIM.DIVE ? MODE.DIVE : MODE.RUN
     b.ground = p.a === ANIM.IDLE || p.a === ANIM.RUN || p.a === ANIM.WIN || p.a === ANIM.SLIDE || p.a === ANIM.RISE
-    if (p.fin >= 0 && b.fin < 0) {
+    if (p.fin >= 0 && b.fin < 0 && !this.closed()) {
       b.fin = p.fin
       this.order.push(slot)
     }
-    if (b.ground && b.z > TILES[0].z - 2 && b.z < TILES[TILES.length - 1].z + 2) {
-      for (let k = 0; k < TILES.length; k++) {
-        const q = TILES[k]
-        if (Math.abs(b.x - q.x) <= q.h && Math.abs(b.z - q.z) <= q.h && this.world.tiles[k] < 0) this.world.tiles[k] = this.t
+    if (b.ground) {
+      for (let k = 0; k < C.tiles.length; k++) {
+        const q = C.tiles[k]
+        if (Math.abs(b.y - q.y) < 0.3 && onTile(q, b.x, b.z, 0) && this.world.tiles[k] < 0) this.world.tiles[k] = this.t
       }
+    }
+    for (let k = 0; k < C.doors.length; k++) {
+      const d = C.doors[k]
+      if (this.world.open[k] && this.world.doors[k] < 0 && Math.abs(b.z - d.z) < 0.8 && Math.abs(b.x - d.x) < d.hw) this.world.doors[k] = this.t
     }
   }
 
@@ -1279,26 +2519,33 @@ class GincanaRace {
   pose(slot        )                    {
     const b = this.runner(slot)
     if (!b) return null
-    return { x: b.x, y: b.y, z: b.z, f: b.facing, a: runnerAnim(b), cp: b.cp, fin: b.fin }
+    return { x: b.x, y: b.y, z: b.z, f: b.facing, a: runnerAnim(b), cp: b.cp, fin: b.fin, g: b.grab }
+  }
+
+  /** Progresso de quem não chegou (posto e z). */
+  distOf(b        ) {
+    const C = this.course
+    return Math.max(C.checkpoints[b.cp].z, Math.min(C.finishZ, b.z))
   }
 
   /** Classificação: quem chegou pela ordem; o resto pela distância (posto e z). */
   standings()                {
+    const C = this.course
     const rows                = []
-    for (const slot of this.order) {
+    this.order.forEach((slot, k) => {
       const b = this.runner(slot) 
-      rows.push({ slot, fin: b.fin, dist: FINISH_Z })
-    }
+      rows.push({ slot, fin: b.fin, dist: C.finishZ, q: k < this.quota })
+    })
     const rest = this.runners
-      .filter((b) => b.fin < 0)
-      .map((b) => ({ slot: b.slot, fin: -1, dist: Math.max(CHECKPOINTS[b.cp].z, Math.min(FINISH_Z, b.z)) + 0 }))
+      .filter((b) => b.fin < 0 || !this.order.includes(b.slot))
+      .map((b) => ({ slot: b.slot, fin: -1, dist: this.distOf(b), q: false }))
       .sort((a, b) => b.dist - a.dist || a.slot - b.slot)
     return rows.concat(rest)
   }
 
-  /** Acabou: todos os que contam chegaram (ou saíram) ou o tempo acabou. */
+  /** Acabou: a vaga encheu, todos os que contam chegaram (ou saíram) ou o tempo acabou. */
   over()          {
-    if (this.t >= GINCANA.timeLimit) return true
+    if (this.t >= GINCANA.timeLimit || this.closed()) return true
     let any = false
     for (let i = 0; i < this.runners.length; i++) {
       if (this.ctl[i] === "bot" || this.gone[i]) continue
@@ -1309,4 +2556,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, TILE_COLS, TILE_ROWS, TILE_PITCH, TILE_HALF, TILE_Z0, RAMP, FINISH_Z, FINISH_Y, BALLS, PADS, POSTS, SWEEPERS, PENDULUMS, GLOVES, TILES, TILE_TIME, CHECKPOINTS, spawnAt, sweeperAngle, pendulumAt, gloveAt, ballLane, LOGOS, rampTop, ballsAt, tileUp, sectionAt, MODE, IDLE_INTENT, newRunner, groundUnder, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

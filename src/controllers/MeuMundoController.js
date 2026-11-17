@@ -113,7 +113,7 @@ async function noturnoJoin(req, res) {
 async function gincanaJoin(req, res) {
   const closed = await building().gate(req.user.id_user, "gincana");
   if (closed) return reply(res, closed);
-  return reply(res, await MeuMundoService.joinGincana(req.user.id_user, { body: req.body?.body }));
+  return reply(res, await MeuMundoService.joinGincana(req.user.id_user, { body: req.body?.body, phase: req.body?.phase }));
 }
 
 async function visits(req, res) {

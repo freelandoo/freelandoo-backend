@@ -17,6 +17,11 @@
 // distância. Sem moeda da vida (como os outros minijogos do centro).
 //
 // A pessoa continua presente no centro (como no Rolê/Paint/corrida).
+//
+// Gincana 2.0 (2026-11-16): uma sala por FASE (filterBy centro + fase; a fase
+// vem na reserva e vai no "start"); a pose leva `g` (vaga que a pessoa está
+// agarrando — a sala aplica o "segurado" nos computadores) e o resultado leva
+// `q` (classificou: chegou dentro da vaga, GINCANA.qualify das 8).
 
 const { Room, ServerError, matchMaker } = require("@colyseus/core");
 const { schema, t } = require("@colyseus/schema");
@@ -41,8 +46,6 @@ const COUNTDOWN_S = G.GINCANA.countdown;
 const MAX_V = 18;
 /** Sem pose por este tempo no meio da prova = saiu (aba fechada, rede morta). */
 const SILENT_S = 8;
-/** Ninguém chega antes disto (o percurso tem ~270 m). */
-const MIN_FINISH_S = 22;
 
 /** Computadores: nomes de doce (iguais nos três idiomas) e corpos variados. */
 const BOT_NAMES = ["Pipoca", "Jujuba", "Paçoca", "Cocada", "Quindim", "Bolacha", "Brigadeiro", "Pudim", "Canjica", "Suspiro"];
@@ -83,6 +86,8 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 class GincanaRoom extends Room {
   async onCreate(options) {
     this.centerRoomId = String(options.centerRoomId || "");
+    this.phase = G.GINCANA_PHASES.includes(options.phase) ? options.phase : "cidade";
+    this.course = G.courseOf(this.phase);
     this.maxClients = SEATS;
     this.patchRate = 100;
     this.seatReservationTimeout = 15;
@@ -101,7 +106,7 @@ class GincanaRoom extends Room {
     this.onMessage("p", (client, msg) => this.onPose(client, msg));
     this.onMessage("ping", (client, msg) => this.onPing(client, msg));
     this.setSimulationInterval(() => this.loop(), TICK_MS);
-    log.info("gincana.create", { roomId: this.roomId });
+    log.info("gincana.create", { roomId: this.roomId, phase: this.phase });
   }
 
   async onJoin(client, options) {
@@ -215,13 +220,14 @@ class GincanaRoom extends Room {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return;
     x = Math.max(-40, Math.min(40, x));
     y = Math.max(-12, Math.min(30, y));
-    z = Math.max(-12, Math.min(G.FINISH_Z + 12, z));
+    const C = this.course;
+    z = Math.max(-12, Math.min(C.finishZ + 12, z));
     const d = Math.hypot(x - b.x, z - b.z);
     const reach = MAX_V * dt + 2;
     if (d > reach) {
       // volta ao posto (caiu na água): até o posto alcançado
       const back = [];
-      for (let cp = 0; cp <= b.cp; cp++) back.push(G.spawnAt(cp, s.slot));
+      for (let cp = 0; cp <= b.cp; cp++) back.push(G.spawnAt(C, cp, s.slot));
       if (!back.some((p) => Math.hypot(p.x - x, p.z - z) < 4)) {
         const k = reach / d;
         x = b.x + (x - b.x) * k;
@@ -229,18 +235,21 @@ class GincanaRoom extends Room {
       }
     }
     let cp = Math.max(0, Math.floor(num(msg.cp) || 0));
-    if (cp > b.cp) cp = G.CHECKPOINTS[b.cp + 1] && z >= G.CHECKPOINTS[b.cp + 1].z - 3 ? b.cp + 1 : b.cp;
+    if (cp > b.cp) cp = C.checkpoints[b.cp + 1] && z >= C.checkpoints[b.cp + 1].z - 3 ? b.cp + 1 : b.cp;
     else cp = b.cp;
     const a = Math.max(0, Math.min(8, Math.floor(num(msg.a) || 0)));
     let fin = -1;
     const n = num(msg.n);
     const t = this.state.time;
-    if (Number.isFinite(n) && n >= 0 && z >= G.FINISH_Z - 2 && y >= G.FINISH_Y - 1 && t >= MIN_FINISH_S && cp >= G.CHECKPOINTS.length - 1) {
+    if (Number.isFinite(n) && n >= 0 && z >= C.finishZ - 2 && y >= C.finishY - 1 && t >= C.minFinish && cp >= C.checkpoints.length - 1) {
       // o tempo é o da sala (o aparelho só atrasa ~meia volta da rede)
       fin = Math.max(t - 0.6, Math.min(t, n));
     }
+    // agarrando alguém (outra vaga que existe)
+    const gv = Math.floor(num(msg.g));
+    const g = Number.isFinite(gv) && gv >= 0 && gv < SEATS && gv !== s.slot ? gv : -1;
     s.at = now;
-    this.race.setRemote(s.slot, { x, y, z, f: num(msg.f) || 0, a, cp, fin });
+    this.race.setRemote(s.slot, { x, y, z, f: num(msg.f) || 0, a, cp, fin, g });
     if (fin >= 0) log.info("gincana.finish", { roomId: this.roomId, slot: s.slot, t: r2(fin) });
   }
 
@@ -287,7 +296,8 @@ class GincanaRoom extends Room {
     this.race = new G.GincanaRace(
       seed,
       seats.map((s) => ({ slot: s.slot, ctl: s.bot ? "bot" : "remote" })),
-      COUNTDOWN_S
+      COUNTDOWN_S,
+      this.phase
     );
     this.startedAt = Date.now();
     this.state.phase = "countdown";
@@ -296,9 +306,9 @@ class GincanaRoom extends Room {
     void this.lock();
     for (const client of this.clients) {
       const s = this.seats.get(client.sessionId);
-      if (s) client.send("start", { me: s.slot, seed, countdown: COUNTDOWN_S, seats });
+      if (s) client.send("start", { me: s.slot, seed, countdown: COUNTDOWN_S, seats, phase: this.phase });
     }
-    log.info("gincana.start", { roomId: this.roomId, people: humans.size, bots: this.bots.size });
+    log.info("gincana.start", { roomId: this.roomId, phase: this.phase, people: humans.size, bots: this.bots.size });
   }
 
   loop() {
@@ -323,12 +333,12 @@ class GincanaRoom extends Room {
     if (this.race.over() || this.state.time > G.GINCANA.timeLimit + 2) this.finish();
   }
 
-  /** Todos a 20 Hz: [vaga, x, y, z, rumo, animação, posto, chegada] por corredor. */
+  /** Todos a 20 Hz: [vaga, x, y, z, rumo, animação, posto, chegada, agarrando] por corredor. */
   snapshot() {
     const c = [];
     for (const b of this.race.runners) {
       const p = this.race.pose(b.slot);
-      c.push(b.slot, r3(p.x), r3(p.y), r2(p.z), r2(p.f), p.a, p.cp, r2(p.fin));
+      c.push(b.slot, r3(p.x), r3(p.y), r2(p.z), r2(p.f), p.a, p.cp, r2(p.fin), p.g);
     }
     this.broadcast("s", { t: r3(this.state.time), c });
   }
@@ -342,11 +352,12 @@ class GincanaRoom extends Room {
       fin: r.fin >= 0 ? r2(r.fin) : -1,
       dist: Math.round(r.dist),
       gone: gone.has(r.slot),
+      q: !!r.q,
     }));
-    this.state.result = JSON.stringify({ rows });
+    this.state.result = JSON.stringify({ rows, phase: this.phase });
     this.state.phase = "end";
     this.state.until = Date.now() + timing.closeMs;
-    log.info("gincana.end", { roomId: this.roomId, people: this.seats.size, first: rows[0] ? rows[0].slot : -1 });
+    log.info("gincana.end", { roomId: this.roomId, phase: this.phase, people: this.seats.size, first: rows[0] ? rows[0].slot : -1 });
     // prática de quem jogou (vitória = chegou em 1º)
     if (this.meter) {
       const first = rows[0] && rows[0].fin >= 0 && !rows[0].bot ? [...this.seats.values()].find((s) => s.slot === rows[0].slot) : null;
@@ -366,14 +377,14 @@ class GincanaRoom extends Room {
 
 let ready = false;
 function define(gameServer) {
-  gameServer.define(GINCANA_ROOM, GincanaRoom).filterBy(["centerRoomId"]).sortBy({ clients: -1 });
+  gameServer.define(GINCANA_ROOM, GincanaRoom).filterBy(["centerRoomId", "phase"]).sortBy({ clients: -1 });
   ready = true;
 }
 
 /** Reserva o lugar na próxima largada do centro em que a pessoa está (quem chama já conferiu papel, centro e porta). */
-async function reserveGincanaSeat({ userId, name, centerRoomId, body }) {
+async function reserveGincanaSeat({ userId, name, centerRoomId, body, phase }) {
   if (!ready) throw Object.assign(new Error("multiplayer indisponível"), { statusCode: 503 });
-  const options = { centerRoomId, userId, name, body };
+  const options = { centerRoomId, userId, name, body, phase: G.GINCANA_PHASES.includes(phase) ? phase : "cidade" };
   let last = null;
   for (let i = 0; i < 4; i++) {
     try {

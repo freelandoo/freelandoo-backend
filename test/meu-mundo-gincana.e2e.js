@@ -99,6 +99,7 @@ async function mkUser(pool, tag) {
   const Service = require("../src/services/MeuMundoService");
   const Center = require("../src/utils/meuMundoCenter");
   const G = require("../src/utils/meuMundoGincana");
+  const C = G.COURSES.cidade;
   gincana._gincanaTiming.lobbyMs = 1200;
   gincana._gincanaTiming.closeMs = 500;
 
@@ -168,6 +169,7 @@ async function mkUser(pool, tag) {
   check("passou o prazo: larga (contagem)", await until(() => A.room.state.phase === "countdown", 4000));
   check("start: cada um com a sua vaga", (await until(() => A.start && B.start)) && A.start.me === 0 && B.start.me === 1);
   check("…a MESMA semente para os dois", A.start.seed === B.start.seed && A.start.seed > 0);
+  check("…sem fase pedida: a de sempre (cidade)", A.start.phase === "cidade" && B.start.phase === "cidade");
   check("…8 vagas: 2 pessoas e 6 computadores", A.start.seats.length === 8 && A.start.seats.filter((s) => s.bot).length === 6, JSON.stringify(A.start.seats));
   const sa = A.start.seats.find((s) => s.slot === 0);
   const sb = A.start.seats.find((s) => s.slot === 1);
@@ -181,10 +183,10 @@ async function mkUser(pool, tag) {
   const r = roomOf(A.room.roomId);
   r.startedAt -= 3000; // pula a contagem
   check("prova começa", await until(() => A.room.state.phase === "run"));
-  check("as poses de todos chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 8 * 8);
-  const z0 = A.last.c.filter((_, i) => i % 8 === 3);
+  check("as poses de todos chegam a ~20 Hz", (await until(() => A.snaps >= 10, 2000)) && A.last.c.length === 8 * 9);
+  const z0 = A.last.c.filter((_, i) => i % 9 === 3);
   await sleep(1500);
-  const z1 = A.last.c.filter((_, i) => i % 8 === 3);
+  const z1 = A.last.c.filter((_, i) => i % 9 === 3);
   check("os computadores correm na sala", [2, 3, 4, 5, 6, 7].some((slot) => z1[slot] > z0[slot] + 3), JSON.stringify([z0, z1]));
 
   // pose: normal passa, impossível é limitada, voltar ao posto é aceito
@@ -196,7 +198,7 @@ async function mkUser(pool, tag) {
   await until(() => me().z > 2.5);
   check("pose impossível (200 m de uma vez): limitada", me().z < 12, String(me().z));
   await sleep(60);
-  const back = G.spawnAt(0, 0);
+  const back = G.spawnAt(C, 0, 0);
   pose(A, { x: back.x, z: back.z });
   check("voltar ao posto (caiu na água): aceito", await until(() => Math.abs(me().z - back.z) < 0.01));
   pose(A, { x: back.x, z: back.z + 1, cp: 4, n: 30 });
@@ -218,15 +220,15 @@ async function mkUser(pool, tag) {
   r.startedAt -= 25000; // o relógio passa do mínimo de uma chegada
   let z = me().z;
   let cp = 0;
-  while (z < G.FINISH_Z + 1) {
-    z = Math.min(G.FINISH_Z + 1, z + 2.4);
-    while (G.CHECKPOINTS[cp + 1] && z >= G.CHECKPOINTS[cp + 1].z) cp++;
-    const y = z > G.RAMP.z0 ? G.rampTop(Math.min(z, G.RAMP.z1)) : G.DECK;
-    const fin = z >= G.FINISH_Z ? r.state.time : -1;
+  while (z < C.finishZ + 1) {
+    z = Math.min(C.finishZ + 1, z + 2.4);
+    while (C.checkpoints[cp + 1] && z >= C.checkpoints[cp + 1].z) cp++;
+    const y = z > C.ramp.z0 ? G.rampTop(C, Math.min(z, C.ramp.z1)) : G.DECK;
+    const fin = z >= C.finishZ ? r.state.time : -1;
     pose(A, { x: 0, y, z, cp, n: fin });
     await sleep(40);
   }
-  check("passou pelos postos", await until(() => me().cp === G.CHECKPOINTS.length - 1), String(me().cp));
+  check("passou pelos postos", await until(() => me().cp === C.checkpoints.length - 1), String(me().cp));
   check("chegou: o tempo é o da sala", await until(() => me().fin > 20), String(me().fin));
   check("sem mais ninguém correndo: a prova acaba", await until(() => A.room.state.phase === "end" && A.room.state.result.length > 2, 3000));
   const res = JSON.parse(A.room.state.result);

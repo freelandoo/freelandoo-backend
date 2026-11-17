@@ -16,7 +16,7 @@ const { stripTypeScriptTypes } = require("node:module");
 const SIM = path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/gincana/sim");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoGincana.js");
 // Ordem de dependência (cada um só usa os de cima).
-const MODULES = ["course", "body", "bots", "race"];
+const MODULES = ["course", "courses", "body", "bots", "race"];
 
 function build() {
   const exported = [];
