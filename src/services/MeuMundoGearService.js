@@ -16,6 +16,7 @@
 // antigo continua funcionando. Regra de bônus, slots e custos não mudam nesta fatia.
 
 const crypto = require("crypto");
+const ClassStats = require("../utils/mmItems/rules/classStats");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const Gear = require("../utils/meuMundoGear");
 const Items = require("../utils/mmItems");
@@ -889,6 +890,12 @@ class MeuMundoGearService {
 MeuMundoGearService.fightGear = async (c, idUser, clan) => {
   await prepare(c, idUser);
   return Gear.gearBonus(await equippedFull(c, idUser, clan));
+};
+/** R2 (2026-11-17): status da CLASSE das peças vestidas (número + %), somados para a luta. */
+MeuMundoGearService.fightClassGear = async (c, idUser, clan) => {
+  await prepare(c, idUser);
+  const worn = Object.values(await equippedFull(c, idUser, clan)).map((x) => Gear.GEAR_BY_ID.get(x.id));
+  return ClassStats.classGearOf(worn);
 };
 /** Aparência só visual, congelada no ticket; não altera a simulação da luta. */
 MeuMundoGearService.fightAppearance = async (c, idUser, clan) => {

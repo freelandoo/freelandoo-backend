@@ -58,3 +58,47 @@ test("catálogo: toda peça equipável tem status e o resto não", () => {
     } else assert.equal(g.stats, null, g.id);
   }
 });
+
+// ── R2: a luta nova (dano = ataque − defesa com piso de 10%, monstro com o kit da classe do nível) ──
+const F = require("../../src/utils/meuMundoFight");
+
+test("R2: a escada da luta é a mesma do catálogo (espelho)", () => {
+  assert.deepEqual([...F.CLASS_RANKS], [...RANKS]);
+  for (const r of RANKS) {
+    assert.equal(F.CLASS_NUMBER[r], CS.NUMBER[r], r);
+    assert.equal(F.CLASS_PERCENT[r], CS.PERCENT[r], r);
+  }
+  const rank = require("../../src/utils/mmItems/rules/rank");
+  for (let l = 1; l <= 12; l++) assert.equal(F.classByLevel(l), rank.rankByLevel(l), `nível ${l}`);
+});
+
+test("R2: dano pela diferença, com piso de 10% (exemplos do Alex)", () => {
+  assert.equal(F.strike(200, 100), 100);
+  assert.equal(F.strike(100, 100), 10);
+  assert.equal(F.strike(100, 300), 10);
+  assert.equal(F.hitChance(100, 200), 0.5);
+  assert.equal(F.hitChance(200, 100), 1);
+});
+
+test("R2: ticket sem classGear re-simula igual (luta antiga); com classGear usa a regra nova", () => {
+  const old = new F.Fight({ kind: "brute", level: 5, hero: 5, tier: "street", seed: 3 });
+  assert.equal(old.v2, false);
+  const nu = new F.Fight({ kind: "brute", level: 5, hero: 5, tier: "street", seed: 3, classGear: { flat: {}, pct: {} } });
+  assert.equal(nu.v2, true);
+  // o monstro do nível 5 tem o kit da classe A (arma + escudo)
+  const kit = F.mobKit(5);
+  assert.equal(kit.flat.atk, Math.round(CS.NUMBER.A * 0.4));
+  assert.ok(nu.mobs[0].rate.def > old.mobs[0].rate.def);
+});
+
+test("R2: status de quem joga = (ficha + número) × (1 + %)", () => {
+  const cls = { flat: { atk: 100, hp: 50 }, pct: { atk: 10 } };
+  const a = F.heroSheet(null, 1, { strength: 300, speed: 300, intelligence: 300 }, undefined, undefined, cls);
+  assert.ok(Math.abs(a.atk - (100 + 100) * 1.1) < 1e-9);
+  assert.equal(a.hp, 150);
+});
+
+test("R2: classGearOf soma as peças vestidas", () => {
+  const sum = CS.classGearOf([{ stats: { flat: { atk: 2, acc: 2 }, pct: { dmg: 0.05 } } }, { stats: { flat: { atk: 3 }, pct: { dmg: 0.1 } } }, null]);
+  assert.deepEqual(sum, { flat: { atk: 5, acc: 2 }, pct: { dmg: 0.15 } });
+});

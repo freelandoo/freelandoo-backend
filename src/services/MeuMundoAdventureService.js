@@ -66,7 +66,7 @@ function publicTicket(t, setup) {
   return {
     ticket: t.id_fight,
     origin: t.origin,
-    setup: { kind: setup.kind, level: setup.level, hero: setup.hero, domain: setup.domain ?? null, sector: setup.sector ?? null, boss: setup.boss ?? null, god: setup.god ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: setup.body, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null, prep: setup.prep ?? null },
+    setup: { kind: setup.kind, level: setup.level, hero: setup.hero, domain: setup.domain ?? null, sector: setup.sector ?? null, boss: setup.boss ?? null, god: setup.god ?? null, peer: setup.peer ?? null, tier: setup.tier ?? null, body: setup.body, seed: setup.seed, stats: setup.stats, style: setup.style ?? null, kit: setup.kit ?? null, gear: setup.gear ?? null, appearance: setup.appearance ?? null, temper: setup.temper ?? null, affection: setup.affection ?? null, prep: setup.prep ?? null, classGear: setup.classGear ?? null },
     expiresAt: new Date(t.expires_at).toISOString(),
   };
 }
@@ -425,6 +425,9 @@ class MeuMundoAdventureService {
         kit: origin === "boxe" ? undefined : hammer ? "hammer" : bow ? "bow" : gun ? "gun" : undefined,
         // equipamento (com teto somado); o ringue do Boxe é de luvas: sem arma
         gear: origin === "boxe" ? undefined : await GearService().fightGear(c, idUser, clan),
+        // R2: status da classe (número + %) das peças vestidas; ticket com isto = dano pela diferença.
+        // O ringue do Boxe é de luvas: vai vazio (a regra nova vale, sem peça).
+        classGear: origin === "boxe" ? { flat: {}, pct: {} } : await GearService().fightClassGear(c, idUser, clan),
         appearance: origin === "boxe" ? undefined : await GearService().fightAppearance(c, idUser, clan),
         mobId,
         // D1: o setor fica no ticket (o fim sobe o progresso por ele, nunca pelo aparelho)
@@ -496,7 +499,7 @@ class MeuMundoAdventureService {
       if (fight.id_character !== ctx.row.id_character) return fail("closed");
       const setup = fight.setup;
       const verdict = FightSim.replayFight(
-        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined, boss: setup.boss || undefined, god: setup.god || undefined, prep: setup.prep || undefined },
+        { kind: setup.kind, level: setup.level, hero: setup.hero || undefined, peer: setup.peer || undefined, tier: setup.tier || undefined, body: setup.body || undefined, seed: setup.seed, stats: setup.stats, style: setup.style || undefined, gear: setup.gear || undefined, temper: setup.temper || undefined, affection: setup.affection || undefined, boss: setup.boss || undefined, god: setup.god || undefined, prep: setup.prep || undefined, classGear: setup.classGear || undefined },
         body.frames
       );
       if (!verdict.ok) return fail("replay");

@@ -15,7 +15,8 @@ const FightSim = require("./meuMundoFight");
 
 // R4 (trilha E4): equipamento proporcional (multiplica a ficha) e chaves hp/acc/spd/int/dex.
 // R5 (trilha E5): freio do drop de atributo pela régua e monstro da rua por fator da régua.
-const RULES_VERSION = "R5";
+// R6 (2026-11-17): status da classe (número + %) e dano = ataque − defesa com piso de 10% (setup.classGear).
+const RULES_VERSION = "R6";
 
 // ═══ XP DE AVENTURA ═══ — por pessoa (atravessa gerações).
 // Para ir do nível n ao n+1: round(BASE × n^EXP). 1→2 = 100, 2→3 = 303,

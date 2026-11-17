@@ -83,4 +83,20 @@ function classStatsOf(item) {
   return { kind, rank: item.rank, number, percent, flat, pct };
 }
 
-module.exports = { NUMBER, PERCENT, FLAT_KEYS, PCT_KEYS, SPLIT, KINDS, kindOf, spreadOf, classStatsOf };
+/**
+ * Soma da classe das peças vestidas, para a luta (`setup.classGear`): { flat: { status: inteiro }, pct: { chave: % } }.
+ * `items` = itens do catálogo (com `stats`). Sem peça = {} nos dois lados (a luta nova roda mesmo assim).
+ */
+function classGearOf(items) {
+  const flat = {};
+  const pct = {};
+  for (const it of items || []) {
+    const st = it && it.stats;
+    if (!st) continue;
+    for (const [k, v] of Object.entries(st.flat)) flat[k] = (flat[k] || 0) + v;
+    for (const [k, v] of Object.entries(st.pct)) pct[k] = r2((pct[k] || 0) + v);
+  }
+  return { flat, pct };
+}
+
+module.exports = { NUMBER, PERCENT, FLAT_KEYS, PCT_KEYS, SPLIT, KINDS, kindOf, spreadOf, classStatsOf, classGearOf };

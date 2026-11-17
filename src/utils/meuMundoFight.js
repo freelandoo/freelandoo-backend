@@ -722,6 +722,12 @@ const MOBS                          = {
                                                                                                             
      
                                             
+     
+                                                                                                        
+                                                                                                            
+                                                                                                
+     
+                       
  
 
 /**
@@ -858,6 +864,64 @@ function mobBase(level        )                               {
   const n = ((Math.max(1, Math.round(Number(level) || 1)) - 1) * 17) / 14
   return { hp: PLAYER.hp + HERO_LEVEL.hp * n, rate: 100 + (900 * n) / 59 }
 }
+// ═══ STATUS DA CLASSE E DANO PELA DIFERENÇA (regra do Alex, 2026-11-17, R2) ═══
+// Cada peça tem um número inteiro e uma porcentagem pela classe (E…Divina; dobro da E até a A, triplo do
+// S para cima, sem teto), divididos pelo tipo da peça. Na luta: status = (ficha + número) × (1 + %).
+// Dano = ataque do golpe − defesa de quem apanha, com PISO de 10% do ataque (luta igual continua andando).
+// Acerto = acerto ÷ esquiva (hitChance, já era assim). O fôlego deixa golpe e esquiva mais baratos.
+                                                                            
+                            
+                                                     
+                                          
+                                                                   
+                                         
+ 
+/** Escada das classes (espelho de mmItems/rules/classStats.js; o unit confere). */
+const CLASS_RANKS = ["E", "D", "C", "B", "A", "S", "SS", "SSR", "legendary", "divine"]         
+                                                    
+const CLASS_NUMBER                            = { E: 5, D: 10, C: 20, B: 40, A: 80, S: 240, SS: 720, SSR: 2160, legendary: 6480, divine: 19440 }
+const CLASS_PERCENT                            = { E: 0.1, D: 0.2, C: 0.4, B: 0.8, A: 1.6, S: 4.8, SS: 14.4, SSR: 43.2, legendary: 129.6, divine: 388.8 }
+/** Classe de arma/escudo pelo nível: 1=E, 2=D, 3=C, 4=B, 5=A, 6=S, 7–8=SS, 9 em diante = SSR. */
+function classByLevel(level        )            {
+  const n = Math.max(1, Math.round(Number(level) || 1))
+  return n >= 9 ? "SSR" : (["E", "E", "D", "C", "B", "A", "S", "SS", "SS"]         )[n]
+}
+/** Piso do dano: o golpe sempre passa pelo menos isto do ataque. */
+const STRIKE_FLOOR = 0.1
+/** Dano que passa: ataque − defesa, nunca menos que o piso. */
+function strike(atk        , def        ) {
+  const a = Math.max(0, atk)
+  return Math.max(STRIKE_FLOOR * a, a - Math.max(0, def))
+}
+/**
+ * Kit do monstro na luta nova: uma arma (espada) e um escudo da classe do nível dele (chefão de Domínio =
+ * Lendária), na média da classe. Assim o monstro do seu nível tem o mesmo orçamento de quem está equipado.
+ */
+function mobKit(level        , boss = false)                      {
+  const r            = boss ? "legendary" : classByLevel(level)
+  const n = CLASS_NUMBER[r]
+  const p = CLASS_PERCENT[r]
+  return {
+    flat: { acc: Math.round(n * 0.4), atk: Math.round(n * 0.4), spd: Math.round(n * 0.2), hp: Math.round(n * 0.4), def: Math.round(n * 0.4), stam: Math.round(n * 0.2) },
+    pct: { dmg: p * 0.5, atk: p * 0.5, def: p * 0.5, hp: p * 0.5 },
+  }
+}
+/**
+ * Fichas dos monstros na luta nova (R2). A ficha de MOB_SHEETS foi medida para o dano por razão; com o dano
+ * pela diferença ela ficaria 2 a 6 vezes mais dura. Estas dão, no nível 1 e sem equipamento, o MESMO número
+ * de golpes para cada lado que a ficha antiga dava (defesa 125 = quem tem ataque 100 bate no piso).
+ */
+const MOB_SHEETS_V2                         = {
+  cavaleiro: [155, 124, 125, 90, 70],
+  stone: [155, 122, 125, 95, 60],
+  wolf: [151, 123, 125, 75, 100],
+  ciborgue: [145, 132, 125, 180, 80],
+  garras: [74, 128, 125, 120, 130],
+  brute: [150, 130, 125, 120, 90],
+}
+const pctOf = (c                       , k          ) => 1 + Math.max(0, Number(c?.pct?.[k]) || 0) / 100
+const flatOf = (c                       , k          ) => Math.max(0, Number(c?.flat?.[k]) || 0)
+
 /** O que o nível soma em ataque, defesa e, nos monstros, acuracidade e velocidade (0 no 1, 900 no 60, e segue). */
 const levelRate = (level        ) => (900 * (Math.max(1, Math.round(Number(level) || 1)) - 1)) / 59
 /**
@@ -865,11 +929,23 @@ const levelRate = (level        ) => (900 * (Math.max(1, Math.round(Number(level
  * Trilha E4 (A12): até a E3 o equipamento SOMAVA até 150 em ataque e defesa (valia muito no nível 1
  * e quase nada no 500); agora multiplica — no teto de tudo a troca de golpes vale ×2,11 em qualquer nível.
  */
-function heroSheet(body                           , level        , stats                                                   , gear                     , prep                     ) {
+function heroSheet(body                           , level        , stats                                                   , gear                     , prep                     , cls            ) {
   const [hp, atk, def, acc, spd] = BODY_SHEETS[body ?? ""] ?? BASE_SHEET
   const h = heroLevelScale(level)
   const f = heroStats({ ...stats, dexterity: stats.dexterity ?? 0 }, level)
   const g = withPrep(clampGear(gear), prep)
+  if (cls) {
+    // R2: (ficha + número da classe) × (1 + equipamento) × (1 + % da classe). A vida cresce no passo do
+    // ataque (100 + nível), senão o piso de 10% mataria mais rápido a cada nível.
+    const rate = 100 + levelRate(level)
+    return {
+      hp: Math.round(((rate * hp) / 100 + flatOf(cls, "hp")) * (1 + g.hp) * pctOf(cls, "hp")),
+      atk: ((rate * atk) / 100 + flatOf(cls, "atk")) * (1 + g.dmg) * pctOf(cls, "atk"),
+      def: ((rate * def) / 100 + flatOf(cls, "def")) * (1 + g.def) * pctOf(cls, "def"),
+      acc: (((100 + f.strength) * acc) / 100 + flatOf(cls, "acc")) * (1 + g.acc) * pctOf(cls, "acc"),
+      spd: (((100 + f.speed) * spd) / 100 + flatOf(cls, "spd")) * (1 + g.spd) * pctOf(cls, "spd"),
+    }
+  }
   return {
     hp: Math.round((h.hp * (1 + g.hp) * hp) / 100),
     atk: ((100 + levelRate(level)) * (1 + g.dmg) * atk) / 100,
@@ -1001,6 +1077,16 @@ class Fight {
            rate           
   /** Defesa total (nível + equipamento, com teto). */
            def        
+  /** R2: luta nova (ticket com `classGear`): dano = ataque − defesa com piso, status com a classe. */
+           v2         
+  /** R2: × no dano que passa (a % de dano das peças de quem joga e do kit do adversário). */
+          dmgK = 1
+          foeDmgK = 1
+  /** R2: golpe médio de quem joga e do monstro (o golpe vale ataque × golpe ÷ média). */
+          comboMean = 1
+          mobSwingRef = 1
+  /** R2: × no fôlego gasto pelo fôlego da classe (1 = nada). */
+          stamCls = 1
 
   constructor(setup            ) {
     // luta aberta antes da F1 (ou aparelho com a página antiga): o id antigo vira o de agora;
@@ -1025,7 +1111,15 @@ class Fight {
     const peer = godIdOf(setup.god) ? GOD_PEER : clamp(Number(setup.peer) || 0, 0, 2)
     this.rated = peer > 0 || !!setup.tier
     this.fx = this.withGear(statEffects(gearMind(heroStats(stats, this.heroLevel), this.gear, this.rated)))
-    const sheet = heroSheet(setup.body, this.heroLevel, stats, setup.gear, setup.prep)
+    this.v2 = this.rated && !!setup.classGear
+    const cls = this.v2 ? setup.classGear : undefined
+    const sheet = heroSheet(setup.body, this.heroLevel, stats, setup.gear, setup.prep, cls)
+    if (cls) {
+      this.dmgK = pctOf(cls, "dmg")
+      // fôlego da classe: golpe e esquiva gastam menos (100 ÷ (100 + número), ÷ (1 + %))
+      this.stamCls = 100 / (100 + flatOf(cls, "stam")) / pctOf(cls, "stam")
+      this.fx = { ...this.fx, stamK: this.fx.stamK * this.stamCls }
+    }
     this.rate = { acc: Math.max(1, sheet.acc), spd: Math.max(1, sheet.spd), atk: sheet.atk, def: sheet.def }
     const hpMax = this.rated ? sheet.hp : this.hero.hp
     this.me = {
@@ -1062,10 +1156,28 @@ class Fight {
     const normal = base.hp
     const rated = base.rate
     const ms = MOB_SHEETS[setup.kind]
-    const foe            = peer
+    let foe            = peer
       ? { acc: this.rate.acc * peer, spd: this.rate.spd * peer, atk: this.rate.atk * peer, def: this.rate.def * peer }
       : { acc: (rated * ms[3]) / 100, spd: (rated * ms[4]) / 100, atk: (rated * ms[1]) / 100, def: (rated * ms[2]) / 100 }
-    const hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : setup.tier ? (normal * ms[0]) / 100 / spots.length : def.hp * lv.hp)
+    let hp = Math.round(peer ? (this.me.hpMax * peer) / spots.length : setup.tier ? (normal * ms[0]) / 100 / spots.length : def.hp * lv.hp)
+    if (this.v2) {
+      this.comboMean = mean(this.combo.map((c) => c.dmg))
+      this.mobSwingRef = mean((setup.tier && def.arena ? def.arena : def).attacks.map((a) => a.dmg))
+      if (peer) this.foeDmgK = this.dmgK
+      else {
+        // R2: ficha nova (MOB_SHEETS_V2), vida no passo do ataque e o kit da classe do nível
+        const v = MOB_SHEETS_V2[setup.kind]
+        const kit = mobKit(foeLevel, !!this.boss)
+        foe = {
+          acc: ((rated * v[3]) / 100 + flatOf(kit, "acc")) * pctOf(kit, "acc"),
+          spd: ((rated * v[4]) / 100 + flatOf(kit, "spd")) * pctOf(kit, "spd"),
+          atk: ((rated * v[1]) / 100 + flatOf(kit, "atk")) * pctOf(kit, "atk"),
+          def: ((rated * v[2]) / 100 + flatOf(kit, "def")) * pctOf(kit, "def"),
+        }
+        hp = Math.round(((rated * v[0]) / 100 + flatOf(kit, "hp")) * pctOf(kit, "hp") / spots.length)
+        this.foeDmgK = pctOf(kit, "dmg")
+      }
+    }
     const moves = setup.tier && def.arena ? def.arena : def
     const dmgMul = this.rated ? (mean(this.combo.map((c) => c.dmg)) * (normal / PLAYER.hp)) / mean(moves.attacks.map((a) => a.dmg)) : lv.dmg
     // os poderes entram DEPOIS da conta do dano (não mudam a força dos golpes de sempre)
@@ -1177,7 +1289,7 @@ class Fight {
           withGear(fx                                ) {
     const g = this.gear
     // nas lutas por status o golpe acompanha a vida do nível; quem pesa é ataque contra defesa
-    return { ...fx, dmg: this.rated ? this.hero.hp / PLAYER.hp : fx.dmg * (1 + g.dmg) * this.hero.dmg, warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) }
+    return { ...fx, dmg: this.rated ? this.hero.hp / PLAYER.hp : fx.dmg * (1 + g.dmg) * this.hero.dmg, warn: fx.warn * (1 + g.warn), stamK: fx.stamK * (1 - g.stam) * this.stamCls }
   }
 
   setStats(stats                ) {
@@ -1614,7 +1726,10 @@ class Fight {
     const opening = m.state === "recover" ? 1.25 : 1
     // mm3d-72: escudo do monstro corta o dano
     const guard = m.shieldUntil > this.time ? 1 - MOB_SHIELD.cut : 1
-    const dmg = Math.max(1, Math.round(base * opening * guard * (this.rated ? damageRatio(this.rate.atk, m.rate.def) : 1)))
+    // R2: o golpe vale ataque × (golpe ÷ golpe médio); passa ataque − defesa, com piso de 10%
+    const dmg = this.v2
+      ? Math.max(1, Math.round(strike((this.rate.atk * base * opening * guard) / (this.comboMean * this.fx.dmg), m.rate.def) * this.dmgK))
+      : Math.max(1, Math.round(base * opening * guard * (this.rated ? damageRatio(this.rate.atk, m.rate.def) : 1)))
     m.hp = Math.max(0, m.hp - dmg)
     const dead = m.hp <= 0
     this.events.push({ t: "hit", on: "mob", id: m.id, dmg, x: m.x, y: m.y, z: m.z, heavy, dead, rank, src })
@@ -1906,7 +2021,9 @@ class Fight {
     // Escudo de luz: corta o dano e segura de pé (sem queda nem pancada)
     const shield = p.shieldUntil > this.time
     const cut = this.rated ? damageRatio(m.rate.atk, this.rate.def) : 1 - this.def
-    const dmg = Math.max(1, Math.round(a.dmg * m.dmgMul * cut * (shield ? 1 - SKILLS.shield.cut : 1)))
+    const dmg = this.v2
+      ? Math.max(1, Math.round(strike((m.rate.atk * a.dmg) / this.mobSwingRef, this.rate.def) * this.foeDmgK * (shield ? 1 - SKILLS.shield.cut : 1)))
+      : Math.max(1, Math.round(a.dmg * m.dmgMul * cut * (shield ? 1 - SKILLS.shield.cut : 1)))
     p.hp = Math.max(0, p.hp - dmg)
     const heavy = !!a.heavy
     this.events.push({ t: "hit", on: "me", dmg, x: p.x, z: p.z, heavy, dead: p.hp <= 0, shield })
@@ -2105,4 +2222,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, BOSS_IDS, BOSS_ROAR, BOSSES, bossIdOf, GOD_IDS, GOD_PEER, GOD_KINDS, godIdOf, SOUL_FIGHT, MOBS, GEAR_MAX, PREP_MAX, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, BOSS_IDS, BOSS_ROAR, BOSSES, bossIdOf, GOD_IDS, GOD_PEER, GOD_KINDS, godIdOf, SOUL_FIGHT, MOBS, GEAR_MAX, PREP_MAX, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, CLASS_RANKS, CLASS_NUMBER, CLASS_PERCENT, classByLevel, STRIKE_FLOOR, strike, mobKit, MOB_SHEETS_V2, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
