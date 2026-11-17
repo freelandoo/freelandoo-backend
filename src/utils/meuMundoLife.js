@@ -447,8 +447,21 @@ const VAMPIRE_PAIRS = Object.freeze({
   biscoito_recheado: ["biscoito_sangue", "Biscoito de sangue doce"],
   refrigerante: ["soda_sangue", "Sangue gaseificado"],
 });
+// Classe de raridade da comida (17/11/2026, pedido do Alex: "comida também tem classe"). Mesma escala
+// das armas (E…Divina, `mmItems/rules/rank.js`); sai da FUNÇÃO e da qualidade que a comida já tem — dentro
+// de cada função a classe maior é a que mais ajuda e mais custa. O par do Vampiro herda a do par da Raposa.
+// Plano: MEU MUNDO 3D/planos/2026-11-17-itens-classe-cartoes-npcs.md §1.
+const FOOD_RANK = Object.freeze({
+  miojo: "E", cachorro_quente: "E", pizza: "E", hamburguer: "E", biscoito_recheado: "E", salgadinho: "E", chocolate: "E", coxinha: "E", refrigerante: "E", cafe: "E",
+  prato_feito: "D", agua_coco: "D", energetico: "D", albumina: "D",
+  omelete_legumes: "C", sopa_legumes: "C", prato_integral: "C", iogurte_aveia: "C", multivitaminico: "C", pre_treino: "C",
+  frango_salada: "B", bowl_frutas: "B", creatina: "B", calmante: "B", estimulante: "B",
+  salmao_legumes: "A", whey: "A",
+  anabolizante: "S",
+});
 const ITEMS = Object.freeze(
-  BASE_ITEMS.flatMap((it) => {
+  BASE_ITEMS.flatMap((base) => {
+    const it = Object.freeze({ ...base, rank: FOOD_RANK[base.id] || "E" });
     const p = VAMPIRE_PAIRS[it.id];
     return p ? [it, Object.freeze({ ...it, id: p[0], name: p[1], diet: "sangue" })] : [it];
   }),
