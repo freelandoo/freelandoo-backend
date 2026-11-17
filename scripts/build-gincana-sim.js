@@ -23,7 +23,8 @@ function build() {
   const seen = new Set();
   const parts = [];
   for (const m of MODULES) {
-    let src = stripTypeScriptTypes(fs.readFileSync(path.join(SIM, `${m}.ts`), "utf8"), { mode: "strip" });
+    // fim de linha do Windows (autocrlf) não muda o gerado
+    let src = stripTypeScriptTypes(fs.readFileSync(path.join(SIM, `${m}.ts`), "utf8").replace(/\r\n/g, "\n"), { mode: "strip" });
     // imports entre os módulos somem (tudo vira um escopo só)
     src = src.replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, "");
     src = src.replace(/^export\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];?\s*$/gm, "");
