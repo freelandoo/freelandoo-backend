@@ -441,3 +441,32 @@ test("gincana 3 — Varredura: barras aceleram; a alta derruba quem está em pé
   assert.equal(hitBy(G.MODE.RUN), true, "em pé leva");
   assert.equal(hitBy(G.MODE.SLIDE), false, "deslizando passa por baixo");
 });
+
+test("gincana 3 — Paredes de Brasa: a parede empurra para a lava; o vão deixa passar; a mureta se pula", () => {
+  const C = G.COURSES.forja;
+  assert.equal(C.mode, "survive");
+  const Wl = C.walls;
+  const n = Math.round((2 * Wl.hw) / Wl.seg);
+  // ondas pela semente: as duas primeiras com um vão; depois dos três tipos
+  const kinds = new Set();
+  for (let t = Wl.t0; t < 100; t += 0.5) for (const v of G.wallsAt(C, 7, t, [])) {
+    if (v.i < 2) assert.equal(v.kind, 0);
+    kinds.add(v.kind);
+    assert.ok(v.gaps.every((g) => g >= 0 && g < n));
+  }
+  assert.deepEqual([...kinds].sort(), [0, 1, 2]);
+  // a primeira onda: parado longe do vão é empurrado até cair; parado no vão fica
+  const first = G.wallsAt(C, 1, Wl.t0 + 0.01, [])[0];
+  const gx = -Wl.hw + (first.gaps[0] + 0.5) * Wl.seg;
+  const run = (x, T) => {
+    const { race, r } = solo("forja");
+    Object.assign(r, { x, z: 0, y: G.DECK, ground: true });
+    while (race.t < T && r.out < 0) race.step();
+    return r;
+  };
+  const solid = first.gaps[0] < n / 2 ? Wl.hw - 1.1 : -Wl.hw + 1.1;
+  assert.ok(run(solid, 12).out >= 0, "empurrado para a lava");
+  // até a primeira onda passar (a segunda tem outro vão)
+  const ok = run(gx, Wl.t0 + (Wl.z0 + 1) / first.v);
+  assert.equal(ok.out, -1, "no vão a parede passa");
+});

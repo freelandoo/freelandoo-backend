@@ -269,6 +269,36 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "canion",
               
  
 
+/**
+ * Gincana 3: ondas de PAREDE que atravessam a arena de z0 para z1 (Paredes de
+ * Brasa). Uma onda sai a cada `every` s (a partir de t0) e anda mais rápido
+ * com o tempo (v0 → v1 em `ramp` s). A semente decide cada onda: parede alta
+ * com um vão, com dois vãos, ou mureta baixa (pula). Pedaços de `seg` m.
+ */
+                        
+            
+            
+            
+           
+               
+            
+            
+            
+              
+             
+              
+             
+ 
+
+/** Uma onda de parede agora: onde está (z), a velocidade, o tipo (0 = um vão, 1 = mureta, 2 = dois vãos) e os pedaços abertos. */
+                           
+           
+           
+           
+                 
+                
+ 
+
 /** Zona do rei do pedaço: círculo (x, z, r) com o chão em y. */
                        
            
@@ -288,6 +318,7 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "canion",
                    
              
                    
+                     
              
                
                      
@@ -398,6 +429,7 @@ class CourseKit {
                   
                
                
+                 
    )         {
     return {
       id: o.id,
@@ -407,6 +439,7 @@ class CourseKit {
       rise: o.rise ?? null,
       gems: this.gems,
       zone: o.zone ?? null,
+      walls: o.walls ?? null,
       pads: this.pads,
       posts: this.posts,
       sweepers: this.sweepers,
@@ -520,6 +553,32 @@ function doorsOpen(c        , seed        )             {
       idx[j] = tmp
     }
     for (let k = 0; k < Math.min(c.doorOpen[row], idx.length); k++) out[idx[k]] = 1
+  }
+  return out
+}
+
+/** Ondas de parede na arena no tempo t (Paredes de Brasa); `out` é reaproveitado. */
+function wallsAt(c        , seed        , t        , out            ) {
+  out.length = 0
+  const W = c.walls
+  if (!W || t < W.t0) return out
+  const span = (W.z0 - W.z1) / W.v0
+  const i1 = Math.floor((t - W.t0) / W.every)
+  const i0 = Math.max(0, Math.floor((t - W.t0 - span) / W.every))
+  const n = Math.round((2 * W.hw) / W.seg)
+  for (let i = i0; i <= i1; i++) {
+    // depois de 40 s as ímpares chegam logo atrás da anterior (pares de paredes)
+    const T = W.t0 + i * W.every - (i % 2 && W.t0 + i * W.every > 40 ? W.every * 0.45 : 0)
+    const v = W.v0 + (W.v1 - W.v0) * Math.min(1, T / W.ramp)
+    const z = W.z0 - v * (t - T)
+    if (z < W.z1 || z > W.z0) continue
+    const h = courseHash(seed ^ 0x3c6ef372, i)
+    // as duas primeiras são de aquecimento (um vão); depois a semente escolhe
+    const roll = i < 2 ? 0 : h % 6
+    const kind            = roll === 5 ? 1 : roll >= 3 ? 2 : 0
+    const g1 = (h >>> 3) % n
+    const gaps = kind === 1 ? [] : kind === 2 ? [g1, (g1 + 3 + ((h >>> 9) % (n - 5))) % n] : [g1]
+    out.push({ i, z, v, kind, gaps })
   }
   return out
 }
@@ -961,69 +1020,28 @@ function courseOrbital()         {
 
 // ═══ forja — Forja ═══════════════════════════════════════════════════════════
 
+/**
+ * Gincana 3 (2026-11-18): PAREDES DE BRASA — sobrevivência na Forja. Uma
+ * arena quadrada de 22 m sobre a lava; ondas de parede de brasa vêm da frente
+ * e atravessam tudo: parede alta com um ou dois vãos (ache o buraco) ou
+ * mureta baixa (pule). Quem a parede empurra para fora cai na lava e está
+ * FORA. As ondas ficam mais rápidas; acaba quando sobra a vaga ou em 100 s.
+ */
 function courseForja()         {
   const k = new CourseKit()
-  kitStart(k)
-  // ── 1. martelos ──
-  k.box(0, 19, 7, 3, 0, 1, 1)
-  k.box(0, 40, 7, 18, 0, 1, 1)
-  ;[29, 38, 47].forEach((z, row) => [-4, 0, 4].forEach((x, col) => k.swing(x, z, DECK + 9, 7.4, 1.1, 0.9, 2.3, row * 1.4 + col * 2.1)))
-  // ── 2. pistões dos dois lados ──
-  k.box(0, 81, 7, 23, 0, 1, 2)
-  for (let i = 0; i < 5; i++) {
-    const z = 66 + i * 8
-    k.glove(-9.4, z, DECK + 1, 1, 8.2, 1.15, 2.4, i * 0.9)
-    k.glove(9.4, z, DECK + 1, -1, 8.2, 1.15, 2.4, i * 0.9 + 1.2)
-    k.post(-9.4, z, 1.0, -1, DECK + 2.2, 4)
-    k.post(9.4, z, 1.0, -1, DECK + 2.2, 4)
-  }
-  // ── 3. esteiras de lado sobre a lava ──
-  k.box(0, 108, 7, 4, 0, 1, 3)
-  ;[118, 130, 142].forEach((z, i) => {
-    const b = k.box(0, z, 4, 6, 4, 0, 3)
-    k.pads[b].bx = i % 2 ? -3 : 3
-  })
-  k.box(0, 152, 7, 4, 0, 1, 3)
-  // ── 4. grade que cai ──
-  for (let r = 0; r < 9; r++) for (let c = 0; c < 5; c++) k.tile((c - 2) * 2.9, 158.5 + r * 2.9, 1.3, (r + c) % 2 ? 2 : 0)
-  k.box(0, 187, 7, 4, 0, 1, 4)
-  // ── 5. rochas derretidas ──
-  const z0 = 191
-  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.2)
-  for (const [x, z] of [[0, 56], [0, 61], [0, 108], [-2.5, 118], [2.5, 130], [-2.5, 142], [0, 152], [0, 187]]                      ) k.logo(x, z)
+  k.box(0, 0, 11, 11, 0, 1, 1, 0, 1.6)
   return k.done({
     id: "forja",
-    checkpoints: [
-      { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 61, y: DECK, w: 6 },
-      { x: 0, z: 108, y: DECK, w: 6 },
-      { x: 0, z: 152, y: DECK, w: 6 },
-      { x: 0, z: 187, y: DECK, w: 5.5 },
-    ],
-    finishZ,
-    finishY: DECK + 6,
-    sections: [22, 58, 112, 156, z0],
-    minFinish: 22,
-    route: (r) =>
-      routeOf((add) => {
-        const side = r(1) < 0.5 ? -1 : 1
-        add(side * 1.2, 10)
-        add(side * 0.8, 15.5)
-        const L = [-2, 2, -6, 6][Math.floor(r(2) * 4)]
-        for (let z = 20; z <= 56; z += 2) add(L, z)
-        add(0, 59)
-        const F = [-0.2, 0.2, -5.5, 5.5][Math.floor(r(3) * 4)]
-        for (let z = 62; z <= 103; z += 2.5) add(F, z)
-        add(0, 106)
-        add(0, 110)
-        for (let z = 113; z <= 148; z += 1.5) add(0, z)
-        add(0, 152)
-        add(0, 156)
-        for (let i = 0; i < 9; i++) add(0, 158.5 + i * 2.9)
-        add(0, 185)
-        add(0, 188)
-        routeFinish(add, z0, finishZ)
-      }),
+    mode: "survive",
+    qualify: 0.5,
+    limit: 100,
+    walls: { hw: 11, z0: 13, z1: -14, y: DECK, every: 3.2, t0: 2, v0: 3.4, v1: 11, ramp: 60, seg: 2.2, tall: 3.2, low: 0.9 },
+    checkpoints: [{ x: 0, z: -2, y: DECK, w: 6 }],
+    finishZ: 40,
+    finishY: 90,
+    sections: [],
+    minFinish: 1e6,
+    route: () => [{ x: 0, z: 0 }],
   })
 }
 
@@ -1451,6 +1469,9 @@ function groundUnder(w          , x        , z        , reach        ) {
   return { y: best, tile, pad, bounce }
 }
 
+/** Ondas de parede do passo (reaproveitado: nada de lixo a 60 Hz). */
+const WALL_TMP             = []
+
 /** Beira encontrada ao bater de lado: tampo e normal para fora. */
                  
              
@@ -1555,6 +1576,28 @@ function pushWalls(b        , w          , out                   )              
     // empurra para trás (de onde veio) — as portas da mesma fileira se encostam: nunca de lado
     b.z = d.z + Math.sign(b.z - d.z || -1) * (T + R)
     b.vz = 0
+  }
+  // Gincana 3: paredes de brasa — o pedaço sólido empurra para o lado de onde a pessoa está (o vão deixa passar)
+  if (C.walls) {
+    const Wl = C.walls
+    const TH = 0.35
+    for (const v of wallsAt(C, w.seed, w.t, WALL_TMP)) {
+      if (Math.abs(b.z - v.z) >= TH + R || Math.abs(b.x) > Wl.hw + R) continue
+      if (b.y >= Wl.y + (v.kind === 1 ? Wl.low : Wl.tall) || b.y + H <= Wl.y) continue
+      let hit = v.kind === 1
+      if (!hit) {
+        const n = Math.round((2 * Wl.hw) / Wl.seg)
+        for (let j = 0; j < n && !hit; j++) {
+          if (v.gaps.includes(j)) continue
+          const L = -Wl.hw + j * Wl.seg
+          if (b.x + R * 0.8 > L && b.x - R * 0.8 < L + Wl.seg) hit = true
+        }
+      }
+      if (!hit) continue
+      const side = Math.sign(b.z - v.z) || -1
+      b.z = v.z + side * (TH + R)
+      if (side < 0 && b.vz > -v.v) b.vz = -v.v
+    }
   }
   // blocos que andam e empurram
   for (const q of C.pushers) {
@@ -2090,6 +2133,9 @@ function barJump(br          , b        , w          , it           ) {
   }
 }
 
+/** Ondas de parede vistas pelo computador (reaproveitado). */
+const BOT_WALLS             = []
+
 /** Vizinhas de cada pedra (mesmo andar, até 2,6 m), calculadas uma vez por percurso. */
 const TILE_NB = new WeakMap                    ()
 function tileNeighbors(C        ) {
@@ -2155,6 +2201,35 @@ function arenaIntent(br          , b        , w          , it           )       
     if (b.ground && br.jumpCool <= 0 && botRand(br.seed, br.slot, Math.floor(t * 4)) < br.skill * 1.2 - 0.25) {
       it.jump = true
       br.jumpCool = 0.2
+    }
+  }
+  // Paredes de Brasa: fica na frente da arena; a próxima onda chegando, vai para o vão (ou pula a mureta)
+  if (C.walls) {
+    const Wl = C.walls
+    const list = wallsAt(C, w.seed, t, BOT_WALLS)
+    let next                  = null
+    for (const v of list) if (v.z > b.z - 0.1 && (!next || v.z < next.z)) next = v
+    tx = Math.max(-Wl.hw + 2, Math.min(Wl.hw - 2, b.x))
+    tz = 2.5
+    if (next) {
+      const eta = (next.z - b.z) / next.v
+      // os menos hábeis percebem tarde e às vezes escolhem o vão errado
+      const notice = 2.6 - (1 - br.skill) * 1.6
+      if (next.kind === 1) {
+        const err = (botRand(br.seed, br.slot * 17, next.i) - 0.5) * (1 - br.skill) * 0.35
+        if (b.ground && br.jumpCool <= 0 && eta < 0.22 + err && eta > 0.02) {
+          it.jump = true
+          br.jumpCool = 0.5
+        }
+      } else if (eta < notice) {
+        const n = Math.round((2 * Wl.hw) / Wl.seg)
+        let g = next.gaps[0]
+        for (const q of next.gaps) if (Math.abs(-Wl.hw + (q + 0.5) * Wl.seg - b.x) < Math.abs(-Wl.hw + (g + 0.5) * Wl.seg - b.x)) g = q
+        if (next.i >= 3 && botRand(br.seed, br.slot * 19, next.i) < (1 - br.skill) * 0.35) g = g > 0 && (g === n - 1 || botRand(br.seed, br.slot * 23, next.i) < 0.5) ? g - 1 : g + 1
+        tx = -Wl.hw + (g + 0.5) * Wl.seg
+        // parado no vão esperando a parede passar
+        tz = b.z
+      }
     }
   }
   // arena sem pedras (Varredura): um lugar a ~5 m do eixo, que muda de tempo em tempo
@@ -2812,4 +2887,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
