@@ -134,50 +134,31 @@ test("poder — ESPELHO: o TS do front e o back dão o mesmo número", async (t)
 });
 
 // ═══ Faixa de Poder do nível e o Poder transbordando (Alex, 2026-11-18) ═══
-const ClassStats = require("../../src/utils/mmItems/rules/classStats");
-const Adv = require("../../src/utils/meuMundoAdventure");
+const Domains = require("../../src/utils/meuMundoDomains");
 
-test("faixa — o kit da regra do Poder é o mesmo de classStats.js (número, %, divisão das 8 peças)", () => {
-  assert.deepEqual(P.KIT_NUMBER, { ...ClassStats.NUMBER });
-  assert.deepEqual(P.KIT_PERCENT, { ...ClassStats.PERCENT });
-  const kinds = { sword: "sword", shield: "shield", chest: "chest", helm: "helm", gloves: "gloves", boots: "boots", amulet: "amulet", relic: "relic" };
-  for (const [k, ref] of Object.entries(kinds)) assert.deepEqual(P.KIT_SPLIT[k], JSON.parse(JSON.stringify(ClassStats.SPLIT[ref])), k);
-  assert.equal(Object.keys(P.KIT_SPLIT).length, 8);
-});
-
-test("faixa — a classe comprável por nível bate com a economia real (moedas só vencendo na rua × preço da loja)", () => {
-  // moedas juntadas até o nível L: cada nível pede xpToNext(n) de XP; a vitória contra o monstro do fator
-  // mais alto da régua (1,6×) dá fightXp e 20 moedas por nível do monstro (sem chefão)
-  const first = {};
-  let cum = 0;
-  for (let L = 1; L <= 400; L++) {
-    if (L > 1) {
-      const n = L - 1;
-      const M = Adv.levelForFactor(n, 1.6);
-      cum += (Adv.xpToNext(n) / Adv.fightXp("cavaleiro", M, true)) * 20 * M;
-    }
-    for (const r of Object.keys(ClassStats.PRICE)) if (!first[r] && ClassStats.PRICE[r] <= cum) first[r] = L;
-  }
-  first.E = 1; // a E é o kit da loja desde o começo
-  assert.deepEqual(Object.fromEntries(P.SHOP_RANK_LEVEL), first);
-});
-
-test("faixa — piso < média < teto, sobe com o nível, e a classe acompanha", () => {
-  let prev = null;
-  for (const L of [1, 2, 5, 6, 10, 17, 21, 30, 55, 101, 187, 400]) {
+test("faixa — a média do nível é o Poder médio de um monstro do nível (mesma conta dos Domínios)", () => {
+  for (const L of [1, 7, 21, 30, 99]) {
+    for (const k of F.MOB_KINDS) assert.ok(Math.abs(P.mobPowerOf(F, k, L) - Domains.mobPower(k, L)) < 1e-9, `${k} ${L}`);
+    const avg = F.MOB_KINDS.reduce((a, k) => a + Domains.mobPower(k, L), 0) / F.MOB_KINDS.length;
     const b = P.powerBand(F, L);
-    assert.ok(b.min < b.avg && b.avg < b.max, `${L}: ${JSON.stringify(b)}`);
-    if (prev) assert.ok(b.min > prev.min && b.max > prev.max, `${L} não subiu`);
+    assert.equal(b.avg, Math.round(avg));
+    assert.equal(b.max, Math.round(avg * P.BAND_MAX));
+  }
+  assert.deepEqual(P.powerBand(F, 21), { avg: 2864, max: 5012 });
+});
+
+test("faixa — sobe com o nível; nível inválido vira 1", () => {
+  let prev = null;
+  for (const L of [1, 2, 5, 10, 21, 30, 60, 200]) {
+    const b = P.powerBand(F, L);
+    assert.ok(b.avg < b.max);
+    if (prev) assert.ok(b.avg > prev.avg && b.max > prev.max, `${L}`);
     prev = b;
   }
-  assert.equal(P.shopRankAt(1), "E");
-  assert.equal(P.shopRankAt(16), "B");
-  assert.equal(P.shopRankAt(17), "A");
-  assert.equal(P.shopRankAt(30), "S");
-  assert.equal(P.shopRankAt(0), "E");
+  assert.deepEqual(P.powerBand(F, 0), P.powerBand(F, 1));
 });
 
-test("faixa — o personagem no teto exato não transborda; um ponto acima, sim", () => {
+test("faixa — no teto exato não transborda; um ponto acima, sim", () => {
   for (const L of [1, 21, 60]) {
     const { max, avg } = P.powerBand(F, L);
     assert.equal(P.isOverpowered(F, avg, L), false);
