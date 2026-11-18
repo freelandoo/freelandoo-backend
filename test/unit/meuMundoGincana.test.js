@@ -222,12 +222,13 @@ test("gincana 2.0 — porta: a falsa segura, a de verdade abre e deixa passar", 
 });
 
 test("gincana 2.0 — esteira arrasta e plataforma que anda leva quem está em cima", () => {
-  const C = G.COURSES.orbital;
+  // esteira da Fábrica (Gincana 3: a Orbital virou a Varredura)
+  const C = G.COURSES.fabrica;
   const belt = C.pads.find((p) => p.bz < 0);
-  const { race, r } = solo("orbital");
+  const { race, r } = solo("fabrica");
   Object.assign(r, { x: belt.x, z: belt.z, y: G.DECK, ground: true });
-  for (let k = 0; k < 60; k++) race.step();
-  assert.ok(r.z < belt.z - 2.5, `parado na esteira foi para trás: ${r.z - belt.z}`);
+  for (let k = 0; k < 90; k++) race.step();
+  assert.ok(r.z < belt.z - 2, `parado na esteira foi para trás: ${r.z - belt.z}`);
 
   // vitória-régia da Maré do Pântano (Gincana 3; antes era a pedra do Cânion)
   const Cc = G.COURSES.floresta;
@@ -408,4 +409,35 @@ test("gincana 3 — queda rápida não atravessa o chão (14 m de queda)", () =>
     G.stepRunner(r, G.IDLE_INTENT, w, null);
   }
   assert.ok(Math.abs(r.y - G.DECK) < 0.01, `pousou: ${r.y}`);
+});
+
+test("gincana 3 — Varredura: barras aceleram; a alta derruba quem está em pé e não quem mergulha", () => {
+  const C = G.COURSES.orbital;
+  assert.equal(C.mode, "survive");
+  const [low, high] = C.sweepers;
+  assert.ok(high.y - high.r - G.DECK > 0.9 && low.y + low.r - G.DECK < 1.0, "uma baixa e uma alta");
+  // acelera e o ângulo é contínuo
+  assert.ok(Math.abs(G.sweeperW(low, 60)) > Math.abs(G.sweeperW(low, 0)) * 2);
+  assert.equal(Math.abs(G.sweeperW(low, 500)), low.wMax);
+  const a1 = G.sweeperAngle(low, 70);
+  const a2 = G.sweeperAngle(low, 70 + 1e-3);
+  assert.ok(Math.abs(a2 - a1) < 0.01);
+  // de pé na frente da barra alta: derrubado; deslizando: passa
+  const hitBy = (mode) => {
+    const C2 = { ...C, sweepers: [high] };
+    const w = G.newWorld(C2, 1, 0);
+    const r = G.newRunner(C2, 0);
+    // a barra alta (um braço) começa apontando para +x e gira para trás: espera na frente dela
+    const a = G.sweeperAngle(high, 0.4);
+    Object.assign(r, { x: Math.sin(a) * 6, z: Math.cos(a) * 6, y: G.DECK, ground: true, mode, timer: 5 });
+    const ev = [];
+    for (let k = 0; k < 30; k++) {
+      w.t += G.GINCANA.step;
+      G.stepRunner(r, G.IDLE_INTENT, w, ev);
+      if (mode === G.MODE.SLIDE) Object.assign(r, { mode, timer: 5 });
+    }
+    return ev.some((e) => e.type === "hit" && e.by === "bar");
+  };
+  assert.equal(hitBy(G.MODE.RUN), true, "em pé leva");
+  assert.equal(hitBy(G.MODE.SLIDE), false, "deslizando passa por baixo");
 });

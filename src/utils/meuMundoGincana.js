@@ -42,6 +42,8 @@ const GINCANA = {
   jumpBuffer: 0.15,
   bodyR: 0.4,
   bodyH: 1.7,
+  /** Gincana 3: altura do corpo mergulhando/deslizando (passa por baixo da barra alta). */
+  lowH: 0.7,
   stepUp: 0.45,
   /** Mergulho: para a frente, um pouco para cima; depois desliza e levanta. */
   diveV: 11.5,
@@ -151,6 +153,9 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "canion",
            
             
                
+                                                                                               
+             
+              
  
 
 /** Bola de pêndulo que balança no eixo x, pendurada em (x, py, z). */
@@ -353,8 +358,9 @@ class CourseKit {
   post(x        , z        , r        , y0        , y1        , c        , b = 0) {
     this.posts.push({ x, z, r, y0, y1, c, b })
   }
-  sweep(x        , z        , y        , len        , r        , w        , a0        , both         ) {
-    this.sweepers.push({ x, z, y, len, r, w, a0, both })
+  sweep(x        , z        , y        , len        , r        , w        , a0        , both         , acc = 0, wMax = 0) {
+    this.sweepers.push({ x, z, y, len, r, w, a0, both, acc, wMax })
+    return this.sweepers.length - 1
   }
   swing(x        , z        , py        , len        , R        , amp        , w        , ph        ) {
     this.pendulums.push({ x, z, py, len, R, amp, w, ph })
@@ -427,7 +433,18 @@ class CourseKit {
 // ── o que se mexe ────────────────────────────────────────────────────────────
 
 function sweeperAngle(s         , t        ) {
-  return s.a0 + s.w * t
+  if (!s.acc) return s.a0 + s.w * t
+  // acelera até wMax e segue nela
+  const sg = Math.sign(s.w || 1)
+  const w0 = Math.abs(s.w)
+  const tc = Math.max(0, Math.min(t, (s.wMax - w0) / s.acc))
+  return s.a0 + sg * (w0 * t + 0.5 * s.acc * tc * tc + s.acc * tc * (t - tc))
+}
+
+/** Velocidade do giro da barra no tempo t (rad/s, com sinal). */
+function sweeperW(s         , t        ) {
+  if (!s.acc) return s.w
+  return Math.sign(s.w || 1) * Math.min(s.wMax, Math.abs(s.w) + s.acc * Math.max(0, t))
 }
 
 /** Centro da bola do pêndulo e velocidade em x. */
@@ -912,79 +929,33 @@ function courseCanion()         {
 
 // ═══ orbital — Cidade Orbital ════════════════════════════════════════════════
 
+/**
+ * Gincana 3 (2026-11-18): VARREDURA — sobrevivência na Cidade Orbital. Um disco
+ * no vazio que gira devagar e duas barras: a BAIXA (rente ao chão) se pula; a
+ * ALTA (na altura do peito, girando para o outro lado) só passa quem MERGULHA
+ * por baixo. As duas aceleram até o fim. Quem cai do disco está fora. Acaba
+ * quando sobra a vaga (metade) ou em 100 s.
+ */
 function courseOrbital()         {
   const k = new CourseKit()
-  kitStart(k)
-  // ── 1. esteiras para trás, com caixas no caminho ──
-  k.box(0, 19, 7, 3, 6, 7, 1)
-  const belt = k.box(0, 35, 6, 13, 6, 3, 1)
-  k.pads[belt].bz = -3.2
-  for (const [x, z] of [[-3, 28], [2.5, 32], [-1, 37], [3.5, 41], [-3.5, 44.5]]                      ) k.post(x, z, 0.65, DECK, DECK + 1.2, 7)
-  k.box(0, 52, 7, 4, 6, 7, 1)
-  // ── 2. anéis que giram ──
-  const SPIN = [0.55, -0.75, 0.65]
-  ;[63.5, 77.5, 91.5].forEach((z, i) => {
-    const d = k.disc(0, z, 7.5, i === 1 ? 4 : 6, 7, 2)
-    k.pads[d].spin = SPIN[i]
-  })
-  k.post(0, 77.5, 0.7, DECK, DECK + 2.2, 7)
-  k.sweep(0, 77.5, DECK + 0.55, 7.7, 0.3, 1.45, 0, false)
-  k.box(0, 103, 7, 4, 6, 7, 2)
-  // ── 3. hexágonos que somem ──
-  for (let r = 0; r < 13; r++) {
-    for (let c = 0; c < 5; c++) {
-      const x = (c - 2) * 2.9 + (r % 2 ? 1.45 : -1.45) * 0.5
-      k.tile(x, 109.6 + r * 2.55, 1.45, (r + c) % 3 === 0 ? 4 : 6, 1)
-    }
-  }
-  k.box(0, 146, 7, 4, 6, 7, 3)
-  // ── 4. barreiras de energia ──
-  k.box(0, 173, 6, 23, 6, 7, 4)
-  ;[[159, 1.3, 0], [173, -1.5, 0.8], [187, 1.2, 1.6]].forEach(([z, w, a0]) => {
-    k.sweep(0, z, DECK + 0.55, 6.3, 0.3, w, a0, true)
-    k.post(0, z, 0.8, DECK, DECK + 2.2, 7)
-  })
-  k.pusher(0, 166, 1.4, 1.0, 2.4, 4.4, 0, 1.5, 0)
-  k.pusher(0, 180, 1.4, 1.0, 2.4, 4.4, 0, 1.9, 2.1)
-  k.box(0, 200, 7, 4, 6, 7, 4)
-  // ── 5. esferas rolando ──
-  const z0 = 204
-  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.15)
-  for (const [x, z] of [[0, 52], [-4, 49], [4, 49], [0, 103], [0, 146], [-4, 166], [4, 180], [0, 200]]                      ) k.logo(x, z)
+  const floor = k.disc(0, 0, 11, 6, 7, 1)
+  k.pads[floor].spin = 0.16
+  k.post(0, 0, 1.1, DECK, DECK + 3.2, 4)
+  // barra baixa (pular): dois braços
+  k.sweep(0, 0, DECK + 0.55, 11.6, 0.36, 0.85, 0, true, 0.02, 2.5)
+  // barra alta (mergulhar): um braço, ao contrário, na altura do peito
+  k.sweep(0, 0, DECK + 1.4, 11.6, 0.3, -0.6, Math.PI / 2, false, 0.014, 1.7)
   return k.done({
     id: "orbital",
-    checkpoints: [
-      { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 52, y: DECK, w: 6 },
-      { x: 0, z: 103, y: DECK, w: 6 },
-      { x: 0, z: 146, y: DECK, w: 6 },
-      { x: 0, z: 200, y: DECK, w: 5.5 },
-    ],
-    finishZ,
-    finishY: DECK + 6,
-    sections: [22, 56, 107, 150, z0],
-    minFinish: 22,
-    tileTime: { warn: 0.55, gone: 5 },
-    route: (r) =>
-      routeOf((add) => {
-        const side = r(1) < 0.5 ? -1 : 1
-        add(side * 1.2, 10)
-        add(side * 0.8, 15.5)
-        add(0, 20)
-        const F = [-1.5, 1, 5, -5][Math.floor(r(2) * 4)]
-        for (let z = 24; z <= 47; z += 2.5) add(F, z)
-        add(0, 50)
-        for (let z = 54; z <= 99; z += 1.6) add(0, z)
-        add(0, 103)
-        add(0, 107.5)
-        for (let i = 0; i < 13; i++) add(0, 109.6 + i * 2.55)
-        add(0, 143.5)
-        add(0, 147)
-        const B = r(3) < 0.5 ? -1 : 1
-        for (let z = 151; z <= 197; z += 2) add(B * (z > 166 && z < 180 ? -3.4 : 3.4), z)
-        add(0, 201)
-        routeFinish(add, z0, finishZ)
-      }),
+    mode: "survive",
+    qualify: 0.5,
+    limit: 100,
+    checkpoints: [{ x: 0, z: -6.5, y: DECK, w: 6 }],
+    finishZ: 40,
+    finishY: 90,
+    sections: [],
+    minFinish: 1e6,
+    route: () => [{ x: 0, z: 0 }],
   })
 }
 
@@ -1637,7 +1608,8 @@ function knock(b        , kx        , ky        , kz        , by                
 function hazards(b        , w          , out                   ) {
   const C = w.course
   const R = GINCANA.bodyR
-  const H = GINCANA.bodyH
+  // Gincana 3: mergulhando/deslizando o corpo fica baixo (0,7 m) e passa por baixo da barra alta
+  const H = b.mode === MODE.DIVE || b.mode === MODE.SLIDE ? GINCANA.lowH : GINCANA.bodyH
   const t = w.t
   for (const s of C.sweepers) {
     const cx = b.x - s.x
@@ -1655,7 +1627,7 @@ function hazards(b        , w          , out                   ) {
     const gap = Math.hypot(b.x - px, b.z - pz)
     if (gap >= R + s.r) continue
     // velocidade da barra no ponto: ω × r (perpendicular à barra)
-    const sp = s.w * along
+    const sp = sweeperW(s, t) * along
     let tx = Math.cos(a) * Math.sign(sp || 1)
     let tz = -Math.sin(a) * Math.sign(sp || 1)
     if (Math.abs(along) < 0.6) {
@@ -2069,6 +2041,55 @@ function newBrain(w          , seed        , slot        )           {
  * os mais hábeis pulam o tempo todo (no ar não derruba pedra). Tudo pela
  * semente e pelo tempo, igual na sala e no aparelho.
  */
+/**
+ * Barra chegando: prevê onde estarei (velocidade de agora) e onde a barra
+ * estará; pula ~0,15 s antes do contato — ou, se a barra é ALTA (na altura do
+ * peito, Gincana 3), mergulha por baixo, de frente para o eixo. Erro pela habilidade.
+ */
+function barJump(br          , b        , w          , it           ) {
+  const C = w.course
+  const t = w.t
+  if (!b.ground || br.jumpCool > 0) return
+  const vx = b.vx + (it.mx * GINCANA.run - b.vx) * 0.5
+  const vz = b.vz + (it.mz * GINCANA.run - b.vz) * 0.5
+  for (let i = 0; i < C.sweepers.length; i++) {
+    const s = C.sweepers[i]
+    if (Math.hypot(b.x - s.x, b.z - s.z) > s.len + 5) continue
+    const high = s.y - s.r - b.y > 0.9
+    let tc = -1
+    for (let k = 1; k <= 30 && tc < 0; k++) {
+      const h = k * 0.02
+      const px = b.x + vx * h - s.x
+      const pz = b.z + vz * h - s.z
+      const a = sweeperAngle(s, t + h)
+      const dx = Math.sin(a)
+      const dz = Math.cos(a)
+      const along = Math.max(s.both ? -s.len : 0, Math.min(s.len, px * dx + pz * dz))
+      if (Math.abs(along) < 0.9) continue
+      if (Math.hypot(px - dx * along, pz - dz * along) < s.r + GINCANA.bodyR + 0.08) tc = h
+    }
+    if (tc < 0) continue
+    const span = s.both ? Math.PI : Math.PI * 2
+    const pass = Math.floor(sweeperAngle(s, t) / span)
+    const err = (botRand(br.seed, br.slot * 31 + i, pass) - 0.5) * (1 - br.skill) * 0.3
+    if (high) {
+      // mergulha um pouco antes (o mergulho leva ~0,1 s para baixar), de frente para o eixo
+      if (tc < 0.3 + err && tc > 0.06) {
+        const ex = s.x - b.x
+        const ez = s.z - b.z
+        const d = Math.hypot(ex, ez) || 1
+        it.mx = ex / d
+        it.mz = ez / d
+        it.dive = true
+        br.jumpCool = 0.9
+      }
+    } else if (tc < 0.2 + err && tc > 0.04) {
+      it.jump = true
+      br.jumpCool = 0.7
+    }
+  }
+}
+
 /** Vizinhas de cada pedra (mesmo andar, até 2,6 m), calculadas uma vez por percurso. */
 const TILE_NB = new WeakMap                    ()
 function tileNeighbors(C        ) {
@@ -2136,6 +2157,13 @@ function arenaIntent(br          , b        , w          , it           )       
       br.jumpCool = 0.2
     }
   }
+  // arena sem pedras (Varredura): um lugar a ~5 m do eixo, que muda de tempo em tempo
+  if (!C.tiles.length && C.sweepers.length) {
+    const a = botRand(br.seed, br.slot, 500 + Math.floor(t / 6)) * Math.PI * 2
+    const rr = 3.5 + botRand(br.seed, br.slot, 600 + Math.floor(t / 6)) * 3.5
+    tx = C.sweepers[0].x + Math.sin(a) * rr
+    tz = C.sweepers[0].z + Math.cos(a) * rr
+  }
   const dx = tx - b.x
   const dz = tz - b.z
   const d = Math.hypot(dx, dz)
@@ -2144,6 +2172,7 @@ function arenaIntent(br          , b        , w          , it           )       
     it.mx = (dx / d) * go
     it.mz = (dz / d) * go
   }
+  barJump(br, b, w, it)
   return it
 }
 
@@ -2391,35 +2420,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   } else if (go > 0) br.waited = Math.max(0, br.waited - dt * 0.5)
 
   // barra chegando: pula na hora (com o erro da habilidade)
-  if (b.ground && br.jumpCool <= 0) {
-    // prevê onde estarei (velocidade de agora) e onde a barra estará: pula ~0,15 s antes do contato
-    const vx = b.vx + (it.mx * GINCANA.run - b.vx) * 0.5
-    const vz = b.vz + (it.mz * GINCANA.run - b.vz) * 0.5
-    for (let i = 0; i < C.sweepers.length; i++) {
-      const s = C.sweepers[i]
-      if (Math.hypot(b.x - s.x, b.z - s.z) > s.len + 5) continue
-      let tc = -1
-      for (let k = 1; k <= 30 && tc < 0; k++) {
-        const h = k * 0.02
-        const px = b.x + vx * h - s.x
-        const pz = b.z + vz * h - s.z
-        const a = sweeperAngle(s, t + h)
-        const dx = Math.sin(a)
-        const dz = Math.cos(a)
-        const along = Math.max(s.both ? -s.len : 0, Math.min(s.len, px * dx + pz * dz))
-        if (Math.abs(along) < 0.9) continue
-        if (Math.hypot(px - dx * along, pz - dz * along) < s.r + GINCANA.bodyR + 0.08) tc = h
-      }
-      if (tc < 0) continue
-      const span = s.both ? Math.PI : Math.PI * 2
-      const pass = Math.floor((s.w * t + s.a0) / span)
-      const err = (botRand(br.seed, br.slot * 31 + i, pass) - 0.5) * (1 - br.skill) * 0.3
-      if (tc < 0.2 + err && tc > 0.04) {
-        it.jump = true
-        br.jumpCool = 0.7
-      }
-    }
-  }
+  barJump(br, b, w, it)
   // ladrilho tremendo embaixo: pula para o próximo
   if (b.ground && br.jumpCool <= 0) {
     for (let i = 0; i < C.tiles.length; i++) {
@@ -2811,4 +2812,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
