@@ -78,10 +78,10 @@ test("gincana — 8 fases; cada uma fecha: postos em ordem com chão, chegada no
       }
     }
   }
-  // a de sempre continua com os números de antes
-  assert.equal(C0.finishZ, 266);
-  assert.ok(C0.sweepers.length >= 4 && C0.pendulums.length >= 8 && C0.gloves.length >= 6);
-  assert.equal(C0.tiles.length, 42);
+  // a da cidade (G3-11): Portas da Prefeitura — 5 fileiras de 5 portas, carrossel de duas barras, pêndulos
+  assert.equal(C0.doors.length, 25);
+  assert.deepEqual(C0.doorOpen, [3, 2, 2, 2, 2]);
+  assert.ok(C0.sweepers.length >= 1 && C0.pendulums.length >= 6 && C0.balls);
   assert.equal(G.courseOf("nada").id, "cidade");
 });
 
@@ -165,32 +165,43 @@ test("gincana — a barra do carrossel derruba quem fica parado e não quem pula
 });
 
 test("gincana — o ladrilho treme, cai depois de pisado e volta; quem cai volta ao posto", () => {
-  const { race, r } = solo();
-  const tile = C0.tiles[8];
-  Object.assign(r, { x: tile.x, z: tile.z, y: G.DECK + 0.01, ground: false, cp: 3 });
+  // a cidade não tem mais xadrez (G3-11): a peça é testada num percurso de teste (corrida, com posto)
+  const k = new G.CourseKit();
+  k.box(0, 0, 6, 4, 0, 1, 0);
+  for (let i = 0; i < 9; i++) k.tile(((i % 3) - 1) * 2.9, 7 + Math.floor(i / 3) * 2.9, 1.3, 2);
+  const CT = k.done({ id: "cidade", checkpoints: [{ x: 0, z: -1, y: G.DECK, w: 5 }, { x: 0, z: 1.5, y: G.DECK, w: 5 }], finishZ: 99, finishY: G.DECK, sections: [], minFinish: 1, route: () => [] });
+  const w = G.newWorld(CT, 1, 0);
+  const r = G.newRunner(CT, 0);
+  const tile = CT.tiles[4];
+  Object.assign(r, { x: tile.x, z: tile.z, y: G.DECK + 0.01, ground: false, cp: 1 });
   const ev = [];
+  const step = () => {
+    w.t += G.GINCANA.step;
+    for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] >= 0 && w.t - w.tiles[i] >= CT.tileTime.warn + CT.tileTime.gone) w.tiles[i] = -1;
+    G.stepRunner(r, G.IDLE_INTENT, w, ev);
+  };
   let stepped = false;
-  for (let k = 0; k < 20 && !stepped; k++) {
-    race.step(undefined, ev);
-    stepped = ev.some((e) => e.type === "tile" && e.i === 8);
+  for (let s = 0; s < 20 && !stepped; s++) {
+    step();
+    stepped = ev.some((e) => e.type === "tile" && e.i === 4);
     ev.length = 0;
   }
   assert.ok(stepped, "pisou");
-  const at = race.world.tiles[8];
-  assert.ok(G.tileUp(C0, at, at + C0.tileTime.warn * 0.5), "ainda treme em pé");
-  assert.equal(G.tileUp(C0, at, at + C0.tileTime.warn + 0.1), false, "caiu");
+  const at = w.tiles[4];
+  assert.ok(G.tileUp(CT, at, at + CT.tileTime.warn * 0.5), "ainda treme em pé");
+  assert.equal(G.tileUp(CT, at, at + CT.tileTime.warn + 0.1), false, "caiu");
   let splash = false;
   let back = false;
-  for (let k = 0; k < 60 * 4; k++) {
-    race.step(undefined, ev);
+  for (let s = 0; s < 60 * 4; s++) {
+    step();
     if (ev.some((e) => e.type === "splash")) splash = true;
     if (ev.some((e) => e.type === "back")) back = true;
     ev.length = 0;
   }
   assert.ok(splash && back);
-  assert.ok(Math.abs(r.z - G.spawnAt(C0, 3, 0).z) < 1, `voltou ao posto: z ${r.z}`);
-  for (let k = 0; k < 60 * 5; k++) race.step(undefined, ev);
-  assert.equal(race.world.tiles[8], -1, "o ladrilho voltou");
+  assert.ok(Math.abs(r.z - G.spawnAt(CT, 1, 0).z) < 1, `voltou ao posto: z ${r.z}`);
+  for (let s = 0; s < 60 * 5; s++) step();
+  assert.equal(w.tiles[4], -1, "o ladrilho voltou");
 });
 
 test("gincana 2.0 — cogumelo lança quem pousa", () => {

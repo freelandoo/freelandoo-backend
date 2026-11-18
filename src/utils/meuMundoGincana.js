@@ -870,112 +870,76 @@ function routeOf(fill                                                           
 // ═══ cidade — o percurso de sempre (mm3d-47) ═════════════════════════════════
 
 function courseCidade()         {
+  // Portas da Prefeitura (Gincana 3, G3-11): a corrida de abertura do programa. Três fileiras de portas
+  // (as falsas são parede; a semente sorteia quais abrem), a ponte, o carrossel de duas barras, mais
+  // duas fileiras (menos portas abertas), as passarelas com pêndulos e a subida com barris.
   const k = new CourseKit()
   kitStart(k)
-  // ── 1. carrossel ──
-  const carousel = (x        , z        , r        , w        , a0        , both         , c        ) => {
-    k.disc(x, z, r, c, 1, 1)
-    k.post(x, z, 0.8, DECK, DECK + 2.4, 1)
-    k.sweep(x, z, DECK + 0.55, r + 0.3, 0.32, w, a0, both)
-  }
-  carousel(0, 24, 9, 1.15, 0, false, 0)
-  for (const s of [-1, 1]) k.box(4.5 * s, 35.2, 1.6, 4.3, 2, 7, 1)
-  carousel(-6.5, 46, 7, -1.4, 0.6, false, 4)
-  carousel(6.5, 46, 7, 1.7, 1.9, false, 4)
-  for (const s of [-1, 1]) k.box(4.5 * s, 55, 1.6, 3.2, 2, 7, 1)
-  carousel(0, 66, 9.5, 0.95, 0.4, true, 0)
-  k.box(0, 79, 2.2, 4, 6, 7, 1)
-  // ── 2. passarelas ──
-  k.box(0, 87, 8, 4, 1, 0, 2)
+  // ── 1. portas ──
+  k.box(0, 39.8, 8, 24.7, 6, 7, 1)
+  const ROWS1                     = [[26, 3], [38, 2], [50, 2]]
+  for (const [z, open] of ROWS1) k.doorRow(0, z, 5, 3.2, 3.4, open)
+  // ── 2. ponte e carrossel de duas barras ──
+  k.box(0, 70, 2.4, 5.5, 6, 7, 2)
+  k.disc(0, 85, 9.5, 0, 1, 2)
+  k.post(0, 85, 0.8, DECK, DECK + 2.4, 1)
+  k.sweep(0, 85, DECK + 0.55, 9.8, 0.32, 1.05, 0.4, true)
+  k.box(0, 98.5, 5, 4, 6, 7, 2)
+  // ── 3. mais portas (menos abertas) ──
+  k.box(0, 120.5, 8, 18, 6, 7, 3)
+  for (const z of [112, 126]) k.doorRow(0, z, 5, 3.2, 3.4, 2)
+  // ── 4. passarelas com pêndulos ──
   const LANES = [-5, 0, 5]
-  for (const x of LANES) k.beam(x, 90.6, x, 105, 1.5, 0, 1, 2)
-  for (const x of LANES) k.disc(x, 105, 1.7, 1, 0, 2)
-  k.beam(-5, 105, -5, 119, 1.5, 0, 1, 2)
-  k.beam(5, 105, 5, 119, 1.5, 0, 1, 2)
-  k.beam(0, 105, -5, 119, 1.5, 0, 1, 2)
-  k.beam(0, 105, 5, 119, 1.5, 0, 1, 2)
-  for (const x of LANES) k.disc(x, 119, 1.7, 1, 0, 2)
-  for (const x of LANES) k.beam(x, 119, x, 133.4, 1.5, 0, 1, 2)
+  for (const x of LANES) k.beam(x, 138.5, x, 160, 1.5, 0, 1, 4)
   const swing = (x        , z        , ph        ) => k.swing(x, z, DECK + 9, 7.4, 1.1, 0.95, 2.2, ph)
-  swing(-5, 98, 0)
-  swing(0, 98, 2.1)
-  swing(5, 98, 4.2)
-  swing(-5, 112, 1.1)
-  swing(-2.5, 112, 3.3)
-  swing(2.5, 112, 0.2)
-  swing(5, 112, 2.6)
-  swing(-5, 126, 3.9)
-  swing(0, 126, 1.6)
-  swing(5, 126, 5.0)
-  // ── 3. luvas ──
-  k.box(0, 137, 8, 4, 6, 7, 3)
-  k.box(0, 162, 7, 21, 2, 4, 3)
-  for (let i = 0; i < 7; i++) {
-    const left = i % 2 === 0
-    const z = 146 + i * 5
-    const x0 = left ? -9.4 : 9.4
-    k.glove(x0, z, DECK + 1.0, left ? 1 : -1, 8.2, 1.15, 2.6, i * 0.83)
-    k.post(x0, z, 1.0, -1, DECK + 2.2, 6)
-  }
-  for (const [x, z] of [[-3, 149], [3.5, 153], [0, 158], [-4, 164], [2.5, 168], [-1.5, 174], [4, 178]]                      ) {
-    k.post(x, z, 0.55, DECK, DECK + 1.1, 4)
-  }
-  // ── 4. xadrez ──
-  k.box(0, 187.3, 7, 4.3, 1, 0, 4)
-  for (let r = 0; r < 7; r++) for (let c = 0; c < 6; c++) k.tile((c - 2.5) * 2.9, 193 + r * 2.9, 1.3, (r + c) % 2 === 0 ? 2 : 5)
-  k.box(0, 216.5, 7, 4.7, 6, 7, 4)
-  // ── 5. subida e chegada ──
-  const z0 = 221.2
-  k.slope(0, z0, 257.2, DECK, DECK + 6, 6, 0, 1, 5)
-  k.box(0, 265, 9, 7.8, 1, 0, 6, 0, 1.6, DECK + 6)
-  k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: 0.95, v: 7.5, R: 1.2, zEnd: z0 - 3 }
-  // logos (mm3d-47b), nos lugares abertos do caminho
-  for (const [x, z] of [[0, 79], [-5, 87], [5, 87], [-5, 105], [0, 105], [5, 105], [0, 137], [-3.5, 151], [3.5, 161], [-3.5, 171], [0, 187.5], [-2.9, 216.5], [2.9, 216.5]]                      ) k.logo(x, z)
-  for (const [x, z] of [[-4.3, 233], [0, 241], [4.3, 249]]                      ) k.logo(x, z, DECK + (6 * (z - z0)) / 36)
+  swing(-5, 144, 0)
+  swing(0, 144, 2.1)
+  swing(5, 144, 4.2)
+  swing(-5, 153, 1.1)
+  swing(0, 153, 3.3)
+  swing(5, 153, 0.2)
+  k.box(0, 165, 7, 5, 6, 7, 4)
+  // ── 5. subida com barris e a chegada ──
+  const z0 = 170
+  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.2)
+  for (const [x, z] of [[0, 18], [-4.8, 32], [4.8, 44], [0, 58], [0, 98.5], [-4.8, 118], [4.8, 132], [0, 165]]                      ) k.logo(x, z)
   return k.done({
     id: "cidade",
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 87, y: DECK, w: 6 },
-      { x: 0, z: 137, y: DECK, w: 6 },
-      { x: 0, z: 187, y: DECK, w: 5.5 },
-      { x: 0, z: 216, y: DECK, w: 5.5 },
+      { x: 0, z: 61, y: DECK, w: 6 },
+      { x: 0, z: 100, y: DECK, w: 5 },
+      { x: 0, z: 136, y: DECK, w: 6 },
+      { x: 0, z: 167, y: DECK, w: 5.5 },
     ],
-    finishZ: 266,
+    finishZ,
     finishY: DECK + 6,
-    sections: [15, 83, 133.4, 183, 221.2],
+    sections: [15.1, 64.5, 102.5, 138.5, z0],
     minFinish: 22,
     route: (r) =>
       routeOf((add) => {
         const side = r(1) < 0.5 ? -1 : 1
         add(side * 1.2, 10)
         add(side * 0.8, 15.5)
-        add(side * 2.5, 20)
-        for (const z of [29, 33, 38.5, 42]) add(side * 4.5, z)
-        add(side * 4.6, 46)
-        for (const z of [50, 53, 57.5]) add(side * 4.5, z)
-        add(side * 3.5, 61)
-        add(side * 3.2, 66)
-        add(side * 2, 71)
-        add(0, 75.8)
-        add(0, 80)
-        add(0, 84)
+        for (const z of [19, 22.5, 26.6, 30, 34, 38.6, 42, 46, 50.6, 54, 58, 62]) add(0, z)
+        add(0, 66)
+        add(0, 70)
+        add(0, 74.5)
+        add(side * 1.5, 77)
+        add(side * 3.2, 81)
+        add(side * 3.2, 86)
+        add(side * 2, 90.5)
+        add(0, 94.8)
+        add(0, 98.5)
+        for (const z of [103, 106, 108.5, 112.6, 116, 120, 122.5, 126.6, 130, 134]) add(0, z)
         const L = [-5, 0, 5][Math.floor(r(2) * 3)]
-        const D = L !== 0 ? L : r(3) < 0.5 ? -5 : 5
-        add(L * 0.6, 88)
-        add(L, 90.4)
-        for (const z of [94, 98, 102, 105]) add(L, z)
-        for (let i = 1; i <= 4; i++) add(L + (D - L) * (i / 4), 105 + 3.5 * i)
-        for (const z of [122, 126, 130, 133.6]) add(D, z)
-        add(D * 0.4, 137)
-        const F = [-2.2, 2.2, -4.8, 4.8][Math.floor(r(4) * 4)]
-        for (let z = 142; z <= 183; z += 3) add(F, z)
-        add(0, 187)
-        add(0, 190.8)
-        for (let i = 0; i < 7; i++) add(0, 193 + i * 2.9)
-        add(0, 213)
-        add(0, 216.5)
-        routeFinish(add, z0, 266)
+        add(L * 0.6, 136.5)
+        add(L, 139)
+        for (const z of [142, 146, 149, 152, 156, 159]) add(L, z)
+        add(L, 160.8)
+        add(L * 0.4, 163)
+        add(0, 167)
+        routeFinish(add, z0, finishZ)
       }),
   })
 }
