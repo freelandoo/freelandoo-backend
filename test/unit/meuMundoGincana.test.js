@@ -99,6 +99,17 @@ test("gincana — em todas as fases 8 computadores classificam a vaga (e a mesma
         assert.ok(st.slice(race.alive()).every((r, k, a) => r.out >= 0 && (k === 0 || a[k - 1].out >= r.out)), "fora do último ao primeiro");
         continue;
       }
+      if (race.course.mode === "collect") {
+        // coleta vai até o tempo; classifica a metade de cima de quem pegou alguma
+        while (!race.over()) race.step();
+        assert.ok(Math.abs(race.t - race.limit()) < 0.1, ph);
+        assert.equal(race.quota, 4, ph);
+        const st = race.standings();
+        assert.ok(st[0].pts >= 8, `${ph} semente ${seed}: o primeiro pegou ${st[0].pts}`);
+        assert.ok(st.every((r, k) => k === 0 || st[k - 1].pts >= r.pts), "pontos em ordem");
+        assert.equal(st.filter((r) => r.q).length, Math.min(race.quota, st.filter((r) => r.pts > 0).length));
+        continue;
+      }
       runAll(race);
       assert.equal(race.quota, 6);
       assert.equal(race.order.length, 6, `${ph} semente ${seed}: ${race.order.length} classificados`);
@@ -201,14 +212,23 @@ test("gincana 2.0 — cogumelo lança quem pousa", () => {
 });
 
 test("gincana 2.0 — porta: a falsa segura, a de verdade abre e deixa passar", () => {
-  const C = G.COURSES.fabrica;
-  const { race, r } = solo("fabrica", 3);
-  const open = race.world.open;
+  // nenhuma fase usa portas agora (Gincana 3): a peça é testada num percurso de teste
+  const k = new G.CourseKit();
+  k.box(0, 10, 9, 14, 0, 1, 1);
+  k.doorRow(0, 12, 5, 3.2, 3.4, 2);
+  const C = k.done({ id: "cidade", checkpoints: [{ x: 0, z: 0, y: G.DECK, w: 6 }], finishZ: 99, finishY: G.DECK, sections: [], minFinish: 1, route: () => [] });
+  const w = G.newWorld(C, 3, 0);
+  const r = G.newRunner(C, 0);
+  const open = w.open;
   const row0 = C.doors.map((d, i) => ({ d, i })).filter((x) => x.d.row === 0);
   assert.equal(row0.filter((x) => open[x.i]).length, 2, "2 de 5 abrem");
+  const race = { world: w };
   const runInto = (door) => {
-    Object.assign(r, { x: door.x, z: door.z - 3, y: G.DECK, ground: true, vx: 0, vz: 0, mode: 0, cp: 2 });
-    for (let k = 0; k < 90; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false });
+    Object.assign(r, { x: door.x, z: door.z - 3, y: G.DECK, ground: true, vx: 0, vz: 0, mode: 0, cp: 0 });
+    for (let s = 0; s < 90; s++) {
+      w.t += G.GINCANA.step;
+      G.stepRunner(r, { mx: 0, mz: 1, jump: false, dive: false }, w, null);
+    }
     return r.z;
   };
   const real = row0.find((x) => open[x.i]);
@@ -296,7 +316,7 @@ test("gincana 2.0 — agarrar segura quem está na frente e deixa os dois devaga
 
 test("gincana — em grupo: a sala (pessoa pela rede + computadores) vê a pessoa chegar", () => {
   const seed = 9;
-  for (const ph of ["cidade", "fabrica"]) {
+  for (const ph of ["cidade", "floresta"]) {
     const device = new G.GincanaRace(seed, [{ slot: 0, ctl: "bot" }, ...[1, 2, 3].map((slot) => ({ slot, ctl: "remote" }))], 3, ph);
     const server = new G.GincanaRace(seed, [{ slot: 0, ctl: "remote" }, ...[1, 2, 3].map((slot) => ({ slot, ctl: "bot" }))], 3, ph);
     let poseAt = 0;
@@ -469,4 +489,43 @@ test("gincana 3 — Paredes de Brasa: a parede empurra para a lava; o vão deixa
   // até a primeira onda passar (a segunda tem outro vão)
   const ok = run(gx, Wl.t0 + (Wl.z0 + 1) / first.v);
   assert.equal(ok.out, -1, "no vão a parede passa");
+});
+
+test("gincana 3 — Caça às Engrenagens: pega, soma, some e volta; a sala conta pela pose", () => {
+  const C = G.COURSES.fabrica;
+  assert.equal(C.mode, "collect");
+  const gold = C.gems.findIndex((g) => g.v === 3);
+  assert.ok(gold >= 0 && C.gems.length >= 15);
+  const { race, r } = solo("fabrica");
+  const ev = [];
+  const g0 = C.gems[0];
+  while (race.t < g0.t0 + 0.1) race.step();
+  Object.assign(r, { x: g0.x, z: g0.z, y: g0.y - 0.9, ground: true });
+  race.step(undefined, ev);
+  assert.ok(ev.some((e) => e.type === "gem" && e.i === 0 && e.v === 1));
+  assert.equal(r.pts, 1);
+  // sai de cima; some e não conta de novo até voltar
+  Object.assign(r, { x: 0, z: -3.6, y: G.DECK, ground: true, vx: 0, vz: 0 });
+  for (let k = 0; k < 60; k++) race.step();
+  assert.equal(r.pts, 1);
+  const took = race.world.gems[0];
+  while (race.t < took + g0.back + 0.1) race.step();
+  Object.assign(r, { x: g0.x, z: g0.z, y: g0.y - 0.9, ground: true });
+  race.step();
+  assert.equal(r.pts, 2, "voltou e pegou de novo");
+  // a sala: pessoa pela rede pega a dourada
+  // (um computador pode chegar antes na dourada: a pessoa entra num ponto em que ela está de pé)
+  const server = new G.GincanaRace(5, [{ slot: 0, ctl: "remote" }, { slot: 1, ctl: "remote" }], 0, "fabrica");
+  const gg = C.gems[gold];
+  while (server.t < gg.t0 + 0.1) server.step();
+  server.setRemote(0, { x: gg.x, y: gg.y - 0.9, z: gg.z, f: 0, a: G.ANIM.IDLE, cp: 0, fin: -1, g: -1 });
+  server.step();
+  assert.equal(server.runner(0).pts, 3);
+  assert.equal(server.over(), false, "coleta vai até o tempo");
+  while (server.t < C.limit) server.step();
+  assert.equal(server.over(), true);
+  const st = server.standings();
+  assert.equal(st[0].slot, 0);
+  assert.ok(st[0].q && !st[1].q, "quem não pegou nenhuma não classifica");
+  assert.equal(st.filter((x) => x.q).length <= server.quota, true);
 });

@@ -1047,76 +1047,51 @@ function courseForja()         {
 
 // ═══ fabrica — Fábrica ═══════════════════════════════════════════════════════
 
+/**
+ * Gincana 3 (2026-11-18): CAÇA ÀS ENGRENAGENS — coleta na Fábrica. Chão de
+ * 24 m sobre o óleo com duas esteiras (em sentidos contrários), duas prensas
+ * que deslizam de lado e a plataforma do meio (1 m acima: pule ou suba na
+ * beira). Engrenagens aparecem espalhadas e voltam 7 s depois de pegas; a
+ * DOURADA (no alto do meio) vale 3. Quem cai no óleo volta ao meio (só perde
+ * tempo). Em 75 s, classificam os que pegaram mais (metade).
+ */
 function courseFabrica()         {
   const k = new CourseKit()
-  kitStart(k)
-  // ── 1. esteira das prensas ──
-  k.box(0, 19, 7, 3, 6, 1, 1)
-  const belt = k.box(0, 36, 5, 14, 6, 1, 1)
-  k.pads[belt].bz = -2.5
-  ;[27, 33, 39, 45].forEach((z, i) => {
-    const left = i % 2 === 0
-    const x0 = left ? -7.6 : 7.6
-    k.glove(x0, z, DECK + 1, left ? 1 : -1, 8, 1.15, 2.5, i * 0.85)
-    k.post(x0, z, 1.0, -1, DECK + 2.2, 1)
-  })
-  k.box(0, 54, 7, 4, 6, 1, 1)
-  // ── 2. engrenagens que giram ──
-  const GEAR                             = [[-3, 65, 0.5], [3, 77, -0.6], [-3, 89, 0.5]]
-  for (const [x, z, w] of GEAR) {
-    const d = k.disc(x, z, 7, 1, 0, 2)
-    k.pads[d].spin = w
-    k.post(x, z, 0.75, DECK, DECK + 2.3, 0)
+  k.box(0, 0, 12, 12, 2, 1, 1, 0, 1.6)
+  // esteiras (um tico acima do chão para valerem): a da esquerda leva para a frente, a da direita para trás
+  const beltL = k.box(-8, 0, 1.6, 12, 0, 1, 1, 0, 1.6, DECK + 0.05)
+  k.pads[beltL].bz = 3
+  const beltR = k.box(8, 0, 1.6, 12, 0, 1, 1, 0, 1.6, DECK + 0.05)
+  k.pads[beltR].bz = -3
+  // plataforma do meio (a dourada fica nela)
+  k.disc(0, 0, 2.6, 4, 1, 1, DECK + 1)
+  // prensas que deslizam de lado
+  k.pusher(0, 7, 1.3, 1.3, 1.8, 8.5, 0, 0.85, 0)
+  k.pusher(0, -7, 1.3, 1.3, 1.8, 8.5, 0, 0.85, Math.PI)
+  // engrenagens: anel no chão, as das esteiras e a dourada
+  let n = 0
+  const add = (x        , z        , y        , v        , back        ) => k.gem(x, z, y + 0.9, v, 1 + (n++ % 6) * 0.6, back)
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + Math.PI / 8
+    add(Math.sin(a) * 5, Math.cos(a) * 5, DECK, 1, 7)
   }
-  k.sweep(3, 77, DECK + 0.55, 7.2, 0.3, 1.3, 0, false)
-  // ── 3. portas de aço ──
-  k.box(0, 120, 8, 24, 6, 1, 3)
-  for (const z of [112, 122, 132]) k.doorRow(0, z, 5, 3.2, 3.4, 2)
-  // ── 4. prensas deslizantes ──
-  k.box(0, 164, 6, 20, 6, 1, 4)
-  const PW = [1.4, 1.8, 1.2, 1.6, 2.0]
-  ;[151, 158, 165, 172, 179].forEach((z, i) => k.pusher(0, z, 2.2, 1.0, 2.4, 4, 0, PW[i], i * 1.1))
-  k.box(0, 188, 7, 4, 6, 1, 4)
-  // ── 5. barris ──
-  const z0 = 192
-  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.15)
-  for (const [x, z] of [[0, 54], [0, 100], [-4.8, 117], [4.8, 127], [0, 139], [0, 188]]                      ) k.logo(x, z)
+  for (const [x, z] of [[-4, 9.5], [4, -9.5], [-4, -9.5], [4, 9.5]]                      ) add(x, z, DECK, 1, 7)
+  for (const z of [-8, 0, 8]) {
+    add(-8, z, DECK + 0.05, 1, 7)
+    add(8, z, DECK + 0.05, 1, 7)
+  }
+  add(0, 0, DECK + 1, 3, 12)
   return k.done({
     id: "fabrica",
-    checkpoints: [
-      { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 54, y: DECK, w: 6 },
-      { x: 0, z: 100, y: DECK, w: 6 },
-      { x: 0, z: 139, y: DECK, w: 7 },
-      { x: 0, z: 188, y: DECK, w: 5.5 },
-    ],
-    finishZ,
-    finishY: DECK + 6,
-    sections: [22, 58, 104, 144, z0],
-    minFinish: 22,
-    route: (r) =>
-      routeOf((add) => {
-        const side = r(1) < 0.5 ? -1 : 1
-        add(side * 1.2, 10)
-        add(side * 0.8, 15.5)
-        const F = r(2) < 0.5 ? -1.6 : 1.6
-        for (let z = 20; z <= 50; z += 2) add(F, z)
-        add(0, 54)
-        add(-3, 58.5)
-        add(-3, 65)
-        add(-1, 70.5)
-        add(3, 74)
-        add(3, 80)
-        add(1, 83.5)
-        add(-3, 86)
-        add(-3, 92)
-        add(-1, 96.5)
-        for (const z of [100, 105, 108, 112.6, 117, 122.6, 127, 132.6, 137, 141]) add(0, z)
-        for (let z = 145; z <= 183; z += 2) add(0, z)
-        add(0, 186)
-        add(0, 189)
-        routeFinish(add, z0, finishZ)
-      }),
+    mode: "collect",
+    qualify: 0.5,
+    limit: 75,
+    checkpoints: [{ x: 0, z: -3.6, y: DECK, w: 5 }],
+    finishZ: 40,
+    finishY: 90,
+    sections: [],
+    minFinish: 1e6,
+    route: () => [{ x: 0, z: 0 }],
   })
 }
 
@@ -2232,8 +2207,40 @@ function arenaIntent(br          , b        , w          , it           )       
       }
     }
   }
+  // Caça às Engrenagens: a engrenagem que vale mais pela distância (a dourada atrai); sobe na plataforma pulando
+  if (C.gems.length) {
+    let best = -1
+    let bestScore = -Infinity
+    for (let k = 0; k < C.gems.length; k++) {
+      const g = C.gems[k]
+      // a que vai voltar logo também serve (chega quando ela aparece)
+      const back = w.gems[k] < 0 ? g.t0 - t : w.gems[k] + g.back - t
+      const d = Math.hypot(g.x - b.x, g.z - b.z)
+      const wait = Math.max(0, back - d / GINCANA.run)
+      if (wait > 1.5) continue
+      const score = g.v / (d + 3 + wait * 6) + botRand(br.seed, br.slot * 7 + k, Math.floor(t / 2)) * 0.12 * (1.4 - br.skill)
+      if (score > bestScore) {
+        bestScore = score
+        best = k
+      }
+    }
+    if (best >= 0) {
+      const g = C.gems[best]
+      tx = g.x
+      tz = g.z
+      // está no alto (plataforma do meio): pula perto da beira
+      const d = Math.hypot(g.x - b.x, g.z - b.z)
+      if (g.y - 0.9 > b.y + 0.5 && d < 3.6 && b.ground && br.jumpCool <= 0) {
+        it.jump = true
+        br.jumpCool = 0.6
+      }
+    } else {
+      tx = 0
+      tz = 0
+    }
+  }
   // arena sem pedras (Varredura): um lugar a ~5 m do eixo, que muda de tempo em tempo
-  if (!C.tiles.length && C.sweepers.length) {
+  if (!C.tiles.length && !C.gems.length && C.sweepers.length) {
     const a = botRand(br.seed, br.slot, 500 + Math.floor(t / 6)) * Math.PI * 2
     const rr = 3.5 + botRand(br.seed, br.slot, 600 + Math.floor(t / 6)) * 3.5
     tx = C.sweepers[0].x + Math.sin(a) * rr
@@ -2732,7 +2739,11 @@ class GincanaRace {
     for (let k = 0; k < C.gems.length; k++) {
       const g = C.gems[k]
       if (this.t < g.t0 || (w.gems[k] >= 0 && this.t - w.gems[k] < g.back)) continue
-      for (let i = 0; i < this.runners.length; i++) {
+      // quem chega junto: a ordem roda a cada passo (ninguém leva sempre o empate)
+      const n = this.runners.length
+      const off = Math.floor(this.t * 60) % n
+      for (let q = 0; q < n; q++) {
+        const i = (q + off) % n
         const b = this.runners[i]
         if (this.gone[i] || b.out >= 0 || b.mode === MODE.WATER) continue
         if (Math.hypot(b.x - g.x, b.z - g.z) > 1.1 || b.y > g.y + 0.8 || b.y + GINCANA.bodyH < g.y - 0.4) continue
