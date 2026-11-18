@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 7 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo"]);
+test("gincana — 8 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -582,6 +582,58 @@ test("gincana 3 — Rolo de Gelo: buraco passa e derruba (fora); o chão anda de
   const server = new G.GincanaRace(5, [{ slot: 0, ctl: "remote" }, { slot: 1, ctl: "remote" }], 0, "gelo");
   while (server.t < 3) server.step();
   server.setRemote(1, { x: 0, y: -2, z: 9, f: 0, a: G.ANIM.WATER, cp: 0, fin: -1, g: -1 });
+  server.step();
+  assert.ok(server.runner(1).out >= 0);
+  assert.equal(server.alive(), 1);
+});
+
+test("gincana 3 — Relógio da Praça: símbolos pela semente, só os do chamado ficam; quem está no errado cai e sai", () => {
+  const C = G.COURSES.relogio;
+  assert.equal(C.mode, "survive");
+  const M = C.memory;
+  assert.ok(M && M.n === 5);
+  // cada símbolo em 4–5 ladrilhos; a mesma semente dá a mesma grade, outra rodada embaralha
+  const a = G.memSymbols(M, 77, 0);
+  for (let s = 0; s < G.MEM_SYMBOLS; s++) {
+    const n = a.filter((x) => x === s).length;
+    assert.ok(n >= 4 && n <= 5, `símbolo ${s}: ${n}`);
+  }
+  assert.deepEqual([...G.memSymbols(M, 77, 0)], [...a]);
+  assert.notDeepEqual([...G.memSymbols(M, 77, 1)], [...a]);
+  // as fases da rodada em ordem, e as rodadas encurtam
+  const seen = [];
+  for (let t = 0; t < 14; t += 0.05) {
+    const st = G.memState(M, t);
+    if (st.r === 0 && seen[seen.length - 1] !== st.ph) seen.push(st.ph);
+  }
+  assert.deepEqual(seen, [0, 1, 2, 3, 4, 5]);
+  assert.ok(G.memShow(6) < G.memShow(0) && G.memCall(6) < G.memCall(0));
+  // na queda: de pé = exatamente os do símbolo chamado
+  const { race, r } = solo("relogio", 9);
+  const seed = race.world.seed;
+  let td = 0;
+  while (G.memState(M, td).ph !== 4) td += 0.05;
+  const st = G.memState(M, td + 0.1);
+  const sym = G.memSymbols(M, seed, st.r);
+  const tg = G.memTarget(seed, st.r);
+  for (let i = 0; i < 25; i++) assert.equal(G.memUp(M, seed, i, td + 0.1), sym[i] === tg, `ladrilho ${i}`);
+  for (let i = 0; i < 25; i++) assert.equal(G.memUp(M, seed, i, td - 0.1), true);
+  // parado no certo: fica; parado no errado: cai e está fora
+  const good = [...sym].findIndex((x) => x === tg);
+  const bad = [...sym].findIndex((x) => x !== tg);
+  while (race.t < td - 0.3) race.step();
+  const gq = G.memTile(M, good);
+  Object.assign(r, { x: gq.x, z: gq.z, y: M.y, ground: true, vx: 0, vz: 0, mode: 0 });
+  while (race.t < td + 1) race.step();
+  assert.ok(r.out < 0 && Math.abs(r.y - M.y) < 0.05, "no certo fica de pé");
+  const bq = G.memTile(M, bad);
+  Object.assign(r, { x: bq.x, z: bq.z, y: M.y, ground: true, vx: 0, vz: 0, mode: 0 });
+  for (let k = 0; k < 200 && r.out < 0; k++) race.step();
+  assert.ok(r.out >= 0, "no errado cai e sai");
+  // a sala: pose na água = fora
+  const server = new G.GincanaRace(5, [{ slot: 0, ctl: "remote" }, { slot: 1, ctl: "remote" }], 0, "relogio");
+  while (server.t < 3) server.step();
+  server.setRemote(1, { x: 0, y: -2, z: 0, f: 0, a: G.ANIM.WATER, cp: 0, fin: -1, g: -1 });
   server.step();
   assert.ok(server.runner(1).out >= 0);
   assert.equal(server.alive(), 1);

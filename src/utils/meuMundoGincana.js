@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                      
-const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo"]
+                                                                                                                  
+const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -183,6 +183,89 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "canion",
                 
             
  
+
+/**
+ * Gincana 3 (Relógio da Praça): grade n×n de ladrilhos com símbolos. Cada rodada: os símbolos
+ * aparecem (show), somem (hide), o relógio chama um (call) e os ladrilhos dos OUTROS caem (drop),
+ * voltando no fim (back). Tudo pela semente e pelo tempo: nada guardado, a sala conta igual.
+ */
+                         
+           
+           
+           
+           
+                                            
+              
+             
+                                        
+            
+ 
+const MEM_SYMBOLS = 6
+const MEM_HIDE = 1.2
+const MEM_DROP = 3
+const MEM_BACK = 0.8
+/** As rodadas encurtam: menos tempo para decorar e para correr. */
+function memShow(r        ) {
+  return Math.max(2.4, 5 - 0.4 * r)
+}
+function memCall(r        ) {
+  return Math.max(1.5, 3.2 - 0.3 * r)
+}
+/** Fase da rodada em t: 0 espera, 1 mostra, 2 esconde, 3 chama, 4 cai, 5 volta; `left` = quanto falta dela. */
+function memState(m        , t        )                                          {
+  if (t < m.t0) return { r: 0, ph: 0, left: m.t0 - t }
+  let s = t - m.t0
+  for (let r = 0; r < 500; r++) {
+    const parts = [memShow(r), MEM_HIDE, memCall(r), MEM_DROP, MEM_BACK]
+    for (let k = 0; k < parts.length; k++) {
+      if (s < parts[k]) return { r, ph: k + 1, left: parts[k] - s }
+      s -= parts[k]
+    }
+  }
+  return { r: 499, ph: 5, left: 0 }
+}
+/** Símbolo de cada ladrilho na rodada: embaralhado pela semente, todos os símbolos com 4–5 ladrilhos. */
+function memSymbols(m        , seed        , r        )             {
+  const N = m.n * m.n
+  const idx           = []
+  for (let i = 0; i < N; i++) idx.push(i)
+  for (let k = N - 1; k > 0; k--) {
+    const j = courseHash(seed ^ 0x2c1b3c6d, r * 977 + k) % (k + 1)
+    const tmp = idx[k]
+    idx[k] = idx[j]
+    idx[j] = tmp
+  }
+  const out = new Uint8Array(N)
+  for (let k = 0; k < N; k++) out[idx[k]] = k % MEM_SYMBOLS
+  return out
+}
+/** O símbolo que o relógio chama na rodada. */
+function memTarget(seed        , r        ) {
+  return courseHash(seed ^ 0x7f4a7c15, r * 131 + 7) % MEM_SYMBOLS
+}
+/** Centro do ladrilho i. */
+function memTile(m        , i        ) {
+  const pitch = m.size + m.gap
+  const c = (m.n - 1) / 2
+  return { x: m.x + ((i % m.n) - c) * pitch, z: m.z + (Math.floor(i / m.n) - c) * pitch }
+}
+/** Ladrilho sob (x, z) (−1 = vão ou fora), com folga `e`. */
+function memIndexAt(m        , x        , z        , e        ) {
+  const pitch = m.size + m.gap
+  const c = (m.n - 1) / 2
+  const ix = Math.round((x - m.x) / pitch + c)
+  const iz = Math.round((z - m.z) / pitch + c)
+  if (ix < 0 || iz < 0 || ix >= m.n || iz >= m.n) return -1
+  const i = iz * m.n + ix
+  const q = memTile(m, i)
+  return Math.abs(x - q.x) <= m.size / 2 + e && Math.abs(z - q.z) <= m.size / 2 + e ? i : -1
+}
+/** O ladrilho i está de pé em t? Só cai na fase 4, e só os que não têm o símbolo chamado. */
+function memUp(m        , seed        , i        , t        ) {
+  const st = memState(m, t)
+  if (st.ph !== 4) return true
+  return memSymbols(m, seed, st.r)[i] === memTarget(seed, st.r)
+}
 
 /** Ladrilho que cai `warn` s depois de pisado e volta depois de `gone`; k 0 = quadrado (meia largura h), 1 = hexágono (raio h). */
                        
@@ -382,6 +465,8 @@ function drumAt(d      , x        , z        , t        ) {
                      
                                                        
                
+                                                
+                       
              
                
                      
@@ -497,6 +582,7 @@ class CourseKit {
                
                
                  
+                   
    )         {
     return {
       id: o.id,
@@ -508,6 +594,7 @@ class CourseKit {
       zone: o.zone ?? null,
       walls: o.walls ?? null,
       drums: this.drums,
+      memory: o.memory ?? null,
       pads: this.pads,
       posts: this.posts,
       sweepers: this.sweepers,
@@ -1205,6 +1292,29 @@ function courseGelo()         {
 }
 
 /** Todas as fases (montadas uma vez). */
+/**
+ * Relógio da Praça (Gincana 3, memória): grade 5×5 na praça do Centro. Os ladrilhos mostram
+ * símbolos, apagam, o relógio da torre chama um e os ladrilhos dos outros caem por 3 s.
+ * As rodadas encurtam; quem cai está fora.
+ */
+const MEM_GRID = { x: 0, z: 0, y: DECK, n: 5, size: 3.3, gap: 0.22, t0: 1.5 }
+function courseRelogio()         {
+  const k = new CourseKit()
+  return k.done({
+    id: "relogio",
+    mode: "survive",
+    qualify: 0.5,
+    limit: 100,
+    memory: MEM_GRID,
+    checkpoints: [{ x: 0, z: 1.3, y: DECK, w: 6 }],
+    finishZ: 40,
+    finishY: 90,
+    sections: [],
+    minFinish: 1e6,
+    route: () => [{ x: 0, z: 0 }],
+  })
+}
+
 const COURSES                               = {
   cidade: courseCidade(),
   floresta: courseFloresta(),
@@ -1213,6 +1323,7 @@ const COURSES                               = {
   forja: courseForja(),
   fabrica: courseFabrica(),
   gelo: courseGelo(),
+  relogio: courseRelogio(),
 }
 
 /** O percurso da fase (desconhecida = a de sempre). */
@@ -1467,6 +1578,17 @@ function groundUnder(w          , x        , z        , reach        ) {
     if (q.y <= reach && q.y > best) {
       best = q.y
       tile = i
+      pad = -1
+      bounce = 0
+    }
+  }
+  // Relógio da Praça: o ladrilho sob o pé, se estiver de pé agora
+  const M = C.memory
+  if (M && M.y <= reach && M.y > best) {
+    const i = memIndexAt(M, x, z, EDGE)
+    if (i >= 0 && memUp(M, w.seed, i, w.t)) {
+      best = M.y
+      tile = -1
       pad = -1
       bounce = 0
     }
@@ -2356,8 +2478,37 @@ function arenaIntent(br          , b        , w          , it           )       
       br.jumpCool = 0.6
     }
   }
+  // Relógio da Praça: decorando, passeia por um ladrilho sorteado da rodada; o relógio chamou, corre
+  // para o ladrilho mais perto do símbolo (depois de reagir). Às vezes "esquece" e vai para um errado:
+  // mais nas rodadas do fim e nos menos hábeis.
+  if (C.memory) {
+    const M = C.memory
+    const st = memState(M, t)
+    const N = M.n * M.n
+    const roam = memTile(M, Math.floor(botRand(br.seed, br.slot * 7, 900 + st.r * 3 + (st.ph >= 3 ? 1 : 0)) * N) % N)
+    tx = roam.x
+    tz = roam.z
+    const react = 0.25 + (1 - br.skill) * 0.9
+    const since = st.ph === 3 ? memCall(st.r) - st.left : st.ph === 4 ? 99 : -1
+    if (since >= react) {
+      const sym = memSymbols(M, w.seed, st.r)
+      const forget = 0.015 + st.r * 0.03 + (1 - br.skill) * 0.1
+      const target = botRand(br.seed, br.slot * 31, 950 + st.r) < forget ? (memTarget(w.seed, st.r) + 1 + Math.floor(botRand(br.seed, br.slot, 970 + st.r) * 5)) % 6 : memTarget(w.seed, st.r)
+      let bd = Infinity
+      for (let i = 0; i < N; i++) {
+        if (sym[i] !== target) continue
+        const q = memTile(M, i)
+        const dd = Math.hypot(q.x - b.x, q.z - b.z)
+        if (dd < bd) {
+          bd = dd
+          tx = q.x
+          tz = q.z
+        }
+      }
+    }
+  }
   // arena sem pedras (Varredura): um lugar a ~5 m do eixo, que muda de tempo em tempo
-  if (!C.tiles.length && !C.gems.length && !C.zone && !C.drums.length && C.sweepers.length) {
+  if (!C.tiles.length && !C.gems.length && !C.zone && !C.drums.length && !C.memory && C.sweepers.length) {
     const a = botRand(br.seed, br.slot, 500 + Math.floor(t / 6)) * Math.PI * 2
     const rr = 3.5 + botRand(br.seed, br.slot, 600 + Math.floor(t / 6)) * 3.5
     tx = C.sweepers[0].x + Math.sin(a) * rr
@@ -3015,4 +3166,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, ROLL_R, ROLL_TOP, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
