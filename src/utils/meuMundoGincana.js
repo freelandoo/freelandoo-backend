@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                            
-const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira"]
+                                                                                                                                      
+const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -467,6 +467,8 @@ function drumAt(d      , x        , z        , t        ) {
                
                                                 
                        
+                                                                                                     
+                
              
                
                      
@@ -583,6 +585,7 @@ class CourseKit {
                
                  
                    
+                   
    )         {
     return {
       id: o.id,
@@ -595,6 +598,7 @@ class CourseKit {
       walls: o.walls ?? null,
       drums: this.drums,
       memory: o.memory ?? null,
+      crown: o.crown ?? false,
       pads: this.pads,
       posts: this.posts,
       sweepers: this.sweepers,
@@ -1362,6 +1366,95 @@ function courseFeira()         {
   })
 }
 
+/**
+ * Coroa da Torre (Gincana 3, G3-13): a FINAL do programa (vaga = 1). Rampa larga com bolas em cinco
+ * faixas, martelos, dois portões giratórios (carrosséis de duas barras), a rampa final e a coroa
+ * no alto do estrado da torre: só ganha quem PULA e pega a coroa (a linha fica 1,1 m acima do chão).
+ */
+function courseCoroa()         {
+  const k = new CourseKit()
+  kitStart(k)
+  const Y1 = DECK + 5
+  const Y2 = DECK + 8
+  // ── 1. rampa larga com bolas ──
+  k.slope(0, 15.1, 51, DECK, Y1, 8, 0, 1, 1)
+  k.balls = { lanes: [-6, -3, 0, 3, 6], every: 0.8, v: 7, R: 1.3, zEnd: 12 }
+  k.box(0, 55, 8, 4, 6, 7, 1, 0, 1.4, Y1)
+  // ── 2. martelos ──
+  k.box(0, 74, 6, 15, 6, 7, 2, 0, 1.4, Y1)
+  const ham = (x        , z        , ph        ) => k.swing(x, z, Y1 + 9, 7.4, 1.1, 0.95, 2.2, ph)
+  ham(-3, 66, 0)
+  ham(3, 66, 2.4)
+  ham(-3, 74, 1.2)
+  ham(3, 74, 3.6)
+  ham(-3, 82, 4.4)
+  ham(3, 82, 0.6)
+  // ── 3. portões giratórios ──
+  const gate = (z        , w        , a0        ) => {
+    k.disc(0, z, 7, 4, 1, 3, Y1)
+    k.post(0, z, 0.8, Y1, Y1 + 2.4, 1)
+    k.sweep(0, z, Y1 + 0.55, 7.3, 0.32, w, a0, true)
+  }
+  gate(96, 1.25, 0)
+  k.box(0, 104, 2.4, 1.2, 6, 7, 3, 0, 1.4, Y1)
+  gate(112, -1.45, 0.8)
+  k.box(0, 122, 7, 3, 6, 7, 3, 0, 1.4, Y1)
+  // ── 4. ladrilhos que caem (6 × 6) ──
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) k.tile((c - 2.5) * 2.9, 127.6 + r * 2.9, 1.3, (r + c) % 2 === 0 ? 2 : 5, 0, Y1)
+  k.box(0, 147.5, 7, 2.5, 6, 7, 4, 0, 1.4, Y1)
+  // ── 5. rampa final e o estrado da coroa ──
+  const z0 = 150
+  k.slope(0, z0, z0 + 24, Y1, Y2, 6, 0, 1, 5)
+  k.box(0, 176, 7, 2, 6, 7, 5, 0, 1.4, Y2)
+  k.box(0, 183, 2.6, 5, 1, 0, 5, 0, 1.6, Y2)
+  const finishZ = 182.5
+  for (const [x, z] of [[0, 55], [-3, 70], [3, 78], [0, 122]]                      ) k.logo(x, z, Y1)
+  return k.done({
+    id: "coroa",
+    qualify: 0.01,
+    crown: true,
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 56.5, y: Y1, w: 7 },
+      { x: 0, z: 88, y: Y1, w: 5 },
+      { x: 0, z: 123, y: Y1, w: 6 },
+      { x: 0, z: 148.5, y: Y1, w: 6 },
+    ],
+    finishZ,
+    finishY: Y2 + 1.1,
+    sections: [15.1, 59, 89, 125, z0],
+    minFinish: 18,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        const F = [-4.5, -1.5, 1.5, 4.5][Math.floor(r(2) * 4)]
+        for (let z = 18; z <= 50; z += 3) add(F, z)
+        add(F * 0.4, 54)
+        const H = r(3) < 0.5 ? -3 : 3
+        for (const z of [60, 63, 69, 71, 77, 79, 85, 88]) add(H, z)
+        add(0, 89.5)
+        add(side * 3, 93)
+        add(side * 3, 99)
+        add(0, 102.5)
+        add(0, 105.5)
+        add(-side * 3, 109)
+        add(-side * 3, 115)
+        add(0, 119.5)
+        add(0, 123)
+        const T = [-1.45, 1.45][Math.floor(r(4) * 2)]
+        for (let i = 0; i < 6; i++) add(T, 127.6 + i * 2.9)
+        add(0, 146)
+        add(0, 148.5)
+        for (let z = z0 + 1; z <= z0 + 23; z += 2.5) add(0, z)
+        add(0, 176)
+        add(0, 180)
+        add(0, 185)
+      }),
+  })
+}
+
 const COURSES                               = {
   cidade: courseCidade(),
   floresta: courseFloresta(),
@@ -1372,6 +1465,7 @@ const COURSES                               = {
   gelo: courseGelo(),
   relogio: courseRelogio(),
   feira: courseFeira(),
+  coroa: courseCoroa(),
 }
 
 /** O percurso da fase (desconhecida = a de sempre). */
@@ -2860,6 +2954,14 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
       it.jump = true
       br.stuck = 0
     }
+  }
+  // Coroa da Torre: pula na hora de pegar a coroa (a linha fica no alto); nada de mergulho
+  if (C.crown) {
+    if (b.ground && b.z > C.finishZ - 1.7 && b.z < C.finishZ - 0.3 && br.jumpCool <= 0) {
+      it.jump = true
+      br.jumpCool = 0.5
+    }
+    return it
   }
   // reta final: os melhores mergulham para a linha
   if (br.divesFinish && b.ground && b.z > C.finishZ - 7 && b.z < C.finishZ - 4 && Math.abs(b.facing) < 0.3) it.dive = true

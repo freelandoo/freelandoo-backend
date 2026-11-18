@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 9 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira"]);
+test("gincana — 10 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -68,7 +68,8 @@ test("gincana — 9 fases; cada uma fecha: postos em ordem com chão, chegada no
     assert.ok(C.finishZ > C.checkpoints[C.checkpoints.length - 1].z + 30, ph);
     // chegada no alto da ÚLTIMA subida (a Maré do Pântano tem várias)
     const ramps = C.pads.filter((p) => p.k === 2);
-    assert.equal(C.finishY, ramps[ramps.length - 1].y2, ph);
+    // na Coroa da Torre a linha fica 1,1 m acima do estrado (só pulando)
+    assert.equal(C.finishY, ramps[ramps.length - 1].y2 + (C.crown ? 1.1 : 0), ph);
     assert.equal(C.sections.length, 5, ph);
     const w = G.newWorld(C, 1, 0);
     for (let cp = 0; cp < C.checkpoints.length; cp++) {
@@ -114,8 +115,10 @@ test("gincana — em todas as fases 8 computadores classificam a vaga (e a mesma
         continue;
       }
       runAll(race);
-      assert.equal(race.quota, 6);
-      assert.equal(race.order.length, 6, `${ph} semente ${seed}: ${race.order.length} classificados`);
+      // a final (Coroa da Torre) tem vaga 1
+      const q = race.course.qualify < 0.5 ? 1 : 6;
+      assert.equal(race.quota, q, ph);
+      assert.equal(race.order.length, q, `${ph} semente ${seed}: ${race.order.length} classificados`);
       const first = race.runner(race.order[0]).fin;
       assert.ok(first > 18 && first < 100, `${ph}: primeiro em ${first}`);
     }
@@ -648,4 +651,25 @@ test("gincana 3 — Relógio da Praça: símbolos pela semente, só os do chamad
   server.step();
   assert.ok(server.runner(1).out >= 0);
   assert.equal(server.alive(), 1);
+});
+
+test("gincana 3 — Coroa da Torre: final de vaga 1; passar pelo chão não pega a coroa, pular pega e fecha a prova", () => {
+  const C = G.COURSES.coroa;
+  assert.equal(C.crown, true);
+  assert.equal(C.mode, "race");
+  const race = new G.GincanaRace(3, [{ slot: 0, ctl: "local" }, ...[1, 2, 3, 4, 5, 6, 7].map((slot) => ({ slot, ctl: "remote" }))], 0, "coroa");
+  assert.equal(race.quota, 1);
+  const r = race.runner(0);
+  const top = C.finishY - 1.1;
+  // correndo pelo chão do estrado: cruza a linha sem pegar
+  Object.assign(r, { x: 0, z: C.finishZ - 2, y: top, ground: true, vx: 0, vz: 0, mode: 0, cp: 4 });
+  for (let k = 0; k < 30; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false });
+  assert.ok(r.z > C.finishZ && r.fin < 0, "no chão não pega a coroa");
+  // pulando antes da linha: pega e a prova fecha
+  Object.assign(r, { x: 0, z: C.finishZ - 1.2, y: top, ground: true, vx: 0, vz: 0, mode: 0 });
+  race.step({ mx: 0, mz: 1, jump: true, dive: false });
+  for (let k = 0; k < 40 && r.fin < 0; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false });
+  assert.ok(r.fin >= 0, "pulou e pegou a coroa");
+  assert.equal(race.closed(), true);
+  assert.equal(race.standings().filter((x) => x.q).length, 1);
 });
