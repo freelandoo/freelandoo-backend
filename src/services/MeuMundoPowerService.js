@@ -40,7 +40,7 @@ class MeuMundoPowerService {
     const gear = await GearService().fightGear(c, idUser, clan);
     // 2026-11-17: status da classe das peças vestidas (número + %), o mesmo que a luta nova recebe
     const cls = await GearService().fightClassGear(c, idUser, clan);
-    return { attrs: attrsOf(s), level, gear, cls };
+    return { attrs: attrsOf(s), level, gear, cls, clan };
   }
 
   /** Poder com as parcelas: { total, parts }. */
@@ -62,9 +62,25 @@ class MeuMundoPowerService {
 
   /** Recalcula e grava (dentro da transação de quem chama). Devolve o poder. */
   static async refresh(c, idUser, idCharacter, s) {
-    const power = await MeuMundoPowerService.compute(c, idUser, s);
+    return (await MeuMundoPowerService.refreshWith(c, idUser, idCharacter, s)).power;
+  }
+
+  /**
+   * Recalcula, grava e diz se o Poder TRANSBORDA (Alex, 2026-11-18): passou do teto da faixa do nível
+   * (power.ts powerBand/isOverpowered) → `surge` = a raça de quem transborda ("vampiro" faísca vermelha,
+   * "raposa" verde); dentro da faixa = null. A sala só repassa o sinal; o desenho é do cliente.
+   */
+  static async refreshWith(c, idUser, idCharacter, s) {
+    const input = await MeuMundoPowerService.inputs(c, idUser, s);
+    const power = Power.powerScore(FightSim, input).total;
     await MeuMundoPowerService.store(c, idCharacter, power);
-    return power;
+    return { power, level: input.level, surge: MeuMundoPowerService.surgeOf(power, input.level, input.clan) };
+  }
+
+  /** Raça de quem transborda ("vampiro" | "raposa") ou null dentro da faixa do nível. */
+  static surgeOf(power, level, clan) {
+    if (!Power.isOverpowered(FightSim, power, level)) return null;
+    return clan === "raposa" ? "raposa" : "vampiro";
   }
 
   /** Poder gravado do personagem ATIVO da conta (B3: o vivo; sem vivo, o último morto). */

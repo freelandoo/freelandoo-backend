@@ -132,3 +132,74 @@ test("poder — ESPELHO: o TS do front e o back dão o mesmo número", async (t)
   }
   assert.equal(n, gears.length * 40);
 });
+
+// ═══ Faixa de Poder do nível e o Poder transbordando (Alex, 2026-11-18) ═══
+const ClassStats = require("../../src/utils/mmItems/rules/classStats");
+const Adv = require("../../src/utils/meuMundoAdventure");
+
+test("faixa — o kit da regra do Poder é o mesmo de classStats.js (número, %, divisão das 8 peças)", () => {
+  assert.deepEqual(P.KIT_NUMBER, { ...ClassStats.NUMBER });
+  assert.deepEqual(P.KIT_PERCENT, { ...ClassStats.PERCENT });
+  const kinds = { sword: "sword", shield: "shield", chest: "chest", helm: "helm", gloves: "gloves", boots: "boots", amulet: "amulet", relic: "relic" };
+  for (const [k, ref] of Object.entries(kinds)) assert.deepEqual(P.KIT_SPLIT[k], JSON.parse(JSON.stringify(ClassStats.SPLIT[ref])), k);
+  assert.equal(Object.keys(P.KIT_SPLIT).length, 8);
+});
+
+test("faixa — a classe comprável por nível bate com a economia real (moedas só vencendo na rua × preço da loja)", () => {
+  // moedas juntadas até o nível L: cada nível pede xpToNext(n) de XP; a vitória contra o monstro do fator
+  // mais alto da régua (1,6×) dá fightXp e 20 moedas por nível do monstro (sem chefão)
+  const first = {};
+  let cum = 0;
+  for (let L = 1; L <= 400; L++) {
+    if (L > 1) {
+      const n = L - 1;
+      const M = Adv.levelForFactor(n, 1.6);
+      cum += (Adv.xpToNext(n) / Adv.fightXp("cavaleiro", M, true)) * 20 * M;
+    }
+    for (const r of Object.keys(ClassStats.PRICE)) if (!first[r] && ClassStats.PRICE[r] <= cum) first[r] = L;
+  }
+  first.E = 1; // a E é o kit da loja desde o começo
+  assert.deepEqual(Object.fromEntries(P.SHOP_RANK_LEVEL), first);
+});
+
+test("faixa — piso < média < teto, sobe com o nível, e a classe acompanha", () => {
+  let prev = null;
+  for (const L of [1, 2, 5, 6, 10, 17, 21, 30, 55, 101, 187, 400]) {
+    const b = P.powerBand(F, L);
+    assert.ok(b.min < b.avg && b.avg < b.max, `${L}: ${JSON.stringify(b)}`);
+    if (prev) assert.ok(b.min > prev.min && b.max > prev.max, `${L} não subiu`);
+    prev = b;
+  }
+  assert.equal(P.shopRankAt(1), "E");
+  assert.equal(P.shopRankAt(16), "B");
+  assert.equal(P.shopRankAt(17), "A");
+  assert.equal(P.shopRankAt(30), "S");
+  assert.equal(P.shopRankAt(0), "E");
+});
+
+test("faixa — o personagem no teto exato não transborda; um ponto acima, sim", () => {
+  for (const L of [1, 21, 60]) {
+    const { max, avg } = P.powerBand(F, L);
+    assert.equal(P.isOverpowered(F, avg, L), false);
+    assert.equal(P.isOverpowered(F, max, L), false);
+    assert.equal(P.isOverpowered(F, max + 1, L), true);
+  }
+  assert.equal(P.isOverpowered(F, NaN, 5), false);
+  assert.equal(P.isOverpowered(F, null, 5), false);
+});
+
+test("faixa — quem transborda solta faísca pela raça (Raposa verde, o resto vermelho)", () => {
+  const PowerService = require("../../src/services/MeuMundoPowerService");
+  const over = P.powerBand(F, 10).max + 1;
+  assert.equal(PowerService.surgeOf(over, 10, "raposa"), "raposa");
+  assert.equal(PowerService.surgeOf(over, 10, "vampiro"), "vampiro");
+  assert.equal(PowerService.surgeOf(over, 10, null), "vampiro");
+  assert.equal(PowerService.surgeOf(P.powerBand(F, 10).avg, 10, "raposa"), null);
+});
+
+test("faixa — ESPELHO: o TS do front e o back dão a mesma faixa", async (t) => {
+  if (!fs.existsSync(gen.SIM) || !fs.existsSync(FRONT_FIGHT)) return t.skip("front fora do lugar");
+  const FP = await import(pathToFileURL(path.join(gen.SIM, "power.ts")).href);
+  const FF = await import(pathToFileURL(FRONT_FIGHT).href);
+  for (const L of [1, 7, 21, 33, 99, 250]) assert.deepEqual(P.powerBand(F, L), FP.powerBand(FF, L), String(L));
+});

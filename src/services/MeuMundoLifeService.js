@@ -362,7 +362,7 @@ class MeuMundoLifeService {
       const look = "";
       // T3/B7 (migs 334/335): o PODER do hóspede, recalculado a cada mudança da vida
       // (regra gerada do front: src/utils/meuMundoPower.js; soma simples do permanente).
-      const power = await MeuMundoPowerService().refresh(c, idUser, idCharacter, state, now);
+      const { power, surge } = await MeuMundoPowerService().refreshWith(c, idUser, idCharacter, state, now);
       await c.query("COMMIT");
       const cur = ctx.newRow || row;
       const snap0 = {
@@ -430,6 +430,8 @@ class MeuMundoLifeService {
         },
         // O PODER (B7) no HUD, no lugar da barra de saúde (pedido do Alex)
         power: power ?? null,
+        // Poder transbordando (2026-11-18): forte demais para o nível → faísca pela raça
+        surge: surge || null,
       });
       for (const n of notices) require("./MeuMundoInboxService").push(idUser, n);
       for (const r of care) presence.send(idUser, "receipt", r);

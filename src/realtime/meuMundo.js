@@ -155,6 +155,9 @@ const Player = schema(
     wd: t.boolean(),
     // Indisposto (mm3d-28): a vida diz "unwell"; o cliente só troca a pose.
     sk: t.boolean(),
+    // Poder transbordando (2026-11-18, power.ts isOverpowered): 0 = não; 1 = faísca vermelha
+    // (Vampiro); 2 = verde (Raposa). Quem decide é o servidor; o cliente só solta as partículas.
+    ov: t.uint8(),
   },
   "MMPlayer"
 );
@@ -529,6 +532,7 @@ class BairroRoom extends Room {
     p.pace = life.pace;
     setStamina(s.stam || (s.stam = freshStamina()), life.stamina);
     p.sk = isUnwell(life);
+    p.ov = life.surge === "raposa" ? 2 : life.surge === "vampiro" ? 1 : 0;
     if (MeuMundoStorage.BODIES.includes(life.body)) p.body = life.body;
     if (life.height > 0) p.h = Math.round(life.height * 100);
     // mm3d-72: a personalidade e o afeto (o psicopata puxa briga com monstro na rua)
