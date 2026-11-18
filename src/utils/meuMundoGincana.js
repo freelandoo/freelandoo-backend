@@ -83,6 +83,14 @@ const GINCANA = {
 /** Paleta (índice = cor do tampo; as bordas usam a cor do par). Turquesa (3) é a cor do mar: nunca no tampo. */
 const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "#63E05A", "#2F7BFF", "#FFFFFF"]         
 
+/**
+ * Gincana 3 (2026-11-18): cada fase é um TIPO de prova (pedido do Alex: "as fases
+ * estão bem iguais"). race = corrida até a chegada; survive = último em pé (quem
+ * cai está fora); collect = quem pega mais engrenagens; zone = quem fica mais tempo
+ * na zona. Tudo sai da pose e do tempo: a sala conta igual ao aparelho.
+ */
+                                                                 
+
 /** As fases: a de sempre e uma por Domínio. */
                                                                                                       
 const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo"]
@@ -236,8 +244,45 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "canion",
             
  
 
+/** Perigo que sobe (pântano, lava): nível y de y0 (em t0) a y1 (em t1); quem fica abaixo está fora. */
+                       
+            
+            
+            
+            
+ 
+
+/** Ponto onde aparece uma engrenagem (coleta): some quando alguém pega e volta depois de `back` s. */
+                      
+           
+           
+           
+                                        
+           
+                                                   
+            
+              
+ 
+
+/** Zona do rei do pedaço: círculo (x, z, r) com o chão em y. */
+                       
+           
+           
+           
+           
+ 
+
                          
                   
+                                   
+                   
+                                         
+                 
+                                                     
+               
+                   
+             
+                   
              
                
                      
@@ -279,6 +324,10 @@ class CourseKit {
            logos                                        = []
   ramp              = null
   balls               = null
+           gems        = []
+  gem(x        , z        , y        , v        , t0        , back        ) {
+    this.gems.push({ x, z, y, v, t0, back })
+  }
 
   /** Caixa (tampo em `y`). Devolve o índice (para pôr esteira, gelo, movimento). */
   box(x        , z        , hx        , hz        , c        , rim        , s        , rot = 0, d = 1.4, y = DECK) {
@@ -296,7 +345,8 @@ class CourseKit {
   }
   /** Rampa de z0 (y0) a z1 (y1), meia largura hx; com bolas opcionais. */
   slope(x        , z0        , z1        , y0        , y1        , hx        , c        , rim        , s        ) {
-    this.ramp = { x, z0, z1, y0, y1, hx }
+    // várias rampas (Gincana 3): só a primeira tem as bolas
+    if (!this.ramp) this.ramp = { x, z0, z1, y0, y1, hx }
     this.pads.push({ k: 2, x, z: (z0 + z1) / 2, r: 0, hx, hz: (z1 - z0) / 2, rot: 0, y: y0, y2: y1, d: 1.4, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0 })
     return this.pads.length - 1
   }
@@ -337,9 +387,20 @@ class CourseKit {
                      
                           
                                              
+                      
+                    
+                  
+               
+               
    )         {
     return {
       id: o.id,
+      mode: o.mode ?? "race",
+      qualify: o.qualify ?? GINCANA.qualify,
+      limit: o.limit ?? GINCANA.timeLimit,
+      rise: o.rise ?? null,
+      gems: this.gems,
+      zone: o.zone ?? null,
       pads: this.pads,
       posts: this.posts,
       sweepers: this.sweepers,
@@ -444,6 +505,21 @@ function doorsOpen(c        , seed        )             {
     for (let k = 0; k < Math.min(c.doorOpen[row], idx.length); k++) out[idx[k]] = 1
   }
   return out
+}
+
+/** Nível do perigo que sobe no tempo t (−∞ sem perigo). */
+function riseAt(c        , t        ) {
+  const R = c.rise
+  if (!R) return -Infinity
+  const u = Math.max(0, Math.min(1, (t - R.t0) / (R.t1 - R.t0)))
+  return R.y0 + (R.y1 - R.y0) * u
+}
+
+/** Tampo de uma plataforma em z (a rampa, k = 2, sobe de y em z − hz a y2 em z + hz). */
+function padTop(p     , z        ) {
+  if (p.k !== 2) return p.y
+  const u = Math.max(0, Math.min(1, (z - (p.z - p.hz)) / (2 * p.hz)))
+  return p.y + (p.y2 - p.y) * u
 }
 
 /** Altura do tampo da rampa em z. */
@@ -675,75 +751,107 @@ function courseCidade()         {
 
 // ═══ floresta — Floresta da Lua ══════════════════════════════════════════════
 
+/**
+ * Gincana 3 (2026-11-18): MARÉ DO PÂNTANO — subida pela Floresta da Lua com o
+ * pântano subindo atrás (0,3 m/s desde o "vai"). Quem o pântano alcança, ou cai
+ * quando o posto de volta já está embaixo dele, está FORA. Cinco andares:
+ * rampa dos troncos (3→9 m) · raízes que giram (9) · rampa curta e
+ * vitórias-régias que andam (9→14) · rampa dos cocos-pêndulo (14→20) · ponte de
+ * folhas que cai e a subida final (20→24).
+ */
 function courseFloresta()         {
   const k = new CourseKit()
   kitStart(k)
-  // ── 1. cogumelos: lançam quem pousa; entre eles, o pântano ──
-  k.box(0, 19, 7, 3, 5, 1, 1)
-  const ROWS = [25.8, 30, 34.2, 38.4, 42.6, 46.8]
-  for (let i = 0; i < ROWS.length; i++) for (const x of [-4.5, 0, 4.5]) k.post(x, ROWS[i], 1.9, -1.2, DECK - 0.25, i % 2 ? 2 : 4, 10.5)
-  k.box(0, 53, 7, 5, 5, 1, 1)
-  // ── 2. raízes que giram ──
-  k.disc(0, 66.5, 8.5, 4, 1, 2)
-  k.post(0, 66.5, 0.8, DECK, DECK + 2.4, 5)
-  k.sweep(0, 66.5, DECK + 0.55, 8.8, 0.34, 1.0, 0, true)
-  k.box(0, 79, 7, 4.5, 5, 1, 2)
-  for (const s of [-1, 1]) {
-    k.disc(6.5 * s, 90.5, 7, 4, 1, 2)
-    k.post(6.5 * s, 90.5, 0.8, DECK, DECK + 2.4, 5)
-    k.sweep(6.5 * s, 90.5, DECK + 0.55, 7.3, 0.34, s * 1.55, s > 0 ? 1.9 : 0.6, false)
+  const Y1 = DECK + 6
+  const Y2 = Y1 + 5
+  const Y3 = Y2 + 6
+  const Y4 = Y3 + 4
+  // ── 1. rampa dos troncos rolando ──
+  k.slope(0, 15, 51, DECK, Y1, 6, 5, 1, 1)
+  k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: 1.15, v: 6.5, R: 1.1, zEnd: 12 }
+  k.box(0, 55, 7, 4, 5, 1, 1, 0, 1.4, Y1)
+  // ── 2. raízes que giram (duas clareiras ligadas por pontes) ──
+  k.box(0, 61.5, 1.8, 2.5, 4, 1, 2, 0, 1.2, Y1)
+  const roots = (z        , w        , a0        , both         ) => {
+    k.disc(0, z, 6.5, 4, 1, 2, Y1)
+    k.post(0, z, 0.8, Y1, Y1 + 2.4, 5)
+    k.sweep(0, z, Y1 + 0.55, 6.8, 0.34, w, a0, both)
   }
-  // ── 3. portas de cipó ──
-  k.box(0, 119.5, 8, 22.5, 5, 1, 3)
-  for (const z of [113, 123, 133]) k.doorRow(0, z, 5, 3.2, 3.4, 2)
-  // ── 4. ponte de folhas que cai ──
-  for (let r = 0; r < 10; r++) for (let c = 0; c < 3; c++) k.tile((c - 1) * 2.9, 143.6 + r * 2.9, 1.3, (r + c) % 2 ? 5 : 1)
-  k.box(0, 175, 7, 4, 5, 1, 4)
-  // ── 5. troncos rolando ──
-  const z0 = 179
-  const finishZ = kitFinish(k, z0, 1.05, 7, 1.1)
-  for (const [x, z] of [[0, 53], [0, 79], [0, 101], [-4.8, 118], [4.8, 128], [0, 138], [0, 175]]                      ) k.logo(x, z)
+  roots(70.5, 1.1, 0, true)
+  k.box(0, 79.5, 1.8, 2.5, 4, 1, 2, 0, 1.2, Y1)
+  roots(88.5, -1.6, 1.2, false)
+  k.box(0, 99, 6, 4, 5, 1, 2, 0, 1.4, Y1)
+  // ── 3. rampa curta e vitórias-régias que andam ──
+  k.slope(0, 103, 121, Y1, Y2, 4, 5, 1, 3)
+  k.box(0, 123, 4, 2, 5, 1, 3, 0, 1.2, Y2)
+  const LILY = [129, 134.5, 140]
+  const lilies           = []
+  LILY.forEach((z, i) => {
+    const p = k.disc(0, z, 2.2, i % 2 ? 2 : 5, 1, 3, Y2)
+    k.pads[p].mx = 4
+    k.pads[p].mw = 1.1
+    k.pads[p].mph = i * 1.6
+    lilies.push(p)
+  })
+  k.box(0, 148, 6, 4, 5, 1, 3, 0, 1.4, Y2)
+  // ── 4. rampa dos cocos (pêndulos) ──
+  k.slope(0, 152, 176, Y2, Y3, 5, 5, 1, 4)
+  let ph = 0
+  for (const z of [158, 164, 170]) {
+    const top = Y2 + ((z - 152) / 24) * (Y3 - Y2)
+    for (const x of [-2.5, 2.5]) {
+      k.swing(x, z, top + 9, 7.4, 1.1, 0.95, 2.1, ph)
+      ph += 1.9
+    }
+  }
+  k.box(0, 180, 6, 4, 5, 1, 4, 0, 1.4, Y3)
+  // ── 5. ponte de folhas que cai e a subida final ──
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 3; c++) k.tile((c - 1) * 2.9, 186.6 + r * 2.9, 1.3, (r + c) % 2 ? 5 : 1, 0, Y3)
+  k.box(0, 209, 6, 3.5, 5, 1, 5, 0, 1.4, Y3)
+  k.slope(0, 212.5, 230.5, Y3, Y4, 5, 5, 1, 5)
+  k.box(0, 238, 9, 7.5, 1, 0, 6, 0, 1.6, Y4)
+  for (const [x, z, y] of [[0, 55, Y1], [0, 99, Y1], [-3, 148, Y2], [3, 148, Y2], [0, 180, Y3], [0, 209, Y3]]                              ) k.logo(x, z, y)
+  const finishZ = 238
   return k.done({
     id: "floresta",
+    mode: "race",
+    limit: 90,
+    // 3 s de folga; depois 0,34 m/s (a largada afoga aos ~12 s, o topo aos ~74 s)
+    rise: { y0: 0, y1: 26, t0: 3, t1: 79.5 },
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 53, y: DECK, w: 6 },
-      { x: 0, z: 101, y: DECK, w: 6 },
-      { x: 0, z: 138, y: DECK, w: 7 },
-      { x: 0, z: 175, y: DECK, w: 5.5 },
+      { x: 0, z: 55, y: Y1, w: 6 },
+      { x: 0, z: 99, y: Y1, w: 5 },
+      { x: 0, z: 148, y: Y2, w: 5 },
+      { x: 0, z: 180, y: Y3, w: 5 },
     ],
     finishZ,
-    finishY: DECK + 6,
-    sections: [16, 58, 104, 142, z0],
+    finishY: Y4,
+    sections: [15, 59, 103, 152, 184],
     minFinish: 20,
     route: (r) =>
       routeOf((add) => {
         const side = r(1) < 0.5 ? -1 : 1
-        const L = [-4.5, 0, 4.5][Math.floor(r(2) * 3)]
         add(side * 1.2, 10)
-        add(side * 0.8, 15.5)
-        add(L * 0.7, 19)
-        add(L, 21.6)
-        for (const z of ROWS) add(L, z)
-        add(L * 0.5, 50)
-        add(0, 56)
-        add(side * 3.6, 61)
-        add(side * 4.4, 66.5)
-        add(side * 3, 72)
-        add(0, 76)
-        add(0, 80)
-        const D = r(3) < 0.5 ? -1 : 1
-        add(D * 3.5, 83)
-        add(D * 6.5, 86)
-        add(D * 6.5, 90.5)
-        add(D * 6.5, 95)
-        add(D * 3, 99.5)
-        for (const z of [104, 109, 113.6, 118, 123.6, 128, 133.6, 138]) add(0, z)
-        add(0, 141.6)
-        for (let i = 0; i < 10; i++) add(0, 143.6 + i * 2.9)
-        add(0, 173)
-        add(0, 177)
-        routeFinish(add, z0, finishZ)
+        add(0, 15.5)
+        for (let z = 18; z <= 50; z += 2.5) add(0, z)
+        for (const z of [53, 57, 60, 62.5]) add(0, z)
+        for (let z = 65; z <= 76; z += 2) add(0, z)
+        for (const z of [78, 80.5]) add(0, z)
+        for (let z = 83; z <= 94; z += 2) add(0, z)
+        for (const z of [97, 101]) add(0, z)
+        for (let z = 104; z <= 120; z += 2.5) add(0, z)
+        add(0, 122)
+        add(0, 124.5)
+        LILY.forEach((z, i) => add(0, z, lilies[i]))
+        for (const z of [145, 149, 151]) add(0, z)
+        const L = [-1.2, 0, 1.2][Math.floor(r(2) * 3)]
+        for (let z = 153; z <= 175; z += 2.5) add(L, z)
+        for (const z of [178, 182, 184.5]) add(0, z)
+        for (let i = 0; i < 7; i++) add(0, 186.6 + i * 2.9)
+        for (const z of [206.5, 210, 212]) add(0, z)
+        for (let z = 214; z <= 230; z += 2) add(0, z)
+        for (const z of [233, 236, finishZ + 3]) add(0, z)
       }),
   })
 }
@@ -1212,6 +1320,10 @@ const MODE = {
             
                                                 
              
+                                                                                            
+             
+                                                              
+             
                                                                           
                 
                                                                                      
@@ -1267,6 +1379,8 @@ const MODE = {
                   
                                                                 
                      
+                                                                 
+                    
  
 
 /** Acontecimentos de um passo (para som, aviso e animação). */
@@ -1284,11 +1398,13 @@ const MODE = {
                                    
                                                             
                                                  
+                                 
+                                                       
 
 const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
 
 function newWorld(course        , seed        , t        )           {
-  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), doors: new Float64Array(course.doors.length).fill(-1) }
+  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), doors: new Float64Array(course.doors.length).fill(-1), gems: new Float64Array(course.gems.length).fill(-1) }
 }
 
 function newRunner(course        , slot        )         {
@@ -1310,6 +1426,8 @@ function newRunner(course        , slot        )         {
     hitCool: 0,
     cp: 0,
     fin: -1,
+    out: -1,
+    pts: 0,
     launch: GINCANA.jumpV,
     jumpBuf: 0,
     boost: 0,
@@ -1365,7 +1483,7 @@ function groundUnder(w          , x        , z        , reach        ) {
     } else {
       const L = padLocal(p, w.t, x, z)
       if (Math.abs(L.lx) > p.hx + EDGE || Math.abs(L.lz) > p.hz + EDGE) continue
-      top = p.k === 2 ? rampTop(C, z) : p.y
+      top = padTop(p, z)
     }
     if (top <= reach && top > best) {
       best = top
@@ -1418,7 +1536,7 @@ function pushWalls(b        , w          , out                   )              
     if (!ledge || top < ledge.top) ledge = { top, nx, nz }
   }
   for (const p of C.pads) {
-    const top = p.k === 2 ? rampTop(C, b.z) : p.y
+    const top = padTop(p, b.z)
     if (top <= lift || top - p.d >= b.y + H) continue
     if (p.k === 0) {
       const sh = padShift(p, w.t)
@@ -1618,6 +1736,17 @@ function hazards(b        , w          , out                   ) {
   }
 }
 
+/**
+ * Caiu agora: fica FORA? Na sobrevivência sempre; com perigo que sobe, quando o
+ * posto de volta já estará embaixo dele quando voltar.
+ */
+function fallOut(b        , C        , t        ) {
+  if (C.mode === "survive") return true
+  if (!C.rise) return false
+  const p = C.checkpoints[Math.max(0, Math.min(C.checkpoints.length - 1, b.cp))]
+  return p.y < riseAt(C, t + GINCANA.respawnT) + 0.3
+}
+
 /** Volta ao último posto (caiu na água ou ficou preso). */
 function respawn(b        , course        ) {
   const p = spawnAt(course, b.cp, b.slot)
@@ -1680,9 +1809,11 @@ function stepRunner(b        , it           , w          , out                  
   if (b.mode === MODE.WATER) {
     b.timer -= dt
     b.vy = Math.max(-3, b.vy - T.gravity * dt)
-    b.y += b.vy * dt
+    b.y = Math.max(-6, b.y + b.vy * dt)
     b.vx *= 0.9
     b.vz *= 0.9
+    // fora da prova: fica no fundo
+    if (b.out >= 0) return
     if (b.timer <= 0) {
       respawn(b, C)
       out?.push({ type: "back", slot: b.slot })
@@ -1852,12 +1983,17 @@ function stepRunner(b        , it           , w          , out                  
     }
   }
 
-  if (b.y < T.waterY && b.mode !== MODE.DONE) {
+  // a água (ou o perigo que sobe: o pântano pega quem ficou com o pé embaixo)
+  if ((b.y < T.waterY || b.y < riseAt(C, w.t) - 0.15) && b.mode !== MODE.DONE) {
     b.mode = MODE.WATER
     b.timer = T.respawnT
     b.vy = Math.min(b.vy, -2)
     b.grab = -1
     out?.push({ type: "splash", slot: b.slot, x: b.x, z: b.z })
+    if (fallOut(b, C, w.t)) {
+      b.out = w.t
+      out?.push({ type: "out", slot: b.slot })
+    }
     return
   }
   if (b.mode === MODE.DONE) return
@@ -2324,13 +2460,16 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
              
                                                        
               
-                                             
+                                                                            
             
+                                                                               
+             
+             
  
 
-/** Quantos classificam numa prova de `n` vagas. */
-function qualifyOf(n        ) {
-  return Math.max(1, Math.ceil(n * GINCANA.qualify))
+/** Quantos classificam numa prova de `n` vagas (fração da fase). */
+function qualifyOf(n        , frac         = GINCANA.qualify) {
+  return Math.max(1, Math.ceil(n * frac))
 }
 
 class GincanaRace {
@@ -2362,7 +2501,19 @@ class GincanaRace {
       this.brains.push(s.ctl === "bot" ? newBrain(this.world, this.seed, s.slot) : null)
       this.gone.push(false)
     }
-    this.quota = qualifyOf(seats.length)
+    this.quota = qualifyOf(seats.length, this.course.qualify)
+  }
+
+  /** Quantos ainda estão na prova (não saíram nem ficaram fora). */
+  alive() {
+    let n = 0
+    for (let i = 0; i < this.runners.length; i++) if (!this.gone[i] && this.runners[i].out < 0) n++
+    return n
+  }
+
+  /** Duração máxima desta prova (s). */
+  limit() {
+    return this.course.limit
   }
 
   runner(slot        )                {
@@ -2370,9 +2521,9 @@ class GincanaRace {
     return i === undefined ? null : this.runners[i]
   }
 
-  /** A vaga dos classificados encheu. */
+  /** A vaga dos classificados encheu (só na corrida). */
   closed() {
-    return this.order.length >= this.quota
+    return this.course.mode === "race" && this.order.length >= this.quota
   }
 
   /** Um passo fixo; `local` = intenção do corpo deste aparelho. */
@@ -2431,6 +2582,37 @@ class GincanaRace {
         }
       }
     }
+    this.score(out, dt)
+  }
+
+  /**
+   * Gincana 3: engrenagens (coleta) e segundos na zona (rei do pedaço), de TODOS
+   * (os de fora também, pela pose): a sala conta igual ao aparelho.
+   */
+          score(out                   , dt        ) {
+    const C = this.course
+    const w = this.world
+    if (C.mode === "zone" && C.zone) {
+      const Z = C.zone
+      for (let i = 0; i < this.runners.length; i++) {
+        const b = this.runners[i]
+        if (this.gone[i] || b.out >= 0 || b.mode === MODE.WATER || b.mode === MODE.KNOCK) continue
+        if (Math.abs(b.y - Z.y) < 0.7 && Math.hypot(b.x - Z.x, b.z - Z.z) <= Z.r) b.pts += dt
+      }
+    }
+    for (let k = 0; k < C.gems.length; k++) {
+      const g = C.gems[k]
+      if (this.t < g.t0 || (w.gems[k] >= 0 && this.t - w.gems[k] < g.back)) continue
+      for (let i = 0; i < this.runners.length; i++) {
+        const b = this.runners[i]
+        if (this.gone[i] || b.out >= 0 || b.mode === MODE.WATER) continue
+        if (Math.hypot(b.x - g.x, b.z - g.z) > 1.1 || b.y > g.y + 0.8 || b.y + GINCANA.bodyH < g.y - 0.4) continue
+        w.gems[k] = this.t
+        b.pts += g.v
+        out?.push({ type: "gem", slot: b.slot, i: k, v: g.v })
+        break
+      }
+    }
   }
 
   /** Segurar AGARRAR: pega a vaga da frente ao alcance; solta ao soltar, longe ou no tempo. */
@@ -2439,7 +2621,7 @@ class GincanaRace {
     if (a.grab >= 0) {
       const v = this.runner(a.grab)
       a.grabT += dt
-      const far = !v || Math.hypot(v.x - a.x, v.z - a.z) > GINCANA.grabR + 0.9 || v.mode === MODE.WATER || v.mode === MODE.DONE
+      const far = !v || Math.hypot(v.x - a.x, v.z - a.z) > GINCANA.grabR + 0.9 || v.mode === MODE.WATER || v.mode === MODE.DONE || a.out >= 0
       if (!held || far || a.grabT > GINCANA.grabMax || a.mode !== MODE.RUN) {
         a.grab = -1
         a.grabCool = GINCANA.grabCool
@@ -2493,6 +2675,8 @@ class GincanaRace {
     b.facing = p.f
     b.cp = p.cp
     b.grab = p.g === undefined || !Number.isFinite(p.g) ? -1 : p.g
+    // caiu agora: fica fora pela regra da fase (sobrevivência, perigo que sobe)
+    if (p.a === ANIM.WATER && b.mode !== MODE.WATER && b.out < 0 && fallOut(b, C, this.t)) b.out = this.t
     b.mode = p.a === ANIM.WATER ? MODE.WATER : p.a === ANIM.WIN ? MODE.DONE : p.a === ANIM.KNOCK ? MODE.KNOCK : p.a === ANIM.DIVE ? MODE.DIVE : MODE.RUN
     b.ground = p.a === ANIM.IDLE || p.a === ANIM.RUN || p.a === ANIM.WIN || p.a === ANIM.SLIDE || p.a === ANIM.RISE
     if (p.fin >= 0 && b.fin < 0 && !this.closed()) {
@@ -2519,7 +2703,7 @@ class GincanaRace {
   pose(slot        )                    {
     const b = this.runner(slot)
     if (!b) return null
-    return { x: b.x, y: b.y, z: b.z, f: b.facing, a: runnerAnim(b), cp: b.cp, fin: b.fin, g: b.grab }
+    return { x: b.x, y: b.y, z: b.z, f: b.facing, a: b.out >= 0 ? ANIM.WATER : runnerAnim(b), cp: b.cp, fin: b.fin, g: b.grab }
   }
 
   /** Progresso de quem não chegou (posto e z). */
@@ -2528,32 +2712,50 @@ class GincanaRace {
     return Math.max(C.checkpoints[b.cp].z, Math.min(C.finishZ, b.z))
   }
 
-  /** Classificação: quem chegou pela ordem; o resto pela distância (posto e z). */
+  /**
+   * Classificação pelo tipo da prova. Corrida: quem chegou pela ordem; o resto
+   * pela distância; quem ficou fora no fim (o último a sair na frente).
+   * Sobrevivência: quem está em pé (todos classificam); depois quem ficou fora,
+   * do último ao primeiro. Coleta e zona: pelos pontos (classifica a vaga, com ponto).
+   */
   standings()                {
     const C = this.course
-    const rows                = []
-    this.order.forEach((slot, k) => {
-      const b = this.runner(slot) 
-      rows.push({ slot, fin: b.fin, dist: C.finishZ, q: k < this.quota })
-    })
-    const rest = this.runners
-      .filter((b) => b.fin < 0 || !this.order.includes(b.slot))
-      .map((b) => ({ slot: b.slot, fin: -1, dist: this.distOf(b), q: false }))
-      .sort((a, b) => b.dist - a.dist || a.slot - b.slot)
-    return rows.concat(rest)
+    const row = (b        , q         )              => ({ slot: b.slot, fin: b.fin, dist: b.fin >= 0 ? C.finishZ : this.distOf(b), q, pts: Math.round(b.pts * 10) / 10, out: b.out })
+    const byOut = (a        , b        ) => b.out - a.out || a.slot - b.slot
+    if (C.mode === "collect" || C.mode === "zone") {
+      return [...this.runners].sort((a, b) => b.pts - a.pts || a.slot - b.slot).map((b, k) => row(b, k < this.quota && b.pts > 0))
+    }
+    if (C.mode === "survive") {
+      const up = this.runners.filter((b, i) => b.out < 0 && !this.gone[i])
+      const down = this.runners.filter((b, i) => b.out >= 0 || this.gone[i]).sort(byOut)
+      return up.map((b) => row(b, true)).concat(down.map((b) => row(b, false)))
+    }
+    const rows                = this.order.map((slot, k) => row(this.runner(slot) , k < this.quota))
+    const rest = this.runners.filter((b) => b.fin < 0 || !this.order.includes(b.slot))
+    const inRace = rest.filter((b) => b.out < 0).sort((a, b) => this.distOf(b) - this.distOf(a) || a.slot - b.slot)
+    const outRows = rest.filter((b) => b.out >= 0).sort(byOut)
+    return rows.concat(inRace.map((b) => row(b, false)), outRows.map((b) => row(b, false)))
   }
 
-  /** Acabou: a vaga encheu, todos os que contam chegaram (ou saíram) ou o tempo acabou. */
+  /**
+   * Acabou: o tempo da fase acabou; na corrida, a vaga encheu ou todos os que
+   * contam chegaram/ficaram fora/saíram; na sobrevivência, sobrou só a vaga ou
+   * todas as pessoas ficaram fora.
+   */
   over()          {
-    if (this.t >= GINCANA.timeLimit || this.closed()) return true
+    const C = this.course
+    if (this.t >= C.limit || this.closed()) return true
+    if (C.mode === "collect" || C.mode === "zone") return false
+    if (C.mode === "survive" && this.alive() <= this.quota) return true
     let any = false
     for (let i = 0; i < this.runners.length; i++) {
       if (this.ctl[i] === "bot" || this.gone[i]) continue
       any = true
-      if (this.runners[i].fin < 0) return false
+      const b = this.runners[i]
+      if (C.mode === "race" ? b.fin < 0 && b.out < 0 : b.out < 0) return false
     }
     return any
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

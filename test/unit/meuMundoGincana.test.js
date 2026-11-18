@@ -55,7 +55,9 @@ test("gincana — 7 fases; cada uma fecha: postos em ordem com chão, chegada no
     assert.equal(C.id, ph);
     for (let i = 1; i < C.checkpoints.length; i++) assert.ok(C.checkpoints[i].z > C.checkpoints[i - 1].z, `${ph} posto ${i}`);
     assert.ok(C.finishZ > C.checkpoints[C.checkpoints.length - 1].z + 30, ph);
-    assert.equal(C.finishY, C.ramp.y1, ph);
+    // chegada no alto da ÚLTIMA subida (a Maré do Pântano tem várias)
+    const ramps = C.pads.filter((p) => p.k === 2);
+    assert.equal(C.finishY, ramps[ramps.length - 1].y2, ph);
     assert.equal(C.sections.length, 5, ph);
     const w = G.newWorld(C, 1, 0);
     for (let cp = 0; cp < C.checkpoints.length; cp++) {
@@ -157,14 +159,18 @@ test("gincana — o ladrilho treme, cai depois de pisado e volta; quem cai volta
 });
 
 test("gincana 2.0 — cogumelo lança quem pousa", () => {
-  const { race, r } = solo("floresta");
-  const m = G.COURSES.floresta.posts.find((q) => q.b > 0);
+  // nenhuma fase usa o cogumelo agora (Gincana 3): a peça é testada num percurso de teste
+  const m = { x: 30, z: 30, r: 1.9, y0: -1.2, y1: G.DECK - 0.25, c: 4, b: 10.5 };
+  const C = { ...C0, posts: [...C0.posts, m] };
+  const w = G.newWorld(C, 1, 0);
+  const r = G.newRunner(C, 0);
   Object.assign(r, { x: m.x, z: m.z, y: m.y1 + 0.4, ground: false, vy: -2 });
   const ev = [];
   let bounced = false;
   let top = 0;
   for (let k = 0; k < 60; k++) {
-    race.step(undefined, ev);
+    w.t += G.GINCANA.step;
+    G.stepRunner(r, G.IDLE_INTENT, w, ev);
     if (ev.some((e) => e.type === "bounce")) bounced = true;
     top = Math.max(top, r.y);
     ev.length = 0;
@@ -174,8 +180,8 @@ test("gincana 2.0 — cogumelo lança quem pousa", () => {
 });
 
 test("gincana 2.0 — porta: a falsa segura, a de verdade abre e deixa passar", () => {
-  const C = G.COURSES.floresta;
-  const { race, r } = solo("floresta", 3);
+  const C = G.COURSES.fabrica;
+  const { race, r } = solo("fabrica", 3);
   const open = race.world.open;
   const row0 = C.doors.map((d, i) => ({ d, i })).filter((x) => x.d.row === 0);
   assert.equal(row0.filter((x) => open[x.i]).length, 2, "2 de 5 abrem");
@@ -289,4 +295,56 @@ test("gincana — em grupo: a sala (pessoa pela rede + computadores) vê a pesso
     assert.equal(st.find((r) => r.slot === 0).q, true, `${ph}: classificou`);
     assert.ok(st.filter((r) => r.q).length <= 3);
   }
+});
+
+// ── Gincana 3 (2026-11-18): tipos de prova ───────────────────────────────────
+
+test("gincana 3 — Maré do Pântano: o pântano sobe e quem ele alcança fica FORA (não volta)", () => {
+  const C = G.COURSES.floresta;
+  assert.equal(C.mode, "race");
+  assert.ok(C.rise && G.riseAt(C, 0) === 0 && G.riseAt(C, 40) > G.DECK + 6, "sobe");
+  // parado na largada: o pântano chega e tira da prova
+  const { race, r } = solo("floresta");
+  const ev = [];
+  let out = false;
+  while (race.t < 20 && !out) {
+    race.step(undefined, ev);
+    if (ev.some((e) => e.type === "out" && e.slot === 0)) out = true;
+    ev.length = 0;
+  }
+  assert.ok(out, "ficou fora");
+  assert.ok(r.out > 9 && r.out < 15, `fora aos ${r.out}`);
+  for (let k = 0; k < 60 * 4; k++) race.step();
+  assert.equal(r.mode, G.MODE.WATER, "não volta ao posto");
+  assert.equal(race.over(), true, "a pessoa ficou fora: a prova acabou para ela");
+  const st = race.standings();
+  assert.equal(st[0].out >= 0, true);
+  assert.equal(st[0].q, false);
+});
+
+test("gincana 3 — Maré do Pântano: cair cedo volta ao posto; cair com o posto afogado é fora", () => {
+  const C = G.COURSES.floresta;
+  // cai da rampa aos 5 s: volta à largada (o pântano ainda está embaixo)
+  const a = solo("floresta");
+  a.race.t = 5;
+  Object.assign(a.r, { x: 20, z: 30, y: G.DECK + 2, ground: false });
+  for (let k = 0; k < 60 * 3; k++) a.race.step();
+  assert.equal(a.r.out, -1, "voltou");
+  assert.ok(Math.abs(a.r.z - G.spawnAt(C, 0, 0).z) < 1);
+  // cai aos 40 s com o posto 1 (9 m) já embaixo do pântano: fora
+  const b = solo("floresta");
+  b.race.t = 40;
+  Object.assign(b.r, { x: 20, z: 90, y: 12, ground: false, cp: 1 });
+  for (let k = 0; k < 60; k++) b.race.step();
+  assert.ok(b.r.out >= 40, "fora");
+});
+
+test("gincana 3 — a sala vê a pessoa ficar fora pela pose (água + posto afogado)", () => {
+  const server = new G.GincanaRace(3, [{ slot: 0, ctl: "remote" }, { slot: 1, ctl: "bot" }], 3, "floresta");
+  while (server.t < 30) server.step();
+  const p = server.pose(0);
+  server.setRemote(0, { ...p, a: G.ANIM.RUN, cp: 0 });
+  server.setRemote(0, { ...p, y: -1, a: G.ANIM.WATER, cp: 0 });
+  assert.ok(server.runner(0).out >= 0, "fora na sala");
+  assert.equal(server.pose(0).a, G.ANIM.WATER);
 });

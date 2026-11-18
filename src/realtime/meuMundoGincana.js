@@ -211,7 +211,8 @@ class GincanaRoom extends Room {
    */
   accept(s, msg) {
     const b = this.race.runner(s.slot);
-    if (!b || b.fin >= 0) return;
+    // chegou ou ficou fora (Gincana 3): a pose não muda mais nada
+    if (!b || b.fin >= 0 || b.out >= 0) return;
     const now = Date.now();
     const dt = s.at ? Math.min(3, (now - s.at) / 1000) : 0.5;
     let x = num(msg.x);
@@ -327,10 +328,10 @@ class GincanaRoom extends Room {
       if (s.gone) continue;
       const since = s.at || this.startedAt + COUNTDOWN_S * 1000;
       const b = this.race.runner(s.slot);
-      if (b && b.fin < 0 && now - since > SILENT_S * 1000) this.markGone(s);
+      if (b && b.fin < 0 && b.out < 0 && now - since > SILENT_S * 1000) this.markGone(s);
     }
     this.snapshot();
-    if (this.race.over() || this.state.time > G.GINCANA.timeLimit + 2) this.finish();
+    if (this.race.over() || this.state.time > this.race.limit() + 2) this.finish();
   }
 
   /** Todos a 20 Hz: [vaga, x, y, z, rumo, animação, posto, chegada, agarrando] por corredor. */
@@ -353,6 +354,9 @@ class GincanaRoom extends Room {
       dist: Math.round(r.dist),
       gone: gone.has(r.slot),
       q: !!r.q,
+      // Gincana 3: pontos (coleta/zona) e quando ficou fora
+      pts: r.pts || 0,
+      out: r.out >= 0 ? r2(r.out) : -1,
     }));
     this.state.result = JSON.stringify({ rows, phase: this.phase });
     this.state.phase = "end";
@@ -360,12 +364,13 @@ class GincanaRoom extends Room {
     log.info("gincana.end", { roomId: this.roomId, phase: this.phase, people: this.seats.size, first: rows[0] ? rows[0].slot : -1 });
     // prática de quem jogou (vitória = chegou em 1º)
     if (this.meter) {
-      const first = rows[0] && rows[0].fin >= 0 && !rows[0].bot ? [...this.seats.values()].find((s) => s.slot === rows[0].slot) : null;
+      // vitória = 1º e classificado (corrida: chegou; sobrevivência: em pé; coleta/zona: com ponto)
+      const first = rows[0] && rows[0].q && !rows[0].bot ? [...this.seats.values()].find((s) => s.slot === rows[0].slot) : null;
       // N1: placar da semana = o tempo de chegada (ms; menor é melhor; quem não chegou fica de fora)
       const scores = new Map();
       for (const s of this.seats.values()) {
         const r = rows.find((x) => x.slot === s.slot);
-        if (s.userId && r && r.fin >= 0 && !r.gone) scores.set(s.userId, Math.round(r.fin * 1000));
+        if (this.course.mode === "race" && s.userId && r && r.fin >= 0 && !r.gone) scores.set(s.userId, Math.round(r.fin * 1000));
       }
       this.meter.settle(null, new Set(first ? [first.userId] : []), scores);
     }
