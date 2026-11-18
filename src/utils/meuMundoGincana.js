@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                  
-const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio"]
+                                                                                                                            
+const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -1279,6 +1279,89 @@ function courseRelogio()         {
   })
 }
 
+/**
+ * Feira Rolante (Gincana 3, G3-12): corrida na feira do Centro. A rampa de entrada é uma ESTEIRA
+ * FORTE que desce (5,5 m/s: parado, ela leva você de volta) e as barracas soltam melancias que
+ * rolam rampa abaixo; depois, duas esteiras lado a lado em sentidos opostos com prensas que
+ * empurram de lado, os martelos (pêndulos), o corredor de esteiras de lado e a subida.
+ */
+function courseFeira()         {
+  const k = new CourseKit()
+  kitStart(k)
+  const Y = DECK + 3
+  // ── 1. rampa-esteira com melancias ──
+  const r1 = k.slope(0, 15.1, 40, DECK, Y, 6, 0, 1, 1)
+  k.pads[r1].bz = -GINCANA.belt
+  k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: 1.15, v: 6.5, R: 1.15, zEnd: 12 }
+  k.box(0, 44, 7, 4, 6, 7, 1, 0, 1.4, Y)
+  // ── 2. esteiras de mão dupla com prensas ──
+  const fwd = k.box(-3, 63, 3, 15, 2, 0, 2, 0, 1.4, Y)
+  k.pads[fwd].bz = GINCANA.belt
+  const back = k.box(3, 63, 3, 15, 3, 0, 2, 0, 1.4, Y)
+  k.pads[back].bz = -GINCANA.belt
+  const PW = [1.5, 1.9, 1.3]
+  ;[54, 63, 72].forEach((z, i) => k.pusher(-3, z, 1.6, 0.9, 2.2, 3, 0, PW[i], i * 1.3, Y))
+  k.box(0, 82, 7, 4, 6, 7, 2, 0, 1.4, Y)
+  // ── 3. martelos ──
+  k.box(0, 99, 6, 13, 6, 7, 3, 0, 1.4, Y)
+  const ham = (x        , z        , ph        ) => k.swing(x, z, Y + 9, 7.4, 1.1, 0.95, 2.2, ph)
+  ham(-3, 92, 0)
+  ham(3, 92, 2.4)
+  ham(-3, 99, 1.2)
+  ham(3, 99, 3.6)
+  ham(-3, 106, 4.4)
+  ham(3, 106, 0.6)
+  k.box(0, 115, 7, 3, 6, 7, 3, 0, 1.4, Y)
+  // ── 4. corredor de esteiras de lado ──
+  for (let i = 0; i < 6; i++) {
+    const p = k.box(0, 120 + i * 4, 6, 2, i % 2 ? 4 : 5, 0, 4, 0, 1.4, Y)
+    k.pads[p].bx = (i % 2 ? -1 : 1) * GINCANA.belt
+  }
+  k.box(0, 146, 7, 4, 6, 7, 4, 0, 1.4, Y)
+  // ── 5. subida e chegada ──
+  const z0 = 150
+  k.slope(0, z0, z0 + 24, Y, DECK + 6, 6, 0, 1, 5)
+  k.box(0, z0 + 24 + 7.8, 9, 7.8, 1, 0, 6, 0, 1.6, DECK + 6)
+  const finishZ = z0 + 24 + 8.8
+  for (const [x, z] of [[0, 44], [0, 82], [-3, 115], [3, 115], [0, 146]]                      ) k.logo(x, z, Y)
+  return k.done({
+    id: "feira",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 45.5, y: Y, w: 6 },
+      { x: 0, z: 83.5, y: Y, w: 6 },
+      { x: 0, z: 116.5, y: Y, w: 6 },
+      { x: 0, z: 147.5, y: Y, w: 6 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [15.1, 48, 86, 118, z0],
+    minFinish: 22,
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        const F = [-1.45, 1.45, -3, 3][Math.floor(r(2) * 4)]
+        for (let z = 18; z <= 39; z += 3) add(F, z)
+        add(F * 0.5, 42)
+        add(-3, 46)
+        for (let z = 50; z <= 76; z += 2) add(-3, z)
+        add(-1.5, 79)
+        add(0, 83)
+        const H = r(3) < 0.5 ? -3 : 3
+        for (const z of [87, 90, 94, 97, 101, 104, 108, 111]) add(H, z)
+        add(0, 115)
+        for (let z = 118.5; z <= 142; z += 1.5) add(0, z)
+        add(0, 146)
+        for (let z = z0 + 1; z <= z0 + 23; z += 2.5) add(0, z)
+        add(0, finishZ - 7)
+        add(0, finishZ - 2)
+        add(0, finishZ + 3)
+      }),
+  })
+}
+
 const COURSES                               = {
   cidade: courseCidade(),
   floresta: courseFloresta(),
@@ -1288,6 +1371,7 @@ const COURSES                               = {
   fabrica: courseFabrica(),
   gelo: courseGelo(),
   relogio: courseRelogio(),
+  feira: courseFeira(),
 }
 
 /** O percurso da fase (desconhecida = a de sempre). */
