@@ -53,6 +53,15 @@ test("gincana — 7 fases; cada uma fecha: postos em ordem com chão, chegada no
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
+    // arena (Gincana 3): só o lugar de largada, com chão embaixo de todas as vagas
+    if (C.mode !== "race") {
+      const w = G.newWorld(C, 1, 0);
+      for (let slot = 0; slot < 8; slot++) {
+        const p = G.spawnAt(C, 0, slot);
+        assert.equal(G.groundUnder(w, p.x, p.z, p.y + 0.5).y, p.y, `${ph} vaga ${slot}`);
+      }
+      continue;
+    }
     for (let i = 1; i < C.checkpoints.length; i++) assert.ok(C.checkpoints[i].z > C.checkpoints[i - 1].z, `${ph} posto ${i}`);
     assert.ok(C.finishZ > C.checkpoints[C.checkpoints.length - 1].z + 30, ph);
     // chegada no alto da ÚLTIMA subida (a Maré do Pântano tem várias)
@@ -74,10 +83,22 @@ test("gincana — 7 fases; cada uma fecha: postos em ordem com chão, chegada no
   assert.equal(G.courseOf("nada").id, "cidade");
 });
 
-test("gincana — em todas as fases 8 computadores classificam 6 (e a mesma semente chega igual)", () => {
+test("gincana — em todas as fases 8 computadores classificam a vaga (e a mesma semente chega igual)", () => {
   for (const ph of G.GINCANA_PHASES) {
     for (const seed of [1, 2, 3]) {
       const race = new G.GincanaRace(seed, bots(8), 3, ph);
+      if (race.course.mode === "survive") {
+        // só computadores: a prova acaba quando sobra a vaga em pé
+        while (race.t < race.limit() && race.alive() > race.quota) race.step();
+        assert.equal(race.quota, 4, ph);
+        assert.ok(race.alive() <= race.quota && race.alive() > 0, `${ph} semente ${seed}: ${race.alive()} em pé`);
+        assert.ok(race.t > 20, `${ph}: acabou cedo demais (${race.t})`);
+        assert.equal(race.over(), true);
+        const st = race.standings();
+        assert.equal(st.filter((r) => r.q).length, race.alive());
+        assert.ok(st.slice(race.alive()).every((r, k, a) => r.out >= 0 && (k === 0 || a[k - 1].out >= r.out)), "fora do último ao primeiro");
+        continue;
+      }
       runAll(race);
       assert.equal(race.quota, 6);
       assert.equal(race.order.length, 6, `${ph} semente ${seed}: ${race.order.length} classificados`);
@@ -208,17 +229,18 @@ test("gincana 2.0 — esteira arrasta e plataforma que anda leva quem está em c
   for (let k = 0; k < 60; k++) race.step();
   assert.ok(r.z < belt.z - 2.5, `parado na esteira foi para trás: ${r.z - belt.z}`);
 
-  const Cc = G.COURSES.canion;
+  // vitória-régia da Maré do Pântano (Gincana 3; antes era a pedra do Cânion)
+  const Cc = G.COURSES.floresta;
   const idx = Cc.pads.findIndex((p) => p.mw !== 0);
   const p = Cc.pads[idx];
-  const s2 = solo("canion");
+  const s2 = solo("floresta");
   s2.race.t = 0;
   const sh0 = G.padShift(p, 0);
-  Object.assign(s2.r, { x: p.x + sh0.dx, z: p.z, y: G.DECK, ground: true, pad: idx });
+  Object.assign(s2.r, { x: p.x + sh0.dx, z: p.z, y: p.y, ground: true, pad: idx });
   for (let k = 0; k < 30; k++) s2.race.step();
   const sh1 = G.padShift(p, s2.race.t);
   assert.ok(Math.abs(s2.r.x - (p.x + sh1.dx)) < 0.3, `foi junto: ${s2.r.x} × ${p.x + sh1.dx}`);
-  assert.ok(s2.r.y > G.DECK - 0.01);
+  assert.ok(s2.r.y > p.y - 0.01);
 });
 
 test("gincana 2.0 — gelo escorrega: soltou o controle, demora a parar", () => {
@@ -347,4 +369,43 @@ test("gincana 3 — a sala vê a pessoa ficar fora pela pose (água + posto afog
   server.setRemote(0, { ...p, y: -1, a: G.ANIM.WATER, cp: 0 });
   assert.ok(server.runner(0).out >= 0, "fora na sala");
   assert.equal(server.pose(0).a, G.ANIM.WATER);
+});
+
+test("gincana 3 — Pedras que Caem: pedra pisada cai e não volta; cair do último andar é fora", () => {
+  const C = G.COURSES.canion;
+  assert.equal(C.mode, "survive");
+  assert.ok(C.tiles.length > 600);
+  const floors = [...new Set(C.tiles.map((q) => q.y))].sort((a, b) => b - a);
+  assert.equal(floors.length, 4);
+  const { race, r } = solo("canion");
+  assert.ok(C.tiles.some((q) => G.onTile(q, r.x, r.z, 0) && q.y === floors[0]), "larga em cima de uma pedra do andar de cima");
+  // parado: as pedras embaixo caem e ele cai para o andar de baixo (não atravessa)
+  for (let k = 0; k < 60 * 4; k++) race.step();
+  const i0 = race.world.tiles.findIndex((s, i) => s >= 0 && C.tiles[i].y === floors[0]);
+  assert.ok(i0 >= 0, "pisada");
+  assert.equal(G.tileUp(C, race.world.tiles[i0], race.t), false, "caiu");
+  assert.ok(r.y < floors[0] - 1 && r.y >= floors[2] - 0.01, `desceu de andar: ${r.y}`);
+  assert.equal(r.out, -1);
+  for (let k = 0; k < 60 * 20; k++) race.step();
+  assert.equal(G.tileUp(C, race.world.tiles[i0], race.t), false, "não volta");
+  // fora da colmeia: cai no abismo e está fora (na sobrevivência ninguém volta)
+  const s = solo("canion");
+  Object.assign(s.r, { x: 40, z: 0, y: floors[0], ground: false });
+  const ev = [];
+  for (let k = 0; k < 60 * 3; k++) s.race.step(undefined, ev);
+  assert.ok(s.r.out >= 0 && ev.some((e) => e.type === "out"), "fora");
+  assert.equal(s.race.over(), true, "a única pessoa caiu: acabou");
+});
+
+test("gincana 3 — queda rápida não atravessa o chão (14 m de queda)", () => {
+  const q = G.COURSES.canion.tiles.find((p) => p.y === G.DECK);
+  const C = { ...G.COURSES.canion, tiles: [q] };
+  const w = G.newWorld(C, 1, 0);
+  const r = G.newRunner(C, 0);
+  Object.assign(r, { x: q.x, z: q.z, y: G.DECK + 14, vy: 0, ground: false });
+  for (let k = 0; k < 120; k++) {
+    w.t += G.GINCANA.step;
+    G.stepRunner(r, G.IDLE_INTENT, w, null);
+  }
+  assert.ok(Math.abs(r.y - G.DECK) < 0.01, `pousou: ${r.y}`);
 });

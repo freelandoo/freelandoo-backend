@@ -858,89 +858,55 @@ function courseFloresta()         {
 
 // ═══ canion — Cânion ═════════════════════════════════════════════════════════
 
-function courseCanion()         {
-  const k = new CourseKit()
-  kitStart(k)
-  // ── 1. pedras flutuantes que andam de lado ──
-  k.box(0, 19, 7, 3, 0, 1, 1)
-  const FLOAT = [25.1, 30.7, 36.3, 41.9]
-  const floats           = []
-  for (let i = 0; i < FLOAT.length; i++) {
-    const p = k.box(0, FLOAT[i], 3, 2.5, i % 2 ? 0 : 2, 1, 1, 0, 1.2)
-    k.pads[p].mx = 4.5
-    k.pads[p].mw = 1.0
-    k.pads[p].mph = i * 1.3
-    floats.push(p)
-  }
-  k.box(0, 51, 7, 6, 0, 1, 1)
-  // ── 2. pêndulos de pedra sobre duas pontes ──
-  for (const x of [-3.5, 3.5]) k.beam(x, 56.5, x, 94.5, 1.8, 2, 1, 2)
-  let ph = 0
-  for (const z of [63, 71, 79, 87]) {
-    for (const x of [-3.5, 3.5]) {
-      k.swing(x, z, DECK + 9, 7.4, 1.25, 0.95, 2.0, ph)
-      ph += 1.7
+/**
+ * Gincana 3 (2026-11-18): PEDRAS QUE CAEM — sobrevivência no Cânion. Quatro
+ * andares de pedras hexagonais flutuando sobre o abismo (15, 11, 7 e 3 m). Pedra
+ * pisada treme 1 s e cai para sempre; quem cai do andar de baixo está FORA.
+ * Acaba quando só sobra a vaga (metade) em pé ou em 2 min. Pular poupa pedra:
+ * no ar ninguém derruba nada.
+ */
+const STONE_FLOORS = [DECK + 12, DECK + 8, DECK + 4, DECK]         
+const STONE_R = 18
+const STONE_GAP = 2.4
+
+/** Centros da colmeia de um andar (a de baixo deslocada meia pedra, para quem cai de um buraco achar chão). */
+function stoneCells(floor        ) {
+  const out                     = []
+  const dz = (STONE_GAP * Math.sqrt(3)) / 2
+  const shift = floor % 2 ? STONE_GAP / 2 : 0
+  for (let r = -10; r <= 10; r++) {
+    for (let c = -9; c <= 9; c++) {
+      const x = c * STONE_GAP + (r % 2 ? STONE_GAP / 2 : 0) + shift
+      const z = r * dz
+      if (Math.hypot(x, z) <= STONE_R - 0.5 * floor) out.push([x, z])
     }
   }
-  // ── 3. portões que empurram ──
-  k.box(0, 118, 8, 24, 0, 1, 3)
-  const W = [1.3, 1.6, 1.1, 1.8]
-  ;[110, 118, 126, 134].forEach((z, i) => k.pusher(0, z, 2.6, 1.1, 2.2, 5.2, 0, W[i], i * 1.2))
-  // ── 4. desfiladeiro: vigas em zigue-zague, pistões de rocha ──
-  k.beam(0, 141.6, -4, 153, 2.0, 2, 1, 4)
-  k.disc(-4, 153, 1.8, 1, 0, 4)
-  k.beam(-4, 153, 4, 165, 2.0, 2, 1, 4)
-  k.disc(4, 165, 1.8, 1, 0, 4)
-  k.beam(4, 165, 0, 177, 2.0, 2, 1, 4)
-  for (const [mx, mz, x0] of [[-2, 147.3, 9], [0, 159, -9], [2, 171, -9]]                              ) {
-    const dir = x0 > 0 ? -1 : 1
-    k.glove(x0, mz, DECK + 1, dir, Math.abs(x0 - mx) + 1.2, 1.15, 2.8, mz * 0.37)
-    k.post(x0, mz, 1.0, -1, DECK + 2.2, 6)
-  }
-  k.box(0, 181, 6, 4, 0, 1, 4)
-  // ── 5. avalanche ──
-  const z0 = 185
-  const finishZ = kitFinish(k, z0, 0.9, 8, 1.25)
-  for (const [x, z] of [[0, 51], [-3.5, 59], [3.5, 59], [0, 98], [-5, 122], [5, 122], [0, 139], [0, 181]]                      ) k.logo(x, z)
+  return out
+}
+
+function courseCanion()         {
+  const k = new CourseKit()
+  STONE_FLOORS.forEach((y, f) => {
+    for (const [x, z] of stoneCells(f)) {
+      const ring = Math.floor(Math.hypot(x, z) / 4.6)
+      const pair = [[2, 1], [0, 1], [5, 2], [6, 2]][f]
+      k.tile(x, z, 1.27, pair[ring % 2], 1, y)
+    }
+  })
+  const top = STONE_FLOORS[0]
   return k.done({
     id: "canion",
-    checkpoints: [
-      { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 51, y: DECK, w: 6 },
-      { x: 0, z: 98, y: DECK, w: 6 },
-      { x: 0, z: 139, y: DECK, w: 6 },
-      { x: 0, z: 181, y: DECK, w: 5 },
-    ],
-    finishZ,
-    finishY: DECK + 6,
-    sections: [22, 57, 102, 141.6, z0],
-    minFinish: 22,
-    route: (r) =>
-      routeOf((add) => {
-        const side = r(1) < 0.5 ? -1 : 1
-        add(side * 1.2, 10)
-        add(side * 0.8, 15.5)
-        add(0, 19)
-        add(0, 21.6)
-        for (let i = 0; i < FLOAT.length; i++) add(0, FLOAT[i], floats[i])
-        add(0, 46.5)
-        add(0, 50)
-        const L = r(2) < 0.5 ? -3.5 : 3.5
-        add(L * 0.6, 54)
-        for (let z = 57; z <= 94; z += 3) add(L, z)
-        add(L * 0.5, 97)
-        add(0, 100)
-        for (let z = 104; z <= 139; z += 2) add(0, z)
-        add(0, 141.8)
-        add(-2, 147.3)
-        add(-4, 153)
-        add(0, 159)
-        add(4, 165)
-        add(2, 171)
-        add(0, 177)
-        add(0, 180)
-        routeFinish(add, z0, finishZ)
-      }),
+    mode: "survive",
+    qualify: 0.5,
+    limit: 120,
+    tileTime: { warn: 1.0, gone: 1e6 },
+    checkpoints: [{ x: 0, z: 1.3, y: top, w: 6 }],
+    // arena: ninguém "chega" (a linha fica fora e no alto)
+    finishZ: 40,
+    finishY: 90,
+    sections: [],
+    minFinish: 1e6,
+    route: () => [{ x: 0, z: 0 }],
   })
 }
 
@@ -1929,7 +1895,8 @@ function stepRunner(b        , it           , w          , out                  
   const prevY = b.y
   b.y += b.vy * dt
   // no chão sobe degrau; caindo, pega uma beirinha (borda que ficou um pouco acima do pé)
-  const reach = wasGround ? Math.max(prevY, b.y) + T.stepUp : b.vy <= 0 ? b.y + 0.25 : Math.max(prevY, b.y) + 0.02
+  // caindo rápido (andar de baixo, 6 m) o passo anda ~0,3 m: o chão cruzado neste passo também pega (Gincana 3)
+  const reach = wasGround ? Math.max(prevY, b.y) + T.stepUp : b.vy <= 0 ? Math.max(b.y + 0.25, prevY) : Math.max(prevY, b.y) + 0.02
   const g = groundUnder(w, b.x, b.z, reach)
   if (b.vy <= 0 && g.y > -Infinity && b.y <= g.y + (wasGround ? 0.06 : 0)) {
     b.y = g.y
@@ -2096,6 +2063,90 @@ function newBrain(w          , seed        , slot        )           {
   return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, lastZ: -99, waited: 0, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1 }
 }
 
+/**
+ * Gincana 3: o computador numa ARENA. Pedras que caem: vai para uma pedra firme
+ * do mesmo andar, perto e com muitas vizinhas firmes (lugar para continuar), e
+ * os mais hábeis pulam o tempo todo (no ar não derruba pedra). Tudo pela
+ * semente e pelo tempo, igual na sala e no aparelho.
+ */
+/** Vizinhas de cada pedra (mesmo andar, até 2,6 m), calculadas uma vez por percurso. */
+const TILE_NB = new WeakMap                    ()
+function tileNeighbors(C        ) {
+  let nb = TILE_NB.get(C)
+  if (nb) return nb
+  nb = C.tiles.map((q, i) => {
+    const out           = []
+    for (let j = 0; j < C.tiles.length; j++) {
+      const p = C.tiles[j]
+      if (j !== i && Math.abs(p.y - q.y) < 0.1 && Math.hypot(p.x - q.x, p.z - q.z) < 2.6) out.push(j)
+    }
+    return out
+  })
+  TILE_NB.set(C, nb)
+  return nb
+}
+
+function arenaIntent(br          , b        , w          , it           )            {
+  const C = w.course
+  const t = w.t
+  let tx = b.x
+  let tz = b.z
+  if (C.tiles.length) {
+    const firm = (i        ) => w.tiles[i] < 0 && Math.abs(C.tiles[i].y - b.y) < 0.5
+    const cur = br.tile
+    const reached = cur >= 0 && Math.hypot(C.tiles[cur].x - b.x, C.tiles[cur].z - b.z) < 0.8
+    if (b.ground && (cur < 0 || reached || !firm(cur))) {
+      let best = -1
+      let bestScore = -Infinity
+      const noise = 0.4 + (1 - br.skill) * 2.5
+      for (let i = 0; i < C.tiles.length; i++) {
+        if (!firm(i)) continue
+        const q = C.tiles[i]
+        const d = Math.hypot(q.x - b.x, q.z - b.z)
+        if (d < 1.8 || d > 7.5) continue
+        let n = 0
+        for (const j of tileNeighbors(C)[i]) if (firm(j)) n++
+        const score = n - d * 0.25 - Math.hypot(q.x, q.z) * 0.06 + botRand(br.seed, br.slot * 13 + i, Math.floor(t)) * noise
+        if (score > bestScore) {
+          bestScore = score
+          best = i
+        }
+      }
+      // nada perto: a pedra firme mais perto do andar, longe que seja
+      if (best < 0) {
+        let bd = Infinity
+        for (let i = 0; i < C.tiles.length; i++) {
+          if (!firm(i)) continue
+          const d = Math.hypot(C.tiles[i].x - b.x, C.tiles[i].z - b.z)
+          if (d < bd) {
+            bd = d
+            best = i
+          }
+        }
+      }
+      br.tile = best
+    }
+    if (br.tile >= 0) {
+      tx = C.tiles[br.tile].x
+      tz = C.tiles[br.tile].z
+    }
+    // pula para poupar pedra (os mais hábeis quase sempre)
+    if (b.ground && br.jumpCool <= 0 && botRand(br.seed, br.slot, Math.floor(t * 4)) < br.skill * 1.2 - 0.25) {
+      it.jump = true
+      br.jumpCool = 0.2
+    }
+  }
+  const dx = tx - b.x
+  const dz = tz - b.z
+  const d = Math.hypot(dx, dz)
+  const go = br.pace * Math.min(1, d / 0.8)
+  if (d > 1e-3) {
+    it.mx = (dx / d) * go
+    it.mz = (dz / d) * go
+  }
+  return it
+}
+
 /** Escolhe a porta da fileira à frente: aberta (alguém passou) > desconhecida mais perto > a sorteada. */
 function pickDoor(br          , b        , w          , row        ) {
   const C = w.course
@@ -2121,6 +2172,8 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   const it            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
   br.jumpCool = Math.max(0, br.jumpCool - dt)
   if (b.mode !== MODE.RUN || w.t < 0) return it
+  // Gincana 3: arena (sobrevivência, coleta, zona) — sem rota
+  if (C.mode !== "race") return arenaIntent(br, b, w, it)
   const t = w.t
   // próximo ponto: o primeiro adiante (as rotas só andam para +z)
   let wi = 0
@@ -2758,4 +2811,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
