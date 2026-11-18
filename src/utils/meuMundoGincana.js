@@ -1097,85 +1097,43 @@ function courseFabrica()         {
 
 // ═══ gelo — Mar de Gelo ══════════════════════════════════════════════════════
 
+/**
+ * Gincana 3 (2026-11-18): REI DO ICEBERG — zona no Mar de Gelo. Um iceberg
+ * redondo de 24 m que escorrega, e no meio o TOPO (1 m acima: pule ou suba
+ * na beira). Cada segundo em pé no topo vale 1 ponto. No topo gira uma barra
+ * baixa (pule) que acelera; na beira dois blocos de gelo deslizam e empurram
+ * para o mar. Mergulhar em alguém empurra. Caiu no mar: volta à beira, só
+ * perdeu tempo. Em 70 s, classifica a metade de cima (com ponto).
+ */
 function courseGelo()         {
   const k = new CourseKit()
-  kitStart(k)
-  // ── 1. lago que escorrega ──
-  k.box(0, 19, 7, 3, 7, 6, 1)
-  const lake = k.box(0, 37, 7, 15, 7, 6, 1)
-  k.pads[lake].f = 0.18
-  for (const [x, z] of [[-3.5, 29], [3, 33], [-1, 39], [4, 45], [-4, 48]]                      ) k.post(x, z, 0.7, DECK, DECK + 1.6, 6)
-  k.pusher(0, 41.5, 1.6, 1.2, 1.8, 4, 0, 1.2, 0)
-  k.box(0, 56, 7, 4, 7, 6, 1)
-  // ── 2. estalactites sobre três pontes ──
-  for (const x of [-5, 0, 5]) {
-    const b = k.beam(x, 59.5, x, 96.5, 1.6, 7, 6, 2)
-    k.pads[b].f = 0.6
-  }
-  let ph = 0
-  for (const z of [67, 77, 87]) {
-    for (const x of [-5, 0, 5]) {
-      k.swing(x, z, DECK + 9, 7.4, 1.0, 0.9, 2.1, ph)
-      ph += 2.3
-    }
-  }
-  k.box(0, 100, 8, 4, 7, 6, 2)
-  // ── 3. placas de gelo que andam ──
-  const FLOE = [107.1, 112.7, 118.3, 123.9, 129.5]
-  const floes           = []
-  for (let i = 0; i < FLOE.length; i++) {
-    const p = k.box(0, FLOE[i], 3.2, 2.5, 7, 6, 3, 0, 1.0)
-    Object.assign(k.pads[p], { mx: 4.5, mw: 0.9, mph: i * 1.3, f: 0.5 })
-    floes.push(p)
-  }
-  k.box(0, 138.8, 7, 6.2, 7, 6, 3)
-  // ── 4. gelo fino ──
-  for (let r = 0; r < 8; r++) for (let c = 0; c < 6; c++) k.tile((c - 2.5) * 2.9, 146.4 + r * 2.9, 1.3, (r + c) % 2 ? 7 : 6)
-  k.box(0, 172, 7, 4, 7, 6, 4)
-  // ── 5. bolas de neve ──
-  const z0 = 176
-  const finishZ = kitFinish(k, z0, 1.0, 7.5, 1.2)
-  for (const [x, z] of [[0, 56], [-5, 62], [5, 62], [0, 100], [0, 140], [0, 172]]                      ) k.logo(x, z)
+  const floe = k.disc(0, 0, 12, 7, 6, 1)
+  k.pads[floe].f = 0.3
+  const top = k.disc(0, 0, ICE_TOP_R, 6, 7, 1, DECK + ICE_TOP_H)
+  k.pads[top].f = 0.45
+  // pilar da coroa (eixo da barra: ninguém fica no eixo)
+  k.post(0, 0, 0.75, DECK + ICE_TOP_H, DECK + ICE_TOP_H + 1.1, 6)
+  // barra baixa no topo: um braço, acelera até o fim
+  k.sweep(0, 0, DECK + ICE_TOP_H + 0.5, ICE_TOP_R + 0.4, 0.3, 0.55, 0, false, 0.012, 1.5)
+  // blocos de gelo que deslizam na beira (esquerda e direita, ao contrário; a largada fica livre)
+  k.pusher(8.2, 0, 1.5, 1.5, 1.8, 0, 6.5, 0.62, 0)
+  k.pusher(-8.2, 0, 1.5, 1.5, 1.8, 0, 6.5, 0.62, Math.PI)
   return k.done({
     id: "gelo",
-    checkpoints: [
-      { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 56, y: DECK, w: 6 },
-      { x: 0, z: 100, y: DECK, w: 6 },
-      { x: 0, z: 140, y: DECK, w: 6 },
-      { x: 0, z: 172, y: DECK, w: 5.5 },
-    ],
-    finishZ,
-    finishY: DECK + 6,
-    sections: [22, 60, 104, 145, z0],
-    minFinish: 20,
-    route: (r) =>
-      routeOf((add) => {
-        const side = r(1) < 0.5 ? -1 : 1
-        add(side * 1.2, 10)
-        add(side * 0.8, 15.5)
-        add(0, 20)
-        const F = [-1.5, 1.5, -5.5, 5.5][Math.floor(r(2) * 4)]
-        for (let z = 24; z <= 50; z += 2) add(F, z)
-        add(0, 53)
-        add(0, 56)
-        const L = [-5, 0, 5][Math.floor(r(3) * 3)]
-        add(L * 0.6, 58)
-        for (let z = 60; z <= 96; z += 3) add(L, z)
-        add(L * 0.4, 99)
-        add(0, 102)
-        add(0, 104.2)
-        for (let i = 0; i < FLOE.length; i++) add(0, FLOE[i], floes[i])
-        add(0, 133.5)
-        add(0, 138)
-        add(0, 144)
-        for (let i = 0; i < 8; i++) add(0, 146.4 + i * 2.9)
-        add(0, 170)
-        add(0, 173)
-        routeFinish(add, z0, finishZ)
-      }),
+    mode: "zone",
+    qualify: 0.5,
+    limit: 70,
+    zone: { x: 0, z: 0, r: ICE_TOP_R - 0.2, y: DECK + ICE_TOP_H },
+    checkpoints: [{ x: 0, z: -6.6, y: DECK, w: 6 }],
+    finishZ: 40,
+    finishY: 90,
+    sections: [],
+    minFinish: 1e6,
+    route: () => [{ x: 0, z: 0 }],
   })
 }
+const ICE_TOP_R = 4.2
+const ICE_TOP_H = 1
 
 /** Todas as fases (montadas uma vez). */
 const COURSES                               = {
@@ -2239,8 +2197,22 @@ function arenaIntent(br          , b        , w          , it           )       
       tz = 0
     }
   }
+  // Rei do Iceberg: vai para o topo (um lugar dentro dele que muda de tempo em tempo); pula na beira
+  if (C.zone) {
+    const Z = C.zone
+    const a = botRand(br.seed, br.slot, 700 + Math.floor(t / 4)) * Math.PI * 2
+    const rr = botRand(br.seed, br.slot, 800 + Math.floor(t / 4)) * (Z.r - 1.2)
+    tx = Z.x + Math.sin(a) * rr
+    tz = Z.z + Math.cos(a) * rr
+    const d = Math.hypot(Z.x - b.x, Z.z - b.z)
+    // ainda embaixo: pula perto da beira (o mais fraco erra a hora às vezes)
+    if (b.y < Z.y - 0.4 && d < Z.r + 1.4 + br.skill * 0.6 && b.ground && br.jumpCool <= 0) {
+      it.jump = true
+      br.jumpCool = 0.5 + (1 - br.skill) * 0.6
+    }
+  }
   // arena sem pedras (Varredura): um lugar a ~5 m do eixo, que muda de tempo em tempo
-  if (!C.tiles.length && !C.gems.length && C.sweepers.length) {
+  if (!C.tiles.length && !C.gems.length && !C.zone && C.sweepers.length) {
     const a = botRand(br.seed, br.slot, 500 + Math.floor(t / 6)) * Math.PI * 2
     const rr = 3.5 + botRand(br.seed, br.slot, 600 + Math.floor(t / 6)) * 3.5
     tx = C.sweepers[0].x + Math.sin(a) * rr
