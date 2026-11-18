@@ -32,6 +32,8 @@ const GINCANA = {
   // mm3d-47b: mais rápido e mais seco (o Alex achou lento e o pulo mole)
   gravity: 30,
   run: 8.2,
+  /** Esteira (Gincana 3, pedido do Alex 18/11): forte — parado, ela leva você; contra ela anda a 2,7 m/s. */
+  belt: 5.5,
   accel: 58,
   /** Controle no ar (fração da aceleração do chão). */
   airControl: 0.72,
@@ -1060,9 +1062,9 @@ function courseFabrica()         {
   k.box(0, 0, 12, 12, 2, 1, 1, 0, 1.6)
   // esteiras (um tico acima do chão para valerem): a da esquerda leva para a frente, a da direita para trás
   const beltL = k.box(-8, 0, 1.6, 12, 0, 1, 1, 0, 1.6, DECK + 0.05)
-  k.pads[beltL].bz = 3
+  k.pads[beltL].bz = GINCANA.belt
   const beltR = k.box(8, 0, 1.6, 12, 0, 1, 1, 0, 1.6, DECK + 0.05)
-  k.pads[beltR].bz = -3
+  k.pads[beltR].bz = -GINCANA.belt
   // plataforma do meio (a dourada fica nela)
   k.disc(0, 0, 2.6, 4, 1, 1, DECK + 1)
   // prensas que deslizam de lado

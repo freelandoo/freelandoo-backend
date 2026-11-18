@@ -246,9 +246,17 @@ test("gincana 2.0 — esteira arrasta e plataforma que anda leva quem está em c
   const C = G.COURSES.fabrica;
   const belt = C.pads.find((p) => p.bz < 0);
   const { race, r } = solo("fabrica");
-  Object.assign(r, { x: belt.x, z: belt.z, y: G.DECK, ground: true });
-  for (let k = 0; k < 90; k++) race.step();
-  assert.ok(r.z < belt.z - 2, `parado na esteira foi para trás: ${r.z - belt.z}`);
+  // esteira FORTE (pedido do Alex): parado, 1 s leva uns 5,5 m
+  Object.assign(r, { x: belt.x, z: belt.z + 4, y: belt.y, ground: true });
+  const z0 = r.z;
+  for (let k = 0; k < 60; k++) race.step();
+  assert.ok(r.z < z0 - 4.5, `parado na esteira foi para trás: ${r.z - z0}`);
+  // contra ela, correndo: anda, mas devagar (menos da metade da corrida)
+  Object.assign(r, { x: belt.x, z: belt.z - 5, y: belt.y, ground: true, vx: 0, vz: 0 });
+  const z1 = r.z;
+  for (let k = 0; k < 60; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false });
+  const v = r.z - z1;
+  assert.ok(v > 1 && v < G.GINCANA.run / 2, `contra a esteira: ${v} m em 1 s`);
 
   // vitória-régia da Maré do Pântano (Gincana 3; antes era a pedra do Cânion)
   const Cc = G.COURSES.floresta;
