@@ -58,7 +58,9 @@ test("gincana — 7 fases; cada uma fecha: postos em ordem com chão, chegada no
       const w = G.newWorld(C, 1, 0);
       for (let slot = 0; slot < 8; slot++) {
         const p = G.spawnAt(C, 0, slot);
-        assert.equal(G.groundUnder(w, p.x, p.z, p.y + 0.5).y, p.y, `${ph} vaga ${slot}`);
+        // no cilindro (Rolo de Gelo) a vaga de lado fica um pouco acima da curva: cai até 0,6 m
+        const gy = G.groundUnder(w, p.x, p.z, p.y + 0.5).y;
+        assert.ok(gy <= p.y + 1e-9 && gy > p.y - (C.drums.length ? 0.6 : 1e-9), `${ph} vaga ${slot}: ${gy}`);
       }
       continue;
     }
@@ -91,7 +93,8 @@ test("gincana — em todas as fases 8 computadores classificam a vaga (e a mesma
         // só computadores: a prova acaba quando sobra a vaga em pé
         while (race.t < race.limit() && race.alive() > race.quota) race.step();
         assert.equal(race.quota, 4, ph);
-        assert.ok(race.alive() <= race.quota && race.alive() > 0, `${ph} semente ${seed}: ${race.alive()} em pé`);
+        // acabou o tempo com mais gente em pé: todos os de pé classificam (como no gênero)
+        assert.ok((race.alive() <= race.quota || race.t >= race.limit()) && race.alive() > 0, `${ph} semente ${seed}: ${race.alive()} em pé`);
         assert.ok(race.t > 20, `${ph}: acabou cedo demais (${race.t})`);
         assert.equal(race.over(), true);
         const st = race.standings();
@@ -273,17 +276,28 @@ test("gincana 2.0 — esteira arrasta e plataforma que anda leva quem está em c
 });
 
 test("gincana 2.0 — gelo escorrega: soltou o controle, demora a parar", () => {
-  const stopAfter = (x, z, ph = "gelo") => {
-    const { race, r } = solo(ph);
-    Object.assign(r, { x, z, y: G.DECK, ground: true });
-    for (let k = 0; k < 40; k++) race.step({ mx: 1, mz: 0, jump: false, dive: false });
+  // piso de teste com atrito de gelo (nenhuma fase usa mais o lago de gelo) × piso normal
+  const stopAfter = (f) => {
+    const k = new G.CourseKit();
+    const p = k.box(0, 0, 20, 20, 0, 1, 1);
+    k.pads[p].f = f;
+    const C = k.done({ id: "cidade", checkpoints: [{ x: 0, z: 0, y: G.DECK, w: 6 }], finishZ: 99, finishY: G.DECK, sections: [], minFinish: 1, route: () => [] });
+    const w = G.newWorld(C, 1, 0);
+    const r = G.newRunner(C, 0);
+    Object.assign(r, { x: -10, z: 0, y: G.DECK, ground: true });
+    const go = (mx, n) => {
+      for (let s = 0; s < n; s++) {
+        w.t += G.GINCANA.step;
+        G.stepRunner(r, { mx, mz: 0, jump: false, dive: false }, w, null);
+      }
+    };
+    go(1, 40);
     const x0 = r.x;
-    for (let k = 0; k < 30; k++) race.step();
+    go(0, 30);
     return r.x - x0;
   };
-  // iceberg (fora do topo e longe dos blocos) × largada da Cidade
-  const ice = stopAfter(-4, -8);
-  const normal = stopAfter(-6, 0, "cidade");
+  const ice = stopAfter(0.3);
+  const normal = stopAfter(1);
   assert.ok(ice > normal * 2, `gelo ${ice} × chão ${normal}`);
 });
 
@@ -537,36 +551,38 @@ test("gincana 3 — Caça às Engrenagens: pega, soma, some e volta; a sala cont
   assert.equal(st.filter((x) => x.q).length <= server.quota, true);
 });
 
-test("gincana 3 — Rei do Iceberg: ponto por segundo só em pé no topo; a sala conta pela pose", () => {
+test("gincana 3 — Rolo de Gelo: buraco passa e derruba (fora); o chão anda de lado; a sala vê a queda", () => {
   const C = G.COURSES.gelo;
-  assert.equal(C.mode, "zone");
-  const Z = C.zone;
+  assert.equal(C.mode, "survive");
+  const d = C.drums[0];
+  assert.ok(d && d.rings.length >= 5);
+  // o topo do anel tem chão a maior parte do tempo e buraco às vezes
+  let holes = 0;
+  for (let t = 0; t < 60; t += 0.25) if (!G.drumAt(d, 0, 2.5, t)) holes++;
+  assert.ok(holes > 4 && holes < 120, `buracos no topo: ${holes}`);
+  // parado no topo do anel 0: o chão leva para o lado
   const { race, r } = solo("gelo");
-  while (race.t < 1) race.step();
-  // embaixo, fora do anel: nada
-  Object.assign(r, { x: 0, z: -9, y: G.DECK, ground: true });
-  for (let k = 0; k < 60; k++) race.step();
-  assert.equal(r.pts, 0);
-  // no topo: soma ~1 por segundo
-  // do lado oposto à barra (ela leva uns 5 s para chegar)
-  const a = G.sweeperAngle(C.sweepers[0], race.t) + Math.PI;
-  Object.assign(r, { x: Math.sin(a) * 2.2, z: Math.cos(a) * 2.2, y: Z.y, ground: true, vx: 0, vz: 0, mode: 0 });
-  const p0 = r.pts;
-  for (let k = 0; k < 60; k++) race.step();
-  assert.ok(r.pts - p0 > 0.9 && r.pts - p0 < 1.05, `somou ${r.pts - p0}`);
-  // a sala: pose no topo soma; pose na água não
+  while (race.t < 2) race.step();
+  let t1 = race.t;
+  while (!G.drumAt(d, 0, 2.5, t1) || !G.drumAt(d, 0, 2.5, t1 + 1.2)) t1 += 0.1;
+  while (race.t < t1) race.step();
+  Object.assign(r, { x: 0, z: 2.5, y: G.ROLL_TOP, ground: true, vx: 0, vz: 0, mode: 0 });
+  race.step();
+  const x0 = r.x;
+  for (let k = 0; k < 40; k++) race.step();
+  assert.ok(Math.sign(r.x - x0) === Math.sign(d.rings[0].w) && Math.abs(r.x - x0) > 0.8, `arrastou ${r.x - x0}`);
+  // em cima do buraco: cai e fica fora
+  let t2 = race.t;
+  while (G.drumAt(d, 0, 7.5, t2)) t2 += 0.05;
+  while (race.t < t2 - 0.02) race.step();
+  Object.assign(r, { x: 0, z: 7.5, y: G.ROLL_TOP, ground: true, vx: 0, vz: 0, mode: 0 });
+  for (let k = 0; k < 150 && r.out < 0; k++) race.step();
+  assert.ok(r.out >= 0, "caiu no buraco e ficou fora");
+  // a sala: pose na água = fora
   const server = new G.GincanaRace(5, [{ slot: 0, ctl: "remote" }, { slot: 1, ctl: "remote" }], 0, "gelo");
-  while (server.t < 1) server.step();
-  for (let k = 0; k < 120; k++) {
-    server.setRemote(0, { x: 1, y: Z.y, z: 1, f: 0, a: G.ANIM.IDLE, cp: 0, fin: -1, g: -1 });
-    server.setRemote(1, { x: 0, y: G.DECK - 2, z: 13, f: 0, a: G.ANIM.WATER, cp: 0, fin: -1, g: -1 });
-    server.step();
-  }
-  assert.ok(Math.abs(server.runner(0).pts - 2) < 0.05, String(server.runner(0).pts));
-  assert.equal(server.runner(1).pts, 0);
-  assert.equal(server.runner(1).out, -1, "no mar não fica fora");
-  while (!server.over()) server.step();
-  assert.ok(Math.abs(server.t - C.limit) < 0.1);
-  const st = server.standings();
-  assert.ok(st[0].slot === 0 && st[0].q && !st[1].q);
+  while (server.t < 3) server.step();
+  server.setRemote(1, { x: 0, y: -2, z: 9, f: 0, a: G.ANIM.WATER, cp: 0, fin: -1, g: -1 });
+  server.step();
+  assert.ok(server.runner(1).out >= 0);
+  assert.equal(server.alive(), 1);
 });

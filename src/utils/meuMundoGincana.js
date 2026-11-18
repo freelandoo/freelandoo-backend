@@ -301,6 +301,65 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "canion",
                 
  
 
+/**
+ * Gincana 3 (Rolo de Gelo): anel de um cilindro deitado (eixo em z). Gira em volta do eixo a `w` rad/s
+ * (positivo = o topo anda para +x), acelerando devagar; `holes` = buracos (ângulo do material e meia
+ * largura, em rad). Ângulo 0 do material = topo no tempo 0.
+ */
+                           
+             
+           
+                                      
+ 
+
+/** Cilindro deitado feito de anéis em fila (de z0 para +z). Eixo na altura y, raio R. */
+                       
+           
+            
+           
+           
+           
+                   
+ 
+
+/** Quanto o anel girou até t (acelera: o dobro da velocidade aos 80 s). */
+function drumAngle(r          , t        ) {
+  return r.w * (t + (t * t) / 160)
+}
+
+/** Velocidade do giro do anel em t (rad/s). */
+function drumSpeed(r          , t        ) {
+  return r.w * (1 + t / 80)
+}
+
+const DRUM_EDGE = 0.93
+
+/**
+ * O chão do cilindro em (x, z) no tempo t: topo, anel e o ângulo da superfície (0 = topo, + = lado +x).
+ * null = fora dele ou em cima de um buraco.
+ */
+function drumAt(d      , x        , z        , t        ) {
+  const dx = x - d.x
+  if (Math.abs(dx) > d.R * DRUM_EDGE || z < d.z0) return null
+  let zz = d.z0
+  for (let k = 0; k < d.rings.length; k++) {
+    const r = d.rings[k]
+    if (z <= zz + r.len) {
+      const th = Math.asin(dx / d.R)
+      const mat = th - drumAngle(r, t)
+      for (const h of r.holes) {
+        let da = (mat - h.a) % (Math.PI * 2)
+        if (da > Math.PI) da -= Math.PI * 2
+        if (da < -Math.PI) da += Math.PI * 2
+        if (Math.abs(da) < h.half) return null
+      }
+      return { top: d.y + Math.sqrt(d.R * d.R - dx * dx), ring: k, th }
+    }
+    zz += r.len
+  }
+  return null
+}
+
 /** Zona do rei do pedaço: círculo (x, z, r) com o chão em y. */
                        
            
@@ -321,6 +380,8 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "canion",
              
                    
                      
+                                                       
+               
              
                
                      
@@ -363,6 +424,10 @@ class CourseKit {
   ramp              = null
   balls               = null
            gems        = []
+           drums         = []
+  drum(x        , z0        , y        , R        , rings            , f = 0.6) {
+    this.drums.push({ x, z0, y, R, f, rings })
+  }
   gem(x        , z        , y        , v        , t0        , back        ) {
     this.gems.push({ x, z, y, v, t0, back })
   }
@@ -442,6 +507,7 @@ class CourseKit {
       gems: this.gems,
       zone: o.zone ?? null,
       walls: o.walls ?? null,
+      drums: this.drums,
       pads: this.pads,
       posts: this.posts,
       sweepers: this.sweepers,
@@ -1100,42 +1166,43 @@ function courseFabrica()         {
 // ═══ gelo — Mar de Gelo ══════════════════════════════════════════════════════
 
 /**
- * Gincana 3 (2026-11-18): REI DO ICEBERG — zona no Mar de Gelo. Um iceberg
- * redondo de 24 m que escorrega, e no meio o TOPO (1 m acima: pule ou suba
- * na beira). Cada segundo em pé no topo vale 1 ponto. No topo gira uma barra
- * baixa (pule) que acelera; na beira dois blocos de gelo deslizam e empurram
- * para o mar. Mergulhar em alguém empurra. Caiu no mar: volta à beira, só
- * perdeu tempo. Em 70 s, classifica a metade de cima (com ponto).
+ * Gincana 3 (2026-11-18, plano das 10 fases): ROLO DE GELO — sobrevivência no Mar de Gelo. Um cilindro de
+ * gelo deitado (raio 7 m, 30 m de comprido) feito de 5 anéis; cada anel gira no seu sentido (e cada vez mais
+ * rápido) e tem buracos que passam por baixo de quem está em cima. O chão anda de lado e escorrega para fora
+ * na curva: corra contra o giro e troque de anel quando um buraco vier. Caiu no mar = FORA. Acaba quando
+ * sobra a vaga (metade) ou em 100 s.
  */
+const ROLL_R = 7
+const ROLL_TOP = DECK + 4
 function courseGelo()         {
   const k = new CourseKit()
-  const floe = k.disc(0, 0, 12, 7, 6, 1)
-  k.pads[floe].f = 0.3
-  const top = k.disc(0, 0, ICE_TOP_R, 6, 7, 1, DECK + ICE_TOP_H)
-  k.pads[top].f = 0.45
-  // pilar da coroa (eixo da barra: ninguém fica no eixo)
-  k.post(0, 0, 0.75, DECK + ICE_TOP_H, DECK + ICE_TOP_H + 1.1, 6)
-  // barra baixa no topo: um braço, acelera até o fim
-  k.sweep(0, 0, DECK + ICE_TOP_H + 0.5, ICE_TOP_R + 0.4, 0.3, 0.55, 0, false, 0.012, 1.5)
-  // blocos de gelo que deslizam na beira (esquerda e direita, ao contrário; a largada fica livre)
-  k.pusher(8.2, 0, 1.5, 1.5, 1.8, 0, 6.5, 0.62, 0)
-  k.pusher(-8.2, 0, 1.5, 1.5, 1.8, 0, 6.5, 0.62, Math.PI)
+  const W = [0.3, -0.34, 0.38, -0.32, 0.36, -0.29]
+  k.drum(
+    0,
+    0,
+    ROLL_TOP - ROLL_R,
+    ROLL_R,
+    W.map((w, i) => ({
+      len: 5,
+      w,
+      // os buracos começam embaixo (o primeiro chega ao topo depois de ~8 s); dois anéis têm 3
+      holes: (i % 3 === 1 ? [0, 2.1, 4.2] : [0, 3.1]).map((o) => ({ a: Math.PI + o + i * 0.7, half: 0.17 + (i % 2) * 0.03 })),
+    })),
+    0.6,
+  )
   return k.done({
     id: "gelo",
-    mode: "zone",
+    mode: "survive",
     qualify: 0.5,
-    limit: 70,
-    zone: { x: 0, z: 0, r: ICE_TOP_R - 0.2, y: DECK + ICE_TOP_H },
-    checkpoints: [{ x: 0, z: -6.6, y: DECK, w: 6 }],
+    limit: 100,
+    checkpoints: [{ x: 0, z: 16.3, y: ROLL_TOP, w: 3.4 }],
     finishZ: 40,
     finishY: 90,
     sections: [],
     minFinish: 1e6,
-    route: () => [{ x: 0, z: 0 }],
+    route: () => [{ x: 0, z: 15 }],
   })
 }
-const ICE_TOP_R = 4.2
-const ICE_TOP_H = 1
 
 /** Todas as fases (montadas uma vez). */
 const COURSES                               = {
@@ -1228,6 +1295,8 @@ const MODE = {
             
                                                                                                    
              
+                                                                           
+              
                                            
               
                                                                                           
@@ -1326,6 +1395,7 @@ function newRunner(course        , slot        )         {
     py: p.y,
     pz: p.z,
     pad: -1,
+    drum: -1,
     fric: 1,
     grab: -1,
     grabT: 0,
@@ -1401,7 +1471,19 @@ function groundUnder(w          , x        , z        , reach        ) {
       bounce = 0
     }
   }
-  return { y: best, tile, pad, bounce }
+  // cilindros por último: só ganham se forem o chão mais alto
+  let drum = -1
+  for (let i = 0; i < C.drums.length; i++) {
+    const g = drumAt(C.drums[i], x, z, w.t)
+    if (g && g.top <= reach && g.top > best) {
+      best = g.top
+      tile = -1
+      pad = -1
+      bounce = 0
+      drum = i
+    }
+  }
+  return { y: best, tile, pad, bounce, drum }
 }
 
 /** Ondas de parede do passo (reaproveitado: nada de lixo a 60 Hz). */
@@ -1678,12 +1760,23 @@ function respawn(b        , course        ) {
   b.shield = GINCANA.shieldT
   b.hitCool = 0
   b.pad = -1
+  b.drum = -1
   b.fric = 1
   b.grab = -1
 }
 
 /** Leva quem está em cima da plataforma que anda, do disco que gira e da esteira. */
 function carry(b        , w          , dt        ) {
+  if (b.ground && b.drum >= 0) {
+    // cilindro: o chão anda de lado (w·R·cos θ) e a curva escorrega para fora
+    const d = w.course.drums[b.drum]
+    const g = d ? drumAt(d, b.x, b.z, w.t) : null
+    if (d && g) {
+      b.x += drumSpeed(d.rings[g.ring], w.t) * (g.top - d.y) * dt
+      b.x += Math.sin(g.th) * 3.2 * dt
+    }
+    return
+  }
   if (!b.ground || b.pad < 0) return
   const p = w.course.pads[b.pad]
   if (!p) return
@@ -1753,6 +1846,7 @@ function stepRunner(b        , it           , w          , out                  
       b.y = b.cy1
       const g = groundUnder(w, b.x, b.z, b.y + 0.1)
       b.pad = g.pad
+      b.drum = g.drum
     }
     return
   }
@@ -1852,7 +1946,8 @@ function stepRunner(b        , it           , w          , out                  
     b.y = g.y
     b.vy = 0
     b.pad = g.pad
-    b.fric = g.pad >= 0 ? C.pads[g.pad].f : 1
+    b.drum = g.drum
+    b.fric = g.pad >= 0 ? C.pads[g.pad].f : g.drum >= 0 ? C.drums[g.drum].f : 1
     if (!b.ground) {
       b.ground = true
       // pousou: mergulho vira deslize; derrubado fica no chão o resto do tempo
@@ -1881,11 +1976,13 @@ function stepRunner(b        , it           , w          , out                  
     b.y = g.y
     b.vy = 0
     b.pad = g.pad
+    b.drum = g.drum
   } else {
     if (b.ground) b.vy = Math.min(b.vy, 0)
     b.ground = false
     b.air += dt
     b.pad = -1
+    b.drum = -1
   }
 
   // relógio dos estados sem controle
@@ -2213,8 +2310,54 @@ function arenaIntent(br          , b        , w          , it           )       
       br.jumpCool = 0.5 + (1 - br.skill) * 0.6
     }
   }
+  // Rolo de Gelo: procura o ponto (5 de lado × o anel e os vizinhos) que fica livre por mais tempo,
+  // descontado o tempo para chegar lá (quem é bom enxerga mais longe); pula o buraco que chega no pé
+  if (C.drums.length) {
+    const d = C.drums[0]
+    const sight = 1.6 + br.skill * 2.4
+    const zOf           = []
+    let z0 = d.z0
+    let here = 0
+    for (let q = 0; q < d.rings.length; q++) {
+      zOf.push(z0 + d.rings[q].len / 2)
+      if (b.z >= z0 && b.z <= z0 + d.rings[q].len) here = q
+      z0 += d.rings[q].len
+    }
+    let bestScore = -Infinity
+    for (let q = Math.max(0, here - 1); q <= Math.min(d.rings.length - 1, here + 1); q++) {
+      for (let px = -3; px <= 3; px += 1.5) {
+        const x = d.x + px
+        const z = zOf[q] + ((br.slot % 4) - 1.5) * 0.6
+        const travel = Math.hypot(x - b.x, z - b.z) / GINCANA.run
+        // o caminho até lá (o meio) também precisa estar de pé agora
+        if (!drumAt(d, (x + b.x) / 2, (z + b.z) / 2, t + travel / 2)) continue
+        let sf = sight + 0.5
+        for (let s = travel; s <= sight; s += 0.15) {
+          if (!drumAt(d, x, z, t + s)) {
+            sf = s
+            break
+          }
+        }
+        const sc = sf - travel - Math.abs(px) * 0.08 + (q === here ? 0.3 : 0) + botRand(br.seed, br.slot * 9 + q * 5 + px, Math.floor(t / 2)) * 0.4 * (1.4 - br.skill)
+        if (sc > bestScore) {
+          bestScore = sc
+          tx = x
+          tz = z
+        }
+      }
+    }
+    if (bestScore === -Infinity) {
+      tx = d.x
+      tz = zOf[here]
+    }
+    // buraco já debaixo do pé: pula
+    if (b.ground && br.jumpCool <= 0 && !drumAt(d, b.x, b.z, t + 0.12)) {
+      it.jump = true
+      br.jumpCool = 0.6
+    }
+  }
   // arena sem pedras (Varredura): um lugar a ~5 m do eixo, que muda de tempo em tempo
-  if (!C.tiles.length && !C.gems.length && !C.zone && C.sweepers.length) {
+  if (!C.tiles.length && !C.gems.length && !C.zone && !C.drums.length && C.sweepers.length) {
     const a = botRand(br.seed, br.slot, 500 + Math.floor(t / 6)) * Math.PI * 2
     const rr = 3.5 + botRand(br.seed, br.slot, 600 + Math.floor(t / 6)) * 3.5
     tx = C.sweepers[0].x + Math.sin(a) * rr
@@ -2872,4 +3015,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, ROLL_R, ROLL_TOP, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
