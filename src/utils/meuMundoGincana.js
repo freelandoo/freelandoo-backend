@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                      
-const GINCANA_PHASES                          = ["cidade", "floresta", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira", "coroa"]
+                                                                                                                                                   
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -1055,6 +1055,180 @@ function courseFloresta()         {
   })
 }
 
+// ═══ clareira — Clareira da Lua (2ª fase da Floresta) ════════════════════════
+
+/**
+ * 2026-11-19 (pedido do Alex: a corrida dos discos do vídeo, com a cara da
+ * Floresta). TOCOS QUE GIRAM — corrida em cinco trechos, copiando o TIPO de
+ * prova (nada do traçado nem da arte do jogo do vídeo):
+ *  1. campo de fatias de tronco que giram (cada uma para um lado), com troncos
+ *     caídos entre elas para pular ou contornar;
+ *  2. rampa das frutas: frutas gigantes descem por quatro faixas, pedras de
+ *     musgo entre as faixas dão abrigo; no alto, as frutas saem de troncos ocos;
+ *  3. tocos em escada que giram sobre o pântano, entre árvores gigantes;
+ *  4. a vitória-régia gigante que gira, com sementes penduradas balançando;
+ *  5. cogumelos que lançam para o alto do barranco e a subida da chegada.
+ * As medidas que o desenho usa (troncos ocos, árvores, tocos) ficam em CLAREIRA.
+ */
+const CY1 = DECK + 5
+const CY2 = CY1 + 5.6
+const CY3 = CY2 + 2.2
+const CY4 = CY3 + 2.5
+const CLAREIRA = {
+  Y1: CY1,
+  Y2: CY2,
+  Y3: CY3,
+  Y4: CY4,
+  /** Campo de discos: (x, z) de cada fatia de tronco (raio DISC_R). */
+  discs: [
+    [-8, 24], [0, 24], [8, 24],
+    [-4, 33], [4, 33],
+    [-8, 42], [0, 42], [8, 42],
+    [-4, 51], [4, 51],
+  ]                                          ,
+  discR: 3.4,
+  /** Troncos caídos: x, z, giro (meia largura 0,5, meio comprimento 1,6, topo 0,95 acima do chão). */
+  logs: [
+    [-8, 18.4, Math.PI / 2], [8, 18.4, Math.PI / 2],
+    [-4, 28.5, Math.PI / 2], [4, 28.5, Math.PI / 2],
+    [-10.2, 33, 0], [10.2, 33, 0], [0, 37.6, Math.PI / 2],
+    [-4, 46.5, Math.PI / 2], [4, 46.5, Math.PI / 2],
+    [-10.2, 51, 0], [10.2, 51, 0], [0, 55.6, Math.PI / 2],
+  ]                                                  ,
+  /** Rampa das frutas (DECK → Y1) e as faixas das frutas. */
+  ramp: { z0: 65, z1: 105, hx: 8 },
+  lanes: [-6, -2, 2, 6]                     ,
+  /** Pedras de musgo entre as faixas: x, z (meia largura 0,75, meio comprimento 1,6, 1,5 m acima da rampa). */
+  stones: [[-4, 72], [4, 72], [0, 80.5], [-4, 89], [4, 89], [0, 97.5]]                                          ,
+  /** Troncos ocos de onde saem as frutas (um por faixa): centro do tronco deitado. */
+  cannonZ: 107.5,
+  cannonR: 1.15,
+  cannonLen: 4,
+  /** Tocos que giram: x, z, raio, quanto acima do chão Y1. */
+  stumps: [
+    [0, 120, 2.4, 0.9], [-2.2, 125.2, 2.4, 1.6], [2.2, 130.4, 2.4, 2.3], [-2.2, 135.6, 2.4, 3.0],
+    [2.2, 140.8, 2.4, 3.7], [-1.8, 146, 2.4, 4.4], [1.4, 151.2, 2.6, 5.1],
+  ]                                                          ,
+  /** Árvores gigantes da escada de tocos (coluna que bloqueia). */
+  trees: [[-6.8, 127.8], [6.8, 133], [-6.8, 143.4], [6.8, 148.6]]                                          ,
+  treeR: 1.6,
+  /** A vitória-régia gigante. */
+  lily: { z: 181, r: 9 },
+  /** Cogumelos que lançam (x, z). */
+  shrooms: [[-3, 203.1], [3, 203.1]]                                          ,
+}         
+
+function courseClareira()         {
+  const K = CLAREIRA
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. campo de fatias de tronco que giram ──
+  k.box(0, 36.75, 12, 21.25, 5, 1, 1)
+  const discs           = []
+  K.discs.forEach(([x, z], i) => {
+    const p = k.disc(x, z, K.discR, 1, 1, 1, DECK + 0.25)
+    k.pads[p].d = 1.2
+    // vizinhos giram ao contrário (o chão "torce" entre eles)
+    k.pads[p].spin = (i % 2 ? -1 : 1) * (0.5 + (i % 3) * 0.08)
+    discs.push(p)
+    // o miolo da fatia: um toquinho que empurra
+    k.post(x, z, 0.75, DECK + 0.25, DECK + 1.3, 2)
+  })
+  for (const [x, z, rot] of K.logs) k.box(x, z, 0.5, 1.6, 0, 1, 1, rot, 1.4, DECK + 0.95)
+  // ── 2. rampa das frutas, com pedras de musgo entre as faixas ──
+  k.box(0, 61.5, 8, 3.5, 5, 1, 1)
+  const R = K.ramp
+  const rampY = (z        ) => DECK + ((CY1 - DECK) * (z - R.z0)) / (R.z1 - R.z0)
+  k.slope(0, R.z0, R.z1, DECK, CY1, R.hx, 5, 1, 2)
+  k.balls = { lanes: K.lanes, every: 0.8, v: 7, R: 1.1, zEnd: 62.5 }
+  for (const [x, z] of K.stones) k.box(x, z, 0.75, 1.6, 0, 1, 2, 0, 1.5 + 0.6, rampY(z) + 1.5)
+  // ── 3. os troncos ocos no alto da rampa e os tocos que giram sobre o pântano ──
+  k.box(0, 111, 8, 6, 5, 1, 3, 0, 1.4, CY1)
+  // tronco oco deitado = parede reta (caixa de 2,3 × 4 m, alto demais para subir)
+  for (const x of K.lanes) k.box(x, K.cannonZ, K.cannonR, K.cannonLen / 2, 0, 1, 3, 0, K.cannonR * 2 + 0.2, CY1 + K.cannonR * 2)
+  K.stumps.forEach(([x, z, r, h], i) => {
+    const p = k.disc(x, z, r, 1, 1, 3, CY1 + h)
+    k.pads[p].d = CY1 + h
+    k.pads[p].spin = (i % 2 ? 1 : -1) * 0.65
+  })
+  for (const [x, z] of K.trees) k.post(x, z, K.treeR, 0, CY1 + 12, 0)
+  // ── 4. o barranco, a vitória-régia gigante que gira e as sementes penduradas ──
+  k.box(0, 161.5, 7, 6.5, 5, 1, 4, 0, 6, CY2)
+  k.box(0, 170.5, 2, 2.2, 5, 1, 4, 0, 1.2, CY2)
+  const lily = k.disc(0, K.lily.z, K.lily.r, 5, 1, 4, CY2)
+  k.pads[lily].spin = 0.32
+  let ph = 0
+  for (const z of [176.5, 181, 185.5]) {
+    k.swing(0, z, CY2 + 9, 7.4, 1.25, 0.95, 2.05, ph)
+    ph += 2.3
+  }
+  k.box(0, 192.6, 2, 2.6, 5, 1, 4, 0, 1.2, CY2)
+  // ── 5. cogumelos que lançam e a subida da chegada ──
+  k.box(0, 197.6, 6, 2.4, 5, 1, 5, 0, 1.4, CY2)
+  for (const [x, z] of K.shrooms) k.post(x, z, 1.15, 0, CY2 + 0.2, 2, 13.5)
+  k.box(0, 210, 7, 4, 5, 1, 5, 0, 2.6, CY3)
+  k.slope(0, 214, 236, CY3, CY4, 6, 5, 1, 5)
+  k.swing(-2.4, 222, CY3 + 10.5, 7.6, 1.2, 0.9, 1.9, 0.6)
+  k.swing(2.4, 229, CY3 + 11.5, 7.6, 1.2, 0.9, 1.9, 2.9)
+  k.box(0, 243.8, 9, 7.8, 1, 0, 6, 0, 1.6, CY4)
+  for (const [x, z, y] of [[0, 13.5, DECK], [0, 61.5, DECK], [-4, 113.5, CY1], [4, 113.5, CY1], [0, 163, CY2], [0, 210, CY3]]                              ) k.logo(x, z, y)
+  const finishZ = 236 + 8.8
+  return k.done({
+    id: "clareira",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 61.5, y: DECK, w: 6 },
+      { x: 0, z: 113, y: CY1, w: 5 },
+      { x: 0, z: 163, y: CY2, w: 5 },
+      { x: 0, z: 198.2, y: CY2, w: 4 },
+    ],
+    finishZ,
+    finishY: CY4,
+    sections: [15.5, R.z0, 112, 168.5, 195],
+    minFinish: 22,
+    route: (r) =>
+      routeOf((add) => {
+        // 1. corta o campo pelos vãos entre as fatias (a semente escolhe o lado)
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 1.2, 15.5)
+        for (const [x, z] of [[side * 4, 19.5], [side * 4, 24], [side * 1.6, 28.5], [0, 33], [side * 1.6, 37.6], [side * 4, 42], [side * 4, 46.5], [side * 1.6, 51], [0, 55.6], [0, 59]]                      ) add(x, z)
+        // 2. rampa: sobe pela coluna das pedras e desvia de lado quando a pedra está na frente
+        const L = [-4, 0, 4][Math.floor(r(2) * 3)]
+        for (let z = 64; z <= 104; z += 2) {
+          const near = K.stones.some(([x, sz]) => x === L && Math.abs(z - sz) < 2.6)
+          add(near ? L + (L >= 0 ? -1.3 : 1.3) * (L === 0 ? side : 1) : L, z)
+        }
+        // passa entre os troncos ocos pela abertura da coluna
+        add(L, 103.5)
+        add(L, 106)
+        add(L, 109)
+        add(L * 0.5, 112)
+        add(0, 115.5)
+        // 3. tocos, um a um
+        for (const [x, z] of K.stumps) add(x, z)
+        add(0, 156.5)
+        add(0, 163)
+        add(0, 168.5)
+        add(0, 172)
+        // 4. atravessa a vitória-régia pelo meio
+        for (let z = 174; z <= 189; z += 2.5) add(0, z)
+        add(0, 191)
+        add(0, 194.5)
+        add(0, 198.5)
+        // 5. cogumelo e o barranco
+        const S = K.shrooms[r(3) < 0.5 ? 0 : 1]
+        add(S[0], S[1])
+        add(S[0] * 0.5, 207)
+        add(0, 211)
+        for (let z = 214.5; z <= 235; z += 2.5) add(0, z)
+        add(0, finishZ - 7)
+        add(0, finishZ - 2)
+        add(0, finishZ + 3)
+      }),
+  })
+}
+
 // ═══ canion — Cânion ═════════════════════════════════════════════════════════
 
 /**
@@ -1458,6 +1632,7 @@ function courseCoroa()         {
 const COURSES                               = {
   cidade: courseCidade(),
   floresta: courseFloresta(),
+  clareira: courseClareira(),
   canion: courseCanion(),
   orbital: courseOrbital(),
   forja: courseForja(),
@@ -3316,4 +3491,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, stoneCells, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
