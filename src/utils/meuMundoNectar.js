@@ -54,4 +54,12 @@ const isClosable = (week, now) => S.isWeekId(week) && Number(now) >= closesAt(we
 /** Soma os mL de uma lista de prêmios `{ ml }`. */
 const totalMl = (awards) => awards.reduce((a, x) => a + (Number(x.ml) || 0), 0);
 
-module.exports = { ML_PER_L, TOP, TABLE, mlFor, closesAt, weekToClose, isClosable, totalMl };
+// O COLETOR DE NÉCTAR (19/11, pedido do Alex): no nível 5 do treinador a
+// pessoa ganha o coletor, que aparece na tela de equipar e mostra tudo o que a
+// conta já coletou (`earned_ml`, sem limite). Só mostra; não dá nada.
+const COLLECTOR_LEVEL = 5;
+
+/** O coletor está liberado neste nível do treinador? */
+const collectorUnlocked = (trainerLevel) => Number(trainerLevel) >= COLLECTOR_LEVEL;
+
+module.exports = { ML_PER_L, TOP, TABLE, mlFor, closesAt, weekToClose, isClosable, totalMl, COLLECTOR_LEVEL, collectorUnlocked };

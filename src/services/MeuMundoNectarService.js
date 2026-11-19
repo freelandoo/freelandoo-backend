@@ -20,6 +20,8 @@ const S = require("../utils/meuMundoScores");
 const N = require("../utils/meuMundoNectar");
 const Pact = require("../utils/meuMundoPact");
 const PactStore = require("../storages/MeuMundoPactStorage");
+const TrainerStore = require("../storages/MeuMundoTrainerStorage");
+const Trainer = require("../utils/meuMundoTrainer");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.nectar");
@@ -118,7 +120,8 @@ class MeuMundoNectarService {
   static async wallet(idUser, now = Date.now()) {
     const current = S.weekOf(now);
     const last = S.previousWeek(current);
-    const [w, closed, awards, pacts] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last), PactStore.active(pool, now)]);
+    const [w, closed, awards, pacts, trainer] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last), PactStore.active(pool, now), TrainerStore.get(pool, idUser)]);
+    const level = Trainer.trainerLevelOf(Number(trainer.xp) || 0).level;
     return {
       pendingMl: w.pendingMl,
       earnedMl: w.earnedMl,
@@ -129,6 +132,8 @@ class MeuMundoNectarService {
       // D4: os pactos de pé (os dois povos) e quanto valem
       pacts,
       pactBonus: Pact.PACT_BONUS,
+      // o coletor de néctar (nível 5): a tela de equipar mostra `earnedMl`, sem limite
+      collector: { unlocked: N.collectorUnlocked(level), level: N.COLLECTOR_LEVEL },
     };
   }
 }

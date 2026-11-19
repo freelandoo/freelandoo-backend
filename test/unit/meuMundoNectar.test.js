@@ -38,3 +38,9 @@ test("N2: a semana fecha depois do sábado 23:59 de Brasília (D6)", () => {
   assert.equal(N.weekToClose(utc("2026-11-14T12:00:00Z")), "2026-11-01");
   assert.equal(N.isClosable("2026-11-10", utc("2027-01-01T00:00:00Z")), false); // não é domingo
 });
+
+test("coletor de néctar: liberado a partir do nível 5 do treinador", () => {
+  assert.equal(N.COLLECTOR_LEVEL, 5);
+  for (const l of [0, 1, 4, NaN, undefined]) assert.equal(N.collectorUnlocked(l), false);
+  for (const l of [5, 6, 30]) assert.equal(N.collectorUnlocked(l), true);
+});

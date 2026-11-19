@@ -149,6 +149,14 @@ async function main() {
   );
   const empty = await Nectar.wallet(K, AFTER + 60e3);
   check("quem não ganhou: carteira zerada", empty.pendingMl === 0 && empty.last.ml === 0 && empty.last.awards.length === 0);
+  check("coletor: conta nova (nível 1) ainda não tem", empty.collector && empty.collector.unlocked === false && empty.collector.level === 5, JSON.stringify(empty.collector));
+  check("coletor: earnedMl é o total coletado", view.earnedMl >= view.pendingMl && view.earnedMl === 25000, JSON.stringify(view));
+  {
+    const Tr = require("../src/utils/meuMundoTrainer");
+    await pool.query(`INSERT INTO tb_mm_trainer (id_user, xp) VALUES ($1, $2) ON CONFLICT (id_user) DO UPDATE SET xp = EXCLUDED.xp`, [K, Tr.xpForLevel(5)]);
+    const k5 = await Nectar.wallet(K, AFTER + 60e3);
+    check("coletor: nível 5 libera", k5.collector.unlocked === true, JSON.stringify(k5.collector));
+  }
 
   // o placar semanal mostra quanto a posição vale
   const Poder = require("../src/services/MeuMundoPoderService");
