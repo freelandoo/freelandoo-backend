@@ -1056,23 +1056,51 @@ test("gincana — Gangorras: a tábua tomba pelo PESO de quem está em cima e vo
   const C = G.COURSES.gangorras;
   assert.equal(C.mode, "race");
   assert.ok(C.saws.length >= 15);
-  const S = C.saws[1];
+  // 20/11: a 1ª gangorra comprida (da corrente) — as da largada viraram balanças de lado
+  const I = C.saws.findIndex((q) => q.ax === 0);
+  const S = C.saws[I];
   const { race, r } = solo("gangorras");
   while (race.t < 0) race.step();
   // em repouso: a ponta de perto no chão do patamar
-  assert.ok(Math.abs(G.sawTop(S, race.world.saw[2], S.x, S.z - S.hz) - G.DECK) < 0.05, "a ponta de perto não descansa no chão");
+  assert.ok(Math.abs(G.sawTop(S, race.world.saw[I * 2], S.x, S.z - S.hz) - G.DECK) < 0.05, "a ponta de perto não descansa no chão");
   // em pé na metade da frente: tomba até o batente, e a ponta da frente desce ao chão
   for (let k = 0; k < 90; k++) {
     Object.assign(r, { x: S.x, z: S.z + 3, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
-    r.y = G.sawTop(S, race.world.saw[2], r.x, r.z);
+    r.y = G.sawTop(S, race.world.saw[I * 2], r.x, r.z);
     race.step();
   }
-  assert.ok(race.world.saw[2] > S.max - 0.01, `não tombou: ${race.world.saw[2].toFixed(3)}`);
-  assert.ok(Math.abs(G.sawTop(S, race.world.saw[2], S.x, S.z + S.hz) - G.DECK) < 0.06, "a ponta da frente não chega no chão");
+  assert.ok(race.world.saw[I * 2] > S.max - 0.01, `não tombou: ${race.world.saw[I * 2].toFixed(3)}`);
+  assert.ok(Math.abs(G.sawTop(S, race.world.saw[I * 2], S.x, S.z + S.hz) - G.DECK) < 0.06, "a ponta da frente não chega no chão");
   // ninguém em cima: a mola devolve ao repouso
-  Object.assign(r, { x: 0, z: 27.7, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
+  Object.assign(r, { x: 0, z: G.gangorraStages().mid, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
   for (let k = 0; k < 60 * 6; k++) race.step();
-  assert.ok(race.world.saw[2] < S.a0 + 0.05, `não voltou: ${race.world.saw[2].toFixed(3)}`);
+  assert.ok(race.world.saw[I * 2] < S.a0 + 0.05, `não voltou: ${race.world.saw[I * 2].toFixed(3)}`);
+});
+
+test("gincana — Gangorras: 8 balanças grandes, uma por etapa, tombam para o lado de quem pisa e escorregam forte", () => {
+  const B = G.COURSE_BASE.gangorras;
+  const ST = G.GANGORRAS.stages;
+  const stages = B.saws.filter((q) => q.ax === 1 && q.hx === ST.hx);
+  assert.equal(stages.length, 8, "não são 8 balanças");
+  assert.ok(stages.every((q) => q.slip > 6), "a balança não escorrega mais que o prato");
+  const C = G.COURSES.gangorras;
+  const i = C.saws.findIndex((q) => q.ax === 1 && q.hx === ST.hx);
+  const S = C.saws[i];
+  const { race, r } = solo("gangorras");
+  while (race.t < 0) race.step();
+  // em pé no lado −x: em menos de 1 s ela já desceu desse lado até perto do batente (sensível)
+  for (let k = 0; k < 50; k++) {
+    Object.assign(r, { x: S.x - 2, z: S.z, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
+    r.y = G.sawTop(S, race.world.saw[i * 2], r.x, r.z);
+    race.step({ mx: 0, mz: 0, jump: false, dive: false });
+  }
+  assert.ok(race.world.saw[i * 2] < -S.max * 0.8, `não tombou para o lado de quem pisa: ${race.world.saw[i * 2].toFixed(3)}`);
+  // parado em cima, escorrega para o lado que desceu (mais rápido que o prato antigo)
+  Object.assign(r, { x: S.x - 1, z: S.z, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
+  r.y = G.sawTop(S, race.world.saw[i * 2], r.x, r.z);
+  const x0 = r.x;
+  for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false });
+  assert.ok(r.x < x0 - 0.6, `não escorregou: ${(r.x - x0).toFixed(2)}`);
 });
 
 test("gincana — Gangorras: no prato de lado tombado, quem está em cima escorrega para o lado baixo", () => {

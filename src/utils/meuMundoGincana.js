@@ -603,6 +603,8 @@ function rotorBladeAt(q       , x        , y        , t        , r        ) {
              
             
            
+                                                                                                               
+               
  
 /** Ganho do peso (rad/s² por metro de braço de cada um) e amortecimento. */
 const SAW = { gain: 0.6, damp: 2.2 }
@@ -1578,6 +1580,23 @@ function courseCidade()         {
  * vitórias-régias que andam (9→14) · rampa dos cocos-pêndulo (14→20) · ponte de
  * folhas que cai e a subida final (20→24).
  */
+/**
+ * 20/11 (pedido do Alex): o chão das duas clareiras das raízes é uma esteira redonda que gira rápido CONTRA a
+ * raiz. O que conta é o giro relativo (chão + raiz): a raiz tem que voltar depois dos 1,2 s de quem caiu
+ * levantar, senão ela acerta de novo até jogar no pântano. Por isso a raiz ficou mais lenta. Por clareira:
+ * [giro da raiz, giro do chão] (rad/s, antes do ×1,22 das corridas; na beira o chão anda ~7–8 m/s).
+ */
+const FLORESTA_ROOTS = [
+  [0.45, 0.85],
+  [-0.9, 1.0],
+]         
+/** Vitórias-régias que andam (antes 3). */
+const FLORESTA_LILIES = 8
+/** Segundos a mais para o pântano chegar ao topo (e no tempo da prova) por causa do percurso maior. */
+const FLORESTA_RISE_PLUS = 25
+/** Força da esteira antes das vitórias-régias (fração de GINCANA.belt, contra quem corre). */
+const FLORESTA_BELT = 0.5
+
 function courseFloresta()         {
   const k = new CourseKit()
   kitStart(k)
@@ -1591,19 +1610,25 @@ function courseFloresta()         {
   k.box(0, 55, 7, 4, 5, 1, 1, 0, 1.4, Y1)
   // ── 2. raízes que giram (duas clareiras ligadas por pontes) ──
   k.box(0, 61.5, 1.8, 2.5, 4, 1, 2, 0, 1.2, Y1)
-  const roots = (z        , w        , a0        , both         ) => {
-    k.disc(0, z, 6.5, 4, 1, 2, Y1)
+  const roots = (z        , [w, spin]                           , a0        , both         ) => {
+    const d = k.disc(0, z, 6.5, 4, 1, 2, Y1)
+    k.pads[d].spin = -Math.sign(w) * spin
     k.post(0, z, 0.8, Y1, Y1 + 2.4, 5)
     k.sweep(0, z, Y1 + 0.55, 6.8, 0.34, w, a0, both)
   }
-  roots(70.5, 1.1, 0, true)
+  roots(70.5, FLORESTA_ROOTS[0], 0, true)
   k.box(0, 79.5, 1.8, 2.5, 4, 1, 2, 0, 1.2, Y1)
-  roots(88.5, -1.6, 1.2, false)
+  roots(88.5, FLORESTA_ROOTS[1], 1.2, false)
   k.box(0, 99, 6, 4, 5, 1, 2, 0, 1.4, Y1)
   // ── 3. rampa curta e vitórias-régias que andam ──
   k.slope(0, 103, 121, Y1, Y2, 4, 5, 1, 3)
-  k.box(0, 123, 4, 2, 5, 1, 3, 0, 1.2, Y2)
-  const LILY = [129, 134.5, 140]
+  // 20/11 (pedido do Alex): o patamar antes das vitórias-régias é esteira contra quem corre (pule com embalo)
+  const pre = k.box(0, 123, 4, 2, 5, 1, 3, 0, 1.2, Y2)
+  // (a esteira cheia deixa 2 m/s de embalo e ninguém alcança a 1ª folha: metade da força)
+  k.pads[pre].bz = -GINCANA.belt * FLORESTA_BELT
+  // 20/11 (pedido do Alex: "tem 3, deixe 8 no mínimo"): oito vitórias-régias; o resto da fase anda LD
+  const LILY = Array.from({ length: FLORESTA_LILIES }, (_, i) => 129 + i * 5.5)
+  const LD = (FLORESTA_LILIES - 3) * 5.5
   const lilies           = []
   LILY.forEach((z, i) => {
     const p = k.disc(0, z, 2.2, i % 2 ? 2 : 5, 1, 3, Y2)
@@ -1612,41 +1637,42 @@ function courseFloresta()         {
     k.pads[p].mph = i * 1.6
     lilies.push(p)
   })
-  k.box(0, 148, 6, 4, 5, 1, 3, 0, 1.4, Y2)
+  k.box(0, 148 + LD, 6, 4, 5, 1, 3, 0, 1.4, Y2)
   // ── 4. rampa dos cocos (pêndulos) ──
-  k.slope(0, 152, 176, Y2, Y3, 5, 5, 1, 4)
+  k.slope(0, 152 + LD, 176 + LD, Y2, Y3, 5, 5, 1, 4)
   let ph = 0
   for (const z of [158, 164, 170]) {
     const top = Y2 + ((z - 152) / 24) * (Y3 - Y2)
     for (const x of [-2.5, 2.5]) {
-      k.swing(x, z, top + 9, 7.4, 1.1, 0.95, 2.1, ph)
+      k.swing(x, z + LD, top + 9, 7.4, 1.1, 0.95, 2.1, ph)
       ph += 1.9
     }
   }
-  k.box(0, 180, 6, 4, 5, 1, 4, 0, 1.4, Y3)
+  k.box(0, 180 + LD, 6, 4, 5, 1, 4, 0, 1.4, Y3)
   // ── 5. ponte de folhas que cai e a subida final ──
-  for (let r = 0; r < 7; r++) for (let c = 0; c < 3; c++) k.tile((c - 1) * 2.9, 186.6 + r * 2.9, 1.3, (r + c) % 2 ? 5 : 1, 0, Y3)
-  k.box(0, 209, 6, 3.5, 5, 1, 5, 0, 1.4, Y3)
-  k.slope(0, 212.5, 230.5, Y3, Y4, 5, 5, 1, 5)
-  k.box(0, 238, 9, 7.5, 1, 0, 6, 0, 1.6, Y4)
-  for (const [x, z, y] of [[0, 55, Y1], [0, 99, Y1], [-3, 148, Y2], [3, 148, Y2], [0, 180, Y3], [0, 209, Y3]]                              ) k.logo(x, z, y)
-  const finishZ = 238
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 3; c++) k.tile((c - 1) * 2.9, 186.6 + LD + r * 2.9, 1.3, (r + c) % 2 ? 5 : 1, 0, Y3)
+  k.box(0, 209 + LD, 6, 3.5, 5, 1, 5, 0, 1.4, Y3)
+  k.slope(0, 212.5 + LD, 230.5 + LD, Y3, Y4, 5, 5, 1, 5)
+  k.box(0, 238 + LD, 9, 7.5, 1, 0, 6, 0, 1.6, Y4)
+  for (const [x, z, y] of [[0, 55, Y1], [0, 99, Y1], [-3, 148 + LD, Y2], [3, 148 + LD, Y2], [0, 180 + LD, Y3], [0, 209 + LD, Y3]]                              ) k.logo(x, z, y)
+  const finishZ = 238 + LD
   return k.done({
     id: "floresta",
     mode: "race",
-    limit: 90,
-    // 3 s de folga; depois 0,34 m/s (a largada afoga aos ~12 s, o topo aos ~74 s)
-    rise: { y0: 0, y1: 26, t0: 3, t1: 79.5 },
+    // 20/11: +LD de percurso (8 vitórias-régias) → o pântano sobe um pouco mais devagar e o tempo cresce junto
+    limit: 90 + FLORESTA_RISE_PLUS,
+    // 3 s de folga; depois sobe até o topo (antes 0,34 m/s: a largada afogava aos ~12 s, o topo aos ~74 s)
+    rise: { y0: 0, y1: 26, t0: 3, t1: 79.5 + FLORESTA_RISE_PLUS },
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
       { x: 0, z: 55, y: Y1, w: 6 },
       { x: 0, z: 99, y: Y1, w: 5 },
-      { x: 0, z: 148, y: Y2, w: 5 },
-      { x: 0, z: 180, y: Y3, w: 5 },
+      { x: 0, z: 148 + LD, y: Y2, w: 5 },
+      { x: 0, z: 180 + LD, y: Y3, w: 5 },
     ],
     finishZ,
     finishY: Y4,
-    sections: [15, 59, 103, 152, 184],
+    sections: [15, 59, 103, 152 + LD, 184 + LD],
     minFinish: 20,
     route: (r) =>
       routeOf((add) => {
@@ -1663,14 +1689,14 @@ function courseFloresta()         {
         add(0, 122)
         add(0, 124.5)
         LILY.forEach((z, i) => add(0, z, lilies[i]))
-        for (const z of [145, 149, 151]) add(0, z)
+        for (const z of [145, 149, 151]) add(0, z + LD)
         const L = [-1.2, 0, 1.2][Math.floor(r(2) * 3)]
-        for (let z = 153; z <= 175; z += 2.5) add(L, z)
-        for (const z of [178, 182, 184.5]) add(0, z)
-        for (let i = 0; i < 7; i++) add(0, 186.6 + i * 2.9)
-        for (const z of [206.5, 210, 212]) add(0, z)
-        for (let z = 214; z <= 230; z += 2) add(0, z)
-        for (const z of [233, 236, finishZ + 3]) add(0, z)
+        for (let z = 153; z <= 175; z += 2.5) add(L, z + LD)
+        for (const z of [178, 182, 184.5]) add(0, z + LD)
+        for (let i = 0; i < 7; i++) add(0, 186.6 + LD + i * 2.9)
+        for (const z of [206.5, 210, 212]) add(0, z + LD)
+        for (let z = 214; z <= 230; z += 2) add(0, z + LD)
+        for (const z of [233 + LD, 236 + LD, finishZ + 3]) add(0, z)
       }),
   })
 }
@@ -2183,6 +2209,9 @@ const HELICES = {
     [2, 108.8, 2, 7.5, 1.9, -0.6, 0],
     [-1.5, 128.4, 3, 7.5, 1.9, 0.62, 1],
   ]                                                              ,
+  /** 20/11 (pedido do Alex): o miolo de cada hélice gira RÁPIDO ao contrário das pás (× o giro da hélice).
+   *  Antes: o miolo girava junto com as pás (× 1). */
+  hub: -3.2,
 }         
 
 function courseHelices()         {
@@ -2194,7 +2223,7 @@ function courseHelices()         {
       k.pads[p].spin = w
     }
     const c = k.disc(x, z, hw * 1.9, 6, 1, s)
-    k.pads[c].spin = w
+    k.pads[c].spin = w * HELICES.hub
     // a barra do cubo: gira ao contrário, rente ao tampo (se pula); o cubo é um poste (ninguém fica no eixo)
     if (bar) {
       k.sweep(x, z, DECK + 0.55, L - 0.4, 0.3, -w * 1.6, 0.6, true)
@@ -2359,9 +2388,14 @@ function courseCrosta()         {
  * Diferente da Serraria (tábuas que balançam pelo relógio): aqui quem move a tábua é o peso dos corredores.
  */
 const GANGORRAS = {
-  /** 1ª e 2ª fileiras: z do eixo; pistas em x */
-  rows: [19.9, 35.5],
-  lanes: [-3.4, 0, 3.4],
+  /**
+   * 20/11 (pedido do Alex: "tem que ser um só bem grande em cada etapa… umas 8 etapas… ele escorrega, conforme
+   * ele sobe todo mundo escorrega, é bem sensível"): no lugar das duas fileiras de três tábuas, 8 BALANÇAS largas
+   * em fila, uma por etapa, que tombam de LADO pelo peso (mola fraca = sensível) e escorregam forte (`slip`).
+   * Quem pisa num lado faz ela descer para esse lado: tem que correr para o outro. Patamar de descanso depois
+   * da 4ª. `rest` = repouso torto, alternando o lado. Antes: rows [19.9, 35.5], lanes ±3.4 / 0, long hx 1,25.
+   */
+  stages: { n: 8, z0: 15.4, hx: 3.3, hz: 3.3, gap: 0.5, max: 0.34, k: 0.3, slip: 11, rest: 0.06, mid: 4, midHz: 2.6 },
   long: { hx: 1.25, hz: 4.5, max: 0.2, k: 0.9 },
   /** corrente: z do eixo de cada elo; pistas ±2.3 */
   chain: [51.1, 60.4, 69.7],
@@ -2373,6 +2407,25 @@ const GANGORRAS = {
   big: { z: 123.3, hx: 5.2, hz: 6, max: 0.16, k: 0.35 },
 }         
 
+/** Gangorras: z do centro de cada balança, o patamar do meio e onde acabam (20/11). */
+function gangorraStages() {
+  const S = GANGORRAS.stages
+  const zs           = []
+  let z = S.z0
+  let mid = 0
+  for (let i = 0; i < S.n; i++) {
+    if (i === S.mid) {
+      mid = z + S.midHz
+      z += 2 * S.midHz + S.gap
+    }
+    zs.push(z + S.hz)
+    z += 2 * S.hz + S.gap
+  }
+  return { zs, mid, end: z - S.gap }
+}
+/** O resto da fase (do patamar 43,3 em diante) anda isto para a frente (as balanças são mais compridas). */
+const GANG_D = gangorraStages().end + 0.2 - 40.2
+
 function courseGangorras()         {
   const K = GANGORRAS
   const k = new CourseKit()
@@ -2380,68 +2433,73 @@ function courseGangorras()         {
   // gangorra comprida que descansa com a ponta de perto no chão (eixo acima do patamar)
   const longSaw = (x        , z        , hx        , hz        , max        , kk        ) =>
     k.saw(x, z, DECK + Math.tan(max) * hz, hx, hz, 0, max, -max, kk)
-  // ── 1. as duas fileiras de gangorras compridas ──
-  for (const z of K.rows) for (const x of K.lanes) longSaw(x, z, K.long.hx, K.long.hz, K.long.max, K.long.k)
-  k.box(0, 27.7, 6.2, 2.9, 1, 1, 1)
-  k.box(0, 43.3, 6.2, 3.1, 1, 1, 1)
-  // 20/11 (dificuldade): nos patamares, a barra baixa girando (pule ou cai no vazio)
-  k.sweep(0, 27.7, DECK + 0.55, 5.6, 0.3, 1.1, 0, true)
-  k.sweep(0, 43.3, DECK + 0.55, 5.6, 0.3, -1.2, Math.PI / 2, true)
+  const D = GANG_D
+  const ST = K.stages
+  const G = gangorraStages()
+  // ── 1. as 8 balanças grandes (tombam de lado com o peso e escorregam) ──
+  G.zs.forEach((z, i) => {
+    k.saw(0, z, DECK, ST.hx, ST.hz, 1, ST.max, i % 2 ? ST.rest : -ST.rest, ST.k)
+    k.saws[k.saws.length - 1].slip = ST.slip
+  })
+  k.box(0, G.mid, ST.hx, ST.midHz, 1, 1, 1)
+  k.box(0, 43.3 + D, 6.2, 3.1, 1, 1, 1)
+  // 20/11 (dificuldade): no patamar, a barra baixa girando (pule ou cai no vazio)
+  k.sweep(0, 43.3 + D, DECK + 0.55, 5.6, 0.3, -1.2, Math.PI / 2, true)
   // ── 2. a corrente: três elos emendados em cada pista ──
-  for (const x of [-K.chainX, K.chainX]) for (const z of K.chain) longSaw(x, z, K.chainHx, K.long.hz, K.long.max, K.long.k)
+  for (const x of [-K.chainX, K.chainX]) for (const z of K.chain) longSaw(x, z + D, K.chainHx, K.long.hz, K.long.max, K.long.k)
   // 20/11 (dificuldade): pêndulos atravessando as duas correntes
-  k.swing(0, 55.7, DECK + 8.6, 7.2, 1.05, 0.85, 1.9, 0)
-  k.swing(0, 65, DECK + 8.6, 7.2, 1.05, 0.85, 1.9, 2.2)
-  k.box(0, 77.5, 5.2, 3, 1, 1, 2)
+  k.swing(0, 55.7 + D, DECK + 8.6, 7.2, 1.05, 0.85, 1.9, 0)
+  k.swing(0, 65 + D, DECK + 8.6, 7.2, 1.05, 0.85, 1.9, 2.2)
+  k.box(0, 77.5 + D, 5.2, 3, 1, 1, 2)
   // ── 3. os pratos de lado ──
   // descansam tortos, cada um para um lado: quem pisa no lado baixo escorrega e tomba mais; o peso no lado alto endireita
-  K.plates.forEach(([x, z, hx], i) => k.saw(x, z, DECK, hx, K.plateHz, 1, 0.28, i % 2 ? 0.13 : -0.13, 0.9))
-  k.box(0, 113.4, 6.2, 3, 1, 1, 3)
-  k.sweep(0, 113.4, DECK + 0.55, 5.6, 0.3, 1.25, 0.8, true)
+  K.plates.forEach(([x, z, hx], i) => k.saw(x, z + D, DECK, hx, K.plateHz, 1, 0.28, i % 2 ? 0.13 : -0.13, 0.9))
+  k.box(0, 113.4 + D, 6.2, 3, 1, 1, 3)
+  k.sweep(0, 113.4 + D, DECK + 0.55, 5.6, 0.3, 1.25, 0.8, true)
   // ── 4. a balança grande ──
-  longSaw(0, K.big.z, K.big.hx, K.big.hz, K.big.max, K.big.k)
-  const z0 = K.big.z + K.big.hz + 0.3
+  longSaw(0, K.big.z + D, K.big.hx, K.big.hz, K.big.max, K.big.k)
+  const z0 = K.big.z + D + K.big.hz + 0.3
   const finishZ = kitFinish(k, z0, 1.05, 7, 1.15)
-  for (const [x, z] of [[0, 27.7], [-3, 43.3], [3, 43.3], [0, 77.5], [0, 113.4]]                      ) k.logo(x, z)
+  for (const [x, z] of [[0, G.mid], [-3, 43.3 + D], [3, 43.3 + D], [0, 77.5 + D], [0, 113.4 + D]]                      ) k.logo(x, z)
   return k.done({
     id: "gangorras",
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 27.7, y: DECK, w: 5 },
-      { x: 0, z: 43.3, y: DECK, w: 5 },
-      { x: 0, z: 77.5, y: DECK, w: 4 },
-      { x: 0, z: 113.4, y: DECK, w: 5 },
+      { x: 0, z: G.mid + 1.2, y: DECK, w: 4 },
+      { x: 0, z: 43.3 + D, y: DECK, w: 5 },
+      { x: 0, z: 77.5 + D, y: DECK, w: 4 },
+      { x: 0, z: 113.4 + D, y: DECK, w: 5 },
     ],
     finishZ,
     finishY: DECK + 6,
-    sections: [15.1, 46.4, 80.5, 116.4, z0],
+    sections: [15.1, 46.4 + D, 80.5 + D, 116.4 + D, z0],
     minFinish: 20,
     route: (r) =>
       routeOf((add) => {
         add(0, 10)
-        const l1 = K.lanes[Math.floor(r(1) * 3)]
-        add(l1, 14.5)
-        add(l1, 24)
-        const l2 = K.lanes[Math.floor(r(2) * 3)]
-        add(l2, 30.2)
-        add(l2, 39.8)
+        // balanças: um pouco fora do meio (o peso de cada um conta); a regra de correr para o lado que sobe é do robô
+        G.zs.forEach((z, i) => {
+          const x = (r(10 + i) - 0.5) * 2
+          add(x, z - ST.hz + 0.7)
+          add(x, z + ST.hz - 0.7)
+        })
         const l3 = r(3) < 0.5 ? -K.chainX : K.chainX
-        add(l3, 46)
-        add(l3, 74)
+        add(l3, 46 + D)
+        add(l3, 74 + D)
         // pratos: o do lado da corrente, o do meio, um dos dois de lado e o do meio
         // (no prato, um pouco fora do meio: o peso de cada um conta)
         const o = (i        ) => (r(6 + i) - 0.5) * 2.2
-        add(Math.sign(l3) * 2.9 + o(0), 81)
-        add(Math.sign(l3) * 2.9 + o(0), 86)
-        add(o(1), 89.4)
-        add(o(1), 93.4)
+        add(Math.sign(l3) * 2.9 + o(0), 81 + D)
+        add(Math.sign(l3) * 2.9 + o(0), 86 + D)
+        add(o(1), 89.4 + D)
+        add(o(1), 93.4 + D)
         const s4 = r(4) < 0.5 ? -3.2 : 3.2
-        add(s4 + o(2), 96.8)
-        add(s4 + o(2), 100.8)
-        add(o(3), 104.2)
-        add(o(3), 108.2)
-        add(0, 111)
-        for (let z = K.big.z - K.big.hz + 1; z <= K.big.z + K.big.hz - 1; z += 2) add(r(5) < 0.5 ? -1.5 : 1.5, z)
+        add(s4 + o(2), 96.8 + D)
+        add(s4 + o(2), 100.8 + D)
+        add(o(3), 104.2 + D)
+        add(o(3), 108.2 + D)
+        add(0, 111 + D)
+        for (let z = K.big.z + D - K.big.hz + 1; z <= K.big.z + D + K.big.hz - 1; z += 2) add(r(5) < 0.5 ? -1.5 : 1.5, z)
         routeFinish(add, z0, finishZ)
       }),
   })
@@ -4299,7 +4357,7 @@ function carry(b        , w          , dt        ) {
     if (S) {
       const s = Math.sin(w.saw[(b.roll - ROLL_SAW) * 2])
       if (S.ax === 0) b.z += s * 4 * dt
-      else b.x += s * 6 * dt
+      else b.x += s * (S.slip ?? 6) * dt
     }
     return
   }
@@ -4689,8 +4747,14 @@ function barJump(br          , b        , w          , it           ) {
   const C = w.course
   const t = w.t
   if (!b.ground || br.jumpCool > 0) return
-  const vx = b.vx + (it.mx * GINCANA.run - b.vx) * 0.5
-  const vz = b.vz + (it.mz * GINCANA.run - b.vz) * 0.5
+  let vx = b.vx + (it.mx * GINCANA.run - b.vx) * 0.5
+  let vz = b.vz + (it.mz * GINCANA.run - b.vz) * 0.5
+  // 20/11: em cima de disco que gira, o chão também leva (mesma conta de carry em body.ts)
+  const own = b.pad >= 0 ? C.pads[b.pad] : null
+  if (own && own.spin !== 0) {
+    vx += own.spin * (b.z - own.z)
+    vz -= own.spin * (b.x - own.x)
+  }
   for (let i = 0; i < C.sweepers.length; i++) {
     const s = C.sweepers[i]
     if (Math.hypot(b.x - s.x, b.z - s.z) > s.len + 5) continue
@@ -5601,7 +5665,11 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   // disco que gira FORTE embaixo (borda > 4 m/s, a Clareira): não dá para segurar a beirada correndo.
   // Vai até perto da borda, deixa o giro levar e pula quando ele traz para o lado da próxima peça
   // (no ar o giro não carrega). Funciona em qualquer velocidade de giro.
-  if (spinRide(br, b, w, it)) return it
+  if (spinRide(br, b, w, it)) {
+    // 20/11: a raiz/barra que gira por cima do disco (Floresta) também se pula aqui
+    barJump(br, b, w, it)
+    return it
+  }
   // em cima de uma hélice: pá → cubo → espera uma pá apontar para a saída → corre por ela
   fanRide(br, b, w, it)
   // barra chegando: pula na hora (com o erro da habilidade)
@@ -6081,4 +6149,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
