@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 21 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "gangorras", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]);
+test("gincana — 22 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "gangorras", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "aros", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -1054,4 +1054,35 @@ test("gincana — Gangorras: no prato de lado tombado, quem está em cima escorr
   const x0 = r.x;
   for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false });
   assert.ok(r.x > x0 + 0.3, `não escorregou: ${(r.x - x0).toFixed(2)}`);
+});
+
+// ── Descida dos Aros (2026-11-20) ────────────────────────────────────────────
+test("gincana — Aros: passar por dentro do aro dá turbo; pela borda ou por fora, não; o aro que anda vai e volta", () => {
+  const C = G.COURSES.aros;
+  assert.equal(C.mode, "race");
+  assert.ok(C.hoops.length >= 10, "aros de menos");
+  // a regra do aro: cruzar o plano dentro do raio útil
+  const h = C.hoops[0];
+  assert.ok(G.hoopPass(h, 0, h.z - 0.1, h.x, h.y - 0.85, h.z + 0.05), "pelo meio não contou");
+  assert.ok(!G.hoopPass(h, 0, h.z - 0.1, h.x + h.R, h.y - 0.85, h.z + 0.05), "pela borda contou");
+  assert.ok(!G.hoopPass(h, 0, h.z + 0.05, h.x, h.y - 0.85, h.z + 0.1), "já tinha passado e contou de novo");
+  const mov = C.hoops.find((q) => q.mx > 0);
+  assert.ok(mov, "falta o aro que anda");
+  const xs = [0, 0.7, 1.4, 2.1].map((t) => G.hoopX(mov, t));
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 2, "o aro que anda não anda");
+  // na corrida: atravessar o 1º aro em pleno pulo dá turbo e o evento
+  const { race, r } = solo("aros");
+  while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  Object.assign(r, { x: h.x, z: h.z - 0.4, y: h.y - 0.85, vx: 0, vy: 2, vz: 8, ground: false, boost: 0 });
+  const ev = [];
+  for (let k = 0; k < 12; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false }, ev);
+  assert.ok(ev.some((e) => e.type === "hoop" && e.i === 0), "o aro não contou");
+  assert.ok(r.boost > 0, "sem turbo");
+  // por fora do aro: nada
+  const { race: race2, r: r2 } = solo("aros");
+  while (race2.t < 0.5) race2.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  Object.assign(r2, { x: h.x + h.R + 1.2, z: h.z - 0.4, y: h.y - 0.85, vx: 0, vy: 2, vz: 8, ground: false, boost: 0 });
+  const ev2 = [];
+  for (let k = 0; k < 12; k++) race2.step({ mx: 0, mz: 1, jump: false, dive: false }, ev2);
+  assert.ok(!ev2.some((e) => e.type === "hoop"), "contou por fora");
 });

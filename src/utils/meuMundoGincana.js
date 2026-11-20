@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                                                                                                                  
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "gangorras", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                                                                                                           
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "gangorras", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "aros", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -363,6 +363,28 @@ function memUp(m        , seed        , i        , t        ) {
             
             
  
+
+/** Aro no ar (Descida dos Aros). */
+                       
+           
+           
+           
+           
+            
+           
+            
+ 
+
+/** Centro x do aro agora (os que vão e voltam de lado). */
+function hoopX(h      , t        ) {
+  return h.mx > 0 ? h.x + Math.sin(h.w * t + h.ph) * h.mx : h.x
+}
+
+/** Atravessou o aro pelo meio neste passo (cruzou o plano z do aro com o meio do corpo dentro do furo)? */
+function hoopPass(h      , t        , pz        , x        , y        , z        ) {
+  if (!(pz < h.z && z >= h.z)) return false
+  return Math.hypot(x - hoopX(h, t), y + 0.85 - h.y) < h.R - 0.45
+}
 
 /** Ponto onde aparece uma engrenagem (coleta): some quando alguém pega e volta depois de `back` s. */
                       
@@ -667,6 +689,8 @@ function plankTop(P       , x        , t        ) {
                      
                            
                                               
+                                                                                                                    
+               
                  
                  
                                                                                                  
@@ -691,6 +715,7 @@ class CourseKit {
            doorOpen           = []
            pushers           = []
            logos                                        = []
+           hoops         = []
   ramp              = null
   balls               = null
            gems        = []
@@ -780,6 +805,10 @@ class CourseKit {
   pusher(x        , z        , hx        , hz        , h        , ax        , az        , w        , ph        , y = DECK) {
     this.pushers.push({ x, z, hx, hz, y, h, ax, az, w, ph })
   }
+  /** Aro no ar: centro (x, y, z), raio R; se `mx` > 0, vai e volta de lado (±mx m, w rad/s, fase ph). */
+  hoop(x        , z        , y        , R        , mx = 0, w = 0, ph = 0) {
+    this.hoops.push({ x, z, y, R, mx, w, ph })
+  }
   logo(x        , z        , y = DECK) {
     this.logos.push({ x, z, y: y + 1.1 })
   }
@@ -832,6 +861,7 @@ class CourseKit {
       balls: this.balls,
       checkpoints: o.checkpoints,
       logos: this.logos,
+      hoops: this.hoops,
       finishZ: o.finishZ,
       finishY: o.finishY,
       sections: o.sections,
@@ -2081,6 +2111,126 @@ function courseGangorras()         {
   })
 }
 
+// ═══ aros — Descida dos Aros (Mar de Gelo) ════════════════════════════════════
+
+/**
+ * Gincana (2026-11-20, vídeo 7): DESCIDA DOS AROS — a 4ª fase do Mar de Gelo.
+ * Larga no alto e desce duas ladeiras de gelo liso (escorrega e a ladeira
+ * empurra para baixo). Aros de cristal no ar: quem PULA pelo meio ganha turbo e
+ * embalo (`hoopPass`); um vai e volta de lado; um cogumelo de neve lança até o
+ * aro alto. Um bloco de gelo desliza no patamar. No fim, três paredões de janelas:
+ * só passa quem pula pela janela (parapeito de 1 m, verga a 3,6 m), e cada janela tem um aro.
+ */
+const AROS = {
+  y0: DECK + 12,
+  /** [x, z, altura acima do gelo, mx, w, fase] */
+  hoops: [
+    [-2.5, 24, 2.2, 0, 0, 0],
+    [2.2, 33, 2.2, 0, 0, 0],
+    [-1.2, 42, 2.2, 0, 0, 0],
+    [2.6, 51, 2.2, 0, 0, 0],
+    [0, 77, 2.2, 0, 0, 0],
+    [-3, 91, 4.6, 0, 0, 0],
+    [0, 99, 2.2, 3, 1.2, 0],
+    [2.2, 107, 2.2, 0, 0, 0],
+  ]                                                      ,
+  /** paredões: [z, janelas (x)] — parapeito 1 m, janela de 2,4 m */
+  walls: [
+    [124, [-4.8, 0, 4.8]],
+    [130.5, [-2.4, 2.4]],
+    [137, [-4.8, 0, 4.8]],
+  ]                        ,
+}         
+
+function courseAros()         {
+  const k = new CourseKit()
+  const Y0 = AROS.y0
+  const Y1 = DECK + 5
+  // largada no alto
+  k.box(0, 0, 10, 8, 6, 7, 0, 0, 3, Y0)
+  k.box(0, 11.5, 7, 3.6, 0, 1, 0, 0, 2, Y0)
+  for (const x of [-4, 0, 4]) k.logo(x, 12.5, Y0)
+  // ladeira de gelo: escorrega (f) e empurra para baixo (bz)
+  const ice = (z0        , z1        , y0        , y1        , s        ) => {
+    const p = k.slope(0, z0, z1, y0, y1, 6.5, 3, 1, s)
+    Object.assign(k.pads[p], { f: 0.55, bz: 2.2 })
+  }
+  const surf = (z        ) => (z < 60 ? Y0 + ((Y1 - Y0) * (z - 15.1)) / (60 - 15.1) : Y1 + ((DECK - Y1) * (z - 68)) / (112 - 68))
+  // ── 1. a primeira descida, com os aros ──
+  ice(15.1, 60, Y0, Y1, 1)
+  for (const [x, z] of [[2.6, 28.5], [-2.8, 46.5]]                      ) k.post(x, z, 0.75, surf(z) - 0.5, surf(z) + 1.9, 3)
+  // ── 2. patamar com o bloco de gelo que desliza ──
+  k.box(0, 64, 7, 4, 2, 1, 2, 0, 2.2, Y1)
+  k.pusher(0, 64.5, 1.4, 1.4, 2.0, 4.8, 0, 1.1, 0, Y1)
+  // ── 3. a segunda descida: aro, cogumelo de neve até o aro alto, aro que vai e volta ──
+  ice(68, 112, Y1, DECK, 3)
+  k.post(-3, 86.5, 1.1, surf(86.5) - 0.6, surf(86.5) + 0.15, 2, 12.5)
+  k.post(3.2, 83, 0.75, surf(83) - 0.5, surf(83) + 1.9, 3)
+  for (const [x, z, dy, mx, w, ph] of AROS.hoops) k.hoop(x, z, surf(z) + dy, 1.45, mx, w, ph)
+  // ── 4. o paredão de janelas: parede com janelas de parapeito baixo, um aro em cada janela ──
+  k.box(0, 116.5, 7.5, 4.5, 2, 1, 4, 0, 1.6)
+  k.box(0, 136.5, 8, 15.5, 2, 1, 4, 0, 1.6)
+  for (const [z, wins] of AROS.walls) {
+    const W = 1.2
+    const xs = [-8, ...wins.flatMap((x) => [x - W, x + W]), 8]
+    for (let i = 0; i < xs.length; i += 2) {
+      const a = xs[i]
+      const b = xs[i + 1]
+      if (b - a > 0.05) k.box((a + b) / 2, z, (b - a) / 2, 0.45, 5, 1, 4, 0, 4.5, DECK + 4.5)
+    }
+    for (const x of wins) {
+      k.box(x, z, W, 0.45, 5, 1, 4, 0, 1, DECK + 1)
+      // a verga: a janela é janela (de 1 a 3,6 m), não um entalhe até o topo
+      k.box(x, z, W, 0.45, 5, 1, 4, 0, 0.9, DECK + 4.5)
+      k.hoop(x, z, DECK + 2.25, 1.15)
+    }
+  }
+  // a subida das pedras (a rampa das bolas é a dela, não a das descidas)
+  k.ramp = null
+  const z0 = 152
+  const finishZ = kitFinish(k, z0, 1.05, 6.8, 1.1)
+  for (const [x, z, y] of [[0, 64, Y1], [0, 116.5, DECK]]                              ) k.logo(x, z, y)
+  return k.done({
+    id: "aros",
+    checkpoints: [
+      { x: 0, z: -3.5, y: Y0, w: 7 },
+      { x: 0, z: 64, y: Y1, w: 5 },
+      { x: 0, z: 116.5, y: DECK, w: 5 },
+      { x: 0, z: 134, y: DECK, w: 5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [15.1, 60, 68, 121, z0],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        add(0, 10)
+        add(0, 14)
+        // pelos aros (a semente decide se o robô vai buscar o aro alto do cogumelo)
+        const high = r(2) < 0.6
+        for (const [x, z] of AROS.hoops) {
+          if (z === 91 && !high) {
+            add(0, 84)
+            add(0, 92)
+            continue
+          }
+          if (z === 91) add(-3, 84.5)
+          add(x, z - 3.5)
+          add(x, z + 1)
+        }
+        add(0, 114)
+        // uma janela de cada paredão (pela semente)
+        for (const [z, wins] of AROS.walls) {
+          const x = wins[Math.floor(r(3 + z) * wins.length)]
+          add(x, z - 3)
+          add(x, z + 1.2)
+        }
+        add(0, 142)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
 // ═══ orbital — Cidade Orbital ════════════════════════════════════════════════
 
 /**
@@ -2891,6 +3041,7 @@ const COURSES                               = {
   forja: courseForja(),
   altoforno: courseAltoForno(),
   crosta: courseCrosta(),
+  aros: courseAros(),
   fabrica: courseFabrica(),
   comportas: courseComportas(),
   gelo: courseGelo(),
@@ -3044,6 +3195,7 @@ const MODE = {
                                             
                                                
                                
+                                             
                                              
                                     
                                    
@@ -3910,6 +4062,13 @@ function stepRunner(b        , it           , w          , out                  
     b.boost = T.boostT
     out?.push({ type: "logo", slot: b.slot, i })
   }
+  // Descida dos Aros: passou pelo meio do aro = turbo e um empurrão para a frente
+  for (let i = 0; i < C.hoops.length; i++) {
+    if (!hoopPass(C.hoops[i], w.t, b.pz, b.x, b.y, b.z)) continue
+    b.boost = T.boostT
+    b.vz = Math.max(b.vz, T.run * 1.45)
+    out?.push({ type: "hoop", slot: b.slot, i })
+  }
   const next = C.checkpoints[b.cp + 1]
   if (next && b.ground && b.z >= next.z - 1.5) {
     b.cp++
@@ -4512,6 +4671,31 @@ function pathAim(br          , b        , w          )                          
   return Math.abs(q.x - b.x) > 0.4 ? { x: q.x, z: b.z } : { x: q.x, z: q.z + 0.3 }
 }
 
+/**
+ * Descida dos Aros: o aro (ou a janela) logo à frente e alinhado — pula para chegar ao plano dele perto do alto
+ * do pulo (0,32 s depois de sair do chão). O erro de tempo vem da habilidade. Aro alto demais (o do cogumelo)
+ * não se pula do chão.
+ */
+function hoopJump(br          , b        , w          , it           ) {
+  const C = w.course
+  if (!C.hoops.length || !b.ground || br.jumpCool > 0) return
+  const v = Math.max(4, b.vz)
+  for (let i = 0; i < C.hoops.length; i++) {
+    const h = C.hoops[i]
+    const dz = h.z - b.z
+    if (dz <= 0 || dz > 5) continue
+    if (h.y - b.y > 3.3) continue
+    const tArr = dz / v
+    if (Math.abs(hoopX(h, w.t + tArr) - b.x) > h.R * 0.75) continue
+    const err = (botRand(br.seed, br.slot * 11 + i, Math.floor(w.t)) - 0.5) * (1 - br.skill) * 0.35
+    if (tArr < 0.33 + err) {
+      it.jump = true
+      br.jumpCool = 0.5
+      return
+    }
+  }
+}
+
 /** Escolhe a porta da fileira à frente: aberta (alguém passou) > desconhecida mais perto > a sorteada. */
 function pickDoor(br          , b        , w          , row        ) {
   const C = w.course
@@ -4927,6 +5111,8 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     const off = b.x - S.x
     if (Math.abs(a) > 0.06 && Math.sign(off) === Math.sign(a) && Math.abs(off) > 0.5) it.mx -= Math.sign(a) * Math.min(1, br.skill + 0.3)
   }
+  // aro à frente (e a janela do paredão): pula para cruzar no alto do pulo
+  hoopJump(br, b, w, it)
   // Serraria: tora atravessada logo à frente — pula para subir nela (a parede de baixo não deixa passar)
   if (b.ground && br.jumpCool <= 0) {
     for (const L of C.logs) {
@@ -5375,4 +5561,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
