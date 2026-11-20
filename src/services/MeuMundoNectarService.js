@@ -22,7 +22,6 @@ const Pact = require("../utils/meuMundoPact");
 const PactStore = require("../storages/MeuMundoPactStorage");
 const TrainerStore = require("../storages/MeuMundoTrainerStorage");
 const Trainer = require("../utils/meuMundoTrainer");
-const AdvStore = require("../storages/MeuMundoAdventureStorage");
 const Adv = require("../utils/meuMundoAdventure");
 const { createLogger } = require("../utils/logger");
 
@@ -122,10 +121,10 @@ class MeuMundoNectarService {
   static async wallet(idUser, now = Date.now()) {
     const current = S.weekOf(now);
     const last = S.previousWeek(current);
-    const [w, closed, awards, pacts, trainer, thefts, nivea, adv] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last), PactStore.active(pool, now), TrainerStore.get(pool, idUser), Store.thefts(pool, idUser), Store.nivea(pool), AdvStore.getAdventure(pool, idUser)]);
-    // 19/11 (Alex, nível 21 sem coletor): vale o MAIOR entre o nível do treinador (a conta) e o
-    // nível do personagem vivo (o número que a pessoa vê); o pedido foi "no nível 5".
-    const level = Math.max(Trainer.trainerLevelOf(Number(trainer.xp) || 0).level, Adv.levelOf(Number(adv.xp) || 0).level);
+    const [w, closed, awards, pacts, trainer, thefts, nivea, adv] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last), PactStore.active(pool, now), TrainerStore.get(pool, idUser), Store.thefts(pool, idUser), Store.nivea(pool), Store.bestCharacterXp(pool, idUser)]);
+    // 19/11 (Alex): "quando o PRIMEIRO personagem chega ao 5 já ganha o coletor" — vale o maior
+    // nível que QUALQUER personagem da conta já teve (vivo ou não) ou o do treinador; não volta atrás.
+    const level = Math.max(Trainer.trainerLevelOf(Number(trainer.xp) || 0).level, Adv.levelOf(adv).level);
     return {
       pendingMl: w.pendingMl,
       earnedMl: w.earnedMl,

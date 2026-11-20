@@ -167,6 +167,10 @@ async function main() {
     await pool.query(`INSERT INTO tb_mm_char_adventure (id_character, id_user, xp, level) VALUES ($1, $2, $3, 21) ON CONFLICT (id_character) DO UPDATE SET xp = EXCLUDED.xp, level = 21`, [ch, who, xp]);
     const v21 = await Nectar.wallet(who, AFTER + 60e3);
     check("coletor: personagem no nível 21 com treinador no 1 libera", v21.collector.unlocked === true, JSON.stringify(v21.collector));
+    // o primeiro personagem chegou ao 5 e foi para a Criogenia: a conta continua com o coletor
+    await pool.query(`UPDATE tb_mm_character SET status = 'capsule' WHERE id_character = $1`, [ch]);
+    const gone = await Nectar.wallet(who, AFTER + 60e3);
+    check("coletor: o 1º personagem passou do 5 → fica liberado mesmo sem ele em jogo", gone.collector.unlocked === true, JSON.stringify(gone.collector));
   }
 
   // o placar semanal mostra quanto a posição vale

@@ -117,6 +117,12 @@ class MeuMundoNectarStorage {
     return { ml, pendingMl: Number(u.rows[0].pending_ml) };
   }
 
+  /** O maior XP de aventura que um personagem da conta já teve (vivo ou não): libera o coletor de vez. */
+  static async bestCharacterXp(db, idUser) {
+    const r = await db.query(`SELECT COALESCE(MAX(xp), 0) AS xp FROM tb_mm_char_adventure WHERE id_user = $1`, [idUser]);
+    return Number(r.rows[0].xp) || 0;
+  }
+
   /** As últimas linhas de roubo da conta (o extrato) — as mais novas primeiro. */
   static async thefts(db, idUser, limit = 10) {
     const r = await db.query(`SELECT kind, origin, ml, created_at FROM tb_mm_nectar_theft WHERE id_user = $1 ORDER BY created_at DESC LIMIT $2`, [idUser, limit]);
