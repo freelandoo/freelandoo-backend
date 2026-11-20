@@ -3010,18 +3010,25 @@ function courseTanque()         {
 const PORTOES = {
   /** [z, portas, abertas, meia largura do deck] por fileira */
   rows: [
-    [22, 8, 5, 12],
-    [34, 7, 4, 12],
-    [46, 6, 3, 12],
-    [60, 6, 3, 9],
+    [22, 8, 4, 12],
+    [34, 7, 3, 12],
+    [46, 6, 2, 12],
+    [60, 6, 2, 9],
     [74, 5, 2, 9],
-    [95, 4, 2, 6.5],
+    [95, 4, 1, 6.5],
     [105, 4, 1, 6.5],
     [118, 3, 1, 5],
     [131, 2, 1, 5],
   ]                                      ,
   doorH: 3.4,
-  ice: 0.5,
+  /** 20/11 (dificuldade): mais escorregadio (antes 0,5) */
+  ice: 0.4,
+  /** blocos do lago: [z, giro, fase] (antes 2 blocos, 1,0 e 1,3) */
+  blocks: [[66, 1.3, 0], [74.5, 1.5, 2.2], [82, 1.6, 1.6]]                              ,
+  /** estalactites do corredor: [z, fase] (antes 2, R 1,1) */
+  icicles: [[122.5, 0], [126.5, 2.4], [135, 1.2]]                      ,
+  icicleR: 1.25,
+  snow: { every: 0.8, v: 8, R: 1.3 },
 }         
 
 function coursePortoes()         {
@@ -3033,19 +3040,17 @@ function coursePortoes()         {
   // ── 2. o lago congelado (escorrega) com blocos de gelo que deslizam ──
   const ice2 = k.box(0, 72, 9, 17.1, 3, 7, 2)
   k.pads[ice2].f = K.ice
-  k.pusher(0, 67, 1.2, 1.2, 1.8, 6.4, 0, 1.0, 0)
-  k.pusher(0, 82, 1.2, 1.2, 1.8, 6.4, 0, 1.3, 1.6)
+  for (const [z, w, ph] of K.blocks) k.pusher(0, z, 1.2, 1.2, 1.8, 6.4, 0, w, ph)
   // ── 3. a ponte de gelo: 2 fileiras de 4 ──
   k.box(0, 100, 6.5, 10.9, 6, 7, 3)
   // ── 4. o corredor (escorrega) com as estalactites ──
   const z0 = 138
   const ice4 = k.box(0, (110.9 + z0) / 2, 5, (z0 - 110.9) / 2, 3, 7, 4)
   k.pads[ice4].f = K.ice
-  k.swing(0, 122.5, DECK + 9, 7.4, 1.1, 0.95, 2.1, 0)
-  k.swing(0, 126.5, DECK + 9, 7.4, 1.1, 0.95, 2.1, 2.4)
+  for (const [z, ph] of K.icicles) k.swing(0, z, DECK + 9, 7.4, K.icicleR, 0.95, 2.1, ph)
   for (const [z, n, open, hx] of K.rows) k.doorRow(0, z, n, (hx * 2) / n, K.doorH, open)
   // ── 5. subida com bolas de neve e a chegada ──
-  const finishZ = kitFinish(k, z0, 1.0, 7, 1.2)
+  const finishZ = kitFinish(k, z0, K.snow.every, K.snow.v, K.snow.R)
   for (const [x, z] of [[0, 16.5], [-6, 28], [6, 40], [0, 56.5], [0, 91], [0, 112.5]]                      ) k.logo(x, z)
   return k.done({
     id: "portoes",
@@ -3345,6 +3350,21 @@ function courseFeira()         {
  * faixas, martelos, dois portões giratórios (carrosséis de duas barras), a rampa final e a coroa
  * no alto do estrado da torre: só ganha quem PULA e pega a coroa (a linha fica 1,1 m acima do chão).
  */
+/**
+ * Torre da Coroa — números da dificuldade (20/11, o Alex: "obstáculos mais resistentes e mais rápidos").
+ * Antes: martelos R 1,1 amp 0,95; portões a 1,25 e −1,45 rad/s sem aceleração; ponte estreita sem nada.
+ */
+const COROA = {
+  ham: { R: 1.25, amp: 1.05 },
+  gateAcc: 0.01,
+  gateMax: 1.9,
+  /** barra alta (mergulhar) no 2º portão, ao contrário, um braço */
+  highY: 1.45,
+  highW: 0.6,
+  /** soco da ponte estreita: [x da base, z, fase] */
+  punch: [5.6, 104, 0.6]                            ,
+}         
+
 function courseCoroa()         {
   const k = new CourseKit()
   kitStart(k)
@@ -3356,7 +3376,7 @@ function courseCoroa()         {
   k.box(0, 55, 8, 4, 6, 7, 1, 0, 1.4, Y1)
   // ── 2. martelos ──
   k.box(0, 74, 6, 15, 6, 7, 2, 0, 1.4, Y1)
-  const ham = (x        , z        , ph        ) => k.swing(x, z, Y1 + 9, 7.4, 1.1, 0.95, 2.2, ph)
+  const ham = (x        , z        , ph        ) => k.swing(x, z, Y1 + 9, 7.4, COROA.ham.R, COROA.ham.amp, 2.2, ph)
   ham(-3, 66, 0)
   ham(3, 66, 2.4)
   ham(-3, 74, 1.2)
@@ -3367,11 +3387,17 @@ function courseCoroa()         {
   const gate = (z        , w        , a0        ) => {
     k.disc(0, z, 7, 4, 1, 3, Y1)
     k.post(0, z, 0.8, Y1, Y1 + 2.4, 1)
-    k.sweep(0, z, Y1 + 0.55, 7.3, 0.32, w, a0, true)
+    k.sweep(0, z, Y1 + 0.55, 7.3, 0.32, w, a0, true, COROA.gateAcc, COROA.gateMax)
   }
   gate(96, 1.25, 0)
   k.box(0, 104, 2.4, 1.2, 6, 7, 3, 0, 1.4, Y1)
+  {
+    const [x0, z, ph] = COROA.punch
+    k.post(x0, z, 0.45, -1, Y1 + 1.9, 2)
+    k.glove(x0, z, Y1 + 1, -Math.sign(x0), 6.2, 1.0, 2.2, ph)
+  }
   gate(112, -1.45, 0.8)
+  k.sweep(0, 112, Y1 + COROA.highY, 7.3, 0.3, COROA.highW, 0.8 + Math.PI / 2, false)
   k.box(0, 122, 7, 3, 6, 7, 3, 0, 1.4, Y1)
   // ── 4. ladrilhos que caem (6 × 6) ──
   for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) k.tile((c - 2.5) * 2.9, 127.6 + r * 2.9, 1.3, (r + c) % 2 === 0 ? 2 : 5, 0, Y1)
@@ -6012,4 +6038,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
