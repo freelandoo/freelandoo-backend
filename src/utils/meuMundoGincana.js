@@ -731,6 +731,11 @@ function plankTop(P       , x        , t        ) {
                        
                                                                                                      
                 
+     
+                                                                                                                  
+                                                                                                                           
+     
+                  
              
                
                      
@@ -914,6 +919,7 @@ class CourseKit {
                  
                    
                    
+                     
    )         {
     if ((o.mode ?? "race") === "race") this.faster(GINCANA.tempo)
     return {
@@ -932,6 +938,7 @@ class CourseKit {
       saws: this.saws,
       memory: o.memory ?? null,
       crown: o.crown ?? false,
+      doorHits: o.doorHits ?? 1,
       pads: this.pads,
       posts: this.posts,
       sweepers: this.sweepers,
@@ -3243,17 +3250,20 @@ function courseTanque()         {
 const PORTOES = {
   /** [z, portas, abertas, meia largura do deck] por fileira */
   rows: [
-    [22, 8, 4, 12],
-    [34, 7, 3, 12],
-    [46, 6, 2, 12],
-    [60, 6, 2, 9],
-    [74, 5, 2, 9],
+    // 20/11: uma de verdade por fileira (antes 4, 3, 2, 2, 2) — e ela aguenta PORTOES.hits batidas
+    [22, 8, 1, 12],
+    [34, 7, 1, 12],
+    [46, 6, 1, 12],
+    [60, 6, 1, 9],
+    [74, 5, 1, 9],
     [95, 4, 1, 6.5],
     [105, 4, 1, 6.5],
     [118, 3, 1, 5],
     [131, 2, 1, 5],
   ]                                      ,
   doorH: 3.4,
+  /** batidas para quebrar a de verdade (20/11) */
+  hits: 3,
   /** 20/11 (dificuldade): mais escorregadio (antes 0,5) */
   ice: 0.4,
   /** blocos do lago: [z, giro, fase] (antes 2 blocos, 1,0 e 1,3) */
@@ -3287,6 +3297,7 @@ function coursePortoes()         {
   for (const [x, z] of [[0, 16.5], [-6, 28], [6, 40], [0, 56.5], [0, 91], [0, 112.5]]                      ) k.logo(x, z)
   return k.done({
     id: "portoes",
+    doorHits: PORTOES.hits,
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
       { x: 0, z: 57, y: DECK, w: 6 },
@@ -3874,6 +3885,9 @@ const MODE = {
                   
                                                                 
                      
+                                                                                 
+                      
+                        
                                                                  
                     
                                                                                        
@@ -3902,7 +3916,7 @@ const MODE = {
 const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
 
 function newWorld(course        , seed        , t        )           {
-  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), real: pathReal(course, seed), doors: new Float64Array(course.doors.length).fill(-1), gems: new Float64Array(course.gems.length).fill(-1), saw: sawRest(course) }
+  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), real: pathReal(course, seed), doors: new Float64Array(course.doors.length).fill(-1), doorHp: new Float64Array(course.doors.length), doorLast: new Float64Array(course.doors.length).fill(-9), gems: new Float64Array(course.gems.length).fill(-1), saw: sawRest(course) }
 }
 
 const sawArms = new Float64Array(64)
@@ -4252,10 +4266,25 @@ function pushWalls(b        , w          , out                   )              
     const T = 0.3
     if (Math.abs(b.z - d.z) >= T + R || Math.abs(b.x - d.x) >= d.hw + R * 0.2 || b.y >= DECK + d.h || b.y + H <= DECK) continue
     if (w.open[i]) {
-      if (w.doors[i] < 0) {
+      if (w.doors[i] >= 0) continue
+      // porta que aguenta batidas: conta quem chega correndo contra ela; até quebrar é parede
+      let opens = true
+      if (C.doorHits > 1) {
+        opens = false
+        const vn = b.vz * Math.sign(d.z - b.z || 1)
+        if (vn > 3 && w.t - w.doorLast[i] > 0.25) {
+          w.doorLast[i] = w.t
+          w.doorHp[i]++
+          opens = w.doorHp[i] >= C.doorHits
+        }
+      }
+      if (opens) {
         w.doors[i] = w.t
         out?.push({ type: "door", i, open: true, slot: b.slot })
+        continue
       }
+      b.z = d.z + Math.sign(b.z - d.z || -1) * (T + R)
+      b.vz = 0
       continue
     }
     if (w.doors[i] === -1) {
@@ -5600,6 +5629,13 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
         if (dz - b.z < 0.9 && Math.abs(b.x - d.x) < d.hw && !w.open[br.door]) {
           br.bad.add(br.door)
           br.door = pickDoor(br, b, w, row)
+        } else if (C.doorHits > 1 && w.open[br.door] && w.doors[br.door] < 0) {
+          // a de verdade ainda inteira: encostou, recua uns 2 m e vem correndo de novo
+          if (dz - b.z < 0.8 && Math.abs(b.x - d.x) < d.hw) br.ram = true
+          if (br.ram) {
+            tz = d.z - 2.6
+            if (d.z - b.z > 2.1) br.ram = false
+          }
         }
       }
       break
@@ -6034,6 +6070,8 @@ class GincanaRace {
   /** Classificam os primeiros `quota`. */
            quota        
                    bySlot = new Map                ()
+  /** Portas que aguentam batidas: quando cada um de fora encostou em cada porta (vaga·4096 + porta). */
+                   touch = new Map                ()
 
   constructor(seed        , seats               , countdown         = GINCANA.countdown, phase         = "cidade") {
     this.seed = seed >>> 0
@@ -6247,7 +6285,18 @@ class GincanaRace {
     }
     for (let k = 0; k < C.doors.length; k++) {
       const d = C.doors[k]
-      if (this.world.open[k] && this.world.doors[k] < 0 && Math.abs(b.z - d.z) < 0.8 && Math.abs(b.x - d.x) < d.hw) this.world.doors[k] = this.t
+      if (!this.world.open[k] || this.world.doors[k] >= 0 || Math.abs(b.z - d.z) >= 0.8 || Math.abs(b.x - d.x) >= d.hw) continue
+      if (C.doorHits <= 1) {
+        this.world.doors[k] = this.t
+        continue
+      }
+      // de fora só chega a pose: encostou de novo (afastou-se antes) = uma batida
+      const key = slot * 4096 + k
+      const last = this.touch.get(key) ?? -9
+      this.touch.set(key, this.t)
+      if (this.t - last < 0.3 || this.t - this.world.doorLast[k] <= 0.25) continue
+      this.world.doorLast[k] = this.t
+      if (++this.world.doorHp[k] >= C.doorHits) this.world.doors[k] = this.t
     }
   }
 

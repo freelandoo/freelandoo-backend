@@ -759,16 +759,24 @@ test("gincana — Portões de Gelo: fileiras que estreitam, o portão de verdade
     assert.ok(deck && Math.abs(x1 - x0 - deck.hx * 2) < 1e-6, `fileira ${row} não fecha o deck`);
   }
   // atravessa o de verdade, bate no falso
-  const tryDoor = (want) => {
+  // 20/11: uma de verdade por fileira, e ela aguenta 3 batidas (chegar correndo) antes de quebrar
+  assert.ok(C.doorOpen.every((n) => n === 1), "fileira com mais de uma de verdade");
+  assert.equal(C.doorHits, 3);
+  const tryDoor = (want, runs = 1) => {
     const { race, r } = solo("portoes");
     while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
     const i = C.doors.findIndex((d, k) => d.row === 0 && !!race.world.open[k] === want);
     const d = C.doors[i];
-    Object.assign(r, { x: d.x, z: d.z - 2, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
-    for (let k = 0; k < 60; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false }, []);
-    return { r, d };
+    const zs = [];
+    for (let n = 0; n < runs; n++) {
+      Object.assign(r, { x: d.x, z: d.z - 2, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+      for (let k = 0; k < 60; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false }, []);
+      zs.push(r.z);
+    }
+    return { r, d, zs };
   };
-  const real = tryDoor(true);
+  const real = tryDoor(true, 3);
+  assert.ok(real.zs[0] < real.d.z && real.zs[1] < real.d.z, `quebrou antes da 3ª batida: ${real.zs}`);
   assert.ok(real.r.z > real.d.z + 1, `passou: ${real.r.z}`);
   const fake = tryDoor(false);
   assert.ok(fake.r.z < fake.d.z, `barrou: ${fake.r.z}`);
