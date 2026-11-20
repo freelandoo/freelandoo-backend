@@ -3811,6 +3811,8 @@ const FEIRA = {
   /** 20/11 (o Alex: "essas barreiras móveis precisam atravessar as duas esteiras"): a prensa vai e volta de uma
    *  beira à outra das DUAS esteiras (centro 0, ±4,4: o bloco de 3,2 m chega a ±6). Antes: só na de ida (−3 ± 3). */
   pressAx: 4.4,
+  /** força das duas esteiras para trás (× GINCANA.belt): 0,55 = 3,4 m/s contra 8,2 de corrida; 0,7 já quase ninguém passa */
+  backF: 0.55,
   ham: { R: 1.25, amp: 1.05 },
   /** martelos do meio: [z, fase] */
   hamMid: [[99, 4.8]]                      ,
@@ -3831,8 +3833,6 @@ const FEIRA = {
   beltPunch: { reach: 6.8, period: 3.0 },
   /** o patamar antes do corredor: balança que tomba de lado (mola fraca = sensível) */
   tilt: { max: 0.3, k: 0.28, slip: 9 },
-  /** "bolas caindo e quicando" no chão dos martelos */
-  flat: { every: 1.25, v: 6, hop: 1.5, hopT: 0.6, bounce: 2.4 },
 }         
 
 function courseFeira()         {
@@ -3845,16 +3845,16 @@ function courseFeira()         {
   k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: FEIRA.melons.every, v: FEIRA.melons.v, R: FEIRA.melons.R, zEnd: 12 }
   k.box(0, 44, 7, 4, 6, 7, 1, 0, 1.4, Y)
   // ── 2. esteiras de mão dupla com prensas ──
-  const fwd = k.box(-3, 63, 3, 15, 2, 0, 2, 0, 1.4, Y)
-  k.pads[fwd].bz = GINCANA.belt
+  // 20/11, 2ª (o Alex: "as esteiras são tudo pra trás, atrasando e não avançando"): as DUAS puxam para trás, com
+  // FEIRA.backF da força (as duas na força cheia, com as prensas, ninguém passa: 0 robôs classificados)
+  const fwd = k.box(-3, 63, 3, 15, 3, 0, 2, 0, 1.4, Y)
+  k.pads[fwd].bz = -GINCANA.belt * FEIRA.backF
   const back = k.box(3, 63, 3, 15, 3, 0, 2, 0, 1.4, Y)
-  k.pads[back].bz = -GINCANA.belt
+  k.pads[back].bz = -GINCANA.belt * FEIRA.backF
   FEIRA.press.forEach(([z, w], i) => k.pusher(0, z, 1.6, 0.9, 2.2, FEIRA.pressAx, 0, w, i * 1.3, Y))
   k.box(0, 82, 7, 4, 6, 7, 2, 0, 1.4, Y)
-  // ── 3. martelos ── (20/11: com bolas caindo do alto e quicando — balls.flat)
-  const hamFloor = k.box(0, 99, 6, 13, 6, 7, 3, 0, 1.4, Y)
-  k.pads[hamFloor].bb = 1
-  if (k.balls) k.balls.flat = { ...FEIRA.flat }
+  // ── 3. martelos ── (20/11, 2ª — o Alex: "essas melancias não aqui, são na rampa": sem bolas quicando no chão dos martelos)
+  k.box(0, 99, 6, 13, 6, 7, 3, 0, 1.4, Y)
   const ham = (x        , z        , ph        ) => k.swing(x, z, Y + 9, 7.4, FEIRA.ham.R, FEIRA.ham.amp, 2.2, ph)
   ham(-3, 92, 0)
   ham(3, 92, 2.4)
