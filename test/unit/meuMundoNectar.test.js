@@ -44,3 +44,17 @@ test("coletor de néctar: liberado a partir do nível 5 do treinador", () => {
   for (const l of [0, 1, 4, NaN, undefined]) assert.equal(N.collectorUnlocked(l), false);
   for (const l of [5, 6, 30]) assert.equal(N.collectorUnlocked(l), true);
 });
+
+test("roubo da Nívea: 10% do que carrega, entre 0,1 L e 2 L", () => {
+  assert.equal(N.theftMl(0), 0);
+  assert.equal(N.theftMl(-5), 0);
+  assert.equal(N.theftMl(50), 50, "menos de 0,1 L: leva o que houver");
+  assert.equal(N.theftMl(500), 100, "piso de 0,1 L");
+  assert.equal(N.theftMl(5000), 500);
+  assert.equal(N.theftMl(20000), 2000);
+  assert.equal(N.theftMl(90000), 2000, "teto de 2 L");
+  assert.equal(N.theftApplies("mob", false), true);
+  assert.equal(N.theftApplies("domain", false), true);
+  assert.equal(N.theftApplies("domain", true), false);
+  for (const o of ["laminas", "boxe", "hall", "god", "tutorial"]) assert.equal(N.theftApplies(o, false), false, o);
+});

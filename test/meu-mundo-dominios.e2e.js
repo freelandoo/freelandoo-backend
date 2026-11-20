@@ -34,7 +34,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_loot_first, tb_mm_domain_pact, tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_nectar_theft, tb_mm_nivea, tb_mm_nectar_wallet, tb_mm_loot_first, tb_mm_domain_pact, tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -254,9 +254,24 @@ async function main() {
 
   // abandono (abrir outra luta) não sobe o setor
   await strong(nu);
+  // o roubo da Nívea (mig 462): a conta carrega 5 L para entregar
+  const NT = require("../src/utils/meuMundoNectar");
+  const pending = async (id) => Number(((await pool.query(`SELECT pending_ml FROM tb_mm_nectar_wallet WHERE id_user = $1`, [id])).rows[0] || {}).pending_ml || 0);
+  const niveaMl = async () => Number((await pool.query(`SELECT total_ml FROM tb_mm_nivea WHERE id = 1`)).rows[0].total_ml);
+  await pool.query(`INSERT INTO tb_mm_nectar_wallet (id_user, pending_ml, earned_ml) VALUES ($1, 5000, 5000)`, [nu]);
   r = await call("fightStart", nu, { body: { origin: "domain", domain: "floresta", sector: 1 } });
   check("abrir outra luta conta a anterior como abandono", r.status === 200 && r.body.abandoned.length === 1 && r.body.abandoned[0].result.abandoned === true);
   check("abandono não abre setor", (await best(nu, "floresta")).best === 0);
+  {
+    const ab = r.body.abandoned[0];
+    check("Nívea: fugir do monstro do Domínio rouba 10% (5 L → 4,5 L)", (await pending(nu)) === 4500 && ab.deltas.nectar && ab.deltas.nectar.stolenMl === 500 && ab.deltas.nectar.pendingMl === 4500, JSON.stringify(ab.deltas.nectar));
+    const th = (await pool.query(`SELECT origin, kind, ml, pending_before FROM tb_mm_nectar_theft WHERE id_fight = $1`, [t1.ticket])).rows[0];
+    check("Nívea: a linha do extrato (uma por luta) com origem e monstro", th && th.origin === "domain" && th.kind === t1.setup.kind && th.ml === 500 && Number(th.pending_before) === 5000, JSON.stringify(th));
+    check("Nívea: o contador soma o roubo", (await niveaMl()) === 500);
+    check("Nívea: o total coletado (coletor) não muda", Number((await pool.query(`SELECT earned_ml FROM tb_mm_nectar_wallet WHERE id_user = $1`, [nu])).rows[0].earned_ml) === 5000);
+    const wv = await require("../src/services/MeuMundoNectarService").wallet(nu);
+    check("GET /nectar: contador da Nívea + extrato do roubo", wv.nivea.totalMl === 500 && wv.thefts.length === 1 && wv.thefts[0].ml === 500 && wv.thefts[0].kind === t1.setup.kind && wv.theft.maxMl === 2000, JSON.stringify({ n: wv.nivea, t: wv.thefts }));
+  }
 
   // vitória conferida: sobe o setor, recibo com o domínio
   const p1 = await play(nu, r.body.fight);
@@ -270,6 +285,7 @@ async function main() {
     const s1 = (await Dom.state(nu)).domains[0].sectors;
     check("E12: GET /domains manda a tabela de cada setor (consultável na tela)", s1.every((x) => x.loot && x.loot.table === `domain:floresta:${x.n}`) && s1[9].loot.sure.some((x) => x.id === "selo_dominio") && s1[9].loot.first.some((x) => x.id === "receita_garras_lunares") && s1[9].loot.firstDone === false && s1[7].loot.chance.some((x) => x.id === "catalisador_refino" && x.p === 0.1) && !s1[6].loot.chance.some((x) => x.id === "catalisador_refino"), JSON.stringify(s1[9].loot).slice(0, 300));
   }
+  check("Nívea: vitória não rouba nada", (await pending(nu)) === 4500 && !rec.deltas.nectar);
   const again = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames: p1.frames });
   check("reenvio = o mesmo recibo, sem subir de novo", again.replay === true && again.receipt.eventId === rec.eventId);
   const b1 = await best(nu, "floresta");
@@ -297,6 +313,12 @@ async function main() {
     check("derrota no setor 2: recibo sem progresso", fight.over && !fight.over.win && lost.receipt && lost.receipt.result.win === false && !lost.receipt.domain, JSON.stringify(lost).slice(0, 200));
     check("E12: derrota não paga a tabela do setor (no máximo a das Lâminas)", lost.receipt && qtyOf(lost.receipt, "po_de_lua") === 0 && (lost.receipt.result.loot === undefined || lost.receipt.result.loot === "fight:laminas"), JSON.stringify(lost.receipt && { loot: lost.receipt.result.loot, items: lost.receipt.items }));
     check("derrota não abre o setor 3", (await best(nu, "floresta")).best === 1);
+    // a luta da gravação falsa ficou aberta: a derrota a contou como fuga (roubo 1), e a derrota rouba de novo
+    const after1 = 4500 - NT.theftMl(4500);
+    const after2 = after1 - NT.theftMl(after1);
+    check("Nívea: derrota para o monstro rouba de novo (10% do que sobrou)", lost.receipt.deltas.nectar && lost.receipt.deltas.nectar.stolenMl === NT.theftMl(after1) && (await pending(nu)) === after2, JSON.stringify({ n: lost.receipt.deltas.nectar, p: await pending(nu) }));
+    const re = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames });
+    check("Nívea: reenvio da derrota não rouba outra vez", re.replay === true && (await pending(nu)) === after2 && (await niveaMl()) === 5000 - after2);
   }
 
   // ── setor 10: a travessia ──

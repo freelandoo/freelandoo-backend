@@ -62,4 +62,27 @@ const COLLECTOR_LEVEL = 5;
 /** O coletor está liberado neste nível do treinador? */
 const collectorUnlocked = (trainerLevel) => Number(trainerLevel) >= COLLECTOR_LEVEL;
 
-module.exports = { ML_PER_L, TOP, TABLE, mlFor, closesAt, weekToClose, isClosable, totalMl, COLLECTOR_LEVEL, collectorUnlocked };
+// O ROUBO DA NÍVEA (19/11, números aprovados pelo Alex): a Nívea controla os
+// monstros pelos cristais verdes e roxos e quer o néctar de todo mundo. Perder
+// (ou fugir) de um monstro da rua ou de um Domínio tira 10% do néctar que a
+// conta CARREGA (`pending_ml`, ainda não entregue), no mínimo 0,1 L e no
+// máximo 2 L. Com menos de 0,1 L, leva o que houver; com 0, nada. O que sai vai
+// para o contador "Néctar da Nívea". O total coletado (`earned_ml`) não muda.
+const THEFT_PCT = 0.1;
+const THEFT_MIN_ML = 100;
+const THEFT_MAX_ML = 2000;
+/** De onde o monstro rouba: a rua e os Domínios (Arena, Boxe, Hall, deus e treino não). */
+const THEFT_ORIGINS = Object.freeze(["mob", "domain"]);
+
+/** mL que a derrota tira de quem carrega `pendingMl`. */
+function theftMl(pendingMl) {
+  const p = Math.max(0, Math.floor(Number(pendingMl) || 0));
+  if (p <= 0) return 0;
+  const cut = Math.min(THEFT_MAX_ML, Math.max(THEFT_MIN_ML, Math.round(p * THEFT_PCT)));
+  return Math.min(p, cut);
+}
+
+/** A derrota nesta origem rouba néctar? */
+const theftApplies = (origin, win) => !win && THEFT_ORIGINS.includes(origin);
+
+module.exports = { ML_PER_L, TOP, TABLE, mlFor, closesAt, weekToClose, isClosable, totalMl, COLLECTOR_LEVEL, collectorUnlocked, THEFT_PCT, THEFT_MIN_ML, THEFT_MAX_ML, THEFT_ORIGINS, theftMl, theftApplies };

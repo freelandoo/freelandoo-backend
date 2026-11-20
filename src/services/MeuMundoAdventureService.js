@@ -22,6 +22,8 @@ const FightSim = require("../utils/meuMundoFight");
 const TrainerService = require("./MeuMundoTrainerService");
 const Scores = require("../utils/meuMundoScores");
 const ScoreStore = require("../storages/MeuMundoScoreStorage");
+const Nectar = require("../utils/meuMundoNectar");
+const NectarStore = require("../storages/MeuMundoNectarStorage");
 const { clanOfBody, usesHammer, usesBow, usesGun } = require("../utils/meuMundoClans");
 /** Require tardio: o serviço de equipamento também usa o withLife. */
 const GearService = () => require("./MeuMundoGearService");
@@ -172,6 +174,10 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
   adv.losses_day = day;
   await Store.saveAdventure(c, idUser, { xp: adv.xp, level: adv.level, losses: adv.losses, lossesDay: adv.losses_day });
   await Store.closeFight(c, fight.id_fight);
+  // O roubo da Nívea (mig 462): perder ou fugir de um monstro da rua/Domínio tira néctar da carteira
+  const stolen = Nectar.theftApplies(origin, verdict.win && !verdict.abandoned)
+    ? await NectarStore.steal(c, { idUser, idFight: fight.id_fight, origin, kind: setup.kind }, Nectar.theftMl)
+    : null;
   const rec = await Store.insertReceipt(c, {
     idUser,
     idCharacter: ctx.row.id_character,
@@ -208,6 +214,7 @@ async function settleFight(s, ctx, idUser, fight, verdict) {
       vitals: { energy: r2(s.energy - before.energy), stress: r2(s.stress - before.stress) },
       cost,
       coins: coins + drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined,
+      nectar: stolen ? { stolenMl: stolen.ml, pendingMl: stolen.pendingMl } : undefined,
     },
     items: drops,
   });

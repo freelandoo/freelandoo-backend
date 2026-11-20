@@ -90,6 +90,45 @@ class MeuMundoNectarStorage {
     return { pendingMl: w ? Number(w.pending_ml) : 0, earnedMl: w ? Number(w.earned_ml) : 0 };
   }
 
+  /**
+   * O roubo da Nívea (mig 462): tira `theftMl(pending)` da carteira, grava o
+   * recibo (um por luta) e soma no contador. Devolve `{ ml, pendingMl }` só se
+   * o roubo for NOVO e tirar alguma coisa; senão null.
+   */
+  static async steal(c, { idUser, idFight, origin, kind }, theftMl) {
+    const w = await c.query(`SELECT pending_ml FROM tb_mm_nectar_wallet WHERE id_user = $1 FOR UPDATE`, [idUser]);
+    const before = w.rows[0] ? Number(w.rows[0].pending_ml) : 0;
+    const ml = theftMl(before);
+    if (ml <= 0) return null;
+    const r = await c.query(
+      `INSERT INTO tb_mm_nectar_theft (id_fight, id_user, origin, kind, ml, pending_before)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id_fight) DO NOTHING
+       RETURNING id_fight`,
+      [idFight, idUser, origin, kind, ml, before]
+    );
+    if (r.rowCount === 0) return null;
+    const u = await c.query(`UPDATE tb_mm_nectar_wallet SET pending_ml = pending_ml - $2, updated_at = NOW() WHERE id_user = $1 RETURNING pending_ml`, [idUser, ml]);
+    await c.query(
+      `INSERT INTO tb_mm_nivea (id, total_ml, updated_at) VALUES (1, $1, NOW())
+       ON CONFLICT (id) DO UPDATE SET total_ml = tb_mm_nivea.total_ml + EXCLUDED.total_ml, updated_at = NOW()`,
+      [ml]
+    );
+    return { ml, pendingMl: Number(u.rows[0].pending_ml) };
+  }
+
+  /** As últimas linhas de roubo da conta (o extrato) — as mais novas primeiro. */
+  static async thefts(db, idUser, limit = 10) {
+    const r = await db.query(`SELECT kind, origin, ml, created_at FROM tb_mm_nectar_theft WHERE id_user = $1 ORDER BY created_at DESC LIMIT $2`, [idUser, limit]);
+    return r.rows.map((x) => ({ kind: x.kind, origin: x.origin, ml: Number(x.ml), at: new Date(x.created_at).toISOString() }));
+  }
+
+  /** O contador "Néctar da Nívea" (tudo o que os monstros já roubaram). */
+  static async nivea(db) {
+    const r = await db.query(`SELECT total_ml FROM tb_mm_nivea WHERE id = 1`);
+    return { totalMl: r.rows[0] ? Number(r.rows[0].total_ml) : 0 };
+  }
+
   /** Os prêmios de uma conta numa semana, na ordem dos jogos. */
   static async awards(db, idUser, week) {
     const r = await db.query(`SELECT game, position, value, ml, pact_ml FROM tb_mm_nectar_award WHERE id_user = $1 AND week = $2`, [idUser, week]);

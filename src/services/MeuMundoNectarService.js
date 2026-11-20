@@ -120,7 +120,7 @@ class MeuMundoNectarService {
   static async wallet(idUser, now = Date.now()) {
     const current = S.weekOf(now);
     const last = S.previousWeek(current);
-    const [w, closed, awards, pacts, trainer] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last), PactStore.active(pool, now), TrainerStore.get(pool, idUser)]);
+    const [w, closed, awards, pacts, trainer, thefts, nivea] = await Promise.all([Store.wallet(pool, idUser), Store.weekClosed(pool, last), Store.awards(pool, idUser, last), PactStore.active(pool, now), TrainerStore.get(pool, idUser), Store.thefts(pool, idUser), Store.nivea(pool)]);
     const level = Trainer.trainerLevelOf(Number(trainer.xp) || 0).level;
     return {
       pendingMl: w.pendingMl,
@@ -134,6 +134,10 @@ class MeuMundoNectarService {
       pactBonus: Pact.PACT_BONUS,
       // o coletor de néctar (nível 5): a tela de equipar mostra `earnedMl`, sem limite
       collector: { unlocked: N.collectorUnlocked(level), level: N.COLLECTOR_LEVEL },
+      // o roubo da Nívea (mig 462): o contador de tudo o que os monstros levaram + o extrato da conta
+      nivea,
+      thefts,
+      theft: { pct: N.THEFT_PCT, minMl: N.THEFT_MIN_ML, maxMl: N.THEFT_MAX_ML },
     };
   }
 }
