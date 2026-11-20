@@ -582,40 +582,45 @@ test("gincana 3 — Caça às Engrenagens: pega, soma, some e volta; a sala cont
   assert.equal(st.filter((x) => x.q).length <= server.quota, true);
 });
 
-test("gincana 3 — Rolo de Gelo: buraco passa e derruba (fora); o chão anda de lado; a sala vê a queda", () => {
+test("gincana — Tubos de Gelo (20/11): corrida sobre 20 tubos que giram; o chão anda de lado; o buraco derruba e volta ao posto", () => {
+  const B = G.COURSE_BASE.gelo;
+  assert.equal(B.mode, "race");
+  assert.equal(B.drums.length, G.GELO.n);
+  assert.ok(G.GELO.n >= 20, "menos de 20 tubos");
+  assert.ok(G.COURSES.gelo.drums.length >= 2 * G.GELO.n, "a corrida não tem a 2ª volta");
+  // gira sempre igual (sem a aceleração do Rolo) e cada um para um lado
+  for (const d of B.drums) for (const ring of d.rings) assert.equal(G.drumSpeed(ring, 0), G.drumSpeed(ring, 90));
+  assert.ok(B.drums.some((d) => d.rings[0].w > 0) && B.drums.some((d) => d.rings[0].w < 0));
+  // os primeiros não têm buraco; do 5º em diante, uma metade de cada tubo tem
+  assert.ok(B.drums.slice(0, G.GELO.holeFrom).every((d) => d.rings.every((ring) => !ring.holes.length)));
+  assert.ok(B.drums.slice(G.GELO.holeFrom).every((d) => d.rings.some((ring) => ring.holes.length)));
+  // nenhum tubo é mais de 0,4 m mais alto que o anterior (o vão de 2 m fecha no pulo)
+  for (let i = 1; i < B.drums.length; i++) assert.ok(B.drums[i].y - B.drums[i - 1].y <= 0.4 + 1e-9, `tubo ${i} alto demais`);
+  // parado no topo do 1º tubo: o chão leva para o lado do giro
   const C = G.COURSES.gelo;
-  assert.equal(C.mode, "survive");
   const d = C.drums[0];
-  assert.ok(d && d.rings.length >= 5);
-  // o topo do anel tem chão a maior parte do tempo e buraco às vezes
-  let holes = 0;
-  for (let t = 0; t < 60; t += 0.25) if (!G.drumAt(d, 0, 2.5, t)) holes++;
-  assert.ok(holes > 4 && holes < 120, `buracos no topo: ${holes}`);
-  // parado no topo do anel 0: o chão leva para o lado
+  const zc = d.z0 + 1.5;
+  const top = d.y + d.R;
   const { race, r } = solo("gelo");
-  while (race.t < 2) race.step();
-  let t1 = race.t;
-  while (!G.drumAt(d, 0, 2.5, t1) || !G.drumAt(d, 0, 2.5, t1 + 1.2)) t1 += 0.1;
-  while (race.t < t1) race.step();
-  Object.assign(r, { x: 0, z: 2.5, y: G.ROLL_TOP, ground: true, vx: 0, vz: 0, mode: 0 });
-  race.step();
+  while (race.t < 1) race.step();
+  Object.assign(r, { x: 0, z: zc, y: top, ground: true, vx: 0, vz: 0, mode: 0 });
+  race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
   const x0 = r.x;
-  for (let k = 0; k < 40; k++) race.step();
-  assert.ok(Math.sign(r.x - x0) === Math.sign(d.rings[0].w) && Math.abs(r.x - x0) > 0.8, `arrastou ${r.x - x0}`);
-  // em cima do buraco: cai e fica fora
-  let t2 = race.t;
-  while (G.drumAt(d, 0, 7.5, t2)) t2 += 0.05;
-  while (race.t < t2 - 0.02) race.step();
-  Object.assign(r, { x: 0, z: 7.5, y: G.ROLL_TOP, ground: true, vx: 0, vz: 0, mode: 0 });
-  for (let k = 0; k < 150 && r.out < 0; k++) race.step();
-  assert.ok(r.out >= 0, "caiu no buraco e ficou fora");
-  // a sala: pose na água = fora
-  const server = new G.GincanaRace(5, [{ slot: 0, ctl: "remote" }, { slot: 1, ctl: "remote" }], 0, "gelo");
-  while (server.t < 3) server.step();
-  server.setRemote(1, { x: 0, y: -2, z: 9, f: 0, a: G.ANIM.WATER, cp: 0, fin: -1, g: -1 });
-  server.step();
-  assert.ok(server.runner(1).out >= 0);
-  assert.equal(server.alive(), 1);
+  for (let k = 0; k < 30; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(Math.sign(r.x - x0) === Math.sign(d.rings[0].w) && Math.abs(r.x - x0) > 0.6, `arrastou ${r.x - x0}`);
+  // em cima do buraco de um tubo furado: cai no mar e volta ao posto (corrida: não sai da prova)
+  const hi = C.drums.findIndex((q) => q.rings.some((ring) => ring.holes.length));
+  const h = C.drums[hi];
+  const ri = h.rings.findIndex((ring) => ring.holes.length);
+  const hz = h.z0 + h.rings.slice(0, ri).reduce((a, ring) => a + ring.len, 0) + h.rings[ri].len / 2;
+  let t2 = race.t + 0.5;
+  while (G.drumAt(h, 0, hz, t2)) t2 += 0.02;
+  while (race.t < t2 - 0.02) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  Object.assign(r, { x: 0, z: hz, y: h.y + h.R, ground: true, vx: 0, vz: 0, mode: 0 });
+  const ev = [];
+  for (let k = 0; k < 150; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, ev);
+  assert.ok(ev.some((e) => e.type === "splash" && e.slot === 0), "não caiu no buraco");
+  assert.ok(r.out < 0, "na corrida quem cai volta ao posto");
 });
 
 test("gincana 3 — Relógio da Praça: símbolos pela semente, só os do chamado ficam; quem está no errado cai e sai", () => {
