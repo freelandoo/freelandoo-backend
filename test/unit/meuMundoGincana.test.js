@@ -82,7 +82,7 @@ test("gincana — 22 fases; cada uma fecha: postos em ordem com chão, chegada n
   // a da cidade (G3-11): Portas da Prefeitura — 5 fileiras de 5 portas, carrossel de duas barras, pêndulos
   assert.equal(G.COURSE_BASE.cidade.doors.length, 25);
   // 20/11 (dificuldade): menos portas abertas, carrossel com a barra alta ao contrário, socos na ponte
-  assert.deepEqual(G.COURSE_BASE.cidade.doorOpen, [2, 2, 1, 1, 1]);
+  assert.deepEqual(G.COURSE_BASE.cidade.doorOpen, [1, 1, 1, 1, 1]);
   assert.equal(G.COURSE_BASE.cidade.sweepers.length, 2);
   assert.ok(G.COURSE_BASE.cidade.sweepers[1].y - G.DECK > 1 && G.COURSE_BASE.cidade.sweepers[1].w < 0, "a alta gira ao contrário");
   assert.equal(G.COURSE_BASE.cidade.gloves.length, 2);
@@ -245,7 +245,8 @@ test("gincana 2.0 — porta: a falsa segura, a de verdade abre e deixa passar", 
   const r = G.newRunner(C, 0);
   const open = w.open;
   const row0 = C.doors.map((d, i) => ({ d, i })).filter((x) => x.d.row === 0);
-  assert.equal(row0.filter((x) => open[x.i]).length, 2, "2 de 5 abrem");
+  // 20/11: mesmo pedindo 2, abre uma só por fileira
+  assert.equal(row0.filter((x) => open[x.i]).length, 1, "1 de 5 abre");
   const race = { world: w };
   const runInto = (door) => {
     Object.assign(r, { x: door.x, z: door.z - 3, y: G.DECK, ground: true, vx: 0, vz: 0, mode: 0, cp: 0 });
@@ -262,7 +263,7 @@ test("gincana 2.0 — porta: a falsa segura, a de verdade abre e deixa passar", 
   assert.ok(runInto(fake.d) < fake.d.z, "a falsa segurou");
   // a semente muda quais abrem
   const other = G.doorsOpen(C, 99);
-  assert.equal(other.reduce((a, v) => a + v, 0), C.doorOpen.reduce((a, v) => a + v, 0));
+  assert.equal(other.reduce((a, v) => a + v, 0), C.doorOpen.length);
 });
 
 test("gincana 2.0 — esteira arrasta e plataforma que anda leva quem está em cima", () => {
@@ -1139,5 +1140,24 @@ test("gincana — toda corrida tem no mínimo o dobro do percurso da fase desenh
     const route = C.route(() => 0.5);
     assert.ok(route[route.length - 1].z > C.finishZ, ph);
     assert.ok(route.every((p, i) => i === 0 || p.z >= route[i - 1].z - 6), `${ph}: a rota volta para trás`);
+  }
+});
+
+test("gincana — portas: uma aberta por fileira e nunca na frente da aberta da fileira anterior (toda fase, toda volta)", () => {
+  for (const ph of G.GINCANA_PHASES) {
+    const C = G.COURSES[ph];
+    if (!C.doors.length) continue;
+    const zOf = (row) => C.doors.find((d) => d.row === row).z;
+    const rows = [...new Set(C.doors.map((d) => d.row))].sort((a, b) => zOf(a) - zOf(b));
+    for (let seed = 1; seed <= 200; seed++) {
+      const open = G.doorsOpen(C, seed);
+      let px = null;
+      for (const row of rows) {
+        const op = C.doors.filter((d, i) => d.row === row && open[i]);
+        assert.equal(op.length, 1, `${ph} semente ${seed} fileira ${row}: ${op.length} abertas`);
+        if (px !== null) assert.ok(Math.abs(op[0].x - px) > 1e-6, `${ph} semente ${seed} fileira ${row}: na frente da anterior`);
+        px = op[0].x;
+      }
+    }
   }
 });

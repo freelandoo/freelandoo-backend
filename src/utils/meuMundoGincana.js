@@ -1017,19 +1017,31 @@ function stepTile(c        , tiles              , real            , i        , t
   if (tiles[i] < 0 || t - tiles[i] >= c.tileTime.warn + c.tileTime.gone) tiles[i] = t
 }
 
+/**
+ * 20/11 (pedido do Alex): em toda fileira abre UMA porta só (`doorOpen` > 1 não vale mais) e nunca na mesma
+ * posição da porta aberta da fileira anterior (a de z logo antes) — quem acertou uma não acerta a próxima de graça.
+ */
 function doorsOpen(c        , seed        )             {
   const out = new Uint8Array(c.doors.length)
-  for (let row = 0; row < c.doorOpen.length; row++) {
+  const rowZ = (row        ) => c.doors.find((d) => d.row === row)?.z ?? 0
+  const order = c.doorOpen.map((_, row) => row).sort((a, b) => rowZ(a) - rowZ(b))
+  let prev = -1
+  for (const row of order) {
+    if (c.doorOpen[row] <= 0) continue
     const idx           = []
     for (let i = 0; i < c.doors.length; i++) if (c.doors[i].row === row) idx.push(i)
-    // embaralha pela semente e abre as primeiras
+    // embaralha pela semente e abre a primeira que não fica na frente da aberta da fileira anterior
     for (let k = idx.length - 1; k > 0; k--) {
       const j = courseHash(seed ^ 0x5bd1e995, row * 31 + k) % (k + 1)
       const tmp = idx[k]
       idx[k] = idx[j]
       idx[j] = tmp
     }
-    for (let k = 0; k < Math.min(c.doorOpen[row], idx.length); k++) out[idx[k]] = 1
+    const p = prev >= 0 ? c.doors[prev] : null
+    const pick = idx.find((i) => !p || Math.abs(c.doors[i].x - p.x) >= Math.min(c.doors[i].hw, p.hw)) ?? idx[0]
+    if (pick === undefined) continue
+    out[pick] = 1
+    prev = pick
   }
   return out
 }
@@ -1458,7 +1470,8 @@ function routeOf(fill                                                           
  * barris a cada 0,95 s a 7,5 m/s (R 1,2), ponte sem nada.
  */
 const CIDADE = {
-  rows1: [[26, 2], [38, 2], [50, 1]]                      ,
+  /** 20/11: uma porta aberta por fileira, nunca na frente da aberta da anterior (doorsOpen) */
+  rows1: [[26, 1], [38, 1], [50, 1]]                      ,
   open2: 1,
   /** socos da ponte: [x da base, z, fase] */
   punches: [[-5.6, 67.5, 0], [5.6, 72.5, 1.2]]                              ,
