@@ -107,6 +107,25 @@ test("gincana — em todas as fases 8 computadores classificam a vaga (e a mesma
         assert.ok(st.slice(race.alive()).every((r, k, a) => r.out >= 0 && (k === 0 || a[k - 1].out >= r.out)), "fora do último ao primeiro");
         continue;
       }
+      if (race.course.floors) {
+        // Fábrica em andares (20/11): 6 sobem do 1º, 4 do 2º, 2 do 3º; sempre ficam 2 para trás em cada andar
+        const outs = [];
+        const ev = [];
+        while (!race.over()) {
+          race.step(undefined, ev);
+          for (const e of ev) if (e.type === "out") outs.push(race.runner(e.slot).cp);
+          ev.length = 0;
+        }
+        assert.ok(race.t < race.limit(), `${ph} semente ${seed}: acabou no tempo`);
+        assert.equal(race.quota, 2, ph);
+        assert.equal(race.alive(), 2);
+        const top = race.course.floors.length - 1;
+        const st = race.standings();
+        assert.ok(st.slice(0, 2).every((r) => r.q && race.runner(r.slot).cp === top), "os 2 de cima classificam");
+        assert.equal(outs.length, 6);
+        assert.equal(outs.filter((c) => c === 0).length, 2, `no 1º andar ficaram ${outs.filter((c) => c === 0).length}`);
+        continue;
+      }
       if (race.course.mode === "collect" || race.course.mode === "zone") {
         // coleta vai até o tempo; classifica a metade de cima de quem pegou alguma
         while (!race.over()) race.step();
@@ -580,6 +599,30 @@ test("gincana 3 — Caça às Engrenagens: pega, soma, some e volta; a sala cont
   assert.equal(st[0].slot, 0);
   assert.ok(st[0].q && !st[1].q, "quem não pegou nenhuma não classifica");
   assert.equal(st.filter((x) => x.q).length <= server.quota, true);
+});
+
+test("gincana — Fábrica em andares (20/11): 10 engrenagens fazem do miolo um pula-pula para o andar de cima", () => {
+  const C = G.COURSES.fabrica;
+  const F = C.floors;
+  assert.ok(F && F.length === 4, "3 andares de engrenagens e o topo");
+  for (let i = 1; i < F.length; i++) assert.ok(F[i].y > F[i - 1].y + 5 && F[i].z > F[i - 1].z, "o andar de cima fica em cima e à frente");
+  assert.deepEqual(F.slice(0, 3).map((f) => f.goal), [10, 20, 30]);
+  // mais obstáculos em cima
+  const at = (f) => C.sweepers.filter((s) => Math.abs(s.z - f.z) < 13).length + C.pendulums.filter((s) => Math.abs(s.z - f.z) < 13).length + C.gloves.filter((s) => Math.abs(s.z - f.z) < 13).length;
+  assert.ok(at(F[0]) < at(F[1]) && at(F[1]) < at(F[2]), "não tem mais obstáculo em cima");
+  const { race, r } = solo("fabrica");
+  while (race.t < 0.5) race.step();
+  const onTop = (pts) => {
+    Object.assign(r, { x: 0, z: F[0].z, y: F[0].y + 1.5, vx: 0, vy: 0, vz: 0, ground: false, pts, cp: 0, mode: 0 });
+    for (let k = 0; k < 150 && r.cp === 0 && r.y > G.DECK - 3; k++) race.step();
+    return r;
+  };
+  // sem as 10: o miolo é só plataforma
+  assert.equal(onTop(6).cp, 0, "pulou sem as engrenagens"); // (6 + a dourada do miolo = 9)
+  // com as 10: vai para o andar de cima
+  const up = onTop(10);
+  assert.equal(up.cp, 1, `não chegou no andar de cima: z ${up.z.toFixed(1)} y ${up.y.toFixed(1)}`);
+  assert.ok(Math.abs(up.y - F[1].y) < 0.3);
 });
 
 test("gincana — Tubos de Gelo (20/11): corrida sobre 20 tubos que giram; o chão anda de lado; o buraco derruba e volta ao posto", () => {

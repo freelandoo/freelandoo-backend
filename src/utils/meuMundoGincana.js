@@ -371,6 +371,18 @@ function memUp(m        , seed        , i        , t        ) {
                    
  
 
+/** Andar da Fábrica: centro e altura do chão, raio do miolo, engrenagens para subir e o pulo. */
+                        
+           
+           
+           
+           
+              
+             
+            
+            
+ 
+
 /** Esteira com bolas: a 1ª rampa (com o canhão) e, com `balls.all`, as outras rampas que puxam para trás. */
                            
            
@@ -738,6 +750,12 @@ function plankTop(P       , x        , t        ) {
                                                                                                                            
      
                   
+     
+                                                                                                                  
+                                                                                                                
+                                                                                             
+     
+                        
              
                
                      
@@ -922,6 +940,7 @@ class CourseKit {
                    
                    
                      
+                    
    )         {
     if ((o.mode ?? "race") === "race") this.faster(GINCANA.tempo)
     return {
@@ -941,6 +960,7 @@ class CourseKit {
       memory: o.memory ?? null,
       crown: o.crown ?? false,
       doorHits: o.doorHits ?? 1,
+      floors: o.floors ?? null,
       pads: this.pads,
       posts: this.posts,
       sweepers: this.sweepers,
@@ -2914,47 +2934,81 @@ function courseAltoForno()         {
 // ═══ fabrica — Fábrica ═══════════════════════════════════════════════════════
 
 /**
- * Gincana 3 (2026-11-18): CAÇA ÀS ENGRENAGENS — coleta na Fábrica. Chão de
- * 24 m sobre o óleo com duas esteiras (em sentidos contrários), duas prensas
- * que deslizam de lado e a plataforma do meio (1 m acima: pule ou suba na
- * beira). Engrenagens aparecem espalhadas e voltam 7 s depois de pegas; a
- * DOURADA (no alto do meio) vale 3. Quem cai no óleo volta ao meio (só perde
- * tempo). Em 75 s, classificam os que pegaram mais (metade).
+ * 20/11 (pedido do Alex): "pegou 10 o centro vira um pula-pula e te manda pra uma fase parecida em cima com mais
+ * obstáculos, aí coleta 10 e vai subindo; 2 sempre ficam para trás, os dois últimos estão fora". Andares em escada
+ * (cada um `D` m à frente e `H` m acima), três de engrenagens e o topo; cada andar pede mais `goal`.
  */
+const FABRICA = {
+  D: 30,
+  H: 8,
+  goal: 10,
+  gearFloors: 3,
+  /** pulo do pula-pula: sobe ~11 m e cai ~6 m dentro do andar de cima */
+  vy: 25.7,
+  vz: 17.5,
+  r: 2.6,
+}         
+
 function courseFabrica()         {
+  const K = FABRICA
   const k = new CourseKit()
-  k.box(0, 0, 12, 12, 2, 1, 1, 0, 1.6)
-  // esteiras (um tico acima do chão para valerem): a da esquerda leva para a frente, a da direita para trás
-  const beltL = k.box(-8, 0, 1.6, 12, 0, 1, 1, 0, 1.6, DECK + 0.05)
-  k.pads[beltL].bz = GINCANA.belt
-  const beltR = k.box(8, 0, 1.6, 12, 0, 1, 1, 0, 1.6, DECK + 0.05)
-  k.pads[beltR].bz = -GINCANA.belt
-  // plataforma do meio (a dourada fica nela)
-  k.disc(0, 0, 2.6, 4, 1, 1, DECK + 1)
-  // prensas que deslizam de lado
-  k.pusher(0, 7, 1.3, 1.3, 1.8, 8.5, 0, 0.85, 0)
-  k.pusher(0, -7, 1.3, 1.3, 1.8, 8.5, 0, 0.85, Math.PI)
-  // engrenagens: anel no chão, as das esteiras e a dourada
+  const floors                                                                                                      = []
   let n = 0
-  const add = (x        , z        , y        , v        , back        ) => k.gem(x, z, y + 0.9, v, 1 + (n++ % 6) * 0.6, back)
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + Math.PI / 8
-    add(Math.sin(a) * 5, Math.cos(a) * 5, DECK, 1, 7)
+  for (let f = 0; f <= K.gearFloors; f++) {
+    const z = f * K.D
+    const y = DECK + f * K.H
+    if (f === K.gearFloors) {
+      // o topo: o pódio de quem subiu tudo
+      const top = k.box(0, z, 8, 8, 2, 1, 1, 0, 1.6, y)
+      floors.push({ x: 0, z, y, r: 0, goal: 1e9, pad: top, vy: 0, vz: 0 })
+      break
+    }
+    k.box(0, z, 12, 12, 2, 1, 1, 0, 1.6, y)
+    // esteiras (um tico acima do chão para valerem): a da esquerda leva para a frente, a da direita para trás; mais
+    // fortes a cada andar
+    const bf = 1 + f * 0.2
+    const beltL = k.box(-8, z, 1.6, 12, 0, 1, 1, 0, 1.6, y + 0.05)
+    k.pads[beltL].bz = GINCANA.belt * bf
+    const beltR = k.box(8, z, 1.6, 12, 0, 1, 1, 0, 1.6, y + 0.05)
+    k.pads[beltR].bz = -GINCANA.belt * bf
+    // o miolo: plataforma do meio (a dourada fica nela) — o pula-pula de quem tem as engrenagens do andar
+    const pad = k.disc(0, z, K.r, 4, 1, 1, y + 1)
+    floors.push({ x: 0, z, y, r: K.r, goal: K.goal * (f + 1), pad, vy: K.vy, vz: K.vz })
+    // prensas que deslizam de lado (mais rápidas em cima)
+    const pw = 0.85 * (1 + f * 0.25)
+    k.pusher(0, z + 7, 1.3, 1.3, 1.8, 8.5, 0, pw, 0, y)
+    k.pusher(0, z - 7, 1.3, 1.3, 1.8, 8.5, 0, pw, Math.PI, y)
+    // 2º andar em diante: barra baixa girando em volta do miolo (pule) — no 3º, mais rápida e com martelos
+    if (f >= 1) k.sweep(0, z, y + 0.55, 7.2, 0.35, f === 1 ? 1.1 : -1.5, 0, true)
+    if (f >= 2) {
+      k.swing(-4.5, z + 4.5, y + 8, 6.6, 0.9, 0.9, 1.9, 0)
+      k.swing(4.5, z - 4.5, y + 8, 6.6, 0.9, 0.9, 1.9, 1.6)
+      k.glove(-12.6, z + 2.5, y + 1, 1, 5.5, 1.0, 2.4, 0)
+      k.glove(12.6, z - 2.5, y + 1, -1, 5.5, 1.0, 2.4, 1.2)
+    }
+    // engrenagens: anel no chão, as dos cantos, as das esteiras e a dourada no miolo
+    const add = (x        , zz        , yy        , v        , back        ) => k.gem(x, zz, yy + 0.9, v, 1 + (n++ % 6) * 0.6, back)
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8
+      add(Math.sin(a) * 5, z + Math.cos(a) * 5, y, 1, 7)
+    }
+    for (const [x, dz] of [[-4, 9.5], [4, -9.5], [-4, -9.5], [4, 9.5]]                      ) add(x, z + dz, y, 1, 7)
+    for (const dz of [-8, 0, 8]) {
+      add(-8, z + dz, y + 0.05, 1, 7)
+      add(8, z + dz, y + 0.05, 1, 7)
+    }
+    add(0, z, y + 1, 3, 12)
   }
-  for (const [x, z] of [[-4, 9.5], [4, -9.5], [-4, -9.5], [4, 9.5]]                      ) add(x, z, DECK, 1, 7)
-  for (const z of [-8, 0, 8]) {
-    add(-8, z, DECK + 0.05, 1, 7)
-    add(8, z, DECK + 0.05, 1, 7)
-  }
-  add(0, 0, DECK + 1, 3, 12)
   return k.done({
     id: "fabrica",
     mode: "collect",
-    qualify: 0.5,
-    limit: 75,
-    checkpoints: [{ x: 0, z: -3.6, y: DECK, w: 5 }],
-    finishZ: 40,
-    finishY: 90,
+    // 8 na largada: 6 sobem do 1º andar, 4 do 2º, 2 do 3º (classificam)
+    qualify: 0.25,
+    limit: 240,
+    floors,
+    checkpoints: floors.map((f, i) => ({ x: 0, z: i === 0 ? -3.6 : f.z - 8, y: f.y, w: 5 })),
+    finishZ: 1e6,
+    finishY: 1e6,
     sections: [],
     minFinish: 1e6,
     route: () => [{ x: 0, z: 0 }],
@@ -3907,6 +3961,8 @@ const MODE = {
                   
                                                                    
               
+                                                                                           
+             
                                                    
              
              
@@ -4017,6 +4073,7 @@ function newRunner(course        , slot        )         {
     fin: -1,
     out: -1,
     pts: 0,
+    fly: 0,
     launch: GINCANA.jumpV,
     jumpBuf: 0,
     boost: 0,
@@ -4702,7 +4759,8 @@ function stepRunner(b        , it           , w          , out                  
     if (b.ground && b.pad >= 0) run *= C.pads[b.pad].sl
     const tx = mx * run
     const tz = mz * run
-    const a = T.accel * (b.boost > 0 ? 1.3 : 1) * (b.ground ? b.fric : T.airControl) * dt
+    if (b.fly > 0) b.fly = b.ground ? 0 : b.fly - dt
+    const a = b.fly > 0 ? 0 : T.accel * (b.boost > 0 ? 1.3 : 1) * (b.ground ? b.fric : T.airControl) * dt
     const dvx = tx - b.vx
     const dvz = tz - b.vz
     const dl = Math.hypot(dvx, dvz)
@@ -4806,6 +4864,20 @@ function stepRunner(b        , it           , w          , out                  
       b.air = T.coyote
       b.pad = -1
       if (b.mode === MODE.SLIDE) b.mode = MODE.RUN
+      out?.push({ type: "bounce", slot: b.slot })
+    }
+    // Fábrica: com as engrenagens do andar, o miolo vira pula-pula para o andar de cima
+    const F = C.floors
+    if (F && b.cp < F.length - 1 && g.pad === F[b.cp].pad && b.pts >= F[b.cp].goal && b.mode === MODE.RUN) {
+      const f = F[b.cp]
+      b.vy = f.vy
+      b.launch = f.vy
+      b.vz = f.vz
+      b.vx = (f.x - b.x) * 0.6
+      b.fly = 1.15
+      b.ground = false
+      b.air = T.coyote
+      b.pad = -1
       out?.push({ type: "bounce", slot: b.slot })
     }
   } else if (wasGround && b.vy <= 0 && g.y > -Infinity && b.y - g.y <= 0.3) {
@@ -5255,11 +5327,30 @@ function arenaIntent(br          , b        , w          , it           )       
     }
   }
   // Caça às Engrenagens: a engrenagem que vale mais pela distância (a dourada atrai); sobe na plataforma pulando
-  if (C.gems.length) {
+  // Fábrica em andares: com as engrenagens do andar, vai para o pula-pula; voando, mira o andar de cima
+  const FL = C.floors
+  const fl = FL ? FL[Math.min(b.cp, FL.length - 1)] : null
+  const flUp = !!FL && !!fl && b.cp < FL.length - 1 && b.pts >= fl.goal
+  if (FL && fl && (b.cp >= FL.length - 1 || flUp || b.fly > 0 || (!b.ground && b.y > fl.y + 3))) {
+    if (b.cp < FL.length - 1 && (b.fly > 0 || (!b.ground && b.y > fl.y + 3))) {
+      tx = FL[b.cp + 1].x
+      tz = FL[b.cp + 1].z - 5
+    } else {
+      tx = fl.x
+      tz = fl.z
+      const d = Math.hypot(fl.x - b.x, fl.z - b.z)
+      if (flUp && d < 3.8 && b.y < fl.y + 0.5 && b.ground && br.jumpCool <= 0) {
+        it.jump = true
+        br.jumpCool = 0.6
+      }
+    }
+  } else if (C.gems.length) {
     let best = -1
     let bestScore = -Infinity
     for (let k = 0; k < C.gems.length; k++) {
       const g = C.gems[k]
+      // andares: só as engrenagens do meu andar
+      if (fl && Math.abs(g.y - 0.9 - fl.y) > 1.6) continue
       // a que vai voltar logo também serve (chega quando ela aparece)
       const back = w.gems[k] < 0 ? g.t0 - t : w.gems[k] + g.back - t
       const d = Math.hypot(g.x - b.x, g.z - b.z)
@@ -5282,8 +5373,8 @@ function arenaIntent(br          , b        , w          , it           )       
         br.jumpCool = 0.6
       }
     } else {
-      tx = 0
-      tz = 0
+      tx = fl ? fl.x : 0
+      tz = fl ? fl.z : 0
     }
   }
   // Rei do Iceberg: vai para o topo (um lugar dentro dele que muda de tempo em tempo); pula na beira
@@ -6256,6 +6347,36 @@ class GincanaRace {
       }
     }
     this.score(out, dt)
+    if (C.floors) this.floorCut(out)
+  }
+
+  /**
+   * Fábrica em andares: em cada andar, quando todos menos 2 já subiram (sem passar da vaga dos classificados),
+   * quem ainda está nele fica fora.
+   */
+          floorCut(out                   ) {
+    const F = this.course.floors 
+    let n0 = 0
+    for (let i = 0; i < this.runners.length; i++) if (!this.gone[i]) n0++
+    for (let k = 0; k < F.length - 1; k++) {
+      const allowed = Math.max(this.quota, n0 - 2 * (k + 1))
+      let above = 0
+      let here = 0
+      for (let i = 0; i < this.runners.length; i++) {
+        const b = this.runners[i]
+        if (this.gone[i] || b.out >= 0) continue
+        if (b.cp > k) above++
+        else here++
+      }
+      if (above < allowed || here === 0) continue
+      for (let i = 0; i < this.runners.length; i++) {
+        const b = this.runners[i]
+        if (this.gone[i] || b.out >= 0 || b.cp > k) continue
+        b.out = this.t
+        b.mode = MODE.DONE
+        out?.push({ type: "out", slot: b.slot })
+      }
+    }
   }
 
   /**
@@ -6410,6 +6531,12 @@ class GincanaRace {
     const C = this.course
     const row = (b        , q         )              => ({ slot: b.slot, fin: b.fin, dist: b.fin >= 0 ? C.finishZ : this.distOf(b), q, pts: Math.round(b.pts * 10) / 10, out: b.out })
     const byOut = (a        , b        ) => b.out - a.out || a.slot - b.slot
+    if (C.floors) {
+      // andares: quem está em pé, do andar mais alto (e mais engrenagens); depois quem ficou fora, do último ao primeiro
+      const up = this.runners.filter((b, i) => b.out < 0 && !this.gone[i]).sort((a, b) => b.cp - a.cp || b.pts - a.pts || a.slot - b.slot)
+      const down = this.runners.filter((b, i) => b.out >= 0 || this.gone[i]).sort(byOut)
+      return up.map((b, k) => row(b, k < this.quota)).concat(down.map((b) => row(b, false)))
+    }
     if (C.mode === "collect" || C.mode === "zone") {
       return [...this.runners].sort((a, b) => b.pts - a.pts || a.slot - b.slot).map((b, k) => row(b, k < this.quota && b.pts > 0))
     }
@@ -6433,6 +6560,7 @@ class GincanaRace {
   over()          {
     const C = this.course
     if (this.t >= C.limit || this.closed()) return true
+    if (C.floors) return this.alive() <= this.quota
     if (C.mode === "collect" || C.mode === "zone") return false
     if (C.mode === "survive" && this.alive() <= this.quota) return true
     let any = false
@@ -6446,4 +6574,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, ballBelts, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO_BOUNCE, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, GELO, geloLayout, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, ballBelts, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO_BOUNCE, ALTOFORNO, FABRICA, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, GELO, geloLayout, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
