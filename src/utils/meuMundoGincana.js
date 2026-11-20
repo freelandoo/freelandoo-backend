@@ -144,6 +144,14 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "clareira
             
             
              
+     
+                                                                                                              
+                                                                                                             
+                                                                                                             
+     
+             
+             
+             
                                                                              
             
                                                      
@@ -1187,6 +1195,7 @@ function riseAt(c        , t        ) {
  */
 function gateLift(p     , t        ) {
   if (p.gh === 0) return 0
+  if (p.gn) return gateOneLift(p, t)
   const u = ((((t + p.gph) / p.gp) % 1) + 1) % 1
   if (u < 0.38) return 0
   if (u < 0.5) {
@@ -1196,6 +1205,38 @@ function gateLift(p     , t        ) {
   if (u < 0.88) return 1
   const k = (u - 0.88) / 0.12
   return 1 - k * k * (3 - 2 * k)
+}
+
+/** Comporta de fila (20/11): desce, fica aberta, FECHA RÁPIDO e a fila fica toda fechada um instante (s). */
+const GATE_ONE = { down: 0.3, hold: 2, up: 0.15, rest: 0.1 }
+const GATE_SLOT = GATE_ONE.down + GATE_ONE.hold + GATE_ONE.up + GATE_ONE.rest
+
+function gateHash(a        , b        ) {
+  let h = Math.imul(((a * 7919) | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b + 0x632be5ab) | 0, 0xc2b2ae35)
+  h ^= h >>> 15
+  h = Math.imul(h, 0x2c1b3c6d)
+  h ^= h >>> 12
+  return (h >>> 0) / 4294967296
+}
+
+/** Qual comporta da fila abre na vez `slot` (sorteada; nunca a mesma da vez anterior). */
+function gatePick(n        , seed        , slot        ) {
+  const a = Math.floor(gateHash(seed, slot) * n)
+  const b = Math.floor(gateHash(seed, slot - 1) * n)
+  return a === b ? (a + 1) % n : a
+}
+
+function gateOneLift(p     , t        ) {
+  const T = (t + p.gph) / p.gp
+  const slot = Math.floor(T)
+  if (gatePick(p.gn , p.gs ?? 0, slot) !== p.gi) return 1
+  const u = (T - slot) * GATE_SLOT
+  const G = GATE_ONE
+  const ease = (k        ) => k * k * (3 - 2 * k)
+  if (u < G.down) return 1 - ease(u / G.down)
+  if (u < G.down + G.hold) return 0
+  if (u < G.down + G.hold + G.up) return ease((u - G.down - G.hold) / G.up)
+  return 1
 }
 
 /** Tampo de uma plataforma em z no tempo t (a rampa, k = 2, sobe de y em z − hz a y2 em z + hz; a comporta sobe pelo relógio). */
@@ -2387,6 +2428,12 @@ const HELICES = {
   /** 20/11 (pedido do Alex): o miolo de cada hélice gira RÁPIDO ao contrário das pás (× o giro da hélice).
    *  Antes: o miolo girava junto com as pás (× 1). */
   hub: -3.2,
+  /**
+   * 20/11 (o Alex: "aqui os pisos têm que acender e cair como na fase que os pisos caem"): o corredor das barras
+   * (x ±4,5, z 61–78) vira colmeia de placas que ACENDEM ao pisar e caem (aviso `warn` s); a placa volta depois de
+   * `gone` s (corrida: quem vem atrás precisa de chão). Antes: uma caixa só.
+   */
+  floor: { x: 4.5, z0: 61, z1: 78, gap: 2.4, h: 1.27, warn: 2.2, gone: 2 },
 }         
 
 function courseHelices()         {
@@ -2397,7 +2444,8 @@ function courseHelices()         {
       const p = k.box(x, z, hw, L, 5, 1, s, (i * Math.PI) / n, 1.2)
       k.pads[p].spin = w
     }
-    const c = k.disc(x, z, hw * 1.9, 6, 1, s)
+    // o miolo fica 3 cm acima das pás: senão quem pisa nele é levado pela pá (mesma altura, a pá vence)
+    const c = k.disc(x, z, hw * 1.9, 6, 1, s, DECK + 0.03)
     k.pads[c].spin = w * HELICES.hub
     // a barra do cubo: gira ao contrário, rente ao tampo (se pula); o cubo é um poste (ninguém fica no eixo)
     if (bar) {
@@ -2410,7 +2458,14 @@ function courseHelices()         {
   for (const f of HELICES.fans.slice(0, 2)) fan(f[0], f[1], f[2], f[3], f[4], f[5], f[6], 1)
   // ── 2. a doca: ilha com o posto e o corredor das barras ──
   k.box(0, 58, 4, 3, 0, 1, 2)
-  k.box(0, 69.5, 4.5, 8.5, 4, 1, 2)
+  {
+    const F = HELICES.floor
+    const dz = (F.gap * Math.sqrt(3)) / 2
+    for (let r = 0; F.z0 + 0.9 + r * dz <= F.z1 - 0.9; r++) {
+      const z = F.z0 + 0.9 + r * dz
+      for (let x = -F.x + 0.9 + (r % 2 ? F.gap / 2 : 0); x <= F.x - 0.9; x += F.gap) k.tile(x, z, F.h, r % 2, 1)
+    }
+  }
   k.sweep(0, 64.2, DECK + 0.55, 4.5, 0.3, 1.0, 0, true)
   k.sweep(0, 74.8, DECK + 0.55, 4.5, 0.3, -1.15, 1, true)
   k.box(0, 79.7, 2.5, 1.7, 0, 1, 3)
@@ -2432,6 +2487,7 @@ function courseHelices()         {
   for (const [x, z] of [[0, 16.5], [0, 57], [0, 79], [0, 99.2], [0, 118.6], [0, 139]]                      ) k.logo(x, z)
   return k.done({
     id: "helices",
+    tileTime: { warn: HELICES.floor.warn, gone: HELICES.floor.gone },
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
       { x: 0, z: 58, y: DECK, w: 3 },
@@ -3079,6 +3135,8 @@ const COMPORTAS = {
    * 20/11 (o Alex: "têm que demorar mais pra abrir, não pode ficar abrindo e fechando rápido, senão não atrasa
    * ninguém — no mínimo 5× mais lento"): o ciclo e o atraso de TODAS as comportas × `slow` (a onda da fileira
    * continua a mesma, só mais lenta). Antes ×1: ciclos de 2,6–5 s.
+   * 20/11 (2º pedido: "só uma abre por vez e é aleatória, fica 2 s e fecha rápido"): a onda saiu — cada fila
+   * é de comportas de FILA (`Pad.gn`, `GATE_ONE`); `slow` ficou só como registro.
    */
   slow: 5,
 }         
@@ -3087,24 +3145,29 @@ function courseComportas()         {
   const K = COMPORTAS
   const k = new CourseKit()
   kitStart(k)
-  const row = (z        , hz        , xs                   , walls                             , per        , ph                       , s        , h                        = () => K.gateH) => {
-    xs.forEach((x, i) => k.gate(x, z, K.gateHx, hz, h(i), per * K.slow, ph(i) * K.slow, 6, 7, s))
+  const row = (z        , hz        , xs                   , walls                             , s        , h                        = () => K.gateH) => {
+    // vez de GATE_ONE s na 1ª volta (o `tempo` da corrida divide o ciclo: compensa); filas desencontradas por z
+    const slot = (GATE_ONE.down + GATE_ONE.hold + GATE_ONE.up + GATE_ONE.rest) * GINCANA.tempo
+    xs.forEach((x, i) => {
+      const g = k.gate(x, z, K.gateHx, hz, h(i), slot, (z * 0.37) % slot, 6, 7, s)
+      Object.assign(k.pads[g], { gn: xs.length, gi: i, gs: Math.round(z * 10) })
+    })
     for (const [x, hx] of walls) k.box(x, z, hx, hz + 0.15, 4, 1, s, 0, K.wallH + 1.4, DECK + K.wallH)
   }
   // ── 1. comportas em onda ──
   k.box(0, 40, 11, 24.9, 3, 1, 1)
-  row(26, 1.4, K.gx, K.wall, 4, (i) => i * 0.8, 1)
-  row(40, 1.4, K.gx, K.wall, 4, (i) => (4 - i) * 0.8, 1)
-  row(54, 1.4, K.gx, K.wall, 3.6, (i) => (i % 2) * 1.8, 1)
+  row(26, 1.4, K.gx, K.wall, 1)
+  row(40, 1.4, K.gx, K.wall, 1)
+  row(54, 1.4, K.gx, K.wall, 1)
   for (const [x, z] of [[-9.4, 33], [9.4, 33], [-9.4, 47], [9.4, 47]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
   // 20/11 (dificuldade): martelo no 1º vão e barra baixa girando no 2º (pule)
   k.swing(0, 33, DECK + 8, 6.6, 1.0, 1.05, 2.0, 0.3)
   k.sweep(0, 47, DECK + 0.55, 4.6, 0.32, -0.72, Math.PI / 2, true)
   // ── 2. comportas baixas (pule) e fundas ──
   k.box(0, 85, 11, 20.2, 3, 1, 2)
-  row(72, 1.4, K.gx, K.wall, 3.2, (i) => i * 0.64, 2, (i) => (i % 2 ? K.lowH : K.gateH))
-  row(84, 1.4, K.gx, K.wall, 3, (i) => (i % 2) * 1.5, 2)
-  row(96, 2.4, K.gx, K.wall, 4.4, (i) => [0, 2.2, 1.1, 3.3, 0.5][i], 2)
+  row(72, 1.4, K.gx, K.wall, 2, (i) => (i % 2 ? K.lowH : K.gateH))
+  row(84, 1.4, K.gx, K.wall, 2)
+  row(96, 2.4, K.gx, K.wall, 2)
   for (const [x, z] of [[-9.4, 78], [9.4, 78], [-9.4, 90], [9.4, 90]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
   // 20/11 (dificuldade): martelos do guindaste em pêndulo entre as fileiras (jogam para a beira)
   k.swing(-3.6, 78, DECK + 8, 6.6, 1.0, 1.0, 2.0, 0)
@@ -3119,11 +3182,11 @@ function courseComportas()         {
   // 20/11 (dificuldade): no funil, um pistão sai da mureta e soca para fora (cai do deck)
   k.glove(-6.4, 110.6, DECK + 1, 1, 11.4, 1.1, 2.0, 0)
   k.glove(6.4, 118.2, DECK + 1, -1, 11.4, 1.1, 2.0, 1.1)
-  row(128, 1.4, K.gx3, K.wall3, 2.8, (i) => i * 0.93, 3)
+  row(128, 1.4, K.gx3, K.wall3, 3)
   // ── 4. graxa com comportas lentas ──
   const g = k.box(0, 150, 11, 15, 4, 1, 4)
   k.pads[g].sl = K.grease
-  row(150, 1.4, K.gx, K.wall, 5, (i) => i, 4)
+  row(150, 1.4, K.gx, K.wall, 4)
   // 20/11 (dificuldade): na graxa, martelos em pêndulo (no escorregadio é difícil fugir)
   k.swing(-3.2, 142, DECK + 8, 6.6, 1.0, 1.05, 2.0, 0)
   k.swing(3.2, 142, DECK + 8, 6.6, 1.0, 1.05, 2.0, Math.PI)
@@ -3132,7 +3195,7 @@ function courseComportas()         {
 
   // ── 5. a fileira rápida e a subida ──
   k.box(0, 172, 11, 7, 3, 1, 5)
-  row(172, 1.4, K.gx, K.wall, 2.6, (i) => i * 0.52, 5)
+  row(172, 1.4, K.gx, K.wall, 5)
   // 20/11 (dificuldade): martelos antes da fileira rápida
   k.swing(-2.8, 167.4, DECK + 8, 6.6, 1.0, 1.0, 2.2, 0.4)
   k.swing(2.8, 167.4, DECK + 8, 6.6, 1.0, 1.0, 2.2, 0.4 + Math.PI)
@@ -5189,9 +5252,11 @@ function fanRide(br          , b        , w          , it           ) {
   let L = 0
   const arms           = []
   let hubR = 0
+  let bladeSpin = p0.spin
   for (const p of C.pads) {
     if (p.spin === 0 || p.x !== cx || p.z !== cz) continue
     if (p.k === 1) {
+      bladeSpin = p.spin
       L = Math.max(L, p.hz)
       const a = padRot(p, w.t)
       arms.push(a, a + Math.PI)
@@ -5218,7 +5283,8 @@ function fanRide(br          , b        , w          , it           ) {
     if (d < -Math.PI) d += Math.PI * 2
     return d
   }
-  const spin = p0.spin
+  // 20/11: o miolo gira ao contrário (HELICES.hub) — a previsão é sempre pelo giro das pás
+  const spin = bladeSpin
   const rb = Math.hypot(b.x - cx, b.z - cz)
   const go = Math.max(0.6, br.pace)
   // a pá que vai estar na direção da saída quando eu chegar na ponta (o giro anda enquanto eu corro)
@@ -5255,6 +5321,7 @@ function fanRide(br          , b        , w          , it           ) {
       it.mx = 0
       it.mz = 0
     }
+    hubCounter(b, p0, cx, cz, it)
     return
   }
   br.fanT = -1
@@ -5267,6 +5334,21 @@ function fanRide(br          , b        , w          , it           ) {
     it.mx = -Math.sin(out) * go
     it.mz = -Math.cos(out) * go
   }
+  hubCounter(b, p0, cx, cz, it)
+}
+
+/** 20/11: em cima do miolo (que gira ao contrário e RÁPIDO), anda contra o arrasto dele. */
+function hubCounter(b        , p                        , cx        , cz        , it           ) {
+  if (p.k === 1) return
+  let mx = it.mx - (p.spin * (b.z - cz)) / GINCANA.run
+  let mz = it.mz + (p.spin * (b.x - cx)) / GINCANA.run
+  const m = Math.hypot(mx, mz)
+  if (m > 1) {
+    mx /= m
+    mz /= m
+  }
+  it.mx = mx
+  it.mz = mz
 }
 
 /** Pulo de/para hélice: o pouso de verdade (o pulo voa ~5 m) existe na hora em que eu chego lá? */
@@ -5696,6 +5778,8 @@ function spinRide(br          , b        , w          , it           ) {
   if (!b.ground || b.pad < 0) return false
   const p = C.pads[b.pad]
   if (p.k !== 0 || p.spin === 0 || p.mw !== 0 || Math.abs(p.spin) * p.r <= 4) return false
+  // o miolo de hélice (gira rápido desde 20/11) é da fanRide
+  if (isFanPad(C, p)) return false
   // o primeiro ponto da rota adiante e FORA desta peça: para onde pular
   let e = null                                    
   for (const q of br.route) {
@@ -5876,6 +5960,8 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     if (near) {
       const ok = (i        ) => {
         const s = w.tiles[i]
+        // 20/11 Hélices (corredor que cai, corrida): placa já pisada serve se ainda aguenta a travessia
+        if (C.id === "helices") return tileUp(C, s, t + 0.7) && (s < 0 || t - s < C.tileTime.warn)
         return tileUp(C, s, t + 0.35) && !(s >= 0 && t - s < 0.8)
       }
       let under = -1
@@ -6139,8 +6225,8 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
       br.jumpCool = 0.5
     }
   }
-  // ladrilho tremendo embaixo: pula para o próximo
-  if (b.ground && br.jumpCool <= 0) {
+  // ladrilho tremendo embaixo: pula para o próximo (nas Hélices não: o corredor tem as barras — anda)
+  if (b.ground && br.jumpCool <= 0 && C.id !== "helices") {
     for (let i = 0; i < C.tiles.length; i++) {
       const q = C.tiles[i]
       const s = w.tiles[i]
@@ -6212,7 +6298,8 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     if (br.stuck > 1.4 && b.ground && br.door >= 0 && C.doors[br.door].z - b.z < 1.5) {
       br.back = 0.45 + botRand(br.seed, br.slot, Math.floor(t * 4)) * 0.3
       br.stuck = 0
-    } else if (br.stuck > 2.2 && b.ground) {
+    } else if (br.stuck > 2.2 && b.ground && !(b.pad >= 0 && isFanPad(C, C.pads[b.pad]))) {
+      // (no miolo da hélice, parado é esperar a pá — pular dali é cair)
       it.jump = true
       br.stuck = 0
     }
@@ -6634,4 +6721,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, ballBelts, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, STONE_STEP, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO_BOUNCE, ALTOFORNO, FABRICA, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, GELO, geloLayout, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, ballBelts, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, GATE_ONE, gatePick, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, STONE_STEP, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO_BOUNCE, ALTOFORNO, FABRICA, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, GELO, geloLayout, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

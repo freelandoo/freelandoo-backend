@@ -740,17 +740,47 @@ test("gincana 3 — Coroa da Torre: final de vaga 1; passar pelo chão não pega
 });
 
 // ── Comportas da Usina (2026-11-20) ──────────────────────────────────────────
-test("gincana — Comportas: a comporta sobe e desce pelo relógio, leva quem está em cima e barra quem chega; a graxa deixa lento", () => {
+test("gincana — Comportas: em cada fila só UMA abre por vez (sorteada), fica 2 s aberta e fecha rápido (cospe quem está dentro) e barra quem chega; a graxa deixa lento", () => {
   const C = G.COURSES.comportas;
   assert.equal(C.mode, "race");
   const gates = C.pads.filter((p) => p.gh > 0);
   assert.ok(gates.length >= 20, `${gates.length} comportas`);
-  const p = gates.find((q) => q.z === 26 && q.x === 0);
-  // ciclo: embaixo, sobe, em cima, desce
-  const tAt = (u) => ((u * p.gp - p.gph) % p.gp + p.gp * 4) % p.gp + 1;
-  assert.equal(G.gateLift(p, tAt(0.2)), 0);
-  assert.equal(G.gateLift(p, tAt(0.7)), 1);
-  assert.equal(G.padTop(p, p.z, tAt(0.7)), p.y + p.gh);
+  // 20/11 (o Alex: "só uma abre por vez e é aleatória, ela abre, fica dois segundos e fecha; fecha rápido")
+  assert.ok(gates.every((q) => q.gn > 1), "comporta fora do sorteio da fila");
+  const row = gates.filter((q) => q.z === 26);
+  assert.equal(row.length, 5);
+  const picks = new Set();
+  let openRun = 0;
+  let maxOpen = 0;
+  let closing = 0;
+  let maxClosing = 0;
+  for (let t = 1; t < 60; t += 0.01) {
+    const lifts = row.map((q) => G.gateLift(q, t));
+    const open = lifts.filter((l) => l < 1);
+    assert.ok(open.length <= 1, `duas abertas juntas em t ${t.toFixed(2)}`);
+    const i = lifts.findIndex((l) => l === 0);
+    if (i >= 0) {
+      picks.add(i);
+      openRun += 0.01;
+      maxOpen = Math.max(maxOpen, openRun);
+    } else openRun = 0;
+    // fechando = subindo depois de ter estado aberta
+    const up = open.length && G.gateLift(row[lifts.findIndex((l) => l < 1)], t + 0.01) > open[0];
+    closing = up ? closing + 0.01 : 0;
+    maxClosing = Math.max(maxClosing, closing);
+  }
+  assert.ok(picks.size >= 4, `o sorteio só abre ${picks.size} da fila`);
+  assert.ok(Math.abs(maxOpen - G.GATE_ONE.hold) < 0.05, `aberta por ${maxOpen.toFixed(2)} s`);
+  assert.ok(maxClosing <= 0.2, `fecha devagar: ${maxClosing.toFixed(2)} s`);
+  const p = row.find((q) => q.x === 0);
+  let tOpen = -1;
+  let tShut = -1;
+  for (let t = 1; t < 120 && (tOpen < 0 || tShut < 0); t += 0.01) {
+    if (tOpen < 0 && G.gateLift(p, t) === 0 && G.gateLift(p, t + 1.9) === 0) tOpen = t;
+    if (tShut < 0 && G.gateLift(p, t) === 1 && G.gateLift(p, t + 0.6) === 1) tShut = t;
+  }
+  assert.ok(tOpen > 0 && tShut > 0);
+  assert.equal(G.padTop(p, p.z, tShut), p.y + p.gh);
   const at = (x, z, t0, steps, mz) => {
     const { race, r } = solo("comportas");
     while (race.t < t0) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
@@ -762,14 +792,11 @@ test("gincana — Comportas: a comporta sobe e desce pelo relógio, leva quem es
     }
     return { r, maxY };
   };
-  // em cima quando ela sobe: vai junto até o alto
-  // 20/11: o ciclo é 5× mais lento (COMPORTAS.slow) — espera a subida inteira (de u 0,3 a 0,55)
-  assert.ok(G.COMPORTAS.slow >= 5, "a comporta voltou a abrir e fechar rápido");
-  assert.ok(p.gp > 10, `ciclo curto: ${p.gp.toFixed(1)} s`);
-  const ride = at(p.x, p.z, tAt(0.3), Math.ceil(0.25 * p.gp * 60) + 10).maxY;
-  assert.ok(ride >= G.DECK + p.gh - 1e-6 && ride < G.DECK + p.gh + 0.5, `subiu junto: ${ride}`);
+  // dentro dela quando ela FECHA (rápido): é cuspido para fora da fila, de pé no deck (não fica preso na parede)
+  const shut = at(p.x, p.z, tOpen + 1.8, 60, 0).r;
+  assert.ok(Math.abs(shut.z - p.z) > p.hz && Math.abs(shut.y - G.DECK) < 0.05, `ficou na comporta: z ${shut.z.toFixed(2)} y ${shut.y.toFixed(2)}`);
   // chegando com ela em cima: fica parado na frente
-  const blocked = at(p.x, p.z - p.hz - 1.5, tAt(0.55), 30, 1).r;
+  const blocked = at(p.x, p.z - p.hz - 1.5, tShut, 30, 1).r;
   assert.ok(blocked.z < p.z - p.hz, `barrou em ${blocked.z}`);
   // graxa: corrida na metade
   const gr = C.pads.find((q) => q.sl < 1);
@@ -957,6 +984,17 @@ test("gincana — Hélices: as pás giram juntas em volta do cubo e levam quem e
       assert.ok(C.sweepers.some((sw) => sw.x === x && sw.z === z && Math.sign(sw.w) === -Math.sign(w)), "a barra gira ao contrário");
     }
   }
+  // 20/11: o miolo fica ACIMA das pás (é o chão de quem pisa nele e leva para o lado dele)
+  for (const [x, z] of fans) {
+    const hub = C.pads.find((p) => p.k === 0 && p.x === x && p.z === z);
+    const blade = C.pads.find((p) => p.k === 1 && p.x === x && p.z === z);
+    assert.ok(G.padTop(hub, hub.z, 0) > G.padTop(blade, blade.z, 0), "o miolo não está acima das pás");
+  }
+  // 20/11: o corredor das barras é de placas que caem (acendem ao pisar)
+  const F = G.HELICES.floor;
+  const corridor = C.tiles.filter((q) => q.z > F.z0 && q.z < F.z1);
+  assert.ok(corridor.length >= 20, `corredor com ${corridor.length} placas`);
+  assert.equal(C.tileTime.warn, F.warn);
   // em pé na ponta de uma pá, parado: o giro leva de lado
   const [x, z, , L] = fans[0];
   const { race, r } = solo("helices");
