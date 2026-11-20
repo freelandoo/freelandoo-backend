@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 13 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
+test("gincana — 14 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -766,4 +766,36 @@ test("gincana — Portões de Gelo: fileiras que estreitam, o portão de verdade
   const dry = slide(48);
   const wet = slide(62);
   assert.ok(wet > dry * 1.5, `gelo ${wet.toFixed(2)} × seco ${dry.toFixed(2)}`);
+});
+
+// ── Esteira do Alto-Forno (2026-11-20) ───────────────────────────────────────
+test("gincana — Alto-Forno: a esteira puxa para trás e as bolas quicam e vão de lado", () => {
+  const C = G.COURSES.altoforno;
+  assert.equal(C.mode, "race");
+  const ramp = C.pads.find((p) => p.k === 2 && p.bz < 0 && p.z === (C.ramp.z0 + C.ramp.z1) / 2);
+  assert.ok(ramp, "a 1ª rampa é a esteira");
+  // parado na esteira: desce
+  const { race, r } = solo("altoforno");
+  while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  Object.assign(r, { x: 0, z: 80, y: G.rampTop(C, 80), vx: 0, vy: 0, vz: 0, ground: true });
+  const z0 = r.z;
+  for (let k = 0; k < 30; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(r.z < z0 - 0.5, `esteira levou ${(z0 - r.z).toFixed(2)} m`);
+  // as bolas: alturas acima do tampo variam (quique) e o x sai da faixa (lado)
+  const out = [];
+  let up = 0;
+  let side = 0;
+  let n = 0;
+  for (let t = 5; t < 25; t += 0.05) {
+    G.ballsAt(C, 3, t, out);
+    for (let k = 0; k < out.length; k += 5) {
+      if (out[k + 2] < C.ramp.z0) continue;
+      n++;
+      const lift = out[k + 1] - (G.rampTop(C, out[k + 2]) + C.balls.R);
+      assert.ok(lift >= -1e-9 && lift <= C.balls.hop + 1e-9, `quique fora: ${lift}`);
+      if (lift > 1) up++;
+      if (Math.abs(out[k] - C.ramp.x - C.balls.lanes[out[k + 3]]) > 0.3) side++;
+    }
+  }
+  assert.ok(n > 100 && up > n * 0.2 && side > n * 0.3, `bolas ${n}, no alto ${up}, de lado ${side}`);
 });
