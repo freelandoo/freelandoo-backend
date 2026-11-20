@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                           
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                       
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -417,6 +417,8 @@ function memUp(m        , seed        , i        , t        ) {
            
            
                    
+                                                                                   
+               
  
 
 /** Quanto o anel girou até t (acelera: o dobro da velocidade aos 80 s). */
@@ -526,8 +528,8 @@ class CourseKit {
   balls               = null
            gems        = []
            drums         = []
-  drum(x        , z0        , y        , R        , rings            , f = 0.6) {
-    this.drums.push({ x, z0, y, R, f, rings })
+  drum(x        , z0        , y        , R        , rings            , f = 0.6, wall = false) {
+    this.drums.push({ x, z0, y, R, f, rings, wall })
   }
   gem(x        , z        , y        , v        , t0        , back        ) {
     this.gems.push({ x, z, y, v, t0, back })
@@ -1367,6 +1369,112 @@ function courseCanion()         {
   })
 }
 
+// ═══ moinhos — Trilha dos Moinhos (2ª fase do Cânion) ═════════════════════════
+
+/**
+ * 20/11 (pedido do Alex, 4º vídeo de referência: tipo de prova "circuito de obstáculos misto"): no Cânion
+ * Flutuante, a trilha da vila dos moinhos. Moendas de pedra deitadas que giram (o lado é parede; em cima o giro
+ * joga você de lado), blocos de arenito que deslizam, pás de moinho girando rente aos discos de pedra, o campo
+ * de cata-ventos (pás pequenas em grade, cada uma no seu giro) e a subida com as pedras rolando.
+ */
+const MOINHOS = {
+  R: 1.05,
+  /** [x, z0, comprimento, giro rad/s] */
+  rollers: [
+    [-4.4, 19, 14, 1.4],
+    [0, 19, 14, -1.6],
+    [4.4, 19, 14, 1.4],
+    [-6.6, 37, 14, -1.5],
+    [-2.2, 37, 14, 1.7],
+    [2.2, 37, 14, -1.7],
+    [6.6, 37, 14, 1.5],
+  ]                                      ,
+  /** cata-ventos: [x, z, giro] */
+  vanes: [
+    [-6, 130, 1.8], [-1, 130, -2.1], [4, 130, 1.9],
+    [-3.5, 138, -2.0], [1.5, 138, 2.2], [6.5, 138, -1.7],
+    [-6, 146, 2.1], [-1, 146, -1.9], [4, 146, 2.0],
+  ]                              ,
+}         
+
+function courseMoinhos()         {
+  const K = MOINHOS
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. as moendas ──
+  k.box(0, 35, 9, 19.9, 0, 1, 1)
+  for (const [x, z0, len, w] of K.rollers) k.drum(x, z0, DECK + 0.25, K.R, [{ len, w, holes: [] }], 0.8, true)
+  // ── 2. os blocos de arenito ──
+  k.box(0, 72, 9, 17.1, 5, 1, 2)
+  k.pusher(0, 62, 1.6, 1.6, 2.2, 6.4, 0, 1.0, 0)
+  k.pusher(0, 72, 1.6, 1.6, 2.2, 6.4, 0, 1.25, 2.1)
+  k.pusher(0, 82, 1.6, 1.6, 2.2, 6.4, 0, 0.9, 4.0)
+  // ── 3. as pás do moinho sobre dois discos de pedra ──
+  k.box(0, 91, 2.2, 2.1, 0, 1, 3)
+  k.disc(0, 100, 7, 2, 1, 3)
+  k.sweep(0, 100, DECK + 0.55, 6.7, 0.32, 0.95, 0, true)
+  k.box(0, 108.5, 2.2, 1.8, 0, 1, 3)
+  k.disc(0, 117, 7, 2, 1, 3)
+  k.sweep(0, 117, DECK + 0.55, 6.7, 0.32, -1.05, Math.PI / 2, true)
+  // ── 4. o campo de cata-ventos ──
+  k.box(0, 140, 9, 15.9, 5, 1, 4)
+  for (const [x, z, w] of K.vanes) {
+    k.sweep(x, z, DECK + 0.5, 1.9, 0.26, w, x * 0.7, true)
+    k.post(x, z, 0.2, DECK, DECK + 2.6, 4)
+  }
+  // ── 5. a subida com as pedras ──
+  const z0 = 156
+  const finishZ = kitFinish(k, z0, 1.1, 6.5, 1.1)
+  for (const [x, z] of [[0, 16.5], [-7.4, 45], [0, 57], [0, 91.5], [0, 126]]                      ) k.logo(x, z)
+  return k.done({
+    id: "moinhos",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 58, y: DECK, w: 6 },
+      { x: 0, z: 91.5, y: DECK, w: 2 },
+      { x: 0, z: 127.5, y: DECK, w: 6 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [15.1, 54.9, 89.1, 124.1, z0],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        const a = r(1) < 0.5 ? -1 : 1
+        const b = r(2) < 0.5 ? -1 : 1
+        add(a * 1.2, 10)
+        add(a * 2.2, 16.5)
+        for (let z = 19; z <= 33; z += 2.5) add(a * 2.2, z)
+        add(b * 2.2, 35)
+        add(b * 4.4, 36)
+        for (let z = 38; z <= 51; z += 2.5) add(b * 4.4, z)
+        add(0, 54)
+        for (let z = 57; z <= 88; z += 2.5) add(0, z)
+        // nos discos, longe do eixo (perto dele a barra passa rápido demais para ler)
+        const c = r(3) < 0.5 ? -1 : 1
+        add(0, 90)
+        add(0, 92.5)
+        add(c * 2.6, 96)
+        add(c * 3, 100)
+        add(c * 2.6, 104)
+        add(0, 107.5)
+        add(0, 109.5)
+        add(-c * 2.6, 113)
+        add(-c * 3, 117)
+        add(-c * 2.6, 121)
+        add(0, 124)
+        add(1.5, 128)
+        add(1.5, 131)
+        add(-1, 134.5)
+        add(-1, 139)
+        add(1.5, 142.5)
+        add(1.5, 147)
+        add(0, 152)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
 // ═══ orbital — Cidade Orbital ════════════════════════════════════════════════
 
 /**
@@ -1967,6 +2075,7 @@ const COURSES                               = {
   floresta: courseFloresta(),
   clareira: courseClareira(),
   canion: courseCanion(),
+  moinhos: courseMoinhos(),
   orbital: courseOrbital(),
   forja: courseForja(),
   altoforno: courseAltoForno(),
@@ -2328,6 +2437,22 @@ function pushWalls(b        , w          , out                   )              
     if (d >= q.r + R || d < 1e-6) continue
     b.x = q.x + (dx / d) * (q.r + R)
     b.z = q.z + (dz / d) * (q.r + R)
+  }
+  // moenda (cilindro com lado): abaixo de 60% da altura é parede — empurra de lado; dá para subir pulando
+  for (const d of C.drums) {
+    if (!d.wall) continue
+    let len = 0
+    for (const r of d.rings) len += r.len
+    if (b.z < d.z0 - R || b.z > d.z0 + len + R || b.y >= d.y + d.R * 0.6 || b.y + H <= d.y - d.R) continue
+    const half = d.R * DRUM_EDGE + R
+    const dx = b.x - d.x
+    if (Math.abs(dx) >= half) continue
+    // pelas pontas (entrando de frente) empurra para trás/para a frente; senão de lado
+    const oz = Math.min(b.z - (d.z0 - R), d.z0 + len + R - b.z)
+    const ox = half - Math.abs(dx)
+    if (oz < ox) b.z = b.z - (d.z0 - R) < d.z0 + len + R - b.z ? d.z0 - R : d.z0 + len + R
+    else b.x = d.x + Math.sign(dx || 1) * half
+    sawLedge(d.y + d.R, Math.sign(dx || 1), 0)
   }
   // ladrilhos caídos não seguram, e os de pé têm lado
   for (let i = 0; i < C.tiles.length; i++) {
@@ -3945,4 +4070,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, MOINHOS, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

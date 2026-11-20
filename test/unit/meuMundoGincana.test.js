@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 14 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
+test("gincana — 15 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -798,4 +798,28 @@ test("gincana — Alto-Forno: a esteira puxa para trás e as bolas quicam e vão
     }
   }
   assert.ok(n > 100 && up > n * 0.2 && side > n * 0.3, `bolas ${n}, no alto ${up}, de lado ${side}`);
+});
+
+// ── Trilha dos Moinhos (2026-11-20) ──────────────────────────────────────────
+test("gincana — Moinhos: a moenda é parede de lado e joga quem está em cima; catavento tem mastro", () => {
+  const C = G.COURSES.moinhos;
+  assert.equal(C.mode, "race");
+  assert.equal(C.drums.length, 7);
+  assert.ok(C.drums.every((d) => d.wall), "as moendas são parede");
+  // encostado na lateral da moenda, abaixo do eixo: é empurrado para fora (não atravessa)
+  const d = C.drums[1];
+  const { race, r } = solo("moinhos");
+  while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  Object.assign(r, { x: d.x + d.R * 0.5, z: d.z0 + 7, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+  race.step({ mx: -1, mz: 0, jump: false, dive: false }, []);
+  assert.ok(Math.abs(r.x - d.x) >= d.R * G.DRUM_EDGE - 1e-6, `atravessou a moenda: ${(r.x - d.x).toFixed(2)}`);
+  // em cima da moenda: o giro leva de lado
+  Object.assign(r, { x: d.x, z: d.z0 + 7, y: d.y + d.R, vx: 0, vy: 0, vz: 0, ground: true });
+  const x0 = r.x;
+  for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(Math.abs(r.x - x0) > 0.3, `a moenda não jogou: ${(r.x - x0).toFixed(2)}`);
+  // cada catavento gira em volta de um mastro (poste)
+  const vanes = C.sweepers.filter((sw) => sw.len < 3);
+  assert.equal(vanes.length, 9);
+  for (const v of vanes) assert.ok(C.posts.some((q) => q.x === v.x && q.z === v.z), "catavento sem mastro");
 });
