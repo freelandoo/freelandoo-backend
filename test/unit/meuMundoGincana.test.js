@@ -625,6 +625,49 @@ test("gincana — Fábrica em andares (20/11): 10 engrenagens fazem do miolo um 
   assert.ok(Math.abs(up.y - F[1].y) < 0.3);
 });
 
+test("gincana — Fábrica (20/11): o rio de fogo sobe conforme o andar esvazia e engole os 2 últimos", () => {
+  const race = new G.GincanaRace(2, Array.from({ length: 8 }, (_, slot) => ({ slot, ctl: "bot" })), 3, "fabrica");
+  const W = race.world;
+  const F = race.course.floors;
+  const last = new Float64Array(F.length);
+  const ev = [];
+  let cuts = 0;
+  while (!race.over()) {
+    race.step(undefined, ev);
+    for (let k = 0; k < F.length - 1; k++) {
+      assert.ok(W.floorLv[k] >= last[k] - 1e-9, `a lava do andar ${k} desceu`);
+      last[k] = W.floorLv[k];
+      if (W.floorT[k] < 0) assert.ok(W.floorLv[k] <= 0.55 + 1e-9, "subiu demais antes dos 2 últimos");
+    }
+    for (const e of ev) {
+      if (e.type !== "out") continue;
+      const k = race.runner(e.slot).cp;
+      assert.ok(W.floorT[k] >= 0 && race.t - W.floorT[k] >= G.FLOOR_SINK - 1e-6, "cortou antes da lava cobrir o andar");
+      assert.ok(W.floorLv[k] >= 1 - 1e-9, "cortou sem a lava no alto");
+      cuts++;
+    }
+    ev.length = 0;
+  }
+  assert.equal(cuts, 6);
+  // com a lava engolindo, o miolo do andar não é mais pula-pula
+  const { race: r2, r } = solo("fabrica");
+  while (r2.t < 0.5) r2.step();
+  r2.world.floorT[0] = r2.t;
+  Object.assign(r, { x: 0, z: F[0].z, y: F[0].y + 1.5, vx: 0, vy: 0, vz: 0, ground: false, pts: 10, cp: 0, mode: 0 });
+  for (let k = 0; k < 150 && r.cp === 0 && r.y > G.DECK - 3; k++) r2.step();
+  assert.equal(r.cp, 0, "fugiu da lava pelo pula-pula");
+  // quem cai do andar some na lava dele (não despenca até o mar)
+  Object.assign(r, { x: 14, z: F[2].z, y: F[2].y + 0.5, vx: 0, vy: 0, vz: 0, ground: false, cp: 2, mode: 0, out: -1 });
+  const ev2 = [];
+  let splashY = null;
+  for (let k = 0; k < 120 && splashY === null; k++) {
+    r2.step(undefined, ev2);
+    if (ev2.some((e) => e.type === "splash" && e.slot === r.slot)) splashY = r.y;
+    ev2.length = 0;
+  }
+  assert.ok(splashY !== null && splashY > F[2].y - G.FLOOR_LAVA - 1, `caiu até ${splashY}`);
+});
+
 test("gincana — Tubos de Gelo (20/11): corrida sobre 20 tubos que giram; o chão anda de lado; o buraco derruba e volta ao posto", () => {
   const B = G.COURSE_BASE.gelo;
   assert.equal(B.mode, "race");

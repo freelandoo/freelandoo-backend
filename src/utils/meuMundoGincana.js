@@ -387,6 +387,15 @@ function memUp(m        , seed        , i        , t        ) {
  
 
 /** Andar da Fábrica: centro e altura do chão, raio do miolo, engrenagens para subir e o pulo. */
+/**
+ * Fábrica em andares (20/11, o Alex: "a plataforma vai descendo e quando só sobram dois é engolida pelo rio de fogo;
+ * o rio vai subindo conforme menos pessoas lá"): segundos entre a hora em que o andar fica com os 2 últimos e o corte
+ * (a lava cobre o andar nesse tempo; quem chegar às engrenagens ainda pula).
+ */
+const FLOOR_SINK = 2.4
+/** A lava parada de cada andar fica FLOOR_LAVA m abaixo do chão dele (quem cai do andar some nela e volta ao andar). */
+const FLOOR_LAVA = 4.6
+
                         
            
            
@@ -4126,6 +4135,9 @@ const MODE = {
                     
                                                                                        
                    
+                                                                                                                 
+                      
+                       
  
 
 /** Acontecimentos de um passo (para som, aviso e animação). */
@@ -4150,7 +4162,7 @@ const MODE = {
 const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
 
 function newWorld(course        , seed        , t        )           {
-  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), real: pathReal(course, seed), doors: new Float64Array(course.doors.length).fill(-1), doorHp: new Float64Array(course.doors.length), doorLast: new Float64Array(course.doors.length).fill(-9), gems: new Float64Array(course.gems.length).fill(-1), saw: sawRest(course) }
+  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), real: pathReal(course, seed), doors: new Float64Array(course.doors.length).fill(-1), doorHp: new Float64Array(course.doors.length), doorLast: new Float64Array(course.doors.length).fill(-9), gems: new Float64Array(course.gems.length).fill(-1), saw: sawRest(course), floorT: new Float64Array(course.floors?.length ?? 0).fill(-1), floorLv: new Float64Array(course.floors?.length ?? 0) }
 }
 
 const sawArms = new Float64Array(64)
@@ -4989,7 +5001,8 @@ function stepRunner(b        , it           , w          , out                  
     }
     // Fábrica: com as engrenagens do andar, o miolo vira pula-pula para o andar de cima
     const F = C.floors
-    if (F && b.cp < F.length - 1 && g.pad === F[b.cp].pad && b.pts >= F[b.cp].goal && b.mode === MODE.RUN) {
+    // (a lava já engolindo o andar desliga o pula-pula dele: os 2 últimos não fogem)
+    if (F && b.cp < F.length - 1 && g.pad === F[b.cp].pad && b.pts >= F[b.cp].goal && b.mode === MODE.RUN && !(w.floorT[b.cp] >= 0)) {
       const f = F[b.cp]
       b.vy = f.vy
       b.launch = f.vy
@@ -5030,7 +5043,9 @@ function stepRunner(b        , it           , w          , out                  
   }
 
   // a água (ou o perigo que sobe: o pântano pega quem ficou com o pé embaixo)
-  if ((b.y < T.waterY || b.y < riseAt(C, w.t) - 0.15) && b.mode !== MODE.DONE) {
+  // Fábrica em andares: cada andar tem a sua bacia de lava (a lava parada fica FLOOR_LAVA m abaixo do andar)
+  const lavaY = C.floors ? C.floors[Math.max(0, Math.min(C.floors.length - 1, b.cp))].y - FLOOR_LAVA : -1e9
+  if ((b.y < T.waterY || b.y < riseAt(C, w.t) - 0.15 || b.y < lavaY) && b.mode !== MODE.DONE) {
     b.mode = MODE.WATER
     b.timer = T.respawnT
     b.vy = Math.min(b.vy, -2)
@@ -6512,13 +6527,27 @@ class GincanaRace {
       for (let i = 0; i < this.runners.length; i++) {
         const b = this.runners[i]
         if (this.gone[i] || b.out >= 0) continue
-        if (b.cp > k) above++
+        // (quem está no voo do pula-pula já subiu)
+        if (b.cp > k || (b.cp === k && b.fly > 0)) above++
         else here++
       }
-      if (above < allowed || here === 0) continue
+      // o rio de fogo sobe conforme o andar esvazia; com os 2 últimos, cobre o andar em FLOOR_SINK s e os engole
+      const W = this.world
+      if (W.floorT[k] >= 0) W.floorLv[k] = 0.55 + 0.45 * Math.min(1, (this.t - W.floorT[k]) / FLOOR_SINK)
+      if (above < allowed || here === 0) {
+        // (só sobe: quem pulou do miolo e caiu de volta não baixa o rio)
+        if (W.floorT[k] < 0) W.floorLv[k] = Math.max(W.floorLv[k], 0.55 * Math.min(1, above / Math.max(1, allowed)))
+        continue
+      }
+      if (W.floorT[k] < 0) {
+        W.floorT[k] = this.t
+        // o corte deste andar leva também quem ficou nos de baixo: a lava deles sobe junto
+        for (let j = 0; j < k; j++) if (W.floorT[j] < 0 && this.runners.some((b, i) => !this.gone[i] && b.out < 0 && b.cp === j && !(b.fly > 0))) W.floorT[j] = this.t
+      }
+      if (this.t - W.floorT[k] < FLOOR_SINK) continue
       for (let i = 0; i < this.runners.length; i++) {
         const b = this.runners[i]
-        if (this.gone[i] || b.out >= 0 || b.cp > k) continue
+        if (this.gone[i] || b.out >= 0 || b.cp > k || (b.cp === k && b.fly > 0)) continue
         b.out = this.t
         b.mode = MODE.DONE
         out?.push({ type: "out", slot: b.slot })
@@ -6721,4 +6750,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, ballBelts, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, GATE_ONE, gatePick, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, STONE_STEP, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO_BOUNCE, ALTOFORNO, FABRICA, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, GELO, geloLayout, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, FLOOR_SINK, FLOOR_LAVA, ballBelts, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, GATE_ONE, gatePick, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, STONE_STEP, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO_BOUNCE, ALTOFORNO, FABRICA, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, GELO, geloLayout, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
