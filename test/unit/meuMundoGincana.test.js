@@ -1084,6 +1084,11 @@ test("gincana — Aros: passar por dentro do aro dá turbo; pela borda ou por fo
   const C = G.COURSES.aros;
   assert.equal(C.mode, "race");
   assert.ok(C.hoops.length >= 10, "aros de menos");
+  // 20/11 (dificuldade): blocos de gelo na 1ª descida, estalactites na 2ª, paredões 2-1-2 janelas
+  const B = G.COURSE_BASE.aros;
+  assert.equal(B.pushers.length, 1 + G.AROS.slides.length);
+  assert.equal(B.pendulums.length, G.AROS.icicles.length);
+  assert.deepEqual(G.AROS.walls.map((w) => w[1].length), [2, 1, 2]);
   // a regra do aro: cruzar o plano dentro do raio útil
   const h = C.hoops[0];
   assert.ok(G.hoopPass(h, 0, h.z - 0.1, h.x, h.y - 0.85, h.z + 0.05), "pelo meio não contou");

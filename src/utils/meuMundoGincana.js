@@ -2420,12 +2420,20 @@ const AROS = {
     [0, 99, 2.2, 3, 1.2, 0],
     [2.2, 107, 2.2, 0, 0, 0],
   ]                                                      ,
-  /** paredões: [z, janelas (x)] — parapeito 1 m, janela de 2,4 m */
+  /** paredões: [z, janelas (x)] — parapeito 1 m, janela de 2,4 m (20/11: 3-2-3 → 2-1-2) */
   walls: [
-    [124, [-4.8, 0, 4.8]],
-    [130.5, [-2.4, 2.4]],
-    [137, [-4.8, 0, 4.8]],
+    [124, [-2.4, 2.4]],
+    [130.5, [0]],
+    [137, [-4.8, 4.8]],
   ]                        ,
+  /** 20/11 (dificuldade): blocos de gelo que deslizam de lado na 1ª descida — [z, fase] */
+  slides: [[31, 0], [38.5, 1.4], [55, 2.6]]                      ,
+  slideAx: 4.6,
+  slideW: 1.25,
+  /** 20/11: estalactites em pêndulo na 2ª descida — [x, z, fase] */
+  icicles: [[-2.4, 81, 0], [1.8, 94.5, 1.6], [-1.2, 103, 3.1]]                              ,
+  /** 20/11: as pedras da subida (antes 1,05 s, 6,8 m/s, R 1,1) */
+  balls: { every: 0.8, v: 8, R: 1.3 },
 }         
 
 function courseAros()         {
@@ -2445,6 +2453,8 @@ function courseAros()         {
   // ── 1. a primeira descida, com os aros ──
   ice(15.1, 60, Y0, Y1, 1)
   for (const [x, z] of [[2.6, 28.5], [-2.8, 46.5]]                      ) k.post(x, z, 0.75, surf(z) - 0.5, surf(z) + 1.9, 3)
+  // blocos de gelo que cruzam a ladeira (meio enterrados: o topo fica 1,5 m acima do gelo)
+  for (const [z, ph] of AROS.slides) k.pusher(0, z, 1.2, 1.2, 2.0, AROS.slideAx, 0, AROS.slideW, ph, surf(z) - 0.5)
   // ── 2. patamar com o bloco de gelo que desliza ──
   k.box(0, 64, 7, 4, 2, 1, 2, 0, 2.2, Y1)
   k.pusher(0, 64.5, 1.4, 1.4, 2.0, 4.8, 0, 1.1, 0, Y1)
@@ -2453,6 +2463,7 @@ function courseAros()         {
   k.post(-3, 86.5, 1.1, surf(86.5) - 0.6, surf(86.5) + 0.15, 2, 12.5)
   k.post(3.2, 83, 0.75, surf(83) - 0.5, surf(83) + 1.9, 3)
   for (const [x, z, dy, mx, w, ph] of AROS.hoops) k.hoop(x, z, surf(z) + dy, 1.45, mx, w, ph)
+  for (const [x, z, ph] of AROS.icicles) k.swing(x, z, surf(z) + 8.6, 7.2, 1.1, 1.05, 2.3, ph)
   // ── 4. o paredão de janelas: parede com janelas de parapeito baixo, um aro em cada janela ──
   k.box(0, 116.5, 7.5, 4.5, 2, 1, 4, 0, 1.6)
   k.box(0, 136.5, 8, 15.5, 2, 1, 4, 0, 1.6)
@@ -2474,7 +2485,7 @@ function courseAros()         {
   // a subida das pedras (a rampa das bolas é a dela, não a das descidas)
   k.ramp = null
   const z0 = 152
-  const finishZ = kitFinish(k, z0, 1.05, 6.8, 1.1)
+  const finishZ = kitFinish(k, z0, AROS.balls.every, AROS.balls.v, AROS.balls.R)
   for (const [x, z, y] of [[0, 64, Y1], [0, 116.5, DECK]]                              ) k.logo(x, z, y)
   return k.done({
     id: "aros",
