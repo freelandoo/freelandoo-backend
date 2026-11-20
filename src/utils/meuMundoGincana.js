@@ -360,7 +360,49 @@ function memUp(m        , seed        , i        , t        ) {
               
                
                 
+     
+                                                                                                                   
+                                                                                                                      
+                                                                                                               
+     
+               
+                 
+                                                                       
+                   
  
+
+/** Esteira com bolas: a 1ª rampa (com o canhão) e, com `balls.all`, as outras rampas que puxam para trás. */
+                           
+           
+            
+            
+            
+            
+            
+                         
+             
+ 
+const BELTS = new WeakMap                    ()
+function ballBelts(c        )             {
+  const got = BELTS.get(c)
+  if (got) return got
+  const L             = []
+  const R = c.ramp
+  const B = c.balls
+  if (R && B) {
+    L.push({ ...R, end: B.zEnd })
+    if (B.all) {
+      for (const p of c.pads) {
+        if (p.k !== 2 || p.bz >= 0) continue
+        const z0 = p.z - p.hz
+        if (Math.abs(z0 - R.z0) < 0.01 && Math.abs(p.x - R.x) < 0.01) continue
+        L.push({ x: p.x, z0, z1: p.z + p.hz, y0: p.y, y1: p.y2, hx: p.hx, end: z0 })
+      }
+    }
+  }
+  BELTS.set(c, L)
+  return L
+}
 
 /** Ponto da rota dos computadores; `m` = índice da plataforma que anda (mira nela onde estiver). */
                              
@@ -1131,32 +1173,53 @@ function rampTop(c        , z        ) {
   return R.y0 + (R.y1 - R.y0) * u
 }
 
-/** Bolas rolando agora: [x, y, z, faixa, índice] por bola. */
+/** Bolas rolando agora: [x, y, z, faixa, índice] por bola (de todas as esteiras com bola). */
 function ballsAt(c        , seed        , t        , out          ) {
   out.length = 0
   const B = c.balls
-  const R = c.ramp
-  if (t < 0 || !B || !R) return out
-  const span = (R.z1 - B.zEnd) / B.v
-  const i1 = Math.floor(t / B.every)
-  const i0 = Math.max(0, Math.floor((t - span) / B.every))
-  for (let i = i0; i <= i1; i++) {
-    const lane = ballLane(c, seed, i)
-    if (lane < 0) continue
-    const z = R.z1 - B.v * (t - i * B.every)
-    if (z < B.zEnd || z > R.z1) continue
-    // depois do pé da rampa a bola cai na água
-    const age = t - i * B.every
-    let y = z >= R.z0 ? rampTop(c, z) + B.R : R.y0 + B.R - ((R.z0 - z) / B.v) ** 2 * 12
-    let x = R.x + B.lanes[lane]
-    if (B.hop) {
-      // quique: arco de parábola (|sen| achatado embaixo), fase própria de cada bola; o lado vai e volta
-      const hopT = B.hopT ?? 0.6
-      const u = ((age + (courseHash(seed, i + 7) % 100) / 100 * hopT) / hopT) % 1
-      if (z >= R.z0) y += B.hop * 4 * u * (1 - u)
-      x += (B.drift ?? 0) * Math.sin(age * 1.9 + i * 2.3)
+  if (t < 0 || !B || !c.ramp) return out
+  const belts = ballBelts(c)
+  for (let j = 0; j < belts.length; j++) {
+    const R = belts[j]
+    // cada esteira com o seu sorteio (a 1ª com o da semente, como antes)
+    const sd = j ? (seed ^ Math.imul(j, 0x51ed27)) | 0 : seed
+    const every = j ? B.every * (B.allEvery ?? 1) : B.every
+    const span = (R.z1 - R.end) / B.v
+    const i1 = Math.floor(t / every)
+    const i0 = Math.max(0, Math.floor((t - span) / every))
+    const L = R.hx - B.R - 0.15
+    for (let i = i0; i <= i1; i++) {
+      const lane = ballLane(c, sd, i)
+      if (lane < 0) continue
+      const age = t - i * every
+      const z = R.z1 - B.v * age
+      if (z < R.end || z > R.z1) continue
+      // depois do pé da rampa a bola cai na água
+      const u0 = Math.max(0, Math.min(1, (z - R.z0) / (R.z1 - R.z0)))
+      let y = z >= R.z0 ? R.y0 + (R.y1 - R.y0) * u0 + B.R : R.y0 + B.R - ((R.z0 - z) / B.v) ** 2 * 12
+      let x = R.x + Math.max(-L, Math.min(L, B.lanes[lane]))
+      if (B.hop) {
+        // quique: arco de parábola, fase própria de cada bola
+        const hopT = B.hopT ?? 0.6
+        const s0 = (courseHash(sd, i + 7) % 100) / 100
+        const s1 = s0 + age / hopT
+        const u = s1 % 1
+        if (z >= R.z0) y += B.hop * 4 * u * (1 - u)
+        if (B.bounce) {
+          // a cada quique um rumo novo de lado; bate na borda e volta (vaivém entre −L e L)
+          let off = 0
+          for (let q = Math.floor(s0); q <= Math.floor(s1); q++) {
+            const v = B.bounce * ((courseHash(sd ^ 0x3c6ef372, i * 61 + q) % 1001) / 500 - 1)
+            off += v * (Math.min(s1, q + 1) - Math.max(s0, q)) * hopT
+          }
+          const m = (((x - R.x + L + off) % (4 * L)) + 4 * L) % (4 * L)
+          x = R.x - L + (m < 2 * L ? m : 4 * L - m)
+        } else x += (B.drift ?? 0) * Math.sin(age * 1.9 + i * 2.3)
+      }
+      // nas esteiras sem canhão a bola chega caindo do alto
+      if (j && age < 0.45) y += 5 * (1 - age / 0.45) ** 2
+      out.push(x, y, z, lane, i)
     }
-    out.push(x, y, z, lane, i)
   }
   return out
 }
@@ -2105,32 +2168,55 @@ function courseCanion()         {
  * de cata-ventos (pás pequenas em grade, cada uma no seu giro) e a subida com as pedras rolando.
  */
 const MOINHOS = {
-  R: 1.05,
-  /** [x, z0, comprimento, giro rad/s] */
-  rollers: [
-    [-4.4, 19, 14, 1.4],
-    [0, 19, 14, -1.6],
-    [4.4, 19, 14, 1.4],
-    [-6.6, 37, 14, -1.5],
-    [-2.2, 37, 14, 1.7],
-    [2.2, 37, 14, -1.7],
-    [6.6, 37, 14, 1.5],
-  ]                                      ,
-  /** cata-ventos: [x, z, giro] */
+  /**
+   * 20/11 (pedido do Alex: "se ficar bem grande, sem chão e com buracos, aí faz sentido"): três moendas GRANDES
+   * lado a lado sobre o vazio (o topo no nível do deck), cada uma em 5 anéis que giram cada um para um lado,
+   * com buracos que passam por baixo de quem está em cima. Caiu = volta ao posto.
+   */
+  R: 2.8,
+  /** x de cada moenda */
+  millX: [-5.8, 0, 5.8],
+  z0: 15.2, // um tico depois do começo do trecho 1: o reprise copia o que começa depois da emenda (15,15)
+  ringLen: 7.94,
+  /** giro de cada anel (rad/s; a moenda do meio ao contrário das de fora) */
+  ringW: [0.5, -0.58, 0.54, -0.5, 0.6],
+  /** buracos por anel: meia largura (rad) e quantos */
+  holeHalf: 0.3,
+  /** cata-ventos: [x, z, giro] — 20/11: pás GROSSAS (parede: não se pula nem se mergulha) */
+  // duas fileiras de 4 a cada 4,5 m: os alcances se cruzam, então todo vão (e a beira) fecha de tempos em tempos
   vanes: [
-    [-6, 130, 1.8], [-1, 130, -2.1], [4, 130, 1.9],
-    [-3.5, 138, -2.0], [1.5, 138, 2.2], [6.5, 138, -1.7],
-    [-6, 146, 2.1], [-1, 146, -1.9], [4, 146, 2.0],
+    [-6.75, 135, 1.1], [-2.25, 135, -1.2], [2.25, 135, 1.15], [6.75, 135, -1.1],
+    [-6.75, 147, -1.15], [-2.25, 147, 1.1], [2.25, 147, -1.2], [6.75, 147, 1.15],
   ]                              ,
+  /** vãos por onde se passa (x) */
+  vaneGaps: [-4.5, 0, 4.5],
+  vaneLen: 1.2,
+  vaneR: 0.9,
+  vaneSpeed: 0.5,
+  /** chão do campo de cata-ventos: gangorra de lado que tomba com o peso (escorrega) */
+  tilt: { z0: 129, z1: 155.9, max: 0.1, k: 0.45 },
 }         
 
 function courseMoinhos()         {
   const K = MOINHOS
   const k = new CourseKit()
   kitStart(k)
-  // ── 1. as moendas ──
-  k.box(0, 35, 9, 19.9, 0, 1, 1)
-  for (const [x, z0, len, w] of K.rollers) k.drum(x, z0, DECK + 0.25, K.R, [{ len, w, holes: [] }], 0.8, true)
+  // ── 1. as moendas grandes sobre o vazio, com buracos ──
+  K.millX.forEach((x, m) =>
+    k.drum(
+      x,
+      K.z0,
+      DECK - K.R,
+      K.R,
+      K.ringW.map((w, i) => ({
+        len: K.ringLen,
+        w: (m === 1 ? -1 : 1) * w,
+        holes: [0, Math.PI].map((o) => ({ a: o + i * 1.3 + m * 2.1, half: K.holeHalf })),
+      })),
+      0.8,
+      false,
+    ),
+  )
   // ── 2. os blocos de arenito ──
   k.box(0, 72, 9, 17.1, 5, 1, 2)
   // 20/11 (dificuldade): cinco blocos (antes três), mais rápidos e indo até a beira (jogam no vazio)
@@ -2147,9 +2233,13 @@ function courseMoinhos()         {
   k.disc(0, 117, 7, 2, 1, 3)
   k.sweep(0, 117, DECK + 0.55, 6.7, 0.32, -1.4, Math.PI / 2, true)
   // ── 4. o campo de cata-ventos ──
-  k.box(0, 140, 9, 15.9, 5, 1, 4)
+  // 20/11 (pedido do Alex): o posto fica num pedaço firme; o resto do campo é uma gangorra de lado que tomba com o
+  // peso da turma (escorrega para o lado baixo e joga no vazio) e as pás são paredes grossas que giram
+  const T = K.tilt
+  k.box(0, (124.1 + T.z0) / 2, 9, (T.z0 - 124.1) / 2, 5, 1, 4)
+  k.saw(0, (T.z0 + T.z1) / 2, DECK, 9, (T.z1 - T.z0) / 2, 1, T.max, 0, T.k)
   for (const [x, z, w] of K.vanes) {
-    k.sweep(x, z, DECK + 0.5, 2.25, 0.26, w * 1.25, x * 0.7, true)
+    k.sweep(x, z, DECK + 1.3, K.vaneLen, K.vaneR, w * K.vaneSpeed, x * 0.7, true)
     k.post(x, z, 0.2, DECK, DECK + 2.6, 4)
   }
   // ── 5. a subida com as pedras ──
@@ -2172,13 +2262,12 @@ function courseMoinhos()         {
       routeOf((add) => {
         const a = r(1) < 0.5 ? -1 : 1
         const b = r(2) < 0.5 ? -1 : 1
-        add(a * 1.2, 10)
-        add(a * 2.2, 16.5)
-        for (let z = 19; z <= 33; z += 2.5) add(a * 2.2, z)
-        add(b * 2.2, 35)
-        add(b * 4.4, 36)
-        for (let z = 38; z <= 51; z += 2.5) add(b * 4.4, z)
-        add(0, 54)
+        // em cima de uma das moendas (a semente escolhe), pelo topo
+        const mx = K.millX[1 + (b > 0 ? a : 0)]
+        add(mx * 0.5, 10)
+        add(mx, 14)
+        for (let z = 17; z <= 53; z += 2) add(mx, z)
+        add(0, 56)
         for (let z = 57; z <= 88; z += 2.5) add(0, z)
         // nos discos, longe do eixo (perto dele a barra passa rápido demais para ler)
         const c = r(3) < 0.5 ? -1 : 1
@@ -2193,13 +2282,20 @@ function courseMoinhos()         {
         add(-c * 3, 117)
         add(-c * 2.6, 121)
         add(0, 124)
-        add(1.5, 128)
-        add(1.5, 131)
-        add(-1, 134.5)
-        add(-1, 139)
-        add(1.5, 142.5)
-        add(1.5, 147)
-        add(0, 152)
+        // pelos vãos das pás (a semente escolhe um em cada fileira)
+        const g1 = K.vaneGaps[Math.floor(r(4) * 3)]
+        const g2 = K.vaneGaps[Math.floor(r(5) * 3)]
+        add(g1 * 0.5, 128)
+        add(g1, 131)
+        add(g1, 135)
+        add(g1, 138.5)
+        add((g1 + g2) / 2, 141)
+        add(g2, 143.5)
+        add(g2, 147)
+        add(g2, 150.5)
+        // a 2ª volta começa nas moendas logo aqui: alinha com a escolhida antes de chegar
+        add(mx, 153.5)
+        add(mx, 155.5)
         routeFinish(add, z0, finishZ)
       }),
   })
@@ -2733,6 +2829,9 @@ function courseForja()         {
  * de lado (no alto do quique dá para passar por baixo). Bigornas nas bordas, o patamar com a barra de fogo
  * que gira e a esteira curta até a chegada.
  */
+/** m/s de lado que a bola pode pegar a cada quique (20/11) */
+const ALTOFORNO_BOUNCE = 2.6
+
 const ALTOFORNO = {
   z0: 40,
   z1: 120,
@@ -2760,7 +2859,8 @@ function courseAltoForno()         {
       k.post(s * (K.hx - 0.7), zz, 0.6, y, y + 1.3, 3)
     }
   }
-  k.balls = { lanes: K.lanes, every: 0.95, v: 9, R: 1.25, zEnd: K.z0 - 2.2, hop: 1.7, hopT: 0.62, drift: 0.9 }
+  // 20/11: bola em toda esteira (as das voltas repetidas e a curta do fim, caindo do alto) e rumo novo a cada quique
+  k.balls = { lanes: K.lanes, every: 0.95, v: 9, R: 1.25, zEnd: K.z0 - 2.2, hop: 1.7, hopT: 0.62, all: true, bounce: ALTOFORNO_BOUNCE, allEvery: 1.8 }
   // ── 4. o patamar do alto-forno: a barra de fogo que gira ──
   const top = DECK + K.rise
   k.box(0, 127.5, 8, 7.5, 6, 7, 4, 0, 1.4, top)
@@ -4318,7 +4418,7 @@ function hazards(b        , w          , out                   ) {
       break
     }
   }
-  if (C.balls && w.balls.length && C.ramp && b.z > C.ramp.z0 - 5) {
+  if (C.balls && w.balls.length && C.ramp && (C.balls.all || b.z > C.ramp.z0 - 5)) {
     const bl = w.balls
     const BR = C.balls.R
     for (let k = 0; k < bl.length; k += 5) {
@@ -4786,18 +4886,40 @@ function barJump(br          , b        , w          , it           ) {
     const s = C.sweepers[i]
     if (Math.hypot(b.x - s.x, b.z - s.z) > s.len + 5) continue
     const high = s.y - s.r - b.y > 0.9
-    let tc = -1
-    for (let k = 1; k <= 30 && tc < 0; k++) {
-      const h = k * 0.02
-      const px = b.x + vx * h - s.x
-      const pz = b.z + vz * h - s.z
-      const a = sweeperAngle(s, t + h)
-      const dx = Math.sin(a)
-      const dz = Math.cos(a)
-      const along = Math.max(s.both ? -s.len : 0, Math.min(s.len, px * dx + pz * dz))
-      if (Math.abs(along) < 0.9) continue
-      if (Math.hypot(px - dx * along, pz - dz * along) < s.r + GINCANA.bodyR + 0.08) tc = h
+    // 20/11: pá GROSSA (Moinhos): de 0,3 m a mais de 1,6 m do pé — não se pula nem se mergulha
+    const wall = s.y - s.r - b.y < GINCANA.lowH && s.y + s.r - b.y > 1.6
+    const hitIn = (mvx        , mvz        , steps        ) => {
+      for (let k = 1; k <= steps; k++) {
+        const h = k * 0.02
+        const px = b.x + mvx * h - s.x
+        const pz = b.z + mvz * h - s.z
+        const a = sweeperAngle(s, t + h)
+        const dx = Math.sin(a)
+        const dz = Math.cos(a)
+        const along = Math.max(s.both ? -s.len : 0, Math.min(s.len, px * dx + pz * dz))
+        if (Math.abs(along) < 0.9) continue
+        if (Math.hypot(px - dx * along, pz - dz * along) < s.r + GINCANA.bodyR + 0.08) return h
+      }
+      return -1
     }
+    if (wall) {
+      // espera a pá passar fora do alcance dela; se ela vem mesmo parado, recua (os menos hábeis demoram)
+      if (hitIn(vx, vz, 25) < 0) continue
+      br.vaneWait = 0.15
+      const ex = b.x - s.x
+      const ez = b.z - s.z
+      const d = Math.hypot(ex, ez) || 1
+      // espera FORA do alcance (o chão que tomba leva de lado): dentro dele, recua
+      if (d < s.len + s.r + GINCANA.bodyR + 0.35 || hitIn(0, 0, 30) >= 0) {
+        it.mx = (ex / d) * br.pace
+        it.mz = (ez / d) * br.pace
+      } else {
+        it.mx = 0
+        it.mz = 0
+      }
+      continue
+    }
+    const tc = hitIn(vx, vz, 30)
     if (tc < 0) continue
     const span = s.both ? Math.PI : Math.PI * 2
     const pass = Math.floor(sweeperAngle(s, t) / span)
@@ -5420,6 +5542,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   const C = w.course
   const it            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
   br.jumpCool = Math.max(0, br.jumpCool - dt)
+  br.vaneWait = Math.max(0, (br.vaneWait ?? 0) - dt)
   if (b.mode !== MODE.RUN || w.t < 0) return it
   // Gincana 3: arena (sobrevivência, coleta, zona) — sem rota
   if (C.mode !== "race") return arenaIntent(br, b, w, it)
@@ -5549,8 +5672,10 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   }
 
   // subida: a faixa mais livre das bolas que vêm
-  if (C.ramp && C.balls && b.z > C.ramp.z0 - 2 && b.z < C.ramp.z1 + 0.5) {
-    const gaps = [-5.4, -2.9, 0, 2.9, 5.4]
+  const belt = C.ramp && C.balls ? ballBelts(C).find((R) => b.z > R.z0 - 2 && b.z < R.z1 + 0.5) : undefined
+  if (belt && C.balls) {
+    const gl = belt.hx - 1.6
+    const gaps = [-gl, (-gl * 29) / 54, 0, (gl * 29) / 54, gl]
     let best = br.laneX
     let bestScore = -Infinity
     for (const gx of gaps) {
@@ -5569,7 +5694,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     }
     // os menos hábeis demoram a perceber
     if (botRand(br.seed, br.slot, Math.floor(t * 4)) < br.skill) br.laneX = best
-    tx = C.ramp.x + br.laneX
+    tx = belt.x + br.laneX
   }
 
   // esteira: corre contra ela (mira um pouco além)
@@ -5716,7 +5841,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   // em cima da gangorra de lado inclinada: corre contra o escorregão, para o lado que sobe
   for (let i = 0; i < C.saws.length; i++) {
     const S = C.saws[i]
-    if (S.ax !== 1 || !b.ground || Math.abs(b.x - S.x) > S.hx || Math.abs(b.z - S.z) > S.hz) continue
+    if (S.ax !== 1 || !b.ground || (br.vaneWait ?? 0) > 0 || Math.abs(b.x - S.x) > S.hx || Math.abs(b.z - S.z) > S.hz) continue
     const a = w.saw[i * 2]
     const off = b.x - S.x
     if (Math.abs(a) > 0.06 && Math.sign(off) === Math.sign(a) && Math.abs(off) > 0.5) it.mx -= Math.sign(a) * Math.min(1, br.skill + 0.3)
@@ -6176,4 +6301,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, ballBelts, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, FLORESTA_ROOTS, FLORESTA_LILIES, FLORESTA_RISE_PLUS, FLORESTA_BELT, CLAREIRA, SERRARIA, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, gangorraStages, AROS, ALTOFORNO_BOUNCE, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

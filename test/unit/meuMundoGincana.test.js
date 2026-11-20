@@ -391,7 +391,7 @@ test("gincana — em grupo: a sala (pessoa pela rede + computadores) vê a pesso
 test("gincana 3 — Maré do Pântano: o pântano sobe e quem ele alcança fica FORA (não volta)", () => {
   const C = G.COURSES.floresta;
   assert.equal(C.mode, "race");
-  assert.ok(C.rise && G.riseAt(C, 0) === 0 && G.riseAt(C, 40) > G.DECK + 6, "sobe");
+  assert.ok(C.rise && G.riseAt(C, 0) === 0 && G.riseAt(C, 45) > G.DECK + 6, "sobe"); // 20/11: 8 vitórias-régias, o pântano sobe um tico mais devagar
   // parado na largada: o pântano chega e tira da prova
   const { race, r } = solo("floresta");
   const ev = [];
@@ -402,7 +402,7 @@ test("gincana 3 — Maré do Pântano: o pântano sobe e quem ele alcança fica 
     ev.length = 0;
   }
   assert.ok(out, "ficou fora");
-  assert.ok(r.out > 9 && r.out < 15, `fora aos ${r.out}`);
+  assert.ok(r.out > 9 && r.out < 18, `fora aos ${r.out}`);
   for (let k = 0; k < 60 * 4; k++) race.step();
   assert.equal(r.mode, G.MODE.WATER, "não volta ao posto");
   assert.equal(race.over(), true, "a pessoa ficou fora: a prova acabou para ela");
@@ -806,7 +806,7 @@ test("gincana — Alto-Forno: a esteira puxa para trás e as bolas quicam e vão
   for (let t = 5; t < 25; t += 0.05) {
     G.ballsAt(C, 3, t, out);
     for (let k = 0; k < out.length; k += 5) {
-      if (out[k + 2] < C.ramp.z0) continue;
+      if (out[k + 2] < C.ramp.z0 || out[k + 2] > C.ramp.z1) continue; // só a 1ª esteira (20/11: há bola nas outras)
       n++;
       const lift = out[k + 1] - (G.rampTop(C, out[k + 2]) + C.balls.R);
       assert.ok(lift >= -1e-9 && lift <= C.balls.hop + 1e-9, `quique fora: ${lift}`);
@@ -818,27 +818,66 @@ test("gincana — Alto-Forno: a esteira puxa para trás e as bolas quicam e vão
 });
 
 // ── Trilha dos Moinhos (2026-11-20) ──────────────────────────────────────────
-test("gincana — Moinhos: a moenda é parede de lado e joga quem está em cima; catavento tem mastro", () => {
+test("gincana — Moinhos (20/11): moendas grandes sem chão e com furos; cataventos são paredes que não se pula; chão do campo inclina", () => {
   const C = G.COURSE_BASE.moinhos; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
-  assert.equal(C.drums.length, 7);
-  assert.ok(C.drums.every((d) => d.wall), "as moendas são parede");
-  // encostado na lateral da moenda, abaixo do eixo: é empurrado para fora (não atravessa)
+  assert.equal(C.drums.length, 3);
+  for (const d of C.drums) {
+    assert.ok(!d.wall, "a moenda grande não é parede: anda-se por cima");
+    assert.ok(d.R >= 2.5, "moenda pequena");
+    assert.ok(d.rings.every((ring) => ring.holes.length >= 2), "anel sem furo");
+    // sem chão: nada pisável debaixo da moenda
+    const zm = d.z0 + d.rings.reduce((a, ring) => a + ring.len, 0) / 2;
+    assert.ok(!C.pads.some((p) => p.k === 1 && Math.abs(p.x - d.x) < p.hx && Math.abs(p.z - zm) < p.hz && p.y <= G.DECK + 0.1), "tem chão embaixo da moenda");
+  }
+  // em cima da moenda: o giro leva de lado
   const d = C.drums[1];
   const { race, r } = solo("moinhos");
   while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
-  Object.assign(r, { x: d.x + d.R * 0.5, z: d.z0 + 7, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
-  race.step({ mx: -1, mz: 0, jump: false, dive: false }, []);
-  assert.ok(Math.abs(r.x - d.x) >= d.R * G.DRUM_EDGE - 1e-6, `atravessou a moenda: ${(r.x - d.x).toFixed(2)}`);
-  // em cima da moenda: o giro leva de lado
   Object.assign(r, { x: d.x, z: d.z0 + 7, y: d.y + d.R, vx: 0, vy: 0, vz: 0, ground: true });
   const x0 = r.x;
   for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
   assert.ok(Math.abs(r.x - x0) > 0.3, `a moenda não jogou: ${(r.x - x0).toFixed(2)}`);
-  // cada catavento gira em volta de um mastro (poste)
+  // cada catavento é parede alta (do chão até acima do pulo) em volta de um mastro
   const vanes = C.sweepers.filter((sw) => sw.len < 3);
-  assert.equal(vanes.length, 9);
-  for (const v of vanes) assert.ok(C.posts.some((q) => q.x === v.x && q.z === v.z), "catavento sem mastro");
+  assert.equal(vanes.length, 8);
+  for (const v of vanes) {
+    assert.ok(C.posts.some((q) => q.x === v.x && q.z === v.z), "catavento sem mastro");
+    assert.ok(v.y - v.r - G.DECK < G.GINCANA.lowH && v.y + v.r - G.DECK > 1.6, "catavento que se pula ou se passa por baixo");
+  }
+  // o chão do campo dos cataventos é a balança que inclina com o peso
+  assert.ok(C.saws.length >= 1, "sem chão que inclina");
+});
+
+test("gincana — Alto-Forno (20/11): bola de fogo em toda esteira, quicando e mudando de rumo, sem sair da esteira", () => {
+  const C = G.COURSES.altoforno;
+  const belts = G.ballBelts(C);
+  assert.ok(belts.length >= 4, `só ${belts.length} esteiras com bola`);
+  const seen = new Set();
+  const out = [];
+  const xs = new Map();
+  for (let t = 5; t < 120; t += 0.05) {
+    G.ballsAt(C, 1234, t, out);
+    for (let k = 0; k < out.length; k += 5) {
+      const z = out[k + 2];
+      // (nas emendas duas esteiras valem: basta caber numa delas)
+      const cand = belts.map((_b, i) => i).filter((i) => z >= belts[i].end - 0.01 && z <= belts[i].z1 + 0.01);
+      assert.ok(cand.length, "bola fora de esteira");
+      const bt = cand.find((i) => Math.abs(out[k] - belts[i].x) <= belts[i].hx - C.balls.R + 1e-6);
+      assert.ok(bt !== undefined, "bola passou da borda");
+      seen.add(bt);
+      const key = `${bt}:${out[k + 4]}`;
+      if (!xs.has(key)) xs.set(key, []);
+      xs.get(key).push(out[k]);
+    }
+  }
+  assert.equal(seen.size, belts.length, "esteira sem bola");
+  // muda de rumo: alguma bola vai para um lado e depois volta (não é reta)
+  let turns = 0;
+  for (const v of xs.values()) {
+    for (let i = 2; i < v.length; i++) if ((v[i] - v[i - 1]) * (v[i - 1] - v[i - 2]) < -1e-6) { turns++; break; }
+  }
+  assert.ok(turns > 20, `poucas bolas mudam de rumo: ${turns}`);
 });
 
 // ── Hélices da Orbital (2026-11-20) ──────────────────────────────────────────
