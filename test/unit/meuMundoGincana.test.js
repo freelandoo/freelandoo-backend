@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 12 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "comportas", "gelo", "relogio", "feira", "coroa"]);
+test("gincana — 13 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -716,4 +716,54 @@ test("gincana — Comportas: a comporta sobe e desce pelo relógio, leva quem es
   const dry = run(116);
   const wet = run(137);
   assert.ok(wet < dry * 0.62 && wet > dry * 0.4, `graxa ${wet.toFixed(2)} × seco ${dry.toFixed(2)}`);
+});
+
+// ── Portões de Gelo (2026-11-20) ─────────────────────────────────────────────
+test("gincana — Portões de Gelo: fileiras que estreitam, o portão de verdade deixa passar e o falso barra; o gelo escorrega", () => {
+  const C = G.COURSES.portoes;
+  assert.equal(C.mode, "race");
+  const rows = [...new Set(C.doors.map((d) => d.row))];
+  assert.equal(rows.length, 9);
+  let prev = Infinity;
+  for (const row of rows) {
+    const ds = C.doors.filter((d) => d.row === row);
+    assert.ok(ds.length <= prev, `fileira ${row} não estreita`);
+    prev = ds.length;
+    const open = C.doorOpen[row];
+    assert.ok(open >= 1 && open < ds.length, `fileira ${row}: ${open} de ${ds.length}`);
+    // a fileira fecha o deck de ponta a ponta
+    const x0 = ds[0].x - ds[0].hw;
+    const x1 = ds[ds.length - 1].x + ds[ds.length - 1].hw;
+    const deck = C.pads.find((p) => p.k === 1 && Math.abs(p.z - ds[0].z) <= p.hz && p.y === G.DECK && p.hx >= 4);
+    assert.ok(deck && Math.abs(x1 - x0 - deck.hx * 2) < 1e-6, `fileira ${row} não fecha o deck`);
+  }
+  // atravessa o de verdade, bate no falso
+  const tryDoor = (want) => {
+    const { race, r } = solo("portoes");
+    while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+    const i = C.doors.findIndex((d, k) => d.row === 0 && !!race.world.open[k] === want);
+    const d = C.doors[i];
+    Object.assign(r, { x: d.x, z: d.z - 2, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+    for (let k = 0; k < 60; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false }, []);
+    return { r, d };
+  };
+  const real = tryDoor(true);
+  assert.ok(real.r.z > real.d.z + 1, `passou: ${real.r.z}`);
+  const fake = tryDoor(false);
+  assert.ok(fake.r.z < fake.d.z, `barrou: ${fake.r.z}`);
+  // gelo: solta o comando correndo e escorrega mais longe que no chão seco
+  const slide = (z) => {
+    const { race, r } = solo("portoes");
+    while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+    Object.assign(r, { x: -2, z, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+    for (let k = 0; k < 40; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false }, []);
+    const z0 = r.z;
+    for (let k = 0; k < 40; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+    return r.z - z0;
+  };
+  const ice = C.pads.filter((p) => p.f < 1);
+  assert.equal(ice.length, 2);
+  const dry = slide(48);
+  const wet = slide(62);
+  assert.ok(wet > dry * 1.5, `gelo ${wet.toFixed(2)} × seco ${dry.toFixed(2)}`);
 });

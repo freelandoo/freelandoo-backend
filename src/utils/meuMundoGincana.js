@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                 
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "comportas", "gelo", "relogio", "feira", "coroa"]
+                                                                                                                                                                             
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -1560,6 +1560,80 @@ function courseComportas()         {
   })
 }
 
+// ═══ portoes — Portões de Gelo (2ª fase do Mar de Gelo) ══════════════════════
+
+/**
+ * 20/11 (pedido do Alex, 2º vídeo de referência: tipo de prova "portas falsas que estreitam"): corrida no Mar de
+ * Gelo. Nove fileiras de portas de gelo, cada vez mais estreitas e com menos portas de verdade (a falsa é parede;
+ * a de verdade estilhaça quando alguém encosta), chão de GELO nos trechos 2 e 4 (escorrega: frear antes da
+ * porta), blocos de gelo que deslizam de lado, estalactites que balançam e a subida com bolas de neve.
+ * Diferente das Portas da Prefeitura: largura e número mudam por fileira (8 → 2), gelo e blocos.
+ */
+const PORTOES = {
+  /** [z, portas, abertas, meia largura do deck] por fileira */
+  rows: [
+    [22, 8, 5, 12],
+    [34, 7, 4, 12],
+    [46, 6, 3, 12],
+    [60, 6, 3, 9],
+    [74, 5, 2, 9],
+    [95, 4, 2, 6.5],
+    [105, 4, 1, 6.5],
+    [118, 3, 1, 5],
+    [131, 2, 1, 5],
+  ]                                      ,
+  doorH: 3.4,
+  ice: 0.5,
+}         
+
+function coursePortoes()         {
+  const K = PORTOES
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. o pátio largo: 3 fileiras ──
+  k.box(0, 35, 12, 19.9, 6, 7, 1)
+  // ── 2. o lago congelado (escorrega) com blocos de gelo que deslizam ──
+  const ice2 = k.box(0, 72, 9, 17.1, 3, 7, 2)
+  k.pads[ice2].f = K.ice
+  k.pusher(0, 67, 1.2, 1.2, 1.8, 6.4, 0, 1.0, 0)
+  k.pusher(0, 82, 1.2, 1.2, 1.8, 6.4, 0, 1.3, 1.6)
+  // ── 3. a ponte de gelo: 2 fileiras de 4 ──
+  k.box(0, 100, 6.5, 10.9, 6, 7, 3)
+  // ── 4. o corredor (escorrega) com as estalactites ──
+  const z0 = 138
+  const ice4 = k.box(0, (110.9 + z0) / 2, 5, (z0 - 110.9) / 2, 3, 7, 4)
+  k.pads[ice4].f = K.ice
+  k.swing(0, 122.5, DECK + 9, 7.4, 1.1, 0.95, 2.1, 0)
+  k.swing(0, 126.5, DECK + 9, 7.4, 1.1, 0.95, 2.1, 2.4)
+  for (const [z, n, open, hx] of K.rows) k.doorRow(0, z, n, (hx * 2) / n, K.doorH, open)
+  // ── 5. subida com bolas de neve e a chegada ──
+  const finishZ = kitFinish(k, z0, 1.0, 7, 1.2)
+  for (const [x, z] of [[0, 16.5], [-6, 28], [6, 40], [0, 56.5], [0, 91], [0, 112.5]]                      ) k.logo(x, z)
+  return k.done({
+    id: "portoes",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 57, y: DECK, w: 6 },
+      { x: 0, z: 91.5, y: DECK, w: 5 },
+      { x: 0, z: 113, y: DECK, w: 4 },
+      { x: 0, z: 136, y: DECK, w: 4 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [15.1, 54.9, 89.1, 110.9, z0],
+    minFinish: 20,
+    // a rota segue o meio; a porta é escolha do computador (bots.ts pickDoor), na hora
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        for (let z = 18; z <= 135; z += 2.5) add(0, z)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
 // ═══ gelo — Mar de Gelo ══════════════════════════════════════════════════════
 
 /**
@@ -1807,6 +1881,7 @@ const COURSES                               = {
   fabrica: courseFabrica(),
   comportas: courseComportas(),
   gelo: courseGelo(),
+  portoes: coursePortoes(),
   relogio: courseRelogio(),
   feira: courseFeira(),
   coroa: courseCoroa(),
@@ -2717,7 +2792,7 @@ function newBrain(w          , seed        , slot        )           {
   const r = (k        ) => botRand(seed, slot, k)
   const route = w.course.route(r)
   const skill = 0.55 + r(6) * 0.4
-  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, lastZ: -99, waited: 0, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1 }
+  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, back: 0, lastZ: -99, waited: 0, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1 }
 }
 
 /**
@@ -3396,13 +3471,23 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
       }
     }
   }
-  // preso (parado sem esperar nada): pula
+  // preso (parado sem esperar nada): pula; encostado numa fileira de portas, recua um passo (dois robôs que
+  // cruzam um na frente do outro junto da parede de portas se travam de lado)
+  if (br.back > 0) {
+    br.back -= dt
+    it.mz = -0.8
+    it.mx = it.mx >= 0 ? 0.6 : -0.6
+    return it
+  }
   if (Math.abs(b.z - br.lastZ) > 0.6) {
     br.lastZ = b.z
     br.stuck = 0
   } else if (go > 0) {
     br.stuck += dt
-    if (br.stuck > 2.2 && b.ground) {
+    if (br.stuck > 1.4 && b.ground && br.door >= 0 && C.doors[br.door].z - b.z < 1.5) {
+      br.back = 0.45 + botRand(br.seed, br.slot, Math.floor(t * 4)) * 0.3
+      br.stuck = 0
+    } else if (br.stuck > 2.2 && b.ground) {
       it.jump = true
       br.stuck = 0
     }
@@ -3768,4 +3853,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, COMPORTAS, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
