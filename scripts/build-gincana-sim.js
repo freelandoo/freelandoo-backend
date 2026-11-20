@@ -13,7 +13,8 @@ const fs = require("fs");
 const path = require("path");
 const { stripTypeScriptTypes } = require("node:module");
 
-const SIM = path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/gincana/sim");
+// GINCANA_SIM = pasta sim/ de outro checkout do front (worktree): a junção do lado do back pode apontar para um velho
+const SIM = process.env.GINCANA_SIM || path.resolve(__dirname, "../../freelandoo frontend/freelandoo-website-main/features/meu-mundo/gincana/sim");
 const OUT = path.resolve(__dirname, "../src/utils/meuMundoGincana.js");
 // Ordem de dependência (cada um só usa os de cima).
 const MODULES = ["course", "courses", "body", "bots", "race"];

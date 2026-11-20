@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                   
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira", "coroa"]
+                                                                                                                                                                 
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "comportas", "gelo", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -132,6 +132,16 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "clareira
              
                                                                
               
+     
+                                                                                                 
+                                                                                                 
+                                                         
+     
+            
+            
+             
+                                                                             
+            
  
 
 /** Coluna (pilar, frade, poste da luva, cogumelo): empurra de lado e dá para subir; `b` > 0 = lança para cima (m/s) quem pousa. */
@@ -521,11 +531,20 @@ class CourseKit {
 
   /** Caixa (tampo em `y`). Devolve o índice (para pôr esteira, gelo, movimento). */
   box(x        , z        , hx        , hz        , c        , rim        , s        , rot = 0, d = 1.4, y = DECK) {
-    this.pads.push({ k: 1, x, z, r: 0, hx, hz, rot, y, y2: y, d, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0 })
+    this.pads.push({ k: 1, x, z, r: 0, hx, hz, rot, y, y2: y, d, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0, gh: 0, gp: 0, gph: 0, sl: 1 })
     return this.pads.length - 1
   }
+  /** Comporta (Comportas da Usina): caixa que sobe `h` m e desce, ciclo `per` s, atraso `ph` s. */
+  gate(x        , z        , hx        , hz        , h        , per        , ph        , c        , rim        , s        , y = DECK) {
+    const i = this.box(x, z, hx, hz, c, rim, s, 0, h + 1.4, y)
+    const p = this.pads[i]
+    p.gh = h
+    p.gp = per
+    p.gph = ph
+    return i
+  }
   disc(x        , z        , r        , c        , rim        , s        , y = DECK) {
-    this.pads.push({ k: 0, x, z, r, hx: r, hz: r, rot: 0, y, y2: y, d: 1.6, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0 })
+    this.pads.push({ k: 0, x, z, r, hx: r, hz: r, rot: 0, y, y2: y, d: 1.6, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0, gh: 0, gp: 0, gph: 0, sl: 1 })
     return this.pads.length - 1
   }
   /** Viga de (x0, z0) a (x1, z1), largura `w`. */
@@ -537,7 +556,7 @@ class CourseKit {
   slope(x        , z0        , z1        , y0        , y1        , hx        , c        , rim        , s        ) {
     // várias rampas (Gincana 3): só a primeira tem as bolas
     if (!this.ramp) this.ramp = { x, z0, z1, y0, y1, hx }
-    this.pads.push({ k: 2, x, z: (z0 + z1) / 2, r: 0, hx, hz: (z1 - z0) / 2, rot: 0, y: y0, y2: y1, d: 1.4, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0 })
+    this.pads.push({ k: 2, x, z: (z0 + z1) / 2, r: 0, hx, hz: (z1 - z0) / 2, rot: 0, y: y0, y2: y1, d: 1.4, c, rim, s, f: 1, bx: 0, bz: 0, mx: 0, mz: 0, mw: 0, mph: 0, spin: 0, gh: 0, gp: 0, gph: 0, sl: 1 })
     return this.pads.length - 1
   }
   post(x        , z        , r        , y0        , y1        , c        , b = 0) {
@@ -750,8 +769,26 @@ function riseAt(c        , t        ) {
   return R.y0 + (R.y1 - R.y0) * u
 }
 
-/** Tampo de uma plataforma em z (a rampa, k = 2, sobe de y em z − hz a y2 em z + hz). */
-function padTop(p     , z        ) {
+/**
+ * Comporta: quanto está levantada (0–1) no tempo t. Ciclo: embaixo 38%, sobe 12% (suave),
+ * em cima 38%, desce 12%. Tudo pelo tempo: a sala e o aparelho veem igual.
+ */
+function gateLift(p     , t        ) {
+  if (p.gh === 0) return 0
+  const u = ((((t + p.gph) / p.gp) % 1) + 1) % 1
+  if (u < 0.38) return 0
+  if (u < 0.5) {
+    const k = (u - 0.38) / 0.12
+    return k * k * (3 - 2 * k)
+  }
+  if (u < 0.88) return 1
+  const k = (u - 0.88) / 0.12
+  return 1 - k * k * (3 - 2 * k)
+}
+
+/** Tampo de uma plataforma em z no tempo t (a rampa, k = 2, sobe de y em z − hz a y2 em z + hz; a comporta sobe pelo relógio). */
+function padTop(p     , z        , t = 0) {
+  if (p.gh !== 0) return p.y + p.gh * gateLift(p, t)
   if (p.k !== 2) return p.y
   const u = Math.max(0, Math.min(1, (z - (p.z - p.hz)) / (2 * p.hz)))
   return p.y + (p.y2 - p.y) * u
@@ -1426,6 +1463,103 @@ function courseFabrica()         {
   })
 }
 
+// ═══ comportas — Comportas da Usina (2ª fase da Fábrica) ═════════════════════
+
+/**
+ * 20/11 (pedido do Alex: fases novas pelos vídeos de referência; tipo de prova "portões que sobem e
+ * descem"): corrida na usina da Fábrica. Fileiras de COMPORTAS de aço saem do chão e voltam pelo relógio
+ * (gateLift); entre elas, paredes fixas listradas. Embaixo a comporta é chão; em cima é parede de 3,5 m (e
+ * quem estava no tampo sobe junto). Trechos: comportas em onda → comportas baixas (pule) e fundas →
+ * funil com muretas → GRAXA (corre na metade) com comportas lentas → a fileira rápida e a subida.
+ */
+const COMPORTAS = {
+  /** Centros das 5 comportas e das paredes entre elas (fileira larga, deck de 22 m). */
+  gx: [-8.4, -4.2, 0, 4.2, 8.4],
+  wall: [[-10.4, 0.6], [-6.3, 0.5], [-2.1, 0.5], [2.1, 0.5], [6.3, 0.5], [10.4, 0.6]]                      ,
+  /** Fileira estreita (funil, deck de 14 m). */
+  gx3: [-4.2, 0, 4.2],
+  wall3: [[-6.3, 0.7], [-2.1, 0.5], [2.1, 0.5], [6.3, 0.7]]                      ,
+  gateHx: 1.6,
+  gateH: 3.5,
+  lowH: 1.0,
+  wallH: 3.2,
+  /** Graxa: fração da corrida. */
+  grease: 0.5,
+}         
+
+function courseComportas()         {
+  const K = COMPORTAS
+  const k = new CourseKit()
+  kitStart(k)
+  const row = (z        , hz        , xs                   , walls                             , per        , ph                       , s        , h                        = () => K.gateH) => {
+    xs.forEach((x, i) => k.gate(x, z, K.gateHx, hz, h(i), per, ph(i), 6, 7, s))
+    for (const [x, hx] of walls) k.box(x, z, hx, hz + 0.15, 4, 1, s, 0, K.wallH + 1.4, DECK + K.wallH)
+  }
+  // ── 1. comportas em onda ──
+  k.box(0, 40, 11, 24.9, 3, 1, 1)
+  row(26, 1.4, K.gx, K.wall, 4, (i) => i * 0.8, 1)
+  row(40, 1.4, K.gx, K.wall, 4, (i) => (4 - i) * 0.8, 1)
+  row(54, 1.4, K.gx, K.wall, 3.6, (i) => (i % 2) * 1.8, 1)
+  for (const [x, z] of [[-5, 33], [5, 33], [0, 47], [-9, 47], [9, 47]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  // ── 2. comportas baixas (pule) e fundas ──
+  k.box(0, 85, 11, 20.2, 3, 1, 2)
+  row(72, 1.4, K.gx, K.wall, 3.2, (i) => i * 0.64, 2, (i) => (i % 2 ? K.lowH : K.gateH))
+  row(84, 1.4, K.gx, K.wall, 3, (i) => (i % 2) * 1.5, 2)
+  row(96, 2.4, K.gx, K.wall, 4.4, (i) => [0, 2.2, 1.1, 3.3, 0.5][i], 2)
+  for (const [x, z] of [[-6.3, 78], [6.3, 78], [-2.1, 90], [2.1, 90]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  // ── 3. funil com muretas e a fileira estreita ──
+  k.box(0, 120, 7, 15.1, 3, 1, 3)
+  k.box(-2.5, 112, 4.5, 0.45, 2, 1, 3, 0, 1.0 + 1.4, DECK + 1.0)
+  k.box(2.5, 119, 4.5, 0.45, 2, 1, 3, 0, 1.0 + 1.4, DECK + 1.0)
+  row(128, 1.4, K.gx3, K.wall3, 2.8, (i) => i * 0.93, 3)
+  // ── 4. graxa com comportas lentas ──
+  const g = k.box(0, 150, 11, 15, 4, 1, 4)
+  k.pads[g].sl = K.grease
+  row(150, 1.4, K.gx, K.wall, 5, (i) => i, 4)
+  for (const [x, z] of [[-6, 142], [6, 142], [-3, 158], [3, 158]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  // ── 5. a fileira rápida e a subida ──
+  k.box(0, 172, 11, 7, 3, 1, 5)
+  row(172, 1.4, K.gx, K.wall, 2.6, (i) => i * 0.52, 5)
+  const z0 = 179
+  k.slope(0, z0, z0 + 14, DECK, DECK + 3, 8, 0, 1, 5)
+  k.box(0, z0 + 14 + 7.8, 9, 7.8, 1, 0, 6, 0, 1.6, DECK + 3)
+  const finishZ = z0 + 14 + 8.8
+  for (const [x, z] of [[0, 67], [-4, 107], [4, 107], [0, 166]]                      ) k.logo(x, z)
+  return k.done({
+    id: "comportas",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 67, y: DECK, w: 7 },
+      { x: 0, z: 107.5, y: DECK, w: 6 },
+      { x: 0, z: 137.5, y: DECK, w: 7 },
+      { x: 0, z: 167, y: DECK, w: 7 },
+    ],
+    finishZ,
+    finishY: DECK + 3,
+    sections: [15.1, 64.9, 105.1, 135, 165],
+    minFinish: 20,
+    // a rota só segue o meio: a escolha da comporta é do computador (bots.ts gateAim), na hora
+    route: (r) =>
+      routeOf((add) => {
+        const side = r(1) < 0.5 ? -1 : 1
+        add(side * 1.2, 10)
+        add(side * 0.8, 15.5)
+        for (let z = 18; z <= 104; z += 2) add(0, z)
+        add(4.6, 109)
+        add(4.6, 113.5)
+        add(0, 115.8)
+        add(-4.6, 117.5)
+        add(-4.6, 120.5)
+        add(0, 123)
+        for (let z = 125; z <= 177; z += 2) add(0, z)
+        for (let z = z0 + 1; z <= z0 + 13; z += 2.5) add(0, z)
+        add(0, finishZ - 7)
+        add(0, finishZ - 2)
+        add(0, finishZ + 3)
+      }),
+  })
+}
+
 // ═══ gelo — Mar de Gelo ══════════════════════════════════════════════════════
 
 /**
@@ -1671,6 +1805,7 @@ const COURSES                               = {
   orbital: courseOrbital(),
   forja: courseForja(),
   fabrica: courseFabrica(),
+  comportas: courseComportas(),
   gelo: courseGelo(),
   relogio: courseRelogio(),
   feira: courseFeira(),
@@ -1905,7 +2040,7 @@ function groundUnder(w          , x        , z        , reach        ) {
     } else {
       const L = padLocal(p, w.t, x, z)
       if (Math.abs(L.lx) > p.hx + EDGE || Math.abs(L.lz) > p.hz + EDGE) continue
-      top = padTop(p, z)
+      top = padTop(p, z, w.t)
     }
     if (top <= reach && top > best) {
       best = top
@@ -1984,7 +2119,7 @@ function pushWalls(b        , w          , out                   )              
     if (!ledge || top < ledge.top) ledge = { top, nx, nz }
   }
   for (const p of C.pads) {
-    const top = padTop(p, b.z)
+    const top = padTop(p, b.z, w.t)
     if (top <= lift || top - p.d >= b.y + H) continue
     if (p.k === 0) {
       const sh = padShift(p, w.t)
@@ -2338,6 +2473,8 @@ function stepRunner(b        , it           , w          , out                  
     let run = T.run * (b.boost > 0 ? T.boost : 1)
     if (b.held > 0) run *= T.heldRun
     if (b.grab >= 0) run *= T.grabRun
+    // graxa (Comportas da Usina): no chão dela a corrida fica mais lenta
+    if (b.ground && b.pad >= 0) run *= C.pads[b.pad].sl
     const tx = mx * run
     const tz = mz * run
     const a = T.accel * (b.boost > 0 ? 1.3 : 1) * (b.ground ? b.fric : T.airControl) * dt
@@ -2942,6 +3079,55 @@ function spinRide(br          , b        , w          , it           ) {
   return true
 }
 
+/**
+ * Comportas (Comportas da Usina): na fileira à frente, escolhe a comporta que vai estar EMBAIXO enquanto
+ * eu cruzo (prevê pelo relógio dela); nenhuma: vai para a melhor e espera na frente dela. Já dentro da
+ * fileira (entre as paredes) segue a dela. Erro pela habilidade. null = nenhuma fileira perto.
+ */
+function gateAim(br          , b        , w          )                                                 {
+  const C = w.course
+  let rowZ = Infinity
+  let hz = 0
+  for (const p of C.pads) {
+    if (p.gh <= 0 || p.z + p.hz - b.z < -0.2 || p.z - p.hz - b.z > 6.5) continue
+    if (p.z < rowZ) {
+      rowZ = p.z
+      hz = p.hz
+    }
+  }
+  if (rowZ === Infinity) return null
+  const t = w.t
+  const under = b.pad >= 0 ? C.pads[b.pad] : null
+  const vRun = GINCANA.run * Math.max(0.3, br.pace) * (under ? under.sl : 1)
+  const front = rowZ - hz
+  let best = -1
+  let bestScore = -Infinity
+  for (let i = 0; i < C.pads.length; i++) {
+    const p = C.pads[i]
+    if (p.gh <= 0 || p.z !== rowZ) continue
+    // dentro da fileira: fica na sua
+    if (b.z > front - 0.15 && Math.abs(p.x - b.x) <= p.hx) return { x: p.x, z: p.z + hz + 1, wait: false }
+    const lat = Math.max(0, Math.abs(p.x - b.x) - 0.3) / GINCANA.run
+    const ta = Math.max(0, (front - 0.45 - b.z) / vRun, lat)
+    const tl = ta + (2 * hz + 0.9) / vRun
+    let free = true
+    for (let k = 0; k <= 5 && free; k++) if (padTop(p, p.z, t + ta + ((tl - ta) * k) / 5) > b.y + GINCANA.stepUp - 0.08) free = false
+    const score = (free ? 8 : 0) - Math.abs(p.x - b.x) * 0.45 + botRand(br.seed, br.slot * 13 + i, Math.floor((t + p.gph) / p.gp)) * (2.6 - br.skill * 2.4)
+    if (score > bestScore) {
+      bestScore = score
+      best = i
+    }
+  }
+  if (best < 0) return null
+  const p = C.pads[best]
+  const ta = Math.max(0, (front - 0.45 - b.z) / vRun)
+  let open = true
+  for (let k = 0; k <= 5 && open; k++) if (padTop(p, p.z, t + ta + ((2 * hz + 0.9) / vRun) * (k / 5)) > b.y + GINCANA.stepUp - 0.08) open = false
+  // fechada para quando eu chegar: espera um passo antes da frente, já alinhado
+  if (!open) return { x: p.x, z: front - 1.1, wait: true }
+  return { x: p.x, z: p.z + hz + 1, wait: false }
+}
+
 function botIntent(br          , b        , w          , dt = GINCANA.step)            {
   const C = w.course
   const it            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
@@ -2996,6 +3182,14 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
       }
       break
     }
+  }
+
+  // comportas: mira a que vai estar embaixo quando eu passar (ou espera alinhado na frente)
+  const ga = gateAim(br, b, w)
+  if (ga) {
+    tx = ga.x
+    tz = ga.z
+    if (ga.wait && Math.abs(b.x - ga.x) < 0.5 && b.z > ga.z - 0.6) go = 0
   }
 
   // ladrilhos: escolhe o próximo em pé (e não tremendo), perto da reta
@@ -3574,4 +3768,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, COMPORTAS, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

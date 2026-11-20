@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 11 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "gelo", "relogio", "feira", "coroa"]);
+test("gincana — 12 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "orbital", "forja", "fabrica", "comportas", "gelo", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -672,4 +672,48 @@ test("gincana 3 — Coroa da Torre: final de vaga 1; passar pelo chão não pega
   assert.ok(r.fin >= 0, "pulou e pegou a coroa");
   assert.equal(race.closed(), true);
   assert.equal(race.standings().filter((x) => x.q).length, 1);
+});
+
+// ── Comportas da Usina (2026-11-20) ──────────────────────────────────────────
+test("gincana — Comportas: a comporta sobe e desce pelo relógio, leva quem está em cima e barra quem chega; a graxa deixa lento", () => {
+  const C = G.COURSES.comportas;
+  assert.equal(C.mode, "race");
+  const gates = C.pads.filter((p) => p.gh > 0);
+  assert.ok(gates.length >= 20, `${gates.length} comportas`);
+  const p = gates.find((q) => q.z === 26 && q.x === 0);
+  // ciclo: embaixo, sobe, em cima, desce
+  const tAt = (u) => ((u * p.gp - p.gph) % p.gp + p.gp * 4) % p.gp + p.gp * 2;
+  assert.equal(G.gateLift(p, tAt(0.2)), 0);
+  assert.equal(G.gateLift(p, tAt(0.7)), 1);
+  assert.equal(G.padTop(p, p.z, tAt(0.7)), p.y + p.gh);
+  const at = (x, z, t0, steps, mz) => {
+    const { race, r } = solo("comportas");
+    while (race.t < t0) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+    Object.assign(r, { x, z, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+    let maxY = r.y;
+    for (let k = 0; k < steps; k++) {
+      race.step({ mx: 0, mz, jump: false, dive: false }, []);
+      maxY = Math.max(maxY, r.y);
+    }
+    return { r, maxY };
+  };
+  // em cima quando ela sobe: vai junto até o alto
+  assert.ok(Math.abs(at(p.x, p.z, tAt(0.3), 60).maxY - (G.DECK + p.gh)) < 1e-6, "subiu junto");
+  // chegando com ela em cima: fica parado na frente
+  const blocked = at(p.x, p.z - p.hz - 1.5, tAt(0.55), 30, 1).r;
+  assert.ok(blocked.z < p.z - p.hz, `barrou em ${blocked.z}`);
+  // graxa: corrida na metade
+  const gr = C.pads.find((q) => q.sl < 1);
+  assert.equal(gr.sl, 0.5);
+  const run = (z) => {
+    const { race, r } = solo("comportas");
+    while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+    Object.assign(r, { x: z > 130 ? -9 : -5.5, z, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+    const z0 = r.z;
+    for (let k = 0; k < 60; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false }, []);
+    return r.z - z0;
+  };
+  const dry = run(116);
+  const wet = run(137);
+  assert.ok(wet < dry * 0.62 && wet > dry * 0.4, `graxa ${wet.toFixed(2)} × seco ${dry.toFixed(2)}`);
 });
