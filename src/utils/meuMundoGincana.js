@@ -1452,6 +1452,27 @@ function routeOf(fill                                                           
 
 // ═══ cidade — o percurso de sempre (mm3d-47) ═════════════════════════════════
 
+/**
+ * Canal da Cidade — números da dificuldade (20/11, o Alex: "obstáculos mais resistentes e mais rápidos").
+ * Antes: portas 3-2-2 / 2-2, carrossel de uma barra (1,05 rad/s), pêndulos R 1,1 amp 0,95 em 2 fileiras,
+ * barris a cada 0,95 s a 7,5 m/s (R 1,2), ponte sem nada.
+ */
+const CIDADE = {
+  rows1: [[26, 2], [38, 2], [50, 1]]                      ,
+  open2: 1,
+  /** socos da ponte: [x da base, z, fase] */
+  punches: [[-5.6, 67.5, 0], [5.6, 72.5, 1.2]]                              ,
+  punchReach: 6.2,
+  punchPeriod: 1.9,
+  sweep: { w: 1.1, acc: 0.008, wMax: 1.5, highY: 1.45, highW: 0.6 },
+  pend: {
+    R: 1.2,
+    amp: 1.05,
+    rows: [[144, [0, 2.1, 4.2]], [153, [1.1, 3.3, 0.2]]]                        ,
+  },
+  balls: { every: 0.75, v: 8.5, R: 1.35 },
+}         
+
 function courseCidade()         {
   // Portas da Prefeitura (Gincana 3, G3-11): a corrida de abertura do programa. Três fileiras de portas
   // (as falsas são parede; a semente sorteia quais abrem), a ponte, o carrossel de duas barras, mais
@@ -1460,31 +1481,33 @@ function courseCidade()         {
   kitStart(k)
   // ── 1. portas ──
   k.box(0, 39.8, 8, 24.7, 6, 7, 1)
-  const ROWS1                     = [[26, 3], [38, 2], [50, 2]]
-  for (const [z, open] of ROWS1) k.doorRow(0, z, 5, 3.2, 3.4, open)
-  // ── 2. ponte e carrossel de duas barras ──
+  for (const [z, open] of CIDADE.rows1) k.doorRow(0, z, 5, 3.2, 3.4, open)
+  // ── 2. ponte com os socos de lado e o carrossel de duas barras ──
   k.box(0, 70, 2.4, 5.5, 6, 7, 2)
+  // 20/11 (dificuldade): dois socos atravessam a ponte estreita, um de cada margem, desencontrados
+  for (const [x0, z, ph] of CIDADE.punches) {
+    k.post(x0, z, 0.45, -1, DECK + 1.9, 2)
+    k.glove(x0, z, DECK + 1, -Math.sign(x0), CIDADE.punchReach, 1.0, CIDADE.punchPeriod, ph)
+  }
   k.disc(0, 85, 9.5, 0, 1, 2)
   k.post(0, 85, 0.8, DECK, DECK + 2.4, 1)
-  k.sweep(0, 85, DECK + 0.55, 9.8, 0.32, 1.05, 0.4, true)
+  // 20/11: a barra baixa (pular) acelera; a alta (mergulhar, um braço só) gira ao contrário — nunca se passa as duas do mesmo jeito
+  const SW = CIDADE.sweep
+  k.sweep(0, 85, DECK + 0.55, 9.8, 0.32, SW.w, 0.4, true, SW.acc, SW.wMax)
+  k.sweep(0, 85, DECK + SW.highY, 9.8, 0.3, -SW.highW, 0.4 + Math.PI / 2, false)
   k.box(0, 98.5, 5, 4, 6, 7, 2)
   // ── 3. mais portas (menos abertas) ──
   k.box(0, 120.5, 8, 18, 6, 7, 3)
-  for (const z of [112, 126]) k.doorRow(0, z, 5, 3.2, 3.4, 2)
-  // ── 4. passarelas com pêndulos ──
+  for (const z of [112, 126]) k.doorRow(0, z, 5, 3.2, 3.4, CIDADE.open2)
+  // ── 4. passarelas com pêndulos (três fileiras) ──
   const LANES = [-5, 0, 5]
   for (const x of LANES) k.beam(x, 138.5, x, 160, 1.5, 0, 1, 4)
-  const swing = (x        , z        , ph        ) => k.swing(x, z, DECK + 9, 7.4, 1.1, 0.95, 2.2, ph)
-  swing(-5, 144, 0)
-  swing(0, 144, 2.1)
-  swing(5, 144, 4.2)
-  swing(-5, 153, 1.1)
-  swing(0, 153, 3.3)
-  swing(5, 153, 0.2)
+  const PD = CIDADE.pend
+  for (const [z, phs] of PD.rows) LANES.forEach((x, i) => k.swing(x, z, DECK + 9, 7.4, PD.R, PD.amp, 2.2, phs[i]))
   k.box(0, 165, 7, 5, 6, 7, 4)
   // ── 5. subida com barris e a chegada ──
   const z0 = 170
-  const finishZ = kitFinish(k, z0, 0.95, 7.5, 1.2)
+  const finishZ = kitFinish(k, z0, CIDADE.balls.every, CIDADE.balls.v, CIDADE.balls.R)
   for (const [x, z] of [[0, 18], [-4.8, 32], [4.8, 44], [0, 58], [0, 98.5], [-4.8, 118], [4.8, 132], [0, 165]]                      ) k.logo(x, z)
   return k.done({
     id: "cidade",
@@ -5912,4 +5935,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

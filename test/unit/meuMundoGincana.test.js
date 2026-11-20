@@ -81,8 +81,12 @@ test("gincana — 22 fases; cada uma fecha: postos em ordem com chão, chegada n
   }
   // a da cidade (G3-11): Portas da Prefeitura — 5 fileiras de 5 portas, carrossel de duas barras, pêndulos
   assert.equal(G.COURSE_BASE.cidade.doors.length, 25);
-  assert.deepEqual(G.COURSE_BASE.cidade.doorOpen, [3, 2, 2, 2, 2]);
-  assert.ok(C0.sweepers.length >= 1 && C0.pendulums.length >= 6 && C0.balls);
+  // 20/11 (dificuldade): menos portas abertas, carrossel com a barra alta ao contrário, socos na ponte
+  assert.deepEqual(G.COURSE_BASE.cidade.doorOpen, [2, 2, 1, 1, 1]);
+  assert.equal(G.COURSE_BASE.cidade.sweepers.length, 2);
+  assert.ok(G.COURSE_BASE.cidade.sweepers[1].y - G.DECK > 1 && G.COURSE_BASE.cidade.sweepers[1].w < 0, "a alta gira ao contrário");
+  assert.equal(G.COURSE_BASE.cidade.gloves.length, 2);
+  assert.ok(C0.sweepers.length >= 2 && C0.pendulums.length >= 6 && C0.balls);
   assert.equal(G.courseOf("nada").id, "cidade");
 });
 
@@ -153,13 +157,15 @@ test("gincana — a barra do carrossel derruba quem fica parado e não quem pula
   const standAt = (jumpAhead) => {
     const { race, r } = solo();
     const ang = G.sweeperAngle(s, 1);
-    Object.assign(r, { x: s.x + Math.sin(ang) * 6, z: s.z + Math.cos(ang) * 6, y: G.DECK, ground: true });
+    // a barra alta (20/11, ao contrário) passa ali aos ~0,15 s: protegido até a baixa chegar (t = 1)
+    Object.assign(r, { x: s.x + Math.sin(ang) * 6, z: s.z + Math.cos(ang) * 6, y: G.DECK, ground: true, shield: 0.6 });
     const ev = [];
     let hit = false;
     for (let k = 0; k < 120; k++) {
       const jump = jumpAhead !== null && Math.abs(race.t + G.GINCANA.step - (1 - jumpAhead)) < G.GINCANA.step / 2;
       race.step({ mx: 0, mz: 0, jump, dive: false }, ev);
-      if (ev.some((e) => e.type === "hit" && e.by === "bar")) hit = true;
+      // só a passagem da barra baixa (a alta, ao contrário, cruza o mesmo ponto em outra hora)
+      if (race.t > 0.6 && race.t < 1.4 && ev.some((e) => e.type === "hit" && e.by === "bar")) hit = true;
       ev.length = 0;
     }
     return hit;
