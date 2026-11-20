@@ -2013,7 +2013,8 @@ function courseClareira()         {
   const R = K.ramp
   const rampY = (z        ) => DECK + ((CY1 - DECK) * (z - R.z0)) / (R.z1 - R.z0)
   k.slope(0, R.z0, R.z1, DECK, CY1, R.hx, 5, 1, 2)
-  k.balls = { lanes: K.lanes, every: 0.8, v: 7, R: 1.1, zEnd: 62.5 + CA }
+  // 20/11 (pedido do Alex): "tem que soltar mais bolas com mais frequência" — 0,8 → 0,4 s (o dobro de frutas)
+  k.balls = { lanes: K.lanes, every: 0.4, v: 7, R: 1.1, zEnd: 62.5 + CA }
   for (const [x, z] of K.stones) k.box(x, z, 0.75, 1.6, 0, 1, 2, 0, 1.5 + 0.6, rampY(z) + 1.5)
   // ── 3. os troncos ocos no alto da rampa e os tocos que giram sobre o pântano ──
   k.box(0, 111 + CA, 8, 6, 5, 1, 3, 0, 1.4, CY1)
