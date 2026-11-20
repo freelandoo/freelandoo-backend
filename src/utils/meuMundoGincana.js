@@ -386,7 +386,6 @@ function memUp(m        , seed        , i        , t        ) {
                                                                                 
  
 
-/** Andar da Fábrica: centro e altura do chão, raio do miolo, engrenagens para subir e o pulo. */
 /**
  * Fábrica em andares (20/11, o Alex: "a plataforma vai descendo e quando só sobram dois é engolida pelo rio de fogo;
  * o rio vai subindo conforme menos pessoas lá"): segundos entre a hora em que o andar fica com os 2 últimos e o corte
@@ -396,6 +395,7 @@ const FLOOR_SINK = 2.4
 /** A lava parada de cada andar fica FLOOR_LAVA m abaixo do chão dele (quem cai do andar some nela e volta ao andar). */
 const FLOOR_LAVA = 4.6
 
+/** Andar da Fábrica: centro e altura do chão, raio do miolo, engrenagens para subir e o pulo. */
                         
            
            
@@ -3545,6 +3545,21 @@ const ESTALEIRO = {
   /** barras das banquisas: aceleram até wMax (20/11) */
   barAcc: 0.01,
   barMax: 1.7,
+  /**
+   * 20/11 (pedido do Alex: "a esteira girando ao contrário aqui"; "luvas de boxe antes dos giros para empurrar,
+   * depois de cada hélice um pêndulo de marreta de gelo, gangorras sensíveis de gelo entre os estágios e uma rampa
+   * com esteira forte para baixo com pedras de gelo caindo"): o disco da banquisa gira ao contrário da barra
+   * (rad/s); luvas dos dois lados das pontes; marreta depois de cada hélice do cais e de cada fileira do pátio;
+   * duas balanças de gelo entre os trechos; a subida do dique virou esteira para baixo com pedras quicando, e a
+   * hélice gigante foi para cima do dique.
+   */
+  discSpin: 0.25,
+  /** meia largura do cais (antes 3,3: com a marreta, quem levava caía no mar) */
+  pierHx: 4.4,
+  gloves: { x0: 4.4, reach: 5.6, period: 3.0 },
+  hammer: { py: 7.6, len: 6.4, R: 0.9, amp: 0.7, w: 1.5 },
+  saws: { hx: 3.3, hz: 3.0, gap: 0.5, len: 12.5, max: 0.36, k: 0.2, slip: 8, rest: 0.06, gain: 1.3 },
+  ramp: { len: 18, belt: 0.4, every: 2.6, v: 6.5, R: 0.95, hop: 1.1, hopT: 0.55, bounce: 1.4 },
 }         
 
 function courseEstaleiro()         {
@@ -3554,61 +3569,100 @@ function courseEstaleiro()         {
   // hélice em pé: o cubo fica a L − folga acima do chão (a ponta raspa o piso)
   const rot = (x        , z        , floor        , L        , n        , w        , ph        ) =>
     k.rotor(x, z, floor + L - K.hubY, L, n, 0.42, 0.35, w, ph)
-  // ── 1. as banquisas com a barra de proa ──
+  // marreta de gelo em pêndulo atravessando a pista logo depois de uma hélice
+  const hammer = (x        , z        , ph        ) => k.swing(x, z, DECK + K.hammer.py, K.hammer.len, K.hammer.R, K.hammer.amp, K.hammer.w, ph)
+  // gangorras de gelo entre os trechos: duas balanças sensíveis em fila (tombam de lado e escorregam)
+  const saws = (z0        ) => {
+    const S = K.saws
+    for (let i = 0; i < 2; i++) {
+      k.saw(0, z0 + S.hz + i * (S.hz * 2 + S.gap), DECK, S.hx, S.hz, 1, S.max, i % 2 ? S.rest : -S.rest, S.k)
+      const sw = k.saws[k.saws.length - 1]
+      sw.slip = S.slip
+      sw.gain = S.gain
+    }
+    return z0 + S.len
+  }
+  // luvas de boxe nos dois lados da ponte que leva a uma banquisa
+  const gloves = (z        , ph        ) => {
+    const G = K.gloves
+    k.glove(-G.x0, z - 1.1, DECK + 1, 1, G.reach, 0.9, G.period, ph)
+    k.glove(G.x0, z + 1.1, DECK + 1, -1, G.reach, 0.9, G.period, ph + G.period / 2)
+  }
+  // ── 1. as banquisas com a barra de proa; o disco gira ao contrário da barra ──
+  const banq = (z        , w        , a0        , both         ) => {
+    const d = k.disc(0, z, 8, 5, 1, 1)
+    k.pads[d].spin = -Math.sign(w) * K.discSpin
+    k.post(0, z, 0.8, DECK, DECK + 2.4, 5)
+    k.sweep(0, z, DECK + 0.55, 8.3, 0.34, w, a0, both, K.barAcc, K.barMax)
+  }
   k.box(0, 17.5, 2.2, 2.4, 5, 1, 1, 0, 1.2)
-  k.disc(0, 28, 8, 5, 1, 1)
-  k.post(0, 28, 0.8, DECK, DECK + 2.4, 5)
-  k.sweep(0, 28, DECK + 0.55, 8.3, 0.34, 1.05, 0, true, K.barAcc, K.barMax)
+  gloves(17.5, 0)
+  banq(28, 1.05, 0, true)
   k.box(0, 38.5, 2.2, 2.6, 5, 1, 1, 0, 1.2)
-  k.disc(0, 49, 8, 5, 1, 1)
-  k.post(0, 49, 0.8, DECK, DECK + 2.4, 5)
-  k.sweep(0, 49, DECK + 0.55, 8.3, 0.34, -1.3, 1.4, false, K.barAcc, K.barMax)
-  // ── 2. o cais com três hélices em fila ──
-  k.box(0, 70.5, 3.3, 13.5, 5, 1, 2)
-  K.pier.forEach(([z, n, w], i) => rot(0, z, DECK, K.pierL, n, w, i * 0.7))
-  // ── 3. o pátio com duas fileiras lado a lado ──
-  k.box(0, 99.5, 9.6, 15.5, 5, 1, 3)
-  K.yard.forEach(([x, z, w], i) => rot(x, z, DECK, K.yardL, 3, w, i * 1.1))
-  // ── 4. a subida para o dique seco com a hélice gigante atravessada ──
-  const z0 = 115
-  const z1 = 143
+  gloves(38.5, 0.9)
+  banq(49, -1.3, 1.4, false)
+  // ── gangorras 1 ──
+  const zp = saws(57.4) + 0.4
+  // ── 2. o cais com três hélices em fila (marreta depois de cada uma) ──
+  const D1 = zp - 57
+  k.box(0, 70.5 + D1, K.pierHx, 13.5, 5, 1, 2)
+  K.pier.forEach(([z, n, w], i) => {
+    rot(0, z + D1, DECK, K.pierL, n, w, i * 0.7)
+    hammer(0, z + D1 + (i < 2 ? 5.6 : 4.9), i * 1.3)
+  })
+  // ── gangorras 2 ──
+  const zy = saws(84 + D1 + 0.4) + 0.4
+  // ── 3. o pátio com duas fileiras lado a lado (marreta depois de cada fileira) ──
+  const D2 = zy - 84
+  k.box(0, 99.5 + D2, 9.6, 15.5, 5, 1, 3)
+  K.yard.forEach(([x, z, w], i) => rot(x, z + D2, DECK, K.yardL, 3, w, i * 1.1))
+  hammer(0, 100.6 + D2, 0.6)
+  hammer(0, 109.7 + D2, 2.1)
+  // ── gangorras 3 ──
+  const z0 = saws(115 + D2 + 0.4) + 0.4
+  // ── 4. a rampa do dique seco: esteira forte para baixo e pedras de gelo caindo e quicando ──
+  const z1 = z0 + K.ramp.len
   const Yt = DECK + 6
-  k.slope(0, z0, z1, DECK, Yt, 6.6, 5, 1, 4)
-  const zb = 131
-  rot(0, zb, DECK + ((zb - z0) / (z1 - z0)) * (Yt - DECK), K.bigL, 4, K.bigW, 0.3)
-  k.box(0, z1 + 7.8, 9, 7.8, 1, 0, 6, 0, 1.6, Yt)
+  const ramp = k.slope(0, z0, z1, DECK, Yt, 6.6, 5, 1, 4)
+  k.pads[ramp].bz = -GINCANA.belt * K.ramp.belt
+  k.balls = { lanes: [-4.4, -1.5, 1.5, 4.4], every: K.ramp.every, v: K.ramp.v, R: K.ramp.R, zEnd: z0 + 0.5, hop: K.ramp.hop, hopT: K.ramp.hopT, all: true, bounce: K.ramp.bounce, allEvery: 1 }
+  // a hélice gigante atravessada guarda a chegada, em cima do dique
+  k.box(0, z1 + 7.8, 6.6, 7.8, 1, 0, 6, 0, 1.6, Yt)
+  rot(0, z1 + 4.2, Yt, K.bigL, 4, K.bigW, 0.3)
   const finishZ = z1 + 8.8
-  for (const [x, z] of [[0, 17.5], [0, 38.5], [-2, 58.5], [2, 58.5], [0, 86], [0, 111]]                      ) k.logo(x, z)
+  for (const [x, z] of [[0, 17.5], [0, 38.5], [0, 86 + D2 - 0.6], [0, 111 + D2]]                      ) k.logo(x, z)
   return k.done({
     id: "estaleiro",
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
       { x: 0, z: 38.5, y: DECK, w: 2 },
-      { x: 0, z: 59, y: DECK, w: 3 },
-      { x: 0, z: 87, y: DECK, w: 6 },
-      { x: 0, z: 111, y: DECK, w: 6 },
+      { x: 0, z: zp + 3, y: DECK, w: 3 },
+      { x: 0, z: zy + 4, y: DECK, w: 6 },
+      { x: 0, z: 112 + D2, y: DECK, w: 6 },
     ],
     finishZ,
     finishY: Yt,
-    sections: [15.1, 57, 84, z0, z0 + 14],
+    sections: [15.1, zp, zy, z0, z1],
     minFinish: 20,
     route: (r) =>
       routeOf((add) => {
-        for (let z = 10; z <= 58; z += 2) add(0, z)
+        for (let z = 10; z <= 57; z += 2) add(0, z)
+        for (let z = 58; z < zp; z += 1.5) add(0, z)
         // no cais: um pouco para um lado (o vão chega antes perto da ponta da pá)
         const s = r(1) < 0.5 ? -1.4 : 1.4
-        for (let z = 60; z <= 82; z += 2) add(s, z)
-        add(0, 86)
+        for (let z = zp + 3; z <= zp + 25; z += 2) add(s, z)
+        for (let z = 84 + D1; z < zy; z += 1.5) add(0, z)
         // pátio: o vão entre as hélices da 1ª fileira (x ±3,1) e depois o da 2ª (0 ou ±6,2)
         const g1 = r(2) < 0.5 ? -3.1 : 3.1
-        add(g1, 91)
-        add(g1, 97)
+        add(g1, 91 + D2)
+        add(g1, 97 + D2)
         const g2 = r(3) < 0.4 ? 0 : g1 < 0 ? -6.2 : 6.2
-        add(g2, 101)
-        add(g2, 107)
-        add(0, 112)
+        add(g2, 101 + D2)
+        add(g2, 107 + D2)
+        add(0, 112 + D2)
+        for (let z = 115 + D2; z < z0; z += 1.5) add(0, z)
         for (let z = z0 + 1; z <= z1 - 1; z += 2.5) add(r(4) < 0.5 ? -2.5 : 2.5, z)
-        add(0, finishZ - 7)
+        add(r(5) < 0.5 ? -2.5 : 2.5, z1 + 2)
         add(0, finishZ - 2)
         add(0, finishZ + 3)
       }),
@@ -3754,6 +3808,10 @@ const FEIRA = {
   ham: { R: 1.25, amp: 1.05 },
   /** martelos do meio: [z, fase] */
   hamMid: [[99, 4.8]]                      ,
+  /** luvas entre as fileiras de martelos (20/11): [x da base, z, fase] — uma de cada lado, alternando */
+  hamPunch: [[7.2, 96.2, 0], [-7.2, 103.2, 1.5]]                              ,
+  hamPunchReach: 5.2,
+  hamPunchPeriod: 3.6,
   /** socos no patamar depois do corredor de esteiras (na esteira, quem espera o soco cai): [x da base, z, fase] */
   punches: [[9.2, 145, 0], [-9.2, 148.5, 1.4]]                              ,
   punchReach: 7.4,
@@ -3800,6 +3858,11 @@ function courseFeira()         {
   ham(3, 106, 0.6)
   // 20/11: um martelo no meio da fileira do meio (em todas, ninguém passava: 129 pancadas)
   for (const [z, ph] of FEIRA.hamMid) ham(0, z, ph)
+  // 20/11 (o Alex: "lá na frente colocar mais luvas de boxe entre as colunas"): luvas dos lados entre as fileiras
+  for (const [x0, z, ph] of FEIRA.hamPunch) {
+    k.post(x0, z, 0.45, -1, Y + 1.9, 2)
+    k.glove(x0, z, Y + 1, -Math.sign(x0), FEIRA.hamPunchReach, 1.0, FEIRA.hamPunchPeriod, ph)
+  }
   // 20/11: o patamar é uma balança que tomba de lado com o peso — equilibre
   k.saw(0, 115, Y, 7, 3, 1, FEIRA.tilt.max, 0, FEIRA.tilt.k)
   k.saws[k.saws.length - 1].slip = FEIRA.tilt.slip
