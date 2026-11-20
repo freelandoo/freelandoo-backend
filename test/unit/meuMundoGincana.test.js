@@ -699,7 +699,7 @@ test("gincana — Comportas: a comporta sobe e desce pelo relógio, leva quem es
   assert.ok(gates.length >= 20, `${gates.length} comportas`);
   const p = gates.find((q) => q.z === 26 && q.x === 0);
   // ciclo: embaixo, sobe, em cima, desce
-  const tAt = (u) => ((u * p.gp - p.gph) % p.gp + p.gp * 4) % p.gp + p.gp * 2;
+  const tAt = (u) => ((u * p.gp - p.gph) % p.gp + p.gp * 4) % p.gp + 1;
   assert.equal(G.gateLift(p, tAt(0.2)), 0);
   assert.equal(G.gateLift(p, tAt(0.7)), 1);
   assert.equal(G.padTop(p, p.z, tAt(0.7)), p.y + p.gh);
@@ -715,7 +715,11 @@ test("gincana — Comportas: a comporta sobe e desce pelo relógio, leva quem es
     return { r, maxY };
   };
   // em cima quando ela sobe: vai junto até o alto
-  assert.ok(Math.abs(at(p.x, p.z, tAt(0.3), 60).maxY - (G.DECK + p.gh)) < 1e-6, "subiu junto");
+  // 20/11: o ciclo é 5× mais lento (COMPORTAS.slow) — espera a subida inteira (de u 0,3 a 0,55)
+  assert.ok(G.COMPORTAS.slow >= 5, "a comporta voltou a abrir e fechar rápido");
+  assert.ok(p.gp > 10, `ciclo curto: ${p.gp.toFixed(1)} s`);
+  const ride = at(p.x, p.z, tAt(0.3), Math.ceil(0.25 * p.gp * 60) + 10).maxY;
+  assert.ok(ride >= G.DECK + p.gh - 1e-6 && ride < G.DECK + p.gh + 0.5, `subiu junto: ${ride}`);
   // chegando com ela em cima: fica parado na frente
   const blocked = at(p.x, p.z - p.hz - 1.5, tAt(0.55), 30, 1).r;
   assert.ok(blocked.z < p.z - p.hz, `barrou em ${blocked.z}`);
