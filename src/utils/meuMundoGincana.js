@@ -1106,11 +1106,11 @@ const CLAREIRA = {
   )                                          ,
   discR: DR,
   /** Giro das fatias (rad/s, alternando o lado). */
-  discSpin: [1.2, 1.4, 1.3]                     ,
+  discSpin: [2.0, 2.3, 2.15]                     ,
   /** Giro dos tocos (rad/s). */
-  stumpSpin: 1.9,
+  stumpSpin: 3.2,
   /** Giro da vitória-régia (rad/s). */
-  lilySpin: 1.1,
+  lilySpin: 2.3,
   /** Rampa das frutas (DECK → Y1) e as faixas das frutas. */
   ramp: { z0: 65 + CA, z1: 105 + CA, hx: 8 },
   lanes: [-6, -2, 2, 6]                     ,
@@ -2897,6 +2897,51 @@ function pickDoor(br          , b        , w          , row        ) {
 }
 
 /** Intenção do computador neste passo. */
+/** Ver o uso em botIntent: devolve true quando cuidou da intenção (andar/esperar/pular). */
+function spinRide(br          , b        , w          , it           ) {
+  const C = w.course
+  if (!b.ground || b.pad < 0) return false
+  const p = C.pads[b.pad]
+  if (p.k !== 0 || p.spin === 0 || p.mw !== 0 || Math.abs(p.spin) * p.r <= 4) return false
+  // o primeiro ponto da rota adiante e FORA desta peça: para onde pular
+  let e = null                                    
+  for (const q of br.route) {
+    if (q.z > p.z && Math.hypot(q.x - p.x, q.z - p.z) > p.r + 0.3) {
+      e = q
+      break
+    }
+  }
+  if (!e) return false
+  const ox = b.x - p.x
+  const oz = b.z - p.z
+  const rho = Math.hypot(ox, oz)
+  const aim = Math.atan2(e.z - p.z, e.x - p.x)
+  br.stuck = 0
+  br.lastZ = b.z
+  if (rho < p.r - 1.4) {
+    // anda para fora pela reta do centro (se está no miolo, já na direção do pulo)
+    const ux = rho > 0.3 ? ox / rho : Math.cos(aim)
+    const uz = rho > 0.3 ? oz / rho : Math.sin(aim)
+    it.mx = ux * br.pace
+    it.mz = uz * br.pace
+    return true
+  }
+  // na beirada: espera o giro trazer para o lado da próxima peça (os menos hábeis erram a hora)
+  const diff = Math.atan2(Math.sin(Math.atan2(oz, ox) - aim), Math.cos(Math.atan2(oz, ox) - aim))
+  const lead = 0.1 * Math.sign(p.spin)
+  const win = 0.18 + (1 - br.skill) * 0.12
+  if (Math.abs(diff - lead) < win && br.jumpCool <= 0) {
+    const jx = e.x - b.x
+    const jz = e.z - b.z
+    const jm = Math.hypot(jx, jz) || 1
+    it.mx = jx / jm
+    it.mz = jz / jm
+    it.jump = true
+    br.jumpCool = 0.6
+  }
+  return true
+}
+
 function botIntent(br          , b        , w          , dt = GINCANA.step)            {
   const C = w.course
   const it            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
@@ -3120,6 +3165,10 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     it.mz = 0
   } else if (go > 0) br.waited = Math.max(0, br.waited - dt * 0.5)
 
+  // disco que gira FORTE embaixo (borda > 4 m/s, a Clareira): não dá para segurar a beirada correndo.
+  // Vai até perto da borda, deixa o giro levar e pula quando ele traz para o lado da próxima peça
+  // (no ar o giro não carrega). Funciona em qualquer velocidade de giro.
+  if (spinRide(br, b, w, it)) return it
   // barra chegando: pula na hora (com o erro da habilidade)
   barJump(br, b, w, it)
   // ladrilho tremendo embaixo: pula para o próximo
