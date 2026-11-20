@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                                       
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                                   
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -1475,6 +1475,109 @@ function courseMoinhos()         {
   })
 }
 
+// ═══ helices — Hélices da Orbital ════════════════════════════════════════════
+
+/**
+ * Gincana (2026-11-20, vídeo 5): CORRIDA DAS HÉLICES — a 2ª fase da Cidade
+ * Orbital. Hélices deitadas no vazio: cada uma são 2 ou 3 pás retas cruzadas
+ * no mesmo cubo (caixas que giram juntas) e um disco no miolo. Quem pisa é
+ * levado pelo giro; entre uma hélice e a outra, o salto é de ponta a ponta.
+ * Nas hélices pares, a barra do cubo varre por cima (se pula). Caiu no vazio =
+ * volta ao último posto.
+ */
+const HELICES = {
+  /** [x, z, nº de pás (2 = cruz, 3 = seis braços), meio-comprimento da pá, meia-largura, giro rad/s, barra] */
+  fans: [
+    [0, 30, 2, 7, 1.7, 0.5, 0],
+    [0, 46, 3, 7, 1.7, -0.55, 0],
+    [-2.5, 89, 3, 7.5, 1.9, 0.5, 1],
+    [2, 108.8, 2, 7.5, 1.9, -0.6, 0],
+    [-1.5, 128.4, 3, 7.5, 1.9, 0.62, 1],
+  ]                                                              ,
+}         
+
+function courseHelices()         {
+  const k = new CourseKit()
+  kitStart(k)
+  const fan = (x        , z        , n        , L        , hw        , w        , bar        , s        ) => {
+    for (let i = 0; i < n; i++) {
+      const p = k.box(x, z, hw, L, 5, 1, s, (i * Math.PI) / n, 1.2)
+      k.pads[p].spin = w
+    }
+    const c = k.disc(x, z, hw * 1.9, 6, 1, s)
+    k.pads[c].spin = w
+    // a barra do cubo: gira ao contrário, rente ao tampo (se pula); o cubo é um poste (ninguém fica no eixo)
+    if (bar) {
+      k.sweep(x, z, DECK + 0.55, L - 0.4, 0.3, -w * 1.6, 0.6, true)
+      k.post(x, z, 1.1, DECK, DECK + 2.2, 4)
+    }
+  }
+  // ── 1. as duas primeiras hélices ──
+  k.box(0, 18.1, 3, 3, 0, 1, 1)
+  for (const f of HELICES.fans.slice(0, 2)) fan(f[0], f[1], f[2], f[3], f[4], f[5], f[6], 1)
+  // ── 2. a doca: ilha com o posto e o corredor das barras ──
+  k.box(0, 58, 4, 3, 0, 1, 2)
+  k.box(0, 69.5, 4.5, 8.5, 4, 1, 2)
+  k.sweep(0, 64.2, DECK + 0.55, 4.5, 0.3, 1.0, 0, true)
+  k.sweep(0, 74.8, DECK + 0.55, 4.5, 0.3, -1.15, 1, true)
+  k.box(0, 79.7, 2.5, 1.7, 0, 1, 3)
+  // ── 3. três hélices desencontradas, duas com a barra no cubo ──
+  for (const f of HELICES.fans.slice(2)) fan(f[0], f[1], f[2], f[3], f[4], f[5], f[6], 3)
+  // pilares parados entre uma hélice e a outra (a ponte entre os cubos)
+  k.box(0, 99.2, 2, 1.8, 0, 1, 3)
+  k.box(0, 118.6, 2, 1.8, 0, 1, 3)
+  // ── 4. o cais e as plataformas que vão e voltam ──
+  k.box(0, 138.5, 4, 2.6, 0, 1, 4)
+  for (const [z, ph] of [[145.5, 0], [152.5, 2.1], [159.5, 4.2]]                      ) {
+    const p = k.box(0, z, 2.6, 2.6, 4, 1, 4, 0, 1)
+    Object.assign(k.pads[p], { mx: 2.4, mz: 0, mw: 1.1, mph: ph })
+  }
+  k.box(0, 166.2, 4, 2.8, 0, 1, 4)
+  // ── 5. a subida das pedras ──
+  const z0 = 169
+  const finishZ = kitFinish(k, z0, 1.05, 6.8, 1.1)
+  for (const [x, z] of [[0, 16.5], [0, 57], [0, 79], [0, 99.2], [0, 118.6], [0, 139]]                      ) k.logo(x, z)
+  return k.done({
+    id: "helices",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 58, y: DECK, w: 3 },
+      { x: 0, z: 138.5, y: DECK, w: 3 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [17.4, 55, 78, 136, z0],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        add(0, 10)
+        add(0, 17)
+        add(0, 20.5)
+        for (let z = 23; z <= 53; z += 1.5) add(0, z)
+        add(0, 56)
+        add(0, 59)
+        add(2.4, 61.5)
+        for (let z = 63; z <= 68.5; z += 1.5) add(2.4, z)
+        add(-2.4, 70)
+        for (let z = 71.5; z <= 78; z += 1.5) add(-2.4, z)
+        add(0, 78.5)
+        add(0, 81)
+        // nas hélices com barra, longe do cubo (de um lado); na do meio, pelo eixo
+        const sd = r(1) < 0.5 ? -1 : 1
+        for (let z = 82.5; z <= 135; z += 1.5) {
+          if (z > 96.5 && z < 101.5) add(0, z)
+          else if (z > 116 && z < 121) add(0, z)
+          else if (z < 97) add(-2.5 + sd * 2.6 * Math.max(0, 1 - Math.abs(z - 89) / 7), z)
+          else if (z < 117) add(2, z)
+          else add(-1.5 - sd * 2.6 * Math.max(0, 1 - Math.abs(z - 128.4) / 7), z)
+        }
+        add(0, 137)
+        for (let z = 140; z <= 165; z += 1.5) add(0, z)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
 // ═══ orbital — Cidade Orbital ════════════════════════════════════════════════
 
 /**
@@ -2077,6 +2180,7 @@ const COURSES                               = {
   canion: courseCanion(),
   moinhos: courseMoinhos(),
   orbital: courseOrbital(),
+  helices: courseHelices(),
   forja: courseForja(),
   altoforno: courseAltoForno(),
   fabrica: courseFabrica(),
@@ -3009,7 +3113,7 @@ function newBrain(w          , seed        , slot        )           {
   const r = (k        ) => botRand(seed, slot, k)
   const route = w.course.route(r)
   const skill = 0.55 + r(6) * 0.4
-  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, back: 0, lastZ: -99, waited: 0, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1 }
+  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, back: 0, lastZ: -99, waited: 0, fanA: 0, fanT: -1, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1 }
 }
 
 /**
@@ -3072,6 +3176,122 @@ const BOT_WALLS             = []
 
 /** Vizinhas de cada pedra (mesmo andar, até 2,6 m), calculadas uma vez por percurso. */
 const TILE_NB = new WeakMap                    ()
+/**
+ * Hélice (Hélices da Orbital): pás retas (caixas que giram no mesmo centro) + o disco do cubo. Em cima de
+ * uma pá, correr "para a frente do mundo" tira o robô da pá que gira: ele vai pelo eixo da pá — para fora se
+ * ela aponta para a saída, para o cubo se não — e no cubo espera uma pá chegar na direção da saída.
+ */
+function fanRide(br          , b        , w          , it           ) {
+  if (!b.ground || b.pad < 0) return
+  const C = w.course
+  const p0 = C.pads[b.pad]
+  if (!isFanPad(C, p0) || p0.mw !== 0) return
+  const cx = p0.x
+  const cz = p0.z
+  let L = 0
+  const arms           = []
+  let hubR = 0
+  for (const p of C.pads) {
+    if (p.spin === 0 || p.x !== cx || p.z !== cz) continue
+    if (p.k === 1) {
+      L = Math.max(L, p.hz)
+      const a = padRot(p, w.t)
+      arms.push(a, a + Math.PI)
+    } else hubR = p.r
+  }
+  if (!arms.length) return
+  // o alvo: o primeiro ponto da rota além da hélice
+  let tx = 0
+  let tz = 0
+  let found = false
+  for (const q of br.route) {
+    if (q.z > b.z && Math.hypot(q.x - cx, q.z - cz) > L + 0.6) {
+      tx = q.x
+      tz = q.z
+      found = true
+      break
+    }
+  }
+  if (!found) return
+  const want = Math.atan2(tx - cx, tz - cz)
+  const diff = (a        ) => {
+    let d = (a - want) % (Math.PI * 2)
+    if (d > Math.PI) d -= Math.PI * 2
+    if (d < -Math.PI) d += Math.PI * 2
+    return d
+  }
+  const spin = p0.spin
+  const rb = Math.hypot(b.x - cx, b.z - cz)
+  const go = Math.max(0.6, br.pace)
+  // a pá que vai estar na direção da saída quando eu chegar na ponta (o giro anda enquanto eu corro)
+  const lead = (L - Math.min(rb, L)) / (GINCANA.run * go)
+  let best = Infinity
+  let bestA = 0
+  for (const a of arms) {
+    const d = Math.abs(diff(a + spin * lead))
+    if (d < best) {
+      best = d
+      bestA = a
+    }
+  }
+  if (rb < hubR - 0.4) {
+    // já escolhi a pá: sigo com ela (ela gira) até sair do cubo
+    if (br.fanT >= 0 && w.t - br.fanT > 1.5) br.fanT = -1
+    if (br.fanT < 0 && best < 0.16 && rb < 1.9) {
+      br.fanA = bestA
+      br.fanT = w.t
+    }
+    if (br.fanT >= 0) {
+      // sai mirando um ponto SOBRE a pá (não paralelo a ela)
+      const a = br.fanA + spin * (w.t - br.fanT)
+      const px = cx + Math.sin(a) * L * 0.7 - b.x
+      const pz = cz + Math.cos(a) * L * 0.7 - b.z
+      const m = Math.hypot(px, pz) || 1
+      it.mx = (px / m) * go
+      it.mz = (pz / m) * go
+    } else if (rb > 1.0) {
+      // vai para o miolo e espera lá (longe da beira)
+      it.mx = ((cx - b.x) / rb) * 0.5
+      it.mz = ((cz - b.z) / rb) * 0.5
+    } else {
+      it.mx = 0
+      it.mz = 0
+    }
+    return
+  }
+  br.fanT = -1
+  // na pá: o eixo da pá onde estou (a direção do centro até mim)
+  const out = Math.atan2(b.x - cx, b.z - cz)
+  if (Math.abs(diff(out)) < 1.0) {
+    it.mx = Math.sin(out) * go
+    it.mz = Math.cos(out) * go
+  } else {
+    it.mx = -Math.sin(out) * go
+    it.mz = -Math.cos(out) * go
+  }
+}
+
+/** Pulo de/para hélice: o pouso de verdade (o pulo voa ~5 m) existe na hora em que eu chego lá? */
+function fanLand(w          , b        , fx        , fz        ) {
+  for (const [k, dt] of [[4.4, 0.58], [5.2, 0.7]]) {
+    const g = groundUnder({ ...w, t: w.t + dt }, b.x + fx * k, b.z + fz * k, b.y + 1.2)
+    if (g.y < b.y - 1.2) return false
+  }
+  return true
+}
+
+/** Peça de hélice: caixa que gira, ou o disco do cubo de uma (mesmo centro). Os discos da Clareira não são. */
+function isFanPad(C        , p                        ) {
+  if (p.spin === 0) return false
+  return C.pads.some((q) => q.k === 1 && q.spin !== 0 && q.x === p.x && q.z === p.z)
+}
+
+/** Hélice (caixa que gira) por perto: o salto precisa de hora certa. */
+function nearFan(C        , x        , z        ) {
+  for (const p of C.pads) if (p.k === 1 && p.spin !== 0 && Math.hypot(p.x - x, p.z - z) < p.hz + 4) return true
+  return false
+}
+
 function tileNeighbors(C        ) {
   let nb = TILE_NB.get(C)
   if (nb) return nb
@@ -3655,6 +3875,8 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   // Vai até perto da borda, deixa o giro levar e pula quando ele traz para o lado da próxima peça
   // (no ar o giro não carrega). Funciona em qualquer velocidade de giro.
   if (spinRide(br, b, w, it)) return it
+  // em cima de uma hélice: pá → cubo → espera uma pá apontar para a saída → corre por ela
+  fanRide(br, b, w, it)
   // barra chegando: pula na hora (com o erro da habilidade)
   barJump(br, b, w, it)
   // ladrilho tremendo embaixo: pula para o próximo
@@ -3675,17 +3897,40 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   if (b.ground && br.jumpCool <= 0 && sp > 0.3 && !tileNear) {
     const fx = it.mx / sp
     const fz = it.mz / sp
+    const onFan = b.pad >= 0 && isFanPad(C, C.pads[b.pad])
+    if (!onFan && nearFan(C, b.x, b.z)) {
+      // hélice adiante, eu em chão parado: na beira, só sai com pouso garantido NO TEMPO do pouso (e longe
+      // da ponta da pá); senão espera. O chão "de agora" 1 m à frente pode ser uma pá que já vai embora.
+      const own = groundUnder(w, b.x + fx * 1.1, b.z + fz * 1.1, b.y + 0.5)
+      if (own.pad < 0 || C.pads[own.pad].spin !== 0) {
+        if (fanLand(w, b, fx, fz)) {
+          it.jump = true
+          br.jumpCool = 0.5
+        } else {
+          it.mx = 0
+          it.mz = 0
+        }
+      }
+    } else {
     const near = groundUnder(w, b.x + fx * 1.0, b.z + fz * 1.0, b.y + 0.5)
     if (near.y < b.y - 0.6 || near.y === -Infinity) {
+      const fan = onFan
       let far = false
-      for (const k of [2.2, 3.2, 4.2, 5.0]) {
-        const g = groundUnder(w, b.x + fx * k, b.z + fz * k, b.y + 1.2)
-        if (g.y > b.y - 1.2) far = true
+      if (fan) far = fanLand(w, b, fx, fz)
+      else {
+        for (const k of [2.2, 3.2, 4.2, 5.0]) {
+          const g = groundUnder(w, b.x + fx * k, b.z + fz * k, b.y + 1.2)
+          if (g.y > b.y - 1.2) far = true
+        }
       }
       if (far) {
         it.jump = true
         br.jumpCool = 0.5
+      } else if (fan) {
+        it.mx = 0
+        it.mz = 0
       }
+    }
     }
   }
   // preso (parado sem esperar nada): pula; encostado numa fileira de portas, recua um passo (dois robôs que
@@ -4070,4 +4315,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, MOINHOS, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, MOINHOS, HELICES, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

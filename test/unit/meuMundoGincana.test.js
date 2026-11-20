@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 15 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
+test("gincana — 16 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -822,4 +822,33 @@ test("gincana — Moinhos: a moenda é parede de lado e joga quem está em cima;
   const vanes = C.sweepers.filter((sw) => sw.len < 3);
   assert.equal(vanes.length, 9);
   for (const v of vanes) assert.ok(C.posts.some((q) => q.x === v.x && q.z === v.z), "catavento sem mastro");
+});
+
+// ── Hélices da Orbital (2026-11-20) ──────────────────────────────────────────
+test("gincana — Hélices: as pás giram juntas em volta do cubo e levam quem está em cima; hélice com barra tem a turbina", () => {
+  const C = G.COURSES.helices;
+  assert.equal(C.mode, "race");
+  const fans = G.HELICES.fans;
+  assert.equal(fans.length, 5);
+  for (const [x, z, n, , , w, bar] of fans) {
+    const blades = C.pads.filter((p) => p.k === 1 && p.x === x && p.z === z && p.spin === w);
+    assert.equal(blades.length, n, `hélice em z ${z}: ${blades.length} pás`);
+    assert.ok(C.pads.some((p) => p.k === 0 && p.x === x && p.z === z && p.spin === w), "hélice sem o cubo");
+    if (bar) {
+      assert.ok(C.posts.some((q) => q.x === x && q.z === z), "hélice com barra sem a turbina");
+      assert.ok(C.sweepers.some((sw) => sw.x === x && sw.z === z && Math.sign(sw.w) === -Math.sign(w)), "a barra gira ao contrário");
+    }
+  }
+  // em pé na ponta de uma pá, parado: o giro leva de lado
+  const [x, z, , L] = fans[0];
+  const { race, r } = solo("helices");
+  while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  const blade = C.pads.find((p) => p.k === 1 && p.x === x && p.z === z);
+  const a = G.padRot(blade, race.t);
+  const px = x + Math.sin(a) * (L - 1.5);
+  const pz = z + Math.cos(a) * (L - 1.5);
+  Object.assign(r, { x: px, z: pz, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+  for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(r.y > G.DECK - 0.5, "caiu da pá");
+  assert.ok(Math.hypot(r.x - px, r.z - pz) > 0.8, `a pá não levou: ${Math.hypot(r.x - px, r.z - pz).toFixed(2)}`);
 });
