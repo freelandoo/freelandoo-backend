@@ -146,6 +146,8 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "clareira
              
                                                                              
             
+                                                     
+        
  
 
 /** Coluna (pilar, frade, poste da luva, cogumelo): empurra de lado e dá para subir; `b` > 0 = lança para cima (m/s) quem pousa. */
@@ -369,6 +371,11 @@ function memUp(m        , seed        , i        , t        ) {
                  
                                                                        
                    
+     
+                                                                                                                
+                                                                                               
+     
+                                                                                
  
 
 /** Andar da Fábrica: centro e altura do chão, raio do miolo, engrenagens para subir e o pulo. */
@@ -393,6 +400,8 @@ function memUp(m        , seed        , i        , t        ) {
             
                          
              
+                                                 
+                
  
 const BELTS = new WeakMap                    ()
 function ballBelts(c        )             {
@@ -411,6 +420,7 @@ function ballBelts(c        )             {
         L.push({ x: p.x, z0, z1: p.z + p.hz, y0: p.y, y1: p.y2, hx: p.hx, end: z0 })
       }
     }
+    if (B.flat) for (const p of c.pads) if (p.bb) L.push({ x: p.x, z0: p.z - p.hz, z1: p.z + p.hz, y0: p.y, y1: p.y2, hx: p.hx, end: p.z - p.hz, flat: true })
   }
   BELTS.set(c, L)
   return L
@@ -1212,8 +1222,12 @@ function ballsAt(c        , seed        , t        , out          ) {
     const R = belts[j]
     // cada esteira com o seu sorteio (a 1ª com o da semente, como antes)
     const sd = j ? (seed ^ Math.imul(j, 0x51ed27)) | 0 : seed
-    const every = j ? B.every * (B.allEvery ?? 1) : B.every
-    const span = (R.z1 - R.end) / B.v
+    const FL = R.flat ? B.flat  : null
+    const every = FL ? FL.every : j ? B.every * (B.allEvery ?? 1) : B.every
+    const bv = FL ? FL.v : B.v
+    const hop = FL ? FL.hop : B.hop
+    const bounce = FL ? FL.bounce : B.bounce
+    const span = (R.z1 - R.end) / bv
     const i1 = Math.floor(t / every)
     const i0 = Math.max(0, Math.floor((t - span) / every))
     const L = R.hx - B.R - 0.15
@@ -1221,24 +1235,24 @@ function ballsAt(c        , seed        , t        , out          ) {
       const lane = ballLane(c, sd, i)
       if (lane < 0) continue
       const age = t - i * every
-      const z = R.z1 - B.v * age
+      const z = R.z1 - bv * age
       if (z < R.end || z > R.z1) continue
       // depois do pé da rampa a bola cai na água
       const u0 = Math.max(0, Math.min(1, (z - R.z0) / (R.z1 - R.z0)))
-      let y = z >= R.z0 ? R.y0 + (R.y1 - R.y0) * u0 + B.R : R.y0 + B.R - ((R.z0 - z) / B.v) ** 2 * 12
+      let y = z >= R.z0 ? R.y0 + (R.y1 - R.y0) * u0 + B.R : R.y0 + B.R - ((R.z0 - z) / bv) ** 2 * 12
       let x = R.x + Math.max(-L, Math.min(L, B.lanes[lane]))
-      if (B.hop) {
+      if (hop) {
         // quique: arco de parábola, fase própria de cada bola
-        const hopT = B.hopT ?? 0.6
+        const hopT = (FL ? FL.hopT : B.hopT) ?? 0.6
         const s0 = (courseHash(sd, i + 7) % 100) / 100
         const s1 = s0 + age / hopT
         const u = s1 % 1
-        if (z >= R.z0) y += B.hop * 4 * u * (1 - u)
-        if (B.bounce) {
+        if (z >= R.z0) y += hop * 4 * u * (1 - u)
+        if (bounce) {
           // a cada quique um rumo novo de lado; bate na borda e volta (vaivém entre −L e L)
           let off = 0
           for (let q = Math.floor(s0); q <= Math.floor(s1); q++) {
-            const v = B.bounce * ((courseHash(sd ^ 0x3c6ef372, i * 61 + q) % 1001) / 500 - 1)
+            const v = bounce * ((courseHash(sd ^ 0x3c6ef372, i * 61 + q) % 1001) / 500 - 1)
             off += v * (Math.min(s1, q + 1) - Math.max(s0, q)) * hopT
           }
           const m = (((x - R.x + L + off) % (4 * L)) + 4 * L) % (4 * L)
@@ -3616,6 +3630,17 @@ const FEIRA = {
   punches: [[9.2, 145, 0], [-9.2, 148.5, 1.4]]                              ,
   punchReach: 7.4,
   punchPeriod: 2.8,
+  /**
+   * 20/11 (pedido do Alex, no corredor de esteiras de lado: "mais luvas de boxe, na frente de cada esteira, e cada
+   * esteira tem que ser mais forte ainda, e essa plataforma vira uma gangorra sensível… tem que equilibrar").
+   * `beltF` = força das esteiras de lado (× GINCANA.belt, antes 1); luva por esteira: alcance e período.
+   */
+  beltF: 1.2,
+  beltPunch: { reach: 6.8, period: 3.0 },
+  /** o patamar antes do corredor: balança que tomba de lado (mola fraca = sensível) */
+  tilt: { max: 0.3, k: 0.28, slip: 9 },
+  /** "bolas caindo e quicando" no chão dos martelos */
+  flat: { every: 1.25, v: 6, hop: 1.5, hopT: 0.6, bounce: 2.4 },
 }         
 
 function courseFeira()         {
@@ -3634,8 +3659,10 @@ function courseFeira()         {
   k.pads[back].bz = -GINCANA.belt
   FEIRA.press.forEach(([z, w], i) => k.pusher(0, z, 1.6, 0.9, 2.2, FEIRA.pressAx, 0, w, i * 1.3, Y))
   k.box(0, 82, 7, 4, 6, 7, 2, 0, 1.4, Y)
-  // ── 3. martelos ──
-  k.box(0, 99, 6, 13, 6, 7, 3, 0, 1.4, Y)
+  // ── 3. martelos ── (20/11: com bolas caindo do alto e quicando — balls.flat)
+  const hamFloor = k.box(0, 99, 6, 13, 6, 7, 3, 0, 1.4, Y)
+  k.pads[hamFloor].bb = 1
+  if (k.balls) k.balls.flat = { ...FEIRA.flat }
   const ham = (x        , z        , ph        ) => k.swing(x, z, Y + 9, 7.4, FEIRA.ham.R, FEIRA.ham.amp, 2.2, ph)
   ham(-3, 92, 0)
   ham(3, 92, 2.4)
@@ -3645,11 +3672,18 @@ function courseFeira()         {
   ham(3, 106, 0.6)
   // 20/11: um martelo no meio da fileira do meio (em todas, ninguém passava: 129 pancadas)
   for (const [z, ph] of FEIRA.hamMid) ham(0, z, ph)
-  k.box(0, 115, 7, 3, 6, 7, 3, 0, 1.4, Y)
-  // ── 4. corredor de esteiras de lado ──
+  // 20/11: o patamar é uma balança que tomba de lado com o peso — equilibre
+  k.saw(0, 115, Y, 7, 3, 1, FEIRA.tilt.max, 0, FEIRA.tilt.k)
+  k.saws[k.saws.length - 1].slip = FEIRA.tilt.slip
+  // ── 4. corredor de esteiras de lado ── (20/11: mais fortes, e uma luva na frente de cada uma, do lado de onde
+  // a esteira vem: o soco joga para o lado em que ela leva)
   for (let i = 0; i < 6; i++) {
     const p = k.box(0, 120 + i * 4, 6, 2, i % 2 ? 4 : 5, 0, 4, 0, 1.4, Y)
-    k.pads[p].bx = (i % 2 ? -1 : 1) * GINCANA.belt
+    const dir = i % 2 ? -1 : 1
+    k.pads[p].bx = dir * GINCANA.belt * FEIRA.beltF
+    const x0 = -dir * 7.4
+    k.post(x0, 120 + i * 4, 0.45, -1, Y + 1.9, 2)
+    k.glove(x0, 120 + i * 4, Y + 1, dir, FEIRA.beltPunch.reach, 1.0, FEIRA.beltPunch.period, i * 0.9)
   }
   k.box(0, 146, 7, 4, 6, 7, 4, 0, 1.4, Y)
   // 20/11: socos de lado no patamar depois do corredor
@@ -5939,8 +5973,10 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     }
     if (near && botRand(br.seed, br.slot * 97 + i, Math.floor(t / 2.86)) < br.skill + 0.05) go = 0
   }
-  // luva prestes a socar na faixa por onde vai passar: espera
-  for (let i = 0; i < C.gloves.length; i++) {
+  // luva prestes a socar na faixa por onde vai passar: espera (em cima de esteira de lado não dá para esperar: ela leva
+  // para fora — Feira, 20/11)
+  const onSideBelt = b.ground && b.pad >= 0 && C.pads[b.pad].bx !== 0
+  for (let i = 0; i < C.gloves.length && !onSideBelt; i++) {
     const g = C.gloves[i]
     const ahead = g.z - b.z
     if (ahead < 1.3 || ahead > 3.4) continue
