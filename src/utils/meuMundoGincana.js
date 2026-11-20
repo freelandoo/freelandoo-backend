@@ -2933,21 +2933,22 @@ function courseAros()         {
  */
 function courseOrbital()         {
   const k = new CourseKit()
-  const floor = k.disc(0, 0, 11, 6, 7, 1)
+  // 20/11 (pedido do Alex: "a pista maior, mais larga, tudo mais largo"): disco de 11 → 16 m de raio, barras junto
+  const floor = k.disc(0, 0, 16, 6, 7, 1)
   // 20/11 (dificuldade; o `tempo` das corridas não vale na arena): chão 0,16 → 0,22; barras aceleram mais e vão
   // mais longe (baixa 0,02/2,5 → 0,026/2,9; alta 0,014/1,7 → 0,02/2,1)
   k.pads[floor].spin = 0.22
-  k.post(0, 0, 1.1, DECK, DECK + 3.2, 4)
+  k.post(0, 0, 1.6, DECK, DECK + 3.2, 4)
   // barra baixa (pular): dois braços
-  k.sweep(0, 0, DECK + 0.55, 11.6, 0.36, 0.85, 0, true, 0.026, 2.9)
+  k.sweep(0, 0, DECK + 0.55, 16.6, 0.36, 0.85, 0, true, 0.026, 2.9)
   // barra alta (mergulhar): um braço, ao contrário, na altura do peito
-  k.sweep(0, 0, DECK + 1.4, 11.6, 0.3, -0.6, Math.PI / 2, false, 0.02, 2.1)
+  k.sweep(0, 0, DECK + 1.4, 16.6, 0.3, -0.6, Math.PI / 2, false, 0.02, 2.1)
   return k.done({
     id: "orbital",
     mode: "survive",
     qualify: 0.5,
     limit: 100,
-    checkpoints: [{ x: 0, z: -6.5, y: DECK, w: 6 }],
+    checkpoints: [{ x: 0, z: -9.5, y: DECK, w: 9 }],
     finishZ: 40,
     finishY: 90,
     sections: [],
