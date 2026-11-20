@@ -157,6 +157,17 @@ async function main() {
     const k5 = await Nectar.wallet(K, AFTER + 60e3);
     check("coletor: nível 5 libera", k5.collector.unlocked === true, JSON.stringify(k5.collector));
   }
+  {
+    // 19/11 (Alex no nível 21 sem coletor): o nível do PERSONAGEM também libera (treinador no 1)
+    const A = require("../src/utils/meuMundoAdventure");
+    const who = P[3];
+    let xp = 0;
+    while (A.levelOf(xp).level < 21) xp += 50;
+    const ch = (await pool.query(`SELECT id_character FROM tb_mm_character WHERE id_user = $1 AND status = 'alive'`, [who])).rows[0].id_character;
+    await pool.query(`INSERT INTO tb_mm_char_adventure (id_character, id_user, xp, level) VALUES ($1, $2, $3, 21) ON CONFLICT (id_character) DO UPDATE SET xp = EXCLUDED.xp, level = 21`, [ch, who, xp]);
+    const v21 = await Nectar.wallet(who, AFTER + 60e3);
+    check("coletor: personagem no nível 21 com treinador no 1 libera", v21.collector.unlocked === true, JSON.stringify(v21.collector));
+  }
 
   // o placar semanal mostra quanto a posição vale
   const Poder = require("../src/services/MeuMundoPoderService");
