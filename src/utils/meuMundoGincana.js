@@ -1074,48 +1074,63 @@ const CY1 = DECK + 5
 const CY2 = CY1 + 5.6
 const CY3 = CY2 + 2.2
 const CY4 = CY3 + 2.5
+/**
+ * Pedido do Alex (19/11, 3ª rodada): tudo que gira GRANDE (perto da vitória-régia) e rápido, e o circuito
+ * maior. O campo de fatias empurra o resto 33 m (CA) e a escada de tocos mais 39 m (CB = 72 no total).
+ */
+const CA = 33
+const CB = 72
+/** Fatia grande: raio, vão entre vizinhas e a distância entre centros de uma fileira e da seguinte. */
+const DR = 7
+const DGAP = 2.4
+const DX = 2 * DR + DGAP
+const DZ = Math.sqrt(DX * DX - (DX / 2) * (DX / 2))
+const DZ0 = 15.1 + DGAP + DR
+/** Toco grande: raio, lado da escada e o passo em z (vão 2,4 m). */
+const SR = 5.5
+const SX = 4.5
+const SZ0 = 117 + CA + DGAP + SR
+const SZ1 = Math.sqrt((2 * SR + DGAP) ** 2 - SX * SX)
+const SZ = Math.sqrt((2 * SR + DGAP) ** 2 - (2 * SX) ** 2)
 const CLAREIRA = {
   Y1: CY1,
   Y2: CY2,
   Y3: CY3,
   Y4: CY4,
   /**
-   * Campo de discos SOBRE O PÂNTANO (pedido do Alex, 19/11: "não pode ter espaço para andar sem ser pelos
-   * discos"): colmeia 3-2-3-2-3, vão de 2,4 m entre vizinhas (correndo não passa: tem que pular).
+   * Campo de discos SOBRE O PÂNTANO ("não pode ter espaço para andar sem ser pelos discos"): colmeia
+   * 3-2-3-2-3 de fatias grandes, vão de 2,4 m entre vizinhas (correndo não passa: tem que pular).
    */
-  discs: [
-    [-9.2, 20.5], [0, 20.5], [9.2, 20.5],
-    [-4.6, 28.5], [4.6, 28.5],
-    [-9.2, 36.5], [0, 36.5], [9.2, 36.5],
-    [-4.6, 44.5], [4.6, 44.5],
-    [-9.2, 52.5], [0, 52.5], [9.2, 52.5],
-  ]                                          ,
-  discR: 3.4,
-  /** Giro das fatias (rad/s, alternando o lado): forte, a borda carrega a ~5,5 m/s. */
-  discSpin: [1.5, 1.8, 1.65]                     ,
-  /** Giro dos tocos (rad/s): a borda carrega a ~6 m/s (quase a corrida): difícil de mirar o pulo. */
-  stumpSpin: 2.6,
+  discs: [0, 1, 2, 3, 4].flatMap((row) =>
+    (row % 2 ? [-DX / 2, DX / 2] : [-DX, 0, DX]).map((x) => [x, DZ0 + row * DZ]         ),
+  )                                          ,
+  discR: DR,
+  /** Giro das fatias (rad/s, alternando o lado). */
+  discSpin: [1.2, 1.4, 1.3]                     ,
+  /** Giro dos tocos (rad/s). */
+  stumpSpin: 1.9,
+  /** Giro da vitória-régia (rad/s). */
+  lilySpin: 1.1,
   /** Rampa das frutas (DECK → Y1) e as faixas das frutas. */
-  ramp: { z0: 65, z1: 105, hx: 8 },
+  ramp: { z0: 65 + CA, z1: 105 + CA, hx: 8 },
   lanes: [-6, -2, 2, 6]                     ,
   /** Pedras de musgo entre as faixas: x, z (meia largura 0,75, meio comprimento 1,6, 1,5 m acima da rampa). */
-  stones: [[-4, 72], [4, 72], [0, 80.5], [-4, 89], [4, 89], [0, 97.5]]                                          ,
+  stones: [[-4, 72], [4, 72], [0, 80.5], [-4, 89], [4, 89], [0, 97.5]].map(([x, z]) => [x, z + CA]         )                                          ,
   /** Troncos ocos de onde saem as frutas (um por faixa): centro do tronco deitado. */
-  cannonZ: 107.5,
+  cannonZ: 107.5 + CA,
   cannonR: 1.15,
   cannonLen: 4,
-  /** Tocos que giram: x, z, raio, quanto acima do chão Y1. */
-  stumps: [
-    [0, 120, 2.4, 0.9], [-2.2, 125.2, 2.4, 1.6], [2.2, 130.4, 2.4, 2.3], [-2.2, 135.6, 2.4, 3.0],
-    [2.2, 140.8, 2.4, 3.7], [-1.8, 146, 2.4, 4.4], [1.4, 151.2, 2.6, 5.1],
-  ]                                                          ,
-  /** Árvores gigantes da escada de tocos (coluna que bloqueia). */
-  trees: [[-6.8, 127.8], [6.8, 133], [-6.8, 143.4], [6.8, 148.6]]                                          ,
+  /** Tocos grandes que giram, em escada: x, z, raio, quanto acima do chão Y1. */
+  stumps: [0, 1, 2, 3, 4, 5, 6].map(
+    (i) => [i === 0 ? 0 : i % 2 ? SX : -SX, SZ0 + (i === 0 ? 0 : SZ1 + (i - 1) * SZ), SR, 0.9 + i * 0.7]         ,
+  )                                                          ,
+  /** Árvores gigantes ao lado da escada de tocos. */
+  trees: [1, 2, 4, 5].map((i) => [i % 2 ? -12.6 : 12.6, SZ0 + SZ1 + (i - 1) * SZ]         )                                          ,
   treeR: 1.6,
   /** A vitória-régia gigante. */
-  lily: { z: 181, r: 9 },
+  lily: { z: 181 + CB, r: 9 },
   /** Cogumelos que lançam (x, z). */
-  shrooms: [[-3, 203.1], [3, 203.1]]                                          ,
+  shrooms: [[-3, 203.1 + CB], [3, 203.1 + CB]]                                          ,
 }         
 
 function courseClareira()         {
@@ -1129,18 +1144,18 @@ function courseClareira()         {
     k.pads[p].d = DECK + 0.25
     // vizinhos giram ao contrário (quem pula de uma para a outra troca de sentido)
     k.pads[p].spin = (i % 2 ? -1 : 1) * K.discSpin[i % 3]
-    // o miolo da fatia: um toquinho que empurra
-    k.post(x, z, 0.75, DECK + 0.25, DECK + 1.3, 2)
+    // o miolo da fatia: um cogumelo que empurra
+    k.post(x, z, 1.2, DECK + 0.25, DECK + 1.6, 2)
   })
   // ── 2. rampa das frutas, com pedras de musgo entre as faixas ──
-  k.box(0, 61.5, 8, 3.5, 5, 1, 1)
+  k.box(0, 61.5 + CA, 8, 3.5, 5, 1, 1)
   const R = K.ramp
   const rampY = (z        ) => DECK + ((CY1 - DECK) * (z - R.z0)) / (R.z1 - R.z0)
   k.slope(0, R.z0, R.z1, DECK, CY1, R.hx, 5, 1, 2)
-  k.balls = { lanes: K.lanes, every: 0.8, v: 7, R: 1.1, zEnd: 62.5 }
+  k.balls = { lanes: K.lanes, every: 0.8, v: 7, R: 1.1, zEnd: 62.5 + CA }
   for (const [x, z] of K.stones) k.box(x, z, 0.75, 1.6, 0, 1, 2, 0, 1.5 + 0.6, rampY(z) + 1.5)
   // ── 3. os troncos ocos no alto da rampa e os tocos que giram sobre o pântano ──
-  k.box(0, 111, 8, 6, 5, 1, 3, 0, 1.4, CY1)
+  k.box(0, 111 + CA, 8, 6, 5, 1, 3, 0, 1.4, CY1)
   // tronco oco deitado = parede reta (caixa de 2,3 × 4 m, alto demais para subir)
   for (const x of K.lanes) k.box(x, K.cannonZ, K.cannonR, K.cannonLen / 2, 0, 1, 3, 0, K.cannonR * 2 + 0.2, CY1 + K.cannonR * 2)
   K.stumps.forEach(([x, z, r, h], i) => {
@@ -1150,86 +1165,97 @@ function courseClareira()         {
   })
   for (const [x, z] of K.trees) k.post(x, z, K.treeR, 0, CY1 + 12, 0)
   // ── 4. o barranco, a vitória-régia gigante que gira e as sementes penduradas ──
-  k.box(0, 161.5, 7, 6.5, 5, 1, 4, 0, 6, CY2)
-  k.box(0, 170.5, 2, 2.2, 5, 1, 4, 0, 1.2, CY2)
+  k.box(0, 161.5 + CB, 7, 6.5, 5, 1, 4, 0, 6, CY2)
+  k.box(0, 170.5 + CB, 2, 2.2, 5, 1, 4, 0, 1.2, CY2)
   const lily = k.disc(0, K.lily.z, K.lily.r, 5, 1, 4, CY2)
-  k.pads[lily].spin = 0.32
+  k.pads[lily].spin = K.lilySpin
   let ph = 0
   for (const z of [176.5, 181, 185.5]) {
-    k.swing(0, z, CY2 + 9, 7.4, 1.25, 0.95, 2.05, ph)
+    k.swing(0, z + CB, CY2 + 9, 7.4, 1.25, 0.95, 2.05, ph)
     ph += 2.3
   }
-  k.box(0, 192.6, 2, 2.6, 5, 1, 4, 0, 1.2, CY2)
+  k.box(0, 192.6 + CB, 2, 2.6, 5, 1, 4, 0, 1.2, CY2)
   // ── 5. cogumelos que lançam e a subida da chegada ──
-  k.box(0, 197.6, 6, 2.4, 5, 1, 5, 0, 1.4, CY2)
+  k.box(0, 197.6 + CB, 6, 2.4, 5, 1, 5, 0, 1.4, CY2)
   for (const [x, z] of K.shrooms) k.post(x, z, 1.15, 0, CY2 + 0.2, 2, 13.5)
-  k.box(0, 210, 7, 4, 5, 1, 5, 0, 2.6, CY3)
-  k.slope(0, 214, 236, CY3, CY4, 6, 5, 1, 5)
-  k.swing(-2.4, 222, CY3 + 10.5, 7.6, 1.2, 0.9, 1.9, 0.6)
-  k.swing(2.4, 229, CY3 + 11.5, 7.6, 1.2, 0.9, 1.9, 2.9)
-  k.box(0, 243.8, 9, 7.8, 1, 0, 6, 0, 1.6, CY4)
-  for (const [x, z, y] of [[0, 13.5, DECK], [0, 61.5, DECK], [-4, 113.5, CY1], [4, 113.5, CY1], [0, 163, CY2], [0, 210, CY3]]                              ) k.logo(x, z, y)
-  const finishZ = 236 + 8.8
+  k.box(0, 210 + CB, 7, 4, 5, 1, 5, 0, 2.6, CY3)
+  k.slope(0, 214 + CB, 236 + CB, CY3, CY4, 6, 5, 1, 5)
+  k.swing(-2.4, 222 + CB, CY3 + 10.5, 7.6, 1.2, 0.9, 1.9, 0.6)
+  k.swing(2.4, 229 + CB, CY3 + 11.5, 7.6, 1.2, 0.9, 1.9, 2.9)
+  k.box(0, 243.8 + CB, 9, 7.8, 1, 0, 6, 0, 1.6, CY4)
+  for (const [x, z, y] of [[0, 13.5, DECK], [0, 61.5 + CA, DECK], [-4, 113.5 + CA, CY1], [4, 113.5 + CA, CY1], [0, 163 + CB, CY2], [0, 210 + CB, CY3]]                              ) k.logo(x, z, y)
+  const finishZ = 236 + CB + 8.8
   return k.done({
     id: "clareira",
     checkpoints: [
       { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 61.5, y: DECK, w: 6 },
-      { x: 0, z: 113, y: CY1, w: 5 },
-      { x: 0, z: 163, y: CY2, w: 5 },
-      { x: 0, z: 198.2, y: CY2, w: 4 },
+      { x: 0, z: 61.5 + CA, y: DECK, w: 6 },
+      { x: 0, z: 113 + CA, y: CY1, w: 5 },
+      { x: 0, z: 163 + CB, y: CY2, w: 5 },
+      { x: 0, z: 198.2 + CB, y: CY2, w: 4 },
     ],
     finishZ,
     finishY: CY4,
-    sections: [15.5, R.z0, 112, 168.5, 195],
+    sections: [15.5, R.z0, 112 + CA, 168.5 + CB, 195 + CB],
     minFinish: 22,
     route: (r) =>
       routeOf((add) => {
-        // 1. de fatia em fatia em ziguezague (a semente escolhe o lado): entra e sai de cada uma pela borda
-        // voltada para a próxima, passando ao lado do cogumelo do miolo
+        // 1. de fatia em fatia em ziguezague (a semente escolhe o lado): entra pela borda, passa ao lado do
+        // cogumelo do miolo e sai pela borda voltada para a próxima
         const side = r(1) < 0.5 ? -1 : 1
         add(0, 10)
         add(0, 14.6)
-        const hops                     = [[0, 20.5], [side * 4.6, 28.5], [0, 36.5], [side * 4.6, 44.5], [0, 52.5]]
+        const hops                     = [0, 1, 2, 3, 4].map((row) => [row % 2 ? (side * DX) / 2 : 0, DZ0 + row * DZ])
+        const out                   = [0, 59 + CA]
         let prev                   = [0, 14.6]
         hops.forEach(([x, z], i) => {
-          const nx = i + 1 < hops.length ? hops[i + 1] : ([0, 59]                    )
+          const nx = i + 1 < hops.length ? hops[i + 1] : out
           const din = Math.hypot(x - prev[0], z - prev[1])
           const dout = Math.hypot(nx[0] - x, nx[1] - z)
-          add(x - ((x - prev[0]) / din) * 2.2 + 1.1, z - ((z - prev[1]) / din) * 2.2)
-          add(x + ((nx[0] - x) / dout) * 2.4 + 1.1, z + ((nx[1] - z) / dout) * 2.4)
+          add(x - ((x - prev[0]) / din) * (DR - 1.2), z - ((z - prev[1]) / din) * (DR - 1.2))
+          add(x + 2.4, z)
+          add(x + ((nx[0] - x) / dout) * (DR - 0.8), z + ((nx[1] - z) / dout) * (DR - 0.8))
           prev = [x, z]
         })
-        add(0, 59)
+        add(out[0], out[1])
         // 2. rampa: sobe pela coluna das pedras e desvia de lado quando a pedra está na frente
         const L = [-4, 0, 4][Math.floor(r(2) * 3)]
-        for (let z = 64; z <= 104; z += 2) {
+        for (let z = 64 + CA; z <= 104 + CA; z += 2) {
           const near = K.stones.some(([x, sz]) => x === L && Math.abs(z - sz) < 2.6)
           add(near ? L + (L >= 0 ? -1.3 : 1.3) * (L === 0 ? side : 1) : L, z)
         }
         // passa entre os troncos ocos pela abertura da coluna
-        add(L, 103.5)
-        add(L, 106)
-        add(L, 109)
-        add(L * 0.5, 112)
-        add(0, 115.5)
-        // 3. tocos, um a um
-        for (const [x, z] of K.stumps) add(x, z)
-        add(0, 156.5)
-        add(0, 163)
-        add(0, 168.5)
-        add(0, 172)
+        add(L, 103.5 + CA)
+        add(L, 106 + CA)
+        add(L, 109 + CA)
+        add(L * 0.5, 112 + CA)
+        add(0, 115.5 + CA)
+        // 3. tocos, um a um: entra pela borda, passa pelo miolo e sai pela borda voltada para o próximo
+        let pv                   = [0, 115.5 + CA]
+        K.stumps.forEach(([x, z], i) => {
+          const nx                   = i + 1 < K.stumps.length ? [K.stumps[i + 1][0], K.stumps[i + 1][1]] : [0, 156.5 + CB]
+          const din = Math.hypot(x - pv[0], z - pv[1])
+          const dout = Math.hypot(nx[0] - x, nx[1] - z)
+          add(x - ((x - pv[0]) / din) * (SR - 1.2), z - ((z - pv[1]) / din) * (SR - 1.2))
+          add(x, z)
+          add(x + ((nx[0] - x) / dout) * (SR - 1), z + ((nx[1] - z) / dout) * (SR - 1))
+          pv = [x, z]
+        })
+        add(0, 156.5 + CB)
+        add(0, 163 + CB)
+        add(0, 168.5 + CB)
+        add(0, 172 + CB)
         // 4. atravessa a vitória-régia pelo meio
-        for (let z = 174; z <= 189; z += 2.5) add(0, z)
-        add(0, 191)
-        add(0, 194.5)
-        add(0, 198.5)
+        for (let z = 174; z <= 189; z += 2.5) add(0, z + CB)
+        add(0, 191 + CB)
+        add(0, 194.5 + CB)
+        add(0, 198.5 + CB)
         // 5. cogumelo e o barranco
         const S = K.shrooms[r(3) < 0.5 ? 0 : 1]
         add(S[0], S[1])
-        add(S[0] * 0.5, 207)
-        add(0, 211)
-        for (let z = 214.5; z <= 235; z += 2.5) add(0, z)
+        add(S[0] * 0.5, 207 + CB)
+        add(0, 211 + CB)
+        for (let z = 214.5; z <= 235; z += 2.5) add(0, z + CB)
         add(0, finishZ - 7)
         add(0, finishZ - 2)
         add(0, finishZ + 3)
