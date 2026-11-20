@@ -1079,22 +1079,22 @@ const CLAREIRA = {
   Y2: CY2,
   Y3: CY3,
   Y4: CY4,
-  /** Campo de discos: (x, z) de cada fatia de tronco (raio DISC_R). */
+  /**
+   * Campo de discos SOBRE O PÂNTANO (pedido do Alex, 19/11: "não pode ter espaço para andar sem ser pelos
+   * discos"): colmeia 3-2-3-2-3, vão de 2,4 m entre vizinhas (correndo não passa: tem que pular).
+   */
   discs: [
-    [-8, 24], [0, 24], [8, 24],
-    [-4, 33], [4, 33],
-    [-8, 42], [0, 42], [8, 42],
-    [-4, 51], [4, 51],
+    [-9.2, 20.5], [0, 20.5], [9.2, 20.5],
+    [-4.6, 28.5], [4.6, 28.5],
+    [-9.2, 36.5], [0, 36.5], [9.2, 36.5],
+    [-4.6, 44.5], [4.6, 44.5],
+    [-9.2, 52.5], [0, 52.5], [9.2, 52.5],
   ]                                          ,
   discR: 3.4,
-  /** Troncos caídos: x, z, giro (meia largura 0,5, meio comprimento 1,6, topo 0,95 acima do chão). */
-  logs: [
-    [-8, 18.4, Math.PI / 2], [8, 18.4, Math.PI / 2],
-    [-4, 28.5, Math.PI / 2], [4, 28.5, Math.PI / 2],
-    [-10.2, 33, 0], [10.2, 33, 0], [0, 37.6, Math.PI / 2],
-    [-4, 46.5, Math.PI / 2], [4, 46.5, Math.PI / 2],
-    [-10.2, 51, 0], [10.2, 51, 0], [0, 55.6, Math.PI / 2],
-  ]                                                  ,
+  /** Giro das fatias (rad/s, alternando o lado): forte, a borda carrega a ~5,5 m/s. */
+  discSpin: [1.5, 1.8, 1.65]                     ,
+  /** Giro dos tocos (rad/s): a borda carrega a ~6 m/s (quase a corrida): difícil de mirar o pulo. */
+  stumpSpin: 2.6,
   /** Rampa das frutas (DECK → Y1) e as faixas das frutas. */
   ramp: { z0: 65, z1: 105, hx: 8 },
   lanes: [-6, -2, 2, 6]                     ,
@@ -1123,18 +1123,15 @@ function courseClareira()         {
   const k = new CourseKit()
   kitStart(k)
   // ── 1. campo de fatias de tronco que giram ──
-  k.box(0, 36.75, 12, 21.25, 5, 1, 1)
-  const discs           = []
+  // sem piso: cada fatia é um tronco em pé no pântano; caiu = volta à largada
   K.discs.forEach(([x, z], i) => {
     const p = k.disc(x, z, K.discR, 1, 1, 1, DECK + 0.25)
-    k.pads[p].d = 1.2
-    // vizinhos giram ao contrário (o chão "torce" entre eles)
-    k.pads[p].spin = (i % 2 ? -1 : 1) * (0.5 + (i % 3) * 0.08)
-    discs.push(p)
+    k.pads[p].d = DECK + 0.25
+    // vizinhos giram ao contrário (quem pula de uma para a outra troca de sentido)
+    k.pads[p].spin = (i % 2 ? -1 : 1) * K.discSpin[i % 3]
     // o miolo da fatia: um toquinho que empurra
     k.post(x, z, 0.75, DECK + 0.25, DECK + 1.3, 2)
   })
-  for (const [x, z, rot] of K.logs) k.box(x, z, 0.5, 1.6, 0, 1, 1, rot, 1.4, DECK + 0.95)
   // ── 2. rampa das frutas, com pedras de musgo entre as faixas ──
   k.box(0, 61.5, 8, 3.5, 5, 1, 1)
   const R = K.ramp
@@ -1149,7 +1146,7 @@ function courseClareira()         {
   K.stumps.forEach(([x, z, r, h], i) => {
     const p = k.disc(x, z, r, 1, 1, 3, CY1 + h)
     k.pads[p].d = CY1 + h
-    k.pads[p].spin = (i % 2 ? 1 : -1) * 0.65
+    k.pads[p].spin = (i % 2 ? 1 : -1) * K.stumpSpin
   })
   for (const [x, z] of K.trees) k.post(x, z, K.treeR, 0, CY1 + 12, 0)
   // ── 4. o barranco, a vitória-régia gigante que gira e as sementes penduradas ──
@@ -1188,11 +1185,22 @@ function courseClareira()         {
     minFinish: 22,
     route: (r) =>
       routeOf((add) => {
-        // 1. corta o campo pelos vãos entre as fatias (a semente escolhe o lado)
+        // 1. de fatia em fatia em ziguezague (a semente escolhe o lado): entra e sai de cada uma pela borda
+        // voltada para a próxima, passando ao lado do cogumelo do miolo
         const side = r(1) < 0.5 ? -1 : 1
-        add(side * 1.2, 10)
-        add(side * 1.2, 15.5)
-        for (const [x, z] of [[side * 4, 19.5], [side * 4, 24], [side * 1.6, 28.5], [0, 33], [side * 1.6, 37.6], [side * 4, 42], [side * 4, 46.5], [side * 1.6, 51], [0, 55.6], [0, 59]]                      ) add(x, z)
+        add(0, 10)
+        add(0, 14.6)
+        const hops                     = [[0, 20.5], [side * 4.6, 28.5], [0, 36.5], [side * 4.6, 44.5], [0, 52.5]]
+        let prev                   = [0, 14.6]
+        hops.forEach(([x, z], i) => {
+          const nx = i + 1 < hops.length ? hops[i + 1] : ([0, 59]                    )
+          const din = Math.hypot(x - prev[0], z - prev[1])
+          const dout = Math.hypot(nx[0] - x, nx[1] - z)
+          add(x - ((x - prev[0]) / din) * 2.2 + 1.1, z - ((z - prev[1]) / din) * 2.2)
+          add(x + ((nx[0] - x) / dout) * 2.4 + 1.1, z + ((nx[1] - z) / dout) * 2.4)
+          prev = [x, z]
+        })
+        add(0, 59)
         // 2. rampa: sobe pela coluna das pedras e desvia de lado quando a pedra está na frente
         const L = [-4, 0, 4][Math.floor(r(2) * 3)]
         for (let z = 64; z <= 104; z += 2) {
