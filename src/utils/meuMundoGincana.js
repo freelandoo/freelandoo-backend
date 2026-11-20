@@ -2976,7 +2976,11 @@ function courseForja()         {
     limit: 100,
     // 20/11 (o Alex: "aumente a velocidade das paredes e faça vir com mais frequência"): o intervalo cai de 3,2 s
     // para 1,9 s e a velocidade sobe de 3,6 a 13 m/s, os dois em 45 s (antes: 3,2 s fixo, 3,4 → 11 em 60 s)
-    walls: { hw: 11, z0: 13, z1: -14, y: DECK, every: 3.2, every1: 1.9, t0: 2, v0: 3.6, v1: 13, ramp: 45, seg: 2.2, tall: 3.2, low: 0.9 },
+    // 20/11, 2ª (o Alex: "um pouco mais rápido as paredes e conforme as pessoas sobrevivem vai ficando mais e mais
+    // rápido"): começa um tico mais rápido (4 m/s; antes 3,6) e NÃO para de acelerar — a rampa vai até 95 s (quase o fim),
+    // chegando a 0,9 s entre ondas e 24 m/s (antes parava em 1,9 s e 13 m/s aos 45 s). Começo mais forte que isso
+    // derruba os robôs em menos de 20 s
+    walls: { hw: 11, z0: 13, z1: -14, y: DECK, every: 3.2, every1: 0.9, t0: 2, v0: 4, v1: 24, ramp: 95, seg: 2.2, tall: 3.2, low: 0.9 },
     checkpoints: [{ x: 0, z: -2, y: DECK, w: 6 }],
     finishZ: 40,
     finishY: 90,
