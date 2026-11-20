@@ -2064,6 +2064,13 @@ const SERRARIA = {
   /** tábuas: z dos centros (duas filas, x = ±2.6) */
   planks: [111.2, 117.2, 123.2, 129.2, 135.2],
   plankX: 2.6,
+  /**
+   * 20/11 (o Alex: "tem que ser só uma gangorra em cada linha, não duas, e elas têm que ser sensíveis a peso:
+   * conforme o peso de um lado ela vira e faz o personagem escorregar"): cada fileira vira UMA gangorra larga
+   * (10 m) que tomba de lado pelo PESO (mola fraca) e escorrega (`slip`). Antes: duas tábuas por fileira
+   * balançando pelo relógio (amp 0,3, 1,35 rad/s).
+   */
+  saw: { hx: 5, hz: 2.9, max: 0.34, k: 0.3, slip: 11, rest: 0.06 },
   /** pátio das toras grandes: [z, giro] */
   bigLogs: [
     [157, 1.2],
@@ -2086,8 +2093,8 @@ function courseSerraria()         {
   k.box(0, 102, 3.6, 3.9, 5, 1, 3)
   // ── 3. as tábuas que balançam ──
   K.planks.forEach((z, i) => {
-    k.plank(-K.plankX, z, 2.4, 2.9, 0.3, 1.35, i * 1.15)
-    k.plank(K.plankX, z, 2.4, 2.9, 0.3, 1.35, i * 1.15 + Math.PI)
+    k.saw(0, z, DECK, K.saw.hx, K.saw.hz, 1, K.saw.max, i % 2 ? K.saw.rest : -K.saw.rest, K.saw.k)
+    k.saws[k.saws.length - 1].slip = K.saw.slip
   })
   // ── 4. o pátio das toras grandes, com um machado no vão entre elas ──
   k.box(0, 160, 8.2, 21.9, 5, 1, 4)
@@ -2127,8 +2134,8 @@ function courseSerraria()         {
         add(0, 57)
         for (let z = 60; z <= 104; z += 2) add(0, z)
         const c = r(3) < 0.5 ? -1 : 1
-        add(c * K.plankX, 107)
-        for (let z = 109; z <= 137; z += 2) add(c * K.plankX, z)
+        add(c * 1.2, 107)
+        for (let z = 109; z <= 137; z += 2) add(c * 1.2, z)
         add(0, 141)
         for (let z = 145; z <= 180; z += 2.5) add(0, z)
         routeFinish(add, z0, finishZ)

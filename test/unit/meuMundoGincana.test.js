@@ -976,7 +976,10 @@ test("gincana — Serraria: a tora é parede embaixo, rola contra e o cravo derr
   const C = G.COURSE_BASE.serraria; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   assert.equal(C.logs.length, 6);
-  assert.equal(C.planks.length, 10);
+  // 20/11: uma gangorra de peso por fileira (antes 2 tábuas de relógio por fileira)
+  assert.equal(C.planks.length, 0);
+  assert.equal(C.saws.length, G.SERRARIA.planks.length);
+  assert.ok(C.saws.every((S) => S.ax === 1 && S.slip > 6 && S.hx >= 4.5), "a gangorra não é uma só, de lado, que escorrega");
   assert.equal(C.pendulums.length, 5);
   const L = C.logs[0];
   const { race, r } = solo("serraria");
@@ -1006,17 +1009,19 @@ test("gincana — Serraria: a tora é parede embaixo, rola contra e o cravo derr
     hit = out.some((e) => e.type === "hit");
   }
   assert.ok(hit, "o cravo não derrubou");
-  // tábua inclinada: escorrega para o lado que desce
-  const Pk = C.planks[0];
-  let tt = race.t;
-  while (Math.abs(G.plankAngle(Pk, tt)) < Pk.amp * 0.8) {
+  // gangorra: em pé num lado, ela tomba para esse lado pelo peso; parado em cima, escorrega para o lado que desceu
+  const S = G.COURSES.serraria.saws[0];
+  for (let k = 0; k < 90; k++) {
+    Object.assign(r, { x: S.x + 2.5, z: S.z, vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 5 });
+    r.y = G.sawTop(S, race.world.saw[0], r.x, r.z);
     race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
-    tt = race.t;
   }
-  const sg = Math.sign(G.plankAngle(Pk, race.t));
-  Object.assign(r, { x: Pk.x, z: Pk.z, y: G.plankTop(Pk, Pk.x, race.t), vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 5 });
-  for (let k = 0; k < 8; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
-  assert.ok((r.x - Pk.x) * sg < -0.1, `a tábua não escorregou: ${(r.x - Pk.x).toFixed(2)}`);
+  assert.ok(race.world.saw[0] > S.max * 0.8, `não tombou com o peso: ${race.world.saw[0].toFixed(3)}`);
+  Object.assign(r, { x: S.x + 1, z: S.z, vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 5 });
+  r.y = G.sawTop(S, race.world.saw[0], r.x, r.z);
+  const x1 = r.x;
+  for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(r.x > x1 + 0.6, `a gangorra não escorregou: ${(r.x - x1).toFixed(2)}`);
 });
 
 // ── Trilha da Crosta (2026-11-20) ────────────────────────────────────────────
