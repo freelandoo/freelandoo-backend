@@ -365,7 +365,7 @@ function memUp(m        , seed        , i        , t        ) {
      
                                                                                                                    
                                                                                                                       
-                                                                                                               
+                                                                                                                         
      
                
                  
@@ -1251,11 +1251,21 @@ function ballsAt(c        , seed        , t        , out          ) {
         const u = s1 % 1
         if (z >= R.z0) y += hop * 4 * u * (1 - u)
         if (bounce) {
-          // a cada quique um rumo novo de lado; bate na borda e volta (vaivém entre −L e L)
+          // 20/11 (o Alex: "quicam 3 vezes de um lado e mudam de lado, às vezes 2 e às vezes 4"): a bola vai de lado
+          // por um trecho de 2–4 quiques num rumo só e então troca de lado; bate na borda e volta (vaivém entre −L e L)
           let off = 0
-          for (let q = Math.floor(s0); q <= Math.floor(s1); q++) {
-            const v = bounce * ((courseHash(sd ^ 0x3c6ef372, i * 61 + q) % 1001) / 500 - 1)
-            off += v * (Math.min(s1, q + 1) - Math.max(s0, q)) * hopT
+          let dir = courseHash(sd ^ 0x3c6ef372, i * 61) % 2 ? 1 : -1
+          let left = 0
+          let v = 0
+          for (let q = 0, g = 0; q <= Math.floor(s1); q++) {
+            if (left === 0) {
+              const h = courseHash(sd ^ 0x3c6ef372, i * 61 + 1 + g++)
+              left = 2 + (h % 3)
+              if (g > 1) dir = -dir
+              v = dir * bounce * (0.75 + ((h >>> 4) % 100) / 400)
+            }
+            left--
+            if (q + 1 > s0) off += v * (Math.min(s1, q + 1) - Math.max(s0, q)) * hopT
           }
           const m = (((x - R.x + L + off) % (4 * L)) + 4 * L) % (4 * L)
           x = R.x - L + (m < 2 * L ? m : 4 * L - m)
