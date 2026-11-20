@@ -32,8 +32,8 @@ const GINCANA = {
   // mm3d-47b: mais rápido e mais seco (o Alex achou lento e o pulo mole)
   gravity: 30,
   run: 8.2,
-  /** Esteira (Gincana 3, pedido do Alex 18/11): forte — parado, ela leva você; contra ela anda a 2,7 m/s. */
-  belt: 5.5,
+  /** Esteira (Gincana 3, pedido do Alex 18/11; mais forte em 20/11): parado, ela leva você; contra ela anda a 2 m/s; pulando não escapa. */
+  belt: 6.2,
   accel: 58,
   /** Controle no ar (fração da aceleração do chão). */
   airControl: 0.72,
@@ -52,8 +52,12 @@ const GINCANA = {
   diveUp: 4.4,
   slideT: 0.45,
   riseT: 0.4,
-  /** Derrubado por obstáculo: sem controle por isto (s); depois levanta. */
-  stunT: 0.9,
+  /** Derrubado por obstáculo: sem controle por isto (s); depois levanta (20/11: 0,9 → 1,2, o Alex achou fácil). */
+  stunT: 1.2,
+  /** 20/11 (o Alex achou tudo fácil): pancada empurra mais longe (× na velocidade de lado). */
+  hitPush: 1.3,
+  /** 20/11: nas corridas tudo que se mexe gira/vai e volta mais rápido (× na velocidade, ÷ no período). */
+  tempo: 1.22,
   /** Abaixo disto caiu na água: volta ao último posto depois de `respawnT`. */
   waterY: -0.6,
   respawnT: 1.3,
@@ -813,6 +817,30 @@ class CourseKit {
     this.logos.push({ x, z, y: y + 1.1 })
   }
   /** Fecha o percurso. */
+  /** Tudo que se mexe pelo relógio fica `f` vezes mais rápido (a regra é a mesma no aparelho e na sala). */
+          faster(f        ) {
+    for (const s of this.sweepers) {
+      s.w *= f
+      s.acc *= f * f
+      s.wMax *= f
+    }
+    for (const q of this.pendulums) q.w *= f
+    for (const g of this.gloves) g.period /= f
+    for (const q of this.pushers) q.w *= f
+    for (const q of this.rotors) q.w *= f
+    for (const q of this.logs) q.w *= Math.sqrt(f) // a tora rolando contra já é o obstáculo mais duro: acelera menos
+    for (const q of this.planks) q.w *= f
+    for (const p of this.pads) {
+      p.mw *= f
+      p.spin *= f
+      p.gp /= f
+    }
+    if (this.balls) {
+      this.balls.v *= f
+      this.balls.every /= f
+    }
+  }
+
   done(o   
                     
                              
@@ -831,6 +859,7 @@ class CourseKit {
                    
                    
    )         {
+    if ((o.mode ?? "race") === "race") this.faster(GINCANA.tempo)
     return {
       id: o.id,
       mode: o.mode ?? "race",
@@ -1127,6 +1156,240 @@ function spawnAt(c        , cp        , slot        ) {
   const col = slot % 4
   const row = Math.floor(slot / 4) % 2
   return { x: p.x + (col - 1.5) * Math.min(3.4, (p.w * 2) / 4), z: p.z - row * 2.6, y: p.y }
+}
+
+// ═══ reprise — o percurso dobrado (20/11, pedido do Alex: "no mínimo o dobro do percurso") ═══════════════
+
+/** Peças de chão fixo embaixo do caminho em z (o x vem da rota). */
+function floorPadsAt(C        , z        ) {
+  const pts = C.route(() => 0.5)
+  let x = 0
+  let best = Infinity
+  for (const p of pts) if (Math.abs(p.z - z) < best) (best = Math.abs(p.z - z)), (x = p.x)
+  return C.pads.filter((p) => {
+    if (p.mw !== 0 || p.gh !== 0 || p.sl < 1) return false
+    const ex = p.rot ? Math.max(p.hx, p.hz) : p.hx
+    return Math.abs(z - p.z) <= p.hz + 0.01 && Math.abs(x - p.x) <= ex + 0.6
+  })
+}
+
+/** Topo do chão fixo embaixo do caminho em z: para saber quanto um trecho sobe. */
+function floorTopAt(C        , z        ) {
+  // num vão de pulo vale o chão de logo antes
+  for (let d = 0; d <= 10; d += 0.5) {
+    let y = -Infinity
+    for (const p of floorPadsAt(C, z - d)) y = Math.max(y, p.k === 2 ? p.y + ((z - d - (p.z - p.hz)) / (2 * p.hz)) * (p.y2 - p.y) : p.y)
+    if (y > -Infinity) return y
+  }
+  return DECK
+}
+
+/** Corte limpo: nenhuma peça embaixo do caminho atravessa a linha z (nem a que gira ou anda). */
+function cleanCut(C        , z        ) {
+  const pts = C.route(() => 0.5)
+  let x = 0
+  let best = Infinity
+  for (const p of pts) if (Math.abs(p.z - z) < best) (best = Math.abs(p.z - z)), (x = p.x)
+  return !C.pads.some((p) => {
+    const ex = p.rot ? Math.max(p.hx, p.hz) : p.hx
+    return Math.abs(x - p.x) <= ex + 0.6 && p.z - p.hz < z - 0.05 && p.z + p.hz > z + 0.05
+  })
+}
+
+/** A emenda fica no começo da peça de chão que cobre z (nunca corta uma peça no meio). */
+function seamAt(C        , z        ) {
+  const ps = floorPadsAt(C, z)
+  return ps.length ? Math.min(...ps.map((p) => p.z - p.hz)) : z
+}
+
+/**
+ * Dobra o percurso de uma corrida: o miolo [z0, z1) (do começo do trecho 1 ao começo do trecho 5, por padrão)
+ * se repete logo depois, deslocado em z (e em y, se o miolo sobe), com tudo que se mexe mais rápido (`f`) e o
+ * ritmo trocado (fases deslocadas) — a 2ª volta não é a 1ª decorada. Se ainda não deu `minLen` × `base`
+ * (o comprimento antigo da fase), uma 3ª volta parcial (até o começo de um trecho) completa. O que vinha
+ * depois de z1 (a subida e a chegada) vai para o fim. Regra pura: o aparelho e a sala calculam igual.
+ */
+function reprise(C        , o                                                                           = {})         {
+  if (C.mode !== "race") return C
+  const z0 = o.z0 ?? seamAt(C, C.sections[0] + 0.05)
+  const z1 = o.z1 ?? seamAt(C, C.sections[4] + 0.05)
+  const L = z1 - z0
+  const target = (o.minLen ?? 2) * (o.base ?? C.finishZ)
+  const dyLap = floorTopAt(C, z1 - 0.3) - floorTopAt(C, z0 + 0.3)
+  const f = o.f ?? 1.12
+  // voltas: [a, b) copiado com deslocamento (dz, dy), velocidade × k e fases + ph
+  const laps                                                                            = [{ a: z0, b: z1, dz: L, dy: dyLap, k: f, ph: 1.7 }]
+  let DZ = L
+  let DY = dyLap
+  if (C.finishZ + DZ < target) {
+    const need = target - C.finishZ - DZ
+    // cortes possíveis: começo de cada peça de chão do miolo
+    const cuts = [...new Set(C.pads.filter((p) => p.z > z0 && p.z < z1 && p.mw === 0 && p.spin === 0).map((p) => p.z - p.hz).filter((s) => s > z0 + 0.5 && s <= z1 && cleanCut(C, s))), z1].sort((a, b) => a - b)
+    const b = cuts.find((s) => s - z0 >= need) ?? z1
+    laps.push({ a: z0, b, dz: 2 * L, dy: 2 * dyLap, k: f * f, ph: 3.1 })
+    DZ += b - z0
+    DY += floorTopAt(C, b - 0.3) - floorTopAt(C, z0 + 0.3)
+  }
+  const inLap = (z        , l                       ) => z >= l.a && z < l.b
+  const after = (z        ) => z >= z1
+  const out         = {
+    ...C,
+    pads: [],
+    posts: [],
+    sweepers: [],
+    pendulums: [],
+    gloves: [],
+    tiles: [],
+    doors: [],
+    doorOpen: [...C.doorOpen],
+    pushers: [],
+    logos: [],
+    hoops: [],
+    gems: [],
+    drums: [],
+    logs: [],
+    planks: [],
+    rotors: [],
+    saws: [],
+    checkpoints: [],
+  }
+  // cada lista: o original (o que vem depois de z1 vai para o fim) e, para cada volta, a cópia
+  function each   (src              , dst     , zOf                  , move                                     , tune                                       ) {
+    src.forEach((q) => dst.push(after(zOf(q)) ? move(q, DZ, DY) : { ...q }))
+    const maps                        = []
+    for (const l of laps) {
+      const m = new Map                ()
+      src.forEach((q, i) => {
+        if (!inLap(zOf(q), l)) return
+        const c = move(q, l.dz, l.dy)
+        tune(c, l.k, l.ph)
+        m.set(i, dst.length)
+        dst.push(c)
+      })
+      maps.push(m)
+    }
+    return maps
+  }
+  const none = () => {}
+  const padMaps = each(C.pads, out.pads, (p) => p.z, (p, dz, dy) => ({ ...p, z: p.z + dz, y: p.y + dy, y2: p.y2 + dy }), (p, k, ph) => {
+    p.mw *= k
+    p.spin *= k
+    p.mph += ph
+    if (p.gp) {
+      p.gp /= k
+      p.gph += ph * 0.37 * p.gp
+    }
+  })
+  each(C.posts, out.posts, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y0: q.y0 + dy, y1: q.y1 + dy }), none)
+  each(C.sweepers, out.sweepers, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
+    q.w *= k
+    q.wMax *= k
+    q.acc *= k * k
+    q.a0 += ph
+  })
+  each(C.pendulums, out.pendulums, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, py: q.py + dy }), (q, k, ph) => {
+    q.w *= k
+    q.ph += ph
+  })
+  each(C.gloves, out.gloves, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
+    q.period /= k
+    q.ph += ph * 0.3 * q.period
+  })
+  each(C.pushers, out.pushers, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
+    q.w *= k
+    q.ph += ph
+  })
+  each(C.logos, out.logos, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), none)
+  each(C.hoops, out.hoops, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
+    q.w *= k
+    q.ph += ph
+  })
+  each(C.drums, out.drums, (q) => q.z0, (q, dz, dy) => ({ ...q, z0: q.z0 + dz, y: q.y + dy }), none)
+  each(C.logs, out.logs, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
+    q.w *= k
+    q.ph += ph
+  })
+  each(C.planks, out.planks, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
+    q.w *= k
+    q.ph += ph
+  })
+  each(C.rotors, out.rotors, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
+    q.w *= k
+    q.ph += ph
+  })
+  each(C.saws, out.saws, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), none)
+  each(C.checkpoints, out.checkpoints, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), none)
+  out.checkpoints.sort((a, b) => a.z - b.z)
+  // portas: cada volta ganha fileiras novas (sorteadas à parte)
+  each(C.doors, out.doors, (q) => q.z, (q, dz) => ({ ...q, z: q.z + dz }), none)
+  {
+    let n = C.doors.length
+    for (const l of laps) {
+      const rows = new Map                ()
+      for (const d of C.doors) {
+        if (!inLap(d.z, l)) continue
+        if (!rows.has(d.row)) {
+          rows.set(d.row, out.doorOpen.length)
+          out.doorOpen.push(C.doorOpen[d.row])
+        }
+        out.doors[n++].row = rows.get(d.row)          
+      }
+    }
+  }
+  // ladrilhos: o tabuleiro escondido copiado é outro tabuleiro (caminho sorteado à parte)
+  each(C.tiles, out.tiles, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), none)
+  {
+    let n = C.tiles.length
+    let pg = C.tiles.reduce((m, q) => Math.max(m, q.pg + 1), 0)
+    for (const l of laps) {
+      const grids = new Map                ()
+      for (const t of C.tiles) {
+        if (!inLap(t.z, l)) continue
+        const q = out.tiles[n++]
+        if (t.pg < 0) continue
+        if (!grids.has(t.pg)) grids.set(t.pg, pg++)
+        q.pg = grids.get(t.pg)          
+      }
+    }
+  }
+  if (C.ramp && after(C.ramp.z0)) {
+    out.ramp = { ...C.ramp, z0: C.ramp.z0 + DZ, z1: C.ramp.z1 + DZ, y0: C.ramp.y0 + DY, y1: C.ramp.y1 + DY }
+    if (C.balls) out.balls = { ...C.balls, zEnd: C.balls.zEnd + DZ }
+  }
+  const ratio = (C.finishZ + DZ) / C.finishZ
+  out.finishZ = C.finishZ + DZ
+  out.finishY = C.finishY + DY
+  out.sections = C.sections.map((s) => (after(s) ? s + DZ : s))
+  out.minFinish = Math.round(C.minFinish * ratio)
+  out.limit = Math.min(300, Math.max(C.limit, Math.round(C.limit * ratio * 0.85)))
+  if (C.rise) out.rise = { ...C.rise, y1: C.rise.y1 + DY, t1: C.rise.t0 + (C.rise.t1 - C.rise.t0) * ratio }
+  // percurso que DESCE (Descida dos Aros): a 2ª volta afundaria no mar — levanta tudo, a chegada fica onde estava
+  if (DY < 0) {
+    const up = -DY
+    for (const p of out.pads) (p.y += up), (p.y2 += up)
+    for (const q of out.posts) (q.y0 += up), (q.y1 += up)
+    for (const L of [out.sweepers, out.gloves, out.pushers, out.logos, out.hoops, out.drums, out.logs, out.planks, out.rotors, out.saws, out.checkpoints, out.tiles]                     ) for (const q of L) q.y += up
+    for (const q of out.pendulums) q.py += up
+    out.finishY += up
+    if (out.ramp) out.ramp = { ...out.ramp, y0: out.ramp.y0 + up, y1: out.ramp.y1 + up }
+  }
+  const route0 = C.route
+  out.route = (r) => {
+    const pts = route0(r)
+    const res               = []
+    const fix = (p            , dz        , map                      ) => {
+      const q             = { x: p.x, z: p.z + dz }
+      if (p.m !== undefined) q.m = map ? (map.get(p.m) ?? p.m) : p.m
+      return q
+    }
+    for (const p of pts) if (p.z < z1) res.push(fix(p, 0))
+    laps.forEach((l, i) => {
+      for (const p of pts) if (inLap(p.z, l)) res.push(fix(p, l.dz, padMaps[i]))
+    })
+    for (const p of pts) if (after(p.z)) res.push(fix(p, DZ))
+    return res
+  }
+  return out
 }
 
 // ── sim/courses.ts ───────────────────────────────────────────────────────────
@@ -2039,7 +2302,7 @@ const GANGORRAS = {
   chainX: 2.3,
   chainHx: 1.0,
   /** pratos de lado: [x, z, meia largura] */
-  plates: [[-2.9, 84, 2.2], [2.9, 84, 2.2], [0, 91.4, 3.1], [-3.2, 98.8, 2.3], [3.2, 98.8, 2.3], [0, 106.2, 3.1]]                              ,
+  plates: [[-2.9, 84, 2.2], [2.9, 84, 2.2], [0, 91.4, 3.1], [-3.2, 98.8, 2.3], [3.2, 98.8, 2.3], [0, 105.2, 3.1]]                              ,
   plateHz: 2.1,
   big: { z: 123.3, hx: 5.2, hz: 6, max: 0.16, k: 0.35 },
 }         
@@ -2304,7 +2567,7 @@ const ALTOFORNO = {
   z1: 120,
   rise: 10,
   hx: 7,
-  belt: -2.4,
+  belt: -4.4,
   lanes: [-4.8, -2.4, 0, 2.4, 4.8],
 }         
 
@@ -2527,22 +2790,31 @@ function courseComportas()         {
  * Diferente da Maré do Pântano: o caminho vai e volta (zigue-zague), o perigo é empurrar de lado.
  */
 const TANQUE = {
-  /** x das rampas (esquerda, direita, esquerda, meio) */
-  rx: [-4.2, 4.2, -4.2, 0]         ,
+  /** x das rampas (trocam de lado; a última no meio) */
+  rx: [-4.2, 4.2, -4.2, 4.2, -4.2, 4.2, 0]         ,
   rhx: 3.1,
   /** z de cada rampa [início, fim] */
   rz: [
     [15, 39],
     [48, 72],
     [81, 105],
-    [114, 132],
+    [114, 138],
+    [147, 171],
+    [180, 204],
+    [213, 231],
   ]                      ,
   /** altura de cada andar acima do DECK */
-  dy: [0, 5, 10, 15, 20]         ,
-  /** z das prensas da 2ª rampa e fases */
+  dy: [0, 5, 10, 15, 20, 25, 30, 35]         ,
+  /** z das prensas da 2ª e da 5ª rampa e fases */
   press2: [[54, 0], [60, 1.6], [66, 3.2]]                      ,
-  /** z dos pistões da 3ª rampa */
+  press5: [[153, 0.4], [160, 2.2], [167, 1.0]]                      ,
+  /** z dos pistões da 3ª, 4ª e 6ª rampa (socam da parede de fora) */
   punch3: [[87, 0], [93, 0.8], [99, 1.6]]                      ,
+  punch4: [[119, 0.3], [124, 1.1], [129, 1.9], [134, 0.7]]                      ,
+  punch6: [[185, 0], [189.5, 0.6], [194, 1.2], [198.5, 1.8]]                      ,
+  /** Óleo derramado: a corrida fica nesta fração e o pé escorrega (atrito). */
+  oilRun: 0.55,
+  oilGrip: 0.3,
 }         
 
 function courseTanque()         {
@@ -2551,74 +2823,104 @@ function courseTanque()         {
   kitStart(k)
   const Y = K.dy.map((d) => DECK + d)
   const yAt = (i        , z        ) => Y[i] + ((z - K.rz[i][0]) / (K.rz[i][1] - K.rz[i][0])) * (Y[i + 1] - Y[i])
+  const ramp = (i        , s        , hx         = K.rhx) => k.slope(K.rx[i], K.rz[i][0], K.rz[i][1], Y[i], Y[i + 1], hx, 3, 1, s)
   const land = (i        , s        ) => {
     const z0 = K.rz[i][1]
     const z1 = K.rz[i + 1][0]
     return k.box(0, (z0 + z1) / 2, 8.4, (z1 - z0) / 2, 5, 1, s, 0, 1.4, Y[i + 1])
   }
+  const greasy = (p        ) => Object.assign(k.pads[p], { sl: K.oilRun, f: K.oilGrip })
+  // poça de óleo na rampa i, de z0 a z1, faixa (x relativo à rampa, meia largura): uma rampa fina por cima
+  const oilRamp = (i        , z0        , z1        , dx        , hx        , s        ) =>
+    greasy(k.slope(K.rx[i] + dx, z0, z1, yAt(i, z0) + 0.03, yAt(i, z1) + 0.03, hx, 3, 1, s))
+  // poça no patamar i (que fica depois da rampa i)
+  const oilLand = (i        , x        , z        , hx        , hz        , s        ) => greasy(k.box(x, z, hx, hz, 5, 1, s, 0, 0.3, Y[i + 1] + 0.15)) // acima das barras da grade
+  const pistons = (i        , list                                        , reach        , per        ) => {
+    const out = K.rx[i] < 0 ? -1 : 1
+    for (const [z, ph] of list) k.glove(K.rx[i] + out * (K.rhx + 1.6), z, yAt(i, z) + 1, -out, reach, 1.0, per, ph)
+  }
   // ── 1. rampa dos barris (esquerda) ──
-  k.slope(K.rx[0], K.rz[0][0], K.rz[0][1], Y[0], Y[1], K.rhx, 3, 1, 1)
+  ramp(0, 1)
   k.balls = { lanes: [-1.5, 1.5], every: 1.5, v: 6, R: 1.0, zEnd: 12 }
   land(0, 1)
-  // pistões da parede direita do 1º patamar (socam para o meio)
   k.glove(9.4, 41.5, Y[1] + 1, -1, 7.5, 1.0, 2.6, 0)
   k.glove(9.4, 45.5, Y[1] + 1, -1, 7.5, 1.0, 2.6, 1.3)
-  // ── 2. rampa das prensas (direita): blocos que vão e voltam de lado ──
-  k.slope(K.rx[1], K.rz[1][0], K.rz[1][1], Y[1], Y[2], K.rhx, 3, 1, 2)
+  // ── 2. rampa das prensas (direita) ──
+  ramp(1, 2)
   for (const [z, ph] of K.press2) k.pusher(K.rx[1], z, 1.1, 1.1, 1.8, 2.1, 0, 1.25, ph, yAt(1, z))
+  oilRamp(1, 50, 56, -1.4, 1.5, 2)
   land(1, 2)
-  // ganchos do guindaste no 2º patamar
   k.swing(-2.5, 75, Y[2] + 8, 6.6, 0.9, 0.9, 1.9, 0)
   k.swing(2.5, 78.5, Y[2] + 8, 6.6, 0.9, 0.9, 1.9, 1.6)
-  // ── 3. rampa dos pistões (esquerda): socam da parede de fora e jogam no óleo ──
-  k.slope(K.rx[2], K.rz[2][0], K.rz[2][1], Y[2], Y[3], K.rhx, 3, 1, 3)
-  for (const [z, ph] of K.punch3) k.glove(K.rx[2] - K.rhx - 1.6, z, yAt(2, z) + 1, 1, 3.4, 1.0, 2.2, ph)
-  land(2, 4)
-  // prensas que cruzam o 3º patamar
+  // ── 3. rampa dos pistões (esquerda) ──
+  ramp(2, 3)
+  pistons(2, K.punch3, 3.4, 2.2)
+  oilRamp(2, 90, 100, 1.5, 1.4, 3)
+  land(2, 3)
   k.pusher(-2.6, 108, 1.2, 1.2, 1.8, 3.6, 0, 1.0, 0, Y[3])
   k.pusher(2.6, 111.5, 1.2, 1.2, 1.8, 3.6, 0, 1.0, 2.2, Y[3])
-  // ── 4. rampa do meio com os ganchos e a chegada no alto ──
-  k.slope(K.rx[3], K.rz[3][0], K.rz[3][1], Y[3], Y[4], 4.5, 3, 1, 5)
-  k.swing(-1.6, 120, yAt(3, 120) + 8, 6.6, 0.9, 0.85, 1.7, 0.4)
-  k.swing(1.6, 126, yAt(3, 126) + 8, 6.6, 0.9, 0.85, 1.7, 2.0)
-  k.box(0, 139.8, 9, 7.8, 1, 0, 6, 0, 1.6, Y[4])
-  const finishZ = 140.8
-  for (const [x, z, y] of [[0, 43.5, Y[1]], [0, 76.5, Y[2]], [0, 109.5, Y[3]]]                              ) k.logo(x, z, y)
+  // ── 4. vazamento: daqui para cima o óleo escorre pelas rampas ──
+  // 4ª rampa (direita): óleo em quase tudo + pistões da parede de fora
+  ramp(3, 4)
+  oilRamp(3, 115, 137, 0, K.rhx - 0.25, 4)
+  pistons(3, K.punch4, 3.6, 2.0)
+  land(3, 4)
+  oilLand(3, -3.5, 145.6, 4, 1.3, 4)
+  k.swing(-2.8, 141, Y[4] + 8, 6.6, 0.9, 0.95, 2.0, 0.5)
+  k.swing(2.8, 144, Y[4] + 8, 6.6, 0.9, 0.95, 2.0, 2.1)
+  // 5ª rampa (esquerda): prensas em fila + poças alternadas
+  ramp(4, 4)
+  for (const [z, ph] of K.press5) k.pusher(K.rx[4], z, 1.1, 1.0, 1.8, 2.1, 0, 1.15, ph, yAt(4, z))
+  oilRamp(4, 155, 158, 1.3, 1.6, 4)
+  oilRamp(4, 162, 165, -1.3, 1.6, 4)
+  land(4, 4)
+  oilLand(4, 3.8, 178.6, 4.2, 1.3, 4)
+  k.pusher(-2.6, 174, 1.2, 1.2, 1.8, 3.6, 0, 1.15, 1.0, Y[5])
+  k.pusher(2.6, 177.2, 1.2, 1.2, 1.8, 3.6, 0, 1.15, 3.0, Y[5])
+  // 6ª rampa (direita): a mais estreita, óleo inteiro e os pistões em sequência
+  ramp(5, 4, 2.7)
+  oilRamp(5, 181, 203, 0, 2.45, 4)
+  pistons(5, K.punch6, 3.2, 1.8)
+  land(5, 4)
+  k.swing(-2.5, 207, Y[6] + 8, 6.6, 0.9, 1.0, 2.1, 0)
+  k.swing(2.5, 210, Y[6] + 8, 6.6, 0.9, 1.0, 2.1, 1.7)
+  // ── 5. rampa do meio com os ganchos e a chegada no alto ──
+  ramp(6, 5, 4.5)
+  k.swing(-1.6, 217, yAt(6, 217) + 8, 6.6, 0.9, 0.9, 1.8, 0.4)
+  k.swing(1.6, 222, yAt(6, 222) + 8, 6.6, 0.9, 0.9, 1.8, 2.0)
+  k.swing(0, 227, yAt(6, 227) + 8, 6.6, 0.9, 0.95, 1.9, 1.1)
+  k.box(0, 238.8, 9, 7.8, 1, 0, 6, 0, 1.6, Y[7])
+  const finishZ = 239.8
+  const L = (i        ) => (K.rz[i][1] + K.rz[i + 1][0]) / 2
+  for (const i of [0, 1, 2, 3, 4]) k.logo(0, L(i), Y[i + 1])
   return k.done({
     id: "tanque",
     mode: "race",
-    limit: 80,
+    limit: 150,
     // 3 s de folga; o óleo afoga a largada aos ~11 s e passa do topo perto do fim
-    rise: { y0: 0, y1: Y[4] + 2, t0: 3, t1: 50 },
-    checkpoints: [
-      { x: 0, z: -3.5, y: DECK, w: 7 },
-      { x: 0, z: 43.5, y: Y[1], w: 6 },
-      { x: 0, z: 76.5, y: Y[2], w: 6 },
-      { x: 0, z: 109.5, y: Y[3], w: 6 },
-    ],
+    rise: { y0: 0, y1: Y[7] + 2, t0: 3, t1: 112 },
+    checkpoints: [{ x: 0, z: -3.5, y: DECK, w: 7 }, ...[0, 1, 2, 3, 4, 5].map((i) => ({ x: 0, z: L(i), y: Y[i + 1], w: 6 }))],
     finishZ,
-    finishY: Y[4],
-    sections: [15, 39, 72, 105, 114],
-    minFinish: 20,
+    finishY: Y[7],
+    sections: [15, 48, 81, 114, 213],
+    minFinish: 34,
     route: (r) =>
       routeOf((add) => {
         const l0 = r(1) < 0.5 ? -1.4 : 1.4
         add(K.rx[0] * 0.5, 9)
         add(K.rx[0], 13.5)
         for (let z = 16; z <= 38; z += 2) add(K.rx[0] + l0, z)
-        add(K.rx[0], 40.5)
-        add(0, 43.5)
-        add(K.rx[1], 46.5)
-        for (let z = 49; z <= 71; z += 2) add(K.rx[1], z)
-        add(K.rx[1], 73.5)
-        add(0, 76.8)
-        add(K.rx[2], 79.8)
-        // na rampa dos pistões: por dentro (longe da parede)
-        for (let z = 82; z <= 104; z += 2) add(K.rx[2] + 1.6, z)
-        add(K.rx[2] + 1, 106.5)
-        add(0, 110)
-        add(0, 113)
-        for (let z = 115; z <= 131; z += 2) add(0, z)
+        for (let i = 0; i < 6; i++) {
+          const z0 = K.rz[i][1]
+          const z1 = K.rz[i + 1][0]
+          const nx = K.rx[i + 1]
+          add(K.rx[i], z0 + 1.5)
+          add(0, (z0 + z1) / 2)
+          add(nx, z1 - 1.5)
+          // nas rampas com pistões, por dentro (longe da parede de fora)
+          const inner = i + 1 === 2 || i + 1 === 3 || i + 1 === 5 ? -Math.sign(nx) * 1.2 : 0
+          for (let z = z1 + 1; z <= K.rz[i + 1][1] - 1; z += 2) add(nx + inner, z)
+        }
         add(0, finishZ - 7)
         add(0, finishZ - 2)
         add(0, finishZ + 3)
@@ -2867,7 +3169,7 @@ function courseFeira()         {
   const Y = DECK + 3
   // ── 1. rampa-esteira com melancias ──
   const r1 = k.slope(0, 15.1, 40, DECK, Y, 6, 0, 1, 1)
-  k.pads[r1].bz = -GINCANA.belt
+  k.pads[r1].bz = -GINCANA.belt * 0.75 // rampa + melancias + esteira: a esteira cheia trava todo mundo
   k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: 1.15, v: 6.5, R: 1.15, zEnd: 12 }
   k.box(0, 44, 7, 4, 6, 7, 1, 0, 1.4, Y)
   // ── 2. esteiras de mão dupla com prensas ──
@@ -3027,7 +3329,8 @@ function courseCoroa()         {
   })
 }
 
-const COURSES                               = {
+/** As fases como foram desenhadas (uma volta só): os testes de estrutura leem daqui. */
+const COURSE_BASE                               = {
   cidade: courseCidade(),
   floresta: courseFloresta(),
   clareira: courseClareira(),
@@ -3050,6 +3353,35 @@ const COURSES                               = {
   relogio: courseRelogio(),
   feira: courseFeira(),
   coroa: courseCoroa(),
+}
+
+/** Quanto media cada corrida antes de dobrar (o Tanque já tinha sido alongado à mão). */
+const BASE_LEN                                        = { tanque: 140.8 }
+
+// 20/11 (pedido do Alex): toda corrida com no mínimo o DOBRO do percurso antigo — o miolo se repete (reprise)
+const COURSES                               = {
+  cidade: reprise(COURSE_BASE.cidade),
+  floresta: reprise(COURSE_BASE.floresta),
+  clareira: reprise(COURSE_BASE.clareira),
+  serraria: reprise(COURSE_BASE.serraria, { f: 1 }), // toras mais rápidas na 2ª volta prendem todo mundo
+  tanque: reprise(COURSE_BASE.tanque, { z0: 114, z1: 213, base: BASE_LEN.tanque }),
+  canion: reprise(COURSE_BASE.canion),
+  moinhos: reprise(COURSE_BASE.moinhos),
+  gangorras: reprise(COURSE_BASE.gangorras),
+  orbital: reprise(COURSE_BASE.orbital),
+  helices: reprise(COURSE_BASE.helices, { f: 1 }), // hélices mais rápidas na 2ª volta jogam todo mundo no vazio
+  forja: reprise(COURSE_BASE.forja),
+  altoforno: reprise(COURSE_BASE.altoforno),
+  crosta: reprise(COURSE_BASE.crosta),
+  aros: reprise(COURSE_BASE.aros),
+  fabrica: reprise(COURSE_BASE.fabrica),
+  comportas: reprise(COURSE_BASE.comportas),
+  gelo: reprise(COURSE_BASE.gelo),
+  portoes: reprise(COURSE_BASE.portoes),
+  estaleiro: reprise(COURSE_BASE.estaleiro),
+  relogio: reprise(COURSE_BASE.relogio),
+  feira: reprise(COURSE_BASE.feira),
+  coroa: reprise(COURSE_BASE.coroa),
 }
 
 /** O percurso da fase (desconhecida = a de sempre). */
@@ -3138,6 +3470,9 @@ const MODE = {
               
                                            
               
+                                                                                                                         
+             
+             
                                                                                           
               
                
@@ -3262,6 +3597,8 @@ function newRunner(course        , slot        )         {
     drum: -1,
     roll: -1,
     fric: 1,
+    bbx: 0,
+    bbz: 0,
     grab: -1,
     grabT: 0,
     grabCool: 0,
@@ -3628,8 +3965,8 @@ function sphereGap(b        , x        , y        , z        ) {
 
 function knock(b        , kx        , ky        , kz        , by                                                        , out                   ) {
   if (b.shield > 0 || b.hitCool > 0 || b.mode === MODE.WATER || b.mode === MODE.DONE) return
-  b.vx = kx + b.vx * 0.15
-  b.vz = kz + b.vz * 0.15
+  b.vx = kx * GINCANA.hitPush + b.vx * 0.15
+  b.vz = kz * GINCANA.hitPush + b.vz * 0.15
   b.vy = Math.max(b.vy, ky)
   b.ground = false
   b.air = GINCANA.coyote
@@ -3768,6 +4105,8 @@ function respawn(b        , course        ) {
   b.shield = GINCANA.shieldT
   b.hitCool = 0
   b.pad = -1
+  b.bbx = 0
+  b.bbz = 0
   b.drum = -1
   b.roll = -1
   b.fric = 1
@@ -3776,6 +4115,10 @@ function respawn(b        , course        ) {
 
 /** Leva quem está em cima da plataforma que anda, do disco que gira e da esteira. */
 function carry(b        , w          , dt        ) {
+  if (b.ground) {
+    b.bbx = 0
+    b.bbz = 0
+  }
   if (b.ground && b.drum >= 0) {
     // cilindro: o chão anda de lado (w·R·cos θ) e a curva escorrega para fora
     const d = w.course.drums[b.drum]
@@ -3792,7 +4135,7 @@ function carry(b        , w          , dt        ) {
     if (S) {
       const s = Math.sin(w.saw[(b.roll - ROLL_SAW) * 2])
       if (S.ax === 0) b.z += s * 4 * dt
-      else b.x += s * 7.5 * dt
+      else b.x += s * 6 * dt
     }
     return
   }
@@ -3812,7 +4155,13 @@ function carry(b        , w          , dt        ) {
     }
     return
   }
-  if (!b.ground || b.pad < 0) return
+  if (!b.ground) {
+    // no ar: o embalo da esteira de onde saiu
+    b.x += b.bbx * dt
+    b.z += b.bbz * dt
+    return
+  }
+  if (b.pad < 0) return
   const p = w.course.pads[b.pad]
   if (!p) return
   if (p.mw !== 0) {
@@ -3838,6 +4187,8 @@ function carry(b        , w          , dt        ) {
   if (p.bx !== 0 || p.bz !== 0) {
     b.x += p.bx * dt
     b.z += p.bz * dt
+    b.bbx = p.bx
+    b.bbz = p.bz
   }
 }
 
@@ -5561,4 +5912,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

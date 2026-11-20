@@ -20,7 +20,7 @@ process.removeAllListeners("warning");
 const bots = (n) => Array.from({ length: n }, (_, slot) => ({ slot, ctl: "bot" }));
 const C0 = G.COURSES.cidade;
 
-function runAll(race, maxT = G.GINCANA.timeLimit) {
+function runAll(race, maxT = race.limit()) {
   const ev = [];
   const hits = {};
   let falls = 0;
@@ -67,7 +67,7 @@ test("gincana — 22 fases; cada uma fecha: postos em ordem com chão, chegada n
     for (let i = 1; i < C.checkpoints.length; i++) assert.ok(C.checkpoints[i].z > C.checkpoints[i - 1].z, `${ph} posto ${i}`);
     assert.ok(C.finishZ > C.checkpoints[C.checkpoints.length - 1].z + 30, ph);
     // chegada no alto da ÚLTIMA subida (a Maré do Pântano tem várias)
-    const ramps = C.pads.filter((p) => p.k === 2);
+    const ramps = C.pads.filter((p) => p.k === 2).sort((a, b) => a.z - b.z);
     // na Coroa da Torre a linha fica 1,1 m acima do estrado (só pulando)
     assert.equal(C.finishY, ramps[ramps.length - 1].y2 + (C.crown ? 1.1 : 0), ph);
     assert.equal(C.sections.length, 5, ph);
@@ -80,8 +80,8 @@ test("gincana — 22 fases; cada uma fecha: postos em ordem com chão, chegada n
     }
   }
   // a da cidade (G3-11): Portas da Prefeitura — 5 fileiras de 5 portas, carrossel de duas barras, pêndulos
-  assert.equal(C0.doors.length, 25);
-  assert.deepEqual(C0.doorOpen, [3, 2, 2, 2, 2]);
+  assert.equal(G.COURSE_BASE.cidade.doors.length, 25);
+  assert.deepEqual(G.COURSE_BASE.cidade.doorOpen, [3, 2, 2, 2, 2]);
   assert.ok(C0.sweepers.length >= 1 && C0.pendulums.length >= 6 && C0.balls);
   assert.equal(G.courseOf("nada").id, "cidade");
 });
@@ -120,7 +120,8 @@ test("gincana — em todas as fases 8 computadores classificam a vaga (e a mesma
       assert.equal(race.quota, q, ph);
       assert.equal(race.order.length, q, `${ph} semente ${seed}: ${race.order.length} classificados`);
       const first = race.runner(race.order[0]).fin;
-      assert.ok(first > 18 && first < 100, `${ph}: primeiro em ${first}`);
+      // 20/11: percurso dobrado — o primeiro leva de ~40 s a ~2 min
+      assert.ok(first > 30 && first < 150, `${ph}: primeiro em ${first}`);
     }
   }
   const a = new G.GincanaRace(77, bots(8), 3, "orbital");
@@ -368,9 +369,12 @@ test("gincana — em grupo: a sala (pessoa pela rede + computadores) vê a pesso
     assert.equal(server.over(), true, `${ph}: acabou`);
     const st = server.standings();
     assert.equal(st.length, 4);
-    // a pessoa chegou e está entre os classificados (a prova acaba quando todas as pessoas chegam)
-    assert.ok(server.runner(0).fin > 0, `${ph}: chegou na sala`);
-    assert.equal(st.find((r) => r.slot === 0).q, true, `${ph}: classificou`);
+    // a pessoa chegou; ou a vaga fechou com ela ainda correndo — e aí o aparelho e a sala a veem no mesmo lugar
+    if (server.runner(0).fin < 0) {
+      assert.equal(server.closed(), true, `${ph}: não chegou e a vaga não fechou`);
+      assert.ok(Math.abs(server.runner(0).z - device.runner(0).z) < 1.5, `${ph}: a sala e o aparelho divergem`);
+    } else assert.ok(server.runner(0).fin > 0, `${ph}: chegou na sala`);
+    if (server.runner(0).fin > 0) assert.equal(st.find((r) => r.slot === 0).q, true, `${ph}: classificou`);
     assert.ok(st.filter((r) => r.q).length <= 3);
   }
 });
@@ -720,7 +724,7 @@ test("gincana — Comportas: a comporta sobe e desce pelo relógio, leva quem es
 
 // ── Portões de Gelo (2026-11-20) ─────────────────────────────────────────────
 test("gincana — Portões de Gelo: fileiras que estreitam, o portão de verdade deixa passar e o falso barra; o gelo escorrega", () => {
-  const C = G.COURSES.portoes;
+  const C = G.COURSE_BASE.portoes; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   const rows = [...new Set(C.doors.map((d) => d.row))];
   assert.equal(rows.length, 9);
@@ -802,7 +806,7 @@ test("gincana — Alto-Forno: a esteira puxa para trás e as bolas quicam e vão
 
 // ── Trilha dos Moinhos (2026-11-20) ──────────────────────────────────────────
 test("gincana — Moinhos: a moenda é parede de lado e joga quem está em cima; catavento tem mastro", () => {
-  const C = G.COURSES.moinhos;
+  const C = G.COURSE_BASE.moinhos; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   assert.equal(C.drums.length, 7);
   assert.ok(C.drums.every((d) => d.wall), "as moendas são parede");
@@ -831,9 +835,9 @@ test("gincana — Hélices: as pás giram juntas em volta do cubo e levam quem e
   const fans = G.HELICES.fans;
   assert.equal(fans.length, 5);
   for (const [x, z, n, , , w, bar] of fans) {
-    const blades = C.pads.filter((p) => p.k === 1 && p.x === x && p.z === z && p.spin === w);
+    const blades = C.pads.filter((p) => p.k === 1 && p.x === x && p.z === z && p.spin === w * G.GINCANA.tempo);
     assert.equal(blades.length, n, `hélice em z ${z}: ${blades.length} pás`);
-    assert.ok(C.pads.some((p) => p.k === 0 && p.x === x && p.z === z && p.spin === w), "hélice sem o cubo");
+    assert.ok(C.pads.some((p) => p.k === 0 && p.x === x && p.z === z && p.spin === w * G.GINCANA.tempo), "hélice sem o cubo");
     if (bar) {
       assert.ok(C.posts.some((q) => q.x === x && q.z === z), "hélice com barra sem a turbina");
       assert.ok(C.sweepers.some((sw) => sw.x === x && sw.z === z && Math.sign(sw.w) === -Math.sign(w)), "a barra gira ao contrário");
@@ -855,7 +859,7 @@ test("gincana — Hélices: as pás giram juntas em volta do cubo e levam quem e
 
 // ── Serraria da Lua (2026-11-20) ─────────────────────────────────────────────
 test("gincana — Serraria: a tora é parede embaixo, rola contra e o cravo derruba; a tábua inclina e escorrega", () => {
-  const C = G.COURSES.serraria;
+  const C = G.COURSE_BASE.serraria; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   assert.equal(C.logs.length, 6);
   assert.equal(C.planks.length, 10);
@@ -903,7 +907,7 @@ test("gincana — Serraria: a tora é parede embaixo, rola contra e o cravo derr
 
 // ── Trilha da Crosta (2026-11-20) ────────────────────────────────────────────
 test("gincana — Crosta: o caminho escondido é contínuo; a placa firme acende e fica, a falsa cai e não volta", () => {
-  const C = G.COURSES.crosta;
+  const C = G.COURSE_BASE.crosta; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   assert.equal(C.tiles.length, G.CROSTA.grids.reduce((n, g) => n + g[2] * g[3], 0));
   for (const seed of [1, 2, 3, 4, 5]) {
@@ -958,17 +962,30 @@ test("gincana — Crosta: o caminho escondido é contínuo; a placa firme acende
 
 // ── Tanque de Óleo (2026-11-20) ──────────────────────────────────────────────
 test("gincana — Tanque: o óleo sobe e tira da prova; as rampas trocam de lado; o pistão joga para fora", () => {
-  const C = G.COURSES.tanque;
+  const C = G.COURSE_BASE.tanque; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   assert.ok(C.rise && C.rise.y1 > C.finishY, "o óleo passa do topo");
   // zigue-zague: as três primeiras rampas alternam o lado
-  const ramps = C.pads.filter((p) => p.k === 2).sort((a, b) => a.z - b.z);
-  assert.equal(ramps.length, 4);
-  assert.ok(ramps[0].x < 0 && ramps[1].x > 0 && ramps[2].x < 0 && ramps[3].x === 0, "rampas fora de ordem");
+  const ramps = C.pads.filter((p) => p.k === 2 && p.sl === 1).sort((a, b) => a.z - b.z);
+  assert.equal(ramps.length, 7);
+  assert.ok(ramps.every((p, i) => (i === 6 ? p.x === 0 : Math.sign(p.x) === (i % 2 ? 1 : -1))), "rampas fora de ordem");
   assert.ok(ramps.every((p, i) => i === 0 || p.y >= ramps[i - 1].y2 - 0.01), "cada rampa começa no alto da anterior");
-  assert.equal(C.gloves.length, 5);
-  assert.equal(C.pushers.length, 5);
-  assert.equal(C.pendulums.length, 4);
+  assert.equal(C.gloves.length, 13);
+  assert.equal(C.pushers.length, 10);
+  assert.equal(C.pendulums.length, 9);
+  // 20/11: óleo derramado (poças por cima do piso) deixa a corrida lenta e escorrega
+  const oil = C.pads.filter((p) => p.sl < 1);
+  assert.ok(oil.length >= 8, `poucas poças: ${oil.length}`);
+  assert.ok(oil.every((p) => p.f < 0.5), "a poça não escorrega");
+  {
+    const q = oil.find((p) => p.k === 1);
+    const { race: ro, r: a } = solo("tanque");
+    while (ro.t < 0) ro.step();
+    Object.assign(a, { x: q.x, z: q.z - q.hz + 0.5, y: q.y, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
+    for (let s = 0; s < 18; s++) ro.step({ mx: 0, mz: 1, jump: false, dive: false }, []);
+    assert.ok(a.pad >= 0 && ro.course.pads[a.pad].sl < 1, "não pisou na poça");
+    assert.ok(a.vz < G.GINCANA.run * 0.6, `na poça correu a ${a.vz.toFixed(2)}`);
+  }
   // quem fica parado na largada é pego pelo óleo e está fora
   const { race, r } = solo("tanque");
   let t = 0;
@@ -994,7 +1011,7 @@ test("gincana — Tanque: o óleo sobe e tira da prova; as rampas trocam de lado
 
 // ── Estaleiro do Quebra-Gelo (2026-11-20) ────────────────────────────────────
 test("gincana — Estaleiro: a hélice em pé derruba quem a pá pega e deixa passar pelo vão", () => {
-  const C = G.COURSES.estaleiro;
+  const C = G.COURSE_BASE.estaleiro; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   assert.equal(C.rotors.length, 9);
   const q = C.rotors[0];
@@ -1085,4 +1102,28 @@ test("gincana — Aros: passar por dentro do aro dá turbo; pela borda ou por fo
   const ev2 = [];
   for (let k = 0; k < 12; k++) race2.step({ mx: 0, mz: 1, jump: false, dive: false }, ev2);
   assert.ok(!ev2.some((e) => e.type === "hoop"), "contou por fora");
+});
+
+// ── Percurso dobrado (2026-11-20, pedido do Alex: "no mínimo o dobro") ───────
+test("gincana — toda corrida tem no mínimo o dobro do percurso da fase desenhada, e a volta repetida é mais rápida", () => {
+  for (const ph of G.GINCANA_PHASES) {
+    const C = G.COURSES[ph];
+    const B = G.COURSE_BASE[ph];
+    if (C.mode !== "race") {
+      assert.equal(C, B, ph);
+      continue;
+    }
+    const base = G.BASE_LEN[ph] ?? B.finishZ;
+    assert.ok(C.finishZ >= 2 * base - 0.01, `${ph}: ${C.finishZ.toFixed(0)} m, a fase tinha ${base.toFixed(0)}`);
+    // o que se mexe na volta repetida gira mais rápido que na primeira
+    const sw = B.sweepers[0];
+    if (sw) {
+      const copies = C.sweepers.filter((q) => q.x === sw.x && q.len === sw.len && q.z > sw.z + 1);
+      if (copies.length) assert.ok(Math.abs(copies[0].w) > Math.abs(sw.w), `${ph}: a barra repetida não acelerou`);
+    }
+    // a rota dos computadores vai até a chegada
+    const route = C.route(() => 0.5);
+    assert.ok(route[route.length - 1].z > C.finishZ, ph);
+    assert.ok(route.every((p, i) => i === 0 || p.z >= route[i - 1].z - 6), `${ph}: a rota volta para trás`);
+  }
 });
