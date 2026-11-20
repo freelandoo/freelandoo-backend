@@ -2269,6 +2269,11 @@ const CROSTA = {
     [105.55, 0.6],
     [112.75, 3.7],
   ]                      ,
+  /** 20/11 (dificuldade): malhos maiores, mais largos e mais rápidos (antes R 1,15, amp 0,72/0,9, w 1,9) */
+  hamR: 1.25,
+  hamAmp: [0.8, 1.0]                    ,
+  hamW: 2.0,
+  balls: { every: 0.85, v: 7.5, R: 1.25 },
 }         
 
 function courseCrosta()         {
@@ -2281,9 +2286,9 @@ function courseCrosta()         {
   k.box(0, 96.6, 6, 3, 2, 1, 4)
   k.box(0, 121.7, 7.4, 3, 2, 1, 5)
   // os malhos: pêndulo pendurado no pórtico, balança de lado (cobre ±6 m)
-  for (const [z, ph] of CROSTA.hammers) k.swing(0, z, DECK + 9, 7.6, 1.15, z > 70 && z < 95 ? 0.72 : 0.9, 1.9, ph)
+  for (const [z, ph] of CROSTA.hammers) k.swing(0, z, DECK + 9, 7.6, CROSTA.hamR, z > 70 && z < 95 ? CROSTA.hamAmp[0] : CROSTA.hamAmp[1], CROSTA.hamW, ph)
   const z0 = 124.7
-  const finishZ = kitFinish(k, z0, 1.1, 6.6, 1.1)
+  const finishZ = kitFinish(k, z0, CROSTA.balls.every, CROSTA.balls.v, CROSTA.balls.R)
   for (const [x, z] of [[0, 37.5], [0, 68.6], [0, 96.6], [0, 121.7]]                      ) k.logo(x, z)
   return k.done({
     id: "crosta",
@@ -2555,12 +2560,14 @@ function courseAros()         {
 function courseOrbital()         {
   const k = new CourseKit()
   const floor = k.disc(0, 0, 11, 6, 7, 1)
-  k.pads[floor].spin = 0.16
+  // 20/11 (dificuldade; o `tempo` das corridas não vale na arena): chão 0,16 → 0,22; barras aceleram mais e vão
+  // mais longe (baixa 0,02/2,5 → 0,026/2,9; alta 0,014/1,7 → 0,02/2,1)
+  k.pads[floor].spin = 0.22
   k.post(0, 0, 1.1, DECK, DECK + 3.2, 4)
   // barra baixa (pular): dois braços
-  k.sweep(0, 0, DECK + 0.55, 11.6, 0.36, 0.85, 0, true, 0.02, 2.5)
+  k.sweep(0, 0, DECK + 0.55, 11.6, 0.36, 0.85, 0, true, 0.026, 2.9)
   // barra alta (mergulhar): um braço, ao contrário, na altura do peito
-  k.sweep(0, 0, DECK + 1.4, 11.6, 0.3, -0.6, Math.PI / 2, false, 0.014, 1.7)
+  k.sweep(0, 0, DECK + 1.4, 11.6, 0.3, -0.6, Math.PI / 2, false, 0.02, 2.1)
   return k.done({
     id: "orbital",
     mode: "survive",
@@ -3186,7 +3193,8 @@ const ROLL_R = 7
 const ROLL_TOP = DECK + 4
 function courseGelo()         {
   const k = new CourseKit()
-  const W = [0.3, -0.34, 0.38, -0.32, 0.36, -0.29]
+  // 20/11 (dificuldade): anéis 20% mais rápidos e buracos um pouco maiores (antes 0,3/−0,34/…, meia 0,17/0,2)
+  const W = [0.36, -0.41, 0.46, -0.38, 0.43, -0.35]
   k.drum(
     0,
     0,
@@ -3196,7 +3204,7 @@ function courseGelo()         {
       len: 5,
       w,
       // os buracos começam embaixo (o primeiro chega ao topo depois de ~8 s); dois anéis têm 3
-      holes: (i % 3 === 1 ? [0, 2.1, 4.2] : [0, 3.1]).map((o) => ({ a: Math.PI + o + i * 0.7, half: 0.17 + (i % 2) * 0.03 })),
+      holes: (i % 3 === 1 ? [0, 2.1, 4.2] : [0, 3.1]).map((o) => ({ a: Math.PI + o + i * 0.7, half: 0.19 + (i % 2) * 0.03 })),
     })),
     0.6,
   )
