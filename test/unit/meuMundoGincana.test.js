@@ -850,7 +850,9 @@ test("gincana — Hélices: as pás giram juntas em volta do cubo e levam quem e
   for (const [x, z, n, , , w, bar] of fans) {
     const blades = C.pads.filter((p) => p.k === 1 && p.x === x && p.z === z && p.spin === w * G.GINCANA.tempo);
     assert.equal(blades.length, n, `hélice em z ${z}: ${blades.length} pás`);
-    assert.ok(C.pads.some((p) => p.k === 0 && p.x === x && p.z === z && p.spin === w * G.GINCANA.tempo), "hélice sem o cubo");
+    // 20/11: o miolo gira rápido ao contrário das pás (HELICES.hub)
+    assert.ok(G.HELICES.hub < -1, "o miolo não gira mais rápido ao contrário");
+    assert.ok(C.pads.some((p) => p.k === 0 && p.x === x && p.z === z && Math.abs(p.spin - w * G.HELICES.hub * G.GINCANA.tempo) < 1e-9), "hélice sem o cubo");
     if (bar) {
       assert.ok(C.posts.some((q) => q.x === x && q.z === z), "hélice com barra sem a turbina");
       assert.ok(C.sweepers.some((sw) => sw.x === x && sw.z === z && Math.sign(sw.w) === -Math.sign(w)), "a barra gira ao contrário");
