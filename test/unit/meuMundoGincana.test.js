@@ -1197,3 +1197,20 @@ test("gincana — portas: uma aberta por fileira e nunca na frente da aberta da 
     }
   }
 });
+
+// ── Trilha da Crosta: malho no carrinho (2026-11-20) ─────────────────────────
+test("gincana — Crosta: o malho anda de lado na viga e o golpe baixo chega até a beira (não há canto seguro)", () => {
+  const C = G.COURSE_BASE.crosta;
+  for (const p of C.pendulums) {
+    assert.ok(p.tx > 1 && p.tw > 0, `malho em z ${p.z} sem carrinho`);
+    const edge = p.tx + G.CROSTA.trolley.edge - 0.4;
+    for (const x of [-edge, 0, edge]) {
+      let low = 0;
+      for (let t = 0; t < 30; t += 0.02) {
+        const q = G.pendulumAt(p, t);
+        if (Math.abs(q.x - x) < p.R + 0.4 && q.y < G.DECK + 1.6) low += 0.02;
+      }
+      assert.ok(low > 0.3, `malho em z ${p.z}: em x ${x.toFixed(1)} o golpe baixo não chega (${low.toFixed(2)} s em 30 s)`);
+    }
+  }
+});

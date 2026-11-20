@@ -184,6 +184,10 @@ const GINCANA_PHASES                          = ["cidade", "floresta", "clareira
              
            
             
+                                                                                                                   
+             
+             
+              
  
 
 /** Luva de boxe (ou pistão) que soca para dentro do campo a partir de x0 (dir = ±1). */
@@ -831,7 +835,10 @@ class CourseKit {
       s.acc *= f * f
       s.wMax *= f
     }
-    for (const q of this.pendulums) q.w *= f
+    for (const q of this.pendulums) {
+      q.w *= f
+      if (q.tw) q.tw *= f
+    }
     for (const g of this.gloves) g.period /= f
     for (const q of this.pushers) q.w *= f
     for (const q of this.rotors) q.w *= f
@@ -928,7 +935,11 @@ function sweeperW(s         , t        ) {
 function pendulumAt(p          , t        ) {
   const th = p.amp * Math.sin(p.w * t + p.ph)
   const thd = p.amp * p.w * Math.cos(p.w * t + p.ph)
-  return { x: p.x + p.len * Math.sin(th), y: p.py - p.len * Math.cos(th), z: p.z, vx: p.len * Math.cos(th) * thd, th }
+  // carrinho: o eixo anda de lado (o ponto mais baixo do golpe varre a pista toda, até a beira)
+  const tw = p.tw ?? 0
+  const px = p.x + (p.tx ?? 0) * Math.sin(tw * t + (p.tph ?? 0))
+  const pv = (p.tx ?? 0) * tw * Math.cos(tw * t + (p.tph ?? 0))
+  return { x: px + p.len * Math.sin(th), y: p.py - p.len * Math.cos(th), z: p.z, vx: p.len * Math.cos(th) * thd + pv, th, px }
 }
 
 /**
@@ -1309,6 +1320,10 @@ function reprise(C        , o                                                   
   each(C.pendulums, out.pendulums, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, py: q.py + dy }), (q, k, ph) => {
     q.w *= k
     q.ph += ph
+    if (q.tw) {
+      q.tw *= k
+      q.tph = (q.tph ?? 0) + ph * 0.7
+    }
   })
   each(C.gloves, out.gloves, (q) => q.z, (q, dz, dy) => ({ ...q, z: q.z + dz, y: q.y + dy }), (q, k, ph) => {
     q.period /= k
@@ -2332,6 +2347,12 @@ const CROSTA = {
   hamR: 1.25,
   hamAmp: [0.8, 1.0]                    ,
   hamW: 2.0,
+  /**
+   * 20/11 (o Alex: "se a pessoa for pelos cantos ela nunca é atingida"): o malho fica num CARRINHO que corre de
+   * lado na viga do pórtico (±`tx` = meia largura do tabuleiro − `edge`), então o golpe baixo chega até a beira.
+   * Giro do carrinho `tw` rad/s (mais lento que o balanço: o lugar seguro muda a cada passada).
+   */
+  trolley: { edge: 1.2, tw: 0.85 },
   balls: { every: 0.85, v: 7.5, R: 1.25 },
 }         
 
@@ -2345,7 +2366,13 @@ function courseCrosta()         {
   k.box(0, 96.6, 6, 3, 2, 1, 4)
   k.box(0, 121.7, 7.4, 3, 2, 1, 5)
   // os malhos: pêndulo pendurado no pórtico, balança de lado (cobre ±6 m)
-  for (const [z, ph] of CROSTA.hammers) k.swing(0, z, DECK + 9, 7.6, CROSTA.hamR, z > 70 && z < 95 ? CROSTA.hamAmp[0] : CROSTA.hamAmp[1], CROSTA.hamW, ph)
+  CROSTA.hammers.forEach(([z, ph], i) => {
+    k.swing(0, z, DECK + 9, 7.6, CROSTA.hamR, z > 70 && z < 95 ? CROSTA.hamAmp[0] : CROSTA.hamAmp[1], CROSTA.hamW, ph)
+    // o tabuleiro onde o malho está: o carrinho corre até `edge` da beira
+    const g = CROSTA.grids.find(([, z0, , rows]) => z >= z0 && z <= z0 + rows * CROSTA.step)
+    const half = g ? (g[2] * CROSTA.step) / 2 : 6
+    Object.assign(k.pendulums[k.pendulums.length - 1], { tx: Math.max(1, half - CROSTA.trolley.edge), tw: CROSTA.trolley.tw, tph: i * 2.3 })
+  })
   const z0 = 124.7
   const finishZ = kitFinish(k, z0, CROSTA.balls.every, CROSTA.balls.v, CROSTA.balls.R)
   for (const [x, z] of [[0, 37.5], [0, 68.6], [0, 96.6], [0, 121.7]]                      ) k.logo(x, z)
@@ -5581,7 +5608,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     const p = C.pendulums[i]
     const ahead = p.z - b.z
     // decide entre 4,6 e 2,4 m (freia em ~0,6 m e fica fora do alcance); mais perto, vai
-    if (ahead < 2.4 || ahead > 4.6 || Math.abs(p.x - b.x) > p.len * Math.sin(p.amp) + 2) continue
+    if (ahead < 2.4 || ahead > 4.6 || Math.abs(p.x - b.x) > p.len * Math.sin(p.amp) + 2 + (p.tx ?? 0)) continue
     const reach = p.R + GINCANA.bodyR + 0.3
     const slope = it.mx / Math.max(0.2, it.mz)
     let near = false
