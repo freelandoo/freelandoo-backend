@@ -1020,6 +1020,9 @@ test("gincana — Estaleiro: a hélice em pé derruba quem a pá pega e deixa pa
   const C = G.COURSE_BASE.estaleiro; // uma volta (a corrida tem a volta repetida: reprise)
   assert.equal(C.mode, "race");
   assert.equal(C.rotors.length, 9);
+  // 20/11 (dificuldade): as barras das banquisas aceleram; cais e hélice gigante mais rápidos
+  assert.ok(C.sweepers.every((s) => s.acc > 0 && s.wMax > Math.abs(s.w)), "barra sem aceleração");
+  assert.ok(G.ESTALEIRO.bigW >= 1 && G.ESTALEIRO.pier.every(([, , w]) => Math.abs(w) >= 1.15));
   const q = C.rotors[0];
   // a ponta da pá raspa o chão do cais
   assert.ok(q.y - q.L < G.DECK + 0.5 && q.y - q.L > G.DECK - 0.6, "a pá não chega no chão");

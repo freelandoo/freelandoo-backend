@@ -3049,13 +3049,19 @@ function coursePortoes()         {
  */
 const ESTALEIRO = {
   /** cais: z das hélices, nº de pás, giro */
-  pier: [[62, 3, 1.25], [70.5, 4, -1.05], [79, 3, 1.5]]                              ,
-  /** pátio: [x, z, giro] — duas fileiras desencontradas */
+  /** 20/11 (dificuldade): mais rápidas (antes 1,25/1,05/1,5; com 4 pás em todas ninguém passava — 336 pancadas) */
+  pier: [[62, 3, 1.35], [70.5, 4, -1.15], [79, 3, 1.6]]                              ,
+  /** pátio: [x, z, giro] — duas fileiras desencontradas (uma 3ª fileira travou a prova: testado em 20/11) */
   yard: [[-6.2, 95, 1.1], [0, 95, -1.25], [6.2, 95, 1.1], [-3.1, 104, -1.2], [3.1, 104, 1.2]]                              ,
   pierL: 4.2,
   yardL: 3.0,
   bigL: 6.2,
+  /** giro da hélice gigante (antes 0,85) */
+  bigW: 1.0,
   hubY: 0.35,
+  /** barras das banquisas: aceleram até wMax (20/11) */
+  barAcc: 0.01,
+  barMax: 1.7,
 }         
 
 function courseEstaleiro()         {
@@ -3069,11 +3075,11 @@ function courseEstaleiro()         {
   k.box(0, 17.5, 2.2, 2.4, 5, 1, 1, 0, 1.2)
   k.disc(0, 28, 8, 5, 1, 1)
   k.post(0, 28, 0.8, DECK, DECK + 2.4, 5)
-  k.sweep(0, 28, DECK + 0.55, 8.3, 0.34, 1.05, 0, true)
+  k.sweep(0, 28, DECK + 0.55, 8.3, 0.34, 1.05, 0, true, K.barAcc, K.barMax)
   k.box(0, 38.5, 2.2, 2.6, 5, 1, 1, 0, 1.2)
   k.disc(0, 49, 8, 5, 1, 1)
   k.post(0, 49, 0.8, DECK, DECK + 2.4, 5)
-  k.sweep(0, 49, DECK + 0.55, 8.3, 0.34, -1.3, 1.4, false)
+  k.sweep(0, 49, DECK + 0.55, 8.3, 0.34, -1.3, 1.4, false, K.barAcc, K.barMax)
   // ── 2. o cais com três hélices em fila ──
   k.box(0, 70.5, 3.3, 13.5, 5, 1, 2)
   K.pier.forEach(([z, n, w], i) => rot(0, z, DECK, K.pierL, n, w, i * 0.7))
@@ -3086,7 +3092,7 @@ function courseEstaleiro()         {
   const Yt = DECK + 6
   k.slope(0, z0, z1, DECK, Yt, 6.6, 5, 1, 4)
   const zb = 131
-  rot(0, zb, DECK + ((zb - z0) / (z1 - z0)) * (Yt - DECK), K.bigL, 4, 0.85, 0.3)
+  rot(0, zb, DECK + ((zb - z0) / (z1 - z0)) * (Yt - DECK), K.bigL, 4, K.bigW, 0.3)
   k.box(0, z1 + 7.8, 9, 7.8, 1, 0, 6, 0, 1.6, Yt)
   const finishZ = z1 + 8.8
   for (const [x, z] of [[0, 17.5], [0, 38.5], [-2, 58.5], [2, 58.5], [0, 86], [0, 111]]                      ) k.logo(x, z)
@@ -3197,6 +3203,24 @@ function courseRelogio()         {
  * rolam rampa abaixo; depois, duas esteiras lado a lado em sentidos opostos com prensas que
  * empurram de lado, os martelos (pêndulos), o corredor de esteiras de lado e a subida.
  */
+/**
+ * Feira do Centro — números da dificuldade (20/11, o Alex: "obstáculos mais resistentes e mais rápidos").
+ * Antes: melancias a cada 1,15 s a 6,5 m/s (R 1,15), 3 prensas (1,5/1,9/1,3), martelos R 1,1 amp 0,95,
+ * corredor de esteiras de lado sem nada.
+ */
+const FEIRA = {
+  melons: { every: 0.9, v: 7.5, R: 1.3 },
+  /** prensas da esteira de ida: [z, giro] */
+  press: [[52, 1.8], [58.5, 2.3], [65, 1.6], [71.5, 2.1]]                      ,
+  ham: { R: 1.25, amp: 1.05 },
+  /** martelos do meio: [z, fase] */
+  hamMid: [[99, 4.8]]                      ,
+  /** socos no patamar depois do corredor de esteiras (na esteira, quem espera o soco cai): [x da base, z, fase] */
+  punches: [[9.2, 145, 0], [-9.2, 148.5, 1.4]]                              ,
+  punchReach: 7.4,
+  punchPeriod: 2.8,
+}         
+
 function courseFeira()         {
   const k = new CourseKit()
   kitStart(k)
@@ -3204,25 +3228,26 @@ function courseFeira()         {
   // ── 1. rampa-esteira com melancias ──
   const r1 = k.slope(0, 15.1, 40, DECK, Y, 6, 0, 1, 1)
   k.pads[r1].bz = -GINCANA.belt * 0.75 // rampa + melancias + esteira: a esteira cheia trava todo mundo
-  k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: 1.15, v: 6.5, R: 1.15, zEnd: 12 }
+  k.balls = { lanes: [-4.3, -1.45, 1.45, 4.3], every: FEIRA.melons.every, v: FEIRA.melons.v, R: FEIRA.melons.R, zEnd: 12 }
   k.box(0, 44, 7, 4, 6, 7, 1, 0, 1.4, Y)
   // ── 2. esteiras de mão dupla com prensas ──
   const fwd = k.box(-3, 63, 3, 15, 2, 0, 2, 0, 1.4, Y)
   k.pads[fwd].bz = GINCANA.belt
   const back = k.box(3, 63, 3, 15, 3, 0, 2, 0, 1.4, Y)
   k.pads[back].bz = -GINCANA.belt
-  const PW = [1.5, 1.9, 1.3]
-  ;[54, 63, 72].forEach((z, i) => k.pusher(-3, z, 1.6, 0.9, 2.2, 3, 0, PW[i], i * 1.3, Y))
+  FEIRA.press.forEach(([z, w], i) => k.pusher(-3, z, 1.6, 0.9, 2.2, 3, 0, w, i * 1.3, Y))
   k.box(0, 82, 7, 4, 6, 7, 2, 0, 1.4, Y)
   // ── 3. martelos ──
   k.box(0, 99, 6, 13, 6, 7, 3, 0, 1.4, Y)
-  const ham = (x        , z        , ph        ) => k.swing(x, z, Y + 9, 7.4, 1.1, 0.95, 2.2, ph)
+  const ham = (x        , z        , ph        ) => k.swing(x, z, Y + 9, 7.4, FEIRA.ham.R, FEIRA.ham.amp, 2.2, ph)
   ham(-3, 92, 0)
   ham(3, 92, 2.4)
   ham(-3, 99, 1.2)
   ham(3, 99, 3.6)
   ham(-3, 106, 4.4)
   ham(3, 106, 0.6)
+  // 20/11: um martelo no meio da fileira do meio (em todas, ninguém passava: 129 pancadas)
+  for (const [z, ph] of FEIRA.hamMid) ham(0, z, ph)
   k.box(0, 115, 7, 3, 6, 7, 3, 0, 1.4, Y)
   // ── 4. corredor de esteiras de lado ──
   for (let i = 0; i < 6; i++) {
@@ -3230,6 +3255,11 @@ function courseFeira()         {
     k.pads[p].bx = (i % 2 ? -1 : 1) * GINCANA.belt
   }
   k.box(0, 146, 7, 4, 6, 7, 4, 0, 1.4, Y)
+  // 20/11: socos de lado no patamar depois do corredor
+  for (const [x0, z, ph] of FEIRA.punches) {
+    k.post(x0, z, 0.45, -1, Y + 1.9, 2)
+    k.glove(x0, z, Y + 1, -Math.sign(x0), FEIRA.punchReach, 1.0, FEIRA.punchPeriod, ph)
+  }
   // ── 5. subida e chegada ──
   const z0 = 150
   k.slope(0, z0, z0 + 24, Y, DECK + 6, 6, 0, 1, 5)
@@ -5946,4 +5976,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
