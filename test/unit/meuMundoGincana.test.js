@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 20 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]);
+test("gincana — 21 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "gangorras", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -1016,4 +1016,42 @@ test("gincana — Estaleiro: a hélice em pé derruba quem a pá pega e deixa pa
   }
   assert.ok(hit, "a pá nunca pegou");
   assert.ok(free, "não há vão: a pá pega sempre");
+});
+
+// ── Gangorras do Desfiladeiro (2026-11-20) ───────────────────────────────────
+test("gincana — Gangorras: a tábua tomba pelo PESO de quem está em cima e volta ao repouso sozinha", () => {
+  const C = G.COURSES.gangorras;
+  assert.equal(C.mode, "race");
+  assert.ok(C.saws.length >= 15);
+  const S = C.saws[1];
+  const { race, r } = solo("gangorras");
+  while (race.t < 0) race.step();
+  // em repouso: a ponta de perto no chão do patamar
+  assert.ok(Math.abs(G.sawTop(S, race.world.saw[2], S.x, S.z - S.hz) - G.DECK) < 0.05, "a ponta de perto não descansa no chão");
+  // em pé na metade da frente: tomba até o batente, e a ponta da frente desce ao chão
+  for (let k = 0; k < 90; k++) {
+    Object.assign(r, { x: S.x, z: S.z + 3, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
+    r.y = G.sawTop(S, race.world.saw[2], r.x, r.z);
+    race.step();
+  }
+  assert.ok(race.world.saw[2] > S.max - 0.01, `não tombou: ${race.world.saw[2].toFixed(3)}`);
+  assert.ok(Math.abs(G.sawTop(S, race.world.saw[2], S.x, S.z + S.hz) - G.DECK) < 0.06, "a ponta da frente não chega no chão");
+  // ninguém em cima: a mola devolve ao repouso
+  Object.assign(r, { x: 0, z: 27.7, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
+  for (let k = 0; k < 60 * 6; k++) race.step();
+  assert.ok(race.world.saw[2] < S.a0 + 0.05, `não voltou: ${race.world.saw[2].toFixed(3)}`);
+});
+
+test("gincana — Gangorras: no prato de lado tombado, quem está em cima escorrega para o lado baixo", () => {
+  const C = G.COURSES.gangorras;
+  const i = C.saws.findIndex((S) => S.ax === 1);
+  const S = C.saws[i];
+  const { race, r } = solo("gangorras");
+  while (race.t < 0) race.step();
+  race.world.saw[i * 2] = S.max;
+  Object.assign(r, { x: S.x + 0.4, z: S.z, vx: 0, vy: 0, vz: 0, ground: true, mode: 0 });
+  r.y = G.sawTop(S, S.max, r.x, r.z);
+  const x0 = r.x;
+  for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false });
+  assert.ok(r.x > x0 + 0.3, `não escorregou: ${(r.x - x0).toFixed(2)}`);
 });

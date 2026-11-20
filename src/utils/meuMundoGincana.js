@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                                                                                                    
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                                                                                                  
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "gangorras", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -556,6 +556,61 @@ function rotorBladeAt(q       , x        , y        , t        , r        ) {
   return -1
 }
 
+/**
+ * Gangorras do Desfiladeiro: GANGORRA que inclina pelo PESO de quem está em cima (o estado fica no mundo,
+ * `w.saw`: ângulo e giro de cada uma). `ax` 0 = a tábua comprida em z inclina para a frente/trás (o pivô
+ * corre em x); 1 = inclina de lado (o pivô corre em z). Ângulo + = o lado + (z ou x) desce. Sem ninguém,
+ * a mola `k` volta ao repouso `a0`; `max` é o batente. `y` = altura do eixo (o meio do tampo).
+ */
+                         
+           
+           
+           
+            
+            
+           
+             
+            
+           
+ 
+/** Ganho do peso (rad/s² por metro de braço de cada um) e amortecimento. */
+const SAW = { gain: 0.6, damp: 2.2 }
+/** Braço do ponto: o quanto ele está para o lado + do pivô. */
+function sawArm(S        , x        , z        ) {
+  return S.ax === 0 ? z - S.z : x - S.x
+}
+/** Tampo da gangorra no ângulo `a`, no ponto (x, z) preso dentro da tábua. */
+function sawTop(S        , a        , x        , z        ) {
+  const cx = Math.max(S.x - S.hx, Math.min(S.x + S.hx, x))
+  const cz = Math.max(S.z - S.hz, Math.min(S.z + S.hz, z))
+  return S.y - Math.tan(a) * sawArm(S, cx, cz)
+}
+/** Estado inicial: [ângulo, giro] por gangorra, no repouso. */
+function sawRest(C                    ) {
+  const s = new Float64Array(C.saws.length * 2)
+  C.saws.forEach((S, i) => (s[i * 2] = S.a0))
+  return s
+}
+/** Um passo: `arms[i]` = soma dos braços de quem está em pé na gangorra i. */
+function stepSawState(C                    , s              , arms              , dt        ) {
+  for (let i = 0; i < C.saws.length; i++) {
+    const S = C.saws[i]
+    let a = s[i * 2]
+    let v = s[i * 2 + 1]
+    v += (SAW.gain * arms[i] - S.k * (a - S.a0) - SAW.damp * v) * dt
+    a += v * dt
+    if (a > S.max) {
+      a = S.max
+      if (v > 0) v = 0
+    } else if (a < -S.max) {
+      a = -S.max
+      if (v < 0) v = 0
+    }
+    s[i * 2] = a
+    s[i * 2 + 1] = v
+  }
+}
+
 function plankAngle(P       , t        ) {
   return P.amp * Math.sin(P.w * t + P.ph)
 }
@@ -591,6 +646,8 @@ function plankTop(P       , x        , t        ) {
                  
                                                                      
                  
+                                                                   
+                
                                                 
                        
                                                                                                      
@@ -641,6 +698,11 @@ class CourseKit {
            logs        = []
            planks          = []
            rotors          = []
+           saws           = []
+  /** Gangorra: pivô em (x, z) na altura `y`; repouso `a0` (rad), batente `max`, mola `k`. */
+  saw(x        , z        , y        , hx        , hz        , ax       , max        , a0        , k        ) {
+    this.saws.push({ x, z, y, hx, hz, ax, max, a0, k })
+  }
   rotor(x        , z        , y        , L        , n        , hw        , hz        , w        , ph = 0) {
     this.rotors.push({ x, z, y, L, n, hw, hz, w, ph })
   }
@@ -753,6 +815,7 @@ class CourseKit {
       logs: this.logs,
       planks: this.planks,
       rotors: this.rotors,
+      saws: this.saws,
       memory: o.memory ?? null,
       crown: o.crown ?? false,
       pads: this.pads,
@@ -1922,6 +1985,102 @@ function courseCrosta()         {
   })
 }
 
+// ═══ gangorras — Gangorras do Desfiladeiro (3ª fase do Cânion) ════════════════
+
+/**
+ * 20/11 (pedido do Alex, 8º vídeo de referência: tipo de prova "tábuas que inclinam com o peso sobre o
+ * vazio"): pontes de gangorra de madeira e corda atravessando o desfiladeiro. A gangorra inclina pelo PESO de
+ * quem está em cima (estado no mundo, `w.saw`) — quem chega encontra a tábua como os da frente deixaram.
+ * 1. Três pistas, duas fileiras de gangorras compridas com patamar no meio (a ponta de perto descansa no chão;
+ *    passou do eixo, ela tomba para a frente; se tem gente na frente, a sua ponta está no alto: pule).
+ * 2. A corrente: três gangorras emendadas em cada uma das duas pistas estreitas, sem patamar.
+ * 3. Os pratos de lado: gangorras largas que tombam para o lado de quem pisa fora do meio (escorrega),
+ *    com vão para pular entre elas.
+ * 4. A balança grande: uma gangorra larga para todos; ela só tomba quando a turma passa do eixo.
+ * Diferente da Serraria (tábuas que balançam pelo relógio): aqui quem move a tábua é o peso dos corredores.
+ */
+const GANGORRAS = {
+  /** 1ª e 2ª fileiras: z do eixo; pistas em x */
+  rows: [19.9, 35.5],
+  lanes: [-3.4, 0, 3.4],
+  long: { hx: 1.25, hz: 4.5, max: 0.2, k: 0.9 },
+  /** corrente: z do eixo de cada elo; pistas ±2.3 */
+  chain: [51.1, 60.4, 69.7],
+  chainX: 2.3,
+  chainHx: 1.0,
+  /** pratos de lado: [x, z, meia largura] */
+  plates: [[-2.9, 84, 2.2], [2.9, 84, 2.2], [0, 91.4, 3.1], [-3.2, 98.8, 2.3], [3.2, 98.8, 2.3], [0, 106.2, 3.1]]                              ,
+  plateHz: 2.1,
+  big: { z: 123.3, hx: 5.2, hz: 6, max: 0.16, k: 0.35 },
+}         
+
+function courseGangorras()         {
+  const K = GANGORRAS
+  const k = new CourseKit()
+  kitStart(k)
+  // gangorra comprida que descansa com a ponta de perto no chão (eixo acima do patamar)
+  const longSaw = (x        , z        , hx        , hz        , max        , kk        ) =>
+    k.saw(x, z, DECK + Math.tan(max) * hz, hx, hz, 0, max, -max, kk)
+  // ── 1. as duas fileiras de gangorras compridas ──
+  for (const z of K.rows) for (const x of K.lanes) longSaw(x, z, K.long.hx, K.long.hz, K.long.max, K.long.k)
+  k.box(0, 27.7, 6.2, 2.9, 1, 1, 1)
+  k.box(0, 43.3, 6.2, 3.1, 1, 1, 1)
+  // ── 2. a corrente: três elos emendados em cada pista ──
+  for (const x of [-K.chainX, K.chainX]) for (const z of K.chain) longSaw(x, z, K.chainHx, K.long.hz, K.long.max, K.long.k)
+  k.box(0, 77.5, 5.2, 3, 1, 1, 2)
+  // ── 3. os pratos de lado ──
+  // descansam tortos, cada um para um lado: quem pisa no lado baixo escorrega e tomba mais; o peso no lado alto endireita
+  K.plates.forEach(([x, z, hx], i) => k.saw(x, z, DECK, hx, K.plateHz, 1, 0.28, i % 2 ? 0.13 : -0.13, 0.9))
+  k.box(0, 113.4, 6.2, 3, 1, 1, 3)
+  // ── 4. a balança grande ──
+  longSaw(0, K.big.z, K.big.hx, K.big.hz, K.big.max, K.big.k)
+  const z0 = K.big.z + K.big.hz + 0.3
+  const finishZ = kitFinish(k, z0, 1.05, 7, 1.15)
+  for (const [x, z] of [[0, 27.7], [-3, 43.3], [3, 43.3], [0, 77.5], [0, 113.4]]                      ) k.logo(x, z)
+  return k.done({
+    id: "gangorras",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 27.7, y: DECK, w: 5 },
+      { x: 0, z: 43.3, y: DECK, w: 5 },
+      { x: 0, z: 77.5, y: DECK, w: 4 },
+      { x: 0, z: 113.4, y: DECK, w: 5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [15.1, 46.4, 80.5, 116.4, z0],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        add(0, 10)
+        const l1 = K.lanes[Math.floor(r(1) * 3)]
+        add(l1, 14.5)
+        add(l1, 24)
+        const l2 = K.lanes[Math.floor(r(2) * 3)]
+        add(l2, 30.2)
+        add(l2, 39.8)
+        const l3 = r(3) < 0.5 ? -K.chainX : K.chainX
+        add(l3, 46)
+        add(l3, 74)
+        // pratos: o do lado da corrente, o do meio, um dos dois de lado e o do meio
+        // (no prato, um pouco fora do meio: o peso de cada um conta)
+        const o = (i        ) => (r(6 + i) - 0.5) * 2.2
+        add(Math.sign(l3) * 2.9 + o(0), 81)
+        add(Math.sign(l3) * 2.9 + o(0), 86)
+        add(o(1), 89.4)
+        add(o(1), 93.4)
+        const s4 = r(4) < 0.5 ? -3.2 : 3.2
+        add(s4 + o(2), 96.8)
+        add(s4 + o(2), 100.8)
+        add(o(3), 104.2)
+        add(o(3), 108.2)
+        add(0, 111)
+        for (let z = K.big.z - K.big.hz + 1; z <= K.big.z + K.big.hz - 1; z += 2) add(r(5) < 0.5 ? -1.5 : 1.5, z)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
 // ═══ orbital — Cidade Orbital ════════════════════════════════════════════════
 
 /**
@@ -2726,6 +2885,7 @@ const COURSES                               = {
   tanque: courseTanque(),
   canion: courseCanion(),
   moinhos: courseMoinhos(),
+  gangorras: courseGangorras(),
   orbital: courseOrbital(),
   helices: courseHelices(),
   forja: courseForja(),
@@ -2870,6 +3030,8 @@ const MODE = {
                      
                                                                  
                     
+                                                                                       
+                   
  
 
 /** Acontecimentos de um passo (para som, aviso e animação). */
@@ -2893,7 +3055,27 @@ const MODE = {
 const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
 
 function newWorld(course        , seed        , t        )           {
-  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), real: pathReal(course, seed), doors: new Float64Array(course.doors.length).fill(-1), gems: new Float64Array(course.gems.length).fill(-1) }
+  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), real: pathReal(course, seed), doors: new Float64Array(course.doors.length).fill(-1), gems: new Float64Array(course.gems.length).fill(-1), saw: sawRest(course) }
+}
+
+const sawArms = new Float64Array(64)
+/** Gangorras: soma o braço de quem está em pé em cada uma e anda o ângulo um passo. */
+function stepSaws(w          , bodies          , live                        , dt        ) {
+  const C = w.course
+  if (!C.saws.length) return
+  const arms = sawArms.length >= C.saws.length ? sawArms.fill(0, 0, C.saws.length) : new Float64Array(C.saws.length)
+  for (let j = 0; j < bodies.length; j++) {
+    const b = bodies[j]
+    if (!live(j) || b.mode === MODE.WATER || b.fin >= 0) continue
+    for (let i = 0; i < C.saws.length; i++) {
+      const S = C.saws[i]
+      if (Math.abs(b.x - S.x) > S.hx + 0.1 || Math.abs(b.z - S.z) > S.hz + 0.1) continue
+      if (Math.abs(b.y - sawTop(S, w.saw[i * 2], b.x, b.z)) > 0.35) continue
+      arms[i] += sawArm(S, b.x, b.z)
+      break
+    }
+  }
+  stepSawState(C, w.saw, arms, dt)
 }
 
 function newRunner(course        , slot        )         {
@@ -3047,11 +3229,23 @@ function groundUnder(w          , x        , z        , reach        ) {
       roll = ROLL_PLANK + i
     }
   }
+  for (let i = 0; i < C.saws.length; i++) {
+    const S = C.saws[i]
+    if (Math.abs(x - S.x) > S.hx + EDGE || Math.abs(z - S.z) > S.hz + EDGE) continue
+    const top = sawTop(S, w.saw[i * 2], x, z)
+    if (top <= reach && top > best) {
+      best = top
+      tile = pad = drum = -1
+      bounce = 0
+      roll = ROLL_SAW + i
+    }
+  }
   return { y: best, tile, pad, bounce, drum, roll }
 }
 
-/** No campo `roll`: índice da tora; a partir daqui, tábua. */
+/** No campo `roll`: índice da tora; a partir daqui, tábua; a partir de ROLL_SAW, gangorra. */
 const ROLL_PLANK = 1000
+const ROLL_SAW = 2000
 
 /** Ondas de parede do passo (reaproveitado: nada de lixo a 60 Hz). */
 const WALL_TMP             = []
@@ -3163,6 +3357,24 @@ function pushWalls(b        , w          , out                   )              
       sawLedge(top, Math.sign(lx || 1), 0)
     } else {
       b.z = P.z + Math.sign(lz || 1) * (P.hz + R)
+      sawLedge(top, 0, Math.sign(lz || 1))
+    }
+  }
+  // gangorra: a ponta que subiu acima do pé é parede (dá para subir na beira)
+  for (let i = 0; i < C.saws.length; i++) {
+    const S = C.saws[i]
+    const top = sawTop(S, w.saw[i * 2], b.x, b.z)
+    if (top <= lift || top - 0.5 >= b.y + H) continue
+    const lx = b.x - S.x
+    const lz = b.z - S.z
+    const ox = S.hx + R - Math.abs(lx)
+    const oz = S.hz + R - Math.abs(lz)
+    if (ox <= 0 || oz <= 0) continue
+    if (ox < oz) {
+      b.x = S.x + Math.sign(lx || 1) * (S.hx + R)
+      sawLedge(top, Math.sign(lx || 1), 0)
+    } else {
+      b.z = S.z + Math.sign(lz || 1) * (S.hz + R)
       sawLedge(top, 0, Math.sign(lz || 1))
     }
   }
@@ -3419,6 +3631,16 @@ function carry(b        , w          , dt        ) {
     if (d && g) {
       b.x += drumSpeed(d.rings[g.ring], w.t) * (g.top - d.y) * dt
       b.x += Math.sin(g.th) * 3.2 * dt
+    }
+    return
+  }
+  if (b.ground && b.roll >= ROLL_SAW) {
+    // gangorra inclinada: escorrega para o lado que desce (de lado escorrega mais)
+    const S = w.course.saws[b.roll - ROLL_SAW]
+    if (S) {
+      const s = Math.sin(w.saw[(b.roll - ROLL_SAW) * 2])
+      if (S.ax === 0) b.z += s * 4 * dt
+      else b.x += s * 7.5 * dt
     }
     return
   }
@@ -4685,6 +4907,26 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   fanRide(br, b, w, it)
   // barra chegando: pula na hora (com o erro da habilidade)
   barJump(br, b, w, it)
+  // Gangorras: a ponta da gangorra adiante subiu acima do passo — pula para subir nela
+  if (b.ground && br.jumpCool <= 0) {
+    for (let i = 0; i < C.saws.length; i++) {
+      const S = C.saws[i]
+      if (S.ax !== 0) continue
+      const ahead = S.z - S.hz - b.z
+      if (ahead < 0.1 || ahead > 1.3 || Math.abs(b.x - S.x) > S.hx + 0.1) continue
+      if (sawTop(S, w.saw[i * 2], b.x, S.z - S.hz) < b.y + GINCANA.stepUp) continue
+      it.jump = true
+      br.jumpCool = 0.5
+    }
+  }
+  // em cima da gangorra de lado inclinada: corre contra o escorregão, para o lado que sobe
+  for (let i = 0; i < C.saws.length; i++) {
+    const S = C.saws[i]
+    if (S.ax !== 1 || !b.ground || Math.abs(b.x - S.x) > S.hx || Math.abs(b.z - S.z) > S.hz) continue
+    const a = w.saw[i * 2]
+    const off = b.x - S.x
+    if (Math.abs(a) > 0.06 && Math.sign(off) === Math.sign(a) && Math.abs(off) > 0.5) it.mx -= Math.sign(a) * Math.min(1, br.skill + 0.3)
+  }
   // Serraria: tora atravessada logo à frente — pula para subir nela (a parede de baixo não deixa passar)
   if (b.ground && br.jumpCool <= 0) {
     for (const L of C.logs) {
@@ -4903,6 +5145,7 @@ class GincanaRace {
     const C = this.course
     w.t = this.t
     ballsAt(C, this.seed, this.t, w.balls)
+    stepSaws(w, this.runners, (j) => !this.gone[j], dt)
     // ladrilhos que já voltaram
     for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] >= 0 && this.t - w.tiles[i] >= C.tileTime.warn + C.tileTime.gone) w.tiles[i] = -1
     for (const b of this.runners) {
@@ -5132,4 +5375,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
