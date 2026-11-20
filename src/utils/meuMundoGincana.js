@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                                                                
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                                                           
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -285,6 +285,14 @@ function memUp(m        , seed        , i        , t        ) {
            
            
           
+     
+                                                                                                          
+                                                                                                                
+                                                           
+     
+            
+            
+            
  
 
 /** Porta numa fileira: as falsas são parede; as de verdade abrem quando alguém encosta (a semente sorteia quais). */
@@ -653,7 +661,13 @@ class CourseKit {
     this.gloves.push({ x0, z, y, dir, reach, R, period, ph })
   }
   tile(x        , z        , h        , c        , k        = 0, y = DECK) {
-    this.tiles.push({ x, z, y, h, c, k })
+    this.tiles.push({ x, z, y, h, c, k, pg: -1, pr: -1, pc: -1 })
+  }
+  /** Tabuleiro do caminho escondido: `cols` × `rows` ladrilhos quadrados de meia largura `h`, passo `step`, a partir de z0. */
+  pathGrid(x        , z0        , cols        , rows        , h        , step        , c        ) {
+    const pg = this.tiles.reduce((m, q) => Math.max(m, q.pg + 1), 0)
+    for (let r = 0; r < rows; r++)
+      for (let col = 0; col < cols; col++) this.tiles.push({ x: x + (col - (cols - 1) / 2) * step, z: z0 + r * step, y: DECK, h, c, k: 0, pg, pr: r, pc: col })
   }
   /** Fileira de `n` portas de largura `w` centrada em x, em z; `open` abrem. */
   doorRow(x        , z        , n        , w        , h        , open        ) {
@@ -800,6 +814,46 @@ function ballLane(c        , seed        , i        ) {
 }
 
 /** Quais portas abrem (1) nesta semente: em cada fileira, `doorOpen[row]` sorteadas. */
+/**
+ * Crosta da Forja: o caminho de verdade de cada tabuleiro, pela semente. Entra na fileira r pela coluna em que
+ * saiu da anterior e anda de lado até a coluna da próxima (sem diagonal): na fileira, de verdade = o trecho entre
+ * as duas. 1 = de verdade.
+ */
+function pathReal(c        , seed        )             {
+  const out = new Uint8Array(c.tiles.length)
+  const grids = c.tiles.reduce((m, q) => Math.max(m, q.pg + 1), 0)
+  for (let g = 0; g < grids; g++) {
+    let rows = 0
+    let cols = 0
+    for (const q of c.tiles) if (q.pg === g) {
+      rows = Math.max(rows, q.pr + 1)
+      cols = Math.max(cols, q.pc + 1)
+    }
+    const steps = [-2, -1, -1, 0, 1, 1, 2]
+    let col = courseHash(seed ^ 0x2c1b3c6d, g * 977) % cols
+    for (let r = 0; r < rows; r++) {
+      const next = Math.max(0, Math.min(cols - 1, col + steps[courseHash(seed ^ 0x297a2d39, g * 977 + r * 31 + 1) % steps.length]))
+      const lo = Math.min(col, next)
+      const hi = Math.max(col, next)
+      for (let i = 0; i < c.tiles.length; i++) {
+        const q = c.tiles[i]
+        if (q.pg === g && q.pr === r && q.pc >= lo && q.pc <= hi) out[i] = 1
+      }
+      col = next
+    }
+  }
+  return out
+}
+
+/** Pisaram o ladrilho i: comum = cai daqui a pouco; do caminho = acende (−2) ou cai (falso). */
+function stepTile(c        , tiles              , real            , i        , t        ) {
+  if (c.tiles[i].pg >= 0) {
+    if (tiles[i] === -1) tiles[i] = real[i] ? -2 : t
+    return
+  }
+  if (tiles[i] < 0 || t - tiles[i] >= c.tileTime.warn + c.tileTime.gone) tiles[i] = t
+}
+
 function doorsOpen(c        , seed        )             {
   const out = new Uint8Array(c.doors.length)
   for (let row = 0; row < c.doorOpen.length; row++) {
@@ -1755,6 +1809,78 @@ function courseHelices()         {
   })
 }
 
+// ═══ crosta — Trilha da Crosta (Forja) ═══════════════════════════════════════
+
+/**
+ * Gincana (2026-11-20, vídeo 6): TRILHA DA CROSTA — a 3ª fase da Forja. A lava
+ * esfriou em placas sobre o mar de brasa e só um caminho aguenta (a semente
+ * sorteia; `pathReal`). A placa firme, pisada, acende em brasa e fica acesa para
+ * todos; a crosta falsa afunda na hora e vira buraco. Quatro tabuleiros: o largo
+ * (7 × 8), o dos malhos (7 × 10, três malhos com cravos balançando de lado), o
+ * estreito (5 × 9, dois malhos) e o da brasa (6 × 8, dois malhos). Caiu na lava =
+ * volta ao último posto.
+ */
+const CROSTA = {
+  /** passo do tabuleiro (m) e meia largura da placa */
+  step: 2.4,
+  h: 1.12,
+  /** [x, z0, colunas, fileiras] */
+  grids: [
+    [0, 16, 7, 8],
+    [0, 42.2, 7, 10],
+    [0, 73.25, 5, 9],
+    [0, 100.75, 6, 8],
+  ]                                      ,
+  /** malhos: [z, fase] */
+  hammers: [
+    [47, 0],
+    [54.2, 2.1],
+    [61.4, 4.2],
+    [78.05, 1],
+    [87.65, 3.2],
+    [105.55, 0.6],
+    [112.75, 3.7],
+  ]                      ,
+}         
+
+function courseCrosta()         {
+  const k = new CourseKit()
+  kitStart(k)
+  for (const [x, z0, cols, rows] of CROSTA.grids) k.pathGrid(x, z0, cols, rows, CROSTA.h, CROSTA.step, 3)
+  // patamares entre os tabuleiros (o posto)
+  k.box(0, 37.5, 8.6, 3.55, 2, 1, 2)
+  k.box(0, 68.6, 8.6, 3.55, 2, 1, 3)
+  k.box(0, 96.6, 6, 3, 2, 1, 4)
+  k.box(0, 121.7, 7.4, 3, 2, 1, 5)
+  // os malhos: pêndulo pendurado no pórtico, balança de lado (cobre ±6 m)
+  for (const [z, ph] of CROSTA.hammers) k.swing(0, z, DECK + 9, 7.6, 1.15, z > 70 && z < 95 ? 0.72 : 0.9, 1.9, ph)
+  const z0 = 124.7
+  const finishZ = kitFinish(k, z0, 1.1, 6.6, 1.1)
+  for (const [x, z] of [[0, 37.5], [0, 68.6], [0, 96.6], [0, 121.7]]                      ) k.logo(x, z)
+  return k.done({
+    id: "crosta",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 37.5, y: DECK, w: 6 },
+      { x: 0, z: 68.6, y: DECK, w: 6 },
+      { x: 0, z: 96.6, y: DECK, w: 4 },
+      { x: 0, z: 121.7, y: DECK, w: 5 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [14.9, 41, 72.1, 99.6, z0],
+    minFinish: 20,
+    // a falsa cai já (0,25 s) e não volta: o buraco é a pista para quem vem atrás
+    tileTime: { warn: 0.25, gone: 1e6 },
+    route: () =>
+      routeOf((add) => {
+        add(0, 10)
+        for (let z = 14; z <= 122; z += 1.2) add(0, z)
+        routeFinish(add, z0, finishZ)
+      }),
+  })
+}
+
 // ═══ orbital — Cidade Orbital ════════════════════════════════════════════════
 
 /**
@@ -2361,6 +2487,7 @@ const COURSES                               = {
   helices: courseHelices(),
   forja: courseForja(),
   altoforno: courseAltoForno(),
+  crosta: courseCrosta(),
   fabrica: courseFabrica(),
   comportas: courseComportas(),
   gelo: courseGelo(),
@@ -2493,6 +2620,8 @@ const MODE = {
                  
                                                           
                   
+                                                                            
+                  
                                                                 
                      
                                                                  
@@ -2520,7 +2649,7 @@ const MODE = {
 const IDLE_INTENT            = { mx: 0, mz: 0, jump: false, dive: false, grab: false }
 
 function newWorld(course        , seed        , t        )           {
-  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), doors: new Float64Array(course.doors.length).fill(-1), gems: new Float64Array(course.gems.length).fill(-1) }
+  return { t, seed, course, tiles: new Float64Array(course.tiles.length).fill(-1), balls: [], open: doorsOpen(course, seed), real: pathReal(course, seed), doors: new Float64Array(course.doors.length).fill(-1), gems: new Float64Array(course.gems.length).fill(-1) }
 }
 
 function newRunner(course        , slot        )         {
@@ -3237,9 +3366,10 @@ function stepRunner(b        , it           , w          , out                  
       } else if (b.mode === MODE.KNOCK) b.timer = Math.max(b.timer, 0.35)
     }
     b.air = 0
-    if (g.tile >= 0 && (w.tiles[g.tile] < 0 || w.t - w.tiles[g.tile] >= C.tileTime.warn + C.tileTime.gone)) {
-      w.tiles[g.tile] = w.t
-      out?.push({ type: "tile", i: g.tile })
+    if (g.tile >= 0) {
+      const before = w.tiles[g.tile]
+      stepTile(C, w.tiles, w.real, g.tile, w.t)
+      if (w.tiles[g.tile] !== before) out?.push({ type: "tile", i: g.tile })
     }
     if (g.bounce > 0) {
       // cogumelo: lança para cima (o embalo de lado fica)
@@ -3389,7 +3519,7 @@ function newBrain(w          , seed        , slot        )           {
   const r = (k        ) => botRand(seed, slot, k)
   const route = w.course.route(r)
   const skill = 0.55 + r(6) * 0.4
-  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, back: 0, lastZ: -99, waited: 0, fanA: 0, fanT: -1, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1 }
+  return { route, skill, pace: 0.86 + r(7) * 0.14, seed, slot, laneX: 0, jumpCool: 0, stuck: 0, back: 0, lastZ: -99, waited: 0, fanA: 0, fanT: -1, divesFinish: r(8) < skill - 0.35, door: -1, bad: new Set(), tile: -1, path: -1 }
 }
 
 /**
@@ -3802,6 +3932,108 @@ function arenaIntent(br          , b        , w          , it           )       
   return it
 }
 
+/**
+ * Crosta da Forja: no tabuleiro do caminho escondido. O computador procura o MENOR caminho até a saída do
+ * tabuleiro pelo que se sabe: placa acesa custa 1, desconhecida custa mais (é chute; um pouco diferente para
+ * cada um, pela semente), buraco não passa; anda só reto, de lado ou para trás (o caminho nunca faz diagonal).
+ * Beco sem saída aparece sozinho. Mira a próxima placa desse caminho e se alinha na coluna antes de avançar;
+ * no ar segue a placa escolhida. Devolve o alvo ou null (fora do tabuleiro).
+ */
+function pathAim(br          , b        , w          )                                  {
+  const C = w.course
+  if (!C.tiles.length || C.tiles[0].pg < 0) return null
+  const state = (i        ) => (w.tiles[i] === -2 ? 2 : w.tiles[i] === -1 ? 1 : 0)
+  if (!b.ground) {
+    if (br.path >= 0 && state(br.path) > 0) return { x: C.tiles[br.path].x, z: C.tiles[br.path].z }
+    return null
+  }
+  let under = -1
+  for (let i = 0; i < C.tiles.length; i++) {
+    const q = C.tiles[i]
+    if (onTile(q, b.x, b.z, 0.02) && Math.abs(q.y - b.y) < 0.4) under = i
+  }
+  let g = under >= 0 ? C.tiles[under].pg : -1
+  if (g < 0) {
+    for (const q of C.tiles) if (q.pr === 0 && q.z - q.h - b.z > -0.2 && q.z - q.h - b.z < 4) g = q.pg
+    if (g < 0) return null
+  }
+  // o tabuleiro g: índice por (fileira, coluna)
+  const idx           = []
+  let rows = 0
+  let cols = 0
+  for (let i = 0; i < C.tiles.length; i++) {
+    const q = C.tiles[i]
+    if (q.pg !== g) continue
+    idx.push(i)
+    rows = Math.max(rows, q.pr + 1)
+    cols = Math.max(cols, q.pc + 1)
+  }
+  const at = (r        , c        ) => (r < 0 || r >= rows || c < 0 || c >= cols ? -1 : idx[r * cols + c])
+  const enter = (i        ) => (state(i) === 2 ? 1 : 2.2 + botRand(br.seed, br.slot * 31 + i, Math.floor(w.t / 8)) * 1.6)
+  // Dijkstra de trás para a frente: custo até sair do tabuleiro (da última fileira, sair custa 0)
+  const n = rows * cols
+  const cost = new Float64Array(n).fill(Infinity)
+  const done = new Uint8Array(n)
+  for (let c = 0; c < cols; c++) if (state(at(rows - 1, c)) > 0) cost[(rows - 1) * cols + c] = 0
+  for (;;) {
+    let k = -1
+    for (let j = 0; j < n; j++) if (!done[j] && cost[j] < Infinity && (k < 0 || cost[j] < cost[k])) k = j
+    if (k < 0) break
+    done[k] = 1
+    const r = Math.floor(k / cols)
+    const c = k % cols
+    // quem vem de (r2, c2) para k paga a entrada em k
+    for (const [dr, dc, extra] of [[-1, 0, 0], [0, -1, 0.15], [0, 1, 0.15], [1, 0, 1]]                              ) {
+      const r2 = r + dr
+      const c2 = c + dc
+      const j = at(r2, c2)
+      if (j < 0 || state(j) === 0) continue
+      const v = cost[k] + enter(idx[k]) + extra
+      if (v < cost[r2 * cols + c2]) cost[r2 * cols + c2] = v
+    }
+  }
+  let next = -1
+  if (under < 0) {
+    // antes do tabuleiro: a placa da 1ª fileira de menor custo (mais o caminho de lado até ela)
+    let best = Infinity
+    for (let c = 0; c < cols; c++) {
+      const i = at(0, c)
+      if (state(i) === 0) continue
+      const v = cost[c] + enter(i) + Math.abs(C.tiles[i].x - b.x) * 0.12
+      if (v < best) {
+        best = v
+        next = i
+      }
+    }
+    br.path = next
+    if (next < 0) return null
+    const q = C.tiles[next]
+    if (Math.abs(q.x - b.x) > 0.45) return { x: q.x, z: Math.min(b.z + 0.4, q.z - q.h - 0.9) }
+    return { x: q.x, z: q.z }
+  }
+  const u = C.tiles[under]
+  if (u.pr === rows - 1) {
+    br.path = -1
+    return { x: u.x, z: u.z + 4 }
+  }
+  let best = Infinity
+  for (const [dr, dc, extra] of [[1, 0, 0], [0, -1, 0.15], [0, 1, 0.15], [-1, 0, 1]]                              ) {
+    const j = at(u.pr + dr, u.pc + dc)
+    if (j < 0 || state(j) === 0) continue
+    const v = cost[(u.pr + dr) * cols + u.pc + dc] + enter(j) + extra
+    if (v < best) {
+      best = v
+      next = j
+    }
+  }
+  br.path = next
+  if (next < 0) return { x: u.x, z: u.z }
+  const q = C.tiles[next]
+  if (q.pr === u.pr) return { x: q.x, z: u.z }
+  if (q.pr < u.pr) return { x: q.x, z: q.z - 0.3 }
+  return Math.abs(q.x - b.x) > 0.4 ? { x: q.x, z: b.z } : { x: q.x, z: q.z + 0.3 }
+}
+
 /** Escolhe a porta da fileira à frente: aberta (alguém passou) > desconhecida mais perto > a sorteada. */
 function pickDoor(br          , b        , w          , row        ) {
   const C = w.course
@@ -3980,8 +4212,17 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     if (ga.wait && Math.abs(b.x - ga.x) < 0.5 && b.z > ga.z - 0.6) go = 0
   }
 
+  // Crosta: o caminho escondido
+  const pa = pathAim(br, b, w)
+  if (pa) {
+    tx = pa.x
+    tz = pa.z
+  }
+
   // ladrilhos: escolhe o próximo em pé (e não tremendo), perto da reta
-  if (C.tiles.length && !b.ground && br.tile >= 0) {
+  if (pa) {
+    br.tile = -1
+  } else if (C.tiles.length && !b.ground && br.tile >= 0) {
     // no ar: segue mirando o ladrilho escolhido (freia no ar se for passar)
     tx = C.tiles[br.tile].x
     tz = C.tiles[br.tile].z
@@ -4188,7 +4429,7 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     for (let i = 0; i < C.tiles.length; i++) {
       const q = C.tiles[i]
       const s = w.tiles[i]
-      if (s < 0 || !onTile(q, b.x, b.z, 0)) continue
+      if (s < 0 || q.pg >= 0 || !onTile(q, b.x, b.z, 0)) continue
       if (t - s > C.tileTime.warn * 0.6 && botRand(br.seed, br.slot, i) < br.skill) {
         it.jump = true
         br.jumpCool = 0.6
@@ -4197,7 +4438,9 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   }
   // o chão acaba logo à frente e há chão adiante: pula o buraco
   const sp = Math.hypot(it.mx, it.mz)
-  const tileNear = br.tile >= 0 && Math.hypot(C.tiles[br.tile].x - b.x, C.tiles[br.tile].z - b.z) < 2.6
+  const tileNear =
+    (br.tile >= 0 && Math.hypot(C.tiles[br.tile].x - b.x, C.tiles[br.tile].z - b.z) < 2.6) ||
+    (br.path >= 0 && Math.hypot(C.tiles[br.path].x - b.x, C.tiles[br.path].z - b.z) < 3.4)
   if (b.ground && br.jumpCool <= 0 && sp > 0.3 && !tileNear) {
     const fx = it.mx / sp
     const fz = it.mz / sp
@@ -4547,7 +4790,7 @@ class GincanaRace {
     if (b.ground) {
       for (let k = 0; k < C.tiles.length; k++) {
         const q = C.tiles[k]
-        if (Math.abs(b.y - q.y) < 0.3 && onTile(q, b.x, b.z, 0) && this.world.tiles[k] < 0) this.world.tiles[k] = this.t
+        if (Math.abs(b.y - q.y) < 0.3 && onTile(q, b.x, b.z, 0) && this.world.tiles[k] === -1) stepTile(C, this.world.tiles, this.world.real, k, this.t)
       }
     }
     for (let k = 0; k < C.doors.length; k++) {
@@ -4619,4 +4862,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

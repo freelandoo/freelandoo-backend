@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 17 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
+test("gincana — 18 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -899,4 +899,59 @@ test("gincana — Serraria: a tora é parede embaixo, rola contra e o cravo derr
   Object.assign(r, { x: Pk.x, z: Pk.z, y: G.plankTop(Pk, Pk.x, race.t), vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 5 });
   for (let k = 0; k < 8; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
   assert.ok((r.x - Pk.x) * sg < -0.1, `a tábua não escorregou: ${(r.x - Pk.x).toFixed(2)}`);
+});
+
+// ── Trilha da Crosta (2026-11-20) ────────────────────────────────────────────
+test("gincana — Crosta: o caminho escondido é contínuo; a placa firme acende e fica, a falsa cai e não volta", () => {
+  const C = G.COURSES.crosta;
+  assert.equal(C.mode, "race");
+  assert.equal(C.tiles.length, G.CROSTA.grids.reduce((n, g) => n + g[2] * g[3], 0));
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const real = G.pathReal(C, seed);
+    assert.deepEqual([...real], [...G.pathReal(C, seed)], "a mesma semente dá o mesmo caminho");
+    G.CROSTA.grids.forEach((grid, g) => {
+      const [, , cols, rows] = grid;
+      const cell = (r, c) => C.tiles.findIndex((q) => q.pg === g && q.pr === r && q.pc === c);
+      // da 1ª à última fileira dá para ir só reto ou de lado, só em placa de verdade
+      const seen = new Set();
+      const stack = [];
+      for (let c = 0; c < cols; c++) if (real[cell(0, c)]) stack.push([0, c]);
+      let reached = false;
+      while (stack.length) {
+        const [r, c] = stack.pop();
+        const k = r * cols + c;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (r === rows - 1) reached = true;
+        for (const [dr, dc] of [[1, 0], [0, 1], [0, -1]]) {
+          const r2 = r + dr;
+          const c2 = c + dc;
+          if (r2 < rows && c2 >= 0 && c2 < cols && real[cell(r2, c2)]) stack.push([r2, c2]);
+        }
+      }
+      assert.ok(reached, `semente ${seed}, tabuleiro ${g}: o caminho não chega ao fim`);
+      for (let r = 0; r < rows; r++) assert.ok([...Array(cols).keys()].some((c) => real[cell(r, c)]), "fileira sem placa firme");
+    });
+  }
+  // pisar: a firme acende (−2) e segura; a falsa cai depois do aviso e não volta
+  const { race, r } = solo("crosta");
+  while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  const w = race.world;
+  const good = C.tiles.findIndex((q, i) => q.pg === 0 && q.pr === 0 && w.real[i]);
+  const bad = C.tiles.findIndex((q, i) => q.pg === 0 && q.pr === 0 && !w.real[i]);
+  const g0 = C.tiles[good];
+  Object.assign(r, { x: g0.x, z: g0.z, y: G.DECK + 0.05, vx: 0, vy: 0, vz: 0, ground: false });
+  for (let k = 0; k < 30; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.equal(w.tiles[good], -2, "a firme não acendeu");
+  assert.ok(Math.abs(r.y - G.DECK) < 0.2, "caiu da firme");
+  const b0 = C.tiles[bad];
+  Object.assign(r, { x: b0.x, z: b0.z, y: G.DECK + 0.05, vx: 0, vy: 0, vz: 0, ground: false });
+  for (let k = 0; k < 6; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(w.tiles[bad] >= 0, "a falsa não registrou o pisão");
+  for (let k = 0; k < 120; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(!G.tileUp(C, w.tiles[bad], race.t), "a falsa não caiu");
+  assert.ok(r.y < G.DECK - 1 || r.z < 0, "quem estava na falsa não caiu");
+  for (let k = 0; k < 600; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(!G.tileUp(C, w.tiles[bad], race.t), "a falsa voltou");
+  assert.equal(w.tiles[good], -2, "a firme apagou");
 });
