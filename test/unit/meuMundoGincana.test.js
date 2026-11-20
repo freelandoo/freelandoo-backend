@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 19 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "relogio", "feira", "coroa"]);
+test("gincana — 20 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -990,4 +990,30 @@ test("gincana — Tanque: o óleo sobe e tira da prova; as rampas trocam de lado
     void q;
   }
   assert.ok(hit, "o pistão não socou");
+});
+
+// ── Estaleiro do Quebra-Gelo (2026-11-20) ────────────────────────────────────
+test("gincana — Estaleiro: a hélice em pé derruba quem a pá pega e deixa passar pelo vão", () => {
+  const C = G.COURSES.estaleiro;
+  assert.equal(C.mode, "race");
+  assert.equal(C.rotors.length, 9);
+  const q = C.rotors[0];
+  // a ponta da pá raspa o chão do cais
+  assert.ok(q.y - q.L < G.DECK + 0.5 && q.y - q.L > G.DECK - 0.6, "a pá não chega no chão");
+  const { race, r } = solo("estaleiro");
+  // no plano da hélice, embaixo do cubo: em algum momento a pá derruba
+  const out = [];
+  let hit = false;
+  let free = false;
+  for (let s = 0; s < 600 && !(hit && free); s++) {
+    Object.assign(r, { x: q.x + 1.2, z: q.z, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 0, hitCool: 0 });
+    out.length = 0;
+    race.step({ mx: 0, mz: 0, jump: false, dive: false }, out);
+    if (out.some((e) => e.type === "hit")) {
+      hit = true;
+      assert.ok(r.vz < -3, `a pá não jogou para trás: vz ${r.vz.toFixed(2)}`);
+    } else free = true;
+  }
+  assert.ok(hit, "a pá nunca pegou");
+  assert.ok(free, "não há vão: a pá pega sempre");
 });

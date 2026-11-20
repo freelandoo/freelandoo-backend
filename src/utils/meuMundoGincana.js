@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                                                                                      
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                                                                                    
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "estaleiro", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -522,6 +522,40 @@ function logSpikeX(L     , k        , j        ) {
            
             
  
+/**
+ * Estaleiro do Quebra-Gelo: HÉLICE EM PÉ que gira de frente para quem corre (em volta do eixo z). `n` pás de
+ * comprimento `L` a partir do cubo (x, y, z), meia largura `hw`, meia espessura `hz` (em z); `w` rad/s
+ * (+ = anti-horário visto de trás). As pás varrem o chão embaixo do cubo: passa-se pelo vão entre elas.
+ */
+                        
+           
+           
+           
+           
+           
+            
+            
+           
+            
+ 
+function rotorAngle(q       , k        , t        ) {
+  return q.ph + (k * Math.PI * 2) / q.n + q.w * t
+}
+/** A pá que pega o ponto (x, y) no plano da hélice (folga `r`), ou −1. */
+function rotorBladeAt(q       , x        , y        , t        , r        ) {
+  const px = x - q.x
+  const py = y - q.y
+  for (let k = 0; k < q.n; k++) {
+    const a = rotorAngle(q, k, t)
+    const c = Math.cos(a)
+    const s = Math.sin(a)
+    const along = px * c + py * s
+    if (along < 0.3 || along > q.L + r) continue
+    if (Math.abs(px * s - py * c) < q.hw + r) return k
+  }
+  return -1
+}
+
 function plankAngle(P       , t        ) {
   return P.amp * Math.sin(P.w * t + P.ph)
 }
@@ -554,6 +588,8 @@ function plankTop(P       , x        , t        ) {
                
                                                                               
              
+                 
+                                                                     
                  
                                                 
                        
@@ -604,6 +640,10 @@ class CourseKit {
            drums         = []
            logs        = []
            planks          = []
+           rotors          = []
+  rotor(x        , z        , y        , L        , n        , hw        , hz        , w        , ph = 0) {
+    this.rotors.push({ x, z, y, L, n, hw, hz, w, ph })
+  }
   log(x        , z        , y        , R        , hx        , w        , rows        , pitch        , ph = 0) {
     this.logs.push({ x, z, y, R, hx, w, rows, pitch, ph })
   }
@@ -712,6 +752,7 @@ class CourseKit {
       drums: this.drums,
       logs: this.logs,
       planks: this.planks,
+      rotors: this.rotors,
       memory: o.memory ?? null,
       crown: o.crown ?? false,
       pads: this.pads,
@@ -2350,6 +2391,96 @@ function coursePortoes()         {
   })
 }
 
+// ═══ estaleiro — Estaleiro do Quebra-Gelo (3ª fase do Mar de Gelo) ═══════════
+
+/**
+ * 20/11 (pedido do Alex, 9º vídeo de referência: tipo de prova "ilhas com barras que varrem + hélices gigantes
+ * em pé"): no estaleiro preso no Mar de Gelo, as hélices dos quebra-gelos giram DE PÉ, de frente para quem corre
+ * (as pás varrem o chão embaixo do cubo; passa-se pelo vão entre elas). Duas banquisas redondas com a barra de
+ * proa que varre, o cais estreito com três hélices em fila, o pátio com duas fileiras de hélices lado a lado
+ * (escolha o vão e a hora) e a subida para o dique seco com a hélice gigante atravessada.
+ * Diferente das Hélices da Orbital (deitadas, você anda em cima) e dos Moinhos (pás rente aos discos): aqui a
+ * pá gira num plano em pé e o vão passa pela frente de quem corre.
+ */
+const ESTALEIRO = {
+  /** cais: z das hélices, nº de pás, giro */
+  pier: [[62, 3, 1.25], [70.5, 4, -1.05], [79, 3, 1.5]]                              ,
+  /** pátio: [x, z, giro] — duas fileiras desencontradas */
+  yard: [[-6.2, 95, 1.1], [0, 95, -1.25], [6.2, 95, 1.1], [-3.1, 104, -1.2], [3.1, 104, 1.2]]                              ,
+  pierL: 4.2,
+  yardL: 3.0,
+  bigL: 6.2,
+  hubY: 0.35,
+}         
+
+function courseEstaleiro()         {
+  const K = ESTALEIRO
+  const k = new CourseKit()
+  kitStart(k)
+  // hélice em pé: o cubo fica a L − folga acima do chão (a ponta raspa o piso)
+  const rot = (x        , z        , floor        , L        , n        , w        , ph        ) =>
+    k.rotor(x, z, floor + L - K.hubY, L, n, 0.42, 0.35, w, ph)
+  // ── 1. as banquisas com a barra de proa ──
+  k.box(0, 17.5, 2.2, 2.4, 5, 1, 1, 0, 1.2)
+  k.disc(0, 28, 8, 5, 1, 1)
+  k.post(0, 28, 0.8, DECK, DECK + 2.4, 5)
+  k.sweep(0, 28, DECK + 0.55, 8.3, 0.34, 1.05, 0, true)
+  k.box(0, 38.5, 2.2, 2.6, 5, 1, 1, 0, 1.2)
+  k.disc(0, 49, 8, 5, 1, 1)
+  k.post(0, 49, 0.8, DECK, DECK + 2.4, 5)
+  k.sweep(0, 49, DECK + 0.55, 8.3, 0.34, -1.3, 1.4, false)
+  // ── 2. o cais com três hélices em fila ──
+  k.box(0, 70.5, 3.3, 13.5, 5, 1, 2)
+  K.pier.forEach(([z, n, w], i) => rot(0, z, DECK, K.pierL, n, w, i * 0.7))
+  // ── 3. o pátio com duas fileiras lado a lado ──
+  k.box(0, 99.5, 9.6, 15.5, 5, 1, 3)
+  K.yard.forEach(([x, z, w], i) => rot(x, z, DECK, K.yardL, 3, w, i * 1.1))
+  // ── 4. a subida para o dique seco com a hélice gigante atravessada ──
+  const z0 = 115
+  const z1 = 143
+  const Yt = DECK + 6
+  k.slope(0, z0, z1, DECK, Yt, 6.6, 5, 1, 4)
+  const zb = 131
+  rot(0, zb, DECK + ((zb - z0) / (z1 - z0)) * (Yt - DECK), K.bigL, 4, 0.85, 0.3)
+  k.box(0, z1 + 7.8, 9, 7.8, 1, 0, 6, 0, 1.6, Yt)
+  const finishZ = z1 + 8.8
+  for (const [x, z] of [[0, 17.5], [0, 38.5], [-2, 58.5], [2, 58.5], [0, 86], [0, 111]]                      ) k.logo(x, z)
+  return k.done({
+    id: "estaleiro",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 38.5, y: DECK, w: 2 },
+      { x: 0, z: 59, y: DECK, w: 3 },
+      { x: 0, z: 87, y: DECK, w: 6 },
+      { x: 0, z: 111, y: DECK, w: 6 },
+    ],
+    finishZ,
+    finishY: Yt,
+    sections: [15.1, 57, 84, z0, z0 + 14],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        for (let z = 10; z <= 58; z += 2) add(0, z)
+        // no cais: um pouco para um lado (o vão chega antes perto da ponta da pá)
+        const s = r(1) < 0.5 ? -1.4 : 1.4
+        for (let z = 60; z <= 82; z += 2) add(s, z)
+        add(0, 86)
+        // pátio: o vão entre as hélices da 1ª fileira (x ±3,1) e depois o da 2ª (0 ou ±6,2)
+        const g1 = r(2) < 0.5 ? -3.1 : 3.1
+        add(g1, 91)
+        add(g1, 97)
+        const g2 = r(3) < 0.4 ? 0 : g1 < 0 ? -6.2 : 6.2
+        add(g2, 101)
+        add(g2, 107)
+        add(0, 112)
+        for (let z = z0 + 1; z <= z1 - 1; z += 2.5) add(r(4) < 0.5 ? -2.5 : 2.5, z)
+        add(0, finishZ - 7)
+        add(0, finishZ - 2)
+        add(0, finishZ + 3)
+      }),
+  })
+}
+
 // ═══ gelo — Mar de Gelo ══════════════════════════════════════════════════════
 
 /**
@@ -2604,6 +2735,7 @@ const COURSES                               = {
   comportas: courseComportas(),
   gelo: courseGelo(),
   portoes: coursePortoes(),
+  estaleiro: courseEstaleiro(),
   relogio: courseRelogio(),
   feira: courseFeira(),
   coroa: courseCoroa(),
@@ -3222,6 +3354,18 @@ function hazards(b        , w          , out                   ) {
         knock(b, Math.sign(b.x - logSpikeX(L, k, j) || 1) * 1.5, 5.5, -Math.sign(L.w || 1) * 7.5, "bar", out)
         break
       }
+    }
+  }
+  // hélice em pé: a pá que passa pelo corpo joga para o lado do giro e para trás
+  for (const q of C.rotors) {
+    if (Math.abs(b.z - q.z) > q.hz + R) continue
+    for (const hy of [0.45, 0.9, 1.35]) {
+      const y = b.y + hy
+      if (rotorBladeAt(q, b.x, y, t, R) < 0) continue
+      const vx = -q.w * (y - q.y)
+      const vy = q.w * (b.x - q.x)
+      knock(b, Math.sign(vx || 1) * Math.min(9, 4 + Math.abs(vx)), 4.5 + Math.max(0, Math.min(3, vy)), -6.5, "bar", out)
+      break
     }
   }
   if (C.balls && w.balls.length && C.ramp && b.z > C.ramp.z0 - 5) {
@@ -4513,6 +4657,20 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     }
     if (bad && botRand(br.seed, br.slot * 53 + i, Math.floor(t * 0.7)) < br.skill + 0.15) go = 0
   }
+  // Quebra-Gelo: hélice em pé adiante — só entra se nenhuma pá passar pelo corpo enquanto atravessa
+  for (let i = 0; i < C.rotors.length; i++) {
+    const q = C.rotors[i]
+    const ahead = q.z - q.hz - b.z
+    if (ahead < 0.05 || ahead > 2.4 || Math.abs(b.x - q.x) > q.L + 0.5) continue
+    const arrive = ahead / vRun
+    const leave = arrive + (q.hz * 2 + GINCANA.bodyR * 2 + 0.3) / vRun
+    let bad = false
+    for (let f = 0; f <= 1.001 && !bad; f += 0.2) {
+      const tt = t + arrive - 0.1 + (leave - arrive + 0.25) * f
+      for (const hy of [0.5, 1.3]) if (rotorBladeAt(q, b.x, b.y + hy, tt, GINCANA.bodyR + 0.2) >= 0) bad = true
+    }
+    if (bad && botRand(br.seed, br.slot * 67 + i, Math.floor(t * 0.8)) < br.skill + 0.15) go = 0
+  }
   if (go === 0) br.waited += dt
   if (go === 0 && br.waited < 6 + br.skill * 4) {
     it.mx = 0
@@ -4974,4 +5132,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
