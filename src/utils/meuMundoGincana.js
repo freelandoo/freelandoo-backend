@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                                                                           
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                                                                      
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -2165,6 +2165,117 @@ function courseComportas()         {
   })
 }
 
+// ═══ tanque — Tanque de Óleo (3ª fase da Fábrica) ═══════════════════════════
+
+/**
+ * 20/11 (pedido do Alex, 10º vídeo de referência: tipo de prova "subida em zigue-zague com o líquido subindo"):
+ * dentro do tanque da Fábrica o óleo SOBE e quem ele alcança está FORA. Quatro rampas de aço que trocam de
+ * lado (esquerda, direita, esquerda, meio), ligadas por patamares que se cruzam de lado a lado. Em cada trecho
+ * um perigo da Fábrica: barris rolando na 1ª rampa, prensas que deslizam de lado na 2ª, os ganchos do
+ * guindaste que balançam no 2º patamar, os pistões que socam da parede na 3ª rampa (jogam no óleo), as
+ * prensas do 3º patamar e os ganchos da rampa do meio até a chegada no alto do tanque.
+ * Diferente da Maré do Pântano: o caminho vai e volta (zigue-zague), o perigo é empurrar de lado.
+ */
+const TANQUE = {
+  /** x das rampas (esquerda, direita, esquerda, meio) */
+  rx: [-4.2, 4.2, -4.2, 0]         ,
+  rhx: 3.1,
+  /** z de cada rampa [início, fim] */
+  rz: [
+    [15, 39],
+    [48, 72],
+    [81, 105],
+    [114, 132],
+  ]                      ,
+  /** altura de cada andar acima do DECK */
+  dy: [0, 5, 10, 15, 20]         ,
+  /** z das prensas da 2ª rampa e fases */
+  press2: [[54, 0], [60, 1.6], [66, 3.2]]                      ,
+  /** z dos pistões da 3ª rampa */
+  punch3: [[87, 0], [93, 0.8], [99, 1.6]]                      ,
+}         
+
+function courseTanque()         {
+  const K = TANQUE
+  const k = new CourseKit()
+  kitStart(k)
+  const Y = K.dy.map((d) => DECK + d)
+  const yAt = (i        , z        ) => Y[i] + ((z - K.rz[i][0]) / (K.rz[i][1] - K.rz[i][0])) * (Y[i + 1] - Y[i])
+  const land = (i        , s        ) => {
+    const z0 = K.rz[i][1]
+    const z1 = K.rz[i + 1][0]
+    return k.box(0, (z0 + z1) / 2, 8.4, (z1 - z0) / 2, 5, 1, s, 0, 1.4, Y[i + 1])
+  }
+  // ── 1. rampa dos barris (esquerda) ──
+  k.slope(K.rx[0], K.rz[0][0], K.rz[0][1], Y[0], Y[1], K.rhx, 3, 1, 1)
+  k.balls = { lanes: [-1.5, 1.5], every: 1.5, v: 6, R: 1.0, zEnd: 12 }
+  land(0, 1)
+  // pistões da parede direita do 1º patamar (socam para o meio)
+  k.glove(9.4, 41.5, Y[1] + 1, -1, 7.5, 1.0, 2.6, 0)
+  k.glove(9.4, 45.5, Y[1] + 1, -1, 7.5, 1.0, 2.6, 1.3)
+  // ── 2. rampa das prensas (direita): blocos que vão e voltam de lado ──
+  k.slope(K.rx[1], K.rz[1][0], K.rz[1][1], Y[1], Y[2], K.rhx, 3, 1, 2)
+  for (const [z, ph] of K.press2) k.pusher(K.rx[1], z, 1.1, 1.1, 1.8, 2.1, 0, 1.25, ph, yAt(1, z))
+  land(1, 2)
+  // ganchos do guindaste no 2º patamar
+  k.swing(-2.5, 75, Y[2] + 8, 6.6, 0.9, 0.9, 1.9, 0)
+  k.swing(2.5, 78.5, Y[2] + 8, 6.6, 0.9, 0.9, 1.9, 1.6)
+  // ── 3. rampa dos pistões (esquerda): socam da parede de fora e jogam no óleo ──
+  k.slope(K.rx[2], K.rz[2][0], K.rz[2][1], Y[2], Y[3], K.rhx, 3, 1, 3)
+  for (const [z, ph] of K.punch3) k.glove(K.rx[2] - K.rhx - 1.6, z, yAt(2, z) + 1, 1, 3.4, 1.0, 2.2, ph)
+  land(2, 4)
+  // prensas que cruzam o 3º patamar
+  k.pusher(-2.6, 108, 1.2, 1.2, 1.8, 3.6, 0, 1.0, 0, Y[3])
+  k.pusher(2.6, 111.5, 1.2, 1.2, 1.8, 3.6, 0, 1.0, 2.2, Y[3])
+  // ── 4. rampa do meio com os ganchos e a chegada no alto ──
+  k.slope(K.rx[3], K.rz[3][0], K.rz[3][1], Y[3], Y[4], 4.5, 3, 1, 5)
+  k.swing(-1.6, 120, yAt(3, 120) + 8, 6.6, 0.9, 0.85, 1.7, 0.4)
+  k.swing(1.6, 126, yAt(3, 126) + 8, 6.6, 0.9, 0.85, 1.7, 2.0)
+  k.box(0, 139.8, 9, 7.8, 1, 0, 6, 0, 1.6, Y[4])
+  const finishZ = 140.8
+  for (const [x, z, y] of [[0, 43.5, Y[1]], [0, 76.5, Y[2]], [0, 109.5, Y[3]]]                              ) k.logo(x, z, y)
+  return k.done({
+    id: "tanque",
+    mode: "race",
+    limit: 80,
+    // 3 s de folga; o óleo afoga a largada aos ~11 s e passa do topo perto do fim
+    rise: { y0: 0, y1: Y[4] + 2, t0: 3, t1: 50 },
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 43.5, y: Y[1], w: 6 },
+      { x: 0, z: 76.5, y: Y[2], w: 6 },
+      { x: 0, z: 109.5, y: Y[3], w: 6 },
+    ],
+    finishZ,
+    finishY: Y[4],
+    sections: [15, 39, 72, 105, 114],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        const l0 = r(1) < 0.5 ? -1.4 : 1.4
+        add(K.rx[0] * 0.5, 9)
+        add(K.rx[0], 13.5)
+        for (let z = 16; z <= 38; z += 2) add(K.rx[0] + l0, z)
+        add(K.rx[0], 40.5)
+        add(0, 43.5)
+        add(K.rx[1], 46.5)
+        for (let z = 49; z <= 71; z += 2) add(K.rx[1], z)
+        add(K.rx[1], 73.5)
+        add(0, 76.8)
+        add(K.rx[2], 79.8)
+        // na rampa dos pistões: por dentro (longe da parede)
+        for (let z = 82; z <= 104; z += 2) add(K.rx[2] + 1.6, z)
+        add(K.rx[2] + 1, 106.5)
+        add(0, 110)
+        add(0, 113)
+        for (let z = 115; z <= 131; z += 2) add(0, z)
+        add(0, finishZ - 7)
+        add(0, finishZ - 2)
+        add(0, finishZ + 3)
+      }),
+  })
+}
+
 // ═══ portoes — Portões de Gelo (2ª fase do Mar de Gelo) ══════════════════════
 
 /**
@@ -2481,6 +2592,7 @@ const COURSES                               = {
   floresta: courseFloresta(),
   clareira: courseClareira(),
   serraria: courseSerraria(),
+  tanque: courseTanque(),
   canion: courseCanion(),
   moinhos: courseMoinhos(),
   orbital: courseOrbital(),
@@ -4862,4 +4974,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

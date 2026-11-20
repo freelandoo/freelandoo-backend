@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 18 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
+test("gincana — 19 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "crosta", "fabrica", "comportas", "tanque", "gelo", "portoes", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -954,4 +954,40 @@ test("gincana — Crosta: o caminho escondido é contínuo; a placa firme acende
   for (let k = 0; k < 600; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
   assert.ok(!G.tileUp(C, w.tiles[bad], race.t), "a falsa voltou");
   assert.equal(w.tiles[good], -2, "a firme apagou");
+});
+
+// ── Tanque de Óleo (2026-11-20) ──────────────────────────────────────────────
+test("gincana — Tanque: o óleo sobe e tira da prova; as rampas trocam de lado; o pistão joga para fora", () => {
+  const C = G.COURSES.tanque;
+  assert.equal(C.mode, "race");
+  assert.ok(C.rise && C.rise.y1 > C.finishY, "o óleo passa do topo");
+  // zigue-zague: as três primeiras rampas alternam o lado
+  const ramps = C.pads.filter((p) => p.k === 2).sort((a, b) => a.z - b.z);
+  assert.equal(ramps.length, 4);
+  assert.ok(ramps[0].x < 0 && ramps[1].x > 0 && ramps[2].x < 0 && ramps[3].x === 0, "rampas fora de ordem");
+  assert.ok(ramps.every((p, i) => i === 0 || p.y >= ramps[i - 1].y2 - 0.01), "cada rampa começa no alto da anterior");
+  assert.equal(C.gloves.length, 5);
+  assert.equal(C.pushers.length, 5);
+  assert.equal(C.pendulums.length, 4);
+  // quem fica parado na largada é pego pelo óleo e está fora
+  const { race, r } = solo("tanque");
+  let t = 0;
+  while (r.out < 0 && race.t < 40) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []), (t = race.t);
+  assert.ok(r.out >= 0, "o óleo não tirou ninguém");
+  assert.ok(t > 6 && t < 20, `saiu na hora errada: ${t.toFixed(1)}`);
+  // o pistão da rampa 3 empurra para +x (para fora da parede)
+  const g = C.gloves.find((q) => q.dir > 0);
+  const { race: r2, r: b } = solo("tanque");
+  const out = [];
+  let hit = false;
+  for (let s = 0; s < 400 && !hit; s++) {
+    const q = G.gloveAt(g, r2.t);
+    Object.assign(b, { x: g.x0 + g.dir * (g.R + 0.4), z: g.z, y: g.y - 1, vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 0, hitCool: 0 });
+    out.length = 0;
+    r2.step({ mx: 0, mz: 0, jump: false, dive: false }, out);
+    hit = out.some((e) => e.type === "hit" && e.by === "glove");
+    if (hit) assert.ok(b.vx > 3, `o pistão não empurrou para fora: vx ${b.vx.toFixed(2)}`);
+    void q;
+  }
+  assert.ok(hit, "o pistão não socou");
 });
