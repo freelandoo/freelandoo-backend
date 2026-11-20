@@ -675,6 +675,8 @@ function rotorBladeAt(q       , x        , y        , t        , r        ) {
            
                                                                                                                
                
+                                                                                                                  
+               
  
 /** Ganho do peso (rad/s² por metro de braço de cada um) e amortecimento. */
 const SAW = { gain: 0.6, damp: 2.2 }
@@ -700,7 +702,7 @@ function stepSawState(C                    , s              , arms              
     const S = C.saws[i]
     let a = s[i * 2]
     let v = s[i * 2 + 1]
-    v += (SAW.gain * arms[i] - S.k * (a - S.a0) - SAW.damp * v) * dt
+    v += (SAW.gain * (S.gain ?? 1) * arms[i] - S.k * (a - S.a0) - SAW.damp * v) * dt
     a += v * dt
     if (a > S.max) {
       a = S.max
@@ -2570,7 +2572,9 @@ const GANGORRAS = {
    * Quem pisa num lado faz ela descer para esse lado: tem que correr para o outro. Patamar de descanso depois
    * da 4ª. `rest` = repouso torto, alternando o lado. Antes: rows [19.9, 35.5], lanes ±3.4 / 0, long hx 1,25.
    */
-  stages: { n: 8, z0: 15.4, hx: 3.3, hz: 3.3, gap: 0.5, max: 0.34, k: 0.3, slip: 11, rest: 0.06, mid: 4, midHz: 2.6 },
+  stages: { n: 8, z0: 15.4, hx: 3.3, hz: 3.3, gap: 0.5, max: 0.42, k: 0.15, slip: 11, rest: 0.06, mid: 4, midHz: 2.6 },
+  /** 20/11 (pedido do Alex: "as gangorras têm que ser ainda mais sensíveis a peso"): o peso pesa × isto em TODAS as tábuas da fase; as 8 balanças com mola 0,15 e tombo 0,42 (antes 0,3 / 0,34) */
+  gain: 2.2,
   long: { hx: 1.25, hz: 4.5, max: 0.2, k: 0.9 },
   /** corrente: z do eixo de cada elo; pistas ±2.3 */
   chain: [51.1, 60.4, 69.7],
@@ -2636,6 +2640,7 @@ function courseGangorras()         {
   const z0 = K.big.z + D + K.big.hz + 0.3
   const finishZ = kitFinish(k, z0, 1.05, 7, 1.15)
   for (const [x, z] of [[0, G.mid], [-3, 43.3 + D], [3, 43.3 + D], [0, 77.5 + D], [0, 113.4 + D]]                      ) k.logo(x, z)
+  for (const sw of k.saws) sw.gain = GANGORRAS.gain
   return k.done({
     id: "gangorras",
     checkpoints: [
