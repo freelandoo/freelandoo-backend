@@ -96,8 +96,8 @@ const GINCANA_COLORS = ["#FF6A13", "#FFD21F", "#FF5FA8", "#19C6D1", "#8A4DFF", "
                                                                  
 
 /** As fases: a de sempre e uma por Domínio. */
-                                                                                                                                                                                                                   
-const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
+                                                                                                                                                                                                                                
+const GINCANA_PHASES                          = ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]
 
 /**
  * Plataforma: 0 = disco (r), 1 = caixa girada (hx, hz, rot), 2 = rampa
@@ -459,6 +459,69 @@ function drumAt(d      , x        , z        , t        ) {
   return null
 }
 
+/**
+ * Serraria da Lua (20/11): TORA deitada atravessada na pista (eixo em x), girando a `w` rad/s — positivo = o
+ * topo anda para −z, contra quem corre. Tem `rows` fileiras de cravos (desencontradas, um a cada `pitch` m)
+ * que passam por cima e derrubam para trás. Abaixo de 60% da altura o lado é parede (sobe pulando).
+ */
+                      
+           
+           
+           
+           
+            
+           
+              
+               
+            
+ 
+const LOG_EDGE = 0.93
+/** A ponta do cravo fica isto acima da casca; o raio do que machuca em volta dela. */
+const SPIKE_OUT = 0.55
+const SPIKE_R = 0.3
+
+/** O chão da tora em (x, z): topo e o ângulo da superfície (0 = topo, + = lado +z). null = fora dela. */
+function logAt(L     , x        , z        ) {
+  const dz = z - L.z
+  if (Math.abs(x - L.x) > L.hx || Math.abs(dz) > L.R * LOG_EDGE) return null
+  return { top: L.y + Math.sqrt(L.R * L.R - dz * dz), th: Math.asin(dz / L.R) }
+}
+
+/** Ângulo da fileira k de cravos em t (0 = topo, + = lado +z). */
+function logRowAngle(L     , k        , t        ) {
+  return L.ph + (k * Math.PI * 2) / L.rows - L.w * t
+}
+
+/** Quantos cravos tem a fileira k e o x do j-ésimo (as ímpares ficam no meio das pares). */
+function logSpikeCount(L     , k        ) {
+  return Math.max(1, Math.floor((2 * L.hx) / L.pitch) - (k % 2))
+}
+function logSpikeX(L     , k        , j        ) {
+  return L.x - L.hx + L.pitch * (j + 0.5 + (k % 2) * 0.5)
+}
+
+/**
+ * Serraria da Lua: TÁBUA que balança de lado (gira em volta do eixo z, no centro). `amp` rad, `w` rad/s;
+ * ângulo + = o lado +x sobe. Quem está em cima escorrega para o lado que desce.
+ */
+                        
+           
+           
+            
+            
+           
+             
+           
+            
+ 
+function plankAngle(P       , t        ) {
+  return P.amp * Math.sin(P.w * t + P.ph)
+}
+/** Tampo da tábua em x no tempo t. */
+function plankTop(P       , x        , t        ) {
+  return P.y + Math.tan(plankAngle(P, t)) * (x - P.x)
+}
+
 /** Zona do rei do pedaço: círculo (x, z, r) com o chão em y. */
                        
            
@@ -481,6 +544,9 @@ function drumAt(d      , x        , z        , t        ) {
                      
                                                        
                
+                                                                              
+             
+                 
                                                 
                        
                                                                                                      
@@ -528,6 +594,14 @@ class CourseKit {
   balls               = null
            gems        = []
            drums         = []
+           logs        = []
+           planks          = []
+  log(x        , z        , y        , R        , hx        , w        , rows        , pitch        , ph = 0) {
+    this.logs.push({ x, z, y, R, hx, w, rows, pitch, ph })
+  }
+  plank(x        , z        , hx        , hz        , amp        , w        , ph        , y = DECK) {
+    this.planks.push({ x, z, hx, hz, y, amp, w, ph })
+  }
   drum(x        , z0        , y        , R        , rings            , f = 0.6, wall = false) {
     this.drums.push({ x, z0, y, R, f, rings, wall })
   }
@@ -622,6 +696,8 @@ class CourseKit {
       zone: o.zone ?? null,
       walls: o.walls ?? null,
       drums: this.drums,
+      logs: this.logs,
+      planks: this.planks,
       memory: o.memory ?? null,
       crown: o.crown ?? false,
       pads: this.pads,
@@ -1311,6 +1387,107 @@ function courseClareira()         {
         add(0, finishZ - 7)
         add(0, finishZ - 2)
         add(0, finishZ + 3)
+      }),
+  })
+}
+
+// ═══ serraria — Serraria da Lua (3ª fase da Floresta) ════════════════════════
+
+/**
+ * 20/11 (pedido do Alex, 11º vídeo de referência: tipo de prova "pista de troncos e machados"): a serraria dos
+ * lenhadores na Floresta da Lua, de noite. Toras deitadas ATRAVESSADAS na pista que rolam contra quem corre, com
+ * fileiras de cravos (`Log`; duas delas deixam um desvio pelo lado), a ponte estreita dos machados de lenhador
+ * (pêndulos que varrem a ponte), as tábuas que balançam de lado (`Plank`, duas filas desencontradas) e o
+ * pátio das toras grandes com um machado por cima, antes da subida.
+ */
+const SERRARIA = {
+  /** toras do pátio: [x, z, meia largura, giro rad/s, fase dos cravos] */
+  logs: [
+    [0, 23, 7.6, 1.25, 0],
+    [-2.2, 32, 5.4, 1.5, 1.1],
+    [2.2, 41, 5.4, -1.35, 2.3],
+    [0, 50, 7.6, 1.6, 0.6],
+  ]                                              ,
+  logR: 1.15,
+  /** machados da ponte: z e fase */
+  axes: [
+    [70, 0],
+    [77.5, 1.4],
+    [85, 2.7],
+    [92.5, 0.8],
+  ]                      ,
+  axeLen: 6.2,
+  /** tábuas: z dos centros (duas filas, x = ±2.6) */
+  planks: [111.2, 117.2, 123.2, 129.2, 135.2],
+  plankX: 2.6,
+  /** pátio das toras grandes: [z, giro] */
+  bigLogs: [
+    [157, 1.2],
+    [172, 1.4],
+  ]                      ,
+  bigR: 1.3,
+}         
+
+function courseSerraria()         {
+  const K = SERRARIA
+  const k = new CourseKit()
+  kitStart(k)
+  // ── 1. as toras com cravos ──
+  k.box(0, 37, 8.2, 21.9, 0, 1, 1)
+  for (const [x, z, hx, w, ph] of K.logs) k.log(x, z, DECK + 0.05, K.logR, hx, w, 2, 3.0, ph)
+  // ── 2. a ponte dos machados ──
+  k.box(0, 62.5, 3.6, 3.4, 5, 1, 2)
+  k.box(0, 82, 1.7, 16.1, 0, 1, 2)
+  for (const [z, ph] of K.axes) k.swing(0, z, DECK + 7.6, K.axeLen, 0.8, 1.0, 1.85, ph)
+  k.box(0, 102, 3.6, 3.9, 5, 1, 3)
+  // ── 3. as tábuas que balançam ──
+  K.planks.forEach((z, i) => {
+    k.plank(-K.plankX, z, 2.4, 2.9, 0.3, 1.35, i * 1.15)
+    k.plank(K.plankX, z, 2.4, 2.9, 0.3, 1.35, i * 1.15 + Math.PI)
+  })
+  // ── 4. o pátio das toras grandes, com um machado no vão entre elas ──
+  k.box(0, 160, 8.2, 21.9, 5, 1, 4)
+  for (const [z, w] of K.bigLogs) k.log(0, z, DECK + 0.05, K.bigR, 7.8, w, 2, 2.8, z * 0.3)
+  k.swing(0, (K.bigLogs[0][0] + K.bigLogs[1][0]) / 2, DECK + 7.6, K.axeLen, 0.8, 1.0, 1.6, 0.5)
+  // ── 5. a subida ──
+  const z0 = 182
+  const finishZ = kitFinish(k, z0, 1.15, 6.5, 1.1)
+  for (const [x, z] of [[0, 18], [6.6, 32], [-6.6, 41], [0, 62.5], [0, 102], [0, 144]]                      ) k.logo(x, z)
+  return k.done({
+    id: "serraria",
+    checkpoints: [
+      { x: 0, z: -3.5, y: DECK, w: 7 },
+      { x: 0, z: 62.5, y: DECK, w: 3 },
+      { x: 0, z: 102, y: DECK, w: 3 },
+      { x: 0, z: 144, y: DECK, w: 6 },
+    ],
+    finishZ,
+    finishY: DECK + 6,
+    sections: [15.1, 59.1, 98.1, 138.1, z0],
+    minFinish: 20,
+    route: (r) =>
+      routeOf((add) => {
+        add(0, 10)
+        add(0, 17)
+        add(0, 21)
+        add(0, 26)
+        // 2ª e 3ª toras: metade desvia pelo vão do lado, metade passa por cima
+        const s2 = r(1) < 0.5
+        const s3 = r(2) < 0.5
+        add(s2 ? 6.2 : -2.2, 29)
+        add(s2 ? 6.2 : -2.2, 35)
+        add(s3 ? -6.2 : 2.2, 38)
+        add(s3 ? -6.2 : 2.2, 44)
+        add(0, 47)
+        add(0, 53)
+        add(0, 57)
+        for (let z = 60; z <= 104; z += 2) add(0, z)
+        const c = r(3) < 0.5 ? -1 : 1
+        add(c * K.plankX, 107)
+        for (let z = 109; z <= 137; z += 2) add(c * K.plankX, z)
+        add(0, 141)
+        for (let z = 145; z <= 180; z += 2.5) add(0, z)
+        routeFinish(add, z0, finishZ)
       }),
   })
 }
@@ -2177,6 +2354,7 @@ const COURSES                               = {
   cidade: courseCidade(),
   floresta: courseFloresta(),
   clareira: courseClareira(),
+  serraria: courseSerraria(),
   canion: courseCanion(),
   moinhos: courseMoinhos(),
   orbital: courseOrbital(),
@@ -2273,6 +2451,8 @@ const MODE = {
                                                                                                    
              
                                                                            
+              
+                                                                                   
               
                                            
               
@@ -2373,6 +2553,7 @@ function newRunner(course        , slot        )         {
     pz: p.z,
     pad: -1,
     drum: -1,
+    roll: -1,
     fric: 1,
     grab: -1,
     grabT: 0,
@@ -2471,8 +2652,33 @@ function groundUnder(w          , x        , z        , reach        ) {
       drum = i
     }
   }
-  return { y: best, tile, pad, bounce, drum }
+  // Serraria: toras e tábuas (também só quando são o chão mais alto)
+  let roll = -1
+  for (let i = 0; i < C.logs.length; i++) {
+    const g = logAt(C.logs[i], x, z)
+    if (g && g.top <= reach && g.top > best) {
+      best = g.top
+      tile = pad = drum = -1
+      bounce = 0
+      roll = i
+    }
+  }
+  for (let i = 0; i < C.planks.length; i++) {
+    const P = C.planks[i]
+    if (Math.abs(x - P.x) > P.hx + EDGE || Math.abs(z - P.z) > P.hz + EDGE) continue
+    const top = plankTop(P, Math.max(P.x - P.hx, Math.min(P.x + P.hx, x)), w.t)
+    if (top <= reach && top > best) {
+      best = top
+      tile = pad = drum = -1
+      bounce = 0
+      roll = ROLL_PLANK + i
+    }
+  }
+  return { y: best, tile, pad, bounce, drum, roll }
 }
+
+/** No campo `roll`: índice da tora; a partir daqui, tábua. */
+const ROLL_PLANK = 1000
 
 /** Ondas de parede do passo (reaproveitado: nada de lixo a 60 Hz). */
 const WALL_TMP             = []
@@ -2557,6 +2763,35 @@ function pushWalls(b        , w          , out                   )              
     if (oz < ox) b.z = b.z - (d.z0 - R) < d.z0 + len + R - b.z ? d.z0 - R : d.z0 + len + R
     else b.x = d.x + Math.sign(dx || 1) * half
     sawLedge(d.y + d.R, Math.sign(dx || 1), 0)
+  }
+  // tora: a metade de baixo (60%) é parede — empurra para a frente/para trás (pelas pontas, de lado)
+  for (const L of C.logs) {
+    if (b.y >= L.y + L.R * 0.6 || b.y + H <= L.y - L.R) continue
+    const halfZ = L.R * LOG_EDGE + R
+    const dz = b.z - L.z
+    const ox = L.hx + R - Math.abs(b.x - L.x)
+    const oz = halfZ - Math.abs(dz)
+    if (ox <= 0 || oz <= 0) continue
+    if (ox < oz) b.x = L.x + Math.sign(b.x - L.x || 1) * (L.hx + R)
+    else b.z = L.z + Math.sign(dz || -1) * halfZ
+    sawLedge(L.y + L.R, 0, Math.sign(dz || -1))
+  }
+  // tábua: a beira que ficou acima do pé é parede (dá para subir na beira)
+  for (const P of C.planks) {
+    const top = plankTop(P, Math.max(P.x - P.hx, Math.min(P.x + P.hx, b.x)), w.t)
+    if (top <= lift || top - 0.5 >= b.y + H) continue
+    const lx = b.x - P.x
+    const lz = b.z - P.z
+    const ox = P.hx + R - Math.abs(lx)
+    const oz = P.hz + R - Math.abs(lz)
+    if (ox <= 0 || oz <= 0) continue
+    if (ox < oz) {
+      b.x = P.x + Math.sign(lx || 1) * (P.hx + R)
+      sawLedge(top, Math.sign(lx || 1), 0)
+    } else {
+      b.z = P.z + Math.sign(lz || 1) * (P.hz + R)
+      sawLedge(top, 0, Math.sign(lz || 1))
+    }
   }
   // ladrilhos caídos não seguram, e os de pé têm lado
   for (let i = 0; i < C.tiles.length; i++) {
@@ -2728,6 +2963,26 @@ function hazards(b        , w          , out                   ) {
       b.z = g.z + (dz / d) * (g.R + R)
     }
   }
+  // cravos das toras: a fileira que passa por cima derruba para trás (para onde o topo anda)
+  for (const L of C.logs) {
+    if (Math.abs(b.z - L.z) > L.R + SPIKE_OUT + 1 || Math.abs(b.x - L.x) > L.hx + 1) continue
+    if (b.y > L.y + L.R + SPIKE_OUT + 0.6) continue
+    const rr = L.R + SPIKE_OUT * 0.7
+    for (let k = 0; k < L.rows; k++) {
+      const a = logRowAngle(L, k, t)
+      const cy = Math.cos(a)
+      if (cy < -0.1) continue
+      const sy = L.y + cy * rr
+      const sz = L.z + Math.sin(a) * rr
+      if (Math.abs(b.z - sz) > SPIKE_R + R + 0.1) continue
+      const n = logSpikeCount(L, k)
+      for (let j = 0; j < n; j++) {
+        if (sphereGap(b, logSpikeX(L, k, j), sy, sz) >= SPIKE_R + R) continue
+        knock(b, Math.sign(b.x - logSpikeX(L, k, j) || 1) * 1.5, 5.5, -Math.sign(L.w || 1) * 7.5, "bar", out)
+        break
+      }
+    }
+  }
   if (C.balls && w.balls.length && C.ramp && b.z > C.ramp.z0 - 5) {
     const bl = w.balls
     const BR = C.balls.R
@@ -2765,6 +3020,7 @@ function respawn(b        , course        ) {
   b.hitCool = 0
   b.pad = -1
   b.drum = -1
+  b.roll = -1
   b.fric = 1
   b.grab = -1
 }
@@ -2778,6 +3034,22 @@ function carry(b        , w          , dt        ) {
     if (d && g) {
       b.x += drumSpeed(d.rings[g.ring], w.t) * (g.top - d.y) * dt
       b.x += Math.sin(g.th) * 3.2 * dt
+    }
+    return
+  }
+  if (b.ground && b.roll >= 0) {
+    if (b.roll >= ROLL_PLANK) {
+      // tábua inclinada: escorrega para o lado que desce
+      const P = w.course.planks[b.roll - ROLL_PLANK]
+      if (P) b.x -= Math.sin(plankAngle(P, w.t)) * 8 * dt
+    } else {
+      // tora: o chão anda para −z (w·altura acima do eixo) e a curva escorrega para fora
+      const L = w.course.logs[b.roll]
+      const g = L ? logAt(L, b.x, b.z) : null
+      if (L && g) {
+        b.z -= L.w * (g.top - L.y) * dt
+        b.z += Math.sin(g.th) * 3.2 * dt
+      }
     }
     return
   }
@@ -2851,6 +3123,7 @@ function stepRunner(b        , it           , w          , out                  
       const g = groundUnder(w, b.x, b.z, b.y + 0.1)
       b.pad = g.pad
       b.drum = g.drum
+      b.roll = g.roll
     }
     return
   }
@@ -2953,7 +3226,8 @@ function stepRunner(b        , it           , w          , out                  
     b.vy = 0
     b.pad = g.pad
     b.drum = g.drum
-    b.fric = g.pad >= 0 ? C.pads[g.pad].f : g.drum >= 0 ? C.drums[g.drum].f : 1
+    b.roll = g.roll
+    b.fric = g.pad >= 0 ? C.pads[g.pad].f : g.drum >= 0 ? C.drums[g.drum].f : g.roll >= 0 && g.roll < ROLL_PLANK ? 0.8 : 1
     if (!b.ground) {
       b.ground = true
       // pousou: mergulho vira deslize; derrubado fica no chão o resto do tempo
@@ -2983,12 +3257,14 @@ function stepRunner(b        , it           , w          , out                  
     b.vy = 0
     b.pad = g.pad
     b.drum = g.drum
+    b.roll = g.roll
   } else {
     if (b.ground) b.vy = Math.min(b.vy, 0)
     b.ground = false
     b.air += dt
     b.pad = -1
     b.drum = -1
+    b.roll = -1
   }
 
   // relógio dos estados sem controle
@@ -3865,6 +4141,25 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
     }
     if (block && botRand(br.seed, br.slot * 71 + i, Math.floor((t * q.w) / 3.14)) < br.skill + 0.1) go = 0
   }
+  // Serraria: tora adiante — espera a fileira de cravos passar por baixo antes de subir (a que desce pela frente
+  // derruba quem está encostado; a que vem por cima pega quem está no topo)
+  for (let i = 0; i < C.logs.length; i++) {
+    const L = C.logs[i]
+    const ahead = L.z - L.R - b.z
+    if (ahead < 0.1 || ahead > 2.6 || Math.abs(b.x - L.x) > L.hx) continue
+    const arrive = ahead / vRun + 0.25
+    let bad = false
+    for (let k = 0; k < L.rows; k++) {
+      for (const dtk of [arrive - 0.15, arrive, arrive + 0.25]) {
+        let a = logRowAngle(L, k, t + dtk) % (Math.PI * 2)
+        if (a > Math.PI) a -= Math.PI * 2
+        if (a < -Math.PI) a += Math.PI * 2
+        // de pouco atrás do topo até a frente: é por onde o corpo passa
+        if (a < 0.55 && a > -1.45) bad = true
+      }
+    }
+    if (bad && botRand(br.seed, br.slot * 53 + i, Math.floor(t * 0.7)) < br.skill + 0.15) go = 0
+  }
   if (go === 0) br.waited += dt
   if (go === 0 && br.waited < 6 + br.skill * 4) {
     it.mx = 0
@@ -3879,6 +4174,15 @@ function botIntent(br          , b        , w          , dt = GINCANA.step)     
   fanRide(br, b, w, it)
   // barra chegando: pula na hora (com o erro da habilidade)
   barJump(br, b, w, it)
+  // Serraria: tora atravessada logo à frente — pula para subir nela (a parede de baixo não deixa passar)
+  if (b.ground && br.jumpCool <= 0) {
+    for (const L of C.logs) {
+      const ahead = L.z - L.R - b.z
+      if (ahead < 0.15 || ahead > 1.15 || Math.abs(b.x - L.x) > L.hx + 0.2 || L.y + L.R < b.y + 0.5) continue
+      it.jump = true
+      br.jumpCool = 0.5
+    }
+  }
   // ladrilho tremendo embaixo: pula para o próximo
   if (b.ground && br.jumpCool <= 0) {
     for (let i = 0; i < C.tiles.length; i++) {
@@ -4315,4 +4619,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, stoneCells, MOINHOS, HELICES, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, ALTOFORNO, COMPORTAS, PORTOES, ROLL_R, ROLL_TOP, MEM_GRID, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, newRunner, groundUnder, ROLL_PLANK, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

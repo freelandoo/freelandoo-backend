@@ -48,8 +48,8 @@ test("gincana — a cópia do back está em dia com o front", (t) => {
   assert.equal(cur, gen.build(), "rode node scripts/build-gincana-sim.js");
 });
 
-test("gincana — 16 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
-  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
+test("gincana — 17 fases; cada uma fecha: postos em ordem com chão, chegada no alto da subida", () => {
+  assert.deepEqual([...G.GINCANA_PHASES], ["cidade", "floresta", "clareira", "serraria", "canion", "moinhos", "orbital", "helices", "forja", "altoforno", "fabrica", "comportas", "gelo", "portoes", "relogio", "feira", "coroa"]);
   for (const ph of G.GINCANA_PHASES) {
     const C = G.COURSES[ph];
     assert.equal(C.id, ph);
@@ -851,4 +851,52 @@ test("gincana — Hélices: as pás giram juntas em volta do cubo e levam quem e
   for (let k = 0; k < 20; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
   assert.ok(r.y > G.DECK - 0.5, "caiu da pá");
   assert.ok(Math.hypot(r.x - px, r.z - pz) > 0.8, `a pá não levou: ${Math.hypot(r.x - px, r.z - pz).toFixed(2)}`);
+});
+
+// ── Serraria da Lua (2026-11-20) ─────────────────────────────────────────────
+test("gincana — Serraria: a tora é parede embaixo, rola contra e o cravo derruba; a tábua inclina e escorrega", () => {
+  const C = G.COURSES.serraria;
+  assert.equal(C.mode, "race");
+  assert.equal(C.logs.length, 6);
+  assert.equal(C.planks.length, 10);
+  assert.equal(C.pendulums.length, 5);
+  const L = C.logs[0];
+  const { race, r } = solo("serraria");
+  while (race.t < 0.5) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  // de frente, no pé da tora: não atravessa
+  Object.assign(r, { x: L.x, z: L.z - L.R - 0.2, y: G.DECK, vx: 0, vy: 0, vz: 0, ground: true });
+  for (let k = 0; k < 10; k++) race.step({ mx: 0, mz: 1, jump: false, dive: false }, []);
+  assert.ok(r.z <= L.z - L.R * G.LOG_EDGE + 0.05 || r.y > G.DECK + 0.5, `atravessou a tora: z ${(r.z - L.z).toFixed(2)}`);
+  // no topo, longe dos cravos: o giro leva para trás (−z)
+  const t0 = race.t;
+  let safe = 0;
+  for (let k = 0; k < L.rows; k++) {
+    const a = G.logRowAngle(L, k, t0);
+    safe = Math.max(safe, Math.cos(a));
+  }
+  const gapX = L.x - L.hx + L.pitch * 0.5 + L.pitch * 0.5; // entre o 1º cravo da fileira par e o da ímpar
+  Object.assign(r, { x: gapX + 0.01, z: L.z, y: L.y + L.R, vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 5 });
+  const z0 = r.z;
+  for (let k = 0; k < 12; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok(r.z < z0 - 0.2, `a tora não levou para trás: ${(r.z - z0).toFixed(2)}`);
+  // o cravo derruba quem está na frente dele
+  const out = [];
+  let hit = false;
+  for (let s = 0; s < 400 && !hit; s++) {
+    Object.assign(r, { x: G.logSpikeX(L, 0, 1), z: L.z, y: L.y + L.R, vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 0, hitCool: 0 });
+    race.step({ mx: 0, mz: 0, jump: false, dive: false }, out);
+    hit = out.some((e) => e.type === "hit");
+  }
+  assert.ok(hit, "o cravo não derrubou");
+  // tábua inclinada: escorrega para o lado que desce
+  const Pk = C.planks[0];
+  let tt = race.t;
+  while (Math.abs(G.plankAngle(Pk, tt)) < Pk.amp * 0.8) {
+    race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+    tt = race.t;
+  }
+  const sg = Math.sign(G.plankAngle(Pk, race.t));
+  Object.assign(r, { x: Pk.x, z: Pk.z, y: G.plankTop(Pk, Pk.x, race.t), vx: 0, vy: 0, vz: 0, ground: true, mode: 0, timer: 0, shield: 5 });
+  for (let k = 0; k < 8; k++) race.step({ mx: 0, mz: 0, jump: false, dive: false }, []);
+  assert.ok((r.x - Pk.x) * sg < -0.1, `a tábua não escorregou: ${(r.x - Pk.x).toFixed(2)}`);
 });
