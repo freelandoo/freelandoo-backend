@@ -295,6 +295,11 @@ function memUp(m        , seed        , i        , t        ) {
                                                            
      
             
+     
+                                                                                                                
+                                                                
+     
+             
             
             
  
@@ -1987,15 +1992,23 @@ function courseSerraria()         {
 // ═══ canion — Cânion ═════════════════════════════════════════════════════════
 
 /**
- * Gincana 3 (2026-11-18): PEDRAS QUE CAEM — sobrevivência no Cânion. Quatro
- * andares de pedras hexagonais flutuando sobre o abismo (15, 11, 7 e 3 m). Pedra
- * pisada treme 1 s e cai para sempre; quem cai do andar de baixo está FORA.
- * Acaba quando só sobra a vaga (metade) em pé ou em 2 min. Pular poupa pedra:
- * no ar ninguém derruba nada.
+ * Gincana 3 (2026-11-18): PEDRAS QUE CAEM — sobrevivência no Cânion. Pedra pisada treme e cai para sempre;
+ * quem cai do andar de baixo está FORA. Acaba quando só sobra a vaga (metade) em pé ou em 2 min. Pular poupa
+ * pedra: no ar ninguém derruba nada.
+ * 20/11 (o Alex: "mais do que 4 pisos e algo legal para dificultar"): SEIS andares (23 → 3 m) e o cânion
+ * DESMORONA PELA BORDA — a partir de `CANION.crumble.start` s o anel de fora de cada andar cai sozinho, um anel a
+ * cada `every` s, até o miolo (os andares de baixo começam depois). A arena encolhe e quem fica na beira cai.
  */
-const STONE_FLOORS = [DECK + 12, DECK + 8, DECK + 4, DECK]         
+const STONE_FLOORS = [DECK + 20, DECK + 16, DECK + 12, DECK + 8, DECK + 4, DECK]         
 const STONE_R = 18
 const STONE_GAP = 2.4
+
+const CANION = {
+  floors: STONE_FLOORS,
+  /** desmoronamento: começa em `start` s no andar de cima; cada andar abaixo começa `floorLag` s depois; um anel (2,4 m) a cada `every` s */
+  crumble: { start: 14, floorLag: 4, every: 3.5, keep: 2.6 },
+  warn: 0.85,
+}         
 
 /** Centros da colmeia de um andar (a de baixo deslocada meia pedra, para quem cai de um buraco achar chão). */
 function stoneCells(floor        ) {
@@ -2014,11 +2027,15 @@ function stoneCells(floor        ) {
 
 function courseCanion()         {
   const k = new CourseKit()
+  const CR = CANION.crumble
   STONE_FLOORS.forEach((y, f) => {
+    const rMax = STONE_R - 0.5 * f
     for (const [x, z] of stoneCells(f)) {
-      const ring = Math.floor(Math.hypot(x, z) / 4.6)
-      const pair = [[2, 1], [0, 1], [5, 2], [6, 2]][f]
-      k.tile(x, z, 1.27, pair[ring % 2], 1, y)
+      // a cor do ladrilho = o andar (o desenho pinta cada andar de uma cor clara)
+      k.tile(x, z, 1.27, f, 1, y)
+      // o miolo (raio `keep`) nunca desmorona; o resto cai de fora para dentro
+      const d = Math.hypot(x, z)
+      if (d > CR.keep) k.tiles[k.tiles.length - 1].cr = CR.start + f * CR.floorLag + Math.floor((rMax - d) / STONE_GAP) * CR.every
     }
   })
   const top = STONE_FLOORS[0]
@@ -2027,7 +2044,7 @@ function courseCanion()         {
     mode: "survive",
     qualify: 0.5,
     limit: 120,
-    tileTime: { warn: 1.0, gone: 1e6 },
+    tileTime: { warn: CANION.warn, gone: 1e6 },
     checkpoints: [{ x: 0, z: 1.3, y: top, w: 6 }],
     // arena: ninguém "chega" (a linha fica fora e no alto)
     finishZ: 40,
@@ -5832,6 +5849,11 @@ class GincanaRace {
     stepSaws(w, this.runners, (j) => !this.gone[j], dt)
     // ladrilhos que já voltaram
     for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] >= 0 && this.t - w.tiles[i] >= C.tileTime.warn + C.tileTime.gone) w.tiles[i] = -1
+    // pedras que desmoronam sozinhas na hora delas (Cânion, 20/11)
+    for (let i = 0; i < w.tiles.length; i++) {
+      const cr = C.tiles[i].cr
+      if (cr !== undefined && w.tiles[i] === -1 && this.t >= cr) w.tiles[i] = cr
+    }
     for (const b of this.runners) {
       b.px = b.x
       b.py = b.y
@@ -6059,4 +6081,4 @@ class GincanaRace {
   }
 }
 
-module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };
+module.exports = { DECK, GINCANA, GINCANA_COLORS, GINCANA_PHASES, MEM_SYMBOLS, memShow, memCall, memState, memSymbols, memTarget, memTile, memIndexAt, memUp, hoopX, hoopPass, drumAngle, drumSpeed, DRUM_EDGE, drumAt, LOG_EDGE, SPIKE_OUT, SPIKE_R, logAt, logRowAngle, logSpikeCount, logSpikeX, rotorAngle, rotorBladeAt, SAW, sawArm, sawTop, sawRest, stepSawState, plankAngle, plankTop, CourseKit, sweeperAngle, sweeperW, pendulumAt, gloveAt, padShift, padRot, pusherAt, courseHash, ballLane, pathReal, stepTile, doorsOpen, wallsAt, riseAt, gateLift, padTop, rampTop, ballsAt, tileUp, onTile, sectionAt, spawnAt, reprise, CIDADE, CLAREIRA, SERRARIA, CANION, stoneCells, MOINHOS, HELICES, CROSTA, GANGORRAS, AROS, ALTOFORNO, COMPORTAS, TANQUE, PORTOES, ESTALEIRO, ROLL_R, ROLL_TOP, MEM_GRID, FEIRA, COROA, COURSE_BASE, BASE_LEN, COURSES, courseOf, MODE, IDLE_INTENT, newWorld, stepSaws, newRunner, groundUnder, ROLL_PLANK, ROLL_SAW, knock, fallOut, respawn, stepRunner, separate, ANIM, runnerAnim, botRand, newBrain, botIntent, qualifyOf, GincanaRace };

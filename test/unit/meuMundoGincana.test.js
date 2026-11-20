@@ -443,7 +443,9 @@ test("gincana 3 — Pedras que Caem: pedra pisada cai e não volta; cair do últ
   assert.equal(C.mode, "survive");
   assert.ok(C.tiles.length > 600);
   const floors = [...new Set(C.tiles.map((q) => q.y))].sort((a, b) => b - a);
-  assert.equal(floors.length, 4);
+  // 20/11: seis andares e o desmoronamento pela borda (pedra com hora de cair sozinha; o miolo fica)
+  assert.equal(floors.length, 6);
+  assert.ok(C.tiles.some((q) => q.cr === undefined) && C.tiles.some((q) => q.cr > 0), "miolo fica, borda desmorona");
   const { race, r } = solo("canion");
   assert.ok(C.tiles.some((q) => G.onTile(q, r.x, r.z, 0) && q.y === floors[0]), "larga em cima de uma pedra do andar de cima");
   // parado: as pedras embaixo caem e ele cai para o andar de baixo (não atravessa)
@@ -455,6 +457,9 @@ test("gincana 3 — Pedras que Caem: pedra pisada cai e não volta; cair do últ
   assert.equal(r.out, -1);
   for (let k = 0; k < 60 * 20; k++) race.step();
   assert.equal(G.tileUp(C, race.world.tiles[i0], race.t), false, "não volta");
+  // a borda desmoronou sozinha: pedra com hora de cair já passada (e ninguém pisou lá) está no chão
+  const ic = C.tiles.findIndex((q) => q.cr !== undefined && q.cr < race.t - C.tileTime.warn - 0.1);
+  assert.ok(ic >= 0 && G.tileUp(C, race.world.tiles[ic], race.t) === false, "a borda não desmoronou");
   // fora da colmeia: cai no abismo e está fora (na sobrevivência ninguém volta)
   const s = solo("canion");
   Object.assign(s.r, { x: 40, z: 0, y: floors[0], ground: false });
@@ -470,7 +475,8 @@ test("gincana 3 — queda rápida não atravessa o chão (14 m de queda)", () =>
   const w = G.newWorld(C, 1, 0);
   const r = G.newRunner(C, 0);
   Object.assign(r, { x: q.x, z: q.z, y: G.DECK + 14, vy: 0, ground: false });
-  for (let k = 0; k < 120; k++) {
+  // 1,5 s: pousa em ~0,97 s e a pedra só cai `warn` (0,85 s) depois de pisada
+  for (let k = 0; k < 90; k++) {
     w.t += G.GINCANA.step;
     G.stepRunner(r, G.IDLE_INTENT, w, null);
   }
