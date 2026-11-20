@@ -3552,6 +3552,9 @@ const FEIRA = {
   melons: { every: 0.9, v: 7.5, R: 1.3 },
   /** prensas da esteira de ida: [z, giro] */
   press: [[52, 1.8], [58.5, 2.3], [65, 1.6], [71.5, 2.1]]                      ,
+  /** 20/11 (o Alex: "essas barreiras móveis precisam atravessar as duas esteiras"): a prensa vai e volta de uma
+   *  beira à outra das DUAS esteiras (centro 0, ±4,4: o bloco de 3,2 m chega a ±6). Antes: só na de ida (−3 ± 3). */
+  pressAx: 4.4,
   ham: { R: 1.25, amp: 1.05 },
   /** martelos do meio: [z, fase] */
   hamMid: [[99, 4.8]]                      ,
@@ -3575,7 +3578,7 @@ function courseFeira()         {
   k.pads[fwd].bz = GINCANA.belt
   const back = k.box(3, 63, 3, 15, 3, 0, 2, 0, 1.4, Y)
   k.pads[back].bz = -GINCANA.belt
-  FEIRA.press.forEach(([z, w], i) => k.pusher(-3, z, 1.6, 0.9, 2.2, 3, 0, w, i * 1.3, Y))
+  FEIRA.press.forEach(([z, w], i) => k.pusher(0, z, 1.6, 0.9, 2.2, FEIRA.pressAx, 0, w, i * 1.3, Y))
   k.box(0, 82, 7, 4, 6, 7, 2, 0, 1.4, Y)
   // ── 3. martelos ──
   k.box(0, 99, 6, 13, 6, 7, 3, 0, 1.4, Y)
