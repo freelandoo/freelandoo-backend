@@ -1707,7 +1707,9 @@ const CLAREIRA = {
     (row % 2 ? [-DX / 2, DX / 2] : [-DX, 0, DX]).map((x) => [x, DZ0 + row * DZ]         ),
   )                                          ,
   discR: DR,
+
   /** Giro das fatias (rad/s, alternando o lado). */
+
   discSpin: [2.0, 2.3, 2.15]                     ,
   /** Giro dos tocos (rad/s). */
   stumpSpin: 3.2,
@@ -1764,6 +1766,8 @@ function courseClareira()         {
     const p = k.disc(x, z, r, 1, 1, 3, CY1 + h)
     k.pads[p].d = CY1 + h
     k.pads[p].spin = (i % 2 ? 1 : -1) * K.stumpSpin
+    // 20/11 (dificuldade): semente pendurada balançando por cima dos tocos pares (joga no pântano)
+    if (i > 0 && i % 2 === 0) k.swing(x, z, CY1 + h + 9, 7.4, 1.25, 1.0, 1.9, i * 1.3)
   })
   for (const [x, z] of K.trees) k.post(x, z, K.treeR, 0, CY1 + 12, 0)
   // ── 4. o barranco, a vitória-régia gigante que gira e as sementes penduradas ──
@@ -1772,8 +1776,9 @@ function courseClareira()         {
   const lily = k.disc(0, K.lily.z, K.lily.r, 5, 1, 4, CY2)
   k.pads[lily].spin = K.lilySpin
   let ph = 0
+  // 20/11 (dificuldade): sementes maiores e com balanço mais largo
   for (const z of [176.5, 181, 185.5]) {
-    k.swing(0, z + CB, CY2 + 9, 7.4, 1.25, 0.95, 2.05, ph)
+    k.swing(0, z + CB, CY2 + 9, 7.4, 1.4, 1.1, 2.05, ph)
     ph += 2.3
   }
   k.box(0, 192.6 + CB, 2, 2.6, 5, 1, 4, 0, 1.2, CY2)
@@ -2057,20 +2062,23 @@ function courseMoinhos()         {
   for (const [x, z0, len, w] of K.rollers) k.drum(x, z0, DECK + 0.25, K.R, [{ len, w, holes: [] }], 0.8, true)
   // ── 2. os blocos de arenito ──
   k.box(0, 72, 9, 17.1, 5, 1, 2)
-  k.pusher(0, 62, 1.6, 1.6, 2.2, 6.4, 0, 1.0, 0)
-  k.pusher(0, 72, 1.6, 1.6, 2.2, 6.4, 0, 1.25, 2.1)
-  k.pusher(0, 82, 1.6, 1.6, 2.2, 6.4, 0, 0.9, 4.0)
+  // 20/11 (dificuldade): cinco blocos (antes três), mais rápidos e indo até a beira (jogam no vazio)
+  k.pusher(0, 60, 1.6, 1.6, 2.2, 7.2, 0, 1.25, 0)
+  k.pusher(0, 66, 1.6, 1.6, 2.2, 7.2, 0, 1.45, 1.3)
+  k.pusher(0, 72, 1.6, 1.6, 2.2, 7.2, 0, 1.35, 2.6)
+  k.pusher(0, 78, 1.6, 1.6, 2.2, 7.2, 0, 1.55, 3.9)
+  k.pusher(0, 84, 1.6, 1.6, 2.2, 7.2, 0, 1.2, 5.0)
   // ── 3. as pás do moinho sobre dois discos de pedra ──
   k.box(0, 91, 2.2, 2.1, 0, 1, 3)
   k.disc(0, 100, 7, 2, 1, 3)
-  k.sweep(0, 100, DECK + 0.55, 6.7, 0.32, 0.95, 0, true)
+  k.sweep(0, 100, DECK + 0.55, 6.7, 0.32, 1.3, 0, true)
   k.box(0, 108.5, 2.2, 1.8, 0, 1, 3)
   k.disc(0, 117, 7, 2, 1, 3)
-  k.sweep(0, 117, DECK + 0.55, 6.7, 0.32, -1.05, Math.PI / 2, true)
+  k.sweep(0, 117, DECK + 0.55, 6.7, 0.32, -1.4, Math.PI / 2, true)
   // ── 4. o campo de cata-ventos ──
   k.box(0, 140, 9, 15.9, 5, 1, 4)
   for (const [x, z, w] of K.vanes) {
-    k.sweep(x, z, DECK + 0.5, 1.9, 0.26, w, x * 0.7, true)
+    k.sweep(x, z, DECK + 0.5, 2.25, 0.26, w * 1.25, x * 0.7, true)
     k.post(x, z, 0.2, DECK, DECK + 2.6, 4)
   }
   // ── 5. a subida com as pedras ──
@@ -2341,13 +2349,20 @@ function courseGangorras()         {
   for (const z of K.rows) for (const x of K.lanes) longSaw(x, z, K.long.hx, K.long.hz, K.long.max, K.long.k)
   k.box(0, 27.7, 6.2, 2.9, 1, 1, 1)
   k.box(0, 43.3, 6.2, 3.1, 1, 1, 1)
+  // 20/11 (dificuldade): nos patamares, a barra baixa girando (pule ou cai no vazio)
+  k.sweep(0, 27.7, DECK + 0.55, 5.6, 0.3, 1.1, 0, true)
+  k.sweep(0, 43.3, DECK + 0.55, 5.6, 0.3, -1.2, Math.PI / 2, true)
   // ── 2. a corrente: três elos emendados em cada pista ──
   for (const x of [-K.chainX, K.chainX]) for (const z of K.chain) longSaw(x, z, K.chainHx, K.long.hz, K.long.max, K.long.k)
+  // 20/11 (dificuldade): pêndulos atravessando as duas correntes
+  k.swing(0, 55.7, DECK + 8.6, 7.2, 1.05, 0.85, 1.9, 0)
+  k.swing(0, 65, DECK + 8.6, 7.2, 1.05, 0.85, 1.9, 2.2)
   k.box(0, 77.5, 5.2, 3, 1, 1, 2)
   // ── 3. os pratos de lado ──
   // descansam tortos, cada um para um lado: quem pisa no lado baixo escorrega e tomba mais; o peso no lado alto endireita
   K.plates.forEach(([x, z, hx], i) => k.saw(x, z, DECK, hx, K.plateHz, 1, 0.28, i % 2 ? 0.13 : -0.13, 0.9))
   k.box(0, 113.4, 6.2, 3, 1, 1, 3)
+  k.sweep(0, 113.4, DECK + 0.55, 5.6, 0.3, 1.25, 0.8, true)
   // ── 4. a balança grande ──
   longSaw(0, K.big.z, K.big.hx, K.big.hz, K.big.max, K.big.k)
   const z0 = K.big.z + K.big.hz + 0.3
@@ -2752,26 +2767,47 @@ function courseComportas()         {
   row(26, 1.4, K.gx, K.wall, 4, (i) => i * 0.8, 1)
   row(40, 1.4, K.gx, K.wall, 4, (i) => (4 - i) * 0.8, 1)
   row(54, 1.4, K.gx, K.wall, 3.6, (i) => (i % 2) * 1.8, 1)
-  for (const [x, z] of [[-5, 33], [5, 33], [0, 47], [-9, 47], [9, 47]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  for (const [x, z] of [[-9.4, 33], [9.4, 33], [-9.4, 47], [9.4, 47]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  // 20/11 (dificuldade): martelo no 1º vão e barra baixa girando no 2º (pule)
+  k.swing(0, 33, DECK + 8, 6.6, 1.0, 1.05, 2.0, 0.3)
+  k.sweep(0, 47, DECK + 0.55, 4.6, 0.32, -0.72, Math.PI / 2, true)
   // ── 2. comportas baixas (pule) e fundas ──
   k.box(0, 85, 11, 20.2, 3, 1, 2)
   row(72, 1.4, K.gx, K.wall, 3.2, (i) => i * 0.64, 2, (i) => (i % 2 ? K.lowH : K.gateH))
   row(84, 1.4, K.gx, K.wall, 3, (i) => (i % 2) * 1.5, 2)
   row(96, 2.4, K.gx, K.wall, 4.4, (i) => [0, 2.2, 1.1, 3.3, 0.5][i], 2)
-  for (const [x, z] of [[-6.3, 78], [6.3, 78], [-2.1, 90], [2.1, 90]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  for (const [x, z] of [[-9.4, 78], [9.4, 78], [-9.4, 90], [9.4, 90]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  // 20/11 (dificuldade): martelos do guindaste em pêndulo entre as fileiras (jogam para a beira)
+  k.swing(-3.6, 78, DECK + 8, 6.6, 1.0, 1.0, 2.0, 0)
+  k.swing(3.6, 78, DECK + 8, 6.6, 1.0, 1.0, 2.0, Math.PI)
+  k.swing(-2.4, 90, DECK + 8, 6.6, 1.05, 1.1, 2.1, 0.8)
+  k.swing(2.4, 90, DECK + 8, 6.6, 1.05, 1.1, 2.1, 0.8 + Math.PI)
+
   // ── 3. funil com muretas e a fileira estreita ──
   k.box(0, 120, 7, 15.1, 3, 1, 3)
   k.box(-2.5, 112, 4.5, 0.45, 2, 1, 3, 0, 1.0 + 1.4, DECK + 1.0)
   k.box(2.5, 119, 4.5, 0.45, 2, 1, 3, 0, 1.0 + 1.4, DECK + 1.0)
+  // 20/11 (dificuldade): no funil, um pistão sai da mureta e soca para fora (cai do deck)
+  k.glove(-6.4, 110.6, DECK + 1, 1, 11.4, 1.1, 2.0, 0)
+  k.glove(6.4, 118.2, DECK + 1, -1, 11.4, 1.1, 2.0, 1.1)
   row(128, 1.4, K.gx3, K.wall3, 2.8, (i) => i * 0.93, 3)
   // ── 4. graxa com comportas lentas ──
   const g = k.box(0, 150, 11, 15, 4, 1, 4)
   k.pads[g].sl = K.grease
   row(150, 1.4, K.gx, K.wall, 5, (i) => i, 4)
-  for (const [x, z] of [[-6, 142], [6, 142], [-3, 158], [3, 158]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+  // 20/11 (dificuldade): na graxa, martelos em pêndulo (no escorregadio é difícil fugir)
+  k.swing(-3.2, 142, DECK + 8, 6.6, 1.0, 1.05, 2.0, 0)
+  k.swing(3.2, 142, DECK + 8, 6.6, 1.0, 1.05, 2.0, Math.PI)
+
+  for (const [x, z] of [[-3, 158], [3, 158]]                      ) k.post(x, z, 0.8, DECK, DECK + 2.2, 2)
+
   // ── 5. a fileira rápida e a subida ──
   k.box(0, 172, 11, 7, 3, 1, 5)
   row(172, 1.4, K.gx, K.wall, 2.6, (i) => i * 0.52, 5)
+  // 20/11 (dificuldade): martelos antes da fileira rápida
+  k.swing(-2.8, 167.4, DECK + 8, 6.6, 1.0, 1.0, 2.2, 0.4)
+  k.swing(2.8, 167.4, DECK + 8, 6.6, 1.0, 1.0, 2.2, 0.4 + Math.PI)
+
   const z0 = 179
   k.slope(0, z0, z0 + 14, DECK, DECK + 3, 8, 0, 1, 5)
   k.box(0, z0 + 14 + 7.8, 9, 7.8, 1, 0, 6, 0, 1.6, DECK + 3)
