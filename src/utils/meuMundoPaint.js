@@ -419,6 +419,8 @@ function polySolid(pts                   , y0        , y1        )            {
                 
                                                                    
                                                                
+                                                                                  
+                
  
                            
                                                                                                 
@@ -1420,18 +1422,372 @@ const USINA           = {
 // ═══ catálogo ═════════════════════════════════════════════════════════════════
 
 /** Os mapas, na ordem do cartão. A Cidade é o mapa de antes (sim/map.ts). */
+// ═══ TODAS AS FASES 4× MAIORES (Alex, 2026-11-21) ═════════════════════════════
+// Pedido: "aumente 4x todas as fases, com 4 ilhas grandes de nascimento, e
+// coloque bastantes elementos da Gincana de cada fase lá". Um passo só, depois
+// do desenho de cada mapa (vale para as 11):
+//  1. tudo fica 2× mais LARGO (x, z, contornos, enfeites grandes) — 4× a área.
+//     A ALTURA não muda: degrau, pulo, cama elástica e portal ≥ 22 m seguem
+//     iguais (o vão é que dobra);
+//  2. cada time ganha a 2ª ilha grande de NASCIMENTO (4 no mapa), atrás da
+//     base; no 2×2 cada jogador nasce numa ilha (vaga 1 = a ilha nova);
+//  3. todo vão que passou de 10 m (a ponte alcança 12) ganha uma PROVA DA
+//     GINCANA da fase no meio: tábua de gangorra, tora, hélice, tanque,
+//     comporta, bloco de gelo… parada, como tudo no Paint. Peças entre as
+//     ilhas que já eram vizinhas (vão ≤ 11 m e subida ≤ 5,5 m), na altura do
+//     meio do caminho (o degrau só diminui), com vão de 1,5–8 m entre elas
+//     (ponte de 1–3 tiros); nunca a menos de 4,5 m de altura de outra ilha em
+//     cima/embaixo; o lado do time 1 é o espelho.
+// Gatinhos, cápsulas e o portal ficam onde estavam (no lugar 2× mais longe).
+
+/** Quanto cada fase cresce na horizontal (2 = 4× a área). */
+const PAINT_SPAN = 2
+/** Acima disto (m) o vão entre duas ilhas vizinhas ganha uma prova da Gincana. */
+const GK_MAX_GAP = 10
+/** Vão máximo entre as peças da prova (m). */
+const GK_STEP_GAP = 8
+
+/** As provas da Gincana de cada fase (o tipo da peça; o desenho fica em engine/arenas/gincana.ts). */
+const PAINT_GINCANA                                    = {
+  cidade: ["gk-barril", "gk-feira", "gk-aro", "gk-tanque"],
+  jardim: ["gk-aro", "gk-tabua", "gk-moinho"],
+  fabrica: ["gk-engrenagem", "gk-tanque", "gk-comporta", "gk-esteira"],
+  floresta: ["gk-tora", "gk-cristal", "gk-aro", "gk-cogumelo"],
+  templo: ["gk-aro", "gk-tabua", "gk-cristal"],
+  forja: ["gk-crosta", "gk-tanque", "gk-engrenagem"],
+  canion: ["gk-tabua", "gk-moinho", "gk-piao"],
+  gelo: ["gk-bloco", "gk-aro", "gk-barco"],
+  orbital: ["gk-helice", "gk-aro", "gk-orbe"],
+  lua: ["gk-tora", "gk-serra", "gk-cogumelo"],
+  usina: ["gk-comporta", "gk-tanque", "gk-engrenagem"],
+}
+
+/** Forma da peça: comprimento ao longo do caminho e o contorno (em volta de 0,0; `ang` = direção do caminho). */
+function gkShape(tag        , ang        , center         )                            {
+  const deg = ang / D2R
+  // no meio (x = 0) só forma simétrica no espelho
+  if (center) return { len: 6, s: { c: 3 } }
+  switch (tag) {
+    case "gk-tabua":
+    case "gk-helice":
+    case "gk-esteira":
+      return { len: 7.5, s: { w: 2.8, d: 7.5, rot: deg } }
+    case "gk-tora":
+      return { len: 7, s: { w: 2.6, d: 7, rot: deg } }
+    case "gk-comporta":
+      return { len: 4.4, s: { w: 6.4, d: 4.4, rot: deg } }
+    case "gk-bloco":
+      return { len: 5, s: { w: 5, d: 5, rot: deg } }
+    case "gk-barco":
+      return { len: 8, s: { n: 6, r: 4, sx: 0.62, rot: deg } }
+    case "gk-engrenagem":
+      return { len: 6.6, s: { n: 10, r: 3.3 } }
+    case "gk-moinho":
+      return { len: 6.8, s: { n: 6, r: 3.4, rot: deg } }
+    case "gk-crosta":
+      return { len: 6.4, s: { n: 7, r: 3.2, j: 0.4 } }
+    case "gk-cristal":
+      return { len: 6, s: { n: 5, r: 3, rot: deg } }
+    case "gk-tanque":
+      return { len: 6.6, s: { c: 3.3 } }
+    default:
+      // barril, aro, feira (o toldo redondo), cogumelo, serra, pião, orbe
+      return { len: 6, s: { c: 3 } }
+  }
+}
+
+/** Contorno de qualquer ilha (o círculo da Cidade vira 24 cantos). */
+function islPts(isl        )           {
+  if (isl.poly) return isl.poly
+  const out           = []
+  for (let i = 0; i < 24; i++) out.push(round(isl.x + Math.sin((i / 24) * Math.PI * 2) * isl.r), round(isl.z + Math.cos((i / 24) * Math.PI * 2) * isl.r))
+  return out
+}
+
+/** Menor distância entre dois contornos convexos (0 se se cruzam) e os dois pontos mais próximos. */
+function polyGap(A                   , B                   ) {
+  const sa = polySolid(A, 0, 1)
+  const sb = polySolid(B, 0, 1)
+  const inside = (s           , x        , z        ) => {
+    for (let i = 0; i < s.d.length; i++) if (s.n[i * 2] * x + s.n[i * 2 + 1] * z > s.d[i] + 1e-6) return false
+    return true
+  }
+  for (let i = 0; i < A.length; i += 2) if (inside(sb, A[i], A[i + 1])) return { d: 0, ax: A[i], az: A[i + 1], bx: A[i], bz: A[i + 1] }
+  for (let i = 0; i < B.length; i += 2) if (inside(sa, B[i], B[i + 1])) return { d: 0, ax: B[i], az: B[i + 1], bx: B[i], bz: B[i + 1] }
+  let best = { d: Infinity, ax: 0, az: 0, bx: 0, bz: 0 }
+  const tryPt = (px        , pz        , Q                   , fromA         ) => {
+    const m = Q.length / 2
+    for (let i = 0; i < m; i++) {
+      const qx0 = Q[i * 2]
+      const qz0 = Q[i * 2 + 1]
+      const ex = Q[((i + 1) % m) * 2] - qx0
+      const ez = Q[((i + 1) % m) * 2 + 1] - qz0
+      const t = Math.max(0, Math.min(1, ((px - qx0) * ex + (pz - qz0) * ez) / (ex * ex + ez * ez || 1)))
+      const qx = qx0 + ex * t
+      const qz = qz0 + ez * t
+      const d = Math.hypot(px - qx, pz - qz)
+      if (d < best.d) best = fromA ? { d, ax: px, az: pz, bx: qx, bz: qz } : { d, ax: qx, az: qz, bx: px, bz: pz }
+    }
+  }
+  for (let i = 0; i < A.length; i += 2) tryPt(A[i], A[i + 1], B, true)
+  for (let i = 0; i < B.length; i += 2) tryPt(B[i], B[i + 1], A, false)
+  return best
+}
+
+function islandOfPts(id        , kind            , team        , y        , pts          , tag         )         {
+  const c = polyCenter(pts)
+  const r = inradius(pts)
+  const isl         = { id, kind, team, x: round(c.x), y: round(y), z: round(c.z), r, depth: round(Math.min(r * 2.2, polySolid(pts, 0, 1).r) * 1.15 + 1.6), poly: pts }
+  if (tag) isl.tag = tag
+  return isl
+}
+
+const mirrorPts = (P                   ) => P.map((v, i) => (i % 2 ? v : round(-v)))
+
+/** A fase 4× maior (o passo de cima). A ilha do chefão não muda. */
+function enlargeMap(map          )           {
+  const S = PAINT_SPAN
+  const kit = PAINT_GINCANA[map.id] ?? PAINT_GINCANA.cidade
+  const sc = (v        ) => round(v * S)
+  const orig = map.islands.map((i) => ({ ...i, pts: islPts(i) }))
+
+  // 1. tudo 2× mais largo
+  const islands           = map.islands.map((i) => {
+    if (i.kind === "boss") return i
+    const out         = { ...i, x: sc(i.x), z: sc(i.z), r: round(i.r * S), depth: round(i.depth * 1.6) }
+    if (i.poly) out.poly = i.poly.map(sc)
+    return out
+  })
+  const props = map.props.map((p) => {
+    const out            = { ...p, x: sc(p.x), z: sc(p.z) }
+    if (p.s >= 1.5) out.s = round(p.s * S)
+    if (p.w && p.w >= 2) out.w = round(p.w * S)
+    return out
+  })
+  const inBoss = (p                                     ) => p.y >= map.boss.y - 0.01 && Math.hypot(p.x - map.boss.x, p.z - map.boss.z) < 40
+  const mv =                                                (p   )    => (inBoss(p) ? p : { ...p, x: sc(p.x), z: sc(p.z) })
+  const cats = map.cats.map(mv)
+  const capsules = map.capsules.map(mv)
+  const portals = map.portals.map(mv)
+  const bases              = map.bases.map((b) => ({ ...b, spawns: b.spawns.map(mv) }))
+  const items = () => [...cats, ...capsules, ...portals, ...bases.flatMap((b) => b.spawns)]
+
+  /** O espelho (x → −x) de cada ilha. */
+  const mirrorOf = (isl        ) => islands.find((o) => o.kind !== "boss" && Math.abs(o.x + isl.x) < 0.02 && Math.abs(o.z - isl.z) < 0.02 && o.y === isl.y)
+  /** Bate em ilha (a menos de 4,5 m de altura), enfeite que colide ou gatinho/cápsula/nascimento? */
+  const clash = (cand          , y        , ignore             , extra          ) => {
+    for (const o of [...islands, ...extra]) {
+      if (o.kind === "boss" || Math.abs(o.y - y) >= 4.5) continue
+      // as duas pontas da prova: só não pode grudar (vão ≥ 1 m)
+      if (polyGap(cand, islPts(o)).d < (ignore.has(o.id) ? 1 : 1.5)) return true
+    }
+    const c = polyCenter(cand)
+    const cr = polySolid(cand, 0, 1).r
+    for (const p of props) {
+      if (p.y > y + 2.2 || p.y + p.h < y - 3) continue
+      const reach = p.kind === "pillar" ? p.s : Math.hypot(p.w ?? p.s, p.s)
+      if (Math.hypot(p.x - c.x, p.z - c.z) < reach + cr + 1) return true
+    }
+    for (const it of items()) if (Math.abs(it.y - y) < 2.5 && Math.hypot(it.x - c.x, it.z - c.z) < cr + 1.2) return true
+    return false
+  }
+  /** Ilha nova e o espelho dela (no meio, uma só). Devolve [esquerda, direita]. */
+  const addPair = (kind            , y        , L          , tag                    , team        )                   => {
+    const c = polyCenter(L)
+    if (Math.abs(c.x) < 0.02) {
+      const a = islandOfPts(islands.length, kind, -1, y, L, tag)
+      islands.push(a)
+      return [a, a]
+    }
+    const a = islandOfPts(islands.length, kind, team, y, L, tag)
+    islands.push(a)
+    const b = islandOfPts(islands.length, kind, team === 0 ? 1 : team, y, mirrorPts(L), tag)
+    islands.push(b)
+    return [a, b]
+  }
+
+  // 2. a 2ª ilha de nascimento de cada time (atrás da base, do lado de fora)
+  {
+    const base = islands[bases[0].island]
+    const bp = islPts(base)
+    const local = bp.map((v, i) => round((v - (i % 2 ? base.z : base.x)) * 0.62))
+    let done = false
+    for (const off of [0, 25, -25, 50, -50, 75, -75, 100, -100, 125, -125]) {
+      const a = (-90 + off) * D2R // −x = para fora (time 0)
+      let d = polySolid(bp, 0, 1).r
+      let cand           = []
+      for (let k = 0; k < 60; k++) {
+        const cx = base.x + Math.sin(a) * d
+        const cz = base.z + Math.cos(a) * d
+        cand = local.map((v, i) => round(v + (i % 2 ? cz : cx)))
+        const g = polyGap(cand, bp).d
+        if (Math.abs(g - 14) < 0.05) break
+        d += 14 - g
+      }
+      if (polyCenter(cand).x > -20) continue
+      if (clash(cand, base.y, new Set(), [])) continue
+      const [l, r] = addPair("base", base.y, cand, base.tag, 0)
+      for (const [b, isl] of [[bases[0], l], [bases[1], r]]         ) {
+        const sx = b.team === 0 ? -1 : 1
+        const spot = { x: round(isl.x), y: isl.y, z: round(isl.z), facing: round(Math.atan2(-sx, 0)) }
+        b.spawns = [b.spawns[0], spot, b.spawns[2] ?? b.spawns[0]]
+        b.extra = isl.id
+      }
+      done = true
+      break
+    }
+    if (!done) throw new Error(`paint ${map.id}: sem lugar para a 2ª ilha de nascimento`)
+  }
+
+  // 3. as provas da Gincana nos vãos que ficaram largos
+  const parent           = []
+  const find = (i        )         => {
+    while (parent.length <= i) parent.push(parent.length)
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]]
+    return i
+  }
+  const unite = (a        , b        ) => {
+    parent[find(a)] = find(b)
+  }
+                                                                 
+  const edges         = []
+  for (let i = 0; i < orig.length; i++) {
+    for (let j = i + 1; j < orig.length; j++) {
+      const A = orig[i]
+      const B = orig[j]
+      if (A.kind === "boss" || B.kind === "boss" || Math.abs(A.y - B.y) > 5.5) continue
+      const g = polyGap(A.pts, B.pts).d
+      if (g > 0 && g <= 11) edges.push({ a: i, b: j, g, force: false })
+    }
+  }
+  const routeKey = new Set        ()
+  for (const r of map.routes) for (let i = 1; i < r.length; i++) routeKey.add(`${Math.min(r[i - 1], r[i])}:${Math.max(r[i - 1], r[i])}`)
+  for (const e of edges) if (routeKey.has(`${e.a}:${e.b}`)) e.force = true
+  for (const b of bases) edges.push({ a: b.island, b: b.extra , g: 7, force: true })
+  edges.sort((p, q) => Number(q.force) - Number(p.force) || p.g - q.g || p.a - q.a || p.b - q.b)
+  // vãos que crescendo ainda ficam ≤ 10 m ligam sem prova
+  for (const e of edges) if (e.g * S <= GK_MAX_GAP) unite(e.a, e.b)
+
+  const chains = new Map                  () // "a:b" → as peças de a até b (o espelho tem a chave dele)
+  let gkSeq = 0
+  for (const e0 of edges) {
+    // o par todo do lado direito vira o espelho (a prova é feita na esquerda e espelhada)
+    let e = e0
+    if (islands[e.a].x >= -0.02 && islands[e.b].x >= -0.02 && (islands[e.a].x > 0.02 || islands[e.b].x > 0.02)) {
+      const ma = mirrorOf(islands[e.a])
+      const mb = mirrorOf(islands[e.b])
+      if (!ma || !mb) continue
+      e = { ...e0, a: ma.id, b: mb.id }
+    }
+    if (chains.has(`${e.a}:${e.b}`) || chains.has(`${e.b}:${e.a}`)) continue
+    const A = islands[e.a]
+    const B = islands[e.b]
+    const left = A.x <= 0.02 && B.x <= 0.02
+    const selfMirror = !left && mirrorOf(A)?.id === B.id
+    if (!left && !selfMirror) continue
+    const gp = polyGap(islPts(A), islPts(B))
+    if (gp.d <= GK_MAX_GAP) continue
+    // fora da rota: só onde ainda não liga, ou vão médio (mais provas pelo mapa)
+    if (!e.force && find(e.a) === find(e.b) && gp.d > 16) continue
+    const tag = kit[gkSeq % kit.length]
+    let ax = gp.ax
+    let bx = gp.bx
+    if (Math.abs(A.x) < 0.02 && Math.abs(B.x) < 0.02) ax = bx = 0
+    const az = gp.az
+    const bz = gp.bz
+    const G = Math.hypot(bx - ax, bz - az)
+    if (G <= GK_MAX_GAP) continue
+    const ux = (bx - ax) / G
+    const uz = (bz - az) / G
+    const ang = Math.atan2(ux, uz)
+    const probe = gkShape(tag, ang, false)
+    let n = 1
+    while ((G - n * probe.len) / (n + 1) > GK_STEP_GAP) n++
+    const gap = (G - n * probe.len) / (n + 1)
+    if (gap < 1.5) continue
+    let placedIds                    = null
+    for (const side of [0, 3, -3, 6, -6]) {
+      const made                                                = []
+      let bad = false
+      for (let k = 0; k < n; k++) {
+        const t = gap * (k + 1) + probe.len * (k + 0.5)
+        const x = ax + ux * t + uz * side
+        const z = az + uz * t - ux * side
+        const center = Math.abs(x) < 0.02 || (selfMirror && Math.abs(x) < 3)
+        if (!center && x > 0) continue // a metade da direita da prova espelhada é o espelho da esquerda
+        const P = outline(gkShape(tag, ang, center).s).map((v, i) => round(v + (i % 2 ? z : center ? 0 : x)))
+        if (!center && P.some((v, i) => i % 2 === 0 && v > -0.6)) {
+          bad = true
+          break
+        }
+        made.push({ y: round(A.y + (B.y - A.y) * (t / G)), P, center })
+      }
+      if (bad || !made.length) continue
+      const temp           = []
+      const ignore = new Set([e.a, e.b, mirrorOf(A)?.id ?? -1, mirrorOf(B)?.id ?? -1])
+      for (const m of made) {
+        for (const P of m.center ? [m.P] : [m.P, mirrorPts(m.P)]) {
+          if (clash(P, m.y, ignore, temp)) bad = true
+          temp.push(islandOfPts(-1, "wing", 0, m.y, P))
+        }
+        if (bad) break
+      }
+      if (bad) continue
+      const ids             = [[], []]
+      const both = A.team === -1 && B.team === -1
+      for (const m of made) {
+        const [l, r] = addPair("branch", m.y, m.P, tag, both ? -1 : 0)
+        ids[0].push(l.id)
+        ids[1].push(r.id)
+      }
+      if (selfMirror) {
+        // prova de A até o espelho de A: esquerda → meio → direita
+        const right = made.filter((m) => !m.center).map((_, i) => ids[1][i]).reverse()
+        ids[0] = [...ids[0], ...right]
+        ids[1] = ids[0].slice().reverse()
+      }
+      placedIds = ids
+      break
+    }
+    if (!placedIds) {
+      if (e.force) throw new Error(`paint ${map.id}: a prova da Gincana não coube entre ${e.a} e ${e.b}`)
+      continue
+    }
+    gkSeq++
+    const mA = mirrorOf(A)
+    const mB = mirrorOf(B)
+    chains.set(`${e.a}:${e.b}`, placedIds[0])
+    if (mA && mB && !chains.has(`${mA.id}:${mB.id}`) && !chains.has(`${mB.id}:${mA.id}`)) chains.set(`${mA.id}:${mB.id}`, placedIds[1])
+    for (const id of placedIds.flat()) unite(id, e.a)
+    unite(e.a, e.b)
+    if (mA && mB) unite(mA.id, mB.id)
+  }
+
+  // a rota de cada time passa pelas peças
+  const routes = map.routes.map((r) => {
+    const out = [r[0]]
+    for (let i = 1; i < r.length; i++) {
+      const fwd = chains.get(`${r[i - 1]}:${r[i]}`)
+      const back = chains.get(`${r[i]}:${r[i - 1]}`)
+      out.push(...(fwd ?? (back ? back.slice().reverse() : [])), r[i])
+    }
+    return out
+  })
+  return { ...map, islands, props, solids: staticSolids(islands, props), cats, capsules, bases, portals, routes }
+}
+
 const PAINT_MAPS = [
-  { id: "cidade", v: 1 },
-  { id: "jardim", v: 1 },
-  { id: "fabrica", v: 1 },
-  { id: "floresta", v: 1 },
-  { id: "templo", v: 1 },
-  { id: "forja", v: 1 },
-  { id: "canion", v: 1 },
-  { id: "gelo", v: 1 },
-  { id: "orbital", v: 1 },
-  { id: "lua", v: 1 },
-  { id: "usina", v: 1 },
+  { id: "cidade", v: 2 },
+  { id: "jardim", v: 2 },
+  { id: "fabrica", v: 2 },
+  { id: "floresta", v: 2 },
+  { id: "templo", v: 2 },
+  { id: "forja", v: 2 },
+  { id: "canion", v: 2 },
+  { id: "gelo", v: 2 },
+  { id: "orbital", v: 2 },
+  { id: "lua", v: 2 },
+  { id: "usina", v: 2 },
 ]         
                                                           
 
@@ -1450,7 +1806,7 @@ function paintMapVersion(id        ) {
 /** O mapa da partida (o do modo: 2×2 e 3×3 com mais gatinhos). */
 function buildPaintMap(mode            = "solo", id         = "cidade")           {
   const arena = ARENAS[paintMapId(id)]
-  return arena ? buildArena(arena, mode) : buildCidadeMap(mode)
+  return enlargeMap(arena ? buildArena(arena, mode) : buildCidadeMap(mode))
 }
 
 /** Apuração da votação (mm3d-76): mais votado; empate = sorteio entre os empatados (`rand` em [0, 1) vem da sala). */
@@ -3214,4 +3570,4 @@ function capsuleRespawn(c            ) {
 /** Atalho para quem só precisa saber se a pose está fora (cliente). */
 const PAINT_FIRE_COLORS                        = [PAINT.BRIDGE, PAINT.HARM, PAINT.STEP, PAINT.WALL]
 
-module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, ammoCap, polyCenter, polySolid, COLLIDER_DEPTH, BOSS, round, hash01, bossIsland, staticSolids, buildCidadeMap, fellOut, spawnPoint, JARDIM, FABRICA, FLORESTA, TEMPLO, FORJA, CANION, GELO, ORBITAL, LUA, USINA, PAINT_MAPS, paintMapId, paintMapVersion, buildPaintMap, tallyPaintVotes, PAINT_BOSS_AT, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, newMorkhan, morkhanActive, morkhanTrailAdd, morkhanFlat, morkhanSpawn, morkhanVanish, morkhanStep, PaintMatch, capsuleGive, capsuleRespawn, PAINT_FIRE_COLORS };
+module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, ammoCap, polyCenter, polySolid, COLLIDER_DEPTH, BOSS, round, hash01, bossIsland, staticSolids, buildCidadeMap, fellOut, spawnPoint, JARDIM, FABRICA, FLORESTA, TEMPLO, FORJA, CANION, GELO, ORBITAL, LUA, USINA, PAINT_SPAN, PAINT_GINCANA, enlargeMap, PAINT_MAPS, paintMapId, paintMapVersion, buildPaintMap, tallyPaintVotes, PAINT_BOSS_AT, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, newMorkhan, morkhanActive, morkhanTrailAdd, morkhanFlat, morkhanSpawn, morkhanVanish, morkhanStep, PaintMatch, capsuleGive, capsuleRespawn, PAINT_FIRE_COLORS };

@@ -318,7 +318,8 @@ for (const team of [0, 1]) {
     match.tick(T.countdown + 0.01);
     assert.equal(match.phase, "play");
     const bot = climber(match, team);
-    const islands = match.map.islands.filter((i) => i.team === team && (i.kind === "path" || i.kind === "summit"));
+    // 2026-11-21: a fase 4× maior tem provas da Gincana entre as ilhas — o robô segue a rota do time
+    const islands = match.map.routes[team].slice(1).map((id) => match.map.islands[id]);
     const base = match.map.islands[match.map.bases[team].island];
     bot.sweep(base);
     for (const isl of islands) {
