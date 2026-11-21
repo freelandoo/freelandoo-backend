@@ -382,6 +382,8 @@ function polySolid(pts                   , y0        , y1        )            {
                  
                                                                                                     
               
+                                                                                  
+             
  
                             
                           
@@ -1431,6 +1433,7 @@ const USINA           = {
 //     iguais (o vão é que dobra);
 //  2. cada time ganha a 2ª ilha grande de NASCIMENTO (4 no mapa), atrás da
 //     base; no 2×2 cada jogador nasce numa ilha (vaga 1 = a ilha nova);
+//  4. (depois) 4× MAIS ILHAS, inclusive na altura dos portais — ver o passo 4 no código.
 //  3. todo vão que passou de 10 m (a ponte alcança 12) ganha uma PROVA DA
 //     GINCANA da fase no meio: tábua de gangorra, tora, hélice, tanque,
 //     comporta, bloco de gelo… parada, como tudo no Paint. Peças entre as
@@ -1446,6 +1449,22 @@ const PAINT_SPAN = 2
 const GK_MAX_GAP = 10
 /** Vão máximo entre as peças da prova (m). */
 const GK_STEP_GAP = 8
+
+/** Quantas ilhas a fase termina tendo, em vezes as do desenho original (Alex: "quadruplicar o tanto de ilhas"). */
+const PAINT_FILL = 4
+/** As ilhas do tema que as novas copiam (forma e desenho); a Cidade (sem lista) ganha círculos. */
+const PAINT_FILL_TAGS                                    = {
+  jardim: ["garden", "ruins", "plinth"],
+  fabrica: ["plate", "gear", "chain"],
+  floresta: ["leaf", "crystal", "mushroom"],
+  templo: ["triangle", "ruins", "fragment"],
+  forja: ["basalt", "hexpad", "anvil", "basaltlong"],
+  canion: ["mesa", "spintop", "plank"],
+  gelo: ["floe", "berg", "iceblock", "deck"],
+  orbital: ["shard", "orb", "prism", "glassstep"],
+  lua: ["stump", "shroom", "log"],
+  usina: ["tank", "damstep", "spillway"],
+}
 
 /** As provas da Gincana de cada fase (o tipo da peça; o desenho fica em engine/arenas/gincana.ts). */
 const PAINT_GINCANA                                    = {
@@ -1763,6 +1782,108 @@ function enlargeMap(map          )           {
     if (mA && mB) unite(mA.id, mB.id)
   }
 
+  // 4. (Alex, 21/11) 4× MAIS ILHAS, também lá em cima na altura dos portais. As novas nascem
+  // perto de uma que já existe (vão 3–9 m, subida ≤ 3,5 m: sempre se chega com ponte e cama
+  // elástica), copiando as ilhas do tema da fase (e uma em quatro é prova da Gincana); nunca a
+  // menos de 9 m de altura de outra ilha que fique em cima/embaixo, longe de gatinho, cápsula,
+  // enfeite e portal; feitas no lado do time 0 e espelhadas. Uma em três traz uma cápsula.
+  {
+    const live = () => islands.filter((i) => i.kind !== "boss")
+    const target = Math.round(orig.filter((i) => i.kind !== "boss").length * PAINT_FILL)
+    const topY = portals[0].y
+    const highQuota = Math.round((target - live().length) * 0.3)
+    const tags = PAINT_FILL_TAGS[map.id] ?? []
+    const templates             = []
+    for (const t of tags) {
+      const isl = islands.find((i) => i.tag === t && i.kind !== "base" && i.kind !== "summit")
+      if (isl) templates.push(islPts(isl).map((v, i) => round(v - (i % 2 ? isl.z : isl.x))))
+    }
+    if (!templates.length) {
+      // a Cidade (ilhas redondas): círculos de 4–9 m
+      for (const r of [4.5, 6, 7.5, 9]) templates.push(outline({ c: r }))
+    }
+    let ext = { x0: 0, x1: 0, z0: 0, z1: 0 }
+    for (const i of live()) {
+      const r = polySolid(islPts(i), 0, 1).r
+      ext = { x0: Math.min(ext.x0, i.x - r), x1: Math.max(ext.x1, i.x + r), z0: Math.min(ext.z0, i.z - r), z1: Math.max(ext.z1, i.z + r) }
+    }
+    const zPad = Math.max(12, (ext.z1 - ext.z0) * 0.12)
+    let seq = 0
+    const R01 = () => hash01(++seq * 7919 + map.id.length * 104729)
+    const rotPts = (P          , a        , k        ) => {
+      const c = Math.cos(a)
+      const s = Math.sin(a)
+      const out           = []
+      for (let i = 0; i < P.length; i += 2) out.push(round((P[i] * c + P[i + 1] * s) * k), round((-P[i] * s + P[i + 1] * c) * k))
+      return out
+    }
+    let high = live().filter((i) => i.y >= topY - 10).length
+    const outerR = new Map                ()
+    const outer = (o        ) => {
+      let r = outerR.get(o.id)
+      if (r === undefined) outerR.set(o.id, (r = polySolid(islPts(o), 0, 1).r))
+      return r
+    }
+    const stuff = items()
+    let made = 0
+    for (let guard = 0; guard < 9000 && live().length < target; guard++) {
+      const wantHigh = made < highQuota * 2 && high < highQuota + 8
+      const pool = live().filter((i) => i.x <= 2 && (!wantHigh || i.y >= topY - 16))
+      if (!pool.length) break
+      const src = pool[Math.floor(R01() * pool.length)]
+      const gk = R01() < 0.25 && !!kit.length && map.id !== "cidade"
+      const tag = gk ? kit[Math.floor(R01() * kit.length)] : tags.length ? tags[Math.floor(R01() * tags.length)] : undefined
+      const ti = tags.length ? Math.max(0, tags.indexOf(tag ?? "")) : Math.floor(R01() * templates.length)
+      const local = gk ? outline(gkShape(tag , R01() * Math.PI * 2, false).s) : rotPts(templates[Math.min(ti, templates.length - 1)], R01() * Math.PI * 2, 0.75 + R01() * 0.45)
+      const lr = polySolid(local, 0, 1).r
+      const sr = polySolid(islPts(src), 0, 1).r
+      const a = R01() * Math.PI * 2
+      const g = 3 + R01() * 6
+      const d = sr + lr + g
+      const cx = src.x + Math.sin(a) * d
+      const cz = src.z + Math.cos(a) * d
+      if (cx > -lr - 2 || cx < ext.x0 - 6 || cz < ext.z0 - zPad || cz > ext.z1 + zPad) continue
+      const dy = wantHigh ? -1 + R01() * 4.5 : -3 + R01() * 6.5
+      const y = round(Math.min(topY + 5, Math.max(0.6, src.y + Math.min(3.5, dy))))
+      const P = local.map((v, i) => round(v + (i % 2 ? cz : cx)))
+      const gp = polyGap(P, islPts(src)).d
+      if (gp < 3 || gp > 10) continue
+      let bad = false
+      for (const o of islands) {
+        if (o.kind === "boss") continue
+        const lim = Math.abs(o.y - y)
+        if (lim >= 9) continue
+        if (Math.hypot(o.x - cx, o.z - cz) > lr + outer(o) + 5) continue
+        const og = polyGap(P, islPts(o)).d
+        if (og < 2.5 || (lim >= 4.5 && og < 4)) {
+          bad = true
+          break
+        }
+      }
+      if (bad) continue
+      for (const M of [P, mirrorPts(P)]) {
+        const c = polyCenter(M)
+        for (const p of props) {
+          if (p.y > y + 9 || p.y + p.h < y - 9) continue
+          const reach = p.kind === "pillar" ? p.s : Math.hypot(p.w ?? p.s, p.s)
+          if (Math.hypot(p.x - c.x, p.z - c.z) < reach + lr + 2) bad = true
+        }
+        for (const it of stuff) if (Math.abs(it.y - y) < 9 && Math.hypot(it.x - c.x, it.z - c.z) < lr + 4 && polyGap(M, outline({ c: 1.2 }).map((v, i) => v + (i % 2 ? it.z : it.x))).d < 2) bad = true
+        for (const pt of portals) if (Math.abs(pt.y - y) < 9 && Math.hypot(pt.x - c.x, pt.z - c.z) < lr + 12) bad = true
+      }
+      if (bad) continue
+      const [l, rr] = addPair("wing", y, P, tag, 0)
+      l.fill = true
+      rr.fill = true
+      made++
+      if (y >= topY - 10) high++
+      if (made % 3 === 0) {
+        const cc = (made % 9) / 3
+        for (const isl of l.id === islands.length - 1 ? [l] : [l, islands[l.id + 1]]) capsules.push({ id: capsules.length, c: cc             , x: isl.x, y: isl.y, z: isl.z })
+      }
+    }
+  }
+
   // a rota de cada time passa pelas peças
   const routes = map.routes.map((r) => {
     const out = [r[0]]
@@ -1777,17 +1898,17 @@ function enlargeMap(map          )           {
 }
 
 const PAINT_MAPS = [
-  { id: "cidade", v: 2 },
-  { id: "jardim", v: 2 },
-  { id: "fabrica", v: 2 },
-  { id: "floresta", v: 2 },
-  { id: "templo", v: 2 },
-  { id: "forja", v: 2 },
-  { id: "canion", v: 2 },
-  { id: "gelo", v: 2 },
-  { id: "orbital", v: 2 },
-  { id: "lua", v: 2 },
-  { id: "usina", v: 2 },
+  { id: "cidade", v: 3 },
+  { id: "jardim", v: 3 },
+  { id: "fabrica", v: 3 },
+  { id: "floresta", v: 3 },
+  { id: "templo", v: 3 },
+  { id: "forja", v: 3 },
+  { id: "canion", v: 3 },
+  { id: "gelo", v: 3 },
+  { id: "orbital", v: 3 },
+  { id: "lua", v: 3 },
+  { id: "usina", v: 3 },
 ]         
                                                           
 
