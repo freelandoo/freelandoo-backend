@@ -3,6 +3,7 @@ const express = require("express");
 const asyncHandler = require("../utils/asyncHandler");
 const WhatsappCloudWebhookController = require("../controllers/WhatsappCloudWebhookController");
 const MercadoPagoController = require("../controllers/MercadoPagoController");
+const MalvoWebhookController = require("../controllers/MalvoWebhookController");
 
 const router = Router();
 
@@ -56,6 +57,18 @@ router.post(
   "/mercadopago",
   express.json({ limit: "1mb" }),
   asyncHandler(MercadoPagoController.handleWebhook)
+);
+
+/**
+ * Malvo → bancos conectados da Carteira (mig 462).
+ *
+ * ⚠️ `express.raw()`, como a Meta: o HMAC (`Malvo-Signature`) é sobre os BYTES
+ * CRUS de "{t}.{corpo}". Ler como JSON antes torna a assinatura inconferível.
+ */
+router.post(
+  "/malvo",
+  express.raw({ type: "*/*", limit: "1mb" }),
+  asyncHandler(MalvoWebhookController.receive)
 );
 
 module.exports = router;

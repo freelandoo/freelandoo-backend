@@ -13,6 +13,8 @@ const SOURCES = [
   { flow: "loja_funcoes",   table: "public.tb_user_function_purchase", session_col: "stripe_session_id",         pending: "status = 'pending'" },
   { flow: "pet_carro",      table: "public.tb_space_slot_purchase",    session_col: "stripe_session_id",         pending: "status = 'pending'" },
   { flow: "condo_vagas",    table: "public.tb_condo_listing_slot",     session_col: "stripe_session_id",         pending: "status = 'pending'" },
+  // Bancos conectados na Carteira (mig 462).
+  { flow: "bancos_conectados", table: "public.tb_bank_access_payment", session_col: "stripe_session_id",     pending: "status = 'pending'" },
   // Selo verificado (mig 268).
   { flow: "selo_verificado", table: "public.tb_user_verification_payment", session_col: "stripe_session_id",    pending: "status = 'pending'" },
   // Delivery entre vizinhos (mig 248). Sem esta linha o radar de "pagou e não

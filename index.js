@@ -306,6 +306,22 @@ const server = app.listen(PORT, () => {
   setTimeout(tickAcademyFees, 11 * 60 * 1000);
   setInterval(tickAcademyFees, 10 * 60 * 1000);
 
+  // Job: bancos conectados na Carteira (mig 462). Pausa o auto-sync de quem
+  // perdeu o acesso ou não abre a Carteira há 30 dias (a Malvo cobra por item
+  // atualizado no mês), desconecta quem passou da carência e relê quem ficou
+  // sem sincronizar (webhook perdido). 9 min após o boot e a cada 6 h.
+  const BankConnectionService = require("./src/services/BankConnectionService");
+  const tickBankSweep = async () => {
+    try {
+      const r = await BankConnectionService.sweep();
+      if (r && (r.paused || r.removed || r.resynced)) bootLog.info("banks.sweep", r);
+    } catch (err) {
+      bootLog.error("banks.sweep_error", { message: err.message });
+    }
+  };
+  setTimeout(tickBankSweep, 9 * 60 * 1000);
+  setInterval(tickBankSweep, 6 * 60 * 60 * 1000);
+
   // Job: reconciliação de pagamentos — para webhooks perdidos, cruza pendentes
   // antigos com o estado real da session no Stripe e re-entrega os que já foram
   // pagos. Roda 7 min após boot e a cada 2h (projeto PayDebug, D6).

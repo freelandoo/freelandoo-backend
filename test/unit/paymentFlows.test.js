@@ -55,6 +55,14 @@ const INVENTARIO_STRIPE = [
   // Mensalidade da academia pela Freelandoo (mig 310). Confirmador:
   // `AcademyFeeService.confirmStripeSession`, montado nos TRÊS pontos.
   "academy_fee",
+  // Selo verificado (mig 268), Impulso (anúncios) e Baú do feed: os
+  // confirmadores já estavam no webhook, mas os fluxos faltavam na lista —
+  // o checkout deles era recusado em assertPaymentFlow.
+  "verified_badge", "ads_impulso", "feed_bau",
+  // Bancos conectados na Carteira (mig 462). Confirmador:
+  // `BankAccessService.confirmStripeSession`, montado nos TRÊS pontos; a
+  // renovação mensal entra por handleInvoicePaid.
+  "bank_access",
 ];
 
 test("todo metadata.type do Stripe está declarado", () => {

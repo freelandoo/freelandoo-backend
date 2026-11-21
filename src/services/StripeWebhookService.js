@@ -212,6 +212,10 @@ async function handleInvoicePaid(conn, invoice) {
   const VerificationServiceInv = require("./VerificationService");
   const verifiedPaid = await VerificationServiceInv.handleInvoicePaid(invoice, subscriptionId);
   if (verifiedPaid && !verifiedPaid.ignored) return;
+  // Bancos conectados (mig 462): mesma mecânica do selo.
+  const BankAccessServiceInv = require("./BankAccessService");
+  const bankPaid = await BankAccessServiceInv.handleInvoicePaid(invoice, subscriptionId);
+  if (bankPaid && !bankPaid.ignored) return;
   const PlanService = require("./PlanService");
   const planSub = await PlanService.handleInvoicePaid(invoice, subscriptionId);
   if (planSub && !planSub.ignored) return;
@@ -380,6 +384,9 @@ async function handleInvoiceFailed(conn, invoice) {
   const VerificationServiceFailed = require("./VerificationService");
   const verifiedFailed = await VerificationServiceFailed.handleInvoiceFailed(subscriptionId);
   if (verifiedFailed && !verifiedFailed.ignored) return;
+  const BankAccessServiceFailed = require("./BankAccessService");
+  const bankFailed = await BankAccessServiceFailed.handleInvoiceFailed(subscriptionId);
+  if (bankFailed && !bankFailed.ignored) return;
   const PlanServiceFailed = require("./PlanService");
   const planFailed = await PlanServiceFailed.handleInvoiceFailed(subscriptionId);
   if (planFailed && !planFailed.ignored) return;
@@ -542,6 +549,9 @@ async function handleSubscriptionDeleted(conn, subscription) {
   const VerificationServiceDel = require("./VerificationService");
   const verifiedDeleted = await VerificationServiceDel.handleSubscriptionDeleted(subscription);
   if (verifiedDeleted && !verifiedDeleted.ignored) return;
+  const BankAccessServiceDel = require("./BankAccessService");
+  const bankDeleted = await BankAccessServiceDel.handleSubscriptionDeleted(subscription);
+  if (bankDeleted && !bankDeleted.ignored) return;
   const PlanServiceDeleted = require("./PlanService");
   const planDeleted = await PlanServiceDeleted.handleSubscriptionDeleted(subscription);
   if (planDeleted && !planDeleted.ignored) return;
@@ -869,6 +879,10 @@ async function fulfillCheckoutSession(session) {
     // Selo verificado (mig 268): o primeiro mês caiu. Idempotente pela sessão.
     const VerificationService = require("./VerificationService");
     result = await VerificationService.confirmStripeSession(session);
+  } else if (meta.type === "bank_access") {
+    // Bancos conectados (mig 462): o primeiro mês caiu. Idempotente pela sessão.
+    const BankAccessService = require("./BankAccessService");
+    result = await BankAccessService.confirmStripeSession(session);
   } else if (meta.type === "managed_site_setup") {
     // Site autoral (mig 263): os R$299 da criação caíram e o pedido entra na
     // fila dos agentes. Idempotente pelo session id.
@@ -1010,6 +1024,12 @@ async function expireCheckoutSession(session, reason) {
         const VerificationService = require("./VerificationService");
         const expired = await VerificationService.expireBySession(session.id);
         if (expired) log.info("expire.verified_badge", { session_id: session.id, reason });
+        break;
+      }
+      case "bank_access": {
+        const BankAccessService = require("./BankAccessService");
+        const expired = await BankAccessService.expireBySession(session.id);
+        if (expired) log.info("expire.bank_access", { session_id: session.id, reason });
         break;
       }
       case "community_listing_order": {
@@ -1216,6 +1236,9 @@ async function dispatchEvent(event) {
       const VerificationService = require("./VerificationService");
       const verifiedResult = await VerificationService.handleChargeRefunded(charge);
       if (verifiedResult && !verifiedResult.ignored) break;
+      const BankAccessService = require("./BankAccessService");
+      const bankRefund = await BankAccessService.handleChargeRefunded(charge);
+      if (bankRefund && !bankRefund.ignored) break;
       const CommunityDeliveryService = require("./CommunityDeliveryService");
       const deliveryResult = await CommunityDeliveryService.handleChargeRefunded(charge);
       if (deliveryResult && !deliveryResult.ignored) break;

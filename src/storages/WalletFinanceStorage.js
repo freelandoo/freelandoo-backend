@@ -42,7 +42,8 @@ module.exports = {
       `
       SELECT id, direction, recurrence, title, category,
              amount_cents::bigint AS amount_cents,
-             entry_date, due_day, start_ym, active, created_at, id_business_profile
+             entry_date, due_day, start_ym, active, created_at, id_business_profile,
+             source
         FROM public.tb_wallet_finance_entry
        WHERE user_id = $1
          AND (
@@ -150,7 +151,9 @@ module.exports = {
       UPDATE public.tb_wallet_finance_entry
          SET title        = COALESCE($3, title),
              category     = COALESCE($4, category),
-             amount_cents = COALESCE($5, amount_cents),
+             -- Veio do banco (mig 462): o valor é o do banco, não se edita.
+             amount_cents = CASE WHEN source = 'bank' THEN amount_cents
+                                 ELSE COALESCE($5, amount_cents) END,
              due_day      = COALESCE($6, due_day),
              active       = COALESCE($7, active),
              -- $8 diz se o negócio veio no PATCH: NULL em $9 é "tirar do
@@ -180,7 +183,9 @@ module.exports = {
 
   async deleteEntry(db, userId, id) {
     const { rowCount } = await db.query(
-      `DELETE FROM public.tb_wallet_finance_entry WHERE id = $1 AND user_id = $2`,
+      // Lançamento do banco (mig 462) não se apaga: a próxima sincronização o
+      // traria de volta. Sai junto quando o banco é desconectado.
+      `DELETE FROM public.tb_wallet_finance_entry WHERE id = $1 AND user_id = $2 AND source <> 'bank'`,
       [id, userId]
     );
     return rowCount > 0;

@@ -80,6 +80,14 @@ const PAYMENT_FLOWS = {
   community_membership:   { recurring: true,  label: "Mensalidade de comunidade" },
   vaquinha_sponsorship:   { recurring: true,  label: "Bolsa patrocínio" },
   atendimento_ia:         { recurring: true,  label: "Atendimento IA" },
+  // ⚠️ Estes três já mandavam `metadata.type` e NÃO estavam na lista: o
+  // `assertPaymentFlow` recusava o checkout no clique (selo, Ads e Baú).
+  // Selo e bancos passam `recurring` explícito (cartão = assinatura, Pix = 1 mês).
+  verified_badge:         { recurring: false, label: "Selo verificado" },
+  ads_impulso:            { recurring: false, label: "Ads — impulsionar post" },
+  feed_bau:               { recurring: false, label: "Feed Interativo — baú de doação" },
+  // Bancos conectados na Carteira (mig 462): R$ 20/mês, mecânica do selo.
+  bank_access:            { recurring: false, label: "Bancos conectados" },
 };
 
 const FLOW_KEYS = Object.freeze(Object.keys(PAYMENT_FLOWS));

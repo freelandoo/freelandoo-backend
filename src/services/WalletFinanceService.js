@@ -209,7 +209,12 @@ class WalletFinanceService {
         const entryId = parseInt(id, 10);
         if (!Number.isInteger(entryId)) return { error: "ID inválido", status: 400 };
         const ok = await WalletFinanceStorage.deleteEntry(pool, user.id_user, entryId);
-        if (!ok) return { error: "Lançamento não encontrado", status: 404 };
+        if (!ok) {
+          return {
+            error: "Lançamento não encontrado — ou veio do banco conectado (para tirá-lo, desconecte o banco).",
+            status: 404,
+          };
+        }
         return { ok: true };
       }
     );

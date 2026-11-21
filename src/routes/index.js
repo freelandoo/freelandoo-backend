@@ -144,6 +144,8 @@ const architectureAdminRoutes = require("./architectureAdmin.routes");
 const marketRoutes = require("./market.routes");
 const marketReportRoutes = require("./marketReport.routes");
 const walletFinanceRoutes = require("./walletFinance.routes");
+// Bancos conectados na Carteira (mig 462).
+const walletBanksRoutes = require("./walletBanks.routes");
 const paymentOpsRoutes = require("./paymentOps.routes");
 const featureFlagRoutes = require("./featureFlag.routes");
 const featureFlagAdminRoutes = require("./featureFlagAdmin.routes");
@@ -370,6 +372,7 @@ module.exports = (app) => {
   app.use("/admin/casa", casaAdminRoutes);
   app.use("/blog", blogRoutes);
   app.use("/", marketRoutes);
+  app.use("/", walletBanksRoutes);
   app.use("/", walletFinanceRoutes);
   app.use("/admin/blog", blogAdminRoutes);
   app.use("/admin/architecture", architectureAdminRoutes);
