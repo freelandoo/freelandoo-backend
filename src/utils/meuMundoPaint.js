@@ -935,6 +935,8 @@ function arcRun(cx        , cz        , R0        , R1        , a0        , span
 
 /** Ponto no anel de raio R (graus, 0 = +z). */
 const onRing = (R        , deg        ) => ({ x: round(Math.sin(deg * D2R) * R), z: round(Math.cos(deg * D2R) * R) })
+/** Ponto no anel de raio R em volta de (cx, cz). */
+const onRingAt = (cx        , cz        , R        , deg        ) => ({ x: round(cx + Math.sin(deg * D2R) * R), z: round(cz + Math.cos(deg * D2R) * R) })
 
 // ═══ 2. JARDIM ESPIRAL ═══════════════════════════════════════════════════════
 // Ruínas brancas sobre as nuvens. Cada time sobe a MEIA-LUA de terraços em
@@ -1174,6 +1176,247 @@ const FORJA           = {
   route: ["s0", "s1", "s2", "s3", "m1", "m2", "m3", "m4", "m5"],
 }
 
+// ═══ 7–11. AS FASES DOS DOMÍNIOS (2026-11-21) ════════════════════════════════
+// Pedido do Alex: mais 5 fases pelos temas dos Domínios, inspiradas na Gincana
+// (plano `MEU MUNDO 3D/planos/2026-11-21-paint-5-fases.md`). Os Domínios que
+// não tinham mapa (Cânion, Gelo, Orbital) e a 2ª fase da Floresta e da
+// Fábrica. A Gincana dá o TIPO de peça (tábua de gangorra, hélice, tanque,
+// comporta, tora); aqui tudo é parado, como em todo o Paint.
+
+/** Pedaço de anel em volta do pináculo/eixo do meio (graus, 0 = +z). */
+const ring = (R0        , R1        , a0        , a1        , y        , extra                 = {})        => ({ k: "center", x: 0, z: 0, y, s: { arc: [R0, R1, a0, a1] }, tag: "ledge", ...extra })
+
+// ═══ 7. CÂNION DAS TEMPESTADES (Zéphyra) ═════════════════════════════════════
+// Mesas de arenito no céu de fim de tarde. Cada time sai da mesa do moinho,
+// cruza a TÁBUA (a gangorra da Gincana, aqui parada), sobe a mesa sextavada e
+// chega ao PINÁCULO do meio: uma coluna de rocha (colide) com saliências em
+// espiral — anel de dentro até a saliência NORTE (os times se encontram),
+// anel de fora subindo pelo próprio lado, a saliência SUL e o topo do
+// pináculo com a agulha de raio (os dois portais). Em volta: mesas, piões de
+// pedra flutuando, tábuas e a mesa do moinho alto.
+const CANION           = {
+  id: "canion",
+  v: 1,
+  side: [
+    // s0 a mesa do moinho (base)
+    { k: "base", x: -48, y: 0, z: 0, s: { n: 8, r: 10, j: 0.5 }, tag: "mesa", cats: [[3, 5], [3, -5]], caps: [0, 1, 2, 3], props: [["pillar", -6.4, 4, 7.5, 0.7, 0, 0, "windmill"]] },
+    // s1 a tábua, s2 a mesa sextavada (rota)
+    { k: "path", x: -31, y: 1.8, z: -4, s: { w: 9, d: 2.6 }, tag: "plank", cats: 1, caps: [2] },
+    { k: "path", x: -18.5, y: 5.2, z: -6, s: { n: 6, r: 3.6, j: 0.3 }, tag: "mesa", cats: 1, caps: [0] },
+    // s3–s9 mesas, tábuas e piões em volta
+    { k: "wing", x: -40, y: 4.4, z: 20, s: { n: 7, r: 3.6, j: 0.5 }, tag: "mesa", cats: 2, caps: [3] },
+    { k: "wing", x: -26, y: 7.6, z: 22, s: { w: 8, d: 2.4, rot: 30 }, tag: "plank", cats: 2 },
+    { k: "wing", x: -58, y: 2.6, z: -16, s: { w: 6, d: 6, rot: -10 }, tag: "mesa", cats: 2, caps: [2] },
+    { k: "wing", x: -44, y: 6.5, z: -20, s: { c: 2.6 }, tag: "spintop", cats: 2 },
+    { k: "branch", x: -30, y: 10.4, z: -24, s: { n: 5, r: 3.4, j: 0.4 }, tag: "mesa", cats: 2, caps: [1] },
+    { k: "branch", x: -32, y: 12.8, z: 8, s: { n: 6, r: 4.2 }, tag: "mill", cats: [[-2, -1.5], [1.8, -1.8]], caps: [3], props: [["pillar", 1.8, 2.2, 6, 0.55, 0, 0, "windmill"]] },
+    { k: "wing", x: -62, y: 5, z: 14, s: { c: 2.4 }, tag: "spintop", cats: 2 },
+  ],
+  mid: [
+    // m0 a praça do pé do PINÁCULO (a coluna colide e vai até embaixo do topo)
+    { k: "center", x: 0, y: 2.5, z: 0, s: { n: 7, r: 9, j: 0.3 }, tag: "mesa", cats: [[0, 7], [0, -7], [-6.5, 2], [6.5, 2]], props: [["pillar", 0, 0, 23.5, 4.6, 0, 0, "spire"]] },
+    // m1–m2 anel de dentro (pares), m3 a saliência NORTE
+    ring(6.4, 10.8, -120, -90, 8.6, { pair: true, cats: 1, caps: [1] }),
+    ring(6.4, 10.8, -70, -40, 12, { pair: true, caps: [2] }),
+    ring(6.4, 10.8, -20, 20, 15.4, { cats: 2, caps: [3] }),
+    // m4–m5 anel de fora (pares), m6 a saliência SUL, m7 o topo do pináculo (portais)
+    ring(11.6, 15.6, -62, -32, 18.8, { pair: true, cats: 1 }),
+    ring(11.6, 15.6, -132, -102, 22.2, { pair: true, caps: [0] }),
+    ring(7.2, 11, 160, 200, 25.6, { cats: 2, caps: [2] }),
+    { k: "summit", x: 0, y: 29, z: 0, s: { n: 9, r: 5.6, j: 0.2 }, tag: "spiretop" },
+  ],
+  portal: { x: -2.6, y: 29, z: 0 },
+  route: ["s0", "s1", "s2", "m1", "m2", "m3", "m4", "m5", "m6", "m7"],
+}
+
+// ═══ 8. FAROL DO MAR DE GELO (Marú) ══════════════════════════════════════════
+// O mar congelado com navios presos. Cada time sai da banquisa, passa pelo
+// CONVÉS do navio preso, pelo iceberg e pela banquisa sextavada e chega ao
+// FAROL do meio (o pilar colide): blocos de gelo presos nas faces sobem em
+// volta dele até a galeria da lanterna (os dois portais). Em volta: banquisas,
+// icebergs, a proa do quebra-gelo e a boia acesa.
+const GELO           = {
+  id: "gelo",
+  v: 1,
+  side: [
+    // s0 a banquisa da base
+    { k: "base", x: -48, y: 0, z: 0, s: { n: 7, r: 10, j: 0.5 }, tag: "floe", cats: [[3, 5], [3, -5]], caps: [0, 1, 2, 3] },
+    // s1 o convés, s2 o iceberg, s3 a banquisa sextavada (rota)
+    { k: "path", x: -33, y: 1.8, z: 8, s: { w: 12, d: 4.5, rot: 10 }, tag: "deck", cats: 1, caps: [2] },
+    { k: "path", x: -22, y: 5.4, z: 14, s: { n: 3, r: 4.4, rot: 90 }, tag: "berg", cats: 1, caps: [0] },
+    { k: "path", x: -16, y: 8.8, z: 6, s: { n: 6, r: 3.4, rot: 30 }, tag: "floe", cats: 1 },
+    // s4–s10 banquisas, icebergs, a proa e a boia
+    { k: "wing", x: -58, y: 2.5, z: 16, s: { n: 7, r: 3.5, j: 0.5 }, tag: "floe", cats: 2 },
+    { k: "wing", x: -44, y: 5.6, z: 22, s: { n: 3, r: 4.2, rot: -90 }, tag: "berg", cats: 2, caps: [3] },
+    { k: "wing", x: -30, y: 8.4, z: 26, s: { w: 6, d: 4 }, tag: "bow", cats: [[-1.8, 0], [1.8, 0]], props: [["pillar", 0, 0, 7, 0.3, 0, 0, "mast"]] },
+    { k: "wing", x: -56, y: 3.2, z: -18, s: { n: 8, r: 3.6, j: 0.5 }, tag: "floe", cats: 2 },
+    { k: "wing", x: -40, y: 1.6, z: -16, s: { w: 10, d: 4, rot: -15 }, tag: "deck", cats: [[-2.5, 0], [2.5, 0]], caps: [2] },
+    { k: "branch", x: -26, y: 4.8, z: -20, s: { n: 6, r: 3.2 }, tag: "floe", cats: 2, caps: [1] },
+    { k: "branch", x: -30, y: 9.8, z: -8, s: { n: 4, r: 2.8, rot: 45 }, tag: "buoy", cats: 1 },
+  ],
+  mid: [
+    // m0 o gelo do pé do FAROL (a torre colide até embaixo da galeria)
+    { k: "center", x: 0, y: 3, z: 0, s: { n: 12, r: 9 }, tag: "icefloor", cats: [[0, 6.2], [0, -6.2], [-6.2, 0], [6.2, 0]], props: [["pillar", 0, 0, 20, 3.4, 0, 0, "lighthouse"]] },
+    // m1 bloco oeste embaixo (par), m2 bloco NORTE, m3 bloco oeste em cima (par), m4 bloco SUL, m5 a galeria (portais)
+    { k: "center", x: -7, y: 12.2, z: 1, s: { w: 4, d: 6 }, tag: "iceblock", pair: true, cats: 1, caps: [1] },
+    { k: "center", x: 0, y: 15.6, z: 8, s: { n: 6, r: 3, rot: 30 }, tag: "iceblock", cats: 2, caps: [2, 3] },
+    { k: "center", x: -7, y: 19, z: 1, s: { w: 4, d: 6 }, tag: "iceblock", pair: true, cats: 1 },
+    { k: "center", x: 0, y: 22.4, z: -10, s: { n: 6, r: 3, rot: 30 }, tag: "iceblock", cats: 2, caps: [0] },
+    { k: "summit", x: 0, y: 25.8, z: 0, s: { n: 10, r: 6.4 }, tag: "gallery" },
+  ],
+  portal: { x: -2.8, y: 25.8, z: 0 },
+  route: ["s0", "s1", "s2", "s3", "m1", "m2", "m3", "m4", "m5"],
+}
+
+// ═══ 9. HÉLICES DO PRISMA (Íris — a deusa do Paint) ══════════════════════════
+// A Cidade Orbital de vidro colorido. Cada time sai da praça de vidro, sobe a
+// ESCADA SEM CHÃO (degraus quadrados soltos em meia-lua), passa às PÁS da
+// grande hélice do meio (o eixo colide): pás do anel de fora até o patamar
+// NORTE (encontro), pás do anel de dentro até o patamar SUL e a coroa do
+// Palácio Prisma (os dois portais). Embaixo, a praça do eixo; em volta,
+// estilhaços de vidro, a passarela, o prisma, orbes e a lente.
+const ORB_STEP = (deg        , y        , extra                 = {})        => ({ k: "path", ...onRingAt(-46, 0, 19, deg), y, s: { w: 5, d: 5, rot: deg }, tag: "glassstep", ...extra })
+/** Pá da hélice: pedaço de anel de R0 a R1 com `span` graus em volta do eixo, centrada em `deg`. */
+const BLADE = (deg        , R0        , R1        , span        , y        , extra                 = {})        => ({ k: "center", x: 0, z: 0, y, s: { arc: [R0, R1, deg - span / 2, deg + span / 2] }, tag: "blade", ...extra })
+const ORBITAL           = {
+  id: "orbital",
+  v: 1,
+  side: [
+    // s0 a praça de vidro (base)
+    { k: "base", x: -46, y: 0, z: 0, s: { n: 6, r: 10 }, tag: "glass", cats: [[3, 5.5], [3, -5.5]], caps: [0, 1, 2, 3] },
+    // s1–s5 a escada sem chão (rota)
+    ORB_STEP(-30, 1.2, { cats: 1, caps: [0] }),
+    ORB_STEP(-8, 3.8, { cats: 1 }),
+    ORB_STEP(14, 6.4, { cats: 1, caps: [2] }),
+    ORB_STEP(36, 9, { cats: 1 }),
+    ORB_STEP(58, 11.6, { cats: 1, caps: [1] }),
+    // s6–s8 estilhaços de vidro ao sul (baixos)
+    { k: "wing", ...onRingAt(-46, 0, 17, 120), y: 1, s: { n: 3, r: 3.4 }, tag: "shard", cats: 1, caps: [2] },
+    { k: "wing", ...onRingAt(-46, 0, 17, 150), y: 2.5, s: { n: 3, r: 3.4, rot: 40 }, tag: "shard", cats: 1 },
+    { k: "wing", ...onRingAt(-46, 0, 17, 180), y: 4, s: { n: 3, r: 3.4, rot: 80 }, tag: "shard", cats: 1, caps: [3] },
+    // s9 a passarela, s10 o prisma, s11–s13 orbes e a lente
+    { k: "branch", x: -27, y: 5.4, z: -16, s: { w: 12, d: 5 }, tag: "promenade", cats: [[-4.5, 0], [4.5, 0]] },
+    { k: "branch", x: -18, y: 8.2, z: -26, s: { n: 6, r: 4.6 }, tag: "prism", cats: 2, caps: [3, 1] },
+    { k: "wing", x: -60, y: 4.5, z: -14, s: { c: 2.6 }, tag: "orb", cats: 1 },
+    { k: "wing", x: -34, y: 10.5, z: 26, s: { n: 5, r: 3 }, tag: "lens", cats: 2, caps: [2] },
+    { k: "wing", x: -62, y: 7.5, z: 18, s: { c: 2.4 }, tag: "orb", cats: 1 },
+  ],
+  mid: [
+    // m0–m1 pás do anel de fora (pares), m2 o patamar NORTE
+    BLADE(-80, 13, 21, 24, 14.2, { pair: true, caps: [1] }),
+    BLADE(-45, 13, 21, 24, 16.8, { pair: true }),
+    { k: "center", x: 0, y: 19.4, z: 19, s: { n: 6, r: 4.6, rot: 30 }, tag: "glass", cats: 2, caps: [3] },
+    // m3–m5 pás do anel de dentro (pares), m6 o patamar SUL
+    BLADE(45, 6.5, 12, 28, 22, { pair: true, cats: 1 }),
+    BLADE(90, 6.5, 12, 28, 24.6, { pair: true, cats: 1, caps: [2] }),
+    BLADE(135, 6.5, 12, 28, 27.2, { pair: true, cats: 1 }),
+    { k: "center", x: 0, y: 29.8, z: -11, s: { n: 6, r: 4.2, rot: 30 }, tag: "glass", cats: 2, caps: [0] },
+    // m7 a coroa do Palácio Prisma (os dois portais)
+    { k: "summit", x: 0, y: 32.4, z: 0, s: { n: 8, r: 5.6, rot: 22.5 }, tag: "crown" },
+    // m8 a praça do eixo, embaixo (o eixo colide até embaixo da coroa)
+    { k: "center", x: 0, y: 6, z: 0, s: { n: 8, r: 7 }, tag: "hub", cats: [[0, 5], [0, -5]], caps: [0], props: [["pillar", 0, 0, 23, 2.8, 0, 0, "axle"]] },
+  ],
+  portal: { x: -2.6, y: 32.4, z: 0 },
+  route: ["s0", "s1", "s2", "s3", "s4", "s5", "m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7"],
+}
+
+// ═══ 10. SERRARIA DA LUA (Noctis) ════════════════════════════════════════════
+// A mata de troncos de prata debaixo da lua parada. Cada time sai do TOCO
+// gigante, sobe a escada de toras (degraus de verdade: sobe andando), os
+// tocos-terraço e os COGUMELOS em volta do tronco de prata do meio (colide)
+// até a tora caída do NORTE (encontro) e o toco do alto, cortado pela serra
+// (os dois portais). Em volta: tocos, a pilha de toras, cogumelos, a escada
+// sul e a serraria com o poste da serra.
+const SHROOM = (deg        , y        , extra                 = {})        => ({ k: "center", ...onRing(11, deg), y, s: { c: 2.8 }, tag: "shroom", ...extra })
+const LOGSTEP = (x        , z        , y        , extra                 = {})        => ({ k: "path", x, y, z, s: { w: 5, d: 3.2 }, tag: "logstair", ...extra })
+const LUA           = {
+  id: "lua",
+  v: 1,
+  side: [
+    // s0 o toco gigante (base) com dois postes de lanterna
+    { k: "base", x: -48, y: 0, z: 0, s: { c: 10 }, tag: "stump", cats: [[-3, 4], [-3, -4]], caps: [0, 1, 2, 3], props: [["pillar", -6, 6.5, 3, 0.4, 0, 0, "lantern"], ["pillar", -6, -6.5, 3, 0.4, 0, 0, "lantern"]] },
+    // s1–s4 a escada de toras (saindo da base para o meio; degrau de 0,28 m — o
+    // corpo sobe andando até 0,42 e a conta de 0,3 exato erra no arredondamento) (degraus colados: sobe andando)
+    LOGSTEP(-33, 0, 0.6, { cats: 1 }),
+    LOGSTEP(-28, 0, 0.88),
+    LOGSTEP(-23, 0, 1.16),
+    LOGSTEP(-18, 0, 1.44, { cats: 1, caps: [2] }),
+    // s5–s6 tocos-terraço (rota)
+    { k: "path", x: -14, y: 5.2, z: 13, s: { c: 4 }, tag: "stump", cats: 2, caps: [0] },
+    { k: "path", x: -22, y: 8.8, z: 9, s: { n: 10, r: 3.6 }, tag: "stump", cats: 1 },
+    // s7–s9 toco, pilha de toras e cogumelo
+    { k: "wing", x: -58, y: 3, z: 16, s: { c: 3.2 }, tag: "stump", cats: 2 },
+    { k: "wing", x: -33, y: 6.2, z: 14, s: { w: 5, d: 4 }, tag: "logpile", cats: 2, caps: [3] },
+    { k: "wing", x: -60, y: 4.2, z: -14, s: { c: 3 }, tag: "shroom", cats: 2 },
+    // s10–s12 a escada de toras sul
+    LOGSTEP(-41.5, -14, 0.9, { k: "wing" }),
+    LOGSTEP(-36.5, -14, 1.18, { k: "wing" }),
+    LOGSTEP(-31.5, -14, 1.46, { k: "wing", cats: 1 }),
+    // s13–s14 toco e a serraria
+    { k: "branch", x: -24, y: 5, z: -16, s: { c: 3.6 }, tag: "stump", cats: 2, caps: [2] },
+    { k: "branch", x: -30, y: 9.6, z: -26, s: { w: 5, d: 5 }, tag: "sawmill", cats: [[-1.4, -1.4], [1.4, -1.4]], caps: [1], props: [["pillar", 1.9, 1.9, 4, 0.45, 0, 0, "sawpost"]] },
+  ],
+  mid: [
+    // m0 as raízes do TRONCO DE PRATA (colide até embaixo do toco do alto)
+    { k: "center", x: 0, y: 4, z: 0, s: { n: 10, r: 7.5, j: 0.3 }, tag: "silverroots", cats: [[0, 5], [-4.5, -2.6], [4.5, -2.6]], props: [["pillar", 0, 0, 16, 3.2, 0, 0, "silvertrunk"]] },
+    // m1–m2 cogumelos (pares), m3 a tora caída NORTE, m4 o toco do alto (portais)
+    SHROOM(-95, 12.4, { pair: true, cats: 1 }),
+    SHROOM(-45, 16, { pair: true, cats: 1, caps: [2] }),
+    { k: "center", x: 0, y: 19.6, z: 10.5, s: { w: 6, d: 3.2 }, tag: "log", cats: 2, caps: [3] },
+    { k: "summit", x: 0, y: 23.2, z: 0, s: { c: 6 }, tag: "moonstump" },
+    // m5–m6 a tora do sul e os cogumelos de baixo
+    { k: "center", x: 0, y: 6, z: -11, s: { w: 6, d: 3 }, tag: "log", cats: 1 },
+    SHROOM(-135, 9, { pair: true, cats: 1, caps: [0] }),
+  ],
+  portal: { x: -2.4, y: 23.2, z: 0 },
+  route: ["s0", "s1", "s4", "s5", "s6", "m1", "m2", "m3", "m4"],
+}
+
+// ═══ 11. USINA DAS COMPORTAS (Aeryn) ═════════════════════════════════════════
+// A Fábrica de Bronze virada usina: a represa lá embaixo, a barragem de
+// concreto e bronze, as comportas que soltam água. Cada time sai da CRISTA da
+// barragem (com os transformadores), sobe os degraus da barragem em
+// zigue-zague (um bloco em cima do outro: dá para ficar embaixo do de cima),
+// corre pelo CONDUTO forçado até o meio e sobe os TANQUES de bronze até a
+// coroa da turbina (os dois portais). Embaixo, a casa das turbinas no meio,
+// vertedouros, tanques e o pátio do transformador.
+const USINA           = {
+  id: "usina",
+  v: 1,
+  side: [
+    // s0 a crista da barragem (base) com dois transformadores
+    { k: "base", x: -48, y: 0, z: 0, s: { n: 8, r: 10.5, rot: 22.5 }, tag: "crest", cats: [[-4, 5], [-4, -5]], caps: [0, 1, 2, 3], props: [["crate", -7, 5.5, 1.4, 0.6, 0, 0, "transformer"], ["crate", -7, -5.5, 1.4, 0.6, 0, 0, "transformer"]] },
+    // s1–s5 os degraus da barragem em zigue-zague (rota)
+    { k: "path", x: -30, y: 2.4, z: 13, s: { w: 9, d: 5.5 }, tag: "damstep", cats: 1, caps: [0] },
+    { k: "path", x: -30, y: 5.8, z: -3, s: { w: 9, d: 5.5 }, tag: "damstep", cats: 1, caps: [2] },
+    { k: "path", x: -30, y: 9.2, z: 13, s: { w: 9, d: 5.5 }, tag: "damstep", cats: 1 },
+    { k: "path", x: -30, y: 12.6, z: -3, s: { w: 9, d: 5.5 }, tag: "damstep", cats: 1, caps: [1] },
+    { k: "path", x: -30, y: 16, z: 13, s: { w: 9, d: 5.5 }, tag: "damstep", cats: 1, caps: [2] },
+    // s6 o conduto forçado até o meio
+    { k: "path", x: -18, y: 18.4, z: 13, s: { w: 12, d: 3.4 }, tag: "penstock", cats: 1 },
+    // s7–s12 vertedouro, tanques, pátio do transformador, comporta e volante
+    { k: "wing", x: -38, y: 2, z: 26, s: { w: 10, d: 3.6 }, tag: "spillway", cats: 1 },
+    { k: "wing", x: -24, y: 4.2, z: 28, s: { c: 4 }, tag: "tank", cats: 2, caps: [3] },
+    { k: "wing", x: -36, y: 1.5, z: -18, s: { w: 8, d: 8 }, tag: "yard", cats: [[-2, -2], [2, 2]], props: [["crate", -2.6, 2.6, 1.4, 0.6, 0, 0, "transformer"]] },
+    { k: "wing", x: -22, y: 5, z: -24, s: { n: 6, r: 3.2 }, tag: "sluice", cats: 2, caps: [2] },
+    { k: "branch", x: -58, y: 3.4, z: -18, s: { w: 6, d: 5 }, tag: "damstep", cats: 1 },
+    { k: "branch", x: -44, y: 7.5, z: -14, s: { c: 3 }, tag: "valve", cats: 2, caps: [1] },
+  ],
+  mid: [
+    // m0 a casa das turbinas (o centro de baixo)
+    { k: "center", x: 0, y: 8, z: 0, s: { n: 6, r: 8, rot: 30 }, tag: "turbinehall", cats: 4, caps: [3, 0] },
+    // m1 tanques de bronze (par), m2 a coroa da turbina (portais)
+    { k: "center", x: -6.5, y: 21.6, z: 6, s: { c: 3.2 }, tag: "tank", pair: true, cats: 1, caps: [1] },
+    { k: "summit", x: 0, y: 25, z: -6, s: { n: 8, r: 6.2, rot: 22.5 }, tag: "turbinecrown" },
+    // m3–m5 vertedouros e tanques de baixo (pares) e o volante norte
+    { k: "center", x: -11, y: 6, z: 26, s: { w: 6, d: 3.6 }, tag: "spillway", pair: true, cats: 1 },
+    { k: "center", x: -11, y: 5, z: -22, s: { c: 2.8 }, tag: "tank", pair: true, cats: 1, caps: [2] },
+    { k: "center", x: 0, y: 9, z: 30, s: { n: 10, r: 3.2 }, tag: "valve", cats: 2 },
+  ],
+  portal: { x: -2.8, y: 25, z: -6 },
+  route: ["s0", "s1", "s2", "s3", "s4", "s5", "s6", "m1", "m2"],
+}
+
 // ═══ catálogo ═════════════════════════════════════════════════════════════════
 
 /** Os mapas, na ordem do cartão. A Cidade é o mapa de antes (sim/map.ts). */
@@ -1184,10 +1427,15 @@ const PAINT_MAPS = [
   { id: "floresta", v: 1 },
   { id: "templo", v: 1 },
   { id: "forja", v: 1 },
+  { id: "canion", v: 1 },
+  { id: "gelo", v: 1 },
+  { id: "orbital", v: 1 },
+  { id: "lua", v: 1 },
+  { id: "usina", v: 1 },
 ]         
                                                           
 
-const ARENAS                           = { jardim: JARDIM, fabrica: FABRICA, floresta: FLORESTA, templo: TEMPLO, forja: FORJA }
+const ARENAS                           = { jardim: JARDIM, fabrica: FABRICA, floresta: FLORESTA, templo: TEMPLO, forja: FORJA, canion: CANION, gelo: GELO, orbital: ORBITAL, lua: LUA, usina: USINA }
 
 /** Id conhecido (senão a Cidade). */
 function paintMapId(id         )             {
@@ -2966,4 +3214,4 @@ function capsuleRespawn(c            ) {
 /** Atalho para quem só precisa saber se a pose está fora (cliente). */
 const PAINT_FIRE_COLORS                        = [PAINT.BRIDGE, PAINT.HARM, PAINT.STEP, PAINT.WALL]
 
-module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, ammoCap, polyCenter, polySolid, COLLIDER_DEPTH, BOSS, round, hash01, bossIsland, staticSolids, buildCidadeMap, fellOut, spawnPoint, JARDIM, FABRICA, FLORESTA, TEMPLO, FORJA, PAINT_MAPS, paintMapId, paintMapVersion, buildPaintMap, tallyPaintVotes, PAINT_BOSS_AT, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, newMorkhan, morkhanActive, morkhanTrailAdd, morkhanFlat, morkhanSpawn, morkhanVanish, morkhanStep, PaintMatch, capsuleGive, capsuleRespawn, PAINT_FIRE_COLORS };
+module.exports = { PAINT, PAINT_COLORS, TUNING, PAINT_MODES, modeTeams, modeCapacity, ammoCap, polyCenter, polySolid, COLLIDER_DEPTH, BOSS, round, hash01, bossIsland, staticSolids, buildCidadeMap, fellOut, spawnPoint, JARDIM, FABRICA, FLORESTA, TEMPLO, FORJA, CANION, GELO, ORBITAL, LUA, USINA, PAINT_MAPS, paintMapId, paintMapVersion, buildPaintMap, tallyPaintVotes, PAINT_BOSS_AT, FOOT_R, supportAt, supportIndex, pushOut, ceilingAt, raycast, rayBody, newBody, stepBody, knockBody, liftOnto, muzzleOf, resolveShot, blobSolid, punchTargets, punchReachesBoss, newMorkhan, morkhanActive, morkhanTrailAdd, morkhanFlat, morkhanSpawn, morkhanVanish, morkhanStep, PaintMatch, capsuleGive, capsuleRespawn, PAINT_FIRE_COLORS };

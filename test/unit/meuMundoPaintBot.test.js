@@ -19,14 +19,22 @@ for (const { id } of P.PAINT_MAPS) {
     m.tick(P.TUNING.countdown + 0.01);
     const bots = [new PaintBot(m, 0, 0.8, 3), new PaintBot(m, 1, 0.8, 9)];
     const y0 = bots.map((b) => b.b.y);
+    // o MELHOR de cada um nos 60 s: na briga um rouba os gatinhos do outro e quem cai renasce
+    // na base — o que se confere é que ele sobe e pega gatinhos, não o instante final (21/11)
+    const top = bots.map((b) => b.b.y);
+    const most = [0, 0];
     for (let s = 0; s < 60 / P.TUNING.step; s++) {
       for (const b of bots) b.step();
       m.tick(P.TUNING.step);
       for (const e of m.drain()) if (e.type === "respawn") bots.find((x) => x.slot === e.slot)?.respawn(e);
+      bots.forEach((b, i) => {
+        if (b.b.ground) top[i] = Math.max(top[i], b.b.y);
+        most[i] = Math.max(most[i], m.players.get(b.slot).cats);
+      });
     }
-    for (const [i, b] of bots.entries()) {
-      assert.ok(m.players.get(b.slot).cats >= 2, `${id} vaga ${i}: só ${m.players.get(b.slot).cats} gatinhos`);
-      assert.ok(b.b.y > y0[i] + 1, `${id} vaga ${i}: não subiu (${y0[i]} → ${b.b.y.toFixed(1)})`);
+    for (const [i] of bots.entries()) {
+      assert.ok(most[i] >= 2, `${id} vaga ${i}: só ${most[i]} gatinhos`);
+      assert.ok(top[i] > y0[i] + 1, `${id} vaga ${i}: não subiu (${y0[i]} → ${top[i].toFixed(1)})`);
     }
   });
 }

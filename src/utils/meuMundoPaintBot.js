@@ -156,13 +156,17 @@ class PaintBot {
       const dz = z - b.z;
       const d = Math.hypot(dx, dz);
       if (d < 0.25) break;
+      let run = d > 6;
       if (safe) {
         const nx = b.x + (dx / d) * 0.5;
         const nz = b.z + (dz / d) * 0.5;
         if (P.supportAt(this.m.solids(), nx, nz, b.y + 0.3) < b.y - 0.5) break;
+        // a 1,6 m da beirada para de correr: correndo ele escorregava para fora antes de
+        // parar (e as pontes nasciam cada vez mais baixas) — visto nos mapas de 21/11
+        if (run && P.supportAt(this.m.solids(), b.x + (dx / d) * 1.6, b.z + (dz / d) * 1.6, b.y + 0.3) < b.y - 0.5) run = false;
       }
       const s = Math.min(1, d / 1.2);
-      yield { mx: (dx / d) * s, mz: (dz / d) * s, run: d > 6, jump: false };
+      yield { mx: (dx / d) * s, mz: (dz / d) * s, run, jump: false };
     }
     yield* this.wait(10);
   }

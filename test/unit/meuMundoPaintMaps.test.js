@@ -70,9 +70,9 @@ const islandOf = (map, p) => map.islands.find((i) => Math.abs(i.y - p.y) < 1e-6 
 
 // ── catálogo e votação ───────────────────────────────────────────────────────
 
-test("paint mapas — catálogo: Cidade primeiro, 6 mapas, id desconhecido vira Cidade", () => {
+test("paint mapas — catálogo: Cidade primeiro, 11 mapas, id desconhecido vira Cidade", () => {
   assert.equal(P.PAINT_MAPS[0].id, "cidade");
-  assert.equal(P.PAINT_MAPS.length, 6, `mapas: ${P.PAINT_MAPS.map((m) => m.id).join(", ")}`);
+  assert.equal(P.PAINT_MAPS.length, 11, `mapas: ${P.PAINT_MAPS.map((m) => m.id).join(", ")}`);
   assert.equal(P.paintMapId("nada"), "cidade");
   assert.equal(P.buildPaintMap("solo", "nada").id, "cidade");
   for (const m of P.PAINT_MAPS) assert.equal(P.buildPaintMap("solo", m.id).id, m.id);
