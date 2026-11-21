@@ -52,39 +52,30 @@ async function until(fn, ms = 4000) {
   return false;
 }
 
-const MIGS = [
-  "291_meu_mundo_bairros",
-  "292_meu_mundo_house_levels",
-  "293_meu_mundo_visits",
-  "294_meu_mundo_body_sergio",
-  "295_meu_mundo_vida",
-  "297_meu_mundo_atributos_1000",
-  "298_meu_mundo_atributos_inicio_baixo",
-  "299_meu_mundo_vehicles",
-  "300_meu_mundo_skins",
-  "301_meu_mundo_geladeira",
-  "302_meu_mundo_inbox",
-  "304_meu_mundo_avatar_colors",
-  "308_meu_mundo_lugar_atividade",
-  "309_meu_mundo_vendedor",
-  "311_meu_mundo_boxe",
-];
-const TABLES = `tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event, tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_vehicle, tb_mm_visit,
-  tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot, tb_mm_neighborhood, tb_user_role, tb_role, tb_user`;
+// Todas as migrations do Meu Mundo (o mesmo esqueleto do e2e dos monstros; a lista antiga parou no 311).
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS ${TABLES} CASCADE`);
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_last_place, tb_mm_god_hunt, tb_mm_statue_week, tb_mm_domain_pact, tb_mm_domain_progress, tb_mm_video, tb_mm_archive, tb_mm_trainer, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+                    tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
+                    tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
+                    tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
+                    tb_mm_neighborhood, tb_user_role, tb_role, tb_user CASCADE`);
   await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
   await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
   await require("./helpers/mmPolens").polenTables(pool);
-  for (const m of MIGS) await pool.query(fs.readFileSync(path.join(__dirname, `../src/databases/migrations/${m}.sql`), "utf8"));
+  const all = fs
+    .readdirSync(path.join(__dirname, "../src/databases/migrations"))
+    .filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f))
+    .sort();
+  for (const f of all) await pool.query(fs.readFileSync(path.join(__dirname, "../src/databases/migrations", f), "utf8"));
 }
-
 async function mkUser(pool, admin = true, tag = "") {
   const id = crypto.randomUUID();
   await pool.query(`INSERT INTO tb_user VALUES ($1, $2, $3)`, [id, `mmtest_${tag || id.slice(0, 6)}`, `${id}@mm.test`]);
   if (admin) await pool.query(`INSERT INTO tb_user_role (id_user, id_role) VALUES ($1, 1)`, [id]);
+  // lore v2: sem classe não entra no bairro
+  await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'raposa', 'm')`, [id]);
   return id;
 }
 
@@ -243,8 +234,10 @@ async function mkUser(pool, admin = true, tag = "") {
   await until(() => !dr.holds.has(dropper), 7000);
   check("vaga guardada expira e é liberada", !dr.holds.has(dropper) && dr.maxClients === 20);
   const late = await Service.enter(dropper);
-  check("depois do prazo, entrar volta para casa", late.sceneKey === `nb:${nbOf.get(dropper)}`, late.sceneKey);
-  live.set(dropper, { nb: await consume(late) });
+  // Voltar onde parou (mig 463): depois do prazo, volta ao centro (sala qualquer), não para casa.
+  check("depois do prazo, entrar volta ao centro (onde estava)", late.scene === "center", late.sceneKey || late.error);
+  live.set(dropper, { center: await consume(late) });
+  await goHome(dropper);
   // Caiu e escolheu "Voltar para casa": a vaga se solta NA HORA (não no fim do
   // prazo) e a sala volta a aceitar quem chega (mm3d-19).
   const again = await toCenter(dropper);
@@ -352,9 +345,10 @@ async function mkUser(pool, admin = true, tag = "") {
   await sleep(300);
   await bye(live.get(driver).center); // fechou o jogo pelo menu
   await sleep(300);
-  check("saiu do jogo pelo menu: a próxima entrada é em casa", (await Service.enter(driver)).sceneKey === `nb:${nbOf.get(driver)}`);
-  live.set(driver, {});
-  await toStreet(driver);
+  const reEnter = await Service.enter(driver);
+  check("saiu do jogo pelo menu: a próxima entrada é no centro, onde estava (mig 463)", reEnter.scene === "center", reEnter.sceneKey || reEnter.error);
+  live.set(driver, { center: await consume(reEnter) });
+  await goHome(driver);
   const home3 = realtime._roomFor(nbOf.get(driver)).state.cars.get(String(carId));
   check("saiu do jogo no centro: o carro volta ao bairro", !!home3 && !realtime.isAway(nbOf.get(driver), carId), JSON.stringify(parked && parked.kind));
   check("…na posição em que saiu de lá", !!home3 && Math.hypot(home3.x - Cars.spotFor("car", lotOf.get(driver)).x, home3.z - Cars.spotFor("car", lotOf.get(driver)).z) < 0.5);

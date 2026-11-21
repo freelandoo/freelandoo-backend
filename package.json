@@ -78,6 +78,7 @@
     "test:meu-mundo-personagens": "node test/meu-mundo-personagens.e2e.js",
     "test:meu-mundo-centro": "node test/meu-mundo-centro.e2e.js",
     "test:meu-mundo-monstros": "node test/meu-mundo-monstros.e2e.js",
+    "test:meu-mundo-voltar": "node test/meu-mundo-voltar.e2e.js",
     "test:meu-mundo-jetpack": "node test/meu-mundo-jetpack.e2e.js",
     "test:meu-mundo-paint": "node test/meu-mundo-paint.e2e.js",
     "test:meu-mundo-corrida": "node test/meu-mundo-corrida.e2e.js",

@@ -24,6 +24,7 @@ const MeuMundoVehicleStorage = require("../storages/MeuMundoVehicleStorage");
 const AuthStorage = require("../storages/AuthStorage");
 const realtime = require("../realtime/meuMundo");
 const presence = require("../realtime/meuMundoPresence");
+const lastPlace = require("../realtime/meuMundoLastPlace");
 const { reserveJetpackSeat, leaveJetpack } = require("../realtime/meuMundoJetpack");
 const { reservePaintSeat, leavePaint } = require("../realtime/meuMundoPaint");
 const { reserveCorridaSeat, leaveCorrida } = require("../realtime/meuMundoCorrida");
@@ -129,6 +130,11 @@ function publicInterior(def) {
   return rest;
 }
 
+/** Só a posição do lugar salvo (o que a sala confere), para a reserva. */
+function placeAt(p) {
+  return p ? { x: p.x, z: p.z, facing: p.facing, floor: p.floor || 0, layout: p.layout } : null;
+}
+
 const inviteLog = new Map(); // id do anfitrião → [ms de cada convite]
 function rateOk(idHost) {
   const now = Date.now();
@@ -152,17 +158,23 @@ class MeuMundoService {
       if ((here && here.scene === "center") || (pl.roomId && realtime.hasCenterHold(pl.roomId, idUser))) {
         return { scene: "center", roomId: (here && here.scene === "center" && here.id) || pl.roomId || null };
       }
-      // Passou do prazo: volta para casa (os veículos já voltaram com a vaga).
-      presence.setPlacement(idUser, { scene: "nb", nbId: residence.id_neighborhood, arrivalLot: residence.lot_number });
-      return MeuMundoService.resolveScene(idUser, residence);
+      // Passou do prazo da vaga (ou saiu pelo menu): volta ao centro, numa sala qualquer, onde estava (mig 463);
+      // os veículos já voltaram para casa.
+      return MeuMundoService.backToCenter(idUser, residence);
     }
     const visit = await MeuMundoVisitStorage.activeAsGuest(pool, idUser);
-    // 1. Dentro de uma casa há pouco, e ainda autorizado.
-    if (pl && pl.scene === "house" && presence.offlineFor(idUser) <= VISIT_RULES.disconnectGraceMs) {
-      const house = await MeuMundoStorage.getHouse(pool, pl.houseId);
+    // Voltar onde parou (mig 463): o último lugar gravado (sobrevive a deploy, sem prazo). A memória do
+    // processo, quando existe, é mais nova e manda no AMBIENTE; o banco dá a posição.
+    const saved = await lastPlace.get(idUser);
+    if (!pl && saved && saved.scene === "center" && !visit) return MeuMundoService.backToCenter(idUser, residence, saved);
+    // 1. Dentro de uma casa (sem prazo), e ainda autorizado.
+    const houseId = pl ? (pl.scene === "house" ? pl.houseId : null) : saved && saved.scene === "house" ? saved.houseId : null;
+    if (houseId) {
+      const house = await MeuMundoStorage.getHouse(pool, houseId);
       const allowed =
         house && (house.owner_id === idUser || (visit && visit.id_house === house.id_house && visit.id_host === house.owner_id));
-      if (allowed && interiorFor(levelDef(house.level).level)) return { scene: "house", house };
+      const at = saved && saved.scene === "house" && saved.houseId === houseId ? saved : null;
+      if (allowed && interiorFor(levelDef(house.level).level)) return { scene: "house", house, at };
     }
     // 1b. Deitado/dormindo numa cama (mm3d-13): o hóspede continua lá mesmo
     // com o jogo fechado — quem volta entra na casa, onde ele está.
@@ -179,6 +191,13 @@ class MeuMundoService {
     // Saiu de casa montado (mm3d-15): chega em cima do veículo.
     const ride = arrivalLot && pl.ride ? pl.ride : 0;
     return { scene: "nb", nbId, visit, arrivalLot, ride };
+  }
+
+  /** Volta ao centro numa sala qualquer, no lugar salvo (mig 463). */
+  static async backToCenter(idUser, residence, saved) {
+    const s = saved || (await lastPlace.get(idUser));
+    presence.setPlacement(idUser, { scene: "center", roomId: null, from: { nbId: residence.id_neighborhood } });
+    return { scene: "center", roomId: null, at: s && s.scene === "center" ? s : null };
   }
 
   static async neighborhoodPayload(idUser, residence, target, body, name, life) {
@@ -235,12 +254,12 @@ class MeuMundoService {
     };
   }
 
-  static async housePayload(idUser, house, body, name, life, ride = 0) {
+  static async housePayload(idUser, house, body, name, life, ride = 0, at = null) {
     const level = levelDef(house.level).level;
     const def = interiorFor(level);
     let multiplayer = null;
     try {
-      const reservation = await realtime.reserveHouseSeat({ houseId: house.id_house, userId: idUser, name, body, ride });
+      const reservation = await realtime.reserveHouseSeat({ houseId: house.id_house, userId: idUser, name, body, ride, at: placeAt(at) });
       multiplayer = { wsPath: realtime.WS_PREFIX.replace(/\/$/, ""), reservation };
     } catch (err) {
       multiplayer = { error: err.message };
@@ -280,9 +299,9 @@ class MeuMundoService {
     const target = await MeuMundoService.resolveScene(idUser, residence);
     const out =
       target.scene === "center"
-        ? await MeuMundoService.centerPayload(idUser, residence, body, name, life, { roomId: target.roomId })
+        ? await MeuMundoService.centerPayload(idUser, residence, body, name, life, { roomId: target.roomId, at: target.at })
         : target.scene === "house"
-          ? await MeuMundoService.housePayload(idUser, target.house, body, name, life)
+          ? await MeuMundoService.housePayload(idUser, target.house, body, name, life, 0, target.at)
           : await MeuMundoService.neighborhoodPayload(idUser, residence, target, body, name, life);
     if (out.error) return out;
     if (out.me) {
@@ -447,10 +466,10 @@ class MeuMundoService {
    * todas). Sem reserva (multiplayer fora), devolve { error } — quem chama
    * decide voltar à origem.
    */
-  static async centerPayload(idUser, residence, body, name, life, { roomId = null, vehicle = null } = {}) {
+  static async centerPayload(idUser, residence, body, name, life, { roomId = null, vehicle = null, at = null } = {}) {
     let reservation;
     try {
-      reservation = await realtime.reserveCenterSeat({ userId: idUser, name, body, vehicle, roomId });
+      reservation = await realtime.reserveCenterSeat({ userId: idUser, name, body, vehicle, roomId, at: placeAt(at) });
     } catch (err) {
       log.error("center.reserve_fail", { message: err.message });
       return { error: "O centro não abriu agora. Tente de novo.", statusCode: 503 };
