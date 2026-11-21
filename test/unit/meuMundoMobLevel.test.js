@@ -209,8 +209,9 @@ test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", 
 });
 
 test("monstro nasce sem nível; o PRIMEIRO que o vê define e fica para a sala", () => {
+  // noite fixa: com o relógio real o teste caía de dia (o monstro vai embora ao amanhecer)
   const { MobDirector, MOBS } = require("../../src/realtime/meuMundoMobs");
-  const d = new MobDirector({ isFree: () => true, collide: (x, z) => ({ x, z }), span: 60, test: false });
+  const d = new MobDirector({ isFree: () => true, collide: (x, z) => ({ x, z }), span: 60, test: false, night: () => true });
   d.spots = () => [{ x: 40, z: 40 }];
   const m = d.spawn(Date.now(), [{ sid: "a", x: 0, z: 0, lv: 30 }]);
   assert.equal(m.level, 0);
@@ -227,7 +228,7 @@ test("monstro nasce sem nível; o PRIMEIRO que o vê define e fica para a sala",
   assert.equal(m.level, lv);
   assert.equal(d.list()[0][5], lv);
   // nível ainda não carregado (lv 0) não define
-  const d2 = new MobDirector({ isFree: () => true, collide: (x, z) => ({ x, z }), span: 60, test: false });
+  const d2 = new MobDirector({ isFree: () => true, collide: (x, z) => ({ x, z }), span: 60, test: false, night: () => true });
   d2.spots = () => [{ x: 40, z: 40 }];
   const m2 = d2.spawn(Date.now(), []);
   d2.tick(Date.now(), [{ sid: "x", x: m2.x + 3, z: m2.z, lv: 0 }], 0.05);

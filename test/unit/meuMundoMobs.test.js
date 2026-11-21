@@ -95,14 +95,14 @@ const inFront = (m, dist, back = false) => {
   return { x: m.x + Math.sin(f) * dist, z: m.z + Math.cos(f) * dist };
 };
 
-test("quem fica de frente é perseguido, alcançado e a luta abre; de costas, não", () => {
+test("quem fica de frente é perseguido, alcançado e a luta abre; de costas e longe, não", () => {
   const d = make(5);
   // nasce no meio da avenida (aberta em volta): o teste não depende do sorteio
   // do lugar, que muda com a planta (mm3d-60q)
   d.spots = () => [{ x: -44, z: 0 }];
   const m = d.forceSpawn(0, []);
   d.tick(100, [], 0.1);
-  const behind = { sid: "b", ...inFront(m, 6, true) };
+  const behind = { sid: "b", ...inFront(m, MOBS.NEAR + 2, true) };
   d.tick(200, [behind], 0.05);
   assert.equal(m.mode, "wander", "viu pelas costas");
   const me = { sid: "a", ...inFront(m, 8) };
@@ -124,7 +124,7 @@ test("quem fica de frente é perseguido, alcançado e a luta abre; de costas, n�
   assert.equal(d.get(m.id), null);
 });
 
-test("correndo escapa (desiste a 22 m); quem saiu da sala solta o monstro", () => {
+test("correndo escapa (desiste a 26 m e deixa em paz um tempo); quem saiu da sala solta o monstro", () => {
   const d = make(6);
   const m = d.forceSpawn(0, []);
   d.tick(100, [], 0.1);
@@ -138,6 +138,7 @@ test("correndo escapa (desiste a 22 m); quem saiu da sala solta o monstro", () =
     d.tick(t, [me], 0.05);
   }
   assert.equal(m.mode, "wander");
+  assert.ok(d.calm.has("a"), "quem fugiu fica em paz");
   m.mode = "chase";
   m.target = "a";
   d.drop("a");
@@ -223,4 +224,84 @@ test("psicopata que gosta muito do dono quase nunca puxa briga", () => {
   const cold = count(0);
   const warm = count(500);
   assert.ok(warm < cold / 3, `${warm} vs ${cold}`);
+});
+
+// ── 21/11 (Alex: "os monstros estão ignorando o personagem e não entram na luta automático") ──
+
+/** Diretor num campo aberto (sem prédio), com um muro opcional em x = `wall`. */
+const field = (wall = Infinity) =>
+  new MobDirector({ isFree: () => true, collide: (x, z) => ({ x: Math.min(x, wall), z }), span: 8, night: always, rng: seeded(11), now: 0 });
+
+test("percebe quem chega perto em qualquer direção (de costas, parado)", () => {
+  const d = field();
+  const m = d.spawn(0, [], "brute");
+  d.tick(50, [], 0.05);
+  const me = { sid: "a", ...inFront(m, MOBS.NEAR - 2, true) };
+  d.tick(100, [me], 0.05);
+  assert.equal(m.mode, "chase");
+  let caught = [];
+  for (let t = 150; t < 10_000 && !caught.length; t += 50) caught = d.tick(t, [me], 0.05).caught;
+  assert.equal(caught.length, 1, "não alcançou quem estava parado");
+  // o Brutamontes alcança antes de encostar o focinho (corpo de 4 m)
+  assert.ok(Math.hypot(me.x - m.x, me.z - m.z) > MOBS.CATCH);
+});
+
+test("preso atrás de banco/caldeira: a um passo, a luta abre; longe, desiste e deixa em paz", () => {
+  // muro em x = 0; o monstro vem de x < 0 e a pessoa está do outro lado
+  const near = field(0);
+  const m = near.spawn(0, [], "wolf");
+  m.x = -6;
+  m.z = 0;
+  m.mode = "chase";
+  m.target = "a";
+  m.best = Infinity;
+  m.bestAt = 0;
+  const me = { sid: "a", x: 3.5, z: 0 };
+  let caught = [];
+  let t = 0;
+  for (; t < 10_000 && !caught.length; t += 50) caught = near.tick(t, [me], 0.05).caught;
+  assert.equal(caught.length, 1, "ficou preso sem abrir a luta");
+  assert.ok(t < 5000, `demorou ${t} ms`);
+
+  const far = field(0);
+  const w = far.spawn(0, [], "wolf");
+  w.x = -6;
+  w.z = 0;
+  w.mode = "chase";
+  w.target = "a";
+  w.best = Infinity;
+  w.bestAt = 0;
+  const away = { sid: "a", x: 9, z: 0 };
+  for (t = 0; t < 10_000 && w.mode === "chase"; t += 50) assert.equal(far.tick(t, [away], 0.05).caught.length, 0);
+  assert.equal(w.mode, "wander");
+  assert.ok(far.calm.has("a"));
+});
+
+test("ocupado (menu, minijogo, sentado) não é visto; quem fica ocupado no meio é solto", () => {
+  const d = field();
+  const m = d.spawn(0, [], "garras");
+  d.tick(50, [], 0.05);
+  const me = { sid: "a", ...inFront(m, 3), busy: true };
+  for (let t = 100; t < 2000; t += 50) assert.equal(d.tick(t, [me], 0.05).caught.length, 0);
+  assert.equal(m.mode, "wander");
+  me.busy = false;
+  Object.assign(me, inFront(m, 5));
+  d.tick(2050, [me], 0.05);
+  assert.equal(m.mode, "chase");
+  me.busy = true;
+  d.tick(2100, [me], 0.05);
+  assert.equal(m.mode, "wander");
+});
+
+test("no máximo MAX_CHASE perseguindo ao mesmo tempo, um por pessoa", () => {
+  const d = new MobDirector({ isFree: () => true, span: 40, night: always, rng: seeded(12), now: 0, test: true });
+  d.tick(0, [], 0.05);
+  const mobs = [...d.mobs.values()];
+  assert.ok(mobs.length > MOBS.MAX_CHASE);
+  // uma pessoa colada em cada monstro
+  const people = mobs.map((m, i) => ({ sid: `p${i}`, ...inFront(m, 4) }));
+  d.tick(50, people, 0.05);
+  const chasing = mobs.filter((m) => m.mode === "chase");
+  assert.equal(chasing.length, MOBS.MAX_CHASE);
+  assert.equal(new Set(chasing.map((m) => m.target)).size, chasing.length);
 });

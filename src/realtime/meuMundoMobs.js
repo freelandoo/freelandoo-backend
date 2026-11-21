@@ -18,6 +18,14 @@
 //  - alcançou (≤ 1,8 m) = a LUTA abre sozinha para essa pessoa (evento
 //    `caught`); o monstro fica parado até a luta acabar (vitória = sai da
 //    cidade; derrota = volta a andar, e quem perdeu fica 30 s em paz);
+//  - 21/11 (Alex: "os monstros estão ignorando o personagem e não entram na luta
+//    automático"): PERCEBE quem chega perto em qualquer direção (NEAR, 8 m) e vê
+//    de frente mais longe (18 m, ±60°); alcance pelo TAMANHO do monstro (o
+//    Brutamontes de 4 m não precisa encostar o focinho); preso atrás de banco,
+//    caldeira ou poste sem chegar mais perto = abre a luta se está a um passo
+//    (STUCK_REACH) ou desiste; quem fugiu fica FLEE_MS em paz; no máximo
+//    MAX_CHASE perseguindo ao mesmo tempo, um por pessoa; quem está ocupado
+//    (menu, minijogo, sentado, deitado — o aparelho avisa) não é visto;
 //  - some em 10 min sem ninguém vencer (menos durante uma luta);
 //  - vitória vale para quem está lutando com ele ou perto (≤ 25 m) — a luta
 //    roda no aparelho por enquanto (sem prêmio em moedas).
@@ -53,14 +61,26 @@ const MOBS = Object.freeze({
   FAR_FROM_PLAYER: 8,
   FAR_FROM_MOB: 20,
   CLAIM_REACH: 25,
-  SIGHT: 12,
+  SIGHT: 18,
   /** mm3d-60p: distância em que o jogador VÊ o monstro (o nível nasce aí). */
   SEEN_R: 45,
-  /** Metade do cone de visão (rad): ±50°. */
-  SIGHT_HALF: (50 * Math.PI) / 180,
+  /** Metade do cone de visão (rad): ±60°. */
+  SIGHT_HALF: (60 * Math.PI) / 180,
   CHASE_V: 3.2,
-  LOSE: 22,
+  LOSE: 26,
   CATCH: 1.8,
+  /** 21/11: percebe quem está a até NEAR m em QUALQUER direção (ouviu, sentiu). */
+  NEAR: 8,
+  /** Folga do alcance por tipo (m, somada a CATCH): o corpo grande alcança antes de encostar. */
+  REACH_PLUS: Object.freeze({ wolf: 0.6, stone: 1.2, ciborgue: 0.6, garras: 0.4, brute: 1.4, cavaleiro: 0.4 }),
+  /** Perseguindo sem chegar 0,1 m mais perto por STUCK_MS = preso atrás de algo. */
+  STUCK_MS: 1200,
+  /** Preso e a até isto (m): a luta abre assim mesmo (ele está do outro lado do banco). */
+  STUCK_REACH: 4.6,
+  /** Quem escapou (longe demais ou ele ficou preso longe) fica em paz por este tempo. */
+  FLEE_MS: 12_000,
+  /** Quantos monstros podem perseguir ao mesmo tempo na sala (cada um atrás de uma pessoa). */
+  MAX_CHASE: 3,
   /** Luta sem resposta do aparelho: o monstro volta a andar. */
   FIGHT_MS: 300_000,
   /** Quem perdeu (ou estava ocupado) fica em paz por este tempo. */
@@ -100,6 +120,9 @@ function isNight(now) {
 }
 
 const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
+/** Distância (centro a centro) em que este monstro alcança a pessoa. */
+const reachOf = (kind) => MOBS.CATCH + (MOBS.REACH_PLUS[kind] || 0);
 
 class MobDirector {
   /**
@@ -171,11 +194,12 @@ class MobDirector {
 
   /**
    * Avança o relógio. `players` = quem está a pé na sala: [{ sid, x, z }].
-   * Devolve { changed, caught: [{ sid, id, kind }] }.
+   * Devolve { changed, caught: [{ sid, id, kind }], chased: [{ sid, id, kind }] } (chased = começou a perseguir agora).
    */
   tick(now, players, dt) {
     let changed = false;
     const caught = [];
+    const chased = [];
     const night = this.night(now);
     if (night && !this.wasNight) this.nextAt = now + this.between(MOBS.FIRST_MS);
     this.wasNight = night;
@@ -217,9 +241,21 @@ class MobDirector {
       if (m.mode === "chase") {
         const p = bySid.get(m.target);
         const d = p ? Math.hypot(p.x - m.x, p.z - m.z) : Infinity;
-        if (!p || d > MOBS.LOSE || this.calm.has(m.target)) {
+        // 21/11: preso atrás de algo (não chega 0,1 m mais perto por STUCK_MS)
+        if (d < m.best - 0.1) {
+          m.best = d;
+          m.bestAt = now;
+        }
+        const stuck = now - m.bestAt >= MOBS.STUCK_MS;
+        if (!p || p.busy || this.calm.has(m.target)) {
           this.wanderFromHere(m);
-        } else if (d <= MOBS.CATCH) {
+          changed = true;
+        } else if (d > MOBS.LOSE || (stuck && d > MOBS.STUCK_REACH)) {
+          // fugiu (ou ficou longe do outro lado de uma parede): fica em paz um tempo
+          this.calm.set(m.target, now + MOBS.FLEE_MS);
+          this.wanderFromHere(m);
+          changed = true;
+        } else if (d <= reachOf(m.kind) || stuck) {
           m.mode = "fight";
           m.fightAt = now;
           m.facing = Math.atan2(p.x - m.x, p.z - m.z);
@@ -227,7 +263,7 @@ class MobDirector {
           changed = true;
           continue;
         } else {
-          const step = Math.min(MOBS.CHASE_V * dt, d - MOBS.CATCH * 0.5);
+          const step = Math.min(MOBS.CHASE_V * dt, d - reachOf(m.kind) * 0.5);
           m.facing = Math.atan2(p.x - m.x, p.z - m.z);
           const c = this.collide(m.x + Math.sin(m.facing) * step, m.z + Math.cos(m.facing) * step, MOBS.RADIUS);
           m.x = c.x;
@@ -245,7 +281,7 @@ class MobDirector {
       // mm3d-72: o psicopata que passa perto às vezes começa a briga (a luta abre na hora)
       let psycho = null;
       for (const p of players) {
-        if (!p.soul || p.soul.temper !== "psicopata" || this.calm.has(p.sid) || this.isEngaged(p.sid)) continue;
+        if (p.busy || !p.soul || p.soul.temper !== "psicopata" || this.calm.has(p.sid) || this.isEngaged(p.sid)) continue;
         if (Math.hypot(p.x - m.x, p.z - m.z) > MOBS.PSYCHO_R) continue;
         const key = p.sid;
         if (!m.psychoRolled) m.psychoRolled = new Set();
@@ -265,20 +301,25 @@ class MobDirector {
         changed = true;
         continue;
       }
-      // Alguém de frente para ele? Persegue o mais perto.
+      // Alguém perto (qualquer direção) ou de frente (mais longe)? Persegue o mais perto.
+      // 21/11: no máximo MAX_CHASE perseguindo ao mesmo tempo.
+      if (this.chasing() >= MOBS.MAX_CHASE) continue;
       let best = null;
       let bestD = MOBS.SIGHT;
       for (const p of players) {
-        if (this.calm.has(p.sid) || this.isEngaged(p.sid)) continue;
+        if (p.busy || this.calm.has(p.sid) || this.isEngaged(p.sid)) continue;
         const d = Math.hypot(p.x - m.x, p.z - m.z);
         if (d > bestD) continue;
-        if (Math.abs(angleDiff(Math.atan2(p.x - m.x, p.z - m.z), m.facing)) > MOBS.SIGHT_HALF) continue;
+        if (d > MOBS.NEAR && Math.abs(angleDiff(Math.atan2(p.x - m.x, p.z - m.z), m.facing)) > MOBS.SIGHT_HALF) continue;
         best = p;
         bestD = d;
       }
       if (best) {
         m.mode = "chase";
         m.target = best.sid;
+        m.best = bestD;
+        m.bestAt = now;
+        chased.push({ sid: best.sid, id: m.id, kind: m.kind });
         changed = true;
       }
     }
@@ -292,7 +333,14 @@ class MobDirector {
       this.nextAt = now + this.between(MOBS.EVERY_MS);
       if (this.mobs.size < MOBS.MAX_ALIVE && this.spawn(now, players)) changed = true;
     }
-    return { changed, caught };
+    return { changed, caught, chased };
+  }
+
+  /** Quantos estão perseguindo agora. */
+  chasing() {
+    let n = 0;
+    for (const m of this.mobs.values()) if (m.mode === "chase") n++;
+    return n;
   }
 
   /** Essa pessoa já está sendo perseguida ou lutando com um monstro? */

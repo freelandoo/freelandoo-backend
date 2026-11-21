@@ -952,12 +952,18 @@ class BairroRoom extends Room {
   // recebe "mcatch" e a luta abre sozinha no aparelho.
   tickMobs(now, dt) {
     const players = [];
-    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z, lv: s.adv || 0, soul: s.soul || null, clan: s.clan || null });
+    // 21/11: `busy` = menu/minijogo/tela por cima (o aparelho avisa), sentado ou deitado — o monstro não vê
+    for (const [sid, s] of this.sim) if (!s.car && !s.jailed) players.push({ sid, x: s.body.x, z: s.body.z, lv: s.adv || 0, soul: s.soul || null, clan: s.clan || null, busy: !!(s.mobBusy || s.seat || s.bed) });
     this.tickGods(now, players, dt);
-    const { changed, caught } = this.mobDirector.tick(now, players, dt);
+    const { changed, caught, chased } = this.mobDirector.tick(now, players, dt);
     for (const c of caught) {
       const client = this.clients.find((k) => k.sessionId === c.sid);
       if (client) client.send("mcatch", { id: c.id, kind: c.kind, ...(c.psycho ? { psycho: true } : {}) });
+    }
+    // 21/11: "te viu e está vindo" (o aparelho avisa; alcançou = "mcatch")
+    for (const c of chased) {
+      const client = this.clients.find((k) => k.sessionId === c.sid);
+      if (client) client.send("mchase", { id: c.id, kind: c.kind });
     }
     if (changed || (this.mobDirector.mobs.size && now - this.mobSentAt >= 500)) {
       this.mobSentAt = now;
@@ -1017,6 +1023,11 @@ class BairroRoom extends Room {
     const s = this.sim.get(client.sessionId);
     if (!s || !msg || typeof msg !== "object") return;
     const now = Date.now();
+    // 21/11: `q` 1/0 = o aparelho ficou ocupado/livre (menu, minijogo, tela por cima): ocupado não é perseguido
+    if (msg.q === 0 || msg.q === 1) {
+      s.mobBusy = msg.q === 1;
+      return;
+    }
     if (msg.s === 1) {
       this.mobDirector.engage(Number(msg.id), client.sessionId, s.body.x, s.body.z, now);
       return;
