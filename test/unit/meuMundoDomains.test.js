@@ -8,10 +8,10 @@ const C = require("../../src/utils/meuMundoCenter");
 const F = require("../../src/utils/meuMundoFight");
 const { resolveCircle } = require("../../src/utils/meuMundoMotion");
 
-test("os seis Domínios na ordem da travessia, com o nível do treinador da tabela", () => {
-  assert.deepEqual(D.DOMAIN_IDS, ["floresta", "canion", "gelo", "fabrica", "vulcao", "orbital"]);
-  assert.deepEqual(D.DOMAINS.map((d) => d.need), [5, 9, 13, 17, 21, 25]);
-  assert.deepEqual(D.DOMAINS.map((d) => d.god), ["noctis", "zephyra", "maru", "aeryn", "kragor", "iris"]);
+test("os sete Domínios na ordem da travessia, com o nível do treinador da tabela", () => {
+  assert.deepEqual(D.DOMAIN_IDS, ["floresta", "canion", "gelo", "fabrica", "vulcao", "orbital", "vermelha"]);
+  assert.deepEqual(D.DOMAINS.map((d) => d.need), [5, 9, 13, 17, 21, 25, 29]);
+  assert.deepEqual(D.DOMAINS.map((d) => d.god), ["noctis", "zephyra", "maru", "aeryn", "kragor", "iris", "varkos"]);
   assert.equal(D.SECTORS, 10);
 });
 
@@ -48,7 +48,7 @@ test("setores em ordem: o 1 abre com o Domínio, o N depois do N−1; vencidos f
 
 test("monstro e nível pelo setor: comuns, fortes, elite (Lobos na Floresta), guardião e o deus; nível nunca desce", () => {
   // D5: o elite do Cânion são as Harpias (a Dama das Garras); DV6–DV9: Ciborgue, Dama, Golem e Cavaleiro Dourado
-  assert.deepEqual(D.DOMAIN_IDS.map((id) => D.kindOf(id, 7)), ["wolf", "garras", "ciborgue", "garras", "stone", "cavaleiro"]);
+  assert.deepEqual(D.DOMAIN_IDS.map((id) => D.kindOf(id, 7)), ["wolf", "garras", "ciborgue", "garras", "stone", "cavaleiro", "brute"]);
   assert.equal(D.kindOf("floresta", 1), "cavaleiro");
   assert.equal(D.kindOf("gelo", 10), "cavaleiro", "DV6: Marú luta de espada (regra do Cavaleiro + fases)");
   for (const id of D.DOMAIN_IDS) for (let s = 1; s <= 10; s++) assert.ok(F.MOB_KINDS.includes(D.kindOf(id, s)), `${id} ${s}`);
@@ -82,10 +82,10 @@ test("S14: Poder recomendado = o Poder do herói do dia-alvo (Floresta 870 → 8
   for (const d of D.DOMAINS) assert.deepEqual([...d.power], [D.recommendedPower(d.id, 1), D.recommendedPower(d.id, 10)], d.id);
 });
 
-test("S14: os deuses são o muro de meses (Noctis 97, Zéphyra 135, Marú 192, Aeryn 221, Kragor 242, Íris 289); Floresta pela tabela medida", () => {
-  assert.deepEqual(D.DOMAIN_IDS.map((id) => D.sectorLevel(id, 10)), [97, 135, 192, 221, 242, 289]);
+test("S14: os deuses são o muro de meses (Noctis 97, Zéphyra 135, Marú 192, Aeryn 221, Kragor 242, Íris 289, Varkos 366); Floresta pela tabela medida", () => {
+  assert.deepEqual(D.DOMAIN_IDS.map((id) => D.sectorLevel(id, 10)), [97, 135, 192, 221, 242, 289, 366]);
   assert.deepEqual([...D.LEVELS_BY_DOMAIN.floresta], [6, 9, 15, 20, 23, 30, 44, 60, 66, 97]);
-  assert.deepEqual(D.DOMAINS.map((d) => d.need), [5, 9, 13, 17, 21, 25], "a trava de treinador fica");
+  assert.deepEqual(D.DOMAINS.map((d) => d.need), [5, 9, 13, 17, 21, 25, 29], "a trava de treinador fica");
 });
 
 test("três palcos de luta por Domínio: entrada, setores fundos, palácio", () => {

@@ -35,6 +35,8 @@ const DOMAINS = Object.freeze(
     { id: "fabrica", god: "aeryn", need: 17, power: [14130, 15970], kit: "fabrica" },
     { id: "vulcao", god: "kragor", need: 21, power: [16140, 17860], kit: "forja" },
     { id: "orbital", god: "iris", need: 25, power: [18390, 21690], kit: "orbital" },
+    // 22/11 (pedido do Alex): o 7º e ÚLTIMO, o mais forte — a Floresta Vermelha de Varkos, o Leão da Guerra
+    { id: "vermelha", god: "varkos", need: 29, power: [21970, 25050], kit: "vermelha" },
   ].map((d) => Object.freeze({ ...d, power: Object.freeze(d.power) }))
 );
 const DOMAIN_IDS = Object.freeze(DOMAINS.map((d) => d.id));
@@ -79,6 +81,12 @@ const KINDS_BY_DOMAIN = Object.freeze({
   // Cidade Orbital: Pombas Prismáticas 1–2, Camaleões Rachados 3, Pintores Sem Cor 4–5 (Raposa adulta de
   // mão), Espelhos 6, Cavaleiro Dourado 7–8 (elite), O Arco Partido 9 (o raio reto do Golem), ÍRIS 10.
   orbital: Object.freeze(["garras", "garras", "wolf", "garras", "garras", "cavaleiro", "cavaleiro", "cavaleiro", "stone", "ciborgue"]),
+  // Floresta Vermelha de Varkos (22/11): o campo da batalha mais longa dos quinze anos, num outono que
+  // nunca acaba. Corvos da Batalha 1–2 (a Dama: rápidos), Javalis de Ferrugem 3 (o Brutamontes), Soldados
+  // Caídos 4–5 (Raposa adulta de espada: os mortos dos dois exércitos), Lobos de Ferrugem 6, Brutamontes
+  // 7–8 (elite), O Porta-Estandarte 9 (Vampiro adulto de espada, o arauto), VARKOS 10 (lança-estandarte:
+  // regra do Cavaleiro + fases).
+  vermelha: Object.freeze(["garras", "garras", "brute", "cavaleiro", "cavaleiro", "wolf", "brute", "brute", "cavaleiro", "cavaleiro"]),
 });
 
 /**
@@ -159,6 +167,18 @@ const FOES_BY_DOMAIN = Object.freeze({
     { id: "arco", art: false },
     { id: "iris", body: "iris", rig: true, art: true },
   ].map((f) => Object.freeze(f))),
+  vermelha: Object.freeze([
+    { id: "corvo", art: false },
+    { id: "corvo", art: false },
+    { id: "javali", art: false },
+    { id: "caido", body: "raposa_adulto", rig: true, art: false },
+    { id: "caido", body: "raposa_adulto", rig: true, art: false },
+    { id: "lobo", art: true },
+    { id: "brutamontes", art: true },
+    { id: "brutamontes", art: true },
+    { id: "portaestandarte", body: "vampiro_adulto", rig: true, art: false },
+    { id: "varkos", body: "varkos", rig: true, art: true },
+  ].map((f) => Object.freeze(f))),
 });
 
 /**
@@ -179,6 +199,8 @@ const LEVELS_BY_DOMAIN = Object.freeze({
   fabrica: Object.freeze([159, 164, 184, 184, 184, 184, 194, 194, 194, 221]),
   vulcao: Object.freeze([204, 213, 213, 213, 213, 213, 213, 226, 232, 242]),
   orbital: Object.freeze([225, 244, 244, 259, 259, 259, 267, 267, 288, 289]),
+  // 22/11: --fit do mm-boss-wall (deus no dia 910, ~2,5 anos; equipamento lendário +15): robô 95% no setor 1, 57% no Varkos
+  vermelha: Object.freeze([279, 279, 279, 293, 297, 352, 352, 352, 352, 366]),
 });
 const tbl = (o) => Object.freeze(Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Object.freeze(v)])));
 /**
@@ -193,6 +215,7 @@ const HEROES_BY_DOMAIN = tbl({
   fabrica: [110, 111, 113, 114, 116, 118, 119, 121, 122, 124],
   vulcao: [125, 127, 128, 130, 131, 133, 134, 135, 137, 138],
   orbital: [141, 144, 147, 150, 152, 155, 158, 160, 163, 166],
+  vermelha: [168, 171, 173, 176, 178, 181, 183, 185, 188, 190],
 });
 const POWER_BY_DOMAIN = tbl({
   floresta: [870, 1140, 1620, 2010, 2550, 3140, 3900, 5240, 6930, 8820],
@@ -201,12 +224,14 @@ const POWER_BY_DOMAIN = tbl({
   fabrica: [14130, 14310, 14540, 14720, 14940, 15170, 15350, 15570, 15750, 15970],
   vulcao: [16140, 16360, 16530, 16750, 16920, 17140, 17310, 17480, 17690, 17860],
   orbital: [18390, 18780, 19170, 19540, 19880, 20250, 20630, 20950, 21330, 21690],
+  // 22/11: o herói do dia-alvo (mm-boss-wall heroAt) na régua da Orbital (~140 de Poder por nível de aventura)
+  vermelha: [21970, 22390, 22670, 23090, 23370, 23790, 24070, 24350, 24770, 25050],
 });
 /**
  * D4: o deus do setor 10 luta em FASES (regra `BOSSES` em meuMundoFight.js, setup.boss no
  * ticket). Domínio sem chefão com fases (ainda sem fatia) luta como antes.
  */
-const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis", canion: "zephyra", gelo: "maru", fabrica: "aeryn", vulcao: "kragor", orbital: "iris" });
+const BOSS_BY_DOMAIN = Object.freeze({ floresta: "noctis", canion: "zephyra", gelo: "maru", fabrica: "aeryn", vulcao: "kragor", orbital: "iris", vermelha: "varkos" });
 /** O chefão com fases do setor (só o 10), ou null. */
 const bossOf = (domainId, sector) => (sector === SECTORS && BOSS_BY_DOMAIN[domainId]) || null;
 /** Vitórias do robô com o Poder recomendado, do setor 1 ao 10 (o fim fica no deus). */

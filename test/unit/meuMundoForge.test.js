@@ -16,8 +16,8 @@ const legacyIds = [
 
 test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16; +6 fichas da E17)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 390); // armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 390);
+  assert.equal(pub.items.length, 398); // Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 398);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);
@@ -49,7 +49,7 @@ test("cada montagem usa uma unidade de 10/12/15 partes diferentes", () => {
 });
 
 test("receitas têm referências válidas, fabricam uma unidade e não geram lucro de reciclagem", () => {
-  assert.equal(Gear.RECIPES.length, 107); // E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo; E18: receita oculta
+  assert.equal(Gear.RECIPES.length, 110); // Floresta Vermelha (22/11): +3 (amuleto, 2 embriões) · E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo; E18: receita oculta
   assert.equal(new Set(Gear.RECIPES.map((r) => r.id)).size, Gear.RECIPES.length);
   for (const r of Gear.RECIPES) {
     const out = Gear.GEAR_BY_ID.get(r.out);

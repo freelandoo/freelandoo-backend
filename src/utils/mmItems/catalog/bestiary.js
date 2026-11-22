@@ -33,6 +33,7 @@ const AMULETS = Object.freeze([
   { domain: "fabrica", name: "Amuleto da Fábrica de Bronze", keys: ["int", "power"], mats: { engrenagem_fina: 12, coracao_de_corda: 1 } },
   { domain: "vulcao", name: "Amuleto do Vulcão de Kragor", keys: ["dmg", "hp"], mats: { escoria: 12, ferro_de_basalto: 1 } },
   { domain: "orbital", name: "Amuleto da Cidade Orbital", keys: ["spd", "power"], mats: { vidro_colorido: 12, prisma_vivo: 1 } },
+  { domain: "vermelha", name: "Amuleto da Floresta Vermelha", keys: ["dmg", "power"], mats: { folha_rubra: 12, brasa_de_estandarte: 1 } },
 ]);
 const AMULET_COINS = 900;
 
@@ -45,6 +46,7 @@ const CHARACTERS = Object.freeze([
   { id: "esteira", name: "A Esteira", domain: "fabrica", sectors: [9], guardian: true },
   { id: "brutamontes", name: "Brutamontes", domain: "vulcao", sectors: [9], guardian: true },
   { id: "arco", name: "O Arco Partido", domain: "orbital", sectors: [9], guardian: true },
+  { id: "portaestandarte", name: "O Porta-Estandarte", domain: "vermelha", sectors: [9], guardian: true },
   { id: "ciborgue", name: "Ciborgue", domain: "gelo", sectors: [7, 8], guardian: false },
   { id: "garras", name: "Dama das Garras", domain: "fabrica", sectors: [7, 8], guardian: false },
   { id: "golem", name: "Golem de Pedra", domain: "vulcao", sectors: [7, 8], guardian: false },
@@ -58,6 +60,7 @@ const GODS = Object.freeze([
   { id: "aeryn", name: "Aeryn", domain: "fabrica" },
   { id: "kragor", name: "Kragor", domain: "vulcao" },
   { id: "iris", name: "Íris", domain: "orbital" },
+  { id: "varkos", name: "Varkos", domain: "vermelha" },
 ]);
 
 const CRIO_NEXT = "O uso na Criogenia chega na próxima atualização: por enquanto ele fica guardado na mochila.";

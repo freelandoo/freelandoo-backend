@@ -443,6 +443,9 @@ async function main() {
   check("admin no nível 1: os seis abertos, todos os setores", st.bypass === true && st.domains.every((d) => d.open && d.sectors.every((s) => s.open)));
   r = await call("fightStart", adm, { body: { origin: "domain", domain: "orbital", sector: 10 } });
   check("admin luta no setor 10 da Orbital", r.status === 200 && r.body.fight.setup.level === D.sectorLevel("orbital", 10));
+  // 22/11: o 7º Domínio, a Floresta Vermelha — o Varkos em fases no setor 10 (a CHECK da 465 aceita o domínio)
+  r = await call("fightStart", adm, { body: { origin: "domain", domain: "vermelha", sector: 10 } });
+  check("admin luta com o Varkos no setor 10 da Floresta Vermelha", r.status === 200 && r.body.fight.setup.level === D.sectorLevel("vermelha", 10) && r.body.fight.setup.boss === "varkos", JSON.stringify(r.body && r.body.fight && r.body.fight.setup));
   process.env.MM_ADMIN_LOCKS = "1";
   r = await call("domainsEnter", adm, { body: { domain: "floresta" } });
   check("MM_ADMIN_LOCKS=1: o admin vê a trava", r.status === 403 && r.body.level === 5);

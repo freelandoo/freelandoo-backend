@@ -16,9 +16,10 @@ const { G } = require("./_base");
 const DOMAIN_NAME = Object.freeze({
   floresta: "Floresta da Lua", canion: "Cânion das Tempestades", gelo: "Mar de Gelo",
   fabrica: "Fábrica de Bronze", vulcao: "Vulcão de Kragor", orbital: "Cidade Orbital",
+  vermelha: "Floresta Vermelha",
 });
 /** Nível de aventura da porta do Domínio (`meuMundoDomains.js`, `need`). */
-const DOMAIN_LEVEL = Object.freeze({ floresta: 5, canion: 9, gelo: 13, fabrica: 17, vulcao: 21, orbital: 25 });
+const DOMAIN_LEVEL = Object.freeze({ floresta: 5, canion: 9, gelo: 13, fabrica: 17, vulcao: 21, orbital: 25, vermelha: 29 });
 
 /** Regra do fragmento de chefão (§6.5): 3 a 5 por vitória + 10 na primeira. A E12 usa nas tabelas. */
 const BOSS_FRAGMENTS = Object.freeze({ qty: Object.freeze([3, 5]), first: 10 });
@@ -106,6 +107,8 @@ const MATERIALS = Object.freeze([
   M("ferro_de_basalto", "Ferro de Basalto", "rare", "vulcao", null),
   M("vidro_colorido", "Vidro Colorido", "common", "orbital", null),
   M("prisma_vivo", "Prisma Vivo", "rare", "orbital", null),
+  M("folha_rubra", "Folha Rubra", "common", "vermelha", null), // 22/11: a Floresta Vermelha de Varkos
+  M("brasa_de_estandarte", "Brasa de Estandarte", "rare", "vermelha", null),
   M("brasa_solar", "Brasa Solar", "uncommon", "aurion", null), // E17: Lâminas e troca do Hall
   M("cinza_das_correntes", "Cinza das Correntes", "uncommon", "morkhan", null), // E17: rua
   M("barro_primordial", "Barro Primordial", "uncommon", "bastor", null), // E17: Paint
@@ -162,6 +165,8 @@ const DESCRIPTIONS = Object.freeze({
   ferro_de_basalto: "Ferro preso no basalto do Vulcão; só sai quebrando a pedra.",
   vidro_colorido: "Caco de vitral da Cidade Orbital.",
   prisma_vivo: "Prisma que ainda divide a luz sozinho, da Cidade Orbital.",
+  folha_rubra: "Folha da Floresta Vermelha, que nunca termina de cair.",
+  brasa_de_estandarte: "Ponta em brasa da juba de Varkos, feita de estandartes rasgados dos dois lados da guerra.",
   brasa_solar: "Brasa que não apaga, guardada pelos campeões de Aurion.",
   cinza_das_correntes: "Cinza deixada pelas correntes de Morkhan nos monstros da rua.",
   barro_primordial: "O barro com que Bastor molda as coisas. Sai das partidas de Paint.",

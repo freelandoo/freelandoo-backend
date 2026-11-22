@@ -31,6 +31,9 @@ const GOD_GAME = Object.freeze({
   aeryn: "jetpack",
   kragor: "laminas",
   iris: "paint",
+  // 22/11: Varkos, o Leão da Guerra — "o deus da Arena das Lâminas" (historia/v2/08-genese-alex.md). Divide a
+  // janela com Kragor: o pacto é por jogo e povo, as semanas se somam sem dobrar o bônus.
+  varkos: "laminas",
 });
 
 const gameOfGod = (god) => GOD_GAME[god] || null;

@@ -11,8 +11,9 @@ const LORE = {
   fabrica: ["rato", "rato", "aranha", "cobaia", "cobaia", "sucata", "garras", "garras", "esteira", "aeryn"],
   vulcao: ["salamandra", "salamandra", "mineiro", "mineiro", "touro", "lutador", "golem", "golem", "brutamontes", "kragor"],
   orbital: ["pomba", "pomba", "camaleao", "pintor", "pintor", "espelho", "cavaleiro", "cavaleiro", "arco", "iris"],
+  vermelha: ["corvo", "corvo", "javali", "caido", "caido", "lobo", "brutamontes", "brutamontes", "portaestandarte", "varkos"],
 };
-const GOD = { gelo: "maru", fabrica: "aeryn", vulcao: "kragor", orbital: "iris" };
+const GOD = { gelo: "maru", fabrica: "aeryn", vulcao: "kragor", orbital: "iris", vermelha: "varkos" };
 
 test("DV6–DV9: as criaturas da lore por setor, regra de tipo que já existe e corpo que existe", () => {
   for (const [dom, ids] of Object.entries(LORE)) {
@@ -39,7 +40,7 @@ test("DV6–DV9: as criaturas da lore por setor, regra de tipo que já existe e 
 });
 
 test("S14: níveis calibrados com robô — sobem dentro do Domínio, e cada Domínio começa perto do deus anterior (≥ 75%) e termina acima dele", () => {
-  const order = ["canion", "gelo", "fabrica", "vulcao", "orbital"];
+  const order = ["canion", "gelo", "fabrica", "vulcao", "orbital", "vermelha"];
   for (let i = 1; i < order.length; i++) {
     const dom = order[i];
     const L = Array.from({ length: 10 }, (_, k) => D.sectorLevel(dom, k + 1));

@@ -32,7 +32,7 @@ const TARGET = Number(opt("--target", 0.5));
 /** Depois do primeiro deus: raridade média das peças (0,6 rara · 0,75 épica · 0,88 lendária) e teto do +N. */
 /** Equipamento de quem chega a cada Domínio: [raridade média, teto do +N] (raro +10 antes do Selo de
  * Noctis; épico +15 depois; lendário +15 na Orbital). --rar/--pmax trocam para a conta. */
-const GEAR_BY_DOMAIN = Object.freeze({ floresta: [0.6, 10], canion: [0.75, 15], gelo: [0.75, 15], fabrica: [0.75, 15], vulcao: [0.75, 15], orbital: [0.88, 15] });
+const GEAR_BY_DOMAIN = Object.freeze({ floresta: [0.6, 10], canion: [0.75, 15], gelo: [0.75, 15], fabrica: [0.75, 15], vulcao: [0.75, 15], orbital: [0.88, 15], vermelha: [0.88, 15] });
 const RARITY = Number(opt("--rar", (GEAR_BY_DOMAIN[DOMAIN] || [0.6])[0]));
 const PLUS_MAX = Number(opt("--pmax", (GEAR_BY_DOMAIN[DOMAIN] || [0, 10])[1]));
 const MAX_STEPS = 4 * 60 * 60;
@@ -99,7 +99,7 @@ const at = (day, rarity = RARITY, plusMax = PLUS_MAX) => {
 };
 
 /** Dia (20 vitórias/dia) em que o deus de cada Domínio cai para metade dos robôs (proposta 2026-11-12). */
-const GOD_DAY = Object.freeze({ floresta: 180, canion: 270, gelo: 365, fabrica: 455, vulcao: 545, orbital: 730 });
+const GOD_DAY = Object.freeze({ floresta: 180, canion: 270, gelo: 365, fabrica: 455, vulcao: 545, orbital: 730, vermelha: 910 });
 /** Dia-alvo de cada setor: a Floresta foi medida; os outros sobem em linha do deus anterior ao próprio. */
 function sectorDay(domain, sector) {
   if (domain === "floresta") return [2, 4, 8, 13, 20, 30, 45, 75, 120, 180][sector - 1];

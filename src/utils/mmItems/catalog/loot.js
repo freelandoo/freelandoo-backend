@@ -34,9 +34,10 @@ const DOMAIN_MATS = Object.freeze({
   fabrica: Object.freeze({ common: "engrenagem_fina", rare: "coracao_de_corda" }),
   vulcao: Object.freeze({ common: "escoria", rare: "ferro_de_basalto" }),
   orbital: Object.freeze({ common: "vidro_colorido", rare: "prisma_vivo" }),
+  vermelha: Object.freeze({ common: "folha_rubra", rare: "brasa_de_estandarte" }),
 });
 /** E13: a runa de cada Domínio (a de Acuracidade cai em todos, mais rara). */
-const DOMAIN_RUNE = Object.freeze({ floresta: "destreza", canion: "velocidade", gelo: "vitalidade", fabrica: "defesa", vulcao: "ataque", orbital: "inteligencia" });
+const DOMAIN_RUNE = Object.freeze({ floresta: "destreza", canion: "velocidade", gelo: "vitalidade", fabrica: "defesa", vulcao: "ataque", orbital: "inteligencia", vermelha: "ataque" });
 const RUNE_CHANCE = Object.freeze({ domain: 0.2, forca: 0.05, boss: 0.35 });
 const domainCommonQty = (sector) => 1 + Math.floor(sector / 3);
 const domainRareChance = (sector) => (5 + 3 * sector) / 100;
@@ -50,7 +51,9 @@ function domainTable(domain, sector) {
   const sure = [{ id: common, qty: q(domainCommonQty(sector)), win: true }];
   if (boss) sure.push({ id: rare, qty: q(1), win: true });
   if (set && sector >= 7) sure.push({ id: `frag_${set.id}`, qty: SET_FRAGMENTS.qty, win: true });
-  if (boss) sure.push({ id: `frag_${line.key}`, qty: BOSS_FRAGMENTS.qty, win: true }, { id: "selo_dominio", qty: q(1), win: true });
+  // a Floresta Vermelha (22/11) ainda não tem arma de linha: o chefão paga o Selo e os fragmentos do bestiário
+  if (boss && line) sure.push({ id: `frag_${line.key}`, qty: BOSS_FRAGMENTS.qty, win: true });
+  if (boss) sure.push({ id: "selo_dominio", qty: q(1), win: true });
   const chance = [];
   if (!boss) chance.push({ id: rare, qty: q(1), p: domainRareChance(sector), win: true });
   chance.push(
@@ -67,7 +70,7 @@ function domainTable(domain, sector) {
   if (boss) chance.push({ id: `runa_${DOMAIN_RUNE[domain]}_2`, qty: q(1), p: RUNE_CHANCE.boss, win: true });
   const first = [];
   if (set && sector === 7) first.push({ id: `projeto_${set.id}`, qty: q(1) });
-  if (boss) first.push({ id: `frag_${line.key}`, qty: q(BOSS_FRAGMENTS.first) }, { id: `receita_${line.key}`, qty: q(1) });
+  if (boss && line) first.push({ id: `frag_${line.key}`, qty: q(BOSS_FRAGMENTS.first) }, { id: `receita_${line.key}`, qty: q(1) });
   // S14: fragmentos de acessório, de personagem e do deus — sempre no FIM de cada lista
   const adds = Bestiary.domainAdds(domain, sector);
   sure.push(...adds.sure);
