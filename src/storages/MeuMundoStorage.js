@@ -14,7 +14,7 @@ const MOB_BODIES = Object.freeze(["brutamontes"]);
 // 2026-11-14: o personagem padrão (normal/slim/fat/strong) e a feminina pintável saíram; "ekaterina" = skin "ekaterina".
 // mm3d-50 (mig 313): os deuses — corpo = id da skin.
 // mm3d-58: os corpos das classes (calculados, nunca gravados em avatar_pref).
-const BODIES = ["sergio", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES, ...MOB_BODIES];
+const BODIES = ["sergio", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "varkos", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES, ...MOB_BODIES];
 
 // Uma chave só para TODA alocação de residência. É ela que impede dois
 // pedidos simultâneos de pegarem a mesma casa e — o caso mais sutil — de cada

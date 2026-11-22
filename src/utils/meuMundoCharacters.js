@@ -58,6 +58,7 @@ const SPECIES                        = Object.freeze([
   god("iris", 3.2, "f"),
   god("noctis", 3.2, "m"),
   god("aeryn", 3.2, "f"),
+  god("varkos", 3.2, "m"),
   special("ciborgue", 2.7, "m"),
   special("cavaleiro", 2.0, "m"),
   special("golem", 4.0, "m"),
