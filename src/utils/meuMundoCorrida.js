@@ -1292,7 +1292,7 @@ function carPose(race      , c     , out         )          {
   out.yaw = c.yaw
   // mm3d-74: no loop a nave gira junto com a pista (nariz para cima até a volta inteira)
   out.pitch = p.inLoop ? p.loop : c.air ? Math.max(-0.45, Math.min(0.35, Math.atan2(c.vy, Math.max(8, c.v)) * 0.7)) : Math.atan(p.slope)
-  out.roll = (c.air ? 0 : p.bank) + c.steerNow * Math.min(1, c.v / 30) * 0.16
+  out.roll = (c.air ? 0 : p.bank) + c.steerNow * Math.min(1, c.v / 30) * 0.26 // 21/11: inclina mais na curva (o volante agora sobe em rampa)
   return out
 }
 
