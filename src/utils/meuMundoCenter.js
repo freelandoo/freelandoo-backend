@@ -225,18 +225,18 @@ const STREET_NPCS = Object.freeze(
     // quem chega pela frente) e olhando para fora. Só de noite (18h–6h, Brasília; o
     // cliente esconde de dia). Fica dentro da colisão do pedestal: sem caixa própria,
     // então de dia não sobra parede invisível.
-    { id: "arauto", x: -1.9, z: 3.3, y: MONUMENT.h, facing: Math.atan2(-1.9, 3.3), body: "vampiro_adulto", hours: "night" },
+    { id: "arauto", x: -1.9, z: 3.3, y: MONUMENT.h, facing: Math.atan2(-1.9, 3.3), body: "npc_arauto", hours: "night" },
     // Lore v2 C4 (cap. 6): Fulvo, líder da corrida dos Vampiros, no MESMO pedestal, do
     // outro lado (60° da frente, espelhando o Arauto), só de noite (07-falas §12, pergunta 3:
     // fica no centro, e não na Cidade Baixa, para a Raposa poder chegar até ele).
-    { id: "fulvo", x: -1.9, z: -3.3, y: MONUMENT.h, facing: Math.atan2(-1.9, -3.3), body: "vampiro_adulto", hours: "night" },
+    { id: "fulvo", x: -1.9, z: -3.3, y: MONUMENT.h, facing: Math.atan2(-1.9, -3.3), body: "npc_fulvo", hours: "night" },
     // Lore v2 C4 (cap. 6): o Ciborgue treina sozinho no fundo da Arena das Lâminas, no
     // canto sudeste, ao lado da porta, de frente para a parede (não olha para quem chega).
     { id: "ciborgue", x: 25, z: -60.6, facing: -Math.PI / 2, body: "ciborgue" },
     // Lore v2 C5 (cap. 8): Pipa, a sobrinha do Brutamontes, grita "Fubá!" para o ringue,
     // na frente do Boxe, ao lado da porta (a "arquibancada" de quem não entra), virada para
     // o prédio e a porta. Sempre lá. Corpo de Raposa adulta; o lenço amarelo é arte do Alex.
-    { id: "pipa", x: -1.8, z: 57, facing: -2.2, body: "raposa_adulta" },
+    { id: "pipa", x: -1.8, z: 57, facing: -2.2, body: "npc_pipa" },
     // Lore v2 C6 (cap. 9): o Cavaleiro Dourado (Aldo) "vigiando quem chega", na calçada
     // sul da avenida, perto do portal dos Bairros (por onde as Raposas chegam das Matas),
     // virado para o portal. Só de noite (07-falas §12, pergunta 3: fica no centro, e não no

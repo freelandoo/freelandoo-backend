@@ -33,7 +33,7 @@ test("C5: os passos do cap. 8 apontam para o que existe", () => {
 
 test("C5: Pipa fica na frente do Boxe, no ponto dela, sem tapar a porta", () => {
   const p = npc("pipa");
-  assert.equal(p.body, "raposa_adulta");
+  assert.equal(p.body, "npc_pipa"); // 22/11: corpo próprio (Tripo)
   assert.equal(p.hours, undefined); // sempre lá
   assert.equal(p.y, undefined); // no chão: tem caixa
   assert.equal(P.pickVisit(C.VISIT_POINTS, p.x, p.z), "boxe_pipa");

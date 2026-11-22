@@ -22,7 +22,9 @@ test("os doze prédios montam sem problema, com entrada livre e saída pela port
 
 test("cada prédio tem o seu uso", () => {
   assert.ok(count(I.academia, "train") >= 10, "aparelhos de treino");
-  for (const id of ["universidade", "biblioteca", "escola"]) assert.ok(count(I[id], "study") >= 9, `${id}: lugares de estudo`);
+  for (const id of ["universidade", "biblioteca"]) assert.ok(count(I[id], "study") >= 9, `${id}: lugares de estudo`);
+  // 22/11: dois dos nove lugares da escola são da aluna e do aluno (figurantes sentados)
+  assert.ok(count(I.escola, "study") >= 7, "escola: lugares de estudo");
   assert.ok(count(I.igreja, "pray") >= 60, "bancos da igreja");
   assert.equal(count(I.pizzaria, "order"), 1);
   assert.equal(count(I.hamburgueria, "order"), 1);

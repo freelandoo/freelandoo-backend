@@ -271,7 +271,7 @@ test("C2: o Arauto da Lua fica em cima do pedestal de Morkhan, só de noite, sem
   const a = C.STREET_NPCS.find((n) => n.id === "arauto");
   assert.ok(a, "o Arauto está na praça");
   assert.equal(a.hours, "night");
-  assert.equal(a.body, "vampiro_adulto");
+  assert.equal(a.body, "npc_arauto"); // 22/11: corpo próprio (Tripo)
   assert.ok(a.y > 1 && a.y < 2, "em pé no topo da base");
   // dentro da colisão do monumento: de dia some sem deixar parede invisível
   assert.ok(Math.hypot(a.x, a.z) < 4.5 * 0.88);

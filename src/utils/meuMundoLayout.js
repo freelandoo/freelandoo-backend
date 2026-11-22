@@ -206,7 +206,7 @@ const NEIGHBOR_SPOT = Object.freeze({ x: -6, z: -1.5, facing: round((3 * Math.PI
 // CIMA do pedestal do Aurion (y = altura da base), de lado (60° da frente, para não
 // roubar o "Entregar" de quem chega pela frente), olhando para fora. Fica dentro da
 // colisão do pedestal: sem caixa própria (a lista de obstáculos não muda com a classe).
-const PRIESTESS = Object.freeze({ id: "sacerdotisa", body: "raposa_adulta", x: 2.6, z: -1.5, y: PLAZA_STATUES[0].base.h, facing: round(Math.atan2(2.6, -1.5)), radius: 2.4 });
+const PRIESTESS = Object.freeze({ id: "sacerdotisa", body: "npc_sacerdotisa", x: 2.6, z: -1.5, y: PLAZA_STATUES[0].base.h, facing: round(Math.atan2(2.6, -1.5)), radius: 2.4 });
 function npcsFor(clan) {
   const vamp = clan === "vampiro";
   const neighbor = Object.freeze({ id: vamp ? "vizinho_vampiro" : "vizinha_raposa", body: vamp ? "vampiro_adulto" : "raposa_adulta", ...NEIGHBOR_SPOT });

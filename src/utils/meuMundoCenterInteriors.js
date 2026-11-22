@@ -33,27 +33,33 @@ function cafeTable(x, z) {
  * Fileira de estudo: mesa comprida (table6) com três cadeiras viradas para
  * os fundos (+z), a mesa à frente delas. `chairZ` = a linha das cadeiras.
  */
-function studyRow(x, chairZ, use = "study") {
+function studyRow(x, chairZ, use = "study", npc = null) {
   const out = [["table6", x, chairZ + 0.74, 0]];
-  for (const dx of [-0.6, 0, 0.6]) out.push(["chair", x + dx, chairZ, 180, { use }]);
+  for (const dx of [-0.6, 0, 0.6]) out.push(["chair", x + dx, chairZ, 180, npc && dx === 0 ? npc : { use }]);
   return out;
 }
 
+/**
+ * 22/11: figurante SENTADO (o assento é dele, ninguém mais senta): `npc` = papel, `npcBody` =
+ * corpo do NPC (front `npc-bodies.ts`; o servidor só repassa para desenhar).
+ */
+const extra = (role, body) => ({ npc: role, npcBody: body });
+
 /** Mesa de leitura com três cadeiras de cada lado (biblioteca). */
-function readingTable(x, z) {
+function readingTable(x, z, npc = null) {
   const out = [["table6", x, z, 0]];
   for (const dx of [-0.6, 0, 0.6]) {
-    out.push(["chair", x + dx, z + 0.74, 0, { use: "study" }]);
+    out.push(["chair", x + dx, z + 0.74, 0, npc && dx === 0.6 ? npc : { use: "study" }]);
     out.push(["chair", x + dx, z - 0.74, 180, { use: "study" }]);
   }
   return out;
 }
 
 /** Carteira de escola: mesinha e a cadeira atrás, virada para o quadro (+z). */
-function schoolDesk(x, chairZ) {
+function schoolDesk(x, chairZ, npc = null) {
   return [
     ["desk", x, chairZ + 0.6, 180],
-    ["chair", x, chairZ, 180, { use: "study" }],
+    ["chair", x, chairZ, 180, npc || { use: "study" }],
   ];
 }
 
@@ -94,7 +100,7 @@ function pizzaria() {
         ],
       },
     ],
-    npcs: [{ role: "pizzaiolo", x: 0, z: 8.6, r: 0, talk: "atendente_sangue" }],
+    npcs: [{ role: "pizzaiolo", x: 0, z: 8.6, r: 0, talk: "atendente_sangue", body: "npc_atendente_sangue" }],
   };
 }
 
@@ -138,7 +144,11 @@ function hamburgueria() {
         ],
       },
     ],
-    npcs: [{ role: "atendente", x: 1.5, z: 8.4, r: 0, talk: "acougueiro" }],
+    npcs: [
+      { role: "atendente", x: 1.5, z: 8.4, r: 0, talk: "acougueiro", body: "npc_acougueiro" },
+      // 22/11: Seu Beppe (o pizzaiolo, sem pizzaria desde a VS5) escolhendo carne na vitrine
+      { role: "cliente", x: 4.3, z: 5.6, r: 180, body: "npc_beppe" },
+    ],
   };
 }
 
@@ -182,7 +192,7 @@ function supermercado() {
           ["plant", 12.0, 0.6, 0],
           // Sala do vendedor: mesa, ele sentado do lado da parede, o cliente de frente.
           ["desk", -10.4, 3.2, -90],
-          ["chair", -11.2, 3.2, -90, { npc: "vendedor" }],
+          ["chair", -11.2, 3.2, -90, extra("vendedor", "npc_edu")],
           ["chair", -9.55, 3.2, 90, { use: "seller" }],
           ["poster", -9.6, 0.13, 180],
           ["poster", -12.49, 3.2, -90],
@@ -193,8 +203,12 @@ function supermercado() {
       },
     ],
     npcs: [
-      { role: "caixa", x: 4.0, z: 4.85, r: 0, talk: "caixa" },
-      { role: "caixa", x: 8.0, z: 4.85, r: 0, talk: "caixa" },
+      { role: "caixa", x: 4.0, z: 4.85, r: 0, talk: "caixa", body: "npc_neide" },
+      { role: "caixa", x: 8.0, z: 4.85, r: 0, talk: "caixa", body: "npc_ronaldo" },
+      // 22/11: figurantes — clientes e o Kaio repondo as geladeiras
+      { role: "cliente", x: -1.8, z: 4.0, r: -90, body: "npc_cliente_vampiro" },
+      { role: "cliente", x: 4.25, z: 11.3, r: 90, body: "npc_cliente_raposa" },
+      { role: "repositor", x: 2.75, z: 17.9, r: 180, body: "npc_kaio" },
     ],
   };
 }
@@ -204,15 +218,16 @@ function universidade() {
   const HW = 13.6;
   const BACK = 21.4;
   const HALL = 7;
-  const room = (cx, rows) => {
+  // 22/11: `npc` = um figurante sentado na 2ª fileira
+  const room = (cx, rows, npc = null) => {
     const out = [
       ["blackboard", cx, BACK - 0.13, 0],
       ["lectern", cx, 19.6, 0],
     ];
-    for (const z of rows) {
-      out.push(...studyRow(cx - 3.2, z));
+    rows.forEach((z, i) => {
+      out.push(...studyRow(cx - 3.2, z, "study", i === 1 ? npc : null));
       out.push(...studyRow(cx + 2.4, z));
-    }
+    });
     return out;
   };
   return {
@@ -236,15 +251,15 @@ function universidade() {
           ["plant", 13.0, 0.6, 0],
           ["poster", -4.0, HALL - 0.11, 0],
           ["poster", 4.0, HALL - 0.11, 0],
-          ...room(-6.8, [9.0, 11.6, 14.2, 16.8]),
-          ...room(6.8, [9.6, 12.2, 14.8]),
+          ...room(-6.8, [9.0, 11.6, 14.2, 16.8], extra("universitaria", "npc_universitaria")),
+          ...room(6.8, [9.6, 12.2, 14.8], extra("universitario", "npc_universitario")),
           ["bookcase", 13.18, 17.0, 90],
         ],
       },
     ],
     npcs: [
-      { role: "secretaria", x: -9.0, z: 5.25, r: 0, talk: "secretaria" },
-      { role: "professor", x: -5.6, z: 19.9, r: 0, talk: "professor" },
+      { role: "secretaria", x: -9.0, z: 5.25, r: 0, talk: "secretaria", body: "npc_rosalia" },
+      { role: "professor", x: -5.6, z: 19.9, r: 0, talk: "professor", body: "npc_quirino" },
     ],
   };
 }
@@ -269,7 +284,7 @@ function biblioteca() {
         furniture: [
           ["reception", -4.2, 2.6, 0],
           ...shelves,
-          ...readingTable(-2.2, 7.6),
+          ...readingTable(-2.2, 7.6, extra("leitor", "npc_leitor")),
           ...readingTable(2.2, 7.6),
           ...readingTable(-2.2, 11.4),
           ...readingTable(2.2, 11.4),
@@ -280,7 +295,7 @@ function biblioteca() {
       },
     ],
     // lore v2 C3: a bibliotecária guarda o livro do Ninho (cap. 5, para quem não entra nas Matas)
-    npcs: [{ role: "bibliotecaria", x: -4.2, z: 3.45, r: 0, talk: "bibliotecaria" }],
+    npcs: [{ role: "bibliotecaria", x: -4.2, z: 3.45, r: 0, talk: "bibliotecaria", body: "npc_salvia" }],
   };
 }
 
@@ -290,7 +305,9 @@ function escola() {
   const BACK = 15.4;
   const HALL = 5;
   const desks = [];
-  for (const x of [-4.6, 0, 4.6]) for (const z of [7.0, 9.6, 12.2]) desks.push(...schoolDesk(x, z));
+  // 22/11: dois alunos sentados (a aluna raposa na frente, o aluno vampiro no meio)
+  const kids = { "-4.6,7": extra("aluna", "npc_aluna"), "4.6,9.6": extra("aluno", "npc_aluno") };
+  for (const x of [-4.6, 0, 4.6]) for (const z of [7.0, 9.6, 12.2]) desks.push(...schoolDesk(x, z, kids[`${x},${z}`] || null));
   return {
     level: 0,
     version: "centro-escola-v1",
@@ -361,8 +378,11 @@ function academia() {
       },
     ],
     npcs: [
-      { role: "recepcionista", x: -6.5, z: 3.85, r: 0, talk: "recepcionista" },
-      { role: "personal", x: -2.8, z: 12.2, r: 0, talk: "personal" },
+      { role: "recepcionista", x: -6.5, z: 3.85, r: 0, talk: "recepcionista", body: "npc_cida" },
+      { role: "personal", x: -2.8, z: 12.2, r: 0, talk: "personal", body: "npc_juca" },
+      // 22/11: figurantes descansando entre os aparelhos
+      { role: "aluno_academia", x: -4.0, z: 6.8, r: 0, body: "npc_academia_raposa" },
+      { role: "aluno_academia", x: 2.6, z: 11.0, r: 0, body: "npc_academia_vampira" },
     ],
   };
 }
@@ -372,7 +392,8 @@ function igreja() {
   const HW = 7.6;
   const BACK = 23.4;
   const pews = [];
-  for (const z of [4.0, 5.75, 7.5, 9.25, 11.0, 12.75, 14.5]) for (const x of [-5.25, -2.45, 2.45, 5.25]) pews.push(["pew", x, z, 180]);
+  // 22/11: um fiel sentado no 3º banco da esquerda (o assento da ponta é dele)
+  for (const z of [4.0, 5.75, 7.5, 9.25, 11.0, 12.75, 14.5]) for (const x of [-5.25, -2.45, 2.45, 5.25]) pews.push(["pew", x, z, 180, ...(x === -2.45 && z === 7.5 ? [extra("fiel", "npc_fiel_vampiro")] : [])]);
   return {
     level: 0,
     version: "centro-igreja-v1",
@@ -396,7 +417,7 @@ function igreja() {
         ],
       },
     ],
-    npcs: [{ role: "padre", x: 0, z: 20.95, r: 0, talk: "padre" }],
+    npcs: [{ role: "padre", x: 0, z: 20.95, r: 0, talk: "padre", body: "npc_anselmo" }],
   };
 }
 
@@ -430,7 +451,7 @@ function delegacia() {
           ["chair", -7.27, 2.2, -90],
           ["chair", -7.27, 2.9, -90],
           ["desk", 5.6, 2.6, -90],
-          ["chair", 6.4, 2.6, -90, { npc: "policial" }],
+          ["chair", 6.4, 2.6, -90, extra("policial", "npc_nara")],
           ["flag", 6.9, 6.3, 0],
           ["plant", -6.9, 6.3, 0],
           ["bars", -5.1, HALLZ, 0, { w: 5.0 }],
@@ -446,7 +467,11 @@ function delegacia() {
         ],
       },
     ],
-    npcs: [{ role: "delegado", x: 0, z: 5.65, r: 0, talk: "delegado" }],
+    npcs: [
+      { role: "delegado", x: 0, z: 5.65, r: 0, talk: "delegado", body: "npc_bento" },
+      // 22/11: o Soldado Tito de guarda na recepção
+      { role: "policial", x: -5.2, z: 5.6, r: 0, body: "npc_tito" },
+    ],
   };
 }
 
@@ -474,7 +499,7 @@ function forja() {
       ],
     }],
     // lore v2 C3 (cap. 4, "Ferro"): o Forjador fala (só ambiente)
-    npcs: [{ role: "forjador", x: -1.7, z: 7.9, r: 0, talk: "forjador" }],
+    npcs: [{ role: "forjador", x: -1.7, z: 7.9, r: 0, talk: "forjador", body: "npc_tiburcio" }],
   };
 }
 
@@ -503,7 +528,7 @@ function arsenal() {
       ],
     }],
     // lore v2 C3: um NPC só fala, o Armeiro (a fala muda pela classe de quem ouve; 07-falas §0.2)
-    npcs: [{ role: "armeiro", x: -1.9, z: 10.2, r: 0, talk: "armeiro" }, { role: "armeira", x: 1.9, z: 10.2, r: 0, talk: "armeira" }],
+    npcs: [{ role: "armeiro", x: -1.9, z: 10.2, r: 0, talk: "armeiro", body: "npc_davi" }, { role: "armeira", x: 1.9, z: 10.2, r: 0, talk: "armeira", body: "npc_dora" }],
   };
 }
 
@@ -534,7 +559,11 @@ function criolab() {
         ["lamp", 3.8, 0.65, 0],
       ],
     }],
-    npcs: [{ role: "criogenista", x: 0, z: 10.9, r: 0, talk: "nivea" }],
+    npcs: [
+      { role: "criogenista", x: 0, z: 10.9, r: 0, talk: "nivea", body: "npc_nivea" },
+      // 22/11: o assistente do laboratório, ao lado da Nívea
+      { role: "assistente", x: 2.8, z: 10.7, r: 0, body: "npc_criogenista" },
+    ],
   };
 }
 

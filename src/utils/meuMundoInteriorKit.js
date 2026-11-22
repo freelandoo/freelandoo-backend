@@ -480,7 +480,7 @@ function buildInterior(plan) {
         const facing = Math.atan2(fwd.x, fwd.z);
         // Assento do NPC (mm3d-37): o vendedor sentado; não é oferecido a ninguém.
         if (it.npc && si === 0) {
-          npcs.push({ role: it.npc, floor: fi, x: round(it.x + p.x), z: round(it.z + p.z), facing: round(facing), pose: "sit" });
+          npcs.push({ role: it.npc, floor: fi, x: round(it.x + p.x), z: round(it.z + p.z), facing: round(facing), pose: "sit", ...(it.npcBody ? { body: it.npcBody } : {}) });
           return;
         }
         const reach = MOTION.RADIUS + 0.12;
@@ -638,8 +638,8 @@ function buildInterior(plan) {
   def.spots = spots;
   for (const n of plan.npcs || []) {
     const fwd = rotY(0, -1, (n.r || 0) * DEG);
-    // lore v2 F4: `talk` = o NPC conversa (talk:<id>, meuMundoPlaces.js)
-    npcs.push({ role: n.role, floor: n.floor || 0, x: round(n.x), z: round(n.z), facing: round(Math.atan2(fwd.x, fwd.z)), pose: "stand", ...(n.talk ? { talk: n.talk } : {}) });
+    // lore v2 F4: `talk` = o NPC conversa (talk:<id>, meuMundoPlaces.js); 22/11: `body` = corpo do NPC (só desenho)
+    npcs.push({ role: n.role, floor: n.floor || 0, x: round(n.x), z: round(n.z), facing: round(Math.atan2(fwd.x, fwd.z)), pose: "stand", ...(n.talk ? { talk: n.talk } : {}), ...(n.body ? { body: n.body } : {}) });
   }
   def.npcs = npcs;
   // Medidas-padrão de cada móvel: o cliente desenha com estas (não guarda cópia).
