@@ -100,7 +100,7 @@ test("E0 — proposta do §7: 71 definições novas, sem id repetido nem colisã
     for (const k of Object.keys(rc.needs)) assert.ok(known.has(k), `${rc.id}: ${k}`);
   }
   for (const [tid, t] of Object.entries(Bal.proposalLoot())) for (const e of [...t.sure, ...t.chance, ...t.first]) assert.ok(known.has(e.id), `${tid}: ${e.id}`);
-  assert.equal(Bal.todayGear().length, 106);
+  assert.equal(Bal.todayGear().length, 180); // +74 armas do Tripo (22/11)
 });
 
 test("E0 — conjuntos: 4 peças nos setores 7 a 10 entre 25 e 40 vitórias (pior caso do garantido incluído)", () => {

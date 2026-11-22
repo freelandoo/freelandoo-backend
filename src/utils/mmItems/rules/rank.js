@@ -2,7 +2,7 @@
 //
 // A raridade que o jogador VÊ é uma classe em letras de gacha, da mais fraca à mais forte:
 //   E · D · C · B · A · S · SS · SSR · Lendária · Divina
-// (Divina ainda não tem item: fica pronta na escala.)
+// (Divina: as primeiras chegaram em 22/11/2026 — catalog/weaponsTripo.js, com `rank: "divine"` explícito.)
 //
 // `rarity` (common…mythic) continua existindo por dentro: é a régua do orçamento de poder (`budget.TIER`),
 // do peso no sorteio e do número de fragmentos. Ninguém vê `rarity` na tela; a tela lê `rank`.

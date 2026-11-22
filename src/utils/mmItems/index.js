@@ -11,6 +11,7 @@ const { CATEGORIES, RARITIES, validateCatalog } = require("./validate");
 const Rank = require("./rules/rank");
 const ClassStats = require("./rules/classStats");
 const weapons = require("./catalog/weapons");
+const weaponsTripo = require("./catalog/weaponsTripo");
 const armor = require("./catalog/armor");
 const accessories = require("./catalog/accessories");
 const materials = require("./catalog/materials");
@@ -34,7 +35,7 @@ const LootRule = require("./rules/loot");
 const Exchange = require("./catalog/exchange");
 const chests = require("./catalog/chests");
 
-const PARTS = [weapons, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary, chests];
+const PARTS = [weapons, weaponsTripo, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary, chests];
 
 /**
  * E7: equipamento ganha as duas chaves (catalog/keys.js; as peças de conjunto trazem as suas) e o
@@ -60,6 +61,8 @@ const GEAR = Object.freeze([
   ...bestiary.ITEMS,
   // E18: a receita oculta (fora do catálogo público até ser descoberta)
   ...chests.ITEMS,
+  // 22/11/2026: armas novas do Tripo (cajados da Raposa, espadas, pesadas e as primeiras Divinas), no fim
+  ...weaponsTripo.ITEMS,
 ].map(withRule));
 const GEAR_BY_ID = new Map(GEAR.map((g) => [g.id, g]));
 

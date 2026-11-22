@@ -14,17 +14,17 @@ test("rank: a escala tem as 10 classes na ordem do Alex", () => {
 
 test("rank: arma e escudo da loja seguem o nível (1=E … 7–8=SS, 9–10=SSR)", () => {
   const want = { 1: "E", 2: "D", 3: "C", 4: "B", 5: "A", 6: "S", 7: "SS", 8: "SS", 9: "SSR", 10: "SSR" };
-  const shop = Items.GEAR.filter((g) => g.shop && !g.line);
+  const shop = Items.GEAR.filter((g) => g.shop && !g.line && !(g.rank === "legendary" || g.rank === "divine")); // rank explícito (armas do Tripo, 22/11) vence o nível
   assert.ok(shop.length >= 85, `itens de loja: ${shop.length}`);
   for (const g of shop) assert.equal(g.rank, want[g.level], `${g.id} nv ${g.level}`);
   assert.equal(Rank.rankByLevel(14), "SSR");
 });
 
-test("rank: armas dos deuses (linha) são Lendárias; nenhum item é Divino ainda", () => {
+test("rank: armas dos deuses (linha) são Lendárias; as Divinas são as 11 do Tripo (22/11)", () => {
   const lines = Items.GEAR.filter((g) => g.line);
   assert.equal(lines.length, 9);
   for (const g of lines) assert.equal(g.rank, "legendary", g.id);
-  assert.equal(Items.GEAR.filter((g) => g.rank === "divine").length, 0);
+  assert.equal(Items.GEAR.filter((g) => g.rank === "divine").length, 11);
 });
 
 test("rank: fora da escala de armas, pela raridade interna", () => {

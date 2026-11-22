@@ -51,7 +51,7 @@ const SPLIT = Object.freeze({
 });
 const KINDS = Object.freeze(Object.keys(SPLIT));
 
-const SHOP_KIND = Object.freeze({ weapons: "sword", hammers: "heavy", bows: "bow", guns: "gun", shields: "shield" });
+const SHOP_KIND = Object.freeze({ weapons: "sword", hammers: "heavy", bows: "bow", guns: "gun", shields: "shield", staffs: "staff" });
 /** Tipo da peça para a divisão (null = não é equipável). */
 function kindOf(item) {
   if (!item || !item.slot) return null;

@@ -56,14 +56,16 @@ const G = (id, category, name, rarity, o = {}) => {
 };
 
 /** Espada da loja: de guerreiro (classe vampiro), recicla por ~12% do preço. */
-const S = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { clan: "vampiro", level, price, bonus, sell: Math.round(price * 0.12), shop: "weapons" });
+const S = (id, name, rarity, level, price, bonus, o = {}) => G(id, "weapon", name, rarity, { clan: "vampiro", level, price, bonus, sell: Math.round(price * 0.12), shop: "weapons", ...o });
 /** Arma pesada da aba Hammers: sem classe, quem decide é a skin vestida. */
-const H = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "hammers" });
+const H = (id, name, rarity, level, price, bonus, o = {}) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "hammers", ...o });
 /** Arco da aba Arcos (mm3d-69): sem classe, quem decide é a skin vestida. */
-const B = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "bows" });
+const B = (id, name, rarity, level, price, bonus, o = {}) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "bows", ...o });
 /** Arma de fogo da aba Guns (mm3d-70): sem classe, quem decide é a skin vestida. */
-const F = (id, name, rarity, level, price, bonus) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "guns" });
+const F = (id, name, rarity, level, price, bonus, o = {}) => G(id, "weapon", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "guns", ...o });
 /** Escudo da loja (mm3d-68): de quem usa espada; quem decide é a skin vestida. */
-const E = (id, name, rarity, level, price, bonus) => G(id, "shield", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "shields" });
+const E = (id, name, rarity, level, price, bonus, o = {}) => G(id, "shield", name, rarity, { level, price, bonus, sell: Math.round(price * 0.12), shop: "shields", ...o });
+/** Cajado da aba Cajados (armas novas do Tripo, 22/11/2026): da classe Raposa, como a espada é do guerreiro. */
+const C = (id, name, rarity, level, price, bonus, o = {}) => G(id, "weapon", name, rarity, { clan: "raposa", level, price, bonus, sell: Math.round(price * 0.12), shop: "staffs", ...o });
 
-module.exports = { G, S, H, B, F, E, LORE, slotOf, ACC_SLOT };
+module.exports = { G, S, H, B, F, E, C, LORE, slotOf, ACC_SLOT };
