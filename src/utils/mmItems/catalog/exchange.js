@@ -25,6 +25,7 @@ function common(game) {
   return [
     offer(game, "po_forja", 6, { po_forja: 2 }),
     offer(game, "madeira", 10, { madeira_ancestral: 1 }),
+    offer(game, "po_e", 2, { po_ref_e: 1 }),
     offer(game, "po_d", 4, { po_ref_d: 1 }),
     offer(game, "po_c", 8, { po_ref_c: 1 }),
     offer(game, "po_b", 14, { po_ref_b: 1 }),
@@ -47,9 +48,10 @@ const OFFERS = Object.freeze([
   // E19: loja de evento (só abre com o evento ligado pelo admin)
   ...[
     offer("evento", "cosmetico_rastro", 40, { rastro_eter: 1 }),
-    offer("evento", "po_sss1", 30, { po_ref_sss1: 1 }),
-    offer("evento", "po_sss2", 50, { po_ref_sss2: 1 }),
-    offer("evento", "po_sss3", 80, { po_ref_sss3: 1 }),
+    // weapon-v2: os pós SSS I/II/III viraram os pós das classes SSR, Lendária e Divina
+    offer("evento", "po_ssr", 30, { po_ref_ssr: 1 }),
+    offer("evento", "po_legendary", 50, { po_ref_legendary: 1 }),
+    offer("evento", "po_divine", 80, { po_ref_divine: 1 }),
     offer("evento", "frag_ssr", 40, { frag_classe_ssr: 2 }),
     offer("evento", "frag_divine", 120, { frag_classe_divine: 2 }),
   ].map((o) => Object.freeze({ ...o, id: o.id.replace("evento:", "festa_lumen:"), event: "festa_lumen" })),

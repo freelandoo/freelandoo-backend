@@ -11,7 +11,7 @@ const { G } = require("./_base");
 
 const CHESTS = Object.freeze([
   // weapon-v1 (24/11/2026): os baús dão pós e fragmentos de classe (a forja antiga e as runas saíram)
-  { id: "bau_ninho", where: "bairro", places: ["ninho"], name: "Baú do Ninho", gives: { po_ref_d: 5, frag_classe_e: 5 } },
+  { id: "bau_ninho", where: "bairro", places: ["ninho"], name: "Baú do Ninho", gives: { po_ref_d: 5, frag_classe_e: 5, po_ref_e: 5 } },
   { id: "bau_estatua_aurion", where: "bairro", places: ["estatua_aurion"], name: "Baú da estátua de Aurion", gives: { po_ref_c: 3, frag_classe_d: 5 } },
   { id: "bau_praca", where: "centro", places: ["praca"], name: "Baú da praça", gives: { po_ref_d: 3, madeira_ancestral: 2 } },
   { id: "bau_estatua_morkhan", where: "centro", places: ["estatua_morkhan"], name: "Baú do pedestal de Morkhan", gives: { po_ref_b: 2, frag_classe_c: 5 } },

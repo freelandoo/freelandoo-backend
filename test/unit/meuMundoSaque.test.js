@@ -88,5 +88,5 @@ test("E3: esperado por vitória confere com a regra (lâminas, 4 min, vitória)"
   assert.equal(e.frag_classe_e.expected, 0.75);
   assert.equal(e.frag_classe_legendary.min, 0);
   const lost = Items.lootExpectation("fight:laminas", { win: false, activeMs: 240000 });
-  assert.deepEqual(Object.keys(lost), ["po_ref_d", "po_forja"]); // E17: o Pó de Forja garantido
+  assert.deepEqual(Object.keys(lost), ["po_ref_d", "po_ref_e", "po_forja"]); // E17: o Pó de Forja garantido · weapon-v2: o Pó E
 });

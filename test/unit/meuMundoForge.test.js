@@ -16,8 +16,8 @@ const legacyIds = [
 
 test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16; +6 fichas da E17)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 434); // weapon-v1 (24/11): +17 espadas, +9 pós, +10 fragmentos de classe · Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 434);
+  assert.equal(pub.items.length, 438); // weapon-v2 (24/11): +4 pós (E, SSR, Lendária, Divina; os SSS ficam como aposentados) · weapon-v1 (24/11): +17 espadas, +9 pós, +10 fragmentos de classe · Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 438);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);

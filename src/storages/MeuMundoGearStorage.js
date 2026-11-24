@@ -19,6 +19,8 @@ const instOut = (x) => x && ({
   rules: x.rules, origin: x.origin, affixes: x.affixes || {},
   // weapon-v1 (mig 466): nível da cópia da arma (as estrelas moram em grade)
   weaponLevel: x.weapon_level == null ? 1 : Number(x.weapon_level), legacy: x.legacy || null,
+  // weapon-v2 (mig 467): XP dentro do nível e a tentativa que espera aceitar/recusar
+  weaponXp: x.weapon_xp == null ? 0 : Number(x.weapon_xp), weaponPending: x.weapon_pending || null,
   equippedBy: x.equipped_by || null, equippedSlot: x.equipped_slot || null,
 });
 
@@ -196,6 +198,14 @@ class MeuMundoGearStorage {
 
   static async setWeaponLevel(c, idUser, idInstance, level) {
     await c.query(`UPDATE tb_mm_gear_instance SET weapon_level = $3, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, level]);
+  }
+
+  /** weapon-v2: grava nível, XP e a tentativa pendente (null = nenhuma) de uma vez; a versão anda. */
+  static async setWeaponProgress(c, idUser, idInstance, level, xp, pending) {
+    await c.query(
+      `UPDATE tb_mm_gear_instance SET weapon_level = $3, weapon_xp = $4, weapon_pending = $5::jsonb, version = version + 1 WHERE id_user = $1 AND id_instance = $2`,
+      [idUser, idInstance, level, xp, pending == null ? null : JSON.stringify(pending)]
+    );
   }
 
   /** Versão sobe mesmo sem mudar nada (falha no refino: a tentativa consumiu a prévia). */

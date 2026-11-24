@@ -115,7 +115,7 @@ async function main() {
     const swords = bag1.instances.filter((x) => x.item === "espada_latao");
     check("duas espadas iguais com nível diferente (+7 → 43)", swords.length === 2 && swords.map((x) => x.weaponLevel).sort().join() === "37,43");
     check("representante é a equipada (não a de maior plus)", bag1.owned.espada_latao.level === 6 && bag1.owned.espada_latao.qty === 2 && swords.find((x) => x.plus === 6).equippedHere);
-    check("cada instância tem a sua próxima tentativa de refino", bag1.forge[second].refine.to === 44 && bag1.forge[swords.find((x) => x.plus === 6).id].refine.to === 38);
+    check("cada instância tem a sua barra de refino (weapon-v2: nível e XP da cópia)", bag1.forge[second].refine.level === 43 && bag1.forge[swords.find((x) => x.plus === 6).id].refine.level === 37 && bag1.forge[second].refine.need === require("../src/utils/mmItems/rules/weaponProgress").xpNeed(43));
     const eq2 = await Service.equip(id, { slot: "weapon", item: "espada_latao", instance: second });
     check("equipar escolhe a cópia", eq2.bag.equippedInstances.weapon === second && eq2.bag.owned.espada_latao.level === 7);
     const c3 = await pool.connect();
@@ -140,18 +140,19 @@ async function main() {
     const stealX = await Service.recycle(id, { item: "espada_latao", instance: strangerInst, key: key() });
     check("instância de outra conta dá 404 (reciclar)", stealX.code === "instance");
 
-    // ── refino por instância (weapon-v1: 1 pó da faixa do destino; 43 → 44 é pó S) ──
-    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty,level) VALUES ($1,'po_ref_s',20,0)`, [id]);
+    // ── refino por instância (weapon-v2: 1 pó da CLASSE — espada de latão é D; aceitar soma o XP só na cópia escolhida) ──
+    // o pó D já veio da conversão das pilhas antigas (acima), com o livro em dia
     const R0 = Service.R;
-    Service.R = () => 0;
+    Service.R = () => 0.5; // faixa normal, +40
     const ref = await Service.refineWeapon(id, { instance: second, key: key() });
+    const dec = await Service.decideWeapon(id, { instance: second, key: key(), decision: "accept" });
     Service.R = R0;
-    check("refino aponta a instância", ref.receipt && ref.receipt.result.instance === second && ref.receipt.result.from === 43 && ref.receipt.result.to === 44 && ref.receipt.result.success);
+    check("refino aponta a instância", ref.receipt && ref.receipt.result.instance === second && ref.receipt.result.levelBefore === 43 && ref.receipt.result.powder === "po_ref_d" && dec.receipt && dec.receipt.result.xp === 40);
     const after = await inst();
-    check("refinar muda só a cópia escolhida", after.find((x) => x.id_instance === second).weapon_level === 44
-      && after.filter((x) => x.item_id === "espada_latao" && x.id_instance !== second).every((x) => x.weapon_level === 37));
+    check("refinar muda só a cópia escolhida", after.find((x) => x.id_instance === second).weapon_xp === 40
+      && after.filter((x) => x.item_id === "espada_latao" && x.id_instance !== second).every((x) => x.weapon_level === 37 && x.weapon_xp === 0));
     check("livro fecha depois do refino e da compra", await ledgerOk());
-    const linked = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_item_ledger WHERE id_user=$1 AND id_receipt IS NOT NULL AND item_id='po_ref_s'`, [id])).rows[0].count);
+    const linked = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_item_ledger WHERE id_user=$1 AND id_receipt IS NOT NULL AND item_id='po_ref_d'`, [id])).rows[0].count);
     check("linhas do livro das operações levam o recibo (o pó gasto no refino)", linked === 1);
 
     // ── reciclar: só cópia solta ──

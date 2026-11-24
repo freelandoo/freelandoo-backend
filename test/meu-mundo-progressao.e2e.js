@@ -184,7 +184,7 @@ const STEPS = [
     const off = await play();
     check("E19: desligado, a partida não paga ficha de evento", !off.some((l) => l.id === "ficha_evento"));
     await setQty(id, "ficha_evento", 100);
-    check("E19: desligado, a loja de evento não abre", (await Service.exchange(id, { offer: "festa_lumen:po_sss1", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 100);
+    check("E19: desligado, a loja de evento não abre", (await Service.exchange(id, { offer: "festa_lumen:po_ssr", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 100);
     check("E19: evento desconhecido e pedido sem ligar/desligar recusam", (await Events.save(id, { event: "nada", active: true })).code === "event" && (await Events.save(id, { event: "festa_lumen" })).code === "active");
     const on = await Events.save(id, { event: "festa_lumen", active: true, hours: 48 });
     check("E19: o admin liga o evento (com fim)", on.events.find((e) => e.id === "festa_lumen").open === true && !!on.events.find((e) => e.id === "festa_lumen").endsAt);
@@ -192,10 +192,10 @@ const STEPS = [
     check("E19: ligado, a partida paga ficha de evento (2 + 1 pela vitória)", paid.some((l) => l.id === "ficha_evento" && l.qty === 3) && (await qty(id, "ficha_evento")) === 103);
     const bag = (await Service.get(id)).bag;
     check("E19: a mochila diz quais eventos estão ligados", Array.isArray(bag.events) && bag.events.includes("festa_lumen"));
-    const buy = await Service.exchange(id, { offer: "festa_lumen:po_sss3", key: key() });
-    check("E19: ligado, a loja de evento troca (80 fichas → 1 Pó SSS III)", !buy.error && (await qty(id, "ficha_evento")) === 23 && (await qty(id, "po_ref_sss3")) === 1);
+    const buy = await Service.exchange(id, { offer: "festa_lumen:po_divine", key: key() });
+    check("E19: ligado, a loja de evento troca (80 fichas → 1 Pó Divina; weapon-v2: era o SSS III)", !buy.error && (await qty(id, "ficha_evento")) === 23 && (await qty(id, "po_ref_divine")) === 1);
     await Events.save(id, { event: "festa_lumen", active: false });
-    check("E19: desligado de novo, a loja fecha e a ficha fica guardada", (await Service.exchange(id, { offer: "festa_lumen:po_sss2", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 23);
+    check("E19: desligado de novo, a loja fecha e a ficha fica guardada", (await Service.exchange(id, { offer: "festa_lumen:po_legendary", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 23);
     await Events.save(id, { event: "festa_lumen", active: true, hours: 1 });
     const later = (await Life.withLife(id, async (s, ctx) => ({ open: await Events.isOpen(ctx.client, "festa_lumen", Date.now() + 2 * 3600 * 1000) }))).open;
     check("E19: o evento com fim fecha sozinho depois do prazo", later === false);

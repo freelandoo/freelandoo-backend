@@ -92,6 +92,11 @@ const ERRORS = {
   donorself: ["A cópia consumida não pode ser a própria arma", 400],
   donoritem: ["A cópia consumida precisa ser da mesma arma", 409],
   donorbuilt: ["Use como doadora uma cópia nova: nível 1, 1 estrela e sem investimento", 409],
+  // weapon-v2
+  powder: ["Falta o pó da classe desta arma", 409],
+  pending: ["Aceite ou recuse o resultado do último refino antes de refinar de novo", 409],
+  nopending: ["Nenhum resultado de refino esperando decisão", 404],
+  times: ["Refine 1 ou 10 vezes", 400],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -155,7 +160,7 @@ async function pickInstance(c, idUser, it, rawInstance, { lock = false } = {}) {
 async function putItem(c, idUser, it, n, origin) {
   if (isInstanceItem(it)) {
     const ids = [];
-    for (let i = 0; i < n; i++) ids.push(await GearStore.createInstance(c, idUser, it.id, origin, WP.isWeapon(it) ? WP.RULES_VERSION : "forge-v2"));
+    for (let i = 0; i < n; i++) ids.push(await GearStore.createInstance(c, idUser, it.id, origin, WP.isWeapon(it) ? WP.INSTANCE_RULES : "forge-v2"));
     return { got: n, ids };
   }
   const before = (await GearStore.lockItem(c, idUser, it.id))?.qty || 0;
@@ -163,11 +168,14 @@ async function putItem(c, idUser, it, n, origin) {
   return { got: Math.max(0, (after ?? before) - before), ids: [] };
 }
 
-/** weapon-v1: a próxima tentativa de refino da cópia (pó, chance e bônus antes/depois). */
+/** O que a tela vê da tentativa pendente (a chave fica só no banco). */
+const pendingOut = (p) => (p ? { xp: p.xp, tier: p.tier, level: p.level, xpBefore: p.xpBefore, powder: p.powder } : null);
+
+/** weapon-v2: a próxima tentativa da cópia (pó da classe, barra de XP, resultado esperando decisão, bônus do próximo nível). */
 function refineView(it, inst) {
-  const cost = WP.refineCost(it, inst.weaponLevel);
+  const cost = WP.refineCost(it, inst.weaponLevel, inst.weaponXp);
   if (!cost) return null;
-  return { ...cost, bonusBefore: instBonus(it, inst), bonusAfter: instBonus(it, inst, { plus: WP.plusEquiv(cost.to) }) };
+  return { ...cost, pending: pendingOut(inst.weaponPending), bonusBefore: instBonus(it, inst), bonusAfter: instBonus(it, inst, { plus: WP.plusEquiv(cost.level + 1) }) };
 }
 
 /** weapon-v1: a próxima estrela (cópias idênticas que servem de doadora e bônus antes/depois). */
@@ -265,7 +273,7 @@ async function bagState(c, idUser, coins, now = Date.now()) {
     progression: WP.publicRules(),
     instances: all.map((x) => ({
       id: x.id, item: x.item, plus: x.plus, grade: x.grade,
-      ...(WP.isWeapon(Gear.GEAR_BY_ID.get(x.item)) ? { weaponLevel: x.weaponLevel, stars: x.grade } : {}), ascended: !!x.ascended, awakened: !!x.awakened, enchant: enchantOf(x), locked: x.locked || lockedInst.has(x.id),
+      ...(WP.isWeapon(Gear.GEAR_BY_ID.get(x.item)) ? { weaponLevel: x.weaponLevel, weaponXp: x.weaponXp, weaponPending: pendingOut(x.weaponPending), stars: x.grade } : {}), ascended: !!x.ascended, awakened: !!x.awakened, enchant: enchantOf(x), locked: x.locked || lockedInst.has(x.id),
       // E13: runas engastadas e engastes da cópia; `version` confere o pedido de engaste
       sockets: x.sockets || [], socketsMax: Runes.socketsOf(Gear.GEAR_BY_ID.get(x.item), !!x.ascended), version: x.version,
       equippedBy: x.equippedBy, equippedSlot: x.equippedSlot, equippedHere: liveIds.has(x.id),
@@ -387,7 +395,7 @@ class MeuMundoGearService {
     if (!id) return null;
     const owned = await GearStore.owned(c, idUser);
     if (owned[id]) return null;
-    const inst = await GearStore.createInstance(c, idUser, id, "starter", WP.isWeapon(Gear.GEAR_BY_ID.get(id)) ? WP.RULES_VERSION : "forge-v2");
+    const inst = await GearStore.createInstance(c, idUser, id, "starter", WP.isWeapon(Gear.GEAR_BY_ID.get(id)) ? WP.INSTANCE_RULES : "forge-v2");
     const live = await GearStore.loadoutLive(c, idUser);
     if (!live.weapon && ctx.row && ctx.row.status === "alive") await GearStore.equipInstance(c, idUser, ctx.row.id_character, "weapon", inst);
     return { id, qty: 1, rarity: Gear.GEAR_BY_ID.get(id).rarity, rank: Gear.GEAR_BY_ID.get(id).rank };
@@ -535,14 +543,19 @@ class MeuMundoGearService {
   }
 
   /**
-   * weapon-v1: REFINAR a arma — 1 pó da faixa do nível de DESTINO por tentativa. Sorteio no servidor
-   * (crypto); deu certo = sobe um nível; falhou = gasta o pó e a cópia fica onde estava (nunca desce,
-   * nunca quebra). Trava a cópia, confere `version` e `rulesVersion`. Mesma chave = o mesmo recibo
-   * (inclusive o mesmo resultado); a chave usada noutra cópia é recusada.
+   * weapon-v2: REFINAR a arma — cada tentativa gasta 1 PÓ DA CLASSE da arma e sorteia um XP (crypto, no servidor):
+   *   • `times: 1` (padrão): o resultado fica ESPERANDO a pessoa aceitar ou recusar (`decideWeapon`); enquanto
+   *     espera, a cópia não refina de novo;
+   *   • `times: 10`: até 10 tentativas seguidas (para antes se o pó acabar ou a arma chegar ao teto), aceitando
+   *     sozinho só as que AUMENTAM o XP e recusando as outras.
+   * Trava a cópia, confere `version` e `rulesVersion`. Mesma chave = o mesmo recibo (o mesmo sorteio); a chave
+   * usada noutra cópia ou com outro `times` é recusada.
    */
   static async refineWeapon(idUser, body = {}) {
     if (!KEY.test(String(body.instance || ""))) return fail("instance");
     if (body.rulesVersion != null && body.rulesVersion !== WP.RULES_VERSION) return fail("rules");
+    const times = body.times == null ? 1 : Number(body.times);
+    if (times !== 1 && times !== WP.BATCH) return fail("times");
     const instance = String(body.instance);
     return withReceipt(idUser, "weapon_refine", body.key, async (s, ctx) => {
       const c = ctx.client;
@@ -552,25 +565,75 @@ class MeuMundoGearService {
       if (!WP.isWeapon(it)) return fail("notweapon");
       if (staleVersion(body, inst)) return fail("version");
       if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
-      const cost = WP.refineCost(it, inst.weaponLevel);
-      if (!cost) return fail("max");
+      if (inst.weaponPending) return fail("pending");
+      const first = WP.refineCost(it, inst.weaponLevel, inst.weaponXp);
+      if (!first) return fail("max");
+      const powder = first.powder;
       // conferir antes: addStack num item que a pessoa nunca teve cria a linha com 0 em vez de recusar
-      if (((await GearStore.lockItem(c, idUser, cost.powder))?.qty || 0) < 1) return fail("needs");
-      if ((await GearStore.addStack(c, idUser, cost.powder, -1)) == null) return fail("needs");
-      const roll = MeuMundoGearService.R();
-      const success = WP.rollWins(roll, cost.chance);
-      if (success) await GearStore.setWeaponLevel(c, idUser, inst.id, cost.to);
-      else await GearStore.bumpVersion(c, idUser, inst.id);
+      let have = (await GearStore.lockItem(c, idUser, powder))?.qty || 0;
+      if (have < 1) return fail("powder");
+      const base = { item: it.id, instance: inst.id, rulesVersion: WP.RULES_VERSION, powder, times, levelBefore: inst.weaponLevel, xpBefore: inst.weaponXp };
+      if (times === 1) {
+        if ((await GearStore.addStack(c, idUser, powder, -1)) == null) return fail("powder");
+        const roll = WP.rollXp(MeuMundoGearService.R(), MeuMundoGearService.R());
+        const pending = { key: String(body.key), xp: roll.xp, tier: roll.tier, level: inst.weaponLevel, xpBefore: inst.weaponXp, powder, at: new Date(ctx.now).toISOString() };
+        await GearStore.setWeaponProgress(c, idUser, inst.id, inst.weaponLevel, inst.weaponXp, pending);
+        return {
+          result: { ...base, rolls: [{ tier: roll.tier, xp: roll.xp }], pending: true, level: inst.weaponLevel, xp: inst.weaponXp, need: first.need },
+          deltas: {},
+          items: lines({ [powder]: -1 }),
+        };
+      }
+      // 10 vezes: aceita sozinho o que sobe
+      let level = inst.weaponLevel, xp = inst.weaponXp, used = 0;
+      const rolls = [];
+      for (let i = 0; i < times && level < WP.MAX_LEVEL && have > 0; i++) {
+        if ((await GearStore.addStack(c, idUser, powder, -1)) == null) break;
+        have--;
+        used++;
+        const roll = WP.rollXp(MeuMundoGearService.R(), MeuMundoGearService.R());
+        const accepted = roll.xp > 0;
+        if (accepted) ({ level, xp } = WP.applyXp(level, xp, roll.xp));
+        rolls.push({ tier: roll.tier, xp: roll.xp, accepted, level, xpAfter: xp });
+      }
+      if (!used) return fail("powder");
+      await GearStore.setWeaponProgress(c, idUser, inst.id, level, xp, null);
+      return {
+        result: { ...base, rolls, pending: false, level, xp, need: WP.xpNeed(level), used },
+        deltas: {},
+        items: lines({ [powder]: -used }),
+      };
+    }, (r) => r.instance === instance && Number(r.times || 1) === times);
+  }
+
+  /**
+   * weapon-v2: ACEITAR ou RECUSAR o resultado que está esperando. Aceitar soma o XP (sobra passa de nível;
+   * perda para no começo da barra, nunca desce de nível); recusar descarta (o pó já tinha sido gasto).
+   */
+  static async decideWeapon(idUser, body = {}) {
+    if (!KEY.test(String(body.instance || ""))) return fail("instance");
+    const decision = body.decision === "accept" ? "accept" : body.decision === "reject" ? "reject" : null;
+    if (!decision) return fail("decision");
+    const instance = String(body.instance);
+    return withReceipt(idUser, "weapon_refine_decide", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      const inst = await GearStore.lockInstance(c, idUser, instance);
+      if (!inst) return fail("instance");
+      const it = Gear.GEAR_BY_ID.get(inst.item);
+      if (!WP.isWeapon(it)) return fail("notweapon");
+      const p = inst.weaponPending;
+      if (!p) return fail("nopending");
+      const next = decision === "accept" ? WP.applyXp(inst.weaponLevel, inst.weaponXp, p.xp) : { level: inst.weaponLevel, xp: inst.weaponXp, up: 0 };
+      await GearStore.setWeaponProgress(c, idUser, inst.id, next.level, next.xp, null);
       return {
         result: {
-          item: it.id, instance: inst.id, rulesVersion: WP.RULES_VERSION, from: cost.from, to: cost.to,
-          level: success ? cost.to : cost.from, powder: cost.powder, chance: cost.chance,
-          roll: Math.round(roll * 10000) / 10000, success,
+          item: it.id, instance: inst.id, rulesVersion: WP.RULES_VERSION, decision, rolled: p.xp, tier: p.tier, refineKey: p.key,
+          levelBefore: inst.weaponLevel, xpBefore: inst.weaponXp, level: next.level, xp: next.xp, up: next.up, need: WP.xpNeed(next.level),
         },
         deltas: {},
-        items: lines({ [cost.powder]: -1 }),
+        items: [],
       };
-    }, (r) => r.instance === instance);
+    }, (r) => r.instance === instance && r.decision === decision);
   }
 
   /**
@@ -624,7 +687,7 @@ class MeuMundoGearService {
       const c = ctx.client;
       if (((await GearStore.lockItem(c, idUser, cost.fragment))?.qty || 0) < cost.need) return fail("fragments");
       if ((await GearStore.addStack(c, idUser, cost.fragment, -cost.need)) == null) return fail("fragments");
-      const id = await GearStore.createInstance(c, idUser, it.id, "assemble", WP.RULES_VERSION);
+      const id = await GearStore.createInstance(c, idUser, it.id, "assemble", WP.INSTANCE_RULES);
       return {
         result: { item: it.id, instance: id, rulesVersion: WP.RULES_VERSION, rank: cost.rank, fragment: cost.fragment, need: cost.need },
         deltas: {},

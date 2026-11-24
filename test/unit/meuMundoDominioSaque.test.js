@@ -38,9 +38,9 @@ test("E12 + weapon-v1: comum 1 + ⌊s/3⌋, raro 5% + 3%·s, pó da faixa do Dom
       assert.deepEqual(e[common], { expected: 1 + Math.floor(s / 3), min: 1 + Math.floor(s / 3), max: 1 + Math.floor(s / 3) }, `${d} ${s}`);
       if (s < 10) assert.equal(e[rare].expected, Math.round((0.05 + 0.03 * s) * 1000) / 1000, `${d} ${s} raro`);
       else assert.equal(e[rare].min, 1, `${d} chefão: raro garantido`);
-      // weapon-v1: o pó da faixa do Domínio é garantido; nada da forja antiga cai mais
+      // weapon-v2: o pó do Domínio é garantido (Floresta D … Vermelha SSR); nada da forja antiga cai mais
       const i = Loot.DOMAIN_ORDER.indexOf(d);
-      assert.ok(e[WP.POWDER_IDS[i]].min >= 1, `${d} ${s} pó`);
+      assert.ok(e[WP.POWDER_IDS[1 + i]].min >= 1, `${d} ${s} pó`);
       for (const old of ["pedra_aprimoramento", "lingote_refinado", "catalisador_refino", "selo_dominio", "essencia_primordial"]) assert.equal(e[old], undefined, `${d} ${s} ${old}`);
       const fragLow = WP.fragmentOf(Loot.DOMAIN_FRAG[d][0]);
       assert.equal(!!e[fragLow], s >= 7 && s < 10, `${d} ${s} fragmento de classe`);

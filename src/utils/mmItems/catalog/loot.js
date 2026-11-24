@@ -56,7 +56,8 @@ function domainTable(domain, sector) {
   const { common, rare } = DOMAIN_MATS[domain];
   const boss = sector === DOMAIN_SECTORS;
   const i = DOMAIN_ORDER.indexOf(domain);
-  const powder = (k) => WP.POWDERS[Math.min(WP.POWDERS.length - 1, i + k)].id;
+  // weapon-v2: o pó é da classe; o Domínio i paga a partir do pó D (Floresta D/C/B … Vermelha SSR/Lendária/Divina)
+  const powder = (k) => WP.POWDERS[Math.min(WP.POWDERS.length - 1, 1 + i + k)].id;
   const frag = (k) => WP.fragmentOf(DOMAIN_FRAG[domain][k]);
   const q = (n) => Object.freeze([n, n]);
   // o material do Domínio continua (Criogenia/bestiário e preparos usam)
@@ -93,7 +94,8 @@ const domainTableId = (domain, sector) => (DOMAIN_TABLES[`domain:${domain}:${sec
 const tokens = (game) => ({ id: `ficha_${game}`, qty: { tokens: true } });
 // weapon-v1 (24/11/2026): Lâminas, rua e minijogos pagam Pó D/C e fragmentos das classes baixas; o material
 // de forja de antes (fragmento de lâmina, núcleo, selo, pedra, minério, pigmento, mola, capacitor, rolamento) saiu.
-const LAMINAS_SURE = [{ id: "po_ref_d", qty: { byMinutes: true, win: 1 } }];
+// weapon-v2: o pó E (armas E, as do começo) entra no FIM das listas garantidas (não mexe nos sorteios de antes)
+const LAMINAS_SURE = [{ id: "po_ref_d", qty: { byMinutes: true, win: 1 } }, { id: "po_ref_e", qty: [1, 2] }];
 const LAMINAS_CHANCE = [
   { id: "frag_classe_e", qty: [1, 2], p: 0.5, win: true },
   { id: "po_ref_c", qty: [1, 1], p: 0.35, win: true },
@@ -110,7 +112,7 @@ const mobTable = (elite) => ({
 /** Minijogo: ficha, Pó D, chance de fragmento D, Pó de Forja (e Madeira na Antigravidade e na Gincana). */
 const minigame = (label, game, base, extra = {}) => ({
   label,
-  sure: [...(base ? [{ id: base, qty: { byMinutes: true, win: 1 } }] : []), tokens(game), { id: "po_ref_d", qty: [1, 2] }, ...(extra.sure || [])],
+  sure: [...(base ? [{ id: base, qty: { byMinutes: true, win: 1 } }] : []), tokens(game), { id: "po_ref_d", qty: [1, 2] }, ...(extra.sure || []), { id: "po_ref_e", qty: [1, 2] }],
   chance: [{ id: "po_forja", qty: [1, 1], p: 0.3 }, ...(extra.wood ? [{ id: "madeira_ancestral", qty: [1, 1], p: 0.25 }] : []), { id: "frag_classe_d", qty: [1, 1], p: 0.3, win: true }, ...(extra.chance || [])],
   ...(extra.first ? { first: extra.first } : {}),
 });
@@ -125,7 +127,7 @@ const TABLES = Object.freeze({
   },
   "fight:boxe": {
     label: "Boxe", winLabel: "Vitórias do Boxe",
-    sure: [{ id: "couro_reforcado", qty: { byMinutes: true, win: 1 } }],
+    sure: [{ id: "couro_reforcado", qty: { byMinutes: true, win: 1 } }, { id: "po_ref_e", qty: [1, 1] }],
     chance: [
       { id: "po_ref_d", qty: [1, 1], p: 0.5, win: true },
       { id: "frag_classe_e", qty: [1, 1], p: 0.3, win: true },

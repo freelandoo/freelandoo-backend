@@ -14,6 +14,8 @@
 // precisam do nome), marcado `retired`, sem origem e fora das telas de obter.
 "use strict";
 
+const { LEGACY_POWDERS } = require("../rules/weaponProgress");
+
 /** Materiais/fichas que continuam no jogo (preparos, bestiário, Criogenia, fichas). */
 const KEEP = new Set([
   "couro_reforcado", "injetor_vapor", "madeira_ancestral", "po_forja",
@@ -29,6 +31,7 @@ function isRetiredStack(item) {
   if (KEEP.has(item.id)) return false;
   if (item.id.startsWith("embriao_") || item.id.startsWith("ficha_")) return false;
   if (item.id.startsWith("frag_amuleto_") || item.id.startsWith("frag_personagem_") || item.id.startsWith("frag_deus_")) return false;
+  if (item.id in LEGACY_POWDERS) return true; // weapon-v2: pós SSS I/II/III → pó da classe
   if (item.id.startsWith("po_ref_") || item.id.startsWith("frag_classe_")) return false;
   return true;
 }
@@ -39,7 +42,9 @@ const EXPLICIT = Object.freeze({
   po_refino: ["po_ref_d", 10, 1],
   catalisador_refino: ["po_ref_ss", 1, 1],
   selo_dominio: ["po_ref_s", 1, 1],
-  essencia_primordial: ["po_ref_sss1", 1, 1],
+  essencia_primordial: ["po_ref_ssr", 1, 1],
+  // weapon-v2 (24/11): o pó passou a ser da CLASSE; os três SSS viram SSR/Lendária/Divina, 1:1
+  ...Object.fromEntries(Object.entries(LEGACY_POWDERS).map(([from, to]) => [from, [to, 1, 1]])),
   cristal_bruto: ["po_ref_b", 2, 1],
   lingote_refinado: ["po_ref_a", 2, 1],
   minerio_ferro: ["po_ref_d", 4, 1],

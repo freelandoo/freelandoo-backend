@@ -346,6 +346,10 @@ const gearEnchantResolve = forgeAction("enchantResolve");
 async function gearWeaponRefine(req, res) {
   return reply(res, await gear().refineWeapon(req.user.id_user, req.body || {}));
 }
+// weapon-v2: aceitar/recusar o resultado do refino (também na bancada, sem prédio)
+async function gearWeaponDecide(req, res) {
+  return reply(res, await gear().decideWeapon(req.user.id_user, req.body || {}));
+}
 const gearWeaponStars = forgeAction("starWeapon");
 const gearWeaponAssemble = forgeAction("assembleWeapon");
 // E17: loja de troca (dentro da Loja; não depende da Forja)
@@ -590,6 +594,7 @@ module.exports = {
   gearRefine,
   gearRefineResolve,
   gearWeaponRefine,
+  gearWeaponDecide,
   gearWeaponStars,
   gearWeaponAssemble,
   gearUse,
