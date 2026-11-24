@@ -47,6 +47,7 @@ const corrida = require("./meuMundoCorrida");
 const noturno = require("./meuMundoNoturno");
 const gincana = require("./meuMundoGincana");
 const { MobDirector } = require("./meuMundoMobs");
+const { DuelHub } = require("./meuMundoDuel");
 const { TestBots, testBotsOn } = require("./meuMundoTestBots");
 /** Área de nascer monstro no bairro: dentro da cerca viva (HEDGE 83). */
 const HEDGE_SPAN = 80;
@@ -1664,6 +1665,7 @@ class CentroRoom extends BairroRoom {
     this.mobDirector.setGods(godsNow(), null);
     centerRooms.set(this.roomId, this);
     this.startLoop();
+    this.startDuels();
     this.armEmpty();
     log.info("center.create", { roomId: this.roomId, version: this.mapVersion });
   }
@@ -1940,6 +1942,7 @@ class CentroRoom extends BairroRoom {
   onLeave(client, code) {
     const s = this.sim.get(client.sessionId);
     this.mobDirector.drop(client.sessionId);
+    this.duelGone(client.sessionId);
     this.sim.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     if (s) {
@@ -1974,6 +1977,7 @@ class CentroRoom extends BairroRoom {
   /** A presença foi para outra sala (voltou para casa, outra aba): sai sem guardar vaga. */
   dropSession(sessionId) {
     this.mobDirector.drop(sessionId);
+    this.duelGone(sessionId);
     const s = this.sim.get(sessionId);
     this.sim.delete(sessionId);
     this.state.players.delete(sessionId);
@@ -1983,6 +1987,94 @@ class CentroRoom extends BairroRoom {
     }
     this.syncLockSoon();
     this.armEmpty();
+  }
+
+  // ── Coliseu (2026-11-24): luta direta entre duas pessoas na porta (meuMundoDuel.js) ──
+  startDuels() {
+    this.duels = new DuelHub();
+    const place = CENTER_PLACES.find((p) => p.id === "boxe");
+    this.coliseuDoor = place ? { x: place.door.x, z: place.door.z } : null;
+    this.onMessage("duel", (client, msg) => this.onDuel(client, msg));
+    this.onMessage("dready", (client, msg) => {
+      if (this.duels.ready(client.sessionId, msg && msg.m)) {
+        const d = this.duels.of(client.sessionId);
+        if (d) for (const sid of d.sids) this.sendTo(sid, "dlive", this.duelHp(d, sid));
+      }
+    });
+    this.onMessage("dst", (client, msg) => {
+      const r = this.duels.state(client.sessionId, msg);
+      if (r) this.sendTo(r.to, "dst", r.msg);
+    });
+    this.onMessage("dhit", (client, msg) => {
+      const d = this.duels.of(client.sessionId);
+      const r = this.duels.hit(client.sessionId, msg);
+      if (!r || !d) return;
+      this.sendTo(r.victim, "dhurt", { d: r.dmg, h: r.heavy ? 1 : 0 });
+      for (const sid of d.sids) this.sendTo(sid, "dhp", { me: r.hp[this.duels.side(d, sid)], meMax: d.max[this.duels.side(d, sid)], foe: r.hp[1 - this.duels.side(d, sid)], foeMax: d.max[1 - this.duels.side(d, sid)] });
+      if (r.end) this.duelEnd(r.end);
+    });
+    this.onMessage("dquit", (client) => {
+      const end = this.duels.quit(client.sessionId);
+      if (end) this.duelEnd(end);
+    });
+    this.clock.setInterval(() => {
+      for (const end of this.duels.expire()) this.duelEnd(end);
+    }, 1000);
+  }
+
+  sendTo(sid, type, msg) {
+    const c = this.clients.find((x) => x.sessionId === sid);
+    if (c) c.send(type, msg);
+  }
+
+  /** Vida dos dois do ponto de vista de `sid`. */
+  duelHp(d, sid) {
+    const k = this.duels.side(d, sid);
+    return { me: d.hp[k], meMax: d.max[k], foe: d.hp[1 - k], foeMax: d.max[1 - k] };
+  }
+
+  /** "Lutar" apertado em cima de outra pessoa na porta do Coliseu: os dois entram sem aceite. */
+  onDuel(client, msg) {
+    const a = client.sessionId;
+    const s = this.sim.get(a);
+    if (!s || !msg || typeof msg !== "object" || !this.coliseuDoor) return;
+    const now = Date.now();
+    if (now - (s.duelAt || 0) < 1500) return;
+    s.duelAt = now;
+    const b = String(msg.to || "");
+    const who = (sid) => {
+      const p = this.sim.get(sid);
+      if (!p) return null;
+      // robô de teste (MM_TEST_BOTS) não tem aparelho: não luta
+      return { x: p.body.x, z: p.body.z, car: !!p.car, busy: !!(p.mobBusy || p.seat || p.bed || p.jailed), bot: !p.userId || !this.clients.some((c) => c.sessionId === sid) };
+    };
+    const r = this.duels.challenge(a, b, who, this.coliseuDoor, now);
+    if (r.error) {
+      client.send("dno", { e: r.error });
+      return;
+    }
+    const d = r.duel;
+    d.sids.forEach((sid, k) => {
+      const foeSid = d.sids[1 - k];
+      const foe = this.state.players.get(foeSid);
+      const me = this.sim.get(sid);
+      // ocupado já: o monstro da rua não persegue quem está no Coliseu (o aparelho confirma com `q`)
+      if (me) me.mobBusy = true;
+      this.sendTo(sid, "dgo", { id: d.id, side: k, foe: { sid: foeSid, name: foe ? foe.name : "", body: foe ? foe.body : "", look: foe ? foe.look : "" } });
+    });
+    log.info("duel.start", { roomId: this.roomId, id: d.id });
+  }
+
+  duelEnd(end) {
+    for (const sid of end.sids) this.sendTo(sid, "dend", { id: end.id, win: end.winner === sid ? 1 : 0, r: end.reason });
+    log.info("duel.end", { roomId: this.roomId, id: end.id, reason: end.reason });
+  }
+
+  /** Saiu da sala no meio: o outro vence (antes de começar, desfeita). */
+  duelGone(sid) {
+    if (!this.duels) return;
+    const end = this.duels.drop(sid);
+    if (end) this.duelEnd(end);
   }
 
   cancelEmpty() {
