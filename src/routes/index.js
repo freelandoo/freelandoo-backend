@@ -48,6 +48,7 @@ const condoRoutes = require("./condo.routes");
 const residenceRoutes = require("./residence.routes");
 const neighborhoodRoutes = require("./neighborhood.routes");
 const spacesRoutes = require("./spaces.routes");
+const cityRoutes = require("./city.routes");
 const platformAvatarRoutes = require("./platformAvatar.routes");
 const gameProfileRoutes = require("./gameProfile.routes");
 const financeRoutes = require("./finance.routes");
@@ -263,6 +264,9 @@ module.exports = (app) => {
   // de perfil — atravessa TODAS as modalidades, inclusive a academia, e não
   // caberia sob nenhuma base de modalidade.
   app.use("/", spacesRoutes);
+  // Minha cidade (mig 468): a preferência de moradia + os vínculos de bairro e
+  // condomínio numa leitura só. Raiz pela mesma razão do `/me/spaces`.
+  app.use("/", cityRoutes);
   // Perfil gamer (mig 220): conta de plataforma conectada, estante e
   // comparação. Base `/gamer` e NÃO `/games` — `/games` é da comunidade de
   // games, e o que mora aqui é a biblioteca da PESSOA (ver o cabeçalho do

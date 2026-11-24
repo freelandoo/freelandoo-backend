@@ -17,8 +17,15 @@ const QUICK_PILL_KEYS = [
   "car",
   "condo",
   "neighborhood",
+  // Minha cidade (mig 468): UM pill para bairro e condomínio. `condo` e
+  // `neighborhood` continuam aceitos ao ler o que já foi gravado, mas viram
+  // `city` (ver LEGACY_ALIAS) — nunca dois pills para o mesmo ambiente.
+  "city",
   "children",
 ];
+
+/** Chaves antigas que hoje abrem outro pill. */
+const LEGACY_ALIAS = { condo: "city", neighborhood: "city" };
 
 const QUICK_PILL_MAX = 4;
 
@@ -27,7 +34,8 @@ function normalizeQuickPills(input) {
   if (!Array.isArray(input)) return null;
   const out = [];
   for (const raw of input) {
-    const key = String(raw || "").trim();
+    const trimmed = String(raw || "").trim();
+    const key = LEGACY_ALIAS[trimmed] || trimmed;
     if (!QUICK_PILL_KEYS.includes(key) || out.includes(key)) continue;
     out.push(key);
     if (out.length >= QUICK_PILL_MAX) break;

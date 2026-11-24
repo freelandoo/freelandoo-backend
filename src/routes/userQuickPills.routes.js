@@ -33,7 +33,9 @@ router.get(
       [req.user.id_user]
     );
     return res.json({
-      pills: rows[0]?.quick_pills ?? null,
+      // Normalizado também na LEITURA: `condo`/`neighborhood` gravados antes
+      // da mig 468 chegam como `city` (um pill só para Minha cidade).
+      pills: rows[0]?.quick_pills == null ? null : normalizeQuickPills(rows[0].quick_pills),
       public_pills: resolvePublicPills(rows[0]?.public_pills),
       available: QUICK_PILL_KEYS,
       public_available: PUBLIC_PILL_KEYS,
