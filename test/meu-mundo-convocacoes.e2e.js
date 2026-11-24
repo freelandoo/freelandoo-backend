@@ -1,0 +1,186 @@
+// gacha-v1 (mig 469): Convocações — débito, entrega, garantia, recibo, replay, conflito, lote, concorrência,
+// falha no meio e histórico só da própria pessoa. EXCLUSIVAMENTE banco local descartável:
+// TEST_DATABASE_URL=postgres://postgres:<senha>@127.0.0.1:<porta>/mm_gacha_test node test/meu-mundo-convocacoes.e2e.js
+const target = process.env.TEST_DATABASE_URL;
+let parsed;
+try { parsed = new URL(target); } catch { /* guard below */ }
+if (!parsed || !["127.0.0.1", "localhost"].includes(parsed.hostname) || parsed.pathname !== "/mm_gacha_test") {
+  console.error("Use somente TEST_DATABASE_URL local com banco descartável mm_gacha_test.");
+  process.exit(2);
+}
+process.env.DATABASE_URL = target;
+process.env.DATABASE_SSL = "false";
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+const key = () => crypto.randomUUID();
+let checks = 0;
+function check(name, condition, info = "") { assert.ok(condition, name + (info ? " — " + info : "")); checks++; console.log(`✓ ${name}`); }
+
+async function bootstrap(pool) {
+  await pool.query(`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`);
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+  await pool.query(`CREATE TABLE tb_user (id_user UUID PRIMARY KEY, username TEXT, email TEXT)`);
+  await pool.query(`CREATE TABLE tb_role (id_role SERIAL PRIMARY KEY, desc_role TEXT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
+  await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
+  await require("./helpers/mmPolens").polenTables(pool);
+  const dir = path.join(__dirname, "../src/databases/migrations");
+  for (const file of fs.readdirSync(dir).filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f)).sort()) {
+    const sql = fs.readFileSync(path.join(dir, file), "utf8");
+    await pool.query(sql);
+    if (file.startsWith("469_")) await pool.query(sql); // idempotente
+  }
+}
+
+async function main() {
+  const pool = require("../src/databases");
+  const Gacha = require("../src/services/MeuMundoGachaService");
+  const GearService = require("../src/services/MeuMundoGearService");
+  const Life = require("../src/services/MeuMundoLifeService");
+  const Rules = require("../src/utils/mmItems/rules/gacha");
+  Life.adminPerks = false;
+  const realRandom = Gacha.randomInt;
+  try {
+    await bootstrap(pool);
+    const me = key(), other = key();
+    for (const user of [me, other]) {
+      await pool.query(`INSERT INTO tb_user VALUES ($1, 'gacha', 'gacha@mm.test')`, [user]);
+      await Life.peek(user);
+    }
+    const qty = async (u, id) => Number((await pool.query(`SELECT qty FROM tb_mm_gear WHERE id_user=$1 AND item_id=$2`, [u, id])).rows[0]?.qty || 0);
+    const setSpark = (u, n) => pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty) VALUES ($1,'faisca_eter',$2) ON CONFLICT (id_user,item_id) DO UPDATE SET qty=$2`, [u, n]);
+    const state = async (u, b) => (await pool.query(`SELECT * FROM tb_mm_gacha_state WHERE id_user=$1 AND banner=$2`, [u, b])).rows[0] || null;
+    const receipts = async (u) => Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_receipt WHERE id_user=$1 AND source='gacha_pull'`, [u])).rows[0].count);
+
+    // ── sem Faísca: 402 e nada muda ──
+    const k0 = key();
+    const none = await Gacha.pull(me, { banner: "weapons", times: 1, key: k0 });
+    check("sem Faísca: recusa (402)", none.statusCode === 402 && none.code === "spark", JSON.stringify(none));
+    check("sem Faísca: nenhum recibo e nenhum contador", (await receipts(me)) === 0 && !(await state(me, "weapons")));
+
+    // ── validação: banner, times, alvo, chave ──
+    await setSpark(me, 100);
+    check("banner desconhecido", (await Gacha.pull(me, { banner: "ouro", key: key() })).code === "banner");
+    check("quantidade arbitrária recusada", (await Gacha.pull(me, { banner: "weapons", times: 5, key: key() })).code === "times");
+    check("quantidade negativa recusada", (await Gacha.pull(me, { banner: "weapons", times: -10, key: key() })).code === "times");
+    check("Personagens sem alvo recusa", (await Gacha.pull(me, { banner: "characters", key: key() })).code === "target");
+    check("Personagens com guardião não jogável recusa", (await Gacha.pull(me, { banner: "characters", target: "selene", key: key() })).code === "target");
+    check("Armas com alvo recusa", (await Gacha.pull(me, { banner: "weapons", target: "golem", key: key() })).code === "target");
+    check("sem chave recusa", (await Gacha.pull(me, { banner: "weapons" })).code === "key");
+    check("versão antiga do aparelho = 410", (await Gacha.pull(me, { banner: "weapons", key: key(), version: "gacha-v0" })).statusCode === 410);
+    check("nenhuma validação gastou Faísca", (await qty(me, "faisca_eter")) === 100);
+
+    // ── 1 giro com RNG fixo: E (2 fragmentos de classe E) ──
+    Gacha.randomInt = () => 0;
+    const k1 = key();
+    const one = await Gacha.pull(me, { banner: "weapons", times: 1, key: k1 });
+    check("1 giro: ok", !one.error && !one.replay, JSON.stringify(one).slice(0, 300));
+    const r1 = one.receipt.result.results;
+    check("1 giro: fragmento de classe E ×2", r1.length === 1 && r1[0].item === "frag_classe_e" && r1[0].qty === 2);
+    check("1 giro: gastou 1 Faísca e entregou os fragmentos", (await qty(me, "faisca_eter")) === 99 && (await qty(me, "frag_classe_e")) === 2);
+    check("1 giro: contador gravado", (await state(me, "weapons")).since_rare === 1 && (await state(me, "weapons")).pulls === 1);
+    check("1 giro: o livro de itens liga ao recibo", Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_item_ledger WHERE id_user=$1 AND id_receipt=$2`, [me, one.receipt.eventId])).rows[0].count) === 2);
+
+    // ── replay: mesma chave = mesmo resultado, sem gastar; mesmo depois de gastar os fragmentos ──
+    Gacha.randomInt = () => 999; // se sorteasse de novo, daria Divina
+    await pool.query(`UPDATE tb_mm_gear SET qty = 0 WHERE id_user=$1 AND item_id='frag_classe_e'`, [me]);
+    const again = await Gacha.pull(me, { banner: "weapons", times: 1, key: k1 });
+    check("replay: devolve o recibo original", again.replay === true && again.receipt.eventId === one.receipt.eventId && again.receipt.result.results[0].item === "frag_classe_e");
+    check("replay: não gasta nem entrega de novo", (await qty(me, "faisca_eter")) === 99 && (await qty(me, "frag_classe_e")) === 0);
+    const rec = await Gacha.recover(me, k1);
+    check("recuperar pela chave (recarregou a página): mesmo resultado, nunca sorteia", rec.receipt.eventId === one.receipt.eventId);
+    check("mesma chave com outro banner = key_conflict", (await Gacha.pull(me, { banner: "protections", times: 1, key: k1 })).code === "key_conflict");
+    check("mesma chave com outra quantidade = key_conflict", (await Gacha.pull(me, { banner: "weapons", times: 10, key: k1 })).code === "key_conflict");
+    check("o conflito não gastou nada", (await qty(me, "faisca_eter")) === 99);
+
+    // ── lote de 10 com tudo E: o 10º sem Raro vira Raro (A) — garantia giro a giro ──
+    Gacha.randomInt = () => 0;
+    const ten = await Gacha.pull(me, { banner: "weapons", times: 10, key: key() });
+    const rs = ten.receipt.result.results;
+    // 1 giro antes (since_rare=1) → o 9º do lote é o 10º sem Raro
+    check("lote: 10 resultados em ordem", rs.length === 10);
+    check("lote: o 9º do lote é o Raro garantido (A)", rs[8].pity === "rare" && rs[8].rank === "A", JSON.stringify(rs.map((r) => r.rank)));
+    check("lote: gastou 10 de uma vez", (await qty(me, "faisca_eter")) === 89);
+    const stw = await state(me, "weapons");
+    check("lote: contador depois do lote", stw.since_rare === 1 && stw.since_top === 11 && stw.pulls === 11, JSON.stringify(stw));
+    check("lote: soma de fragmentos na mochila", (await qty(me, "frag_classe_e")) === 9 * 2 && (await qty(me, "frag_classe_a")) === 10);
+
+    // ── Topo garantido no 40º, banners separados ──
+    await pool.query(`UPDATE tb_mm_gacha_state SET since_top = 39 WHERE id_user=$1 AND banner='weapons'`, [me]);
+    const top = await Gacha.pull(me, { banner: "weapons", times: 1, key: key() });
+    check("Topo garantido no 40º", top.receipt.result.results[0].pity === "top" && top.receipt.result.results[0].tier === "top");
+    check("Topo zera os dois contadores", (await state(me, "weapons")).since_top === 0 && (await state(me, "weapons")).since_rare === 0);
+    await Gacha.pull(me, { banner: "protections", times: 1, key: key() });
+    check("Proteções tem contador próprio", (await state(me, "protections")).since_top === 1 && (await state(me, "weapons")).since_top === 0);
+
+    // ── Proteções com alvo: a classe do alvo cai no alvo ──
+    const legendaryPiece = Rules.PROTECTION_POOL.legendary[5].replace(/^frag_/, "");
+    Gacha.randomInt = (n) => (n === 1000 ? 990 : 0);
+    const prot = await Gacha.pull(me, { banner: "protections", times: 1, target: legendaryPiece, key: key() });
+    check("Proteções: Lendária com alvo cai na peça-alvo", prot.receipt.result.results[0].item === `frag_${legendaryPiece}` && prot.receipt.result.results[0].qty === 18);
+    check("Proteções: alvo fica gravado", (await state(me, "protections")).target === legendaryPiece);
+
+    // ── Personagens: 50/50 perdido e garantido no próximo ──
+    await pool.query(`INSERT INTO tb_mm_gacha_state (id_user, banner, since_top) VALUES ($1,'characters',39)`, [me]);
+    Gacha.randomInt = (n) => (n === 2 ? 1 : 0); // perde o 50/50; o outro = primeiro da lista sem o alvo
+    const lose = await Gacha.pull(me, { banner: "characters", times: 1, target: "noctis", key: key() });
+    const lr = lose.receipt.result.results[0];
+    check("Personagens: perdeu o 50/50 → 20 de outro jogável", lr.tier === "top" && lr.character !== "noctis" && lr.qty === 20 && lr.featured === false);
+    check("Personagens: a marca de garantido fica no banco", (await state(me, "characters")).guaranteed === true);
+    await pool.query(`UPDATE tb_mm_gacha_state SET since_top = 39 WHERE id_user=$1 AND banner='characters'`, [me]);
+    const win = await Gacha.pull(me, { banner: "characters", times: 1, target: "noctis", key: key() });
+    check("Personagens: o próximo Topo é do alvo", win.receipt.result.results[0].character === "noctis" && (await qty(me, "frag_deus_noctis")) === 20);
+    check("Personagens: a marca saiu", (await state(me, "characters")).guaranteed === false);
+
+    // ── saldo insuficiente para 10 ──
+    await setSpark(me, 3);
+    const poor = await Gacha.pull(me, { banner: "weapons", times: 10, key: key() });
+    check("3 Faíscas não pagam 10 giros (402) e nada muda", poor.code === "spark" && (await qty(me, "faisca_eter")) === 3);
+
+    // ── falha no meio da entrega: nada fica (débito, contador, recibo) ──
+    await setSpark(me, 10);
+    const before = { st: await state(me, "weapons"), n: await receipts(me), e: await qty(me, "frag_classe_e") };
+    const realDeliver = GearService.deliver;
+    GearService.deliver = async () => { throw new Error("falha simulada na entrega"); };
+    let threw = false;
+    try { await Gacha.pull(me, { banner: "weapons", times: 10, key: key() }); } catch { threw = true; }
+    GearService.deliver = realDeliver;
+    const afterFail = await state(me, "weapons");
+    check("falha simulada: a transação volta inteira", threw && (await qty(me, "faisca_eter")) === 10 && (await receipts(me)) === before.n && afterFail.pulls === before.st.pulls && (await qty(me, "frag_classe_e")) === before.e);
+
+    // ── concorrência: 2 lotes de 10 com 15 Faíscas → um passa, outro 402 ──
+    await setSpark(me, 15);
+    Gacha.randomInt = realRandom;
+    const [a, b] = await Promise.all([
+      Gacha.pull(me, { banner: "weapons", times: 10, key: key() }),
+      Gacha.pull(me, { banner: "weapons", times: 10, key: key() }),
+    ]);
+    check("concorrência: só um lote é pago", [a, b].filter((x) => !x.error).length === 1 && [a, b].some((x) => x.code === "spark"));
+    check("concorrência: sobram 5", (await qty(me, "faisca_eter")) === 5);
+    // mesma chave em duas abas ao mesmo tempo → um recibo, mesmo resultado
+    const same = key();
+    const [c1, c2] = await Promise.all([1, 2].map(() => Gacha.pull(me, { banner: "weapons", times: 1, key: same })));
+    check("duas abas, mesma chave: o mesmo recibo", c1.receipt.eventId === c2.receipt.eventId && (await qty(me, "faisca_eter")) === 4);
+
+    // ── histórico e recuperação: só da própria pessoa ──
+    const hist = await Gacha.history(me, { limit: 5 });
+    check("histórico paginado", hist.items.length === 5 && !!hist.next);
+    const page2 = await Gacha.history(me, { before: hist.next, limit: 50 });
+    check("histórico: a página 2 não repete a 1", page2.items.every((x) => !hist.items.some((y) => y.key === x.key)));
+    check("histórico de outra pessoa vem vazio", (await Gacha.history(other, {})).items.length === 0);
+    check("outra pessoa não recupera o meu giro", (await Gacha.recover(other, k1)).statusCode === 404);
+    check("cursor inválido recusa", (await Gacha.history(me, { before: "ontem" })).code === "cursor");
+    const view = await Gacha.get(me);
+    check("GET: regras publicadas + saldo + 3 contadores", view.rules.version === Rules.GACHA_VERSION && view.spark === 4 && view.states.length === 3);
+    check("GET: faltam N giros para cada garantia", view.states.every((s) => s.toTop >= 1 && s.toTop <= 40 && s.toRare >= 1 && s.toRare <= 10));
+
+    console.log(`\n${checks} verificações OK`);
+  } finally {
+    Gacha.randomInt = realRandom;
+    await pool.end();
+  }
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });

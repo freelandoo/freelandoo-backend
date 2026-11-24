@@ -123,6 +123,11 @@ router.post("/gear/weapon/refine/decide", ...admin, rateLimit.mmItems, asyncHand
 router.post("/gear/weapon/stars", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearWeaponStars));
 router.post("/gear/weapon/assemble", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearWeaponAssemble));
 router.post("/gear/use", ...admin, asyncHandler(MeuMundoController.gearUse));
+// gacha-v1 (24/11/2026): Convocações (só admin, como o resto do jogo até o Alex abrir)
+router.get("/gacha", ...admin, asyncHandler(MeuMundoController.gachaGet));
+router.post("/gacha/pull", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gachaPull));
+router.get("/gacha/pull/:key", ...admin, asyncHandler(MeuMundoController.gachaRecover));
+router.get("/gacha/history", ...admin, asyncHandler(MeuMundoController.gachaHistory));
 router.post("/gear/recycle", ...admin, asyncHandler(MeuMundoController.gearRecycle));
 router.post("/gear/fragment/convert", ...admin, asyncHandler(MeuMundoController.gearFragmentConvert));
 router.post("/gear/grade", ...admin, asyncHandler(MeuMundoController.gearGrade));

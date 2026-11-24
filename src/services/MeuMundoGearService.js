@@ -815,6 +815,8 @@ MeuMundoGearService.R = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
 MeuMundoGearService.eventOpen = (c, event, now) => require("./MeuMundoEventService").isOpen(c, event, now);
 MeuMundoGearService.isInstanceItem = isInstanceItem;
 MeuMundoGearService.prepare = prepare;
+// gacha-v1 (24/11/2026): as Convocações gravam o giro pelo mesmo recibo idempotente da Forja
+MeuMundoGearService.withReceipt = withReceipt;
 
 // weapon-v1 (24/11/2026): aprimoramento, graus, Ascensão, Despertar, encanto, runas, desmontar, transmutar e
 // conversão de fragmento saíram do jogo; as rotas antigas respondem 410 em vez de sumir (aparelho velho).

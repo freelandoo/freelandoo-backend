@@ -343,6 +343,20 @@ const gearEnchant = forgeAction("enchant");
 const gearEnchantResolve = forgeAction("enchantResolve");
 // weapon-v1 (24/11/2026): refinar com pó (bancada, como o aprimoramento: sem prédio) e, na Forja,
 // subir estrela e montar arma por fragmento de classe
+// gacha-v1 (24/11/2026): Convocações — três banners de fragmentos, pagos com Faísca de Éter
+const gacha = () => require("../services/MeuMundoGachaService");
+async function gachaGet(req, res) {
+  return reply(res, await gacha().get(req.user.id_user));
+}
+async function gachaPull(req, res) {
+  return reply(res, await gacha().pull(req.user.id_user, req.body || {}));
+}
+async function gachaRecover(req, res) {
+  return reply(res, await gacha().recover(req.user.id_user, req.params.key));
+}
+async function gachaHistory(req, res) {
+  return reply(res, await gacha().history(req.user.id_user, req.query || {}));
+}
 async function gearWeaponRefine(req, res) {
   return reply(res, await gear().refineWeapon(req.user.id_user, req.body || {}));
 }
@@ -538,6 +552,7 @@ async function adminStatus(_req, res) {
 }
 
 module.exports = {
+  gachaGet, gachaPull, gachaRecover, gachaHistory,
   clanGet,
   clanChoose,
   clanChange,
