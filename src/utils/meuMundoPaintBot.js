@@ -20,6 +20,36 @@ const P = require("./meuMundoPaint");
 const { TUNING: T, PAINT } = P;
 const IDLE = Object.freeze({ mx: 0, mz: 0, run: false, jump: false });
 
+/**
+ * mm3d-63: ponte e cama elástica nascem no ponto da MIRA (a regra do muro).
+ * Onde o robô mira para estender a ponte: logo depois da borda do chão na
+ * direção (ux, uz), na altura do pé (o topo da placa fica rente ao chão).
+ */
+function bridgeAim(solids, b, ux, uz) {
+  // em linha reta a partir da BOCA da arma (a placa gira para boca → mira; partindo
+  // do corpo ela sairia torta e as pontes deixariam buracos)
+  // na linha do corpo: a placa nova encosta na borda do chão (sem sobrepor:
+  // mirando o topo da anterior ela deitaria nele e sairia mais alta)
+  for (let k = 0; k <= 14; k += 0.05) {
+    if (P.supportAt(solids, b.x + ux * k, b.z + uz * k, b.y + 0.3, 0.02) < b.y - 0.6) {
+      const ahead = k + T.bridgeR - 0.1;
+      return { x: b.x + ux * ahead, y: b.y - T.bridgeH / 2, z: b.z + uz * ahead };
+    }
+  }
+  return null;
+}
+
+/** Cama elástica no chão, 1,6 m à frente de quem está virado (`facing`). */
+function padAim(b) {
+  return { x: b.x + Math.sin(b.facing) * 1.6, y: b.y, z: b.z + Math.cos(b.facing) * 1.6 };
+}
+
+/** Direção da boca da arma até o ponto mirado (o comprimento = distância da mira). */
+function aimDir(b, at) {
+  const o = P.muzzleOf(b, b.facing);
+  return { x: at.x - o.x, y: at.y - o.y, z: at.z - o.z };
+}
+
 function rng(seed) {
   let s = seed >>> 0 || 1;
   return () => {
@@ -171,13 +201,20 @@ class PaintBot {
     yield* this.wait(10);
   }
 
-  /** Atira a cor `c` na direção `dir` quando a arma deixa; devolve a tinta criada (ou null). */
-  *fire(c, dir) {
+  /**
+   * Atira a cor `c` na direção `dir` quando a arma deixa; devolve a tinta criada (ou null).
+   * `at` (opcional) = função que dá o ponto mirado: a direção sai da boca até ele, com o comprimento
+   * da distância (mm3d-63: ponte e cama elástica nascem no ponto da mira, como o muro).
+   */
+  *fire(c, dir, at) {
     let guard = 0;
     while (this.m.time + 0.03 < this.p.nextFire[c] && guard++ < 400) yield IDLE;
     if (this.p.ammo[c] < T.cost[c]) return null;
     const b = this.b;
     const o = P.muzzleOf(b, b.facing);
+    // o ponto é calculado DEPOIS da espera (o corpo pode ter girado nela)
+    if (typeof at === "function") at = at();
+    if (at) dir = { x: at.x - o.x, y: at.y - o.y, z: at.z - o.z };
     const before = this.m.blobs.size;
     this.m.fire(this.slot, c, o, dir, ++this.q);
     const made = this.m.blobs.size > before ? [...this.m.blobs.values()].pop() : null;
@@ -215,7 +252,8 @@ class PaintBot {
       if (reachTo < 0.5 || far < edge + 0.4) break;
       if (guard++ > 40 || this.p.ammo[PAINT.BRIDGE] < 1) return false;
       b.facing = Math.atan2(to.x - b.x, to.z - b.z);
-      yield* this.fire(PAINT.BRIDGE, { x: ux, y: 0, z: uz });
+      if (!bridgeAim(this.m.solids(), b, ux, uz)) return false;
+      yield* this.fire(PAINT.BRIDGE, null, () => bridgeAim(this.m.solids(), b, ux, uz));
       yield* this.walkTo(b.x + ux * 30, b.z + uz * 30, true, 40);
     }
     if (to.y > b.y + 0.3) {
@@ -232,7 +270,7 @@ class PaintBot {
       if (this.p.ammo[PAINT.STEP] < T.cost[PAINT.STEP]) return false;
       b.facing = Math.atan2(-ux, -uz);
       yield IDLE;
-      const pad = yield* this.fire(PAINT.STEP, { x: 0, y: -1, z: 0 });
+      const pad = yield* this.fire(PAINT.STEP, null, () => padAim(b));
       if (!pad || pad.blob.c !== PAINT.STEP) return false;
       let bounced = false;
       for (let i = 0; i < 300; i++) {
@@ -293,4 +331,4 @@ class PaintBot {
   }
 }
 
-module.exports = { PaintBot };
+module.exports = { PaintBot, bridgeAim, padAim, aimDir };

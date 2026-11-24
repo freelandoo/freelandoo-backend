@@ -12,6 +12,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const P = require("../../src/utils/meuMundoPaint");
+const { bridgeAim, padAim, aimDir } = require("../../src/utils/meuMundoPaintBot");
 
 process.removeAllListeners("warning");
 
@@ -192,7 +193,7 @@ function climber(match, slot) {
     while (match.time + 0.03 < p.nextFire[c]) run({ mx: 0, mz: 0, run: false, jump: false });
     const o = P.muzzleOf(b, b.facing);
     const before = match.blobs.size;
-    match.fire(slot, c, o, dir, ++q);
+    match.fire(slot, c, o, typeof dir === "function" ? dir() : dir, ++q); // mira calculada depois da espera
     const made = match.blobs.size > before ? [...match.blobs.values()].pop() : null;
     if (made && made.owner === slot) P.liftOnto(b, made.blob.x, made.blob.z, made.blob.r, made.blob.y1);
     return made;
@@ -242,7 +243,7 @@ function climber(match, slot) {
       if (reachTo < 0.5 || far < edge + 0.4) break;
       assert.ok(guard++ < 40, `ponte não chega na ilha ${to.id}`);
       assert.ok(p.ammo[PAINT.BRIDGE] >= 1, `sem munição de ponte indo para a ilha ${to.id}`);
-      fire(PAINT.BRIDGE, { x: ux, y: 0, z: uz });
+      fire(PAINT.BRIDGE, () => aimDir(b, bridgeAim(match.solids(), b, ux, uz)));
       walkTo(b.x + ux * 30, b.z + uz * 30, true, 40);
     }
     if (to.y > b.y + 0.3) {
@@ -258,7 +259,7 @@ function climber(match, slot) {
       assert.ok(p.ammo[PAINT.STEP] >= T.cost[PAINT.STEP], `sem munição de cama elástica indo para a ilha ${to.id}`);
       b.facing = Math.atan2(-ux, -uz);
       run({ mx: 0, mz: 0, run: false, jump: false });
-      const pad = fire(PAINT.STEP, { x: 0, y: -1, z: 0 });
+      const pad = fire(PAINT.STEP, () => aimDir(b, padAim(b)));
       assert.ok(pad && pad.blob.c === PAINT.STEP, `a cama elástica não nasceu (ilha ${to.id})`);
       let bounced = false;
       for (let i = 0; i < 300; i++) {

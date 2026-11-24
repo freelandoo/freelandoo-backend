@@ -14,6 +14,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const P = require("../../src/utils/meuMundoPaint");
+const { bridgeAim, padAim, aimDir } = require("../../src/utils/meuMundoPaintBot");
 
 process.removeAllListeners("warning");
 
@@ -128,43 +129,66 @@ function world(solids) {
   return { solids, bodies: [], boss: null };
 }
 
-test("paint — ponte cresce no vão a cada tiro e dá para andar nela", () => {
+test("paint — ponte no chão nasce onde a mira aponta; em fila cruza o vão e dá para andar nela", () => {
   const map = P.buildPaintMap();
   const base = map.islands[map.bases[0].island];
-  // Na borda leste... não: na borda NORTE da base (z+), mirando o vazio.
+  // na borda NORTE da base (z+), mirando logo depois da borda
   const b = P.newBody(base.x, 0, base.z + base.r - 0.6, 0);
   const solids = map.solids.slice();
   let lastZ = -Infinity;
   for (let i = 0; i < 6; i++) {
     const s = { slot: 0, team: 0, x: b.x, y: b.y, z: b.z, ground: true, gy: b.gy, facing: 0 };
-    const o = P.muzzleOf(s, 0);
-    const r = P.resolveShot(world(solids), s, PAINT.BRIDGE, o, { x: 0, y: 0.05, z: 1 });
+    const at = bridgeAim(solids, b, 0, 1);
+    const r = P.resolveShot(world(solids), s, PAINT.BRIDGE, P.muzzleOf(s, 0), aimDir(b, at));
     assert.equal(r.kind, "blob");
-    assert.ok(r.blob.z > lastZ, "a ponte não cresceu");
-    assert.ok(Math.abs(r.blob.y1 - 0) < 1e-6, "ponte fora da altura do chão");
+    assert.ok(Math.hypot(r.blob.x - at.x, r.blob.z - at.z) < 1e-3, "a ponte não nasceu na mira");
+    assert.ok(r.blob.z > lastZ, "a ponte não avançou");
+    assert.ok(Math.abs(r.blob.y1 - 0) < 1e-3, "ponte fora da altura do chão");
     lastZ = r.blob.z;
     solids.push(P.blobSolid(r.blob, i + 1, 0));
+    b.z = r.blob.z + T.bridgeR - 0.3; // vai até a ponta da placa nova
   }
   assert.ok(lastZ > base.z + base.r + 5, `ponte curta ${lastZ - base.z - base.r}`);
-  stepN(b, { mx: 0, mz: 1, run: false, jump: false }, solids, 90);
-  assert.ok(b.ground && Math.abs(b.y) < 0.01 && b.z > base.z + base.r + 2, "não andou na ponte");
+  const b2 = P.newBody(base.x, 0, base.z + base.r - 0.6, 0);
+  stepN(b2, { mx: 0, mz: 1, run: false, jump: false }, solids, 90);
+  assert.ok(b2.ground && Math.abs(b2.y) < 0.01 && b2.z > base.z + base.r + 2, "não andou na ponte");
 });
 
-test("paint — pulou e atirou turquesa: a ponte nasce na altura do pé, no ar, e ele pousa nela", () => {
+test("paint — mm3d-63: no chão, ponte e cama elástica vão LONGE, no ponto da mira (como o muro)", () => {
   const map = P.buildPaintMap();
   const base = map.islands[map.bases[0].island];
-  const b = P.newBody(base.x, 0, base.z + base.r - 0.7, 0);
-  const solids = map.solids.slice();
-  P.stepBody(b, { mx: 0, mz: 0, run: false, jump: true }, solids);
-  for (let i = 0; i < 30 && b.vy > 0.5; i++) P.stepBody(b, { mx: 0, mz: 0, run: false, jump: false }, solids);
-  assert.ok(!b.ground && b.y > 1, "não está no alto do pulo");
-  const s = { slot: 0, team: 0, x: b.x, y: b.y, z: b.z, ground: false, gy: b.gy, facing: 0 };
-  const r = P.resolveShot(world(solids), s, PAINT.BRIDGE, P.muzzleOf(s, 0), { x: 0, y: 0, z: 1 });
-  assert.equal(r.kind, "blob");
-  assert.ok(Math.abs(r.blob.y1 - s.y) < 1e-3, `ponte na altura errada: ${r.blob.y1} × pé ${s.y}`);
-  solids.push(P.blobSolid(r.blob, 9, 0));
-  for (let i = 0; i < 120 && !b.ground; i++) P.stepBody(b, { mx: 0, mz: 1, run: false, jump: false }, solids);
-  assert.ok(b.ground && Math.abs(b.y - r.blob.y1) < 0.01, `não pousou na ponte do alto (y ${b.y})`);
+  const s = { slot: 0, team: 0, x: base.x, y: 0, z: base.z, ground: true, gy: 0, facing: 0 };
+  const o = P.muzzleOf(s, 0);
+  // um ponto no ar a 30 m (no vão, outra ilha): a placa fica ali, deitada
+  const at = { x: base.x, y: 4, z: base.z + 30 };
+  for (const c of [PAINT.BRIDGE, PAINT.STEP]) {
+    const r = P.resolveShot(world(map.solids), s, c, o, { x: at.x - o.x, y: at.y - o.y, z: at.z - o.z });
+    assert.equal(r.kind, "blob");
+    assert.ok(Math.hypot(r.blob.x - at.x, r.blob.z - at.z) < 0.5, `cor ${c} não foi para a mira (${r.blob.x}, ${r.blob.z})`);
+    assert.ok(Math.abs((r.blob.y0 + r.blob.y1) / 2 - at.y) < 0.5, `cor ${c} na altura errada`);
+  }
+});
+
+test("paint — mm3d-63: no ar, ponte e cama elástica nascem embaixo do pé (mesmo mirando longe)", () => {
+  const map = P.buildPaintMap();
+  const base = map.islands[map.bases[0].island];
+  for (const c of [PAINT.BRIDGE, PAINT.STEP]) {
+    const b = P.newBody(base.x, 0, base.z + base.r - 0.7, 0);
+    const solids = map.solids.slice();
+    P.stepBody(b, { mx: 0, mz: 0, run: false, jump: true }, solids);
+    for (let i = 0; i < 30 && b.vy > 0.5; i++) P.stepBody(b, { mx: 0, mz: 0, run: false, jump: false }, solids);
+    assert.ok(!b.ground && b.y > 1, "não está no alto do pulo");
+    const s = { slot: 0, team: 0, x: b.x, y: b.y, z: b.z, ground: false, gy: b.gy, facing: 0 };
+    const r = P.resolveShot(world(solids), s, c, P.muzzleOf(s, 0), { x: 0, y: 0, z: 30 });
+    assert.equal(r.kind, "blob");
+    assert.ok(Math.hypot(r.blob.x - s.x, r.blob.z - s.z) < 1e-3, `cor ${c} não nasceu embaixo do pé`);
+    assert.ok(Math.abs(r.blob.y1 - s.y) < 0.03, `cor ${c} na altura errada: ${r.blob.y1} × pé ${s.y}`);
+    if (c === PAINT.BRIDGE) {
+      solids.push(P.blobSolid(r.blob, 9, 0));
+      for (let i = 0; i < 120 && !b.ground; i++) P.stepBody(b, { mx: 0, mz: 1, run: false, jump: false }, solids);
+      assert.ok(b.ground && Math.abs(b.y - r.blob.y1) < 0.01, `não pousou na ponte do alto (y ${b.y})`);
+    }
+  }
 });
 
 test("paint — cama elástica: pisou, é lançado ~4 m; no ar ainda pula mais uma vez", () => {
@@ -221,7 +245,7 @@ function climber(match, slot) {
     while (match.time + 0.03 < p.nextFire[c]) run({ mx: 0, mz: 0, run: false, jump: false });
     const o = P.muzzleOf(b, b.facing);
     const before = match.blobs.size;
-    match.fire(slot, c, o, dir, ++q);
+    match.fire(slot, c, o, typeof dir === "function" ? dir() : dir, ++q); // mira calculada depois da espera
     const made = match.blobs.size > before ? [...match.blobs.values()].pop() : null;
     if (made && made.owner === slot) P.liftOnto(b, made.blob.x, made.blob.z, made.blob.r, made.blob.y1);
     return made;
@@ -265,7 +289,7 @@ function climber(match, slot) {
       if (reach < 0.5 || far < to.r + 0.4) break;
       assert.ok(guard++ < 40, `ponte não chega na ilha ${to.id}`);
       assert.ok(p.ammo[PAINT.BRIDGE] >= 1, `sem munição turquesa indo para a ilha ${to.id}`);
-      fire(PAINT.BRIDGE, { x: ux, y: 0, z: uz });
+      fire(PAINT.BRIDGE, () => aimDir(b, bridgeAim(match.solids(), b, ux, uz)));
       walkTo(b.x + ux * 30, b.z + uz * 30, true, 40);
     }
     if (to.y > b.y + 0.3) {
@@ -284,7 +308,7 @@ function climber(match, slot) {
       assert.ok(p.ammo[PAINT.STEP] >= T.cost[PAINT.STEP], `sem munição amarela indo para a ilha ${to.id}`);
       b.facing = Math.atan2(-ux, -uz);
       run({ mx: 0, mz: 0, run: false, jump: false }); // a partida fica com a pose virada
-      const pad = fire(PAINT.STEP, { x: 0, y: -1, z: 0 });
+      const pad = fire(PAINT.STEP, () => aimDir(b, padAim(b)));
       assert.ok(pad && pad.blob.c === PAINT.STEP, `a cama elástica não nasceu (ilha ${to.id})`);
       let bounced = false;
       for (let i = 0; i < 300; i++) {

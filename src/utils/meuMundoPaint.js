@@ -69,7 +69,7 @@ const TUNING = {
   /** Custo em munição de cada tiro (índice = cor). */
   cost: [1, 1, 2, 1]                     ,
   /** Alcance (m) do raio de cada cor. */
-  range: [13, 24, 9, 48]                     ,
+  range: [48, 24, 48, 48]                     , // mm3d-63: ponte e cama elástica vão longe como o muro
 
   /**
    * Ponte (laranja): placa QUADRADA (mm3d-62c, pedido do Alex: laranja,
@@ -78,8 +78,6 @@ const TUNING = {
    */
   bridgeR: 1.25,
   bridgeH: 0.34,
-  /** A ponte cresce até esta distância horizontal de quem atira. */
-  bridgeReach: 12,
   /** Cama elástica (amarelo, mm3d-35e): almofada baixa (dá para entrar andando) que lança para cima. */
   stepR: 1.25,
   stepH: 0.34,
@@ -2485,14 +2483,10 @@ function liftOnto(b           , x        , z        , r        , top        ) {
 // mm3d-46: as cores mudaram (ponte LARANJA, dano PRETO, cama elástica
 // VERMELHA) e entrou o MURO (turquesa).
 //
-//  - LARANJA (ponte): bateu no TOPO de algo ao alcance → poça-plataforma ali.
-//    Senão (mirando o vão, ou o lado de uma ilha) → a ponte CRESCE: acha a
-//    borda do chão na direção da mira, na altura do PÉ de quem atira (no ar,
-//    a ponte nasce onde ele está — pular serve para isso, mm3d-35f), e põe
-//    um disco logo depois dela. Segurando o botão, disco atrás de disco.
-//  - VERMELHO (cama elástica, mm3d-35e): no ar → embaixo do pé (cai nela e é
-//    lançado). No chão →
-//    onde a mira bate (perto), ou logo à frente.
+//  - LARANJA (ponte) e VERMELHO (cama elástica, mm3d-35e) — mm3d-63: no AR
+//    (pulando/caindo) → embaixo do pé. No CHÃO → a regra do muro: placa
+//    deitada onde a mira aponta, até `wallReach` (dá para jogar em outra
+//    ilha); mirando um chão, deita nele.
 //  - PRETO (dano): acerta o jogador do OUTRO time, o chefão, ou apaga tinta
 //    do outro time (o muro aguenta alguns tiros — quem conta é a partida);
 //    no chão vira só respingo.
@@ -2652,52 +2646,62 @@ function resolveShot(world           , s         , c            , o      , dir  
     return { kind: "blob", blob: wallOf(cx, cz, y0 ?? cy - T.wallH / 2, a) }
   }
 
-  if (c === PAINT.STEP) {
-    if (!s.ground) {
-      // Embaixo do pé: apoia no chão de baixo se estiver perto; senão flutua
-      // logo abaixo da sola (é assim que se sobe empilhando).
-      const below = supportAt(world.solids, s.x, s.z, s.y + 0.05, 0.05)
-      const y0 = below > s.y - T.stepH - 0.02 ? below : s.y - T.stepH - 0.02
-      return { kind: "blob", blob: blobOf(c, s.x, s.z, y0, yaw) }
-    }
-    const hit = raycast(world.solids, o, d, T.range[PAINT.STEP])
-    if (hit && hit.normal.y > 0.5 && Math.hypot(hit.point.x - s.x, hit.point.z - s.z) > T.stepR + T.bodyR * 0.6) {
-      return { kind: "blob", blob: blobOf(c, hit.point.x, hit.point.z, hit.point.y, yaw) }
-    }
-    // Logo à frente, no chão em que está.
-    const fx = s.x + Math.sin(s.facing) * 1.6
-    const fz = s.z + Math.cos(s.facing) * 1.6
-    const floor = supportAt(world.solids, fx, fz, s.y + 0.3, 0.05)
-    return { kind: "blob", blob: blobOf(c, fx, fz, floor > s.y - 1.5 ? floor : s.gy, yaw) }
+  // mm3d-63 (pedido do Alex): laranja e vermelho seguem a regra do muro.
+  // NO AR (pulando ou caindo) → embaixo do pé (cai nela; é assim que se sobe
+  // empilhando). NO CHÃO → onde a mira aponta, até longe (outra ilha), deitada.
+  if (!s.ground) {
+    const h = c === PAINT.STEP ? T.stepH : T.bridgeH
+    const below = supportAt(world.solids, s.x, s.z, s.y + 0.05, 0.05)
+    const y0 = below > s.y - h - 0.02 ? below : s.y - h - 0.02
+    return { kind: "blob", blob: blobOf(c, s.x, s.z, y0, yaw) }
   }
+  return { kind: "blob", blob: plateAtAim(world, s, c, o, d, dir) }
+}
 
-  // PONTE
-  const hit = raycast(world.solids, o, d, T.range[PAINT.BRIDGE])
-  if (hit && hit.normal.y > 0.5 && Math.hypot(hit.point.x - s.x, hit.point.z - s.z) <= T.bridgeReach) {
-    return { kind: "blob", blob: blobOf(c, hit.point.x, hit.point.z, hit.point.y - T.bridgeH * 0.5, yaw) }
-  }
-  // Crescer: a borda na direção da mira, na altura do pé (no ar também: pulou, a ponte sai lá em cima).
-  let hx = d.x
-  let hz = d.z
-  const hl = Math.hypot(hx, hz)
-  if (hl < 0.2) {
-    hx = Math.sin(s.facing)
-    hz = Math.cos(s.facing)
-  } else {
-    hx /= hl
-    hz /= hl
-  }
-  const footY = s.y
-  for (let k = 0.6; k <= T.bridgeReach; k += 0.35) {
-    const px = s.x + hx * k
-    const pz = s.z + hz * k
-    const sup = supportAt(world.solids, px, pz, footY + 0.3, 0.02)
-    if (sup < footY - 0.6) {
-      const ahead = k + T.bridgeR * 0.55
-      return { kind: "blob", blob: blobOf(c, s.x + hx * ahead, s.z + hz * ahead, footY - T.bridgeH, yaw) }
+/** Placa deitada (ponte/cama elástica) no ponto da mira — a mesma regra do muro. */
+function plateAtAim(world           , s         , c            , o      , d      , dir      )          {
+  const T = TUNING
+  const r = c === PAINT.STEP ? T.stepR : T.bridgeR
+  const h = c === PAINT.STEP ? T.stepH : T.bridgeH
+  const hit = raycast(world.solids, o, d, T.range[c])
+  // o comprimento de `dir` é a distância da mira (boca → ponto mirado)
+  const L = Math.max(1.6, Math.min(T.wallReach, Math.hypot(dir.x, dir.y, dir.z)))
+  let cx = o.x + d.x * L
+  let cy = o.y + d.y * L
+  let cz = o.z + d.z * L
+  let y0                = null
+  // só a superfície que a mira viu conta; algo no meio do caminho não desvia
+  if (hit && hit.t >= L - 0.6 && hit.t <= L + 0.5) {
+    if (hit.normal.y > 0.5) {
+      // mirou um chão: deitada nele (a ponte meio enterrada, dá para entrar andando)
+      cx = hit.point.x
+      cz = hit.point.z
+      y0 = c === PAINT.BRIDGE ? hit.point.y - h * 0.5 : hit.point.y
+    } else if (hit.normal.y > -0.5 && hit.t < L) {
+      // a mira entrou num lado (ilha, muro): encostada nele, do lado de quem
+      // atirou (lado logo DEPOIS do ponto mirado não muda nada)
+      const back = r + 0.05
+      cx = hit.point.x + hit.normal.x * back
+      cy = hit.point.y
+      cz = hit.point.z + hit.normal.z * back
     }
   }
-  return { kind: "miss" }
+  // cama elástica nunca embaixo de quem atira (lançaria o próprio dono); a
+  // ponte pode encostar nele (é chão)
+  if (c === PAINT.STEP) {
+    const { hx, hz } = yawOf(d, s)
+    const min = r + T.bodyR * 0.6
+    const along = (cx - s.x) * hx + (cz - s.z) * hz
+    if (along < min) {
+      cx += hx * (min - along)
+      cz += hz * (min - along)
+    }
+  }
+  // gira para longe do CORPO de quem atirou (não da boca da arma, que fica de lado)
+  const bx = cx - s.x
+  const bz = cz - s.z
+  const yaw = Math.hypot(bx, bz) > 0.2 ? Math.atan2(bx, bz) : yawOf(d, s).a
+  return blobOf(c, cx, cz, y0 ?? cy - h / 2, yaw)
 }
 
 /** Tiro conta como mancha nova em `solids` (cilindro, ou muro girado, com id, cor e time). */
