@@ -345,6 +345,17 @@ const gearEnchantResolve = forgeAction("enchantResolve");
 // subir estrela e montar arma por fragmento de classe
 // gacha-v1 (24/11/2026): Convocações — três banners de fragmentos, pagos com Faísca de Éter
 const gacha = () => require("../services/MeuMundoGachaService");
+// gacha-v1 (24/11/2026): convites do jogo com o cupom da conta (registro próprio, fora das comissões)
+const invite = () => require("../services/MeuMundoInviteService");
+async function inviteClaim(req, res) {
+  return reply(res, await invite().claim(req.user.id_user, req.body || {}));
+}
+async function inviteGet(req, res) {
+  return reply(res, await invite().get(req.user.id_user));
+}
+async function inviteReward(req, res) {
+  return reply(res, await invite().reward(req.user.id_user, req.body || {}));
+}
 async function characterCapsuleUse(req, res) {
   return reply(res, await require("../services/MeuMundoCharacterService").useCapsule(req.user.id_user, req.body || {}));
 }
@@ -555,7 +566,7 @@ async function adminStatus(_req, res) {
 }
 
 module.exports = {
-  gachaGet, gachaPull, gachaRecover, gachaHistory, characterCapsuleUse,
+  gachaGet, gachaPull, gachaRecover, gachaHistory, characterCapsuleUse, inviteClaim, inviteGet, inviteReward,
   clanGet,
   clanChoose,
   clanChange,

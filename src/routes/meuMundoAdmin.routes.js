@@ -128,6 +128,10 @@ router.get("/gacha", ...admin, asyncHandler(MeuMundoController.gachaGet));
 router.post("/gacha/pull", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gachaPull));
 router.get("/gacha/pull/:key", ...admin, asyncHandler(MeuMundoController.gachaRecover));
 router.get("/gacha/history", ...admin, asyncHandler(MeuMundoController.gachaHistory));
+// gacha-v1: convites (o convidado registra o cupom na 1ª entrada; quem convidou escolhe o prêmio)
+router.post("/invite/claim", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.inviteClaim));
+router.get("/invite", ...admin, asyncHandler(MeuMundoController.inviteGet));
+router.post("/invite/reward", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.inviteReward));
 router.post("/gear/recycle", ...admin, asyncHandler(MeuMundoController.gearRecycle));
 router.post("/gear/fragment/convert", ...admin, asyncHandler(MeuMundoController.gearFragmentConvert));
 router.post("/gear/grade", ...admin, asyncHandler(MeuMundoController.gearGrade));

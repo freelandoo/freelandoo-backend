@@ -26,6 +26,8 @@ async function bootstrap(pool) {
   await pool.query(`CREATE TABLE tb_user_role (id_user UUID, id_role INT, is_active BOOLEAN DEFAULT TRUE)`);
   await pool.query(`INSERT INTO tb_role (desc_role) VALUES ('Administrator')`);
   await require("./helpers/mmPolens").polenTables(pool);
+  await pool.query(`CREATE TABLE tb_coupon (id_coupon SERIAL PRIMARY KEY, code TEXT UNIQUE, owner_user_id UUID, expires_at TIMESTAMPTZ, is_active BOOLEAN NOT NULL DEFAULT TRUE)`);
+  await pool.query(`CREATE TABLE tb_affiliate (id_user UUID PRIMARY KEY, status TEXT, is_active BOOLEAN DEFAULT TRUE)`);
   const dir = path.join(__dirname, "../src/databases/migrations");
   for (const file of fs.readdirSync(dir).filter((f) => /^\d{3}_meu_mundo/.test(f) && Number(f.slice(0, 3)) >= 291 && !/^(303|312)_/.test(f)).sort()) {
     const sql = fs.readFileSync(path.join(dir, file), "utf8");
@@ -221,6 +223,92 @@ async function main() {
     const view = await Gacha.get(me);
     check("GET: regras publicadas + saldo + 3 contadores", view.rules.version === Rules.GACHA_VERSION && view.spark === 0 && view.states.length === 3);
     check("GET: faltam N giros para cada garantia", view.states.every((s) => s.toTop >= 1 && s.toTop <= 40 && s.toRare >= 1 && s.toRare <= 10));
+
+    // ══ CONVITES (mig 470) ══
+    const Invite = require("../src/services/MeuMundoInviteService");
+    const Referral = require("../src/services/ReferralService");
+    const realBind = Referral.bind;
+    let bound = 0;
+    Referral.bind = async () => { bound++; throw new Error("convite do jogo não pode criar vínculo financeiro"); };
+    const host = me; // quem convida
+    await pool.query(`INSERT INTO tb_coupon (code, owner_user_id) VALUES ('ALEX10', $1), ('VELHO', $2)`, [host, other]);
+    await pool.query(`INSERT INTO tb_affiliate (id_user, status) VALUES ($1, 'ACTIVE'), ($2, 'SUSPENDED')`, [host, other]);
+    const newUser = async () => {
+      const u = key();
+      await pool.query(`INSERT INTO tb_user VALUES ($1, 'convidado', 'c@mm.test')`, [u]);
+      await Life.peek(u); // a 1ª entrada no jogo cria o personagem
+      return u;
+    };
+    const inv = async (u) => (await pool.query(`SELECT * FROM tb_mm_invite WHERE id_invitee=$1`, [u])).rows[0] || null;
+    const play = async (u, ms) => pool.query(
+      `INSERT INTO tb_mm_receipt (id_user, id_character, source, action_key, rules_version, active_ms)
+       SELECT $1, id_character, 'teste', $2, 'v', $3 FROM tb_mm_character WHERE id_user=$1 AND status='alive' LIMIT 1`,
+      [u, key(), ms]);
+
+    check("convite: autoindicação recusa", (await Invite.claim(host, { code: "alex10" })).code === "self");
+    const g1 = await newUser();
+    check("convite: código inexistente recusa (sem dizer de quem é)", (await Invite.claim(g1, { code: "NAOEXISTE" })).code === "code");
+    check("convite: afiliado suspenso não vale", (await Invite.claim(g1, { code: "VELHO" })).code === "code");
+    check("convite: código com caractere estranho recusa", (await Invite.claim(g1, { code: "a b;--" })).code === "code");
+    check("convite: tentativas inválidas não gravam nada", !(await inv(g1)));
+    const okClaim = await Invite.claim(g1, { code: "alex10" });
+    check("convite: 1ª entrada com cupom válido vincula", okClaim.linked === true && okClaim.already === false && (await inv(g1)).status === "waiting");
+    check("convite: não troca de convidador depois", (await Invite.claim(g1, { code: "VELHO" })).already === true && (await inv(g1)).id_inviter === host);
+    const old = await newUser();
+    await pool.query(`UPDATE tb_mm_character SET created_at = NOW() - INTERVAL '3 days' WHERE id_user=$1`, [old]);
+    check("convite: quem já jogava não conta como novo membro", (await Invite.claim(old, { code: "ALEX10" })).code === "notNew");
+    const g2 = await newUser();
+    await Promise.all([1, 2, 3].map(() => Invite.claim(g2, { code: "ALEX10" })));
+    check("convite: três abas ao mesmo tempo = um vínculo", Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_invite WHERE id_invitee=$1`, [g2])).rows[0].count) === 1);
+
+    // ativação: 14 min não bastam; 15 min ativam (quem convidou estava offline o tempo todo)
+    await play(g1, 14 * 60 * 1000);
+    let panel = await Invite.get(host);
+    check("convite: 14 minutos ainda não ativam", panel.counts.waiting === 2 && panel.counts.pending === 0, JSON.stringify(panel.counts));
+    await play(g1, 60 * 1000);
+    panel = await Invite.get(host);
+    check("convite: 15 minutos ativam e o prêmio espera a volta de quem convidou", panel.counts.pending === 1 && (await inv(g1)).status === "pending");
+    check("convite: a rodada começa com os 12 jogáveis", panel.round.available.length === 12 && panel.round.round === 1);
+    check("convite: o painel não expõe dados dos convidados", !JSON.stringify(panel).includes(g1) && !JSON.stringify(panel).includes("c@mm.test"));
+    check("convite: personagem fora da lista recusa", (await Invite.reward(host, { character: "selene" })).code === "character");
+    const fragBefore = await qty(host, "frag_personagem_golem");
+    const [w1, w2] = await Promise.all([Invite.reward(host, { character: "golem" }), Invite.reward(host, { character: "golem" })]);
+    check("convite: duas abas escolhendo ao mesmo tempo = um crédito", [w1, w2].filter((x) => !x.error).length === 1 && (await qty(host, "frag_personagem_golem")) === fragBefore + 10, JSON.stringify([w1.code, w2.code]));
+    check("convite: entregue com recibo e sem prêmio esperando", (await inv(g1)).status === "delivered" && Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_receipt WHERE id_user=$1 AND source='invite_reward'`, [host])).rows[0].count) === 1);
+    check("convite: sem prêmio esperando recusa", (await Invite.reward(host, { character: "iris" })).code === "none");
+    await play(g2, 20 * 60 * 1000);
+    panel = await Invite.get(host);
+    check("convite: o escolhido some da lista", panel.counts.pending === 1 && panel.round.available.length === 11 && !panel.round.available.includes("golem"));
+    check("convite: não repete na rodada", (await Invite.reward(host, { character: "golem" })).code === "repeated");
+    const irisBefore = await qty(host, "frag_deus_iris");
+    check("convite: outro personagem vale", !(await Invite.reward(host, { character: "iris" })).error && (await qty(host, "frag_deus_iris")) === irisBefore + 10);
+    for (const ch of Rules.CHARACTERS.map((x) => x.id).filter((id) => !["golem", "iris"].includes(id))) {
+      const g = await newUser();
+      await Invite.claim(g, { code: "ALEX10" });
+      await play(g, 16 * 60 * 1000);
+      const r = await Invite.reward(host, { character: ch });
+      assert.ok(!r.error, JSON.stringify(r));
+    }
+    panel = await Invite.get(host);
+    check("convite: depois dos 12 a lista recomeça", panel.round.round === 2 && panel.round.available.length === 12 && panel.counts.delivered === 12);
+    const late = await newUser();
+    await Invite.claim(late, { code: "ALEX10" });
+    await pool.query(`UPDATE tb_mm_invite SET claimed_at = NOW() - INTERVAL '15 days' WHERE id_invitee=$1`, [late]);
+    await play(late, 30 * 60 * 1000); // jogou, mas depois do prazo
+    await Invite.get(host);
+    check("convite: não ativou em 14 dias → vence sem prêmio", (await inv(late)).status === "expired");
+    for (let i = 0; i < 18; i++) {
+      const g = key();
+      await pool.query(`INSERT INTO tb_user VALUES ($1, 'x', 'x@mm.test')`, [g]);
+      await pool.query(`INSERT INTO tb_mm_invite (id_invitee, id_inviter, code, status, activated_at, delivered_at, reward) VALUES ($1,$2,'ALEX10','delivered',NOW(),NOW(),'{"character":"golem"}')`, [g, host]);
+    }
+    const capped = await newUser();
+    await Invite.claim(capped, { code: "ALEX10" });
+    await play(capped, 16 * 60 * 1000);
+    await Invite.get(host);
+    check("convite: acima do teto (30 em 30 dias) fica registrado sem prêmio", (await inv(capped)).status === "capped");
+    Referral.bind = realBind;
+    check("convite: nenhum vínculo financeiro de afiliado foi tentado", bound === 0);
 
     console.log(`\n${checks} verificações OK`);
   } finally {
