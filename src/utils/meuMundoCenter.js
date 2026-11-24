@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 21; // (21 = o Cavaleiro Dourado na calçada do portal dos Bairros, de noite, lore v2 C6; 20 = Pipa na porta do Boxe, lore v2 C5; 19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 22; // (22 = a caixa da igreja na largura do modelo, 13 m (sobrava 1,5 m invisível de cada lado); 21 = o Cavaleiro Dourado na calçada do portal dos Bairros, de noite, lore v2 C6; 20 = Pipa na porta do Boxe, lore v2 C5; 19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -112,7 +112,10 @@ const PLACE_DEFS = [
   // (2026-11-08, pedido do Alex: o Salão do Hall da Fama saiu — o Hall da Fama agora é a
   // própria Arena das Lâminas, com o pódio e o top 10.)
   // Oeste — cívica (fachadas viradas para o leste, x = -FRONT), dos dois lados da avenida
-  { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 12, 28], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
+  // A caixa segue a largura do MODELO (paredes em ±6,5 m do meio da fachada; 2026-11-24, pedido
+  // do Alex): com 16 m sobrava 1,5 m invisível de cada lado e a faixa norte fechava metade do
+  // corredor igreja × Banco de Sangue, o caminho do anel para o Rolê Noturno.
+  { id: "igreja", zone: "civica", rect: [-FRONT - 24, -FRONT, 13.5, 26.5], h: 9, peak: 19, front: "e", door: 20, doorW: 2.4 },
   { id: "delegacia", zone: "civica", rect: [-FRONT - 16, -FRONT, -28, -12], h: 7, peak: 9, front: "e", door: -20, doorW: 2.4 },
   // Canto sudoeste, entre a delegacia e a academia (mm3d-26): o hospital fica na
   // DIAGONAL, de frente para a praça. Prédio girado = `at` (meio da fachada),
