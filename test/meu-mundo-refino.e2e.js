@@ -96,7 +96,7 @@ async function main() {
     const prog = async () => (await pool.query(`SELECT weapon_level, weapon_xp, weapon_pending, version FROM tb_mm_gear_instance WHERE id_instance=$1`, [sword.id])).rows[0];
     const powderD = async () => (await Service.get(id)).bag.owned.po_ref_d?.qty || 0;
     Service.R = seq(0.8, 0.5);
-    const okReq = { instance: sword.id, key: key(), rulesVersion: "weapon-v2" };
+    const okReq = { instance: sword.id, key: key(), rulesVersion: WP.RULES_VERSION };
     const [r1, r2] = await Promise.all([Service.refineWeapon(id, okReq), Service.refineWeapon(id, okReq)]);
     let row = await prog();
     check("tentativa: gasta 1 pó D, sorteia +90 e ESPERA a decisão (nível e barra ainda iguais); duas abas, mesma chave = um recibo",

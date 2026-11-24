@@ -21,7 +21,8 @@ const B = require("./budget");
 const { RANKS } = require("./rank");
 
 /** Versão da REGRA de refino (o aparelho manda; diferente = 410 e a tela recarrega). */
-const RULES_VERSION = "weapon-v2";
+/** weapon-v2.1 (24/11): a barra dobra a cada 10 níveis (era a cada 5; pedido do Alex). */
+const RULES_VERSION = "weapon-v2.1";
 /** Formato da CÓPIA da arma no banco (nível + estrelas): não mudou da v1, então a conversão não roda de novo. */
 const INSTANCE_RULES = "weapon-v1";
 /** Teto de negócio de hoje (o banco aceita até 999: chk_mm_instance_weapon_level, mig 466). */
@@ -52,11 +53,11 @@ const TIERS = Object.freeze([
   { id: "great", p: 0.05, min: 150, max: 250 },
 ].map(Object.freeze));
 
-/** XP para sair do nível `level` (1…89): 100 e dobra a cada 5 níveis. No teto: null. */
+/** XP para sair do nível `level` (1…89): 100 e dobra a cada 10 níveis (Alex, 24/11). No teto: null. */
 function xpNeed(level) {
   const n = Number(level);
   if (!Number.isInteger(n) || n < 1 || n >= MAX_LEVEL) return null;
-  return Math.round(100 * 2 ** ((n - 1) / 5));
+  return Math.round(100 * 2 ** ((n - 1) / 10));
 }
 
 /** Um sorteio a partir de dois números do servidor em [0,1): { tier, xp }. */
@@ -104,8 +105,11 @@ function refineCost(item, level, xp = 0) {
   if (!isWeapon(item) || !RANKS.includes(item.rank)) return null;
   const lv = intIn(level, 1, MAX_LEVEL);
   if (lv == null || lv >= MAX_LEVEL) return null;
+  // a curva pode ter mudado depois do XP gravado (v2 → v2.1 pede menos): a sobra conta como nível já ganho
+  const norm = applyXp(lv, xp, 0);
+  if (norm.level >= MAX_LEVEL) return null;
   const powder = powderOf(item.rank);
-  return { rulesVersion: RULES_VERSION, level: lv, xp: Math.max(0, Math.floor(Number(xp) || 0)), need: xpNeed(lv), powder, coins: 0, needs: { [powder]: 1 } };
+  return { rulesVersion: RULES_VERSION, level: norm.level, xp: norm.xp, need: xpNeed(norm.level), powder, coins: 0, needs: { [powder]: 1 } };
 }
 
 /** Próxima estrela: { from, to, copies: 1 } ou null (no teto). Sempre sobe; o doador é uma cópia idêntica básica. */

@@ -25,18 +25,21 @@ test("pó da CLASSE: 10 pós, um por classe; pó B só refina arma B", () => {
   const c = WP.refineCost(sword, 37, 12);
   assert.deepEqual([c.level, c.xp, c.need, c.coins], [37, 12, WP.xpNeed(37), 0]);
   assert.equal(WP.refineCost(sword, 90), null, "teto");
+  // XP gravado numa curva antiga (maior) que passou do pedido atual: a sobra conta como nível ganho
+  const over = WP.refineCost(sword, 10, WP.xpNeed(10) + 5);
+  assert.deepEqual([over.level, over.xp], [11, 5]);
   assert.equal(WP.refineCost(sword, 0), null);
   assert.equal(WP.refineCost(sword, "x"), null);
   assert.equal(WP.refineCost(armor, 1), null, "só arma");
 });
 
-test("barra: 100 XP no nível 1 e dobra a cada 5 níveis; no 90 não há barra", () => {
+test("barra: 100 XP no nível 1 e dobra a cada 10 níveis (weapon-v2.1); no 90 não há barra", () => {
   assert.equal(WP.xpNeed(1), 100);
-  assert.equal(WP.xpNeed(6), 200);
-  assert.equal(WP.xpNeed(11), 400);
-  assert.equal(WP.xpNeed(46), 51200);
+  assert.equal(WP.xpNeed(11), 200);
+  assert.equal(WP.xpNeed(21), 400);
+  assert.equal(WP.xpNeed(41), 1600);
   for (let lv = 1; lv < 89; lv++) assert.ok(WP.xpNeed(lv + 1) > WP.xpNeed(lv), `nível ${lv}`);
-  for (let lv = 1; lv + 5 < 90; lv++) assert.ok(Math.abs(WP.xpNeed(lv + 5) / WP.xpNeed(lv) - 2) < 0.02, `dobra: ${lv}`);
+  for (let lv = 1; lv + 10 < 90; lv++) assert.ok(Math.abs(WP.xpNeed(lv + 10) / WP.xpNeed(lv) - 2) < 0.02, `dobra: ${lv}`);
   assert.equal(WP.xpNeed(90), null);
   assert.equal(WP.xpNeed(0), null);
 });
@@ -112,10 +115,11 @@ test("régua: o nível vira o plus de antes contra a referência FIXA (90); a co
   assert.ok(b(2, 1) > b(1, 1) && b(90, 1) > b(89, 1) && b(30, 3) > b(30, 2));
 });
 
-test("economia: a curva dobra a cada 5 níveis — o 30 é alcançável, o 90 é para o acelerador dos últimos Domínios", () => {
+test("economia: a curva dobra a cada 10 níveis — 1→30 ~170 pós, 1→90 ~12,8 mil (o acelerador dos últimos Domínios encurta)", () => {
   assert.equal(WP.expectedPowders(1, 2), 2);
-  assert.ok(WP.expectedPowders(1, 30) < 1000, String(WP.expectedPowders(1, 30)));
-  assert.ok(WP.expectedPowders(1, 90) > 2_500_000, String(WP.expectedPowders(1, 90)));
+  assert.ok(WP.expectedPowders(1, 30) < 250, String(WP.expectedPowders(1, 30)));
+  const all = WP.expectedPowders(1, 90);
+  assert.ok(all > 10_000 && all < 15_000, String(all));
   for (const id of WP.POWDER_IDS) assert.ok(Items.sourcesOf(Items.GEAR_BY_ID.get(id)).length > 0, `${id} sem origem`);
   // os pós da weapon-v1 saíram: sem origem, viram o pó da classe 1:1
   for (const [from, to] of Object.entries(WP.LEGACY_POWDERS)) {
@@ -144,7 +148,7 @@ test("aposentados: pilha vira pó/fragmento novo (nunca zero), Criogenia e prepa
 
 test("catálogo público leva a regra (versão, pó por classe, barra, sorteio, fragmentos)", () => {
   const pub = require("../../src/utils/meuMundoGear").publicGear();
-  assert.equal(pub.weaponProgress.rulesVersion, "weapon-v2");
+  assert.equal(pub.weaponProgress.rulesVersion, "weapon-v2.1");
   assert.equal(pub.weaponProgress.maxLevel, 90);
   assert.equal(pub.weaponProgress.maxStars, 5);
   assert.equal(pub.weaponProgress.batch, 10);

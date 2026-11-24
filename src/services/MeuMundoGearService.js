@@ -569,23 +569,25 @@ class MeuMundoGearService {
       const first = WP.refineCost(it, inst.weaponLevel, inst.weaponXp);
       if (!first) return fail("max");
       const powder = first.powder;
+      // nível/XP já normalizados pela curva atual (refineCost): a sobra gravada numa curva antiga conta
+      const startLevel = first.level, startXp = first.xp;
       // conferir antes: addStack num item que a pessoa nunca teve cria a linha com 0 em vez de recusar
       let have = (await GearStore.lockItem(c, idUser, powder))?.qty || 0;
       if (have < 1) return fail("powder");
-      const base = { item: it.id, instance: inst.id, rulesVersion: WP.RULES_VERSION, powder, times, levelBefore: inst.weaponLevel, xpBefore: inst.weaponXp };
+      const base = { item: it.id, instance: inst.id, rulesVersion: WP.RULES_VERSION, powder, times, levelBefore: startLevel, xpBefore: startXp };
       if (times === 1) {
         if ((await GearStore.addStack(c, idUser, powder, -1)) == null) return fail("powder");
         const roll = WP.rollXp(MeuMundoGearService.R(), MeuMundoGearService.R());
-        const pending = { key: String(body.key), xp: roll.xp, tier: roll.tier, level: inst.weaponLevel, xpBefore: inst.weaponXp, powder, at: new Date(ctx.now).toISOString() };
-        await GearStore.setWeaponProgress(c, idUser, inst.id, inst.weaponLevel, inst.weaponXp, pending);
+        const pending = { key: String(body.key), xp: roll.xp, tier: roll.tier, level: startLevel, xpBefore: startXp, powder, at: new Date(ctx.now).toISOString() };
+        await GearStore.setWeaponProgress(c, idUser, inst.id, startLevel, startXp, pending);
         return {
-          result: { ...base, rolls: [{ tier: roll.tier, xp: roll.xp }], pending: true, level: inst.weaponLevel, xp: inst.weaponXp, need: first.need },
+          result: { ...base, rolls: [{ tier: roll.tier, xp: roll.xp }], pending: true, level: startLevel, xp: startXp, need: first.need },
           deltas: {},
           items: lines({ [powder]: -1 }),
         };
       }
       // 10 vezes: aceita sozinho o que sobe
-      let level = inst.weaponLevel, xp = inst.weaponXp, used = 0;
+      let level = startLevel, xp = startXp, used = 0;
       const rolls = [];
       for (let i = 0; i < times && level < WP.MAX_LEVEL && have > 0; i++) {
         if ((await GearStore.addStack(c, idUser, powder, -1)) == null) break;
