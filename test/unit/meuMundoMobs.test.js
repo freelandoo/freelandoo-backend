@@ -159,6 +159,26 @@ test("derrota: o monstro volta a andar e quem perdeu fica 30 s em paz", () => {
   assert.equal(m.mode, "chase");
 });
 
+test("luta acabou no aparelho sem veredito do servidor: o monstro solta e o próximo volta a pegar sozinho", () => {
+  const d = make(8);
+  const m = d.forceSpawn(0, []);
+  assert.ok(d.engage(m.id, "a", m.x, m.z, 0));
+  const me = () => ({ sid: "a", ...inFront(m, 1) });
+  assert.equal(d.ended(m.id, "b", 1000), false, "luta de outro");
+  assert.equal(d.ended(m.id, "a", 1000), true);
+  d.tick(1000 + MOBS.VERDICT_MS - 100, [me()], 0.05);
+  assert.equal(m.mode, "fight", "ainda esperando o veredito");
+  assert.equal(d.isEngaged("a"), true);
+  d.tick(1000 + MOBS.VERDICT_MS + 100, [me()], 0.05);
+  assert.equal(m.mode, "wander");
+  assert.equal(d.isEngaged("a"), false, "preso na luta velha: nenhum outro monstro a perseguiria");
+  // depois da paz, chega perto de novo e a luta abre sozinha
+  let t = 1000 + MOBS.VERDICT_MS + MOBS.CALM_MS + 200;
+  let caught = null;
+  for (let i = 0; i < 40 && !caught; i++) caught = d.tick((t += 50), [me()], 0.05).caught.find((c) => c.sid === "a") || null;
+  assert.ok(caught, "a segunda luta não abriu sozinha");
+});
+
 test("vitória: vale para quem luta ou está perto; depois o monstro sai da lista", () => {
   const d = make(5);
   const m = d.forceSpawn(0, []);

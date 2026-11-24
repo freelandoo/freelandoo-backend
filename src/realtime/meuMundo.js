@@ -1041,8 +1041,10 @@ class BairroRoom extends Room {
     s.mobAt = now;
     // mm3d-59: a VITÓRIA não vem mais do aparelho — quem decide é o servidor,
     // re-simulando a luta (MeuMundoAdventureService.fightFinish → mobVerdict).
-    // Aqui só a desistência/ocupado (r 0) solta o monstro.
+    // Aqui só a desistência/ocupado (r 0) solta o monstro; o "venci" (r 1) só marca o
+    // fim — sem veredito em MOBS.VERDICT_MS o monstro solta a pessoa (24/11).
     if (msg.r !== 1) this.mobDirector.release(Number(msg.id), client.sessionId, now, msg.b === 1);
+    else this.mobDirector.ended(Number(msg.id), client.sessionId, now);
   }
 
   /** mm3d-60o: nível de aventura de quem está na sala (o monstro nasce em volta dele). */

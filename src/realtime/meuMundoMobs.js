@@ -83,6 +83,13 @@ const MOBS = Object.freeze({
   MAX_CHASE: 3,
   /** Luta sem resposta do aparelho: o monstro volta a andar. */
   FIGHT_MS: 300_000,
+  /**
+   * 24/11 (Alex: "depois que entra na luta uma vez, nas próximas não entra automático"):
+   * o aparelho disse "venci" e o veredito do servidor não chegou (ticket que não abriu,
+   * gravação recusada) — sem isto o monstro ficava "lutando" com a pessoa até FIGHT_MS
+   * e nenhum outro a perseguia. Passado este tempo, o monstro volta a andar.
+   */
+  VERDICT_MS: 15_000,
   /** Quem perdeu (ou estava ocupado) fica em paz por este tempo. */
   CALM_MS: 30_000,
   BUSY_MS: 120_000,
@@ -186,6 +193,7 @@ class MobDirector {
   wanderFromHere(m) {
     m.mode = "wander";
     m.target = null;
+    m.endedAt = 0;
     // O centro novo fica a WANDER_R de onde ele está, atrás dele.
     m.a = m.facing + Math.PI;
     m.cx = m.x - Math.sin(m.a) * MOBS.WANDER_R;
@@ -229,7 +237,10 @@ class MobDirector {
 
     for (const m of this.mobs.values()) {
       if (m.mode === "fight") {
-        if (now - m.fightAt < MOBS.FIGHT_MS && bySid.has(m.target)) continue;
+        const stale = m.endedAt && now - m.endedAt >= MOBS.VERDICT_MS;
+        if (!stale && now - m.fightAt < MOBS.FIGHT_MS && bySid.has(m.target)) continue;
+        // a luta acabou no aparelho e o veredito não veio: quem lutou fica em paz um pouco
+        if (stale) this.calm.set(m.target, now + MOBS.CALM_MS);
         this.wanderFromHere(m);
         changed = true;
       }
@@ -395,6 +406,17 @@ class MobDirector {
     m.target = sid;
     m.fightAt = now;
     return m;
+  }
+
+  /**
+   * O aparelho disse que a luta com `id` acabou (o "venci" dele não vale): o veredito
+   * do servidor tem VERDICT_MS para chegar; senão o monstro solta a pessoa no `tick`.
+   */
+  ended(id, sid, now) {
+    const m = this.get(id);
+    if (!m || m.mode !== "fight" || m.target !== sid) return false;
+    m.endedAt = now;
+    return true;
   }
 
   /** Alguém venceu o monstro `id` estando em (x, z): sai da cidade. Devolve o monstro ou null. */
