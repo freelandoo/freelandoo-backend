@@ -81,6 +81,11 @@ function domainTable(domain, sector) {
     chance.push(...adds.chance);
     first.push(...adds.first);
   }
+  // gacha-v1 (24/11/2026): a Faísca de Éter (giro das Convocações) — sempre no FIM de cada lista
+  if (boss) {
+    sure.push({ id: "faisca_eter", qty: q(2), win: true });
+    first.push({ id: "faisca_eter", qty: q(20) });
+  } else if (sector >= 7) chance.push({ id: "faisca_eter", qty: q(1), p: 0.3, win: true });
   const name = `Domínio ${DOMAIN_NAME[domain]}, setor ${sector}`;
   return Object.freeze({
     label: name, winLabel: name, domain, sector,

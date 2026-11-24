@@ -29,6 +29,7 @@ function isRetiredStack(item) {
   if (!item || !STACK_CATEGORIES.has(item.category)) return false;
   if (KEEP.has(item.id)) return false;
   if (item.id.startsWith("embriao_") || item.id.startsWith("ficha_")) return false;
+  if (item.id === "faisca_eter") return false; // gacha-v1 (24/11): o giro das Convocações
   if (item.id.startsWith("frag_amuleto_") || item.id.startsWith("frag_personagem_") || item.id.startsWith("frag_deus_")) return false;
   if (item.fragment && item.fragment.forge) return false; // fragmento de peça/preparo da Forja (24/11)
   if (item.id in LEGACY_POWDERS) return true; // weapon-v2: pós SSS I/II/III → pó da classe

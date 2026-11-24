@@ -15,7 +15,14 @@ const ITEMS = Object.freeze(TOKENS.map((g) => G(`ficha_${g}`, "currency", `Ficha
   // E19: a de evento não sai de tabela — toda atividade validada paga enquanto o admin deixa o evento ligado
   ...(g === "evento" ? { source: Object.freeze(["Eventos: toda luta, minijogo e Domínio validado paga, enquanto o evento estiver ligado."]) } : {}),
 })));
+// gacha-v1 (24/11/2026, Alex): a FAÍSCA DE ÉTER paga o giro das Convocações (rules/gacha.js). Só se ganha
+// jogando (Domínios 7–10 e a Loja de troca); nunca sai de Gold, Esmeralda ou dinheiro.
+const SPARK = G("faisca_eter", "currency", "Faísca de Éter", "epic", {
+  stack: true, sell: 0, use: null, action: null,
+  notes: Object.freeze(["Cada Faísca é um giro nas Convocações (Armas, Proteções ou Personagens). Não se compra com Gold nem com Esmeralda."]),
+});
+const ALL = Object.freeze([...ITEMS, SPARK]);
 const DESCRIPTIONS = Object.freeze(Object.fromEntries(TOKENS.map((g) => [`ficha_${g}`,
   g === "hall" ? "Ficha de quem desafia o Hall dos Campeões. Só serve na Loja de troca." : g === "evento" ? "Ficha que toda atividade paga enquanto um evento está ligado. Só serve na loja do evento." : `Ficha de quem joga ${GAME_NAME[g]}: minutos ativos ÷ 2 por partida, mais 1 se venceu.`])));
 
-module.exports = { ITEMS, DESCRIPTIONS };
+module.exports = { ITEMS: ALL, DESCRIPTIONS: Object.freeze({ ...DESCRIPTIONS, faisca_eter: "Paga um giro nas Convocações do Meu Mundo. Ganha-se nos Domínios (setores 7 a 10) e na Loja de troca." }) };

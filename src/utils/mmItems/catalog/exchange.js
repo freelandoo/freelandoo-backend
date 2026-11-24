@@ -35,6 +35,8 @@ function common(game) {
     offer(game, "frag_c", 24, { frag_classe_c: 3 }),
     // o mais caro fica em 40 partidas (regra da E17): o pó A, que sobe a arma do 31 ao 40
     offer(game, "po_a", 120, { po_ref_a: 1 }),
+    // gacha-v1 (24/11/2026): 1 Faísca de Éter (um giro das Convocações) ≈ 7 partidas
+    offer(game, "faisca", 20, { faisca_eter: 1 }),
   ];
 }
 
@@ -46,6 +48,7 @@ const OFFERS = Object.freeze([
   offer("hall", "po_ss", 50, { po_ref_ss: 1 }),
   offer("hall", "frag_ss", 60, { frag_classe_ss: 2 }),
   offer("hall", "frag_legendary", 90, { frag_classe_legendary: 2 }),
+  offer("hall", "faisca", 10, { faisca_eter: 1 }),
   // 24/11/2026: os fragmentos das proteções de Aurion (o caminho da Primeira Chama, catalog/protections.js)
   ...Protections.HALL_OFFERS.map((o) => offer("hall", o.id, o.cost, { [o.id]: o.qty })),
   // E19: loja de evento (só abre com o evento ligado pelo admin)
