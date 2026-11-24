@@ -35,12 +35,25 @@ const ITEMS = Object.freeze(LIST.map((c) => G(c.id, "consumable", c.name, "uncom
   ]),
 })));
 
+// 24/11/2026 (regra nova do Alex: tudo por fragmento): o preparo sai de PREP_NEED fragmentos dele
+// (`frag_<preparo>`), que caem onde o material de antes caía (catalog/loot.js); madeira, pó de forja e o
+// material do Domínio saíram (catalog/retired.js converte o que a conta tinha).
+const PREP_NEED = 5;
+const FRAGMENT_ITEMS = LIST.map((c) => G(`frag_${c.id}`, "fragment", `Fragmento: ${c.name}`, "uncommon", {
+  stack: true, sell: 0, fragment: Object.freeze({ of: c.id, need: PREP_NEED, powder: 1, forge: true }),
+}));
 const RECIPES = Object.freeze(LIST.map((c) => Object.freeze({
   id: `preparar_${c.id}`, kind: "prep", out: c.id, qty: 1,
-  needs: Object.freeze({ madeira_ancestral: 1, po_forja: 2, [c.mat]: 3 }),
+  needs: Object.freeze({ [`frag_${c.id}`]: PREP_NEED }),
   coins: 40, level: 1, recipe: null,
 })));
 
-const DESCRIPTIONS = Object.freeze(Object.fromEntries(LIST.map((c) => [c.id, c.desc])));
+const DESCRIPTIONS = Object.freeze({
+  ...Object.fromEntries(LIST.map((c) => [c.id, c.desc])),
+  ...Object.fromEntries(LIST.map((c) => [`frag_${c.id}`, `Junte ${PREP_NEED} para preparar ${c.name} na Forja. O que sobrar vira Pó de Refino.`])),
+});
 
-module.exports = { ITEMS, RECIPES, DESCRIPTIONS, PREP_VALUE, PREP_ORIGINS };
+/** Material de antes → fragmento do preparo que o substitui (saque e conversão da mochila). */
+const MAT_TO_FRAGMENT = Object.freeze(Object.fromEntries(LIST.map((c) => [c.mat, `frag_${c.id}`])));
+
+module.exports = { ITEMS, FRAGMENT_ITEMS, RECIPES, DESCRIPTIONS, PREP_VALUE, PREP_ORIGINS, PREP_NEED, MAT_TO_FRAGMENT };

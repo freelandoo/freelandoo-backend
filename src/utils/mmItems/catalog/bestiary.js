@@ -11,7 +11,7 @@
 //   Vulcão 7–8, Cavaleiro na Orbital 7–8): 1 com 25% por vitória. O Brutamontes é o guardião do Vulcão.
 // • Do DEUS (100 para completar) → o embrião do deus. 1 por vitória no setor 10, +5 na primeira.
 //
-// O embrião é material empilhável: o USO dele na Criogenia é a fatia seguinte (a descrição diz isso).
+// A tela chama o embrião de CÁPSULA (24/11/2026, pedido do Alex; o id `embriao_*` fica). É material empilhável: o USO dele na Criogenia é a fatia seguinte (a descrição diz isso).
 // As tabelas `domain:<id>:<setor>` (catalog/loot.js) leem DOMAIN_ADDS daqui.
 "use strict";
 
@@ -27,13 +27,13 @@ const GOD_FRAGMENTS = Object.freeze({ qty: 1, first: 5 });
 
 // ── amuletos dos Domínios (2 chaves do slot amulet: int, stam, hp, spd, power, dmg) ──
 const AMULETS = Object.freeze([
-  { domain: "floresta", name: "Amuleto da Floresta da Lua", keys: ["power", "hp"], mats: { po_de_lua: 12, seiva_de_prata: 1 } },
-  { domain: "canion", name: "Amuleto do Cânion das Tempestades", keys: ["spd", "dmg"], mats: { areia_de_raio: 12, pena_de_tempestade: 1 } },
-  { domain: "gelo", name: "Amuleto do Mar de Gelo", keys: ["hp", "stam"], mats: { gelo_negro: 12, perola_de_afogado: 1 } },
-  { domain: "fabrica", name: "Amuleto da Fábrica de Bronze", keys: ["int", "power"], mats: { engrenagem_fina: 12, coracao_de_corda: 1 } },
-  { domain: "vulcao", name: "Amuleto do Vulcão de Kragor", keys: ["dmg", "hp"], mats: { escoria: 12, ferro_de_basalto: 1 } },
-  { domain: "orbital", name: "Amuleto da Cidade Orbital", keys: ["spd", "power"], mats: { vidro_colorido: 12, prisma_vivo: 1 } },
-  { domain: "vermelha", name: "Amuleto da Floresta Vermelha", keys: ["dmg", "power"], mats: { folha_rubra: 12, brasa_de_estandarte: 1 } },
+  { domain: "floresta", name: "Amuleto da Floresta da Lua", keys: ["power", "hp"] },
+  { domain: "canion", name: "Amuleto do Cânion das Tempestades", keys: ["spd", "dmg"] },
+  { domain: "gelo", name: "Amuleto do Mar de Gelo", keys: ["hp", "stam"] },
+  { domain: "fabrica", name: "Amuleto da Fábrica de Bronze", keys: ["int", "power"] },
+  { domain: "vulcao", name: "Amuleto do Vulcão de Kragor", keys: ["dmg", "hp"] },
+  { domain: "orbital", name: "Amuleto da Cidade Orbital", keys: ["spd", "power"] },
+  { domain: "vermelha", name: "Amuleto da Floresta Vermelha", keys: ["dmg", "power"] },
 ]);
 const AMULET_COINS = 900;
 
@@ -63,7 +63,7 @@ const GODS = Object.freeze([
   { id: "varkos", name: "Varkos", domain: "vermelha" },
 ]);
 
-const CRIO_NEXT = "O uso na Criogenia chega na próxima atualização: por enquanto ele fica guardado na mochila.";
+const CRIO_NEXT = "O uso na Criogenia chega na próxima atualização: por enquanto ela fica guardada na mochila.";
 
 const AMULET_ITEMS = AMULETS.map((a) => G(`amuleto_${a.domain}`, "accessory", a.name, "epic", {
   keys: Object.freeze(a.keys), domain: a.domain, level: DOMAIN_LEVEL[a.domain], sell: 0, bestiary: true,
@@ -73,13 +73,13 @@ const AMULET_FRAGMENTS = AMULETS.map((a) => G(`frag_amuleto_${a.domain}`, "fragm
   fragment: Object.freeze({ of: `amuleto_${a.domain}`, need: NEED.accessory, powder: powderPerFragment(4) }),
   origin: Object.freeze({ region: a.domain, boss: null, table: `domain:${a.domain}:3,7`, kind: "sector" }),
 }));
-const CHARACTER_EMBRYOS = CHARACTERS.map((c) => G(`embriao_${c.id}`, "material", `Embrião: ${c.name}`, "epic", { stack: true, domain: c.domain, sell: 0, embryo: Object.freeze({ of: c.id, kind: "character" }) }));
+const CHARACTER_EMBRYOS = CHARACTERS.map((c) => G(`embriao_${c.id}`, "material", `Cápsula: ${c.name}`, "epic", { stack: true, domain: c.domain, sell: 0, embryo: Object.freeze({ of: c.id, kind: "character" }) }));
 const CHARACTER_FRAGMENTS = CHARACTERS.map((c) => G(`frag_personagem_${c.id}`, "fragment", `Fragmento de personagem: ${c.name}`, "epic", {
   stack: true, domain: c.domain, sell: 0,
   fragment: Object.freeze({ of: `embriao_${c.id}`, need: NEED.character, powder: powderPerFragment(4) }),
   origin: Object.freeze({ region: c.domain, boss: null, table: `domain:${c.domain}:${c.sectors.join(",")}`, kind: c.guardian ? "guardian" : "elite" }),
 }));
-const GOD_EMBRYOS = GODS.map((g) => G(`embriao_${g.id}`, "material", `Embrião: ${g.name}`, "legendary", { stack: true, domain: g.domain, sell: 0, embryo: Object.freeze({ of: g.id, kind: "god" }) }));
+const GOD_EMBRYOS = GODS.map((g) => G(`embriao_${g.id}`, "material", `Cápsula: ${g.name}`, "legendary", { stack: true, domain: g.domain, sell: 0, embryo: Object.freeze({ of: g.id, kind: "god" }) }));
 const GOD_FRAGMENTS_ITEMS = GODS.map((g) => G(`frag_deus_${g.id}`, "fragment", `Fragmento do deus: ${g.name}`, "legendary", {
   stack: true, domain: g.domain, sell: 0,
   fragment: Object.freeze({ of: `embriao_${g.id}`, need: NEED.god, powder: powderPerFragment(5) }),
@@ -89,7 +89,8 @@ const GOD_FRAGMENTS_ITEMS = GODS.map((g) => G(`frag_deus_${g.id}`, "fragment", `
 const RECIPES = Object.freeze([
   ...AMULETS.map((a) => Object.freeze({
     id: `fabricar_amuleto_${a.domain}`, kind: "fragment", out: `amuleto_${a.domain}`, qty: 1,
-    needs: Object.freeze({ [`frag_amuleto_${a.domain}`]: NEED.accessory, ...a.mats }),
+    // 24/11/2026 (tudo por fragmento): só os 40 fragmentos, sem material do Domínio
+    needs: Object.freeze({ [`frag_amuleto_${a.domain}`]: NEED.accessory }),
     coins: AMULET_COINS, level: DOMAIN_LEVEL[a.domain],
   })),
   ...CHARACTERS.map((c) => Object.freeze({
@@ -127,11 +128,11 @@ function domainAdds(domain, sector) {
 
 const DESCRIPTIONS = Object.freeze({
   ...Object.fromEntries(AMULETS.map((a) => [`amuleto_${a.domain}`, `Amuleto épico do Domínio ${DOMAIN_NAME[a.domain]}. Fabricado na Forja com ${NEED.accessory} fragmentos.`])),
-  ...Object.fromEntries(AMULETS.map((a) => [`frag_amuleto_${a.domain}`, `Junte ${NEED.accessory} para fabricar o ${a.name} na Forja. Cai no chefe da primeira cena (setor 3) e no elite do setor 7. O que sobrar vira Pó de Refino.`])),
-  ...Object.fromEntries(CHARACTERS.map((c) => [`frag_personagem_${c.id}`, `Junte ${NEED.character} para formar o embrião de ${c.name}. ${c.guardian ? "O guardião do setor 9 deixa 1 a cada vitória." : "Cai com 25% a cada vitória contra o elite dos setores 7 e 8."}`])),
-  ...Object.fromEntries(CHARACTERS.map((c) => [`embriao_${c.id}`, `Embrião de ${c.name}, formado com ${NEED.character} fragmentos. ${CRIO_NEXT}`])),
-  ...Object.fromEntries(GODS.map((g) => [`frag_deus_${g.id}`, `Junte ${NEED.god} para formar o embrião de ${g.name}. O deus deixa 1 a cada vitória e mais ${GOD_FRAGMENTS.first} na primeira.`])),
-  ...Object.fromEntries(GODS.map((g) => [`embriao_${g.id}`, `Embrião de ${g.name}, formado com ${NEED.god} fragmentos. ${CRIO_NEXT}`])),
+  ...Object.fromEntries(AMULETS.map((a) => [`frag_amuleto_${a.domain}`, `Junte ${NEED.accessory} para fabricar o ${a.name} na Forja. Cai no chefe da primeira cena (setor 3), no elite do setor 7 e, com sorte, no lugar do material raro do Domínio. O que sobrar vira Pó de Refino.`])),
+  ...Object.fromEntries(CHARACTERS.map((c) => [`frag_personagem_${c.id}`, `Junte ${NEED.character} para completar a Cápsula de ${c.name}. ${c.guardian ? "O guardião do setor 9 deixa 1 a cada vitória." : "Cai com 25% a cada vitória contra o elite dos setores 7 e 8."}`])),
+  ...Object.fromEntries(CHARACTERS.map((c) => [`embriao_${c.id}`, `Cápsula de ${c.name}, completada com ${NEED.character} fragmentos. ${CRIO_NEXT}`])),
+  ...Object.fromEntries(GODS.map((g) => [`frag_deus_${g.id}`, `Junte ${NEED.god} para completar a Cápsula de ${g.name}. O deus deixa 1 a cada vitória e mais ${GOD_FRAGMENTS.first} na primeira.`])),
+  ...Object.fromEntries(GODS.map((g) => [`embriao_${g.id}`, `Cápsula de ${g.name}, completada com ${NEED.god} fragmentos. ${CRIO_NEXT}`])),
 });
 
 const FRAGMENTS = Object.freeze([...AMULET_FRAGMENTS, ...CHARACTER_FRAGMENTS, ...GOD_FRAGMENTS_ITEMS]);

@@ -27,6 +27,7 @@ const recipes = require("./catalog/recipes");
 const setsCat = require("./catalog/sets");
 const lines = require("./catalog/lines");
 const bestiary = require("./catalog/bestiary");
+const protections = require("./catalog/protections");
 const { SETS, SET_STEPS } = setsCat;
 const { KEYS_BY_ID } = require("./catalog/keys");
 const Bonus = require("./rules/bonus");
@@ -39,7 +40,7 @@ const weaponProgressCat = require("./catalog/weaponProgress");
 const Retired = require("./catalog/retired");
 const WeaponProgress = require("./rules/weaponProgress");
 
-const PARTS = [weapons, weaponsTripo, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary, chests, weaponProgressCat];
+const PARTS = [weapons, weaponsTripo, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary, chests, weaponProgressCat, protections];
 
 /**
  * E7: equipamento ganha as duas chaves (catalog/keys.js; as peças de conjunto trazem as suas) e o
@@ -69,6 +70,8 @@ const GEAR0 = Object.freeze([
   ...weaponsTripo.ITEMS,
   // weapon-v1 (24/11/2026): os 9 pós de refinamento e os 10 fragmentos de classe (no fim)
   ...weaponProgressCat.ITEMS,
+  // 24/11/2026 (tudo por fragmento): as 52 proteções novas, os fragmentos de cada peça da Forja e os dos preparos (no fim)
+  ...protections.ITEMS, ...consumables.FRAGMENT_ITEMS,
 ].map(withRule));
 
 /**
@@ -76,7 +79,7 @@ const GEAR0 = Object.freeze([
  * equipamento direto, armas/conjuntos por fragmento específico e a receita oculta saíram (catalog/retired.js);
  * a arma agora se monta por fragmento de CLASSE (rules/weaponProgress.js, `assemble` no serviço).
  */
-const ALL_RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES, ...consumables.RECIPES, ...chests.RECIPES]);
+const ALL_RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES, ...consumables.RECIPES, ...chests.RECIPES, ...protections.RECIPES]);
 const RECIPES = Object.freeze(ALL_RECIPES.filter(Retired.keepRecipe));
 const RECIPE_BY_ID = new Map(RECIPES.map((r) => [r.id, r]));
 
@@ -118,7 +121,7 @@ module.exports = {
   GEAR, GEAR_BY_ID, RECIPES, RECIPE_BY_ID, DESCRIPTIONS, SETS, SET_STEPS, LOOT,
   bonusOf: (pieces, opts = {}) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS, ...opts }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
   rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation, domainTableId,
-  FORGE: recipes, LINES: lines, EXCHANGE: Exchange, CHESTS: chests, WEAPON_PROGRESS: WeaponProgress, RETIRED: Retired,
+  FORGE: recipes, LINES: lines, PROTECTIONS: protections, EXCHANGE: Exchange, CHESTS: chests, WEAPON_PROGRESS: WeaponProgress, RETIRED: Retired,
   sourcesOf,
   validateCatalog: () => validateCatalog({ items: GEAR, recipes: RECIPES, loot: LOOT, sets: SETS, sources: sourcesOf }),
 };

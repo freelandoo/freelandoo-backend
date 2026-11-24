@@ -164,7 +164,7 @@ const ROUTES = [
 
     console.log("5. replay de chave com outro pedido");
     const k = key();
-    const first = await call("POST", "/gear/exchange", { token: tA, body: { offer: "paint:po_forja", key: k } });
+    const first = await call("POST", "/gear/exchange", { token: tA, body: { offer: "paint:po_e", key: k } });
     const replay = await call("POST", "/gear/exchange", { token: tA, body: { offer: "paint:minerio", key: k } });
     const minerio = (await pool.query(`SELECT qty FROM tb_mm_gear WHERE id_user = $1 AND item_id = 'minerio_ferro'`, [A.id_user])).rows[0];
     check("a mesma chave devolve o recibo do primeiro e não executa o segundo", first.status === 200 && replay.status === 200 && replay.body.replay === true

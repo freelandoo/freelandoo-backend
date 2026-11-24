@@ -68,8 +68,9 @@ async function main() {
     const bag = (await Service.get(id)).bag;
     check("conversão: 61 fragmentos da arma de linha → 21 de classe Lendária; 25 de conjunto → 13 de classe B",
       (await qty(id, "frag_garras_lunares")) === 0 && (await qty(id, "frag_classe_legendary")) === 21 && (await qty(id, "frag_vigilia")) === 0 && (await qty(id, "frag_classe_b")) === 13);
-    check("conversão: Lingote → pó A (2:1); a receita aposentada (T5) vira +1 pó A; Pó de Lua (bestiário) fica",
-      (await qty(id, "lingote_refinado")) === 0 && (await qty(id, "po_ref_a")) === 3 && (await qty(id, "receita_garras_lunares")) === 0 && (await qty(id, "po_de_lua")) === 20);
+    // 24/11/2026 (tudo por fragmento): o material do Domínio também saiu — Pó de Lua vira o fragmento do Colírio de Mira, 1:1
+    check("conversão: Lingote → pó A (2:1); a receita aposentada (T5) vira +1 pó A; Pó de Lua → 20 fragmentos do Colírio",
+      (await qty(id, "lingote_refinado")) === 0 && (await qty(id, "po_ref_a")) === 3 && (await qty(id, "receita_garras_lunares")) === 0 && (await qty(id, "po_de_lua")) === 0 && (await qty(id, "frag_colirio_mira")) === 20);
     const lineRow = (await instances(id, "linha_garras_lunares"))[0];
     check("a arma de linha vira nível 25 (+4) e 3 estrelas (grau III), com o retrato de antes guardado",
       lineRow.weapon_level === WP.levelFromPlus(4) && lineRow.weapon_level === 25 && lineRow.grade === 3 && lineRow.rules === "weapon-v1" && lineRow.legacy.plus === 4 && bag.instances.find((x) => x.id === line).stars === 3);
@@ -86,7 +87,22 @@ async function main() {
       assert.equal(r.statusCode, 410, m);
     }
     check("aprimorar, graus, desmontar, transmutar, converter fragmento, runas, Ascensão, Despertar e encanto dão 410 sem mexer em nada",
-      (await instances(id, "linha_garras_lunares")).length === 1 && (await qty(id, "po_de_lua")) === 20);
+      (await instances(id, "linha_garras_lunares")).length === 1 && (await qty(id, "frag_colirio_mira")) === 20);
+
+    // ── 24/11/2026 — regra nova do Alex: toda receita é "N fragmentos do item (+ moedas, + nível)"
+    await pool.query(`UPDATE tb_mm_wallet SET coins = 100000 WHERE id_user = $1`, [id]);
+    await setQty(id, "frag_amuleto_floresta", 40);
+    const amu = await Service.forge(id, { recipe: "fabricar_amuleto_floresta", key: key() });
+    check("amuleto: só os 40 fragmentos (sem Pó de Lua nem Seiva) + 900 moedas", !amu.error && (await qty(id, "frag_amuleto_floresta")) === 0 && (await instances(id, "amuleto_floresta")).length === 1);
+    await setQty(id, "frag_aprendiz_elmo", 19);
+    check("proteção: 19 de 20 fragmentos não fabrica", (await Service.forge(id, { recipe: "fragmentos_aprendiz_elmo", key: key() })).code === "needs");
+    await setQty(id, "frag_aprendiz_elmo", 25);
+    const helm = await Service.forge(id, { recipe: "fragmentos_aprendiz_elmo", key: key() });
+    check("proteção: 20 fragmentos fazem o Elmo do Aprendiz (sobram 5)", !helm.error && (await qty(id, "frag_aprendiz_elmo")) === 5 && (await instances(id, "aprendiz_elmo")).length === 1);
+    await setQty(id, "frag_vigilia_elmo", 50);
+    check("peça de antes (Vigília) também sai por fragmento", !(await Service.forge(id, { recipe: "fragmentos_vigilia_elmo", key: key() })).error && (await instances(id, "vigilia_elmo")).length === 1);
+    const prep = await Service.forge(id, { recipe: "preparar_colirio_mira", key: key() });
+    check("preparo: 5 fragmentos do Colírio (sem madeira, pó de forja nem material)", !prep.error && (await qty(id, "frag_colirio_mira")) === 15 && (await qty(id, "colirio_mira")) === 1);
 
     // ── migrations: a 448 (forge-v1 → v2) e a 466 (nível/estrelas) rodam de novo sem mudar nada
     const old = (await pool.query(`INSERT INTO tb_mm_gear_instance (id_user,item_id,plus,rules) VALUES ($1,'espada_latao',7,'forge-v1') RETURNING id_instance`, [id])).rows[0].id_instance;

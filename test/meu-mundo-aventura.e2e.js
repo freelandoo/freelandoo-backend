@@ -201,7 +201,8 @@ async function main() {
   );
   // a Mola (material aposentado) vira pó novo na próxima abertura da mochila; o Couro (preparo) fica
   const fg = await Gear.get(id);
-  check("material aposentado vira pó novo; o que ficou no jogo não muda", !fg.bag.owned.mola_precisao && fg.bag.owned.couro_reforcado?.qty === 3 && fg.bag.owned.po_ref_d?.qty > 0, JSON.stringify(fg.bag.owned));
+  // 24/11/2026 (tudo por fragmento): o couro também saiu — vira o fragmento do Pó de Garra, 1:1
+  check("material aposentado vira pó/fragmento novo", !fg.bag.owned.mola_precisao && !fg.bag.owned.couro_reforcado && fg.bag.owned.frag_po_garra?.qty === 3 && fg.bag.owned.po_ref_d?.qty > 0, JSON.stringify(fg.bag.owned));
 
   // ── lore v2 F3: os capítulos numa conta NOVA (raposa) ──
   const Quest = require("../src/services/MeuMundoQuestService");

@@ -31,12 +31,15 @@ test("E12 + weapon-v1: comum 1 + ⌊s/3⌋, raro 5% + 3%·s, pó da faixa do Dom
   const WP = require("../../src/utils/mmItems/rules/weaponProgress");
   for (const d of DOMAINS) {
     const { common, rare } = Loot.DOMAIN_MATS[d];
-    assert.equal(Items.GEAR_BY_ID.get(common).rarity, "common", common);
-    assert.equal(Items.GEAR_BY_ID.get(rare).rarity, "rare", rare);
+    // 24/11/2026 (tudo por fragmento): no lugar do material, o fragmento do preparo (comum) e o do amuleto (raro)
+    assert.equal(Items.GEAR_BY_ID.get(common).category, "fragment", common);
+    assert.equal(rare, `frag_amuleto_${d}`, rare);
     for (let s = 1; s <= 10; s++) {
       const e = Items.lootExpectation(`domain:${d}:${s}`, { win: true });
       assert.deepEqual(e[common], { expected: 1 + Math.floor(s / 3), min: 1 + Math.floor(s / 3), max: 1 + Math.floor(s / 3) }, `${d} ${s}`);
-      if (s < 10) assert.equal(e[rare].expected, Math.round((0.05 + 0.03 * s) * 1000) / 1000, `${d} ${s} raro`);
+      // o fragmento do amuleto já era garantido nos setores 3 (1) e 7 (1 a 2): soma ao sorteio do raro
+      const sure = s === 3 ? 1 : s === 7 ? 1.5 : 0;
+      if (s < 10) assert.equal(Math.round(e[rare].expected * 1000) / 1000, Math.round((0.05 + 0.03 * s + sure) * 1000) / 1000, `${d} ${s} raro`);
       else assert.equal(e[rare].min, 1, `${d} chefão: raro garantido`);
       // weapon-v2: o pó do Domínio é garantido (Floresta D … Vermelha SSR); nada da forja antiga cai mais
       const i = Loot.DOMAIN_ORDER.indexOf(d);
@@ -62,8 +65,9 @@ test("E12 + weapon-v1: comum 1 + ⌊s/3⌋, raro 5% + 3%·s, pó da faixa do Dom
     assert.equal(first[god.id].min, 6);
     // S14: fragmento de acessório no setor 3 (×1) e no 7 (×1–2), garantido na vitória; 40 fazem o amuleto épico
     const acc = `frag_amuleto_${d}`;
-    assert.deepEqual(Items.lootExpectation(`domain:${d}:3`, { win: true })[acc], { expected: 1, min: 1, max: 1 });
-    assert.deepEqual([Items.lootExpectation(`domain:${d}:7`, { win: true })[acc].min, Items.lootExpectation(`domain:${d}:7`, { win: true })[acc].max], [1, 2]);
+    // 24/11/2026: + 1 com a chance do raro (o lugar do material raro do Domínio)
+    assert.deepEqual(Items.lootExpectation(`domain:${d}:3`, { win: true })[acc], { expected: 1.14, min: 1, max: 2 });
+    assert.deepEqual([Items.lootExpectation(`domain:${d}:7`, { win: true })[acc].min, Items.lootExpectation(`domain:${d}:7`, { win: true })[acc].max], [1, 3]);
     assert.equal(Items.lootExpectation(`domain:${d}:3`, { win: false })[acc], undefined, "derrota não paga");
     const amu = Items.GEAR_BY_ID.get(`amuleto_${d}`);
     assert.ok(amu && amu.slot === "amulet" && amu.rarity === "epic" && amu.keys.length === 2, d);
@@ -101,19 +105,20 @@ test("E12: a primeira vitória só paga com `first`; sem ela nunca sai receita n
   for (let i = 0; i < 300; i++) {
     const ids = Items.rollTable("domain:floresta:10", { win: true }, R).map((x) => x.id);
     assert.ok(!ids.some((id) => id.startsWith("receita_") || id.startsWith("projeto_")));
-    assert.ok(ids.includes("po_ref_b") && ids.includes("frag_classe_b") && ids.includes("seiva_de_prata"));
+    assert.ok(ids.includes("po_ref_b") && ids.includes("frag_classe_b") && ids.includes("frag_amuleto_floresta"));
     assert.ok(R && Items.rollTable("domain:floresta:10", { win: true }, R).find((x) => x.id === "frag_classe_b").qty <= 5);
   }
   const firstIds = Items.rollTable("domain:floresta:10", { win: true, first: true }, R);
   assert.ok(firstIds.find((x) => x.id === "frag_classe_b").qty >= 13);
 });
 
-test("E12: pior caso do material comum perto do esperado (§6.6) — Vigília: Pó de Lua e Seiva", () => {
-  // a Vigília pede 12 Pó de Lua + 1 Seiva por peça: nos setores 7 a 10 o Pó sai antes dos fragmentos
-  for (let s = 7; s <= 10; s++) {
+test("tudo por fragmento (24/11): a Vigília sai dos fragmentos das peças nos setores 7 a 9 da Floresta", () => {
+  // 50 fragmentos por peça (classe B); com 30% de 1 a 2 por vitória, cada peça sai em ~111 vitórias no pior caso médio
+  for (let s = 7; s <= 9; s++) {
     const e = Items.lootExpectation(`domain:floresta:${s}`, { win: true });
-    assert.ok(Math.ceil(48 / e.po_de_lua.min) <= 40, `setor ${s}`);
+    for (const p of ["elmo", "peitoral", "luvas", "botas"]) assert.ok(e[`frag_vigilia_${p}`].expected > 0, `setor ${s} ${p}`);
   }
+  assert.equal(Items.lootExpectation("domain:floresta:10", { win: true }).frag_vigilia_elmo, undefined);
 });
 
 test("E12: itens que passaram a cair perderam a origem declarada e mostram a tabela", () => {
@@ -132,5 +137,6 @@ test("E12: itens que passaram a cair perderam a origem declarada e mostram a tab
   }
   // agrupado: o Pó D não vira 70 linhas
   assert.ok(Items.sourcesOf(Items.GEAR_BY_ID.get("po_ref_d")).filter((x) => /Domínio/.test(x)).length <= 4);
-  assert.deepEqual(Items.sourcesOf(Items.GEAR_BY_ID.get("po_de_lua")), ["Domínio Floresta da Lua: garantido em todo setor (1 a 4 por vitória)."]);
+  assert.deepEqual(Items.sourcesOf(Items.GEAR_BY_ID.get("frag_colirio_mira")), ["Domínio Floresta da Lua: garantido em todo setor (1 a 4 por vitória)."]);
+  assert.deepEqual(Items.sourcesOf(Items.GEAR_BY_ID.get("po_de_lua")), []); // 24/11: saiu (tudo por fragmento)
 });

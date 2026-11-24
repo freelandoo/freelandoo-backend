@@ -56,7 +56,8 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   const PREPS = Gear.GEAR.filter((g) => g.category === "consumable").map((g) => g.name);
   // E17: a rua ganhou tabela própria (mesmo saque das Lâminas): o "onde conseguir" de antes ganha as linhas dela
   // weapon-v1 (24/11): toda arma ganha "Forja: montar com N fragmentos de classe X."
-  const E17 = (s) => s.startsWith("Forja: montar com") || s.startsWith("Loja de troca:") || s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
+  // 24/11/2026 (tudo por fragmento): as proteções de antes ganham a receita "Ferreiro: produzir …" por fragmento
+  const E17 = (s) => s.startsWith("Ferreiro: produzir") || s.startsWith("Forja: montar com") || s.startsWith("Loja de troca:") || s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
   // E14: a linha da Ascensão/Despertar entra nos usos de todo equipamento com chaves
   const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja") && !PREPS.some((n) => u.startsWith("Ingrediente de " + n + ":")) && !u.startsWith("Ingrediente de ")); // weapon-v1: as receitas antigas saíram (ingrediente mudou)
   // arma/escudo da loja: preço pela classe muda os textos de preço e reciclagem (2026-11-17) — saem da comparação

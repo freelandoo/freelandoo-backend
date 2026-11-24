@@ -16,8 +16,8 @@ const legacyIds = [
 
 test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16; +6 fichas da E17)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 438); // weapon-v2 (24/11): +4 pós (E, SSR, Lendária, Divina; os SSS ficam como aposentados) · weapon-v1 (24/11): +17 espadas, +9 pós, +10 fragmentos de classe · Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 438);
+  assert.equal(pub.items.length, 567); // tudo por fragmento (24/11): +52 proteções, +69 fragmentos de peça, +8 de preparo · weapon-v2 (24/11): +4 pós (E, SSR, Lendária, Divina; os SSS ficam como aposentados) · weapon-v1 (24/11): +17 espadas, +9 pós, +10 fragmentos de classe · Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 567);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);
@@ -51,7 +51,7 @@ test("cada montagem usa uma unidade de 10/12/15 partes diferentes", () => {
 });
 
 test("receitas têm referências válidas, fabricam uma unidade e não geram lucro de reciclagem", () => {
-  assert.equal(Gear.RECIPES.length, 33); // weapon-v1 (24/11): ficam só Criogenia/bestiário (25) e preparos (8) · Floresta Vermelha (22/11): +3 (amuleto, 2 embriões) · E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo; E18: receita oculta
+  assert.equal(Gear.RECIPES.length, 102); // tudo por fragmento (24/11): +69 proteções por fragmento · weapon-v1 (24/11): ficam só Criogenia/bestiário (25) e preparos (8) · Floresta Vermelha (22/11): +3 (amuleto, 2 embriões) · E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo; E18: receita oculta
   assert.equal(new Set(Gear.RECIPES.map((r) => r.id)).size, Gear.RECIPES.length);
   for (const r of Gear.RECIPES) {
     const out = Gear.GEAR_BY_ID.get(r.out);

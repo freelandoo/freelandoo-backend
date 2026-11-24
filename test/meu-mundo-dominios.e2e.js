@@ -280,7 +280,7 @@ async function main() {
   check("recibo da luta do Domínio (origem, setor e progresso)", rec && rec.result.origin === "domain" && rec.result.domain === "floresta" && rec.result.sector === 1 && rec.domain && rec.domain.best === 1 && rec.domain.opened === 2, JSON.stringify(p1.done).slice(0, 300));
   check("tb_mm_domain_progress: setor 1 vencido", (await best(nu, "floresta")).best === 1);
   // E12: a vitória no setor paga pela tabela do setor (não mais a das Lâminas)
-  check("E12: setor 1 paga pela tabela domain:floresta:1 (1 Pó de Lua, sem material das Lâminas)", rec.result.loot === "domain:floresta:1" && qtyOf(rec, "po_de_lua") === 1 && qtyOf(rec, "fragmento_lamina") === 0 && !rec.result.lootFirst, JSON.stringify({ loot: rec.result.loot, items: rec.items }));
+  check("E12: setor 1 paga pela tabela domain:floresta:1 (1 fragmento do Colírio no lugar do Pó de Lua, sem material das Lâminas)", rec.result.loot === "domain:floresta:1" && qtyOf(rec, "frag_colirio_mira") === 1 && qtyOf(rec, "fragmento_lamina") === 0 && !rec.result.lootFirst, JSON.stringify({ loot: rec.result.loot, items: rec.items }));
   {
     const s1 = (await Dom.state(nu)).domains[0].sectors;
     check("E12: GET /domains manda a tabela de cada setor (consultável na tela)", s1.every((x) => x.loot && x.loot.table === `domain:floresta:${x.n}`) && s1[9].loot.sure.some((x) => x.id === "po_ref_b") && s1[9].loot.first.some((x) => x.id === "frag_classe_b") && s1[9].loot.firstDone === false && s1[7].loot.chance.some((x) => x.id === "po_ref_c") && !s1.some((x) => [...x.loot.sure, ...x.loot.chance, ...(x.loot.first || [])].some((l) => ["selo_dominio", "catalisador_refino"].includes(l.id))), JSON.stringify(s1[9].loot).slice(0, 300));
@@ -311,7 +311,7 @@ async function main() {
     await pool.query(`UPDATE tb_mm_fight SET started_at = NOW() - INTERVAL '60 minutes', expires_at = NOW() + INTERVAL '5 minutes' WHERE id_fight = $1`, [r.body.fight.ticket]);
     const lost = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames });
     check("derrota no setor 2: recibo sem progresso", fight.over && !fight.over.win && lost.receipt && lost.receipt.result.win === false && !lost.receipt.domain, JSON.stringify(lost).slice(0, 200));
-    check("E12: derrota não paga a tabela do setor (no máximo a das Lâminas)", lost.receipt && qtyOf(lost.receipt, "po_de_lua") === 0 && (lost.receipt.result.loot === undefined || lost.receipt.result.loot === "fight:laminas"), JSON.stringify(lost.receipt && { loot: lost.receipt.result.loot, items: lost.receipt.items }));
+    check("E12: derrota não paga a tabela do setor (no máximo a das Lâminas)", lost.receipt && qtyOf(lost.receipt, "frag_colirio_mira") === 0 && (lost.receipt.result.loot === undefined || lost.receipt.result.loot === "fight:laminas"), JSON.stringify(lost.receipt && { loot: lost.receipt.result.loot, items: lost.receipt.items }));
     check("derrota não abre o setor 3", (await best(nu, "floresta")).best === 1);
     // a luta da gravação falsa ficou aberta: a derrota a contou como fuga (roubo 1), e a derrota rouba de novo
     const after1 = 4500 - NT.theftMl(4500);
@@ -343,7 +343,7 @@ async function main() {
   check("crossed_at gravado", (await best(nu, "floresta")).crossed === true);
   {
     const rc = p10.done.receipt;
-    check("E12 + weapon-v1: setor 10 entrega pó B, a Seiva e fragmentos de classe B (3 a 5 + 10 na primeira)", qtyOf(rc, "po_ref_b") === 1 && qtyOf(rc, "seiva_de_prata") === 1 && qtyOf(rc, "frag_classe_b") >= 13 && qtyOf(rc, "frag_classe_b") <= 15 && qtyOf(rc, "receita_garras_lunares") === 0 && qtyOf(rc, "po_de_lua") === 4 && rc.result.lootFirst === true, JSON.stringify({ items: rc.items, first: rc.result.lootFirst }));
+    check("E12 + weapon-v1: setor 10 entrega pó B, o fragmento do amuleto (no lugar da Seiva) e fragmentos de classe B (3 a 5 + 10 na primeira)", qtyOf(rc, "po_ref_b") === 1 && qtyOf(rc, "frag_amuleto_floresta") === 1 && qtyOf(rc, "frag_classe_b") >= 13 && qtyOf(rc, "frag_classe_b") <= 15 && qtyOf(rc, "receita_garras_lunares") === 0 && qtyOf(rc, "po_de_lua") === 4 && rc.result.lootFirst === true, JSON.stringify({ items: rc.items, first: rc.result.lootFirst }));
     const lf = (await pool.query(`SELECT id_fight FROM tb_mm_loot_first WHERE id_user = $1 AND loot_table = 'domain:floresta:10'`, [nu])).rows;
     check("E12: tb_mm_loot_first grava a primeira vitória (mig 449)", lf.length === 1 && !!lf[0].id_fight, JSON.stringify(lf));
     check("S14: o deus deixa 1 fragmento + 5 na primeira vitória (A1 respondida)", qtyOf(rc, "frag_deus_noctis") === 6, JSON.stringify(rc.items));

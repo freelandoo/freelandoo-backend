@@ -7,6 +7,8 @@
 // Oferta: { id, token, cost, gives: { item: qtd } }. Quem confere saldo e grava o recibo é o serviço.
 "use strict";
 
+const Protections = require("./protections");
+
 /** Fichas de uma partida típica (4 a 6 minutos, metade vencida): 2 a 3 + 0,5. */
 const TOKENS_PER_MATCH = 3;
 const GAMES = Object.freeze(["paint", "jetpack", "noturno", "corrida", "gincana"]);
@@ -19,12 +21,11 @@ const offer = (token, id, cost, gives) => Object.freeze({ id: `${token}:${id}`, 
 /**
  * O que toda loja de minijogo vende (progressão comum; nada de equipamento pronto). weapon-v1 (24/11/2026):
  * pós das faixas baixas e fragmentos das classes baixas (caminho previsível, sem depender só de sorte);
- * Pedra, Catalisador, Essência, Selo, Minério e runas saíram com a forja antiga.
+ * Pedra, Catalisador, Essência, Selo, Minério e runas saíram com a forja antiga; o Pó de Forja e a Madeira saíram
+ * em 24/11/2026 (tudo por fragmento).
  */
 function common(game) {
   return [
-    offer(game, "po_forja", 6, { po_forja: 2 }),
-    offer(game, "madeira", 10, { madeira_ancestral: 1 }),
     offer(game, "po_e", 2, { po_ref_e: 1 }),
     offer(game, "po_d", 4, { po_ref_d: 1 }),
     offer(game, "po_c", 8, { po_ref_c: 1 }),
@@ -45,6 +46,8 @@ const OFFERS = Object.freeze([
   offer("hall", "po_ss", 50, { po_ref_ss: 1 }),
   offer("hall", "frag_ss", 60, { frag_classe_ss: 2 }),
   offer("hall", "frag_legendary", 90, { frag_classe_legendary: 2 }),
+  // 24/11/2026: os fragmentos das proteções de Aurion (o caminho da Primeira Chama, catalog/protections.js)
+  ...Protections.HALL_OFFERS.map((o) => offer("hall", o.id, o.cost, { [o.id]: o.qty })),
   // E19: loja de evento (só abre com o evento ligado pelo admin)
   ...[
     offer("evento", "cosmetico_rastro", 40, { rastro_eter: 1 }),

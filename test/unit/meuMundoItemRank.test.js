@@ -25,7 +25,9 @@ test("rank: armas dos deuses (linha) são Lendárias; as Divinas são as 11 do T
   assert.equal(lines.length, 9);
   for (const g of lines) assert.equal(g.rank, "legendary", g.id);
   // weapon-v1 (24/11): o Pó SSS III e o Fragmento de classe Divina também são da classe Divina
-  assert.equal(Items.GEAR.filter((g) => g.rank === "divine" && g.category !== "material" && g.category !== "fragment").length, 11);
+  assert.equal(Items.GEAR.filter((g) => g.rank === "divine" && (g.category === "weapon" || g.category === "shield")).length, 11);
+  // 24/11/2026: + as 8 proteções Divinas (Céu e Pira, catalog/protections.js)
+  assert.equal(Items.GEAR.filter((g) => g.rank === "divine" && g.category === "armor").length, 8);
 });
 
 test("rank: fora da escala de armas, pela raridade interna", () => {

@@ -140,10 +140,17 @@ test("aposentados: pilha vira pó/fragmento novo (nunca zero), Criogenia e prepa
   assert.deepEqual(Retired.compensation(Items.GEAR_BY_ID.get("pedra_aprimoramento"), 7), { id: "po_ref_d", qty: 7 });
   assert.deepEqual(Retired.compensation(Items.GEAR_BY_ID.get("po_refino"), 25), { id: "po_ref_d", qty: 3 });
   assert.equal(Retired.compensation(Items.GEAR_BY_ID.get("pedra_aprimoramento"), 0), null);
-  for (const id of ["embriao_kragor", "ficha_paint", "frag_deus_noctis", "frag_personagem_ciborgue", "po_de_lua", "po_forja"]) assert.ok(!Items.GEAR_BY_ID.get(id).retired, id);
+  for (const id of ["embriao_kragor", "ficha_paint", "frag_deus_noctis", "frag_personagem_ciborgue", "frag_colirio_mira", "frag_ceu_elmo"]) assert.ok(!Items.GEAR_BY_ID.get(id).retired, id);
+  // 24/11/2026 (tudo por fragmento): os materiais que sobravam saíram e viram o fragmento que os substitui
+  assert.deepEqual(Retired.compensation(Items.GEAR_BY_ID.get("po_de_lua"), 9), { id: "frag_colirio_mira", qty: 9 });
+  assert.deepEqual(Retired.compensation(Items.GEAR_BY_ID.get("seiva_de_prata"), 2), { id: "frag_amuleto_floresta", qty: 2 });
+  assert.deepEqual(Retired.compensation(Items.GEAR_BY_ID.get("po_forja"), 5), { id: "po_ref_e", qty: 3 });
+  for (const id of ["po_de_lua", "po_forja", "madeira_ancestral", "couro_reforcado", "injetor_vapor", "brasa_de_estandarte"]) assert.ok(Items.GEAR_BY_ID.get(id).retired, id);
   // equipamento nunca é convertido nem aposentado à força (a cópia continua da pessoa)
   for (const g of Items.GEAR.filter((x) => x.slot)) assert.ok(!Retired.isRetiredStack(g), g.id);
-  assert.ok(Items.RECIPES.every((r) => r.kind === "prep" || /^fabricar_(amuleto|embriao)_/.test(r.id)));
+  assert.ok(Items.RECIPES.every((r) => r.kind === "prep" || r.keep === true || /^fabricar_(amuleto|embriao)_/.test(r.id)));
+  // 24/11/2026: toda receita que ficou pede só fragmentos (+ moedas, + nível)
+  assert.ok(Items.RECIPES.every((r) => Object.keys(r.needs).every((id) => id.startsWith("frag_"))));
 });
 
 test("catálogo público leva a regra (versão, pó por classe, barra, sorteio, fragmentos)", () => {

@@ -16,13 +16,12 @@
 
 const { LEGACY_POWDERS } = require("../rules/weaponProgress");
 
-/** Materiais/fichas que continuam no jogo (preparos, bestiário, Criogenia, fichas). */
-const KEEP = new Set([
-  "couro_reforcado", "injetor_vapor", "madeira_ancestral", "po_forja",
-  "po_de_lua", "seiva_de_prata", "areia_de_raio", "pena_de_tempestade", "gelo_negro", "perola_de_afogado",
-  "engrenagem_fina", "coracao_de_corda", "escoria", "ferro_de_basalto", "vidro_colorido", "prisma_vivo",
-  "folha_rubra", "brasa_de_estandarte",
-]);
+// 24/11/2026 — regra nova do Alex: "não existe mais fabricação por material; tudo por FRAGMENTO". Os materiais
+// que ainda ficavam (couro, injetor, madeira, pó de forja e os 14 dos Domínios, dos preparos e amuletos) saíram
+// também: a receita pede só fragmentos. A conversão é a MESMA regra idempotente de cima (sem migration): no
+// `prepare` da mochila a pilha vira o fragmento que a substitui (EXPLICIT abaixo), com linha no livro.
+/** Materiais/fichas que continuam no jogo (nenhum material: tudo por fragmento). */
+const KEEP = new Set([]);
 const STACK_CATEGORIES = new Set(["material", "currency", "fragment", "recipe", "rune"]);
 
 /** Pilha aposentada? (equipamento, missão e cosmético nunca são convertidos: a cópia continua da pessoa). */
@@ -31,6 +30,7 @@ function isRetiredStack(item) {
   if (KEEP.has(item.id)) return false;
   if (item.id.startsWith("embriao_") || item.id.startsWith("ficha_")) return false;
   if (item.id.startsWith("frag_amuleto_") || item.id.startsWith("frag_personagem_") || item.id.startsWith("frag_deus_")) return false;
+  if (item.fragment && item.fragment.forge) return false; // fragmento de peça/preparo da Forja (24/11)
   if (item.id in LEGACY_POWDERS) return true; // weapon-v2: pós SSS I/II/III → pó da classe
   if (item.id.startsWith("po_ref_") || item.id.startsWith("frag_classe_")) return false;
   return true;
@@ -60,6 +60,16 @@ const EXPLICIT = Object.freeze({
   frag_cajado_moldes: ["frag_classe_legendary", 3, 1],
   // fragmentos de conjunto (20 faziam uma peça rara) → fragmento de classe B
   frag_vigilia: ["frag_classe_b", 2, 1], frag_forja: ["frag_classe_b", 2, 1], frag_sentinela: ["frag_classe_b", 2, 1],
+  // 24/11/2026 (tudo por fragmento): material comum do Domínio → fragmento do preparo dele, 1:1; o raro →
+  // fragmento do amuleto do Domínio, 1:1; couro/injetor → fragmento do preparo; madeira e pó de forja → pó E
+  po_de_lua: ["frag_colirio_mira", 1, 1], areia_de_raio: ["frag_graxa_botas", 1, 1], gelo_negro: ["frag_tonico_vida", 1, 1],
+  engrenagem_fina: ["frag_verniz_couraca", 1, 1], escoria: ["frag_oleo_lamina", 1, 1], vidro_colorido: ["frag_cha_engrenagem", 1, 1],
+  folha_rubra: ["frag_oleo_lamina", 1, 1],
+  seiva_de_prata: ["frag_amuleto_floresta", 1, 1], pena_de_tempestade: ["frag_amuleto_canion", 1, 1], perola_de_afogado: ["frag_amuleto_gelo", 1, 1],
+  coracao_de_corda: ["frag_amuleto_fabrica", 1, 1], ferro_de_basalto: ["frag_amuleto_vulcao", 1, 1], prisma_vivo: ["frag_amuleto_orbital", 1, 1],
+  brasa_de_estandarte: ["frag_amuleto_vermelha", 1, 1],
+  couro_reforcado: ["frag_po_garra", 1, 1], injetor_vapor: ["frag_vapor_folego", 1, 1],
+  madeira_ancestral: ["po_ref_e", 1, 1], po_forja: ["po_ref_e", 2, 1],
 });
 /** Régua por tier para o resto (peças, materiais da forja, runas, projetos). */
 const BY_TIER = Object.freeze({ 1: ["po_ref_d", 4, 1], 2: ["po_ref_d", 2, 1], 3: ["po_ref_c", 1, 1], 4: ["po_ref_b", 1, 1], 5: ["po_ref_a", 1, 1], 6: ["po_ref_s", 1, 1] });
@@ -72,7 +82,7 @@ function compensation(item, qty) {
   return { id, qty: Math.max(1, Math.ceil((n * outN) / inN)) };
 }
 
-/** Receita que continua (bestiário/Criogenia e preparos); as outras saíram. */
-const keepRecipe = (r) => r.kind === "prep" || /^fabricar_(amuleto|embriao)_/.test(r.id);
+/** Receita que continua (bestiário/Criogenia, preparos e proteções por fragmento — `keep`); as outras saíram. */
+const keepRecipe = (r) => r.kind === "prep" || r.keep === true || /^fabricar_(amuleto|embriao)_/.test(r.id);
 
 module.exports = { KEEP, isRetiredStack, EXPLICIT, BY_TIER, compensation, keepRecipe };

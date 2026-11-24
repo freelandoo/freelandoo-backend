@@ -49,7 +49,7 @@ test("Floresta Vermelha: saque — materiais, amuleto, Porta-Estandarte no 9 e o
   // weapon-v1: o chefe da Floresta Vermelha paga o Pó SSS III e 3 a 5 fragmentos de classe Divina
   assert.deepEqual(boss.po_ref_divine, { expected: 1, min: 1, max: 1 }); // weapon-v2: o pó SSS III virou o pó Divina
   assert.deepEqual([boss.frag_classe_divine.min, boss.frag_classe_divine.max], [3, 5]);
-  assert.equal(boss.brasa_de_estandarte.min, 1);
+  assert.equal(boss.frag_amuleto_vermelha.min, 1); // 24/11: o raro garantido do chefe (Brasa) virou o fragmento do amuleto
   assert.equal(boss.frag_deus_varkos.min, 1);
   assert.equal(Items.lootExpectation("domain:vermelha:10", { win: true, first: true }).frag_deus_varkos.min, 6);
   assert.equal(Items.lootExpectation("domain:vermelha:9", { win: true }).frag_personagem_portaestandarte.min, 1);

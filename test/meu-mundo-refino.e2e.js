@@ -75,7 +75,8 @@ async function main() {
     const owned = bag.owned;
     check("aposentados viraram pó novo (7 Pedras → 7 D; 25 Pós de Refino → 3 D; 2 Catalisadores → 2 SS)",
       owned.po_ref_d?.qty === 10 && owned.po_ref_ss?.qty === 2 && !owned.pedra_aprimoramento && !owned.po_refino && !owned.catalisador_refino);
-    check("Criogenia e materiais de Domínio ficam como estavam", owned.embriao_kragor?.qty === 1 && owned.po_de_lua?.qty === 9);
+    // 24/11/2026 (tudo por fragmento): o material do Domínio vira o fragmento do preparo (Pó de Lua → Colírio de Mira, 1:1)
+    check("Criogenia fica; o Pó de Lua vira 9 fragmentos do Colírio de Mira", owned.embriao_kragor?.qty === 1 && !owned.po_de_lua && owned.frag_colirio_mira?.qty === 9);
     const ledger = (await pool.query(`SELECT item_id, delta FROM tb_mm_item_ledger WHERE id_user=$1 AND item_id IN ('pedra_aprimoramento','po_ref_d')`, [id])).rows;
     check("a conversão passa pelo livro (sai a Pedra, entra o pó)", ledger.some((r) => r.item_id === "pedra_aprimoramento" && Number(r.delta) === -7) && ledger.some((r) => r.item_id === "po_ref_d" && Number(r.delta) > 0));
     const again = (await Service.get(id)).bag;
