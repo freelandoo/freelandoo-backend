@@ -187,6 +187,8 @@ router.post("/characters/test-grant", ...ferramenta, asyncHandler(MeuMundoContro
 router.post("/characters/:id/use", ...admin, asyncHandler(MeuMundoController.characterUse));
 // B12 (mig 410): Laboratório de Criogenia — embrião na cápsula e acelerador (15 anos).
 router.post("/characters/embryo", ...admin, asyncHandler(MeuMundoController.characterEmbryo));
+// gacha-v1 (24/11/2026): usar a Cápsula fabricada com fragmentos (vira personagem na cápsula do Laboratório)
+router.post("/characters/capsule", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.characterCapsuleUse));
 router.post("/characters/genetics", ...admin, asyncHandler(MeuMundoController.characterGenetics));
 router.post("/characters/:id/accelerate", ...admin, asyncHandler(MeuMundoController.characterAccelerate));
 // Sino e correio interno (mig 302, mm3d-30): histórico, leitura, presentes.

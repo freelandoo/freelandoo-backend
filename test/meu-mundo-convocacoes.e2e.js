@@ -164,6 +164,52 @@ async function main() {
     const [c1, c2] = await Promise.all([1, 2].map(() => Gacha.pull(me, { banner: "weapons", times: 1, key: same })));
     check("duas abas, mesma chave: o mesmo recibo", c1.receipt.eventId === c2.receipt.eventId && (await qty(me, "faisca_eter")) === 4);
 
+    // ── jornada: fragmentos do giro → Forja → Cápsula → personagem no Laboratório ──
+    const Chars = require("../src/services/MeuMundoCharacterService");
+    const WP = require("../src/utils/mmItems/rules/weaponProgress");
+    const GearCat = require("../src/utils/meuMundoGear");
+    await pool.query(`INSERT INTO tb_mm_char_adventure (id_character, id_user, xp) SELECT id_character, $1, 900000 FROM tb_mm_character WHERE id_user = $1 AND status = 'alive' ON CONFLICT DO NOTHING`, [me]);
+    await pool.query(`INSERT INTO tb_mm_clan (id_user, clan, sex) VALUES ($1, 'vampiro', 'm') ON CONFLICT DO NOTHING`, [me]);
+    // Armas: completa 100 fragmentos A e monta uma arma A na Forja
+    await pool.query(`UPDATE tb_mm_gear SET qty = 100 WHERE id_user=$1 AND item_id='frag_classe_a'`, [me]);
+    const weaponA = GearCat.GEAR.find((g) => WP.isWeapon(g) && !g.retired && WP.assemblyCost(g)?.rank === "A");
+    const built = await GearService.assembleWeapon(me, { item: weaponA.id, key: key() });
+    check("Forja: os fragmentos de classe do giro montam uma arma A", !built.error && (await qty(me, "frag_classe_a")) === 0, JSON.stringify(built).slice(0, 200));
+    // Personagens: 5 Topos de Noctis (20 cada) = 100 → Cápsula
+    Gacha.randomInt = () => 0;
+    for (let i = 0; i < 4; i++) {
+      await pool.query(`UPDATE tb_mm_gacha_state SET since_top = 39, guaranteed = TRUE WHERE id_user=$1 AND banner='characters'`, [me]);
+      await setSpark(me, 1);
+      await Gacha.pull(me, { banner: "characters", times: 1, target: "noctis", key: key() });
+    }
+    check("100 fragmentos de Noctis pelo banner", (await qty(me, "frag_deus_noctis")) === 100);
+    const caps = await GearService.forge(me, { recipe: "fabricar_embriao_noctis", key: key() });
+    check("Forja: 100 fragmentos viram a Cápsula de Noctis", !caps.error && (await qty(me, "embriao_noctis")) === 1 && (await qty(me, "frag_deus_noctis")) === 0, JSON.stringify(caps).slice(0, 200));
+    const capCount = async () => Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_character WHERE id_user=$1 AND status='capsule'`, [me])).rows[0].count);
+    const c0 = await capCount();
+    const ck = crypto.randomBytes(8).toString("hex");
+    const used = await Chars.useCapsule(me, { item: "embriao_noctis", key: ck });
+    check("Usar Cápsula: Noctis nasce na cápsula e a Cápsula é gasta", !used.error && (await capCount()) === c0 + 1 && (await qty(me, "embriao_noctis")) === 0, JSON.stringify(used).slice(0, 200));
+    const noctis = (await pool.query(`SELECT species FROM tb_mm_character WHERE id_user=$1 AND status='capsule' ORDER BY created_at DESC LIMIT 1`, [me])).rows[0];
+    check("Usar Cápsula: a espécie é Noctis", noctis && noctis.species === "noctis");
+    const rep = await Chars.useCapsule(me, { item: "embriao_noctis", key: ck });
+    check("Usar Cápsula: reenvio da mesma chave não cria outro", !rep.error && (await capCount()) === c0 + 1);
+    check("Usar Cápsula sem ter a Cápsula recusa", (await Chars.useCapsule(me, { item: "embriao_noctis", key: crypto.randomBytes(8).toString("hex") })).code === "noCapsule");
+    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty) VALUES ($1,'embriao_selene',1) ON CONFLICT (id_user,item_id) DO UPDATE SET qty=1`, [me]);
+    check("Cápsula de guardião não jogável recusa e fica", (await Chars.useCapsule(me, { item: "embriao_selene", key: crypto.randomBytes(8).toString("hex") })).code === "capsuleSoon" && (await qty(me, "embriao_selene")) === 1);
+    check("item que não é Cápsula recusa", (await Chars.useCapsule(me, { item: "frag_classe_e", key: crypto.randomBytes(8).toString("hex") })).code === "capsuleItem");
+    // cápsula cheia: enche as 5 vagas com Golem repetido (repetido pode) e a 6ª recusa sem gastar
+    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty) VALUES ($1,'embriao_golem',10) ON CONFLICT (id_user,item_id) DO UPDATE SET qty=10`, [me]);
+    while ((await capCount()) < 5) {
+      const ok = await Chars.useCapsule(me, { item: "embriao_golem", key: crypto.randomBytes(8).toString("hex") });
+      assert.ok(!ok.error, JSON.stringify(ok));
+    }
+    const left = await qty(me, "embriao_golem");
+    const alive = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_character WHERE id_user=$1`, [me])).rows[0].count);
+    const full = await Chars.useCapsule(me, { item: "embriao_golem", key: crypto.randomBytes(8).toString("hex") });
+    check("cápsula cheia: recusa sem gastar a Cápsula", full.code === "full" && (await qty(me, "embriao_golem")) === left);
+    check("cápsula cheia: nenhum personagem some", Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_character WHERE id_user=$1`, [me])).rows[0].count) === alive);
+
     // ── histórico e recuperação: só da própria pessoa ──
     const hist = await Gacha.history(me, { limit: 5 });
     check("histórico paginado", hist.items.length === 5 && !!hist.next);
@@ -173,7 +219,7 @@ async function main() {
     check("outra pessoa não recupera o meu giro", (await Gacha.recover(other, k1)).statusCode === 404);
     check("cursor inválido recusa", (await Gacha.history(me, { before: "ontem" })).code === "cursor");
     const view = await Gacha.get(me);
-    check("GET: regras publicadas + saldo + 3 contadores", view.rules.version === Rules.GACHA_VERSION && view.spark === 4 && view.states.length === 3);
+    check("GET: regras publicadas + saldo + 3 contadores", view.rules.version === Rules.GACHA_VERSION && view.spark === 0 && view.states.length === 3);
     check("GET: faltam N giros para cada garantia", view.states.every((s) => s.toTop >= 1 && s.toTop <= 40 && s.toRare >= 1 && s.toRare <= 10));
 
     console.log(`\n${checks} verificações OK`);

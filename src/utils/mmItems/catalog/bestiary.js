@@ -63,7 +63,11 @@ const GODS = Object.freeze([
   { id: "varkos", name: "Varkos", domain: "vermelha" },
 ]);
 
-const CRIO_NEXT = "O uso na Criogenia chega na próxima atualização: por enquanto ela fica guardada na mochila.";
+// gacha-v1 (24/11/2026): a Cápsula dos 12 jogáveis vira personagem no Laboratório (POST /characters/capsule)
+const PLAYABLE_CAPSULE = new Set(["ciborgue", "cavaleiro", "golem", "garras", "brutamontes", "noctis", "zephyra", "maru", "aeryn", "kragor", "iris", "varkos"]);
+const CRIO_USE = "Use no Laboratório de Criogenia: o personagem nasce congelado numa vaga da cápsula (precisa de uma vaga livre).";
+const CRIO_SOON = "Esse personagem ainda não é jogável: a Cápsula fica guardada na mochila até ele chegar.";
+const crioText = (id) => (PLAYABLE_CAPSULE.has(id) ? CRIO_USE : CRIO_SOON);
 
 const AMULET_ITEMS = AMULETS.map((a) => G(`amuleto_${a.domain}`, "accessory", a.name, "epic", {
   keys: Object.freeze(a.keys), domain: a.domain, level: DOMAIN_LEVEL[a.domain], sell: 0, bestiary: true,
@@ -130,9 +134,9 @@ const DESCRIPTIONS = Object.freeze({
   ...Object.fromEntries(AMULETS.map((a) => [`amuleto_${a.domain}`, `Amuleto épico do Domínio ${DOMAIN_NAME[a.domain]}. Fabricado na Forja com ${NEED.accessory} fragmentos.`])),
   ...Object.fromEntries(AMULETS.map((a) => [`frag_amuleto_${a.domain}`, `Junte ${NEED.accessory} para fabricar o ${a.name} na Forja. Cai no chefe da primeira cena (setor 3), no elite do setor 7 e, com sorte, no lugar do material raro do Domínio. O que sobrar vira Pó de Refino.`])),
   ...Object.fromEntries(CHARACTERS.map((c) => [`frag_personagem_${c.id}`, `Junte ${NEED.character} para completar a Cápsula de ${c.name}. ${c.guardian ? "O guardião do setor 9 deixa 1 a cada vitória." : "Cai com 25% a cada vitória contra o elite dos setores 7 e 8."}`])),
-  ...Object.fromEntries(CHARACTERS.map((c) => [`embriao_${c.id}`, `Cápsula de ${c.name}, completada com ${NEED.character} fragmentos. ${CRIO_NEXT}`])),
+  ...Object.fromEntries(CHARACTERS.map((c) => [`embriao_${c.id}`, `Cápsula de ${c.name}, completada com ${NEED.character} fragmentos. ${crioText(c.id)}`])),
   ...Object.fromEntries(GODS.map((g) => [`frag_deus_${g.id}`, `Junte ${NEED.god} para completar a Cápsula de ${g.name}. O deus deixa 1 a cada vitória e mais ${GOD_FRAGMENTS.first} na primeira.`])),
-  ...Object.fromEntries(GODS.map((g) => [`embriao_${g.id}`, `Cápsula de ${g.name}, completada com ${NEED.god} fragmentos. ${CRIO_NEXT}`])),
+  ...Object.fromEntries(GODS.map((g) => [`embriao_${g.id}`, `Cápsula de ${g.name}, completada com ${NEED.god} fragmentos. ${crioText(g.id)}`])),
 });
 
 const FRAGMENTS = Object.freeze([...AMULET_FRAGMENTS, ...CHARACTER_FRAGMENTS, ...GOD_FRAGMENTS_ITEMS]);

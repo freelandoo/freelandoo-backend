@@ -147,3 +147,11 @@ test("Faísca: Domínios 7–10 e Loja de troca pagam; ninguém vende por Gold/E
   assert.ok(offers.length >= 6);
   assert.ok(offers.every((o) => o.token.startsWith("ficha_")));
 });
+
+test("Cápsula: o texto diz 'use no Laboratório' só para os 12 do banner (os outros ficam guardados)", () => {
+  const Bestiary = require("../../src/utils/mmItems/catalog/bestiary");
+  for (const c of [...Bestiary.CHARACTERS, ...Bestiary.GODS]) {
+    const txt = Bestiary.DESCRIPTIONS[`embriao_${c.id}`];
+    assert.strictEqual(txt.includes("Use no Laboratório"), G.CHARACTER_BY_ID.has(c.id), c.id);
+  }
+});

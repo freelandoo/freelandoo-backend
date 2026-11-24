@@ -44,6 +44,9 @@ const ERRORS = {
   gone: ["Esse personagem não está vivo nem na cápsula", 409],
   gene: ["Genética não encontrada", 404],
   geneFull: ["O congelador de genéticas está cheio", 409],
+  capsuleItem: ["Essa Cápsula não existe", 400],
+  capsuleSoon: ["Essa Cápsula ainda não vira personagem: fica guardada", 409],
+  noCapsule: ["Você não tem essa Cápsula", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -475,6 +478,37 @@ class MeuMundoCharacterService {
       ctx.what = `embryo:${species}`;
       const created = await claimGrants(c, idUser, ctx.now);
       return { granted: created, paid: price };
+    }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
+  }
+
+  /**
+   * POST /characters/capsule { item: "embriao_<id>", key } — gacha-v1 (24/11/2026): USAR A CÁPSULA que a Forja
+   * fabrica com 100 fragmentos (personagem ou deus). Consome 1 Cápsula e o personagem nasce congelado na
+   * cápsula do Laboratório, como o embrião comprado (1,00 m, 0 dia de vida ativa). Cápsula cheia recusa ANTES de
+   * consumir (o withLife desfaz tudo). Espécie que ainda não é jogável (guardiões) recusa e a Cápsula fica.
+   * Repetido pode: é outro indivíduo da mesma espécie, sem poder novo. `key` = reenvio não gasta duas.
+   */
+  static async useCapsule(idUser, body = {}) {
+    const item = String(body.item || "");
+    const it = require("../utils/meuMundoGear").GEAR_BY_ID.get(item);
+    if (!it || !it.embryo) return fail("capsuleItem");
+    const species = it.embryo.of;
+    if (!Chars.speciesById(species)) return fail("capsuleSoon");
+    if (body.sex != null && body.sex !== "m" && body.sex !== "f") return fail("sex");
+    const key = String(body.key || "");
+    if (!KEY_RE.test(key)) return fail("key");
+    return LifeService().withLife(idUser, async (s, ctx) => {
+      const c = ctx.client;
+      const id = await LS.addGrant(c, idUser, { species, sex: Chars.speciesSex(species, body.sex), source: "prize", ref: `capsule:${key}` });
+      if (!id) return { granted: [], repeat: true };
+      if ((await LS.capsuleCount(c, idUser)) >= Chars.CAPSULE.SLOTS) return fail("full");
+      const GearStore = require("../storages/MeuMundoGearStorage");
+      const have = (await GearStore.lockItem(c, idUser, item))?.qty || 0;
+      if (have < 1) return fail("noCapsule");
+      if ((await GearStore.addStack(c, idUser, item, -1)) == null) return fail("noCapsule");
+      ctx.what = `capsule:${species}`;
+      const created = await claimGrants(c, idUser, ctx.now);
+      return { granted: created, used: item, species };
     }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
   }
 
