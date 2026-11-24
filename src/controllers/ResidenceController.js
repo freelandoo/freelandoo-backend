@@ -3,9 +3,14 @@
 // menor) mora no ResidenceService.
 
 const ResidenceService = require("../services/ResidenceService");
+const TerritoryService = require("../services/TerritoryService");
 const { sendServiceResult } = require("../utils/sendServiceResult");
 
 class ResidenceController {
+  static async previewCep(req, res) {
+    return sendServiceResult(res, await TerritoryService.previewCep(req.params?.cep));
+  }
+
   static async claim(req, res) {
     const { cep, numero, complemento } = req.body || {};
     const result = await ResidenceService.claim({

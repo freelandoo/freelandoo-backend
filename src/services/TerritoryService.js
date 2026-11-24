@@ -96,6 +96,34 @@ class TerritoryService {
    * de um CEP não resolvido contaminaria a base de bairros. Quem chama decide
    * o que fazer (o subsistema 3 registra o pedido como pendente de verificação).
    */
+  /**
+   * PRÉVIA do CEP para a tela "moro em casa" (Minha cidade, 2026-11-24): a
+   * pessoa vê a rua, o bairro e a cidade ANTES de declarar — a mesma consulta
+   * (com o mesmo cache) que a declaração faz, então o bairro mostrado é o
+   * bairro em que ela vai cair. Não grava território nem endereço.
+   *
+   * ViaCEP fora e sem cache: `unavailable` — a tela deixa declarar assim
+   * mesmo (a declaração já trata), mas NÃO inventa bairro.
+   */
+  static async previewCep(cep, conn = pool) {
+    const digits = onlyDigits(cep);
+    if (digits.length !== 8) return { error: "CEP inválido.", statusCode: 400 };
+    const lookup = await this.lookupCep(digits, conn);
+    if (lookup.not_found) return { error: "CEP não encontrado.", statusCode: 404 };
+    if (!lookup.data) return { preview: null, unavailable: true };
+    const { logradouro, bairro, localidade, uf } = lookup.data;
+    const isCityWide = !bairro || !String(bairro).trim();
+    return {
+      preview: {
+        logradouro: logradouro || null,
+        bairro: isCityWide ? CITY_WIDE_LABEL : bairro,
+        municipio: localidade || null,
+        uf: uf || null,
+        is_city_wide: isCityWide,
+      },
+    };
+  }
+
   static async resolveResidence({ cep, numero, complemento = null }, conn = pool) {
     return runWithLogs(
       log,

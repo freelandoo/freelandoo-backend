@@ -220,6 +220,27 @@ async function main() {
     assert.strictEqual(trocou.bairros[0].is_member, true);
   });
 
+  // ═══ 6. prévia do CEP ═══════════════════════════════════════════════════
+  console.log("\n━━━ 6. prévia do CEP ━━━");
+  const TerritoryService = require("../src/services/TerritoryService");
+  const prev = await TerritoryService.previewCep("30130-010");
+  const naoAchou = await TerritoryService.previewCep("99999999");
+  const ruimCep = await TerritoryService.previewCep("123");
+  check("prévia mostra rua, bairro e cidade do CEP (o mesmo bairro da declaração)", () => {
+    assert.deepStrictEqual(prev.preview, {
+      logradouro: "Avenida Afonso Pena",
+      bairro: "Centro City E2E",
+      municipio: "Belo Horizonte",
+      uf: "MG",
+      is_city_wide: false,
+    });
+  });
+  check("ViaCEP sem resposta: prévia vazia, sem bairro inventado", () => {
+    assert.strictEqual(naoAchou.preview, null);
+    assert.strictEqual(naoAchou.unavailable, true);
+  });
+  check("CEP malformado: 400", () => assert.strictEqual(ruimCep.statusCode, 400));
+
   // ── limpeza ─────────────────────────────────────────────────────────────
   const ids = [hoodId, condo.id_profile].filter(Boolean);
   await db.query(`DELETE FROM public.tb_community_member WHERE id_community_profile = ANY($1::uuid[])`, [ids]);

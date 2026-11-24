@@ -29,6 +29,10 @@ router.post(
 
 /* -------------------------------- morador --------------------------------- */
 router.post("/claim", asyncHandler(ResidenceController.claim));
+// Prévia do CEP (Minha cidade): rua, bairro e cidade antes de declarar. Só
+// logado (o `router.use(authMiddleware)` acima) — e só dado público do CEP,
+// nada de quem mora ali.
+router.get("/cep/:cep", asyncHandler(ResidenceController.previewCep));
 router.get("/mine", asyncHandler(ResidenceController.listMine));
 router.get("/pending", asyncHandler(ResidenceController.listPending));
 router.get("/units/:id_unit/neighbors", asyncHandler(ResidenceController.listNeighbors));
