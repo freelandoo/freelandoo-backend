@@ -52,15 +52,18 @@ test("estrelas 1→5 garantidas; doadora = mesma arma, outra cópia, nova, sem t
     assert.equal(WP.donorProblem(base, { ...ok, ...extra }), "donorbuilt", JSON.stringify(extra));
 });
 
-test("fragmentos de CLASSE: 20 da classe montam QUALQUER arma dela (repetida vale)", () => {
+test("fragmentos de CLASSE: 20 (E) +20 por classe montam QUALQUER arma dela (repetida vale)", () => {
   const weapons = Items.GEAR.filter((g) => WP.isWeapon(g) && !g.retired);
   assert.ok(weapons.length >= 100);
   for (const g of weapons) {
     const c = WP.assemblyCost(g);
-    assert.deepEqual(c, { rulesVersion: WP.RULES_VERSION, rank: g.rank, fragment: `frag_classe_${g.rank.toLowerCase()}`, need: 20 }, g.id);
+    assert.deepEqual(c, { rulesVersion: WP.RULES_VERSION, rank: g.rank, fragment: `frag_classe_${g.rank.toLowerCase()}`, need: WP.FRAGMENT_NEED[g.rank] }, g.id);
     const f = Items.GEAR_BY_ID.get(c.fragment);
     assert.ok(f && f.category === "fragment" && f.stack && f.fragment.rank === g.rank && !f.fragment.of, c.fragment);
   }
+  assert.deepEqual(Object.values(WP.FRAGMENT_NEED), [20, 40, 60, 80, 100, 120, 140, 160, 180, 200]);
+  assert.equal(WP.FRAGMENT_NEED.E, 20);
+  assert.equal(WP.FRAGMENT_NEED.divine, 200);
   assert.equal(WP.assemblyCost(armor), null);
   assert.equal(WP.FRAGMENT_IDS.length, 10);
 });

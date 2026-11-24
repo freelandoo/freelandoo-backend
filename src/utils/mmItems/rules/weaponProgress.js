@@ -43,8 +43,8 @@ const POWDERS = Object.freeze([
 ].map(Object.freeze));
 const POWDER_IDS = Object.freeze(POWDERS.map((p) => p.id));
 
-/** Fragmentos para montar UMA arma, por classe (política única, central; a raridade fica na aquisição). */
-const FRAGMENT_NEED = Object.freeze(Object.fromEntries(RANKS.map((r) => [r, 20])));
+/** Fragmentos para montar UMA arma, por classe: E = 20 e +20 a cada classe acima (… Divina = 200). Pedido do Alex, 24/11. */
+const FRAGMENT_NEED = Object.freeze(Object.fromEntries(RANKS.map((r, i) => [r, 20 * (i + 1)])));
 /** Id do fragmento de uma classe (E → frag_classe_e, SSR → frag_classe_ssr, Lendária → frag_classe_legendary). */
 const fragmentOf = (rank) => `frag_classe_${String(rank).toLowerCase()}`;
 const FRAGMENT_IDS = Object.freeze(RANKS.map(fragmentOf));

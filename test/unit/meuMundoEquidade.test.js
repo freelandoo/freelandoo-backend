@@ -256,15 +256,18 @@ test("I9 (armas) — vitórias de chefão para fabricar: 3 a 20 por raridade; pi
     assert.equal(frag.fragment.need, NEED[out.rarity], frag.id);
   }
 });
-test("I9 + weapon-v1 — fragmento de classe dos setores 7 a 10: uma arma em 5 a 10 vitórias", () => {
+// 24/11: o Alex pôs a escada E = 20 … Divina = 200 fragmentos. O saque ficou igual, então o ritmo escala com a classe:
+// cada 20 fragmentos ainda custam 5 a 10 vitórias (classe C = 60 → 15 a 30; Lendária = 180 → 45 a 90).
+test("I9 + weapon-v1 — fragmento de classe dos setores 7 a 10: 5 a 10 vitórias a cada 20 fragmentos da classe", () => {
   const Items = require("../../src/utils/mmItems");
   const WP = require("../../src/utils/mmItems/rules/weaponProgress");
   const Loot = require("../../src/utils/mmItems/catalog/loot");
   for (const d of Loot.DOMAIN_ORDER) for (let sector = 7; sector <= 9; sector++) {
     const frag = WP.fragmentOf(Loot.DOMAIN_FRAG[d][0]);
     const e = Items.lootExpectation(`domain:${d}:${sector}`, { win: true })[frag];
-    const expected = Math.ceil(WP.FRAGMENT_NEED[Loot.DOMAIN_FRAG[d][0]] / e.expected), worst = Math.ceil(WP.FRAGMENT_NEED[Loot.DOMAIN_FRAG[d][0]] / e.min);
-    assert.ok(expected >= 5 && worst <= 10 && worst <= 1.5 * expected, `${d} ${sector}: ${expected}/${worst}`);
+    const need = WP.FRAGMENT_NEED[Loot.DOMAIN_FRAG[d][0]], k = need / 20;
+    const expected = Math.ceil(need / e.expected), worst = Math.ceil(need / e.min);
+    assert.ok(expected >= 5 * k && worst <= 10 * k && worst <= 1.5 * expected, `${d} ${sector}: ${expected}/${worst} (precisa ${need})`);
     assert.equal(Items.lootExpectation(`domain:${d}:${sector}`, { win: false })[frag], undefined, "derrota não paga");
   }
 });

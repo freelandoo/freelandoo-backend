@@ -120,20 +120,20 @@ async function main() {
     check("no nível 90 não refina mais (e não gasta pó)", (await Service.refineWeapon(id, { instance: sword.id, key: key() })).code === "max" && (await Service.get(id)).bag.owned.po_ref_sss3.qty === 3);
 
     // ── montagem por fragmento de classe: a pessoa escolhe a arma da classe
-    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty) VALUES ($1,'frag_classe_d',45)`, [id]);
+    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty) VALUES ($1,'frag_classe_d',85)`, [id]);
     const weaponD = "espada_latao"; // classe D (a mesma que já tem: repetida vale)
     assert.equal(WP.assemblyCost(Items.GEAR_BY_ID.get(weaponD)).fragment, "frag_classe_d");
     const asmReq = { item: weaponD, key: key() };
     const [a1, a2] = await Promise.all([Service.assembleWeapon(id, asmReq), Service.assembleWeapon(id, asmReq)]);
     bag = a1.bag;
     const copies = bag.instances.filter((x) => x.item === weaponD);
-    check("montar: 20 fragmentos D viram UMA cópia nova (nível 1, 1 estrela), mesmo com reenvio",
-      a1.receipt.eventId === a2.receipt.eventId && copies.length === 2 && bag.owned.frag_classe_d.qty === 25 && copies.some((x) => x.weaponLevel === 1 && x.stars === 1));
+    check("montar: 40 fragmentos D (classe D = 40) viram UMA cópia nova (nível 1, 1 estrela), mesmo com reenvio",
+      a1.receipt.eventId === a2.receipt.eventId && copies.length === 2 && bag.owned.frag_classe_d.qty === 45 && copies.some((x) => x.weaponLevel === 1 && x.stars === 1));
     check("a cópia montada não é vestida sozinha", bag.equipped.weapon === "espada_latao" && copies.filter((x) => x.equippedBy).length === 1);
     check("mesma chave com outra arma é recusada", (await Service.assembleWeapon(id, { item: "cajado_latao", key: asmReq.key })).code === "key_conflict");
     const a3 = await Service.assembleWeapon(id, { item: weaponD, key: key() });
     check("segunda cópia (repetida) também monta", a3.bag.instances.filter((x) => x.item === weaponD).length === 3 && a3.bag.owned.frag_classe_d.qty === 5);
-    check("sem 20 fragmentos recusa sem gastar", (await Service.assembleWeapon(id, { item: weaponD, key: key() })).code === "fragments" && (await Service.get(id)).bag.owned.frag_classe_d.qty === 5);
+    check("sem 40 fragmentos recusa sem gastar", (await Service.assembleWeapon(id, { item: weaponD, key: key() })).code === "fragments" && (await Service.get(id)).bag.owned.frag_classe_d.qty === 5);
     check("não monta o que não é arma", (await Service.assembleWeapon(id, { item: "colete_couro", key: key() })).code === "item");
 
     // ── estrelas: consome uma cópia idêntica nova
