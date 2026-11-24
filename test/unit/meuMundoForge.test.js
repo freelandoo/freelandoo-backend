@@ -16,12 +16,14 @@ const legacyIds = [
 
 test("catálogo preserva os 24 IDs e define 151 itens com fonte e uso reais (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16; +6 fichas da E17)", () => {
   const pub = Gear.publicGear();
-  assert.equal(pub.items.length, 398); // Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
-  assert.equal(new Set(pub.items.map((i) => i.id)).size, 398);
+  assert.equal(pub.items.length, 434); // weapon-v1 (24/11): +17 espadas, +9 pós, +10 fragmentos de classe · Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · E19: + ficha de evento (a receita oculta da E18 fica fora do público)
+  assert.equal(new Set(pub.items.map((i) => i.id)).size, 434);
   for (const id of legacyIds) assert.ok(Gear.GEAR_BY_ID.has(id), id);
   for (const item of pub.items) {
     assert.ok(item.description?.trim(), item.id);
-    assert.ok(item.source.length > 0 && item.source.every((s) => s.trim()), item.id);
+    // weapon-v1: o aposentado fica no catálogo (recibos e cópias antigas) mas sem origem nenhuma
+    if (item.retired) assert.deepEqual(item.source, [], item.id);
+    else assert.ok(item.source.length > 0 && item.source.every((s) => s.trim()), item.id);
     assert.ok(item.uses.length > 0 && item.uses.every((s) => s.trim()), item.id);
     if (item.category === "quest") assert.equal(item.use, "inspect_quest");
     if (item.category === "recipe") assert.equal(item.use, "learn_recipe");
@@ -49,7 +51,7 @@ test("cada montagem usa uma unidade de 10/12/15 partes diferentes", () => {
 });
 
 test("receitas têm referências válidas, fabricam uma unidade e não geram lucro de reciclagem", () => {
-  assert.equal(Gear.RECIPES.length, 110); // Floresta Vermelha (22/11): +3 (amuleto, 2 embriões) · E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo; E18: receita oculta
+  assert.equal(Gear.RECIPES.length, 33); // weapon-v1 (24/11): ficam só Criogenia/bestiário (25) e preparos (8) · Floresta Vermelha (22/11): +3 (amuleto, 2 embriões) · E8: +21 receitas por fragmento; S14: +22 (6 amuletos, 16 embriões); E16: +8 de preparo; E18: receita oculta
   assert.equal(new Set(Gear.RECIPES.map((r) => r.id)).size, Gear.RECIPES.length);
   for (const r of Gear.RECIPES) {
     const out = Gear.GEAR_BY_ID.get(r.out);
@@ -65,46 +67,24 @@ test("receitas têm referências válidas, fabricam uma unidade e não geram luc
     }
     assert.ok(liquidationCost >= out.sell, r.id + " não permite arbitragem de reciclagem");
   }
-  for (const component of Forge.COMPONENTS) {
-    const r = Forge.PART_RECIPES.find((x) => x.out === component.id);
-    assert.ok(r && r.qty === 1);
-  }
+  // weapon-v1: nenhuma receita que ficou usa item aposentado
+  for (const r of Gear.RECIPES) for (const id of [r.out, ...Object.keys(r.needs)]) assert.ok(!Gear.GEAR_BY_ID.get(id).retired, `${r.id}: ${id}`);
 });
 
-test("todas as receitas e peças são alcançáveis sem depender de sorte rara", () => {
-  const reachable = new Set(Gear.GEAR.filter((g) => g.starter || g.price != null).map((g) => g.id));
-  for (const loot of Object.values(Gear.LOOT)) reachable.add(loot.base);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const r of Gear.RECIPES) {
-      if ((!r.recipe || reachable.has(r.recipe)) && Object.keys(r.needs).every((id) => reachable.has(id)) && !reachable.has(r.out)) {
-        reachable.add(r.out);
-        changed = true;
-      }
-    }
+test("weapon-v1: tudo que ficou no jogo tem caminho; toda arma monta com fragmento de classe que cai ou se troca", () => {
+  const Items = require("../../src/utils/mmItems");
+  const WP = require("../../src/utils/mmItems/rules/weaponProgress");
+  for (const g of Gear.GEAR.filter((x) => !x.retired && !x.hidden)) assert.ok(Items.sourcesOf(g).length > 0, g.id);
+  const obtainable = new Set();
+  for (const t of Object.values(Items.LOOT_TABLES)) for (const e of [...(t.sure || []), ...(t.chance || []), ...(t.first || [])]) if (e && e.id) obtainable.add(e.id);
+  for (const o of Items.EXCHANGE.OFFERS) for (const id of Object.keys(o.gives)) obtainable.add(id);
+  for (const g of Gear.GEAR.filter((x) => WP.isWeapon(x) && !x.retired)) {
+    const cost = WP.assemblyCost(g);
+    assert.ok(cost && Gear.GEAR_BY_ID.has(cost.fragment), g.id);
+    assert.ok(Items.sourcesOf(Gear.GEAR_BY_ID.get(cost.fragment)).length > 0, cost.fragment);
   }
-  // E7/E8: peças de conjunto, armas de linha, fragmentos e materiais novos chegam pelo saque dos
-  // Domínios (E12) e das atividades (E17); até lá a origem é declarada no catálogo
-  const later = new Set(require("../../src/utils/mmItems").LINES.ITEMS.map((g) => g.id));
-  // S14: amuletos, fragmentos do bestiário e embriões também chegam pelo saque dos Domínios
-  for (const g of require("../../src/utils/mmItems/catalog/bestiary").ITEMS) later.add(g.id);
-  // E13: runas caem por chance nos Domínios e sobem pela fusão — não travam progresso nenhum
-  const optional = (g) => g.category === "rune" || g.category === "consumable"; // E16: preparo é opcional (nunca trava progresso)
-  // E17: fichas caem nas partidas (garantido) — não são receita nem loja
-  for (const g of Gear.GEAR.filter((x) => x.category === "currency" && x.token)) reachable.add(g.id);
-  // E18: o que sai de baú (conteúdo fixo, uma vez por conta) — a receita oculta só existe lá
-  for (const c of require("../../src/utils/mmItems/catalog/chests").CHESTS) for (const id of Object.keys(c.gives)) reachable.add(id);
-  assert.deepEqual(Gear.GEAR.filter((g) => !g.set && !later.has(g.id) && !optional(g) && !reachable.has(g.id)).map((g) => g.id), []);
-  for (const item of Gear.GEAR.filter((g) => g.category === "material")) {
-    assert.ok(Gear.RECIPES.some((r) => r.needs[item.id]) || ["fragmento_lamina", "couro_reforcado", "nucleo_eter", "selo_forja",
-      // E8: custo do aprimoramento (E9) e do refinamento (E10); Madeira, Cristal e Pó de Forja são das runas e consumíveis (fase 4)
-      "pedra_aprimoramento", "catalisador_refino", "madeira_ancestral", "cristal_bruto", "po_forja"].includes(item.id)
-      // S14: o embrião é usado na Criogenia (fatia seguinte)
-      || !!item.embryo, item.id);
-  }
-  assert.ok(Forge.CONVERSIONS.some((r) => r.out === "selo_forja"));
-  assert.ok(!Gear.RECIPES.some((r) => r.needs.chave_subestacao), "chave é leitura/coleção, não loot genérico");
+  for (const id of WP.POWDER_IDS) assert.ok(Items.sourcesOf(Gear.GEAR_BY_ID.get(id)).length > 0, id);
+  assert.ok(obtainable.has("po_ref_d") && obtainable.has("frag_classe_e"));
 });
 
 test("cotação e custo crescem até +10; os primeiros custos monetários permanecem", () => {

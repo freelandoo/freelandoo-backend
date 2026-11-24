@@ -114,7 +114,8 @@ const MATERIALS = Object.freeze([
   M("barro_primordial", "Barro Primordial", "uncommon", "bastor", null), // E17: Paint
 ]);
 const CURRENCY = Object.freeze([
-  G("po_refino", "currency", "Pó de Refino", "uncommon", { stack: true, sell: 0, ...notes("po_refino"), source: Object.freeze(["Forja: converter fragmentos que sobram (2 × tier cada) e desmontar equipamento."]) }),
+  // weapon-v1 (24/11/2026): aposentado (catalog/retired.js) — a desmontagem e a conversão de fragmentos saíram
+  G("po_refino", "currency", "Pó de Refino", "uncommon", { stack: true, sell: 0, ...notes("po_refino") }),
   G("selo_dominio", "currency", "Selo de Domínio", "rare", { stack: true, sell: 0, ...notes("selo_dominio") }), // E12: chefões
 ]);
 

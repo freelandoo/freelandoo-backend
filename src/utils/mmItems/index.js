@@ -34,8 +34,12 @@ const { LOOT, TABLES: LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE, domainTableId }
 const LootRule = require("./rules/loot");
 const Exchange = require("./catalog/exchange");
 const chests = require("./catalog/chests");
+// weapon-v1 (24/11/2026): pós e fragmentos de classe; o que saiu do jogo (catalog/retired.js)
+const weaponProgressCat = require("./catalog/weaponProgress");
+const Retired = require("./catalog/retired");
+const WeaponProgress = require("./rules/weaponProgress");
 
-const PARTS = [weapons, weaponsTripo, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary, chests];
+const PARTS = [weapons, weaponsTripo, armor, accessories, materials, blueprints, quest, cosmetics, relics, fragments, runes, consumables, currency, setsCat, lines, bestiary, chests, weaponProgressCat];
 
 /**
  * E7: equipamento ganha as duas chaves (catalog/keys.js; as peças de conjunto trazem as suas) e o
@@ -49,7 +53,7 @@ function withRule(it) {
   return Object.freeze({ ...ruled, bonus: Object.freeze(Bonus.pieceBonus(ruled, 0, 1)) });
 }
 
-const GEAR = Object.freeze([
+const GEAR0 = Object.freeze([
   ...weapons.ITEMS, ...armor.ITEMS, ...accessories.ITEMS, ...materials.ITEMS,
   ...blueprints.ITEMS, ...quest.ITEMS, ...cosmetics.ITEMS, ...recipes.COMPONENT_ITEMS,
   ...relics.ITEMS, ...fragments.ITEMS, ...runes.ITEMS, ...consumables.ITEMS, ...currency.ITEMS,
@@ -63,11 +67,17 @@ const GEAR = Object.freeze([
   ...chests.ITEMS,
   // 22/11/2026: armas novas do Tripo (cajados da Raposa, espadas, pesadas e as primeiras Divinas), no fim
   ...weaponsTripo.ITEMS,
+  // weapon-v1 (24/11/2026): os 9 pós de refinamento e os 10 fragmentos de classe (no fim)
+  ...weaponProgressCat.ITEMS,
 ].map(withRule));
-const GEAR_BY_ID = new Map(GEAR.map((g) => [g.id, g]));
 
-/** Toda peça, montagem, conversão e receita direta (ordem pública de antes). */
-const RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES, ...consumables.RECIPES, ...chests.RECIPES]); // E16/E18: preparo e receita oculta no fim (a ordem de antes não muda)
+/**
+ * Receitas que CONTINUAM (weapon-v1): Criogenia/bestiário e preparos. Peças, montagens, conversões,
+ * equipamento direto, armas/conjuntos por fragmento específico e a receita oculta saíram (catalog/retired.js);
+ * a arma agora se monta por fragmento de CLASSE (rules/weaponProgress.js, `assemble` no serviço).
+ */
+const ALL_RECIPES = Object.freeze([...recipes.PART_RECIPES, ...recipes.ASSEMBLIES, ...recipes.CONVERSIONS, ...recipes.ITEM_RECIPES, ...lines.FRAGMENT_RECIPES, ...bestiary.RECIPES, ...consumables.RECIPES, ...chests.RECIPES]);
+const RECIPES = Object.freeze(ALL_RECIPES.filter(Retired.keepRecipe));
 const RECIPE_BY_ID = new Map(RECIPES.map((r) => [r.id, r]));
 
 /** Descrição por id (a das peças da forja mora no próprio item). */
@@ -85,11 +95,20 @@ function sourcesOf(item) {
   source.push(...LootRule.lootSourceLines(item.id)); // E3: derivado das tabelas
   // E17: Loja de troca (fichas)
   for (const o of Exchange.OFFERS) if (o.gives[item.id]) source.push(`Loja de troca: ${o.gives[item.id]} por ${o.cost} fichas do ${Exchange.GAME_NAME[o.token.replace("ficha_", "")]}.`);
-  // E13: runa de grau II em diante sai da fusão de 3 do grau abaixo
-  if (item.rune && item.rune.grade > 1) source.push(`Fusão de runas: 3 runas de ${runes.KIND_NAME[item.rune.kind]} grau ${runes.ROMAN[item.rune.grade - 2]} viram 1 de grau ${runes.ROMAN[item.rune.grade - 1]}.`);
-  for (const r of RECIPES) if (r.out === item.id) source.push(`Ferreiro: ${r.kind === "assembly" ? "montar" : r.kind === "part" ? "fabricar uma peça de" : "produzir"} ${item.name} (${r.coins} moedas e ingredientes da receita).`);
+  for (const r of RECIPES) if (r.out === item.id) source.push(`Ferreiro: produzir ${item.name} (${r.coins} moedas e ingredientes da receita).`);
+  // weapon-v1: toda arma se monta na Forja com fragmentos da classe dela (o jogador escolhe qual)
+  const asm = WeaponProgress.assemblyCost(item);
+  if (asm) source.push(`Forja: montar com ${asm.need} fragmentos de classe ${weaponProgressCat.rankName(asm.rank)}.`);
   return source;
 }
+
+/**
+ * weapon-v1: item APOSENTADO = pilha da forja/refino antigos (catalog/retired.js) ou peça que ficou sem
+ * nenhuma origem (conjuntos, proteções e acessórios que só saíam de receita). Continua no catálogo (cópias e
+ * recibos antigos), marcado `retired`; a validação exige que nada aposentado ainda tenha origem.
+ */
+const GEAR = Object.freeze(GEAR0.map((g) => (Retired.isRetiredStack(g) || !sourcesOf(g).length ? Object.freeze({ ...g, retired: true }) : g)));
+const GEAR_BY_ID = new Map(GEAR.map((g) => [g.id, g]));
 
 const ERRORS = validateCatalog({ items: GEAR, recipes: RECIPES, loot: LOOT, sets: SETS, sources: sourcesOf });
 if (ERRORS.length) throw new Error(`Catálogo do Meu Mundo inválido:\n- ${ERRORS.join("\n- ")}`);
@@ -99,7 +118,7 @@ module.exports = {
   GEAR, GEAR_BY_ID, RECIPES, RECIPE_BY_ID, DESCRIPTIONS, SETS, SET_STEPS, LOOT,
   bonusOf: (pieces, opts = {}) => Bonus.bonusOf(pieces, { sets: SETS, steps: SET_STEPS, ...opts }), pieceBonus: Bonus.pieceBonus, LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE,
   rollTable, lootSourcesOf: LootRule.lootSourcesOf, lootExpectation: LootRule.expectation, domainTableId,
-  FORGE: recipes, LINES: lines, EXCHANGE: Exchange, CHESTS: chests,
+  FORGE: recipes, LINES: lines, EXCHANGE: Exchange, CHESTS: chests, WEAPON_PROGRESS: WeaponProgress, RETIRED: Retired,
   sourcesOf,
   validateCatalog: () => validateCatalog({ items: GEAR, recipes: RECIPES, loot: LOOT, sets: SETS, sources: sourcesOf }),
 };

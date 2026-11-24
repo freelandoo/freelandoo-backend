@@ -20,11 +20,11 @@ const ClassStats = require("../utils/mmItems/rules/classStats");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const Gear = require("../utils/meuMundoGear");
 const Items = require("../utils/mmItems");
-const Upgrade = require("../utils/mmItems/rules/upgrade");
-const Salvage = require("../utils/mmItems/rules/salvage");
 const Runes = require("../utils/mmItems/rules/runes");
 const Ascend = require("../utils/mmItems/rules/ascend");
-const Enchant = require("../utils/mmItems/rules/enchant");
+// weapon-v1 (24/11/2026): nível 1–90 por pó, estrelas por cópia idêntica, forja por fragmento de classe
+const WP = require("../utils/mmItems/rules/weaponProgress");
+const Retired = require("../utils/mmItems/catalog/retired");
 const Adv = require("../utils/meuMundoAdventure");
 const GearStore = require("../storages/MeuMundoGearStorage");
 const AdvStore = require("../storages/MeuMundoAdventureStorage");
@@ -83,6 +83,15 @@ const ERRORS = {
   chestfar: ["Chegue perto do baú para abrir", 409],
   chestopen: ["Você já abriu esse baú", 409],
   tokens: ["Fichas insuficientes", 402],
+  // weapon-v1
+  retired: ["Essa ação saiu do jogo: as armas agora evoluem por refinamento com pó e estrelas na forja", 410],
+  rules: ["O refinamento mudou: atualize a página", 410],
+  notweapon: ["Só armas evoluem por nível e estrelas", 400],
+  fragments: ["Faltam fragmentos dessa classe", 409],
+  donor: ["Escolha a cópia que será consumida", 400],
+  donorself: ["A cópia consumida não pode ser a própria arma", 400],
+  donoritem: ["A cópia consumida precisa ser da mesma arma", 409],
+  donorbuilt: ["Use como doadora uma cópia nova: nível 1, 1 estrela e sem investimento", 409],
 };
 const fail = (code) => {
   const [error, statusCode] = ERRORS[code] || ["Não foi possível", 400];
@@ -96,6 +105,15 @@ const iso = (value) => (value == null ? null : new Date(value).toISOString());
 const isInstanceItem = (it) => !!it && !it.stack && Gear.slotsFor(it).length > 0;
 const INSTANCE_ITEMS = Gear.GEAR.filter(isInstanceItem).map((g) => g.id);
 const TWO_HANDED = Gear.GEAR.filter((g) => g.twoHanded).map((g) => g.id);
+/** weapon-v1: armas (nível + estrelas) e pilhas aposentadas (viram pó/fragmento novo no `prepare`). */
+const WEAPON_ITEMS = Gear.GEAR.filter((g) => WP.isWeapon(g)).map((g) => g.id);
+const RETIRED_STACKS = Gear.GEAR.filter((g) => Retired.isRetiredStack(g)).map((g) => g.id);
+const compensate = (id, qty) => Retired.compensation(Gear.GEAR_BY_ID.get(id), qty);
+/** O "plus" da régua de uma cópia: arma = o nível convertido (fracionário); o resto = o +N que tinha. */
+const plusOf = (it, x) => (WP.isWeapon(it) ? WP.plusEquiv(x.weaponLevel) : x.plus || 0);
+/** Bônus de uma cópia (com o que já foi investido nela), opcionalmente com nível/estrelas trocados. */
+const instBonus = (it, x, over = {}) => Items.pieceBonus(it, over.plus != null ? over.plus : plusOf(it, x), over.grade != null ? over.grade : x.grade,
+  { sockets: x.sockets, awakened: x.awakened, enchant: (x.affixes && x.affixes.enchant) || null });
 /**
  * Começo de toda operação: a pilha antiga de equipamento vira instância (E2) e o loadout nos
  * slots de antes da E6 vai para os 8 slots (shield → offhand, armor → chest, acc1/acc2 → o slot
@@ -105,6 +123,8 @@ const TWO_HANDED = Gear.GEAR.filter((g) => g.twoHanded).map((g) => g.id);
 async function prepare(c, idUser) {
   const moved = await GearStore.materialize(c, idUser, INSTANCE_ITEMS);
   await GearStore.convertForgeV1(c, idUser); // E9 (A2): o que ainda está em forge-v1 vira +round(1,5 × N)
+  await GearStore.convertWeapons(c, idUser, WEAPON_ITEMS, WP.MAX_LEVEL); // weapon-v1: +N → nível, grau → estrelas
+  await GearStore.convertRetired(c, idUser, RETIRED_STACKS, compensate); // weapon-v1: pilha aposentada → pó/fragmento
   const legacy = await GearStore.legacyLoadout(c, idUser, Object.keys(Gear.LEGACY_SLOTS));
   for (const row of legacy) {
     const to = Gear.normalizeSlot(row.slot, Gear.GEAR_BY_ID.get(row.item_id));
@@ -135,7 +155,7 @@ async function pickInstance(c, idUser, it, rawInstance, { lock = false } = {}) {
 async function putItem(c, idUser, it, n, origin) {
   if (isInstanceItem(it)) {
     const ids = [];
-    for (let i = 0; i < n; i++) ids.push(await GearStore.createInstance(c, idUser, it.id, origin));
+    for (let i = 0; i < n; i++) ids.push(await GearStore.createInstance(c, idUser, it.id, origin, WP.isWeapon(it) ? WP.RULES_VERSION : "forge-v2"));
     return { got: n, ids };
   }
   const before = (await GearStore.lockItem(c, idUser, it.id))?.qty || 0;
@@ -143,19 +163,19 @@ async function putItem(c, idUser, it, n, origin) {
   return { got: Math.max(0, (after ?? before) - before), ids: [] };
 }
 
-/** E9: o próximo passo de uma cópia, como a bancada mostra (custo fixo, bônus antes e depois). */
-function upgradeView(it, inst) {
-  const cost = Upgrade.upgradeCost(it, inst.plus);
+/** weapon-v1: a próxima tentativa de refino da cópia (pó, chance e bônus antes/depois). */
+function refineView(it, inst) {
+  const cost = WP.refineCost(it, inst.weaponLevel);
   if (!cost) return null;
-  return { ...cost, blocked: cost.ascension && !inst.ascended ? "ascend" : null,
-    bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade), bonusAfter: Items.pieceBonus(it, cost.to, inst.grade) };
+  return { ...cost, bonusBefore: instBonus(it, inst), bonusAfter: instBonus(it, inst, { plus: WP.plusEquiv(cost.to) }) };
 }
 
-/** E10: o próximo grau de uma cópia (custo fixo em Pó de Refino e Catalisador; bônus antes e depois). */
-function gradeView(it, inst) {
-  const cost = Upgrade.gradeCost(it, inst.grade);
+/** weapon-v1: a próxima estrela (cópias idênticas que servem de doadora e bônus antes/depois). */
+function starsView(it, inst, all) {
+  const cost = WP.starsCost(it, inst.grade);
   if (!cost) return null;
-  return { ...cost, bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade), bonusAfter: Items.pieceBonus(it, inst.plus, cost.to) };
+  const donors = all.filter((d) => d.item === inst.item && !WP.donorProblem(inst, d)).map((d) => d.id);
+  return { ...cost, donors, bonusBefore: instBonus(it, inst), bonusAfter: instBonus(it, inst, { grade: cost.to }) };
 }
 
 function publicProposal(p) {
@@ -206,7 +226,7 @@ async function equippedFull(c, idUser, clan) {
   for (const [slot, x] of Object.entries(live)) {
     const it = Gear.GEAR_BY_ID.get(x.item);
     if (!it || (it.clan && it.clan !== clan) || weaponBlocked(it, body)) continue;
-    out[slot] = { id: x.item, level: x.plus, grade: x.grade, sockets: x.sockets || [], awakened: !!x.awakened, enchant: (x.affixes && x.affixes.enchant) || null };
+    out[slot] = { id: x.item, level: plusOf(it, x), weaponLevel: x.weaponLevel, grade: x.grade, sockets: x.sockets || [], awakened: !!x.awakened, enchant: (x.affixes && x.affixes.enchant) || null };
   }
   return out;
 }
@@ -225,19 +245,12 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   const all = await GearStore.instances(c, idUser);
   const live = await GearStore.loadoutLive(c, idUser);
   const liveIds = new Set(Object.values(live).map((x) => x.instance));
-  // E9: a bancada mostra o custo FIXO do próximo passo de cada cópia e o bônus antes e depois
+  // weapon-v1: a bancada de refino e a forja mostram, por cópia de ARMA, a próxima tentativa e a próxima estrela
   const forge = {};
   for (const x of all) {
     const it = Gear.GEAR_BY_ID.get(x.item);
-    if (!Upgrade.upgradable(it)) continue;
-    forge[x.id] = { upgrade: upgradeView(it, x), grade: gradeView(it, x),
-      // E11: o que a desmontagem devolve (o servidor recusa travada ou vestida)
-      salvage: salvageBack(it, x),
-      // E14: o que a Ascensão e o Despertar pedem (ou por que ainda não)
-      ascend: Ascend.ascendCost(it, x), awaken: { ...Ascend.awakenCost(it, x), bonus: Ascend.awakenValue(it) },
-      // E15: custo do sorteio do encanto e o sorteio esperando escolha (cada opção com o bônus que daria)
-      enchant: { ...Enchant.enchantCost(it, enchantOf(x)), current: Enchant.effectiveKeys(it, enchantOf(x))[1] || null,
-        offer: offerOf(x) ? offerOf(x).map((k) => ({ key: k, bonus: Items.pieceBonus(it, x.plus, x.grade, { sockets: x.sockets, awakened: x.awakened, enchant: k }) })) : null } };
+    if (!WP.isWeapon(it)) continue;
+    forge[x.id] = { refine: refineView(it, x), stars: starsView(it, x, all), bonus: instBonus(it, x) };
   }
   const stacks = {};
   for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
@@ -248,8 +261,11 @@ async function bagState(c, idUser, coins, now = Date.now()) {
     classGear: ClassStats.classGearOf(Object.values(full).map((e) => Gear.GEAR_BY_ID.get(e.id))),
     // E7: bônus de cada slot pela régua (plus e grau da cópia vestida), para a tela de equipar
     pieces: Object.fromEntries(Object.entries(full).map(([slot, e]) => [slot, Items.pieceBonus(Gear.GEAR_BY_ID.get(e.id), e.level || 0, e.grade || 1, { sockets: e.sockets, awakened: e.awakened, enchant: e.enchant })])),
+    // weapon-v1: regra em vigor (o aparelho confere a versão antes de pedir)
+    progression: WP.publicRules(),
     instances: all.map((x) => ({
-      id: x.id, item: x.item, plus: x.plus, grade: x.grade, ascended: !!x.ascended, awakened: !!x.awakened, enchant: enchantOf(x), locked: x.locked || lockedInst.has(x.id),
+      id: x.id, item: x.item, plus: x.plus, grade: x.grade,
+      ...(WP.isWeapon(Gear.GEAR_BY_ID.get(x.item)) ? { weaponLevel: x.weaponLevel, stars: x.grade } : {}), ascended: !!x.ascended, awakened: !!x.awakened, enchant: enchantOf(x), locked: x.locked || lockedInst.has(x.id),
       // E13: runas engastadas e engastes da cópia; `version` confere o pedido de engaste
       sockets: x.sockets || [], socketsMax: Runes.socketsOf(Gear.GEAR_BY_ID.get(x.item), !!x.ascended), version: x.version,
       equippedBy: x.equippedBy, equippedSlot: x.equippedSlot, equippedHere: liveIds.has(x.id),
@@ -269,7 +285,7 @@ async function bagState(c, idUser, coins, now = Date.now()) {
  * Roda `fn` com recibo idempotente: se a chave já tem recibo, devolve ele.
  * `fn(s, ctx)` devolve { error } ou { result, deltas, items }.
  */
-function withReceipt(idUser, source, rawKey, fn) {
+function withReceipt(idUser, source, rawKey, fn, match = null) {
   const key = String(rawKey || "");
   if (!KEY.test(key)) return Promise.resolve(fail("key"));
   return MeuMundoLifeService.withLife(idUser, async (s, ctx) => {
@@ -278,6 +294,8 @@ function withReceipt(idUser, source, rawKey, fn) {
     await GearStore.expireProposals(c, idUser, ctx.now);
     // Equipamentos e operações pertencem à conta, mesmo após novo hóspede.
     const same = await GearStore.accountReceipt(c, idUser, source, key);
+    // a mesma chave só devolve o MESMO pedido (weapon-v1: não troca de cópia/doadora/arma para ressortear)
+    if (same && match && !match(same.result || {})) return fail("key_conflict");
     if (same) return { receipt: same, replay: true, bag: await bagState(c, idUser, ctx.coins) };
     if (s.status !== "alive") return fail("dead");
     const mark = await GearStore.ledgerMark(c, idUser);
@@ -299,48 +317,11 @@ function withReceipt(idUser, source, rawKey, fn) {
   });
 }
 
-/** E11 + E13: o que a desmontagem devolve — materiais e Pó da regra + as runas engastadas, inteiras. */
-function salvageBack(it, inst) {
-  const back = { ...(Salvage.salvageYield(it, inst.plus, Gear.RECIPES, Gear.GEAR_BY_ID) || {}) };
-  for (const id of inst.sockets || []) if (Runes.parseRune(id)) back[id] = (back[id] || 0) + 1;
-  return back;
-}
-
 /** E15: a chave encantada da cópia e o sorteio que espera escolha (em `affixes`). */
 const enchantOf = (inst) => (inst.affixes && inst.affixes.enchant) || null;
-const offerOf = (inst) => (inst.affixes && Array.isArray(inst.affixes.offer) && inst.affixes.offer.length ? inst.affixes.offer : null);
 
 /** E13: confere o `version` que o aparelho viu (opcional; diferente = a cópia mudou noutra aba). */
 const staleVersion = (body, inst) => body.version != null && body.version !== "" && Number(body.version) !== Number(inst.version);
-
-/**
- * E14/E15: um passo de evolução de UMA cópia pago com itens: `costOf(it, inst)` → { needs } | { error };
- * `apply(c, inst)` grava; `story(it, inst)` vai no recibo. Trava a cópia, confere a versão e o saldo.
- */
-function pieceStep(idUser, body, source, costOf, apply, story) {
-  if (!KEY.test(String(body.instance || ""))) return Promise.resolve(fail("instance"));
-  return withReceipt(idUser, source, body.key, async (s, ctx) => {
-    const c = ctx.client;
-    const inst = await GearStore.lockInstance(c, idUser, String(body.instance));
-    if (!inst) return fail("instance");
-    if (staleVersion(body, inst)) return fail("version");
-    if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
-    const it = Gear.GEAR_BY_ID.get(inst.item);
-    const cost = costOf(it, inst);
-    if (cost.error) return fail(cost.error);
-    const owned = await GearStore.owned(c, idUser);
-    for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
-    if ((cost.coins || 0) > ctx.coins) return fail("coins");
-    ctx.coins -= cost.coins || 0;
-    for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
-    const extra = await apply(c, inst, cost);
-    return {
-      result: { item: it.id, instance: inst.id, ...story(it, inst, cost, extra) },
-      deltas: cost.coins ? { coins: -cost.coins } : {},
-      items: lines(Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n]))),
-    };
-  });
-}
 
 /** Itens entregues/removidos → linhas do recibo. */
 const lines = (m) => Object.entries(m).map(([id, qty]) => ({ id, qty, rarity: Gear.GEAR_BY_ID.get(id)?.rarity || "common", rank: Gear.GEAR_BY_ID.get(id)?.rank || "E" }));
@@ -406,7 +387,7 @@ class MeuMundoGearService {
     if (!id) return null;
     const owned = await GearStore.owned(c, idUser);
     if (owned[id]) return null;
-    const inst = await GearStore.createInstance(c, idUser, id, "starter");
+    const inst = await GearStore.createInstance(c, idUser, id, "starter", WP.isWeapon(Gear.GEAR_BY_ID.get(id)) ? WP.RULES_VERSION : "forge-v2");
     const live = await GearStore.loadoutLive(c, idUser);
     if (!live.weapon && ctx.row && ctx.row.status === "alive") await GearStore.equipInstance(c, idUser, ctx.row.id_character, "weapon", inst);
     return { id, qty: 1, rarity: Gear.GEAR_BY_ID.get(id).rarity, rank: Gear.GEAR_BY_ID.get(id).rank };
@@ -508,122 +489,6 @@ class MeuMundoGearService {
     });
   }
 
-  /**
-   * E9 (forge-v2): APRIMORAMENTO GARANTIDO. Paga o custo fixo do próximo passo (Esmeraldas + Pedras
-   * de Aprimoramento) e a cópia SOBE um. Do +11 em diante, só ascendida. `instance` escolhe a cópia
-   * (sem ela, a representante do item). Mesma chave duas vezes = o mesmo recibo, cobra uma.
-   */
-  static async upgrade(idUser, body = {}) {
-    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
-    if (!it || !Upgrade.upgradable(it)) return fail("item");
-    return withReceipt(idUser, "gear_upgrade", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
-      if (picked.error) return picked;
-      const inst = picked.inst;
-      if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
-      const cost = Upgrade.upgradeCost(it, inst.plus);
-      if (!cost) return fail("max");
-      if (cost.ascension && !inst.ascended) return fail("ascend");
-      const owned = await GearStore.owned(c, idUser);
-      for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
-      if (ctx.coins < cost.coins) return fail("coins");
-      ctx.coins -= cost.coins;
-      for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
-      await GearStore.setPlus(c, idUser, inst.id, cost.to);
-      return {
-        result: { item: it.id, instance: inst.id, from: cost.from, to: cost.to, rulesVersion: Upgrade.RULES_VERSION,
-          bonusBefore: Items.pieceBonus(it, cost.from, inst.grade), bonusAfter: Items.pieceBonus(it, cost.to, inst.grade) },
-        deltas: { coins: -cost.coins },
-        items: lines(Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n]))),
-      };
-    });
-  }
-
-  /**
-   * E10: REFINAMENTO I–V da cópia — grau de qualidade, separado do aprimoramento. Custo fixo do
-   * próximo grau (Pó de Refino + Catalisador), sempre sobe, até o V. Recibo com a chave do pedido.
-   */
-  static async grade(idUser, body = {}) {
-    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
-    if (!it || !Upgrade.upgradable(it)) return fail("item");
-    return withReceipt(idUser, "gear_grade", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
-      if (picked.error) return picked;
-      const inst = picked.inst;
-      if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
-      const cost = Upgrade.gradeCost(it, inst.grade);
-      if (!cost) return fail("max");
-      const owned = await GearStore.owned(c, idUser);
-      for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
-      for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
-      await GearStore.setGrade(c, idUser, inst.id, cost.to);
-      return {
-        result: { item: it.id, instance: inst.id, fromGrade: cost.from, toGrade: cost.to, rulesVersion: Upgrade.RULES_VERSION,
-          bonusBefore: Items.pieceBonus(it, inst.plus, cost.from), bonusAfter: Items.pieceBonus(it, inst.plus, cost.to) },
-        deltas: {},
-        items: lines(Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n]))),
-      };
-    });
-  }
-
-  /**
-   * E11: DESMONTAR uma cópia: 35% dos materiais da receita + Pó de Refino (10 × tier × (1 + plus/5));
-   * nunca Esmeralda. Travada, vestida por QUALQUER personagem da conta (vivo ou na cápsula) ou com
-   * proposta aberta: recusa. Raro ou acima pede `confirm: true`. Pilha cheia: recusa inteiro.
-   */
-  static async salvage(idUser, body = {}) {
-    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
-    if (!it || !isInstanceItem(it)) return fail("item");
-    if (body.instance == null || body.instance === "") return fail("instance");
-    if (it.tier >= Salvage.CONFIRM_TIER && body.confirm !== true) return fail("confirm");
-    return withReceipt(idUser, "gear_salvage", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const picked = await pickInstance(c, idUser, it, body.instance, { lock: true });
-      if (picked.error) return picked;
-      const inst = picked.inst;
-      if (inst.locked) return fail("pinned");
-      const held = ((await GearStore.instancesByItem(c, idUser))[it.id] || []).find((x) => x.id === inst.id);
-      if (held && held.equippedBy) return fail("worn");
-      if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
-      const back = salvageBack(it, inst);
-      const owned = await GearStore.owned(c, idUser);
-      for (const [id, n] of Object.entries(back)) if ((owned[id]?.qty || 0) + n > Gear.STACK_MAX) return fail("max");
-      if (!(await GearStore.removeInstance(c, idUser, inst.id))) return fail("instance");
-      for (const [id, n] of Object.entries(back)) await GearStore.addStack(c, idUser, id, n, null, Gear.STACK_MAX);
-      return {
-        result: { item: it.id, instance: inst.id, plus: inst.plus, grade: inst.grade, back },
-        deltas: {},
-        items: lines({ [it.id]: -1, ...back }),
-      };
-    });
-  }
-
-  /** E11: TRANSMUTAR `qty` vezes: 3 de `from` → 1 de `to` (mesmo tier e categoria) + 20 × tier Esmeraldas cada. */
-  static async transmute(idUser, body = {}) {
-    const from = Gear.GEAR_BY_ID.get(String(body.from || ""));
-    const to = Gear.GEAR_BY_ID.get(String(body.to || ""));
-    if (!from || !to) return fail("item");
-    const cost = Salvage.transmuteCost(from, to, body.qty == null ? 1 : body.qty);
-    if (cost.error) return fail(cost.error);
-    return withReceipt(idUser, "gear_transmute", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const owned = await GearStore.owned(c, idUser);
-      for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
-      for (const [id, n] of Object.entries(cost.gives)) if ((owned[id]?.qty || 0) + n > Gear.STACK_MAX) return fail("max");
-      if (ctx.coins < cost.coins) return fail("coins");
-      ctx.coins -= cost.coins;
-      for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
-      for (const [id, n] of Object.entries(cost.gives)) await GearStore.addStack(c, idUser, id, n, null, Gear.STACK_MAX);
-      return {
-        result: { from: from.id, to: to.id, qty: cost.gives[to.id] },
-        deltas: { coins: -cost.coins },
-        items: lines({ ...Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n])), ...cost.gives }),
-      };
-    });
-  }
-
   /** E11: trava/destrava a cópia (protege de desmontar e reciclar). Não é prêmio: sem recibo. */
   static async lock(idUser, body = {}) {
     if (!KEY.test(String(body.instance || ""))) return fail("instance");
@@ -633,135 +498,6 @@ class MeuMundoGearService {
       await prepare(c, idUser);
       if (!(await GearStore.setLocked(c, idUser, String(body.instance), body.locked))) return fail("instance");
       return { bag: await bagState(c, idUser, ctx.coins) };
-    });
-  }
-
-  /**
-   * E13: ENGASTAR uma runa da mochila num engaste livre da cópia. `version` (opcional) = a versão
-   * da cópia que o aparelho viu: mudou noutra aba, recusa. Vale vestida (a próxima luta já conta).
-   */
-  static async socket(idUser, body = {}) {
-    const rune = Gear.GEAR_BY_ID.get(String(body.rune || ""));
-    if (!rune || rune.category !== "rune" || !Runes.parseRune(rune.id)) return fail("rune");
-    if (!KEY.test(String(body.instance || ""))) return fail("instance");
-    return withReceipt(idUser, "gear_socket", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const inst = await GearStore.lockInstance(c, idUser, String(body.instance));
-      if (!inst) return fail("instance");
-      if (staleVersion(body, inst)) return fail("version");
-      const it = Gear.GEAR_BY_ID.get(inst.item);
-      const sockets = (inst.sockets || []).slice();
-      if (sockets.length >= Runes.socketsOf(it, inst.ascended)) return fail("socket");
-      if ((await GearStore.addStack(c, idUser, rune.id, -1)) == null) return fail("owned");
-      sockets.push(rune.id);
-      await GearStore.setSockets(c, idUser, inst.id, sockets);
-      return {
-        result: { item: it.id, instance: inst.id, rune: rune.id, sockets,
-          bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade, { sockets: inst.sockets }), bonusAfter: Items.pieceBonus(it, inst.plus, inst.grade, { sockets }) },
-        deltas: {}, items: lines({ [rune.id]: -1 }),
-      };
-    });
-  }
-
-  /** E13: TIRAR a runa do engaste `index` — ela volta inteira para a mochila. */
-  static async unsocket(idUser, body = {}) {
-    if (!KEY.test(String(body.instance || ""))) return fail("instance");
-    const index = Math.floor(Number(body.index));
-    if (!Number.isInteger(index) || index < 0 || index >= Runes.MAX_SOCKETS) return fail("nosocket");
-    return withReceipt(idUser, "gear_unsocket", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const inst = await GearStore.lockInstance(c, idUser, String(body.instance));
-      if (!inst) return fail("instance");
-      if (staleVersion(body, inst)) return fail("version");
-      const sockets = (inst.sockets || []).slice();
-      const id = sockets[index];
-      if (!id) return fail("nosocket");
-      const owned = await GearStore.owned(c, idUser);
-      if ((owned[id]?.qty || 0) + 1 > Gear.STACK_MAX) return fail("max");
-      sockets.splice(index, 1);
-      await GearStore.setSockets(c, idUser, inst.id, sockets);
-      await GearStore.addStack(c, idUser, id, 1, null, Gear.STACK_MAX);
-      const it = Gear.GEAR_BY_ID.get(inst.item);
-      return { result: { item: inst.item, instance: inst.id, rune: id, sockets,
-        bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade, { sockets: inst.sockets }), bonusAfter: Items.pieceBonus(it, inst.plus, inst.grade, { sockets }) },
-      deltas: {}, items: lines({ [id]: 1 }) };
-    });
-  }
-
-  /** E13: FUNDIR `qty` vezes: 3 runas de grau N → 1 de grau N+1 (mesma chave). Sem moeda. */
-  static async fuseRunes(idUser, body = {}) {
-    const rune = Gear.GEAR_BY_ID.get(String(body.rune || ""));
-    if (!rune || rune.category !== "rune") return fail("rune");
-    const cost = Runes.fuseCost(rune.id, body.qty == null ? 1 : body.qty);
-    if (cost.error) return fail(cost.error);
-    return withReceipt(idUser, "rune_fuse", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const owned = await GearStore.owned(c, idUser);
-      for (const [id, n] of Object.entries(cost.needs)) if ((owned[id]?.qty || 0) < n) return fail("needs");
-      for (const [id, n] of Object.entries(cost.gives)) if ((owned[id]?.qty || 0) + n > Gear.STACK_MAX) return fail("max");
-      for (const [id, n] of Object.entries(cost.needs)) if ((await GearStore.addStack(c, idUser, id, -n)) == null) return fail("needs");
-      for (const [id, n] of Object.entries(cost.gives)) await GearStore.addStack(c, idUser, id, n, null, Gear.STACK_MAX);
-      const [to, qty] = Object.entries(cost.gives)[0];
-      return { result: { from: rune.id, to, qty }, deltas: {},
-        items: lines({ ...Object.fromEntries(Object.entries(cost.needs).map(([id, n]) => [id, -n])), ...cost.gives }) };
-    });
-  }
-
-  /** E14: ASCENSÃO da cópia no +10 (2 × tier Selos de Domínio): libera +11…+15 e um engaste. */
-  static async ascend(idUser, body = {}) {
-    return pieceStep(idUser, body, "gear_ascend", Ascend.ascendCost, (c, inst) => GearStore.setAscended(c, idUser, inst.id), (it, inst) => ({
-      ascended: true, socketsBefore: Runes.socketsOf(it, false), socketsAfter: Runes.socketsOf(it, true), from: inst.plus,
-    }));
-  }
-
-  /** E14: DESPERTAR a cópia ascendida (tier Essências + tier Selos): liga a passiva da chave principal. */
-  static async awaken(idUser, body = {}) {
-    return pieceStep(idUser, body, "gear_awaken", Ascend.awakenCost, (c, inst) => GearStore.setAwakened(c, idUser, inst.id), (it, inst) => ({
-      awakened: true, bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade, { sockets: inst.sockets }),
-      bonusAfter: Items.pieceBonus(it, inst.plus, inst.grade, { sockets: inst.sockets, awakened: true }),
-    }));
-  }
-
-  /**
-   * E15: SORTEAR o encanto da cópia: paga 10 × tier Pó + tier Cristal e grava até 3 opções (chaves do
-   * slot). Com sorteio esperando escolha, recusa (resolva antes). Mesma chave = o mesmo sorteio.
-   */
-  static async enchant(idUser, body = {}) {
-    return pieceStep(idUser, body, "gear_enchant", (it, inst) => Enchant.enchantCost(it, enchantOf(inst), !!offerOf(inst)),
-      async (c, inst) => {
-        const it = Gear.GEAR_BY_ID.get(inst.item);
-        const options = Enchant.rollOptions(it, enchantOf(inst), MeuMundoGearService.R);
-        await GearStore.setAffixes(c, idUser, inst.id, { ...(inst.affixes || {}), offer: options });
-        return options;
-      },
-      (it, inst, cost, options) => ({ current: Enchant.effectiveKeys(it, enchantOf(inst))[1] || null, options }));
-  }
-
-  /**
-   * E15: ESCOLHER uma opção do sorteio (`choice` = a chave) ou manter a atual (`choice: null`).
-   * Não cobra nada: o custo foi pago no sorteio. Manter não muda o bônus.
-   */
-  static async enchantResolve(idUser, body = {}) {
-    if (!KEY.test(String(body.instance || ""))) return fail("instance");
-    const choice = body.choice == null || body.choice === "" ? null : String(body.choice);
-    return withReceipt(idUser, "gear_enchant_resolve", body.key, async (s, ctx) => {
-      const c = ctx.client;
-      const inst = await GearStore.lockInstance(c, idUser, String(body.instance));
-      if (!inst) return fail("instance");
-      const offer = offerOf(inst);
-      if (!offer) return fail("nooffer");
-      if (choice && !offer.includes(choice)) return fail("choice");
-      const it = Gear.GEAR_BY_ID.get(inst.item);
-      const before = enchantOf(inst);
-      const rest = { ...(inst.affixes || {}) };
-      delete rest.offer;
-      await GearStore.setAffixes(c, idUser, inst.id, choice ? { ...rest, enchant: choice } : rest);
-      const extra = { sockets: inst.sockets, awakened: inst.awakened };
-      return {
-        result: { item: it.id, instance: inst.id, kept: !choice, from: Enchant.effectiveKeys(it, before)[1] || null, to: Enchant.effectiveKeys(it, choice || before)[1] || null,
-          bonusBefore: Items.pieceBonus(it, inst.plus, inst.grade, { ...extra, enchant: before }), bonusAfter: Items.pieceBonus(it, inst.plus, inst.grade, { ...extra, enchant: choice || before }) },
-        deltas: {}, items: [],
-      };
     });
   }
 
@@ -799,25 +535,107 @@ class MeuMundoGearService {
   }
 
   /**
-   * E8: fragmento que sobra vira Pó de Refino (2 × tier por fragmento, §6.5). Só o servidor diz
-   * quanto vale; a pilha do Pó não passa de 9.999 (o pedido que estouraria é recusado inteiro).
+   * weapon-v1: REFINAR a arma — 1 pó da faixa do nível de DESTINO por tentativa. Sorteio no servidor
+   * (crypto); deu certo = sobe um nível; falhou = gasta o pó e a cópia fica onde estava (nunca desce,
+   * nunca quebra). Trava a cópia, confere `version` e `rulesVersion`. Mesma chave = o mesmo recibo
+   * (inclusive o mesmo resultado); a chave usada noutra cópia é recusada.
    */
-  static async convertFragments(idUser, body = {}) {
-    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
-    if (!it) return fail("item");
-    if (it.category !== "fragment" || !it.fragment) return fail("notfragment");
-    const qty = Math.floor(Number(body.qty));
-    if (!Number.isInteger(qty) || qty < 1 || qty > Gear.STACK_MAX) return fail("owned");
-    const powder = qty * it.fragment.powder;
-    return withReceipt(idUser, "fragment_convert", body.key, async (s, ctx) => {
+  static async refineWeapon(idUser, body = {}) {
+    if (!KEY.test(String(body.instance || ""))) return fail("instance");
+    if (body.rulesVersion != null && body.rulesVersion !== WP.RULES_VERSION) return fail("rules");
+    const instance = String(body.instance);
+    return withReceipt(idUser, "weapon_refine", body.key, async (s, ctx) => {
       const c = ctx.client;
-      const owned = await GearStore.owned(c, idUser);
-      if ((owned[it.id]?.qty || 0) < qty) return fail("owned");
-      if ((owned.po_refino?.qty || 0) + powder > Gear.STACK_MAX) return fail("max");
-      if ((await GearStore.addStack(c, idUser, it.id, -qty)) == null) return fail("owned");
-      await GearStore.addStack(c, idUser, "po_refino", powder, null, Gear.STACK_MAX);
-      return { result: { item: it.id, qty, powder }, deltas: {}, items: lines({ [it.id]: -qty, po_refino: powder }) };
-    });
+      const inst = await GearStore.lockInstance(c, idUser, instance);
+      if (!inst) return fail("instance");
+      const it = Gear.GEAR_BY_ID.get(inst.item);
+      if (!WP.isWeapon(it)) return fail("notweapon");
+      if (staleVersion(body, inst)) return fail("version");
+      if (await hasPending(c, idUser, [inst.id], ctx.now)) return fail("locked");
+      const cost = WP.refineCost(it, inst.weaponLevel);
+      if (!cost) return fail("max");
+      // conferir antes: addStack num item que a pessoa nunca teve cria a linha com 0 em vez de recusar
+      if (((await GearStore.lockItem(c, idUser, cost.powder))?.qty || 0) < 1) return fail("needs");
+      if ((await GearStore.addStack(c, idUser, cost.powder, -1)) == null) return fail("needs");
+      const roll = MeuMundoGearService.R();
+      const success = WP.rollWins(roll, cost.chance);
+      if (success) await GearStore.setWeaponLevel(c, idUser, inst.id, cost.to);
+      else await GearStore.bumpVersion(c, idUser, inst.id);
+      return {
+        result: {
+          item: it.id, instance: inst.id, rulesVersion: WP.RULES_VERSION, from: cost.from, to: cost.to,
+          level: success ? cost.to : cost.from, powder: cost.powder, chance: cost.chance,
+          roll: Math.round(roll * 10000) / 10000, success,
+        },
+        deltas: {},
+        items: lines({ [cost.powder]: -1 }),
+      };
+    }, (r) => r.instance === instance);
+  }
+
+  /**
+   * weapon-v1: SUBIR ESTRELA — consome UMA cópia idêntica nova (nível 1, 1 estrela, sem nada investido,
+   * sem trava, não vestida) e a arma ganha +1 estrela (máx. 5). Garantido. As duas cópias travam em
+   * ordem fixa (id) para duas abas não se cruzarem.
+   */
+  static async starWeapon(idUser, body = {}) {
+    if (!KEY.test(String(body.instance || ""))) return fail("instance");
+    if (!KEY.test(String(body.donor || ""))) return fail("donor");
+    const instance = String(body.instance), donor = String(body.donor);
+    if (instance === donor) return fail("donorself");
+    return withReceipt(idUser, "weapon_stars", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      const [a, b] = [instance, donor].sort();
+      const la = await GearStore.lockInstance(c, idUser, a);
+      const lb = await GearStore.lockInstance(c, idUser, b);
+      const inst = a === instance ? la : lb, don = a === instance ? lb : la;
+      if (!inst) return fail("instance");
+      if (!don) return fail("donor");
+      const it = Gear.GEAR_BY_ID.get(inst.item);
+      if (!WP.isWeapon(it)) return fail("notweapon");
+      if (staleVersion(body, inst)) return fail("version");
+      if (await hasPending(c, idUser, [inst.id, don.id], ctx.now)) return fail("locked");
+      const cost = WP.starsCost(it, inst.grade);
+      if (!cost) return fail("max");
+      const held = (await GearStore.instancesByItem(c, idUser))[it.id] || [];
+      const donView = held.find((x) => x.id === don.id) || don;
+      const problem = WP.donorProblem(inst, donView);
+      if (problem) return fail(problem);
+      if (!(await GearStore.removeInstance(c, idUser, don.id))) return fail("donor");
+      await GearStore.setGrade(c, idUser, inst.id, cost.to);
+      return {
+        result: { item: it.id, instance: inst.id, donor: don.id, rulesVersion: WP.RULES_VERSION, from: cost.from, to: cost.to, stars: cost.to },
+        deltas: {},
+        items: [],
+      };
+    }, (r) => r.instance === instance && r.donor === donor);
+  }
+
+  /**
+   * weapon-v1: MONTAR ARMA — o jogador escolhe QUAL arma da classe quer; paga `need` fragmentos da classe
+   * dela e ganha uma cópia nova (nível 1, 1 estrela), não vestida. Pode repetir arma que já tem.
+   */
+  static async assembleWeapon(idUser, body = {}) {
+    const it = Gear.GEAR_BY_ID.get(String(body.item || ""));
+    if (!it || !WP.isWeapon(it) || it.retired) return fail("item");
+    const cost = WP.assemblyCost(it);
+    if (!cost) return fail("item");
+    return withReceipt(idUser, "weapon_assemble", body.key, async (s, ctx) => {
+      const c = ctx.client;
+      if (((await GearStore.lockItem(c, idUser, cost.fragment))?.qty || 0) < cost.need) return fail("fragments");
+      if ((await GearStore.addStack(c, idUser, cost.fragment, -cost.need)) == null) return fail("fragments");
+      const id = await GearStore.createInstance(c, idUser, it.id, "assemble", WP.RULES_VERSION);
+      return {
+        result: { item: it.id, instance: id, rulesVersion: WP.RULES_VERSION, rank: cost.rank, fragment: cost.fragment, need: cost.need },
+        deltas: {},
+        items: lines({ [cost.fragment]: -cost.need, [it.id]: 1 }),
+      };
+    }, (r) => r.item === it.id);
+  }
+
+  /** weapon-v1: o que saiu da forja/refino antigos responde 410 (o aparelho velho recarrega). */
+  static async retired() {
+    return fail("retired");
   }
 
   /** A ação é declarada no catálogo; nunca aceitar efeitos/atributos do cliente. */
@@ -908,7 +726,7 @@ MeuMundoGearService.fightAppearance = async (c, idUser, clan) => {
   const cosmetic = (await GearStore.unlocks(c, idUser)).find((u) => u.kind === "cosmetic" && u.active);
   // E14: arma desperta acende na cor do deus/Domínio dela (só visual, no ticket)
   const glow = weapon?.awakened ? Gear.GEAR_BY_ID.get(weapon.id)?.domain || "aether" : null;
-  return { weaponId: weapon?.id || null, level: weapon?.level || 0, shieldId: shield?.id || null, cosmetic: cosmetic?.item_id || null, ...(glow ? { awakened: glow } : {}) };
+  return { weaponId: weapon?.id || null, level: Math.round(weapon?.level || 0), weaponLevel: weapon?.weaponLevel || 1, stars: weapon?.grade || 1, shieldId: shield?.id || null, cosmetic: cosmetic?.item_id || null, ...(glow ? { awakened: glow } : {}) };
 };
 /** Entrega uma lista de drops (respeita a pilha; o excedente vira moedas; equipamento nasce instância). */
 MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {
@@ -922,7 +740,7 @@ MeuMundoGearService.deliver = async (c, idUser, drops, ctx) => {
     // classe de raridade (E…Divina) na linha do recibo: a tela mostra a letra
     const line = { ...d, ...(it ? { rank: it.rank } : {}), qty: got, overflowCoins: over > 0 ? over * (it?.sell || 0) : 0 };
     // E3: fragmento mostra o progresso até o item ("42/60") no recibo
-    if (it && it.category === "fragment" && it.fragment) line.progress = { of: it.fragment.of, have: (await GearStore.lockItem(c, idUser, it.id))?.qty || 0, need: it.fragment.need };
+    if (it && it.category === "fragment" && it.fragment) line.progress = { ...(it.fragment.of ? { of: it.fragment.of } : { rank: it.fragment.rank }), have: (await GearStore.lockItem(c, idUser, it.id))?.qty || 0, need: it.fragment.need };
     out.push(line);
   }
   return out;
@@ -932,5 +750,11 @@ MeuMundoGearService.R = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
 MeuMundoGearService.eventOpen = (c, event, now) => require("./MeuMundoEventService").isOpen(c, event, now);
 MeuMundoGearService.isInstanceItem = isInstanceItem;
 MeuMundoGearService.prepare = prepare;
+
+// weapon-v1 (24/11/2026): aprimoramento, graus, Ascensão, Despertar, encanto, runas, desmontar, transmutar e
+// conversão de fragmento saíram do jogo; as rotas antigas respondem 410 em vez de sumir (aparelho velho).
+for (const m of ["upgrade", "grade", "salvage", "transmute", "socket", "unsocket", "fuseRunes", "ascend", "awaken", "enchant", "enchantResolve", "convertFragments"]) {
+  MeuMundoGearService[m] = MeuMundoGearService.retired;
+}
 
 module.exports = MeuMundoGearService;

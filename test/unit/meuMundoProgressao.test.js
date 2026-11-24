@@ -9,7 +9,7 @@ const Runes = require("../../src/utils/mmItems/rules/runes");
 
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
 
-test("E13 — 35 runas: 7 chaves × 5 graus, empilham, raridade pelo grau, todas com origem", () => {
+test("E13 + weapon-v1 — 35 runas: 7 chaves × 5 graus, empilham, raridade pelo grau; saíram do jogo (sem origem)", () => {
   const runes = Items.GEAR.filter((g) => g.category === "rune");
   assert.strictEqual(runes.length, 35);
   for (const r of runes) {
@@ -17,7 +17,8 @@ test("E13 — 35 runas: 7 chaves × 5 graus, empilham, raridade pelo grau, todas
     assert.ok(p, r.id);
     assert.strictEqual(r.stack, true, r.id);
     assert.strictEqual(r.rarity, Runes.RARITY_OF_GRADE[p.grade - 1], r.id);
-    assert.ok(Items.sourcesOf(r).length > 0, `${r.id} sem origem`);
+    // weapon-v1 (24/11): runa saiu com a forja antiga — fica no catálogo (engastadas continuam valendo) sem origem
+    assert.ok(r.retired && Items.sourcesOf(r).length === 0, `${r.id} ainda tem origem`);
   }
   assert.strictEqual(Items.validateCatalog().length, 0);
 });
@@ -67,15 +68,9 @@ test("E13 — engastes: raro 1 · épico 2 · lendário 2 · mítico 3; ascendid
   assert.strictEqual(Runes.socketsOf(Items.GEAR_BY_ID.get("runa_ataque_1")), 0);
 });
 
-test("E13 — runas de grau I e II caem nos Domínios no fim da lista (os sorteios de antes não mudam)", () => {
-  const t = Items.LOOT_TABLES["domain:floresta:3"];
-  const ids = t.chance.map((e) => e.id);
-  assert.deepStrictEqual(ids.slice(-2), ["runa_destreza_1", "runa_forca_1"]);
-  const boss = Items.LOOT_TABLES["domain:vulcao:10"].chance.map((e) => e.id);
-  assert.strictEqual(boss[boss.length - 1], "runa_ataque_2");
-  for (const kind of Object.keys(Runes.RUNE_KINDS)) assert.ok(Items.lootSourcesOf(`runa_${kind}_1`).length > 0, kind);
+test("weapon-v1 — runa nenhuma cai mais (nem nos Domínios)", () => {
+  for (const [table, t] of Object.entries(Items.LOOT_TABLES)) for (const e of [...(t.sure || []), ...(t.chance || []), ...(t.first || [])]) assert.ok(!e.id.startsWith("runa_"), `${table}: ${e.id}`);
 });
-
 // ── E19: eventos ──
 const Events = require("../../src/utils/mmItems/catalog/events");
 
@@ -107,15 +102,11 @@ test("E18 — baús nos pontos de visita do bairro e do centro, conteúdo fixo (
   }
 });
 
-test("E18 — a receita oculta só sai de baú e fica fora do catálogo público até ser descoberta", () => {
-  const pub = Gear.publicGear();
-  assert.ok(!pub.items.some((i) => i.id === "receita_oculta_forca"));
-  assert.ok(!pub.recipes.some((r) => r.id === "gravar_runa_forca"));
-  const seen = Gear.publicGear({ reveal: (id) => id === "receita_oculta_forca" });
-  assert.ok(seen.items.some((i) => i.id === "receita_oculta_forca") && seen.recipes.some((r) => r.id === "gravar_runa_forca"));
-  assert.deepStrictEqual(Items.lootSourcesOf("receita_oculta_forca").map((s) => s.table), ["chest:bau_biblioteca"]);
+test("E18 + weapon-v1 — a receita oculta (gravar runa) saiu com as runas: nenhum baú a entrega", () => {
+  assert.ok(Items.GEAR_BY_ID.get("receita_oculta_forca").retired);
+  assert.deepStrictEqual(Items.lootSourcesOf("receita_oculta_forca"), []);
+  assert.ok(!Gear.RECIPES.some((r) => r.id === "gravar_runa_forca"));
 });
-
 // ── E17: tabelas por atividade, fichas e loja de troca ──
 const Exchange = require("../../src/utils/mmItems/catalog/exchange");
 const Reward = require("../../src/services/MeuMundoRewardService");
@@ -147,9 +138,10 @@ test("E17 — tabela da luta: Hall só ficha; rua comum × elite pela régua (fa
     const lv = [0.1, 0.4, 0.6, 0.8, 0.95].map((r) => A.rollMobLevel(L, () => r));
     assert.deepStrictEqual(lv.map((M) => Reward.fightTableOf("mob", { level: M, hero: L })), ["mob:common", "mob:common", "mob:common", "mob:elite", "mob:elite"], `nível ${L}`);
   }
+  // weapon-v1: o elite paga fragmento de classe C e pó B garantidos; a primeira vitória, 3 fragmentos Lendários
   const elite = Items.lootExpectation("mob:elite", { win: true, activeMs: 240000, first: true });
-  assert.ok(elite.frag_lamina_correntes.min >= 3 + 10 && elite.receita_lamina_correntes.min === 1);
-  assert.ok(!Items.lootExpectation("mob:common", { win: true, activeMs: 240000 }).frag_lamina_correntes);
+  assert.ok(elite.frag_classe_c.min >= 2 && elite.po_ref_b.min === 1 && elite.frag_classe_legendary.min >= 3);
+  assert.ok(!Items.lootExpectation("mob:common", { win: true, activeMs: 240000 }).frag_classe_c);
 });
 
 // ── E16: Consumíveis de preparo ──

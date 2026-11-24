@@ -138,7 +138,7 @@ async function main() {
 
   const get = await Adv.get(id);
   check("GET /adventure traz nível e recibos", get.adventure.level >= 1 && get.receipts.length >= 3);
-  check("drop garantido na luta vencida", rec.items.length >= 1 && rec.items[0].id === "fragmento_lamina", JSON.stringify(rec.items));
+  check("drop garantido na luta vencida", rec.items.length >= 1 && rec.items[0].id === "po_ref_d", JSON.stringify(rec.items));
 
   // ── slice 3: equipamento ──
   const Gear = require("../src/services/MeuMundoGearService");
@@ -190,16 +190,18 @@ async function main() {
   check("ticket leva o bônus do equipamento", s5.fight.setup.gear && s5.fight.setup.gear.dmg === dmgOf("espada_latao"));
 
   // forja: sem materiais recusa; com materiais, consome e entrega
+  // weapon-v1 (24/11): a receita das luvas saiu com a forja antiga (fica só bestiário e preparo)
   const nf = await Gear.forge(id, { recipe: "forjar_luvas", key: k() });
-  check("forja sem materiais recusa", nf.code === "needs" || nf.code === "coins", JSON.stringify(nf));
+  check("receita da forja antiga não existe mais", nf.code === "recipe", JSON.stringify(nf));
   await pool2.query(`INSERT INTO emerald_wallets (user_id, balance) VALUES ($1, 500) ON CONFLICT (user_id) DO UPDATE SET balance = 500`, [id]); // A7: moedas do jogo = Esmeralda
   await pool2.query(
     `INSERT INTO tb_mm_gear (id_user, item_id, qty) VALUES ($1, 'couro_reforcado', 3), ($1, 'mola_precisao', 4)
      ON CONFLICT (id_user, item_id) DO UPDATE SET qty = EXCLUDED.qty`,
     [id]
   );
-  const fg = await Gear.forge(id, { recipe: "forjar_luvas", key: k() });
-  check("forja entrega as luvas", fg.receipt && fg.bag.owned.luvas_precisao && !fg.bag.owned.mola_precisao, JSON.stringify(fg.error || fg.bag.owned));
+  // a Mola (material aposentado) vira pó novo na próxima abertura da mochila; o Couro (preparo) fica
+  const fg = await Gear.get(id);
+  check("material aposentado vira pó novo; o que ficou no jogo não muda", !fg.bag.owned.mola_precisao && fg.bag.owned.couro_reforcado?.qty === 3 && fg.bag.owned.po_ref_d?.qty > 0, JSON.stringify(fg.bag.owned));
 
   // ── lore v2 F3: os capítulos numa conta NOVA (raposa) ──
   const Quest = require("../src/services/MeuMundoQuestService");
@@ -302,7 +304,7 @@ async function main() {
   const mr = m1.receipt;
   check("minijogo: janela máxima (Gincana 6 min) no tempo ativo", mr.activeMs === 6 * 60000, String(mr.activeMs));
   check("minijogo: destreza principal e velocidade secundária", mr.deltas.attrs.dexterity > 0 && mr.deltas.attrs.speed > 0, JSON.stringify(mr.deltas.attrs));
-  check("minijogo: material da família (molas)", mr.items.some((i) => i.id === "mola_precisao"), JSON.stringify(mr.items));
+  check("minijogo: pó de refino garantido (weapon-v1)", mr.items.some((i) => i.id === "po_ref_d"), JSON.stringify(mr.items));
   check("minijogo: dropa moedas", mr.deltas.coins > 0, JSON.stringify(mr.deltas));
   const afk = await Adv.creditMinigame(nu, { activity: "paint", actionKey: "paint:r2:1", segments: [] });
   check("minijogo sem tempo ativo não gera recibo", afk.receipt === null);

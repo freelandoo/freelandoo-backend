@@ -10,7 +10,7 @@ const TRIPO = require("../../src/utils/mmItems/catalog/weaponsTripo").ITEMS.map(
 const PREFIX = { staffs: "cajado_", weapons: "espada_", hammers: "pesada_", bows: "arco_", guns: "fogo_", shields: "escudo_" };
 
 test("todas entram no catálogo com descrição, preço da classe e prefixo da aba", () => {
-  assert.equal(TRIPO.length, 74);
+  assert.equal(TRIPO.length, 91); // +17 espadas da "Nova pasta" (24/11)
   for (const g of TRIPO) {
     assert.ok(g, "item sumiu do catálogo");
     assert.ok(g.id.startsWith(PREFIX[g.shop]), g.id);

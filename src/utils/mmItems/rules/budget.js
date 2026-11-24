@@ -59,7 +59,8 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 /** Bônus de UMA peça numa chave, separado por fonte (base, aprimoramento, refinamento). */
 function pieceParts(k, slot, rarity, plus = 0, grade = 1, emphasis = 1) {
   const w = (CAP[k] || 0) * ((WEIGHT[k] && WEIGHT[k][slot]) || 0) * emphasis;
-  const p = clamp(Math.floor(plus) || 0, 0, PLUS_MAX);
+  // weapon-v1: a arma chega aqui com o nível convertido em "plus" FRACIONÁRIO (weaponProgress.plusEquiv)
+  const p = clamp(Number(plus) || 0, 0, PLUS_MAX);
   const g = clamp(Math.floor(grade) || 1, 1, GRADE_MAX);
   return {
     base: w * SHARE.base * (RARITY[rarity] || 0),

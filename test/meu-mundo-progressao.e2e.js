@@ -71,125 +71,29 @@ async function main() {
 
 /** Cada fatia da fase 4 acrescenta o seu passo aqui. */
 const STEPS = [
-  // ── E13: runas ──
+  // ── weapon-v1 (24/11/2026): runas, Ascensão, Despertar e encanto saíram — o que já foi investido continua ──
   async ({ pool, Service, id, other, qty, setQty, inst, give, wear }) => {
-    const sword = await give(id, "linha_garras_lunares"); // lendária: 2 engastes
+    const Gear = require("../src/utils/meuMundoGear");
+    const sword = await give(id, "espada_carmesim", { plus: 11, ascended: true });
+    await pool.query(`UPDATE tb_mm_gear_instance SET sockets='["runa_ataque_2"]'::jsonb, awakened=true WHERE id_instance=$1`, [sword]);
+    const plain = await give(id, "espada_carmesim", { plus: 11 });
     await setQty(id, "runa_ataque_1", 7);
-    await setQty(id, "runa_vitalidade_2", 1);
-    const v0 = Number((await inst(sword)).version);
-    const stale = await Service.socket(id, { instance: sword, rune: "runa_ataque_1", version: v0 + 5, key: key() });
-    check("E13: versão velha da cópia recusa o engaste", stale.code === "version" && (await qty(id, "runa_ataque_1")) === 7);
-    const sk = key();
-    const [a, b] = await Promise.all([
-      Service.socket(id, { instance: sword, rune: "runa_ataque_1", version: v0, key: sk }),
-      Service.socket(id, { instance: sword, rune: "runa_ataque_1", version: v0, key: sk }),
-    ]);
-    check("E13: mesma chave em duas abas engasta uma vez", a.receipt && b.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "runa_ataque_1")) === 6);
-    check("E13: a runa entra no engaste da cópia", JSON.stringify((await inst(sword)).sockets) === JSON.stringify(["runa_ataque_1"]));
-    const second = await Service.socket(id, { instance: sword, rune: "runa_vitalidade_2", version: v0, key: key() });
-    check("E13: a versão de antes do primeiro engaste já não vale", second.code === "version");
-    const ok2 = await Service.socket(id, { instance: sword, rune: "runa_vitalidade_2", key: key() });
-    check("E13: segundo engaste (sem versão) entra e mostra o bônus antes e depois", !ok2.error && ok2.receipt.result.bonusAfter.hp > (ok2.receipt.result.bonusBefore.hp || 0));
-    check("E13: lendária sem Ascensão não tem terceiro engaste", (await Service.socket(id, { instance: sword, rune: "runa_ataque_1", key: key() })).code === "socket");
-    const piece = ok2.bag.instances.find((x) => x.id === sword);
-    check("E13: a mochila mostra as runas e os engastes da cópia", piece.socketsMax === 2 && piece.sockets.length === 2);
-    check("E13: outra conta não engasta na cópia", (await Service.socket(other, { instance: sword, rune: "runa_ataque_1", key: key() })).code === "instance");
-    const un = await Service.unsocket(id, { instance: sword, index: 1, key: key() });
-    check("E13: tirar devolve a runa inteira", !un.error && (await qty(id, "runa_vitalidade_2")) === 1 && JSON.stringify((await inst(sword)).sockets) === JSON.stringify(["runa_ataque_1"]));
-    check("E13: engaste vazio recusa", (await Service.unsocket(id, { instance: sword, index: 1, key: key() })).code === "nosocket");
-    const common = await give(id, "espada_aco");
-    check("E13: peça comum não tem engaste", (await Service.socket(id, { instance: common, rune: "runa_ataque_1", key: key() })).code === "socket");
-    const fk = key();
-    const f1 = await Service.fuseRunes(id, { rune: "runa_ataque_1", qty: 2, key: fk });
-    const f2 = await Service.fuseRunes(id, { rune: "runa_ataque_1", qty: 2, key: fk });
-    check("E13: funde 6 de grau I em 2 de grau II, uma vez", f1.receipt.eventId === f2.receipt.eventId && (await qty(id, "runa_ataque_1")) === 0 && (await qty(id, "runa_ataque_2")) === 2);
-    check("E13: sem 3 runas recusa a fusão", (await Service.fuseRunes(id, { rune: "runa_ataque_2", key: key() })).code === "needs");
-    check("E13: grau V não funde", (await Service.fuseRunes(id, { rune: "runa_ataque_5", key: key() })).code === "max");
-    const rare = await give(id, "espada_chama");
-    await Service.socket(id, { instance: rare, rune: "runa_ataque_2", key: key() });
-    check("E13: peça com runa não recicla", (await Service.recycle(id, { item: "espada_chama", instance: rare, key: key() })).code === "socketed");
-    const sv = await Service.salvage(id, { item: "espada_chama", instance: rare, key: key(), confirm: true });
-    check("E13: desmontar devolve a runa engastada", !sv.error && sv.receipt.result.back.runa_ataque_2 === 1 && (await qty(id, "runa_ataque_2")) === 2);
-    // a arma de fogo não vale para quem veste espada: a luta lê uma espada rara com runa
-    const worn = await give(id, "espada_carmesim");
-    await Service.socket(id, { instance: worn, rune: "runa_ataque_2", key: key() });
-    await wear(id, "weapon", worn);
-    const c = await pool.connect();
-    try {
-      const g = await Service.fightGear(c, id, "vampiro");
-      const Gear = require("../src/utils/meuMundoGear");
-      const plain = Gear.gearBonus({ weapon: { id: "espada_carmesim", level: 0, grade: 1 } });
-      check("E13: a luta soma a runa engastada na arma vestida", g.dmg > plain.dmg);
-    } finally { c.release(); }
-  },
-  // ── E14: Ascensão e Despertar ──
-  async ({ pool, Service, id, other, qty, setQty, inst, give, wear }) => {
-    const piece = await give(id, "espada_carmesim", { plus: 9 }); // rara (T3): 1 engaste
-    await setQty(id, "selo_dominio", 20);
-    check("E14: abaixo do +10 não ascende", (await Service.ascend(id, { instance: piece, key: key() })).code === "plus" && (await qty(id, "selo_dominio")) === 20);
-    await pool.query(`UPDATE tb_mm_gear_instance SET plus = 10 WHERE id_instance = $1`, [piece]);
-    check("E14: +10 sem Ascensão não sobe para o +11", (await Service.upgrade(id, { item: "espada_carmesim", instance: piece, key: key() })).code === "ascend");
-    const ak = key();
-    const [a, b] = await Promise.all([Service.ascend(id, { instance: piece, key: ak }), Service.ascend(id, { instance: piece, key: ak })]);
-    check("E14: Ascensão cobra 2 × tier Selos (6) uma vez", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "selo_dominio")) === 14 && (await inst(piece)).ascended === true);
-    check("E14: a ascendida ganha um engaste (rara: 1 → 2)", a.receipt.result.socketsBefore === 1 && a.receipt.result.socketsAfter === 2 && a.bag.instances.find((x) => x.id === piece).socketsMax === 2);
-    check("E14: ascender de novo recusa", (await Service.ascend(id, { instance: piece, key: key() })).code === "ascended" && (await qty(id, "selo_dominio")) === 14);
-    await setQty(id, "pedra_aprimoramento", 100);
-    const up = await Service.upgrade(id, { item: "espada_carmesim", instance: piece, key: key() });
-    check("E14: ascendida passa do +10 para o +11", !up.error && (await inst(piece)).plus === 11);
-    // Despertar
-    const fresh = await give(id, "espada_carmesim", { plus: 10 });
-    check("E14: Despertar sem Ascensão recusa", (await Service.awaken(id, { instance: fresh, key: key() })).code === "notascended");
-    check("E14: sem Essência o Despertar recusa", (await Service.awaken(id, { instance: piece, key: key() })).code === "needs" && (await inst(piece)).awakened === false);
-    await setQty(id, "essencia_primordial", 3);
-    const aw = await Service.awaken(id, { instance: piece, key: key() });
-    check("E14: Despertar cobra tier Essências e tier Selos (3 e 3)", !aw.error && (await qty(id, "essencia_primordial")) === 0 && (await qty(id, "selo_dominio")) === 11 && (await inst(piece)).awakened === true);
-    check("E14: o recibo mostra a passiva somada à chave principal", aw.receipt.result.bonusAfter.dmg > aw.receipt.result.bonusBefore.dmg);
-    check("E14: despertar de novo recusa", (await Service.awaken(id, { instance: piece, key: key() })).code === "awakened");
-    check("E14: outra conta não ascende a cópia", (await Service.ascend(other, { instance: fresh, key: key() })).code === "instance");
-    await wear(id, "weapon", piece);
-    const c = await pool.connect();
-    try {
-      const look = await Service.fightAppearance(c, id, "vampiro");
-      check("E14: o ticket leva a arma desperta (só visual)", look.weaponId === "espada_carmesim" && look.awakened === "aether");
-      const g = await Service.fightGear(c, id, "vampiro");
-      const Gear = require("../src/utils/meuMundoGear");
-      check("E14: a luta soma a passiva da arma desperta", g.dmg > Gear.gearBonus({ weapon: { id: "espada_carmesim", level: 11, grade: 1 } }).dmg);
-    } finally { c.release(); }
-  },
-  // ── E15: Encantamento ──
-  async ({ pool, Service, id, other, qty, setQty, inst, give }) => {
-    const helm = require("../src/utils/mmItems").GEAR_BY_ID.get("oculos_engenheiro"); // T2: 20 Pó + 2 Cristal
-    const piece = await give(id, helm.id);
-    await setQty(id, "po_refino", 25);
-    await setQty(id, "cristal_bruto", 2);
-    check("E15: sem sorteio não há o que escolher", (await Service.enchantResolve(id, { instance: piece, choice: null, key: key() })).code === "nooffer");
-    const R0 = Service.R;
-    Service.R = () => 0;
-    const ek = key();
-    const [a, b] = await Promise.all([Service.enchant(id, { instance: piece, key: ek }), Service.enchant(id, { instance: piece, key: ek })]);
-    Service.R = R0;
-    check("E15: sortear cobra 10 × tier Pó e tier Cristal uma vez", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "po_refino")) === 5 && (await qty(id, "cristal_bruto")) === 0);
-    const options = a.receipt.result.options;
-    check("E15: o sorteio traz opções do slot sem repetir a principal nem a secundária", options.length >= 1 && options.every((k) => !helm.keys.includes(k)));
-    const view = a.bag.forge[piece].enchant;
-    check("E15: a bancada mostra o sorteio com o bônus de cada opção", view.offer && view.offer.length === options.length && view.offer.every((o) => o.bonus[o.key] > 0));
-    check("E15: com sorteio esperando, outro sorteio recusa", (await Service.enchant(id, { instance: piece, key: key() })).code === "offer");
-    const before = JSON.stringify((await inst(piece)).affixes);
-    check("E15: opção que não saiu recusa", (await Service.enchantResolve(id, { instance: piece, choice: "dmg", key: key() })).code === "choice");
-    const keep = await Service.enchantResolve(id, { instance: piece, choice: null, key: key() });
-    check("E15: recusar não muda nada e não cobra de novo", !keep.error && keep.receipt.result.kept === true && !(await inst(piece)).affixes.enchant && (await qty(id, "po_refino")) === 5 && JSON.stringify(keep.receipt.result.bonusAfter) === JSON.stringify(keep.receipt.result.bonusBefore));
-    check("E15: depois de recusar não há sorteio esperando", !(await inst(piece)).affixes.offer && before.includes("offer"));
-    await setQty(id, "cristal_bruto", 2);
-    await setQty(id, "po_refino", 20);
-    const roll = await Service.enchant(id, { instance: piece, key: key() });
-    const pick = roll.receipt.result.options[0];
-    const take = await Service.enchantResolve(id, { instance: piece, choice: pick, key: key() });
-    check("E15: aceitar troca a chave secundária pela escolhida", !take.error && (await inst(piece)).affixes.enchant === pick && take.receipt.result.to === pick && take.receipt.result.bonusAfter[pick] > 0);
-    check("E15: outra conta não encanta a cópia", (await Service.enchant(other, { instance: piece, key: key() })).code === "instance");
-    const off = require("../src/utils/mmItems").GEAR.find((g) => g.slot === "offhand" && g.keys);
-    const shield = await give(id, off.id);
-    check("E15: peça sem outra chave no slot não encanta", (await Service.enchant(id, { instance: shield, key: key() })).code === "noenchant");
+    await wear(id, "weapon", plain);
+    const fight = async () => { const c = await pool.connect(); try { return await Service.fightGear(c, id, "vampiro"); } finally { c.release(); } };
+    const gPlain = await fight();
+    await wear(id, "weapon", sword);
+    const gInvested = await fight();
+    check("a runa engastada e o Despertar de antes seguem somando na luta", gInvested.dmg > gPlain.dmg);
+    const row = await inst(sword);
+    check("a cópia investida vira weapon-v1 sem perder runa nem Despertar", row.rules === "weapon-v1" && row.awakened === true && JSON.stringify(row.sockets) === JSON.stringify(["runa_ataque_2"]) && row.weapon_level === 67);
+    for (const [m, body] of [["socket", { rune: "runa_ataque_1" }], ["unsocket", { index: 0 }], ["fuseRunes", { rune: "runa_ataque_1" }], ["ascend", {}], ["awaken", {}], ["enchant", {}], ["enchantResolve", { choice: null }]]) {
+      const res = await Service[m](id, { instance: sword, key: key(), ...body });
+      assert.equal(res.statusCode, 410, m);
+    }
+    check("engastar, tirar, fundir, Ascensão, Despertar e encanto respondem 410", JSON.stringify((await inst(sword)).sockets) === JSON.stringify(["runa_ataque_2"]));
+    check("as runas soltas viraram pó novo (runa aposentada)", (await qty(id, "runa_ataque_1")) === 0 && (await qty(id, "po_ref_d")) > 0);
+    check("a arma de outra conta continua fora do meu alcance", (await Service.refineWeapon(other, { instance: sword, key: key() })).code === "instance");
+    void Gear;
   },
   // ── E16: consumíveis de preparo ──
   async ({ pool, id, other, qty, setQty }) => {
@@ -226,14 +130,16 @@ const STEPS = [
     check("E17: troca inexistente recusa", (await Service.exchange(id, { offer: "paint:nada", key: key() })).code === "offerid");
     const xk = key();
     const [a, b] = await Promise.all([
-      Service.exchange(id, { offer: "paint:frag_moldes", qty: 1, key: xk }),
-      Service.exchange(id, { offer: "paint:frag_moldes", qty: 1, key: xk }),
+      Service.exchange(id, { offer: "paint:frag_d", qty: 1, key: xk }),
+      Service.exchange(id, { offer: "paint:frag_d", qty: 1, key: xk }),
     ]);
-    check("E17: troca 30 fichas por 3 fragmentos uma vez (mesma chave)", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "ficha_paint")) === 10 && (await qty(id, "frag_cajado_moldes")) === 3);
-    check("E17: fichas insuficientes recusa", (await Service.exchange(id, { offer: "paint:frag_moldes", key: key() })).code === "tokens" && (await qty(id, "ficha_paint")) === 10);
-    const two = await Service.exchange(id, { offer: "paint:minerio", qty: 1, key: key() });
-    check("E17: o recibo mostra fichas gastas e itens recebidos", !two.error && two.receipt.items.some((l) => l.id === "ficha_paint" && l.qty === -6) && two.receipt.items.some((l) => l.id === "minerio_ferro" && l.qty === 3));
-    check("E17: ficha de outro jogo não paga", (await Service.exchange(id, { offer: "jetpack:pedra", key: key() })).code === "tokens");
+    // weapon-v1: a loja vende pó das faixas baixas e fragmento de classe (o caminho previsível)
+    check("E17: troca 15 fichas por 3 fragmentos de classe D uma vez (mesma chave)", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "ficha_paint")) === 25 && (await qty(id, "frag_classe_d")) === 3);
+    check("E17: fichas insuficientes recusa", (await Service.exchange(id, { offer: "paint:frag_d", qty: 2, key: key() })).code === "tokens" && (await qty(id, "ficha_paint")) === 25);
+    const two = await Service.exchange(id, { offer: "paint:po_c", qty: 1, key: key() });
+    check("E17: o recibo mostra fichas gastas e itens recebidos", !two.error && two.receipt.items.some((l) => l.id === "ficha_paint" && l.qty === -8) && two.receipt.items.some((l) => l.id === "po_ref_c" && l.qty === 1));
+    check("E17: ficha de outro jogo não paga", (await Service.exchange(id, { offer: "jetpack:po_d", key: key() })).code === "tokens");
+    check("E17: oferta da forja antiga não existe mais", (await Service.exchange(id, { offer: "paint:pedra", key: key() })).code === "offerid");
   },
   // ── E17: tabelas da luta (Hall só ficha; rua comum × elite) ──
   async ({ pool, id, qty }) => {
@@ -244,7 +150,7 @@ const STEPS = [
       elite: await Reward.grant(ctx.client, id, { table: "mob:elite", ctx, R: () => 0.5, roll: { win: true, activeMs: 180000 } }),
     }));
     check("E17: o Hall entrega só ficha (2 + 1 pela vitória)", out.hall.length === 1 && out.hall[0].id === "ficha_hall" && out.hall[0].qty === 3);
-    check("E17: o elite da rua entrega o fragmento da Lâmina das Correntes e Cinza", out.elite.some((l) => l.id === "frag_lamina_correntes" && l.qty >= 3) && out.elite.some((l) => l.id === "cinza_das_correntes"));
+    check("E17: o elite da rua entrega fragmento de classe C e pó B", out.elite.some((l) => l.id === "frag_classe_c" && l.qty >= 2) && out.elite.some((l) => l.id === "po_ref_b"));
     check("E17: a entrega passa pela mochila (com livro)", (await qty(id, "ficha_hall")) === 3);
   },
   // ── E18: baús e coleção ──
@@ -257,17 +163,14 @@ const STEPS = [
     await visit(id, "biblioteca");
     const ck = key();
     const [a, b] = await Promise.all([Service.openChest(id, { chest: "bau_biblioteca", key: ck }), Service.openChest(id, { chest: "bau_biblioteca", key: ck })]);
-    check("E18: abre o baú no lugar dele (mesma chave = um recibo)", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "receita_oculta_forca")) === 1);
+    check("E18: abre o baú no lugar dele (mesma chave = um recibo; 2 pós S e 5 fragmentos A)", a.receipt && a.receipt.eventId === b.receipt.eventId && (await qty(id, "po_ref_s")) === 2 && (await qty(id, "frag_classe_a")) === 5);
     const again = await Service.openChest(id, { chest: "bau_biblioteca", key: key() });
-    check("E18: abrir o mesmo baú de novo (outra chave) não entrega", again.code === "chestopen" && (await qty(id, "receita_oculta_forca")) === 1);
+    check("E18: abrir o mesmo baú de novo (outra chave) não entrega", again.code === "chestopen" && (await qty(id, "po_ref_s")) === 2);
     const after = await Service.collection(id);
-    const hidden = after.items.find((x) => x.id === "receita_oculta_forca");
-    check("E18: a receita oculta entra na coleção com nome", hidden && hidden.found && hidden.name && after.found > before.found);
+    check("E18: o que saiu do baú entra na coleção", after.found > before.found && after.items.find((x) => x.id === "po_ref_s").found);
     check("E18: o baú aparece aberto na coleção", after.chests.find((x) => x.id === "bau_biblioteca").opened === true);
     const g = await Service.get(id);
-    check("E18: depois de achada, a receita oculta aparece no catálogo de quem achou", g.gear.recipes.some((r) => r.id === "gravar_runa_forca"));
-    const o = await Service.get(other);
-    check("E18: quem não achou não vê a receita oculta", !o.gear.recipes.some((r) => r.id === "gravar_runa_forca") && !o.gear.items.some((i) => i.id === "receita_oculta_forca"));
+    check("E18 + weapon-v1: a receita oculta de runa saiu (ninguém a vê no catálogo)", !g.gear.recipes.some((r) => r.id === "gravar_runa_forca"));
     await visit(other, "biblioteca");
     check("E18: o baú é um por conta (outra conta abre o dela)", !(await Service.openChest(other, { chest: "bau_biblioteca", key: key() })).error);
   },
@@ -281,7 +184,7 @@ const STEPS = [
     const off = await play();
     check("E19: desligado, a partida não paga ficha de evento", !off.some((l) => l.id === "ficha_evento"));
     await setQty(id, "ficha_evento", 100);
-    check("E19: desligado, a loja de evento não abre", (await Service.exchange(id, { offer: "festa_lumen:selo", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 100);
+    check("E19: desligado, a loja de evento não abre", (await Service.exchange(id, { offer: "festa_lumen:po_sss1", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 100);
     check("E19: evento desconhecido e pedido sem ligar/desligar recusam", (await Events.save(id, { event: "nada", active: true })).code === "event" && (await Events.save(id, { event: "festa_lumen" })).code === "active");
     const on = await Events.save(id, { event: "festa_lumen", active: true, hours: 48 });
     check("E19: o admin liga o evento (com fim)", on.events.find((e) => e.id === "festa_lumen").open === true && !!on.events.find((e) => e.id === "festa_lumen").endsAt);
@@ -289,10 +192,10 @@ const STEPS = [
     check("E19: ligado, a partida paga ficha de evento (2 + 1 pela vitória)", paid.some((l) => l.id === "ficha_evento" && l.qty === 3) && (await qty(id, "ficha_evento")) === 103);
     const bag = (await Service.get(id)).bag;
     check("E19: a mochila diz quais eventos estão ligados", Array.isArray(bag.events) && bag.events.includes("festa_lumen"));
-    const buy = await Service.exchange(id, { offer: "festa_lumen:selo", key: key() });
-    check("E19: ligado, a loja de evento troca (80 fichas → 1 Selo)", !buy.error && (await qty(id, "ficha_evento")) === 23);
+    const buy = await Service.exchange(id, { offer: "festa_lumen:po_sss3", key: key() });
+    check("E19: ligado, a loja de evento troca (80 fichas → 1 Pó SSS III)", !buy.error && (await qty(id, "ficha_evento")) === 23 && (await qty(id, "po_ref_sss3")) === 1);
     await Events.save(id, { event: "festa_lumen", active: false });
-    check("E19: desligado de novo, a loja fecha e a ficha fica guardada", (await Service.exchange(id, { offer: "festa_lumen:catalisador", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 23);
+    check("E19: desligado de novo, a loja fecha e a ficha fica guardada", (await Service.exchange(id, { offer: "festa_lumen:po_sss2", key: key() })).code === "offerid" && (await qty(id, "ficha_evento")) === 23);
     await Events.save(id, { event: "festa_lumen", active: true, hours: 1 });
     const later = (await Life.withLife(id, async (s, ctx) => ({ open: await Events.isOpen(ctx.client, "festa_lumen", Date.now() + 2 * 3600 * 1000) }))).open;
     check("E19: o evento com fim fecha sozinho depois do prazo", later === false);

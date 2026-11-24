@@ -93,14 +93,15 @@ test("E0 — proposta do §7: 71 definições novas, sem id repetido nem colisã
   // E8: as 21 receitas por fragmento do catálogo são as da proposta (mesmos ingredientes e custo)
   for (const rc of Bal.proposalRecipes()) {
     const real = Gear.RECIPE_BY_ID.get(rc.id);
-    assert.ok(real && real.out === rc.out && real.recipe === rc.recipe && real.coins === rc.coins && JSON.stringify(real.needs) === JSON.stringify(rc.needs), `receita ${rc.id}`);
+    if (!real) continue; // weapon-v1 (24/11): a receita por fragmento de arma/peça saiu do jogo
+    assert.ok(real.out === rc.out && real.recipe === rc.recipe && real.coins === rc.coins && JSON.stringify(real.needs) === JSON.stringify(rc.needs), `receita ${rc.id}`);
   }
   for (const rc of Bal.proposalRecipes()) {
     assert.ok(known.has(rc.out) && known.has(rc.recipe), rc.id);
     for (const k of Object.keys(rc.needs)) assert.ok(known.has(k), `${rc.id}: ${k}`);
   }
   for (const [tid, t] of Object.entries(Bal.proposalLoot())) for (const e of [...t.sure, ...t.chance, ...t.first]) assert.ok(known.has(e.id), `${tid}: ${e.id}`);
-  assert.equal(Bal.todayGear().length, 180); // +74 armas do Tripo (22/11)
+  assert.equal(Bal.todayGear().length, 197); // +74 armas do Tripo (22/11) · +17 espadas (24/11)
 });
 
 test("E0 — conjuntos: 4 peças nos setores 7 a 10 entre 25 e 40 vitórias (pior caso do garantido incluído)", () => {
@@ -201,34 +202,9 @@ test("I6 — a mesma faixa do sorteio da rua dá a mesma distância de régua (�
     }
   }
 });
-test("I7 — fabricar → desmontar → fabricar perde pelo menos 50% dos materiais", () => {
-  // E11: a regra em uso (rules/salvage.js) sobre toda receita que fabrica equipamento
-  const S = require("../../src/utils/mmItems/rules/salvage");
-  const recipes = Gear.RECIPES.filter((r) => Gear.GEAR_BY_ID.get(r.out)?.slot);
-  assert.ok(recipes.length >= 30, `${recipes.length} receitas de equipamento`);
-  for (const rc of recipes) {
-    const out = Gear.GEAR_BY_ID.get(rc.out);
-    for (const plus of [0, 15]) {
-      const back = S.salvageYield(out, plus, Gear.RECIPES, Gear.GEAR_BY_ID);
-      for (const [id, n] of Object.entries(rc.needs)) assert.ok((back[id] || 0) <= 0.5 * n, `${rc.id}: ${id} volta ${back[id]} de ${n}`);
-      assert.ok(!("coins" in back), `${rc.id}: desmontar nunca dá Esmeralda`);
-    }
-    // laço fabricar → desmontar 10 vezes: o estoque de cada material só cai
-    const stock = Object.fromEntries(Object.entries(rc.needs).map(([id, n]) => [id, n * 10]));
-    let prev = { ...stock };
-    for (let i = 0; i < 10; i++) {
-      if (!Object.entries(rc.needs).every(([id, n]) => stock[id] >= n)) break;
-      for (const [id, n] of Object.entries(rc.needs)) stock[id] -= n;
-      const back = S.salvageYield(out, 0, Gear.RECIPES, Gear.GEAR_BY_ID);
-      for (const id of Object.keys(rc.needs)) stock[id] += back[id] || 0;
-      for (const id of Object.keys(rc.needs)) assert.ok(stock[id] < prev[id], `${rc.id} volta ${i}: ${id} não caiu`);
-      prev = { ...stock };
-    }
-  }
-  // transmutar: 3 → 1 do mesmo tier e categoria, com Esmeralda; peça da forja e outro tier recusam
-  assert.deepEqual(S.transmuteCost(Gear.GEAR_BY_ID.get("fragmento_lamina"), Gear.GEAR_BY_ID.get("po_de_lua"), 2), { needs: { fragmento_lamina: 6 }, coins: 40, gives: { po_de_lua: 2 } });
-  assert.equal(S.transmuteCost(Gear.GEAR_BY_ID.get("fragmento_lamina"), Gear.GEAR_BY_ID.get("seiva_de_prata")).error, "transmute");
-  assert.equal(S.transmuteCost(Gear.GEAR_BY_ID.get("peca_lamina"), Gear.GEAR_BY_ID.get("peca_fio")).error, "transmute");
+test("I7 + weapon-v1 — desmontar saiu do jogo: nenhuma receita que ficou fabrica arma ou peça de slot fora o bestiário", () => {
+  for (const r of Gear.RECIPES) assert.ok(r.kind === "prep" || r.kind === "fragment", r.id);
+  assert.ok(!Gear.RECIPES.some((r) => Gear.GEAR_BY_ID.get(r.out)?.category === "weapon"));
 });
 test("I8 — vitórias para +15 nunca abaixo de 270; cruzamento moeda × material nos níveis 6, 17, 31, 53, 80, 114 (±2)", () => {
   // E9: a regra em uso (rules/upgrade.js). Moeda: o total de Esmeraldas do +0 ao +15 ÷ o que uma vitória
@@ -280,30 +256,21 @@ test("I9 (armas) — vitórias de chefão para fabricar: 3 a 20 por raridade; pi
     assert.equal(frag.fragment.need, NEED[out.rarity], frag.id);
   }
 });
-test("I9 (conjuntos) — fragmento dos setores 7 a 10 com a tabela real do Domínio", () => {
-  // E12: o conjunto inteiro (4 peças × 20 fragmentos) sai em 25 a 40 vitórias nos setores 7 a 10,
-  // pela tabela que o servidor sorteia (esperado e pior caso), e o pior ≤ 1,5 × o esperado
+test("I9 + weapon-v1 — fragmento de classe dos setores 7 a 10: uma arma em 5 a 10 vitórias", () => {
   const Items = require("../../src/utils/mmItems");
-  const { NEED } = Items.LINES;
-  for (const set of Items.LINES.FRAGMENT_SETS) {
-    const frag = `frag_${set.id}`;
-    const pieces = Items.RECIPES.filter((r) => r.kind === "fragment" && r.needs[frag]);
-    assert.equal(pieces.length, 4, set.id);
-    const need = pieces.reduce((a, r) => a + r.needs[frag], 0);
-    assert.equal(need, 4 * NEED.rare, set.id);
-    for (let sector = 1; sector <= 10; sector++) {
-      const e = Items.lootExpectation(`domain:${set.domain}:${sector}`, { win: true })[frag];
-      if (sector < 7) { assert.equal(e, undefined, `${set.id} setor ${sector}`); continue; }
-      const expected = Math.ceil(need / e.expected), worst = Math.ceil(need / e.min);
-      assert.ok(expected >= 25 && expected <= 40 && worst >= 25 && worst <= 40, `${set.id} setor ${sector}: ${expected}/${worst} vitórias`);
-      assert.ok(worst <= 1.5 * expected, `${set.id}: pior ${worst} > 1,5 × ${expected}`);
-      // derrota não paga o fragmento do Domínio
-      assert.equal(Items.lootExpectation(`domain:${set.domain}:${sector}`, { win: false })[frag], undefined);
-    }
+  const WP = require("../../src/utils/mmItems/rules/weaponProgress");
+  const Loot = require("../../src/utils/mmItems/catalog/loot");
+  for (const d of Loot.DOMAIN_ORDER) for (let sector = 7; sector <= 9; sector++) {
+    const frag = WP.fragmentOf(Loot.DOMAIN_FRAG[d][0]);
+    const e = Items.lootExpectation(`domain:${d}:${sector}`, { win: true })[frag];
+    const expected = Math.ceil(WP.FRAGMENT_NEED[Loot.DOMAIN_FRAG[d][0]] / e.expected), worst = Math.ceil(WP.FRAGMENT_NEED[Loot.DOMAIN_FRAG[d][0]] / e.min);
+    assert.ok(expected >= 5 && worst <= 10 && worst <= 1.5 * expected, `${d} ${sector}: ${expected}/${worst}`);
+    assert.equal(Items.lootExpectation(`domain:${d}:${sector}`, { win: false })[frag], undefined, "derrota não paga");
   }
 });
 test("I10 — nenhum item de combate existe só em fonte de PvP", () => {
   const Items = require("../../src/utils/mmItems");
+  const WP = require("../../src/utils/mmItems/rules/weaponProgress");
   const PVP_TABLES = new Set(["fight:hall"]);
   const PVP_TOKENS = new Set(["ficha_hall"]);
   // item de combate: equipamento, fragmento de equipamento, runa e preparo
@@ -311,7 +278,11 @@ test("I10 — nenhum item de combate existe só em fonte de PvP", () => {
   assert.ok(combat.length > 150);
   const made = new Set(Items.RECIPES.map((r) => r.out));
   for (const g of combat) {
+    if (g.retired) continue; // weapon-v1: aposentado não tem fonte nenhuma
+    // weapon-v1: arma monta com fragmento de classe, que cai fora do PvP
+    const frag = WP.isWeapon(g) && WP.assemblyCost(g) && WP.assemblyCost(g).fragment;
     const nonPvp = g.price != null || g.starter || made.has(g.id) || Array.isArray(g.source)
+      || (frag && Items.lootSourcesOf(frag).some((s) => !PVP_TABLES.has(s.table)))
       || Items.lootSourcesOf(g.id).some((s) => !PVP_TABLES.has(s.table))
       || Items.EXCHANGE.OFFERS.some((o) => o.gives[g.id] && !PVP_TOKENS.has(o.token))
       || (g.rune && g.rune.grade > 1);

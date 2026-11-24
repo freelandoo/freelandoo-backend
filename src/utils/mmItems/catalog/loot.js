@@ -17,7 +17,8 @@
 // `qty.byMinutes`: max(1, min(4, round(minutos ativos / 2))) + `win` se venceu (a regra de antes).
 "use strict";
 
-const { DOMAIN_NAME, LINES, FRAGMENT_SETS, BOSS_FRAGMENTS, SET_FRAGMENTS } = require("./lines");
+const { DOMAIN_NAME } = require("./lines");
+const WP = require("../rules/weaponProgress");
 const Chests = require("./chests");
 const Bestiary = require("./bestiary");
 
@@ -36,41 +37,38 @@ const DOMAIN_MATS = Object.freeze({
   orbital: Object.freeze({ common: "vidro_colorido", rare: "prisma_vivo" }),
   vermelha: Object.freeze({ common: "folha_rubra", rare: "brasa_de_estandarte" }),
 });
-/** E13: a runa de cada Domínio (a de Acuracidade cai em todos, mais rara). */
-const DOMAIN_RUNE = Object.freeze({ floresta: "destreza", canion: "velocidade", gelo: "vitalidade", fabrica: "defesa", vulcao: "ataque", orbital: "inteligencia", vermelha: "ataque" });
-const RUNE_CHANCE = Object.freeze({ domain: 0.2, forca: 0.05, boss: 0.35 });
+// weapon-v1 (24/11/2026): o Domínio paga a progressão nova das armas — pó da faixa do Domínio (o seguinte
+// com chance; o chefão garante dois degraus acima) e fragmentos de classe do setor 7 em diante. Saíram a
+// Pedra, o Catalisador, o Lingote, o Minério, o Cristal, a Essência, o Selo, as runas, os fragmentos de
+// arma/conjunto específicos e os projetos (catalog/retired.js). A ordem é a dos níveis da porta.
+const DOMAIN_ORDER = Object.freeze(["floresta", "canion", "gelo", "fabrica", "vulcao", "orbital", "vermelha"]);
+/** Classes de fragmento do Domínio: [setores 7–9, chefão do 10]. */
+const DOMAIN_FRAG = Object.freeze({
+  floresta: ["C", "B"], canion: ["B", "A"], gelo: ["A", "S"], fabrica: ["S", "SS"],
+  vulcao: ["SS", "SSR"], orbital: ["SSR", "legendary"], vermelha: ["legendary", "divine"],
+});
+const domainPowderQty = (sector) => 1 + Math.floor(sector / 4);
+const domainNextPowder = (sector) => Math.round((0.1 + 0.03 * sector) * 100) / 100;
 const domainCommonQty = (sector) => 1 + Math.floor(sector / 3);
 const domainRareChance = (sector) => (5 + 3 * sector) / 100;
 
 function domainTable(domain, sector) {
   const { common, rare } = DOMAIN_MATS[domain];
-  const set = FRAGMENT_SETS.find((x) => x.domain === domain);
-  const line = LINES.find((l) => l.region === domain);
   const boss = sector === DOMAIN_SECTORS;
+  const i = DOMAIN_ORDER.indexOf(domain);
+  const powder = (k) => WP.POWDERS[Math.min(WP.POWDERS.length - 1, i + k)].id;
+  const frag = (k) => WP.fragmentOf(DOMAIN_FRAG[domain][k]);
   const q = (n) => Object.freeze([n, n]);
-  const sure = [{ id: common, qty: q(domainCommonQty(sector)), win: true }];
-  if (boss) sure.push({ id: rare, qty: q(1), win: true });
-  if (set && sector >= 7) sure.push({ id: `frag_${set.id}`, qty: SET_FRAGMENTS.qty, win: true });
-  // a Floresta Vermelha (22/11) ainda não tem arma de linha: o chefão paga o Selo e os fragmentos do bestiário
-  if (boss && line) sure.push({ id: `frag_${line.key}`, qty: BOSS_FRAGMENTS.qty, win: true });
-  if (boss) sure.push({ id: "selo_dominio", qty: q(1), win: true });
+  // o material do Domínio continua (Criogenia/bestiário e preparos usam)
+  const sure = [{ id: common, qty: q(domainCommonQty(sector)), win: true }, { id: powder(0), qty: q(domainPowderQty(sector)), win: true }];
+  if (boss) sure.push({ id: rare, qty: q(1), win: true }, { id: powder(2), qty: q(1), win: true }, { id: frag(1), qty: Object.freeze([3, 5]), win: true });
+  else if (sector >= 7) sure.push({ id: frag(0), qty: Object.freeze([2, 3]), win: true });
   const chance = [];
   if (!boss) chance.push({ id: rare, qty: q(1), p: domainRareChance(sector), win: true });
-  chance.push(
-    { id: "pedra_aprimoramento", qty: q(1), p: 0.5, win: true },
-    { id: "minerio_prata", qty: q(1), p: 0.2, win: true },
-    { id: "cristal_bruto", qty: q(1), p: 0.15, win: true },
-  );
-  if (sector >= 4) chance.push({ id: "lingote_refinado", qty: q(1), p: 0.25, win: true });
-  if (sector >= 8) chance.push({ id: "catalisador_refino", qty: q(1), p: 0.1, win: true });
-  if (boss) chance.push({ id: "essencia_primordial", qty: q(1), p: 0.25, win: true });
-  // E13: runas no FIM da lista (os sorteios de antes não mudam): a do Domínio (grau I em todo setor,
-  // grau II no chefão) e a de Acuracidade (rara, em todo Domínio)
-  chance.push({ id: `runa_${DOMAIN_RUNE[domain]}_1`, qty: q(1), p: RUNE_CHANCE.domain, win: true }, { id: "runa_forca_1", qty: q(1), p: RUNE_CHANCE.forca, win: true });
-  if (boss) chance.push({ id: `runa_${DOMAIN_RUNE[domain]}_2`, qty: q(1), p: RUNE_CHANCE.boss, win: true });
+  chance.push({ id: powder(1), qty: q(1), p: domainNextPowder(sector), win: true });
   const first = [];
-  if (set && sector === 7) first.push({ id: `projeto_${set.id}`, qty: q(1) });
-  if (boss && line) first.push({ id: `frag_${line.key}`, qty: q(BOSS_FRAGMENTS.first) }, { id: `receita_${line.key}`, qty: q(1) });
+  if (boss) first.push({ id: frag(1), qty: q(10) });
+  else if (sector === 7) first.push({ id: frag(0), qty: q(10) });
   // S14: fragmentos de acessório, de personagem e do deus — sempre no FIM de cada lista
   const adds = Bestiary.domainAdds(domain, sector);
   sure.push(...adds.sure);
@@ -93,27 +91,27 @@ const domainTableId = (domain, sector) => (DOMAIN_TABLES[`domain:${domain}:${sec
 // Tudo que entrou nas tabelas de antes foi para o FIM da lista (os sorteios de antes não mudam; a
 // linha de quantidade fixa não sorteia). Fichas: `qty.tokens` (minutos ativos ÷ 2 + 1 se venceu).
 const tokens = (game) => ({ id: `ficha_${game}`, qty: { tokens: true } });
-const LAMINAS_SURE = [{ id: "fragmento_lamina", qty: { byMinutes: true, win: 1 } }];
+// weapon-v1 (24/11/2026): Lâminas, rua e minijogos pagam Pó D/C e fragmentos das classes baixas; o material
+// de forja de antes (fragmento de lâmina, núcleo, selo, pedra, minério, pigmento, mola, capacitor, rolamento) saiu.
+const LAMINAS_SURE = [{ id: "po_ref_d", qty: { byMinutes: true, win: 1 } }];
 const LAMINAS_CHANCE = [
-  { id: "nucleo_eter", qty: [1, 1], p: 0.35, win: true, note: "há condensação garantida no ferreiro" },
-  { id: "selo_forja", qty: [1, 1], p: 0.06, win: true, note: "há certificação garantida no ferreiro" },
-  // E9: a Pedra paga o aprimoramento garantido (GDD, tabela L); no fim da lista, para não mexer nos sorteios de antes
-  { id: "pedra_aprimoramento", qty: [1, 1], p: 0.5, win: true, note: "paga o aprimoramento garantido" },
+  { id: "frag_classe_e", qty: [1, 2], p: 0.5, win: true },
+  { id: "po_ref_c", qty: [1, 1], p: 0.35, win: true },
+  { id: "frag_classe_d", qty: [1, 1], p: 0.25, win: true },
 ];
 /** E17 (A9): o elite da rua é o monstro sorteado com fator ≥ 1,40 da régua (A15). */
 const ELITE_FACTOR = 1.4;
-/** Mesmo saque das Lâminas (a rua pagava o das Lâminas) + o que a rua tem de seu. */
 const mobTable = (elite) => ({
   label: elite ? "Monstros de elite da rua" : "Monstros da rua", winLabel: elite ? "Vitórias contra elites da rua" : "Vitórias na rua",
-  sure: [...LAMINAS_SURE, { id: "minerio_ferro", qty: [1, 2] }, ...(elite ? [{ id: "cinza_das_correntes", qty: [1, 2], win: true }, { id: "frag_lamina_correntes", qty: BOSS_FRAGMENTS.qty, win: true }] : [])],
-  chance: [...LAMINAS_CHANCE, { id: "po_forja", qty: [1, 1], p: 0.3 }, ...(elite ? [] : [{ id: "cinza_das_correntes", qty: [1, 1], p: 0.35, win: true }])],
-  ...(elite ? { first: [{ id: "frag_lamina_correntes", qty: [BOSS_FRAGMENTS.first, BOSS_FRAGMENTS.first] }, { id: "receita_lamina_correntes", qty: [1, 1] }] } : {}),
+  sure: [...LAMINAS_SURE, ...(elite ? [{ id: "frag_classe_c", qty: [2, 3], win: true }, { id: "po_ref_b", qty: [1, 1], win: true }] : [])],
+  chance: [...LAMINAS_CHANCE, { id: "po_forja", qty: [1, 1], p: 0.3 }, ...(elite ? [{ id: "frag_classe_legendary", qty: [1, 1], p: 0.08, win: true }] : [])],
+  ...(elite ? { first: [{ id: "frag_classe_legendary", qty: [3, 3] }] } : {}),
 });
-/** Minijogo: o material de antes + ficha, Minério e Pó de Forja (e Madeira na Antigravidade e na Gincana). */
+/** Minijogo: ficha, Pó D, chance de fragmento D, Pó de Forja (e Madeira na Antigravidade e na Gincana). */
 const minigame = (label, game, base, extra = {}) => ({
   label,
-  sure: [{ id: base, qty: { byMinutes: true, win: 1 } }, tokens(game), { id: "minerio_ferro", qty: [1, 2] }, ...(extra.sure || [])],
-  chance: [{ id: "po_forja", qty: [1, 1], p: 0.3 }, ...(extra.wood ? [{ id: "madeira_ancestral", qty: [1, 1], p: 0.25 }] : []), ...(extra.chance || [])],
+  sure: [...(base ? [{ id: base, qty: { byMinutes: true, win: 1 } }] : []), tokens(game), { id: "po_ref_d", qty: [1, 2] }, ...(extra.sure || [])],
+  chance: [{ id: "po_forja", qty: [1, 1], p: 0.3 }, ...(extra.wood ? [{ id: "madeira_ancestral", qty: [1, 1], p: 0.25 }] : []), { id: "frag_classe_d", qty: [1, 1], p: 0.3, win: true }, ...(extra.chance || [])],
   ...(extra.first ? { first: extra.first } : {}),
 });
 
@@ -122,35 +120,29 @@ const TABLES = Object.freeze({
     label: "Lâminas e monstros", winLabel: "Vitórias da família forja",
     // E17: o Pó de Forja garantido (quantidade fixa: não sorteia)
     sure: [...LAMINAS_SURE, { id: "po_forja", qty: [1, 1] }],
-    chance: [
-      ...LAMINAS_CHANCE,
-      // E17 (A9): Aurion paga na Arena (e na troca do Hall) — no fim, os sorteios de antes não mudam
-      { id: "brasa_solar", qty: [1, 1], p: 0.35, win: true },
-      { id: "frag_primeira_chama", qty: [1, 2], p: 0.2, win: true },
-    ],
-    first: [{ id: "receita_primeira_chama", qty: [1, 1] }],
+    chance: [...LAMINAS_CHANCE, { id: "frag_classe_legendary", qty: [1, 1], p: 0.05, win: true }],
+    first: [{ id: "frag_classe_c", qty: [5, 5] }],
   },
   "fight:boxe": {
     label: "Boxe", winLabel: "Vitórias do Boxe",
     sure: [{ id: "couro_reforcado", qty: { byMinutes: true, win: 1 } }],
     chance: [
-      { id: "rebite", qty: [1, 1], p: 0.35, win: true, note: "também pode ser produzido no ferreiro" },
-      { id: "pedra_aprimoramento", qty: [1, 1], p: 0.5, win: true, note: "paga o aprimoramento garantido" }, // E9
-      { id: "minerio_prata", qty: [1, 1], p: 0.2, win: true }, // E17
+      { id: "po_ref_d", qty: [1, 1], p: 0.5, win: true },
+      { id: "frag_classe_e", qty: [1, 1], p: 0.3, win: true },
     ],
   },
   // E17 (A10): o Hall é PvP — só ficha (a troca do Hall vende o caminho de Aurion)
   "fight:hall": { label: "Hall dos Campeões", sure: [tokens("hall")] },
   "mob:common": mobTable(false),
   "mob:elite": mobTable(true),
-  "minigame:paint": minigame("Paint", "paint", "pigmento_eter", {
-    sure: [{ id: "barro_primordial", qty: [1, 2], win: true }, { id: "frag_cajado_moldes", qty: [2, 3], win: true }],
-    first: [{ id: "receita_cajado_moldes", qty: [1, 1] }],
+  "minigame:paint": minigame("Paint", "paint", null, {
+    sure: [{ id: "frag_classe_c", qty: [1, 2], win: true }],
+    first: [{ id: "frag_classe_b", qty: [5, 5] }],
   }),
-  "minigame:gincana": minigame("Gincana", "gincana", "mola_precisao", { wood: true }),
+  "minigame:gincana": minigame("Gincana", "gincana", null, { wood: true }),
   "minigame:jetpack": minigame("Jetpack", "jetpack", "injetor_vapor"),
-  "minigame:corrida": minigame("Antigravidade", "corrida", "capacitor", { wood: true }),
-  "minigame:noturno": minigame("Rolê Noturno", "noturno", "rolamento"),
+  "minigame:corrida": minigame("Antigravidade", "corrida", null, { wood: true }),
+  "minigame:noturno": minigame("Rolê Noturno", "noturno", null, { chance: [{ id: "po_ref_c", qty: [1, 1], p: 0.25, win: true }] }),
   ...DOMAIN_TABLES,
   // E18: baús (conteúdo fixo, uma vez por conta)
   ...Chests.TABLES,
@@ -172,13 +164,14 @@ const ACTIVITY_TABLE = Object.freeze({
  * raro. Mantida igual para quem lê `Gear.LOOT`; a regra é a das tabelas acima.
  */
 const LOOT = Object.freeze({
-  forja: { base: "fragmento_lamina", uncommon: "nucleo_eter", rare: "selo_forja" },
-  couro: { base: "couro_reforcado", uncommon: "rebite", rare: null },
-  pigmento: { base: "pigmento_eter", uncommon: null, rare: null },
-  mola: { base: "mola_precisao", uncommon: null, rare: null },
+  // weapon-v1: o material comum de cada família agora é o Pó de Refinamento D (couro e vapor seguem: preparos)
+  forja: { base: "po_ref_d", uncommon: "po_ref_c", rare: null },
+  couro: { base: "couro_reforcado", uncommon: "po_ref_d", rare: null },
+  pigmento: { base: "po_ref_d", uncommon: null, rare: null },
+  mola: { base: "po_ref_d", uncommon: null, rare: null },
   vapor: { base: "injetor_vapor", uncommon: null, rare: null },
-  capacitor: { base: "capacitor", uncommon: null, rare: null },
-  rolamento: { base: "rolamento", uncommon: null, rare: null },
+  capacitor: { base: "po_ref_d", uncommon: null, rare: null },
+  rolamento: { base: "po_ref_d", uncommon: null, rare: null },
 });
 /** Família de antes → tabela (para `Gear.rollLoot(family, …)`, que segue existindo). */
 const FAMILY_TABLE = Object.freeze({
@@ -191,4 +184,4 @@ const FAMILY_TABLE = Object.freeze({
   rolamento: "minigame:noturno",
 });
 
-module.exports = { TABLES, ACTIVITY_TABLE, LOOT, FAMILY_TABLE, DOMAIN_SECTORS, DOMAIN_MATS, DOMAIN_RUNE, RUNE_CHANCE, ELITE_FACTOR, domainCommonQty, domainRareChance, domainTableId };
+module.exports = { TABLES, ACTIVITY_TABLE, LOOT, FAMILY_TABLE, DOMAIN_SECTORS, DOMAIN_MATS, DOMAIN_ORDER, DOMAIN_FRAG, ELITE_FACTOR, domainCommonQty, domainRareChance, domainTableId };

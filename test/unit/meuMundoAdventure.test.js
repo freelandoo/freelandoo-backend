@@ -121,8 +121,8 @@ test("destreza: menos fôlego e ranque com 30% do peso", () => {
 const Gear = require("../../src/utils/meuMundoGear");
 
 test("equipamento: catálogo com ids únicos e os 151 itens da forja (+12 dos conjuntos, E7; +59 da E8; +44 do bestiário, S14; +35 runas da E13; +8 consumíveis da E16; +6 fichas da E17)", () => {
-  assert.equal(Gear.GEAR.length, 399); // Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · S14: +44 do bestiário · E13: +35 runas · E16: +8 consumíveis · E17: +6 fichas · E18: receita oculta · E19: ficha de evento
-  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 399);
+  assert.equal(Gear.GEAR.length, 435); // weapon-v1 (24/11): +17 espadas novas + 9 pós + 10 fragmentos de classe ·  Floresta Vermelha (22/11): +8 · armas do Tripo (22/11): +74 · S14: +44 do bestiário · E13: +35 runas · E16: +8 consumíveis · E17: +6 fichas · E18: receita oculta · E19: ficha de evento
+  assert.equal(new Set(Gear.GEAR.map((g) => g.id)).size, 435);
   for (const g of Gear.GEAR) {
     assert.ok(Gear.CATEGORIES.includes(g.category), g.id);
     assert.ok(Gear.RARITIES.includes(g.rarity), g.id);
@@ -150,10 +150,11 @@ test("drop: material comum garantido com participação; vitória aumenta; nunca
   const never = () => 0.99;
   const always = () => 0;
   const loss = Gear.rollLoot("forja", { win: false, activeMs: 60000 }, never);
-  assert.deepEqual(loss.map((d) => d.id), ["fragmento_lamina", "po_forja"]); // E17: + Pó de Forja garantido
+  // weapon-v1 (24/11): o garantido é o Pó de Refino D (o Fragmento de Lâmina saiu com a forja antiga)
+  assert.deepEqual(loss.map((d) => d.id), ["po_ref_d", "po_forja"]); // E17: + Pó de Forja garantido
   const win = Gear.rollLoot("forja", { win: true, activeMs: 60000 }, always);
-  assert.ok(win.find((d) => d.id === "fragmento_lamina").qty > loss[0].qty);
-  assert.ok(win.some((d) => d.id === "nucleo_eter") && win.some((d) => d.id === "selo_forja"));
+  assert.ok(win.find((d) => d.id === "po_ref_d").qty > loss[0].qty);
+  assert.ok(win.some((d) => d.id === "frag_classe_e") && win.some((d) => d.id === "po_ref_c"));
 });
 
 test("luta com equipamento: mais dano dado, menos levado, teto do lado da regra", () => {

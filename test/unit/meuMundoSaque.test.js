@@ -50,22 +50,16 @@ test("E3: cada atividade tem a sua tabela e a família de antes aponta a mesma",
   }
 });
 
-test("E3: as tabelas dão o mesmo saque da regra antiga com o mesmo R (10 mil sorteios por família)", () => {
+test("E3 + weapon-v1: a fachada antiga (rollLoot) sorteia o mesmo que a tabela da família", () => {
   for (const family of Object.keys(Gear.LOOT)) {
-    for (let i = 0; i < 10000; i++) {
+    for (let i = 0; i < 2000; i++) {
       const ctx = { win: i % 3 !== 0, activeMs: (i % 17) * 37000 };
-      const A = seeded(i * 7919 + family.length), B = seeded(i * 7919 + family.length);
-      const antes = rollLootAntes(family, ctx, A);
-      const agora = Items.rollTable(Items.FAMILY_TABLE[family], ctx, B);
-      // E9: a Pedra de Aprimoramento entrou no FIM das lutas (Lâminas e Boxe) · E17: Pó de Forja, Aurion,
-      // Prata, fichas, Minério, Madeira e Bastor também no FIM (ou sem sorteio): os sorteios de antes não mudam
-      assert.deepEqual(agora.filter((x) => !NOVOS.has(x.id)), antes, `${family} #${i}`);
-      assert.ok(B.calls >= A.calls, `${family} #${i}: os sorteios de antes vêm primeiro`);
-      assert.deepEqual(Gear.rollLoot(family, ctx, seeded(i * 7919 + family.length)), agora);
+      const agora = Items.rollTable(Items.FAMILY_TABLE[family], ctx, seeded(i * 7919 + family.length));
+      assert.deepEqual(Gear.rollLoot(family, ctx, seeded(i * 7919 + family.length)), agora, `${family} #${i}`);
+      for (const x of agora) assert.ok(!Items.GEAR_BY_ID.get(x.id).retired, `${family}: ${x.id} aposentado`);
     }
   }
 });
-
 test("E3: o saque não depende do nível", () => {
   for (const table of Object.keys(Items.LOOT_TABLES)) {
     for (const win of [true, false]) {
@@ -76,7 +70,7 @@ test("E3: o saque não depende do nível", () => {
 });
 
 test("E3: todo item do catálogo tem 'onde conseguir' não vazio", () => {
-  for (const it of Items.GEAR) assert.ok(Items.sourcesOf(it).length > 0, it.id);
+  for (const it of Items.GEAR.filter((g) => !g.retired)) assert.ok(Items.sourcesOf(it).length > 0, it.id); // weapon-v1: aposentado não tem origem
   // e todo item de tabela aparece como fonte dele
   for (const [table, t] of Object.entries(Items.LOOT_TABLES)) {
     for (const e of [...(t.sure || []), ...(t.chance || [])]) {
@@ -88,10 +82,11 @@ test("E3: todo item do catálogo tem 'onde conseguir' não vazio", () => {
 
 test("E3: esperado por vitória confere com a regra (lâminas, 4 min, vitória)", () => {
   const e = Items.lootExpectation("fight:laminas", { win: true, activeMs: 240000 });
-  assert.deepEqual(e.fragmento_lamina, { expected: 3, min: 3, max: 3 });
-  assert.equal(e.nucleo_eter.expected, 0.35);
-  assert.equal(e.selo_forja.expected, 0.06);
-  assert.equal(e.selo_forja.min, 0);
+  // weapon-v1 (24/11): Pó D garantido por minuto, Pó C e fragmentos de classe baixos por chance
+  assert.deepEqual(e.po_ref_d, { expected: 3, min: 3, max: 3 });
+  assert.equal(e.po_ref_c.expected, 0.35);
+  assert.equal(e.frag_classe_e.expected, 0.75);
+  assert.equal(e.frag_classe_legendary.min, 0);
   const lost = Items.lootExpectation("fight:laminas", { win: false, activeMs: 240000 });
-  assert.deepEqual(Object.keys(lost), ["fragmento_lamina", "po_forja"]); // E17: o Pó de Forja garantido
+  assert.deepEqual(Object.keys(lost), ["po_ref_d", "po_forja"]); // E17: o Pó de Forja garantido
 });

@@ -46,7 +46,9 @@ test("Floresta Vermelha: saque — materiais, amuleto, Porta-Estandarte no 9 e o
     for (const e of [...t.sure, ...t.chance, ...(t.first || [])]) assert.ok(Items.GEAR_BY_ID.has(e.id), `${s}: ${e.id}`);
   }
   const boss = Items.lootExpectation("domain:vermelha:10", { win: true });
-  assert.deepEqual(boss.selo_dominio, { expected: 1, min: 1, max: 1 });
+  // weapon-v1: o chefe da Floresta Vermelha paga o Pó SSS III e 3 a 5 fragmentos de classe Divina
+  assert.deepEqual(boss.po_ref_sss3, { expected: 1, min: 1, max: 1 });
+  assert.deepEqual([boss.frag_classe_divine.min, boss.frag_classe_divine.max], [3, 5]);
   assert.equal(boss.brasa_de_estandarte.min, 1);
   assert.equal(boss.frag_deus_varkos.min, 1);
   assert.equal(Items.lootExpectation("domain:vermelha:10", { win: true, first: true }).frag_deus_varkos.min, 6);

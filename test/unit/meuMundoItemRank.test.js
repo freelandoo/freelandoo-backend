@@ -24,7 +24,8 @@ test("rank: armas dos deuses (linha) são Lendárias; as Divinas são as 11 do T
   const lines = Items.GEAR.filter((g) => g.line);
   assert.equal(lines.length, 9);
   for (const g of lines) assert.equal(g.rank, "legendary", g.id);
-  assert.equal(Items.GEAR.filter((g) => g.rank === "divine").length, 11);
+  // weapon-v1 (24/11): o Pó SSS III e o Fragmento de classe Divina também são da classe Divina
+  assert.equal(Items.GEAR.filter((g) => g.rank === "divine" && g.category !== "material" && g.category !== "fragment").length, 11);
 });
 
 test("rank: fora da escala de armas, pela raridade interna", () => {

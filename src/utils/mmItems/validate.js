@@ -30,13 +30,14 @@ function validateCatalog({ items, recipes = [], loot = {}, sets = [], sources = 
     if (!RANKS.includes(it.rank)) errors.push(`${it.id}: classe de raridade desconhecida ${it.rank}`);
     if (it.tier !== budget.TIER[it.rarity]) errors.push(`${it.id}: tier ${it.tier} não bate com ${it.rarity}`);
     if (typeof it.name !== "string" || !it.name) errors.push(`${it.id}: sem nome`);
-    if (it.category === "fragment" && !(it.fragment && it.fragment.of && it.fragment.need > 0)) errors.push(`${it.id}: fragmento sem alvo`);
+    // weapon-v1: fragmento de CLASSE aponta a classe (`rank`), não um item
+    if (it.category === "fragment" && !(it.fragment && (it.fragment.of || RANKS.includes(it.fragment.rank)) && it.fragment.need > 0)) errors.push(`${it.id}: fragmento sem alvo`);
     if (it.keys != null) {
       const ok = budget.slotKeys(it.slot);
       if (!Array.isArray(it.keys) || it.keys.length !== 2 || new Set(it.keys).size !== 2 || !it.keys.every((k) => ok.includes(k))) errors.push(`${it.id}: keys ${JSON.stringify(it.keys)} não são duas chaves do slot ${it.slot}`);
     }
   }
-  for (const it of items) if (it && it.category === "fragment" && it.fragment && !byId.has(it.fragment.of)) errors.push(`${it.id}: fragmento aponta ${it.fragment.of}, que não existe`);
+  for (const it of items) if (it && it.category === "fragment" && it.fragment && it.fragment.of && !byId.has(it.fragment.of)) errors.push(`${it.id}: fragmento aponta ${it.fragment.of}, que não existe`);
   const recipeIds = new Set();
   for (const r of recipes) {
     if (recipeIds.has(r.id)) errors.push(`receita repetida: ${r.id}`);
@@ -44,13 +45,21 @@ function validateCatalog({ items, recipes = [], loot = {}, sets = [], sources = 
     if (!byId.has(r.out)) errors.push(`receita ${r.id}: saída ${r.out} não existe`);
     for (const id of Object.keys(r.needs || {})) if (!byId.has(id)) errors.push(`receita ${r.id}: ingrediente ${id} não existe`);
     if (r.recipe && !byId.has(r.recipe)) errors.push(`receita ${r.id}: projeto ${r.recipe} não existe`);
+    // weapon-v1: receita que continua não pode pedir nem entregar item aposentado
+    for (const id of [r.out, ...Object.keys(r.needs || {})]) if (byId.get(id)?.retired) errors.push(`receita ${r.id}: usa ${id}, que saiu do jogo`);
   }
   for (const [family, t] of Object.entries(loot)) for (const id of [t.base, t.uncommon, t.rare]) if (id && !byId.has(id)) errors.push(`saque ${family}: ${id} não existe`);
   for (const s of sets) {
     if (!Array.isArray(s.pieces) || s.pieces.length !== 4) errors.push(`conjunto ${s.id}: precisa de 4 peças`);
     else for (const id of s.pieces) if (!byId.has(id)) errors.push(`conjunto ${s.id}: peça ${id} não existe`);
   }
-  for (const it of items) if (it && it.id && !(sources(it) || []).length) errors.push(`${it.id}: sem origem`);
+  // weapon-v1: aposentado não tem origem (e não pode ter); o resto precisa de pelo menos uma
+  for (const it of items) {
+    if (!it || !it.id) continue;
+    const n = (sources(it) || []).length;
+    if (it.retired && n) errors.push(`${it.id}: aposentado mas ainda tem origem`);
+    if (!it.retired && !n) errors.push(`${it.id}: sem origem`);
+  }
   return errors;
 }
 

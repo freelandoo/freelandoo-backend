@@ -341,6 +341,13 @@ const gearAwaken = forgeAction("awaken");
 // E15: encanto (sortear e escolher)
 const gearEnchant = forgeAction("enchant");
 const gearEnchantResolve = forgeAction("enchantResolve");
+// weapon-v1 (24/11/2026): refinar com pó (bancada, como o aprimoramento: sem prédio) e, na Forja,
+// subir estrela e montar arma por fragmento de classe
+async function gearWeaponRefine(req, res) {
+  return reply(res, await gear().refineWeapon(req.user.id_user, req.body || {}));
+}
+const gearWeaponStars = forgeAction("starWeapon");
+const gearWeaponAssemble = forgeAction("assembleWeapon");
 // E17: loja de troca (dentro da Loja; não depende da Forja)
 async function gearExchange(req, res) {
   return reply(res, await gear().exchange(req.user.id_user, req.body || {}));
@@ -582,6 +589,9 @@ module.exports = {
   gearUpgrade,
   gearRefine,
   gearRefineResolve,
+  gearWeaponRefine,
+  gearWeaponStars,
+  gearWeaponAssemble,
   gearUse,
   gearRecycle,
   gearFragmentConvert,

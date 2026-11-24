@@ -16,38 +16,42 @@ const GAME_RUNE = Object.freeze({ paint: "destreza", jetpack: "velocidade", notu
 
 const offer = (token, id, cost, gives) => Object.freeze({ id: `${token}:${id}`, token: `ficha_${token}`, cost, gives: Object.freeze(gives) });
 
-/** O que toda loja de minijogo vende (progressão comum; nada de equipamento pronto). */
+/**
+ * O que toda loja de minijogo vende (progressão comum; nada de equipamento pronto). weapon-v1 (24/11/2026):
+ * pós das faixas baixas e fragmentos das classes baixas (caminho previsível, sem depender só de sorte);
+ * Pedra, Catalisador, Essência, Selo, Minério e runas saíram com a forja antiga.
+ */
 function common(game) {
   return [
-    offer(game, "minerio", 6, { minerio_ferro: 3 }),
     offer(game, "po_forja", 6, { po_forja: 2 }),
-    offer(game, "pedra", 8, { pedra_aprimoramento: 1 }),
     offer(game, "madeira", 10, { madeira_ancestral: 1 }),
-    offer(game, "runa", 30, { [`runa_${GAME_RUNE[game]}_1`]: 1 }),
-    offer(game, "catalisador", 60, { catalisador_refino: 1 }),
-    offer(game, "essencia", 120, { essencia_primordial: 1 }),
-    offer(game, "selo", 150, { selo_dominio: 1 }),
+    offer(game, "po_d", 4, { po_ref_d: 1 }),
+    offer(game, "po_c", 8, { po_ref_c: 1 }),
+    offer(game, "po_b", 14, { po_ref_b: 1 }),
+    offer(game, "frag_e", 9, { frag_classe_e: 3 }),
+    offer(game, "frag_d", 15, { frag_classe_d: 3 }),
+    offer(game, "frag_c", 24, { frag_classe_c: 3 }),
+    // o mais caro fica em 40 partidas (regra da E17): o pó A, que sobe a arma do 31 ao 40
+    offer(game, "po_a", 120, { po_ref_a: 1 }),
   ];
 }
 
 const OFFERS = Object.freeze([
   ...GAMES.flatMap(common),
-  // Bastor: o Paint também troca o que a linha dele pede
-  offer("paint", "barro", 12, { barro_primordial: 2 }),
-  offer("paint", "frag_moldes", 30, { frag_cajado_moldes: 3 }),
-  offer("paint", "receita_moldes", 90, { receita_cajado_moldes: 1 }),
-  // Hall (PvP): a ficha compra o caminho de Aurion; a Arena das Lâminas também paga (I10)
-  offer("hall", "brasa", 12, { brasa_solar: 2 }),
-  offer("hall", "frag_chama", 30, { frag_primeira_chama: 3 }),
-  offer("hall", "receita_chama", 90, { receita_primeira_chama: 1 }),
-  offer("hall", "runa_forca", 30, { runa_forca_1: 1 }),
+  // Hall (PvP): a ficha compra pós altos e fragmentos das classes de cima
+  offer("hall", "po_a", 20, { po_ref_a: 1 }),
+  offer("hall", "po_s", 30, { po_ref_s: 1 }),
+  offer("hall", "po_ss", 50, { po_ref_ss: 1 }),
+  offer("hall", "frag_ss", 60, { frag_classe_ss: 2 }),
+  offer("hall", "frag_legendary", 90, { frag_classe_legendary: 2 }),
   // E19: loja de evento (só abre com o evento ligado pelo admin)
   ...[
     offer("evento", "cosmetico_rastro", 40, { rastro_eter: 1 }),
-    offer("evento", "runa_forca_2", 40, { runa_forca_2: 1 }),
-    offer("evento", "catalisador", 30, { catalisador_refino: 1 }),
-    offer("evento", "essencia", 60, { essencia_primordial: 1 }),
-    offer("evento", "selo", 80, { selo_dominio: 1 }),
+    offer("evento", "po_sss1", 30, { po_ref_sss1: 1 }),
+    offer("evento", "po_sss2", 50, { po_ref_sss2: 1 }),
+    offer("evento", "po_sss3", 80, { po_ref_sss3: 1 }),
+    offer("evento", "frag_ssr", 40, { frag_classe_ssr: 2 }),
+    offer("evento", "frag_divine", 120, { frag_classe_divine: 2 }),
   ].map((o) => Object.freeze({ ...o, id: o.id.replace("evento:", "festa_lumen:"), event: "festa_lumen" })),
 ]);
 const OFFER_BY_ID = new Map(OFFERS.map((o) => [o.id, o]));

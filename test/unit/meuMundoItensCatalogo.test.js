@@ -17,7 +17,7 @@ const ANTES = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "gear-
  * JSON de agora sem os campos novos dos ITENS: `tier` (E1) e `slot`/`twoHanded` (E6, os 8 slots).
  * Montagem já tinha `tier`; só sai o de quem tem `rarity`.
  */
-const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable", "sockets", "rune", "rank", "stats"]); // classe de raridade (2026-11-17): `rank`, `stats` · E11: `transmutable` · E13: `sockets`, `rune`
+const NOVOS = new Set(["tier", "slot", "twoHanded", "keys", "transmutable", "sockets", "rune", "rank", "stats", "retired"]); // weapon-v1 (24/11): `retired` // classe de raridade (2026-11-17): `rank`, `stats` · E11: `transmutable` · E13: `sockets`, `rune`
 /** E7: o `bonus` do equipamento passou a sair da régua (rules/bonus.js) — sai da comparação. */
 const semTier = (v) => JSON.parse(JSON.stringify(v, function (k, x) {
   if (typeof this.rarity !== "string") return x;
@@ -55,15 +55,19 @@ test("E1: publicGear() é igual ao de antes, campo a campo (fora o tier)", () =>
   // E16: materiais de antes viram ingrediente dos consumíveis de preparo
   const PREPS = Gear.GEAR.filter((g) => g.category === "consumable").map((g) => g.name);
   // E17: a rua ganhou tabela própria (mesmo saque das Lâminas): o "onde conseguir" de antes ganha as linhas dela
-  const E17 = (s) => s.startsWith("Loja de troca:") || s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
+  // weapon-v1 (24/11): toda arma ganha "Forja: montar com N fragmentos de classe X."
+  const E17 = (s) => s.startsWith("Forja: montar com") || s.startsWith("Loja de troca:") || s.startsWith("Monstros da rua:") || s.startsWith("Monstros de elite da rua:") || s.startsWith("Vitórias na rua:") || s.startsWith("Vitórias contra elites da rua:");
   // E14: a linha da Ascensão/Despertar entra nos usos de todo equipamento com chaves
-  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja") && !PREPS.some((n) => u.startsWith("Ingrediente de " + n + ":")));
+  const usesV1 = (uses) => (uses || []).filter((u) => !V1.includes(u) && u !== V2 && !E11.includes(u) && !u.startsWith("Ascender no +10") && !u.startsWith("Encantar na Forja") && !PREPS.some((n) => u.startsWith("Ingrediente de " + n + ":")) && !u.startsWith("Ingrediente de ")); // weapon-v1: as receitas antigas saíram (ingrediente mudou)
   // arma/escudo da loja: preço pela classe muda os textos de preço e reciclagem (2026-11-17) — saem da comparação
-  const loja = (x, v) => (x.shop ? undefined : v);
-  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: loja(antes, usesV1(agora.items[n].uses)), source: loja(antes, (agora.items[n].source || []).filter((s) => !E17(s))) }, { ...antes, uses: loja(antes, usesV1(antes.uses)), source: loja(antes, antes.source) }, antes.id));
+  // weapon-v1 (24/11): o item aposentado perdeu origem e usos (fica no catálogo só para recibos e cópias antigas)
+  const retired = new Set(Gear.GEAR.filter((g) => g.retired).map((g) => g.id));
+  const loja = (x, v) => (x.shop || retired.has(x.id) ? undefined : v);
+  semTier(ANTES.publicGear.items).forEach((antes, n) => assert.deepEqual({ ...agora.items[n], uses: loja(antes, usesV1(agora.items[n].uses)), source: loja(antes, (agora.items[n].source || []).filter((s) => !E17(s))) }, { ...antes, uses: loja(antes, usesV1(antes.uses)), source: loja(antes, (antes.source || []).filter((x) => !x.startsWith("Ferreiro:"))) }, antes.id));
   // E8: as receitas por fragmento entram no fim; as de antes não mudam
-  assert.deepEqual(agora.recipes.slice(0, ANTES.publicGear.recipes.length), ANTES.publicGear.recipes);
-  assert.ok(agora.recipes.slice(ANTES.publicGear.recipes.length).every((r) => r.kind === "fragment" || r.kind === "prep")); // E16: receitas de preparo
+  // weapon-v1 (24/11): as receitas de antes (peças, montagens, conversões, armas) saíram; ficam bestiário e preparo
+  const before = new Set(ANTES.publicGear.recipes.map((r) => r.id));
+  assert.ok(agora.recipes.every((r) => !before.has(r.id) && (r.kind === "fragment" || r.kind === "prep")));
 });
 
 test("E1: GEAR, saque e constantes de equipamento iguais aos de antes", () => {
@@ -73,7 +77,9 @@ test("E1: GEAR, saque e constantes de equipamento iguais aos de antes", () => {
   // E2 (mig 446) subiu a pilha de propósito: 999 → 9.999 (objetivo da fatia, §8 E2).
   assert.equal(ANTES.gear.STACK_MAX, 999);
   assert.equal(Gear.STACK_MAX, 9999);
-  assert.deepEqual(semTier(Gear.LOOT), ANTES.loot);
+  // weapon-v1 (24/11): as famílias de saque continuam as mesmas; o garantido é material que continua no jogo
+  assert.deepEqual(Object.keys(Gear.LOOT), Object.keys(ANTES.loot));
+  for (const l of Object.values(Gear.LOOT)) assert.ok(Gear.GEAR_BY_ID.has(l.base) && !Gear.GEAR_BY_ID.get(l.base).retired, l.base);
 });
 
 test("E1: a forja (peças, montagens, conversões e refino) igual à de antes", () => {

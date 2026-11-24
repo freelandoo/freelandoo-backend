@@ -283,7 +283,7 @@ async function main() {
   check("E12: setor 1 paga pela tabela domain:floresta:1 (1 Pó de Lua, sem material das Lâminas)", rec.result.loot === "domain:floresta:1" && qtyOf(rec, "po_de_lua") === 1 && qtyOf(rec, "fragmento_lamina") === 0 && !rec.result.lootFirst, JSON.stringify({ loot: rec.result.loot, items: rec.items }));
   {
     const s1 = (await Dom.state(nu)).domains[0].sectors;
-    check("E12: GET /domains manda a tabela de cada setor (consultável na tela)", s1.every((x) => x.loot && x.loot.table === `domain:floresta:${x.n}`) && s1[9].loot.sure.some((x) => x.id === "selo_dominio") && s1[9].loot.first.some((x) => x.id === "receita_garras_lunares") && s1[9].loot.firstDone === false && s1[7].loot.chance.some((x) => x.id === "catalisador_refino" && x.p === 0.1) && !s1[6].loot.chance.some((x) => x.id === "catalisador_refino"), JSON.stringify(s1[9].loot).slice(0, 300));
+    check("E12: GET /domains manda a tabela de cada setor (consultável na tela)", s1.every((x) => x.loot && x.loot.table === `domain:floresta:${x.n}`) && s1[9].loot.sure.some((x) => x.id === "po_ref_b") && s1[9].loot.first.some((x) => x.id === "frag_classe_b") && s1[9].loot.firstDone === false && s1[7].loot.chance.some((x) => x.id === "po_ref_c") && !s1.some((x) => [...x.loot.sure, ...x.loot.chance, ...(x.loot.first || [])].some((l) => ["selo_dominio", "catalisador_refino"].includes(l.id))), JSON.stringify(s1[9].loot).slice(0, 300));
   }
   check("Nívea: vitória não rouba nada", (await pending(nu)) === 4500 && !rec.deltas.nectar);
   const again = await Adv.fightFinish(nu, { ticket: r.body.fight.ticket, frames: p1.frames });
@@ -343,7 +343,7 @@ async function main() {
   check("crossed_at gravado", (await best(nu, "floresta")).crossed === true);
   {
     const rc = p10.done.receipt;
-    check("E12: setor 10 entrega o Selo, a Seiva e os fragmentos de Garras Lunares (3 a 5 + 10 na primeira) e a receita", qtyOf(rc, "selo_dominio") === 1 && qtyOf(rc, "seiva_de_prata") === 1 && qtyOf(rc, "frag_garras_lunares") >= 13 && qtyOf(rc, "frag_garras_lunares") <= 15 && qtyOf(rc, "receita_garras_lunares") === 1 && qtyOf(rc, "po_de_lua") === 4 && rc.result.lootFirst === true, JSON.stringify({ items: rc.items, first: rc.result.lootFirst }));
+    check("E12 + weapon-v1: setor 10 entrega pó B, a Seiva e fragmentos de classe B (3 a 5 + 10 na primeira)", qtyOf(rc, "po_ref_b") === 1 && qtyOf(rc, "seiva_de_prata") === 1 && qtyOf(rc, "frag_classe_b") >= 13 && qtyOf(rc, "frag_classe_b") <= 15 && qtyOf(rc, "receita_garras_lunares") === 0 && qtyOf(rc, "po_de_lua") === 4 && rc.result.lootFirst === true, JSON.stringify({ items: rc.items, first: rc.result.lootFirst }));
     const lf = (await pool.query(`SELECT id_fight FROM tb_mm_loot_first WHERE id_user = $1 AND loot_table = 'domain:floresta:10'`, [nu])).rows;
     check("E12: tb_mm_loot_first grava a primeira vitória (mig 449)", lf.length === 1 && !!lf[0].id_fight, JSON.stringify(lf));
     check("S14: o deus deixa 1 fragmento + 5 na primeira vitória (A1 respondida)", qtyOf(rc, "frag_deus_noctis") === 6, JSON.stringify(rc.items));
@@ -402,11 +402,11 @@ async function main() {
   {
     const b2 = await playBoss(nu);
     const rc = b2.done.receipt;
-    check("E12: segunda vitória no 10: 3 a 5 fragmentos e o Selo, sem receita", b2.win && qtyOf(rc, "selo_dominio") === 1 && qtyOf(rc, "frag_garras_lunares") >= 3 && qtyOf(rc, "frag_garras_lunares") <= 5 && qtyOf(rc, "receita_garras_lunares") === 0 && !rc.result.lootFirst, JSON.stringify({ win: b2.win, items: rc && rc.items }));
+    check("E12: segunda vitória no 10: 3 a 5 fragmentos de classe B e o pó B, sem o bônus da primeira", b2.win && qtyOf(rc, "po_ref_b") === 1 && qtyOf(rc, "frag_classe_b") >= 3 && qtyOf(rc, "frag_classe_b") <= 5 && !rc.result.lootFirst, JSON.stringify({ win: b2.win, items: rc && rc.items }));
     const s7 = await playWin(nu, "floresta", 7);
-    check("E12: primeira vitória no setor 7 dá o projeto da Vigília e 2 a 3 fragmentos do conjunto", s7.win && qtyOf(s7.done.receipt, "projeto_vigilia") === 1 && qtyOf(s7.done.receipt, "frag_vigilia") >= 2 && qtyOf(s7.done.receipt, "frag_vigilia") <= 3 && qtyOf(s7.done.receipt, "po_de_lua") === 3, JSON.stringify({ win: s7.win, items: s7.done.receipt && s7.done.receipt.items }));
+    check("E12 + weapon-v1: primeira vitória no setor 7 dá 10 fragmentos de classe C a mais e o fragmento do amuleto", s7.win && qtyOf(s7.done.receipt, "frag_classe_c") >= 12 && qtyOf(s7.done.receipt, "frag_classe_c") <= 13 && qtyOf(s7.done.receipt, "frag_amuleto_floresta") >= 1 && qtyOf(s7.done.receipt, "po_de_lua") === 3, JSON.stringify({ win: s7.win, items: s7.done.receipt && s7.done.receipt.items }));
     const s7b = await playWin(nu, "floresta", 7);
-    check("E12: a segunda vitória no 7 não repete o projeto", s7b.win && qtyOf(s7b.done.receipt, "projeto_vigilia") === 0 && qtyOf(s7b.done.receipt, "frag_vigilia") >= 2, JSON.stringify(s7b.done.receipt && s7b.done.receipt.items));
+    check("E12: a segunda vitória no 7 não repete o bônus da primeira", s7b.win && qtyOf(s7b.done.receipt, "frag_classe_c") >= 2 && qtyOf(s7b.done.receipt, "frag_classe_c") <= 3, JSON.stringify(s7b.done.receipt && s7b.done.receipt.items));
     const again = await Adv.fightFinish(nu, { ticket: s7.ticket.ticket, frames: s7.frames });
     check("E12: reenvio do ticket não paga de novo", again.replay === true && Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_loot_first WHERE id_user = $1`, [nu])).rows[0].count) === 2);
   }

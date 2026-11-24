@@ -85,7 +85,7 @@ function gearBonus(equipped, opts = {}) {
   for (const [k, e] of Object.entries(equipped || {})) {
     const it = e && GEAR_BY_ID.get(e.id);
     const s = normalizeSlot(k, it);
-    if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Math.floor(e.level || 0)), grade: Math.max(1, Math.floor(e.grade || 1)), sockets: Array.isArray(e.sockets) ? e.sockets.slice(0, Runes.MAX_SOCKETS) : [], awakened: !!e.awakened, enchant: e.enchant || null };
+    if (SLOTS.includes(s) && !bySlot[s] && it && it.slot === s) bySlot[s] = { item: it, plus: Math.max(0, Number(e.level) || 0), grade: Math.max(1, Math.floor(e.grade || 1)), sockets: Array.isArray(e.sockets) ? e.sockets.slice(0, Runes.MAX_SOCKETS) : [], awakened: !!e.awakened, enchant: e.enchant || null };
   }
   const { bonus } = Items.bonusOf(Object.values(bySlot), opts);
   const out = {};
@@ -135,8 +135,10 @@ function publicGear({ reveal = () => false } = {}) {
     // E13: runas — engastes por raridade (+1 ascendida, teto 3), fusão 3 → 1, valor de cada grau por chave
     runes: { sockets: Runes.SOCKETS, maxSockets: Runes.MAX_SOCKETS, fuseIn: Runes.FUSE_IN, grades: Runes.GRADES, kinds: Runes.RUNE_KINDS,
       value: Object.fromEntries(Object.values(Runes.RUNE_KINDS).map((k) => [k, Array.from({ length: Runes.GRADES }, (_, i) => Math.round(Runes.runeValue(k, i + 1) * 100000) / 100000)])) },
-    items: GEAR.filter(shown).map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.rune ? { rune: g.rune } : {}), ...(g.prep ? { prep: g.prep } : {}), ...(g.slot && g.tier ? { sockets: Runes.socketsOf(g) } : {}), ...(g.origin ? { origin: g.origin } : {}), ...(Salvage.transmutable(g) ? { transmutable: true } : {}), name: g.name, rarity: g.rarity, rank: g.rank, ...(g.stats ? { stats: g.stats } : {}), tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
+    items: GEAR.filter(shown).map((g) => ({ id: g.id, shop: g.shop || null, category: g.category, slot: g.slot || null, twoHanded: !!g.twoHanded, ...(g.keys ? { keys: g.keys } : {}), ...(g.set ? { set: g.set } : {}), ...(g.domain ? { domain: g.domain } : {}), ...(g.line ? { line: true } : {}), ...(g.fragment ? { fragment: g.fragment } : {}), ...(g.powder ? { powder: g.powder } : {}), ...(g.retired ? { retired: true } : {}), ...(g.rune ? { rune: g.rune } : {}), ...(g.prep ? { prep: g.prep } : {}), ...(g.slot && g.tier ? { sockets: Runes.socketsOf(g) } : {}), ...(g.origin ? { origin: g.origin } : {}), ...(Salvage.transmutable(g) ? { transmutable: true } : {}), name: g.name, rarity: g.rarity, rank: g.rank, ...(g.stats ? { stats: g.stats } : {}), tier: g.tier, price: g.price, level: g.level, clan: g.clan, bonus: g.bonus, family: g.family, stack: g.stack, sell: g.sell, component: g.component, use: g.use, action: g.action, cosmeticEffect: g.cosmeticEffect, lore: g.lore, ...itemDetails(g) })),
     recipes: RECIPES.filter((r) => !r.hidden || reveal(r.recipe)),
+    // weapon-v1 (24/11/2026): refinamento por pó (faixas e chances), estrelas e fragmentos de classe
+    weaponProgress: Items.WEAPON_PROGRESS.publicRules(),
     // E7: conjuntos (2 ou 3 peças = 40% da fatia, 4 = 100%)
     sets: Items.SETS.map((s) => ({ id: s.id, name: s.name, domain: s.domain, keys: s.keys, pieces: s.pieces, steps: Items.SET_STEPS })),
   };

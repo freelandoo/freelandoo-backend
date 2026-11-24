@@ -27,7 +27,8 @@ test("E12: 10 setores por Domínio, todos com itens que existem", () => {
   assert.equal(Items.domainTableId("nada", 1), null);
 });
 
-test("E12: contas do GDD — comum 1 + ⌊s/3⌋, raro 5% + 3%·s, Lingote 4+, Catalisador 8+, chefão no 10", () => {
+test("E12 + weapon-v1: comum 1 + ⌊s/3⌋, raro 5% + 3%·s, pó da faixa do Domínio, fragmento de classe do 7 ao 10", () => {
+  const WP = require("../../src/utils/mmItems/rules/weaponProgress");
   for (const d of DOMAINS) {
     const { common, rare } = Loot.DOMAIN_MATS[d];
     assert.equal(Items.GEAR_BY_ID.get(common).rarity, "common", common);
@@ -37,20 +38,19 @@ test("E12: contas do GDD — comum 1 + ⌊s/3⌋, raro 5% + 3%·s, Lingote 4+, C
       assert.deepEqual(e[common], { expected: 1 + Math.floor(s / 3), min: 1 + Math.floor(s / 3), max: 1 + Math.floor(s / 3) }, `${d} ${s}`);
       if (s < 10) assert.equal(e[rare].expected, Math.round((0.05 + 0.03 * s) * 1000) / 1000, `${d} ${s} raro`);
       else assert.equal(e[rare].min, 1, `${d} chefão: raro garantido`);
-      assert.equal(e.pedra_aprimoramento.expected, 0.5);
-      assert.equal(!!e.lingote_refinado, s >= 4, `${d} ${s} lingote`);
-      assert.equal(!!e.catalisador_refino, s >= 8, `${d} ${s} catalisador`);
-      assert.equal(!!e.selo_dominio, s === 10, `${d} ${s} selo`);
-      assert.equal(!!e.essencia_primordial, s === 10, `${d} ${s} essência`);
+      // weapon-v1: o pó da faixa do Domínio é garantido; nada da forja antiga cai mais
+      const i = Loot.DOMAIN_ORDER.indexOf(d);
+      assert.ok(e[WP.POWDER_IDS[i]].min >= 1, `${d} ${s} pó`);
+      for (const old of ["pedra_aprimoramento", "lingote_refinado", "catalisador_refino", "selo_dominio", "essencia_primordial"]) assert.equal(e[old], undefined, `${d} ${s} ${old}`);
+      const fragLow = WP.fragmentOf(Loot.DOMAIN_FRAG[d][0]);
+      assert.equal(!!e[fragLow], s >= 7 && s < 10, `${d} ${s} fragmento de classe`);
     }
-    // chefão: 3 a 5 fragmentos da arma de linha + 1 Selo; na primeira, +10 e a receita
-    const line = Items.LINES.LINES.find((l) => l.region === d);
+    // chefão: 3 a 5 fragmentos da classe de cima do Domínio; na primeira, +10
+    const fragHigh = WP.fragmentOf(Loot.DOMAIN_FRAG[d][1]);
     const boss = Items.lootExpectation(`domain:${d}:10`, { win: true });
-    assert.deepEqual([boss[`frag_${line.key}`].min, boss[`frag_${line.key}`].max], [3, 5]);
-    assert.deepEqual(boss.selo_dominio, { expected: 1, min: 1, max: 1 });
+    assert.deepEqual([boss[fragHigh].min, boss[fragHigh].max], [3, 5]);
     const first = Items.lootExpectation(`domain:${d}:10`, { win: true, first: true });
-    assert.deepEqual([first[`frag_${line.key}`].min, first[`frag_${line.key}`].max], [13, 15]);
-    assert.equal(first[`receita_${line.key}`].min, 1);
+    assert.deepEqual([first[fragHigh].min, first[fragHigh].max], [13, 15]);
     // S14 (A1 respondida pelo Alex em 2026-11-12): fragmento do deus só no setor 10 — 1 por vitória, +5 na primeira
     const god = Items.GEAR_BY_ID.get(`frag_deus_${D.BOSS_BY_DOMAIN[d]}`);
     assert.ok(god && god.fragment.need === 100 && god.fragment.of === `embriao_${D.BOSS_BY_DOMAIN[d]}`, d);
@@ -85,11 +85,8 @@ test("E12: contas do GDD — comum 1 + ⌊s/3⌋, raro 5% + 3%·s, Lingote 4+, C
     assert.equal(Items.GEAR_BY_ID.get(id).use, null, id);
     assert.ok(Gear.RECIPES.some((r) => r.kind === "fragment" && r.out === id), id);
   }
-  // conjunto: projeto na primeira vitória do 7, fragmento 2 a 3 do 7 ao 10
-  for (const set of Items.LINES.FRAGMENT_SETS) {
-    assert.equal(Items.lootExpectation(`domain:${set.domain}:7`, { win: true, first: true })[`projeto_${set.id}`].min, 1);
-    assert.equal(Items.lootExpectation(`domain:${set.domain}:8`, { win: true, first: true })[`projeto_${set.id}`], undefined);
-  }
+  // weapon-v1: projeto de conjunto saiu (a primeira vitória do 7 dá 10 fragmentos de classe)
+  for (const set of Items.LINES.FRAGMENT_SETS) assert.equal(Items.lootExpectation(`domain:${set.domain}:7`, { win: true, first: true })[`projeto_${set.id}`], undefined);
 });
 
 test("E12: o Domínio paga por vitória — a derrota não sorteia nada da tabela do setor", () => {
@@ -103,12 +100,12 @@ test("E12: a primeira vitória só paga com `first`; sem ela nunca sai receita n
   const R = seeded(7);
   for (let i = 0; i < 300; i++) {
     const ids = Items.rollTable("domain:floresta:10", { win: true }, R).map((x) => x.id);
-    assert.ok(!ids.includes("receita_garras_lunares"));
-    assert.ok(ids.includes("selo_dominio") && ids.includes("frag_garras_lunares") && ids.includes("seiva_de_prata"));
+    assert.ok(!ids.some((id) => id.startsWith("receita_") || id.startsWith("projeto_")));
+    assert.ok(ids.includes("po_ref_b") && ids.includes("frag_classe_b") && ids.includes("seiva_de_prata"));
+    assert.ok(R && Items.rollTable("domain:floresta:10", { win: true }, R).find((x) => x.id === "frag_classe_b").qty <= 5);
   }
   const firstIds = Items.rollTable("domain:floresta:10", { win: true, first: true }, R);
-  assert.ok(firstIds.find((x) => x.id === "receita_garras_lunares"));
-  assert.ok(firstIds.find((x) => x.id === "frag_garras_lunares").qty >= 13);
+  assert.ok(firstIds.find((x) => x.id === "frag_classe_b").qty >= 13);
 });
 
 test("E12: pior caso do material comum perto do esperado (§6.6) — Vigília: Pó de Lua e Seiva", () => {
@@ -128,9 +125,12 @@ test("E12: itens que passaram a cair perderam a origem declarada e mostram a tab
     const src = Items.sourcesOf(g);
     assert.ok(src.some((x) => /Domínio/.test(x)), `${id}: ${JSON.stringify(src)}`);
   }
-  // E17: o que esperava a E17 também saiu das tabelas (Arena, rua, minijogos) e perdeu a origem declarada
-  for (const id of ["minerio_ferro", "brasa_solar", "frag_primeira_chama", "receita_lamina_correntes"]) assert.ok(!Array.isArray(Items.GEAR_BY_ID.get(id).source) && Items.sourcesOf(Items.GEAR_BY_ID.get(id)).length > 0, id);
-  // agrupado: a Pedra não vira 60 linhas
-  assert.ok(Items.sourcesOf(Items.GEAR_BY_ID.get("pedra_aprimoramento")).filter((x) => /Domínio/.test(x)).length <= 4); // E17: rua e troca somam linhas fora dos Domínios
+  // weapon-v1: o que era da forja antiga ficou sem origem (aposentado; vira pó/fragmento na mochila)
+  for (const id of ["minerio_ferro", "brasa_solar", "frag_primeira_chama", "receita_lamina_correntes", "pedra_aprimoramento"]) {
+    assert.ok(Items.GEAR_BY_ID.get(id).retired, id);
+    assert.deepEqual(Items.sourcesOf(Items.GEAR_BY_ID.get(id)), [], id);
+  }
+  // agrupado: o Pó D não vira 70 linhas
+  assert.ok(Items.sourcesOf(Items.GEAR_BY_ID.get("po_ref_d")).filter((x) => /Domínio/.test(x)).length <= 4);
   assert.deepEqual(Items.sourcesOf(Items.GEAR_BY_ID.get("po_de_lua")), ["Domínio Floresta da Lua: garantido em todo setor (1 a 4 por vitória)."]);
 });

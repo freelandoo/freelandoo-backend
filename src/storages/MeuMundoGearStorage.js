@@ -17,6 +17,8 @@ const instOut = (x) => x && ({
   id: x.id_instance, item: x.item_id, plus: x.plus, grade: x.grade, ascended: x.ascended, awakened: x.awakened,
   sockets: x.sockets || [], locked: x.locked, refineFailures: x.refine_failures, version: Number(x.version),
   rules: x.rules, origin: x.origin, affixes: x.affixes || {},
+  // weapon-v1 (mig 466): nível da cópia da arma (as estrelas moram em grade)
+  weaponLevel: x.weapon_level == null ? 1 : Number(x.weapon_level), legacy: x.legacy || null,
   equippedBy: x.equipped_by || null, equippedSlot: x.equipped_slot || null,
 });
 
@@ -109,9 +111,12 @@ class MeuMundoGearStorage {
     return moved.rowCount;
   }
 
-  /** Nasce +0, grau I, na regra do aprimoramento garantido (E9). Devolve o id_instance. */
-  static async createInstance(c, idUser, itemId, origin = null) {
-    const r = await c.query(`INSERT INTO tb_mm_gear_instance (id_user, item_id, origin, rules) VALUES ($1, $2, $3, 'forge-v2') RETURNING id_instance`, [idUser, itemId, origin]);
+  /**
+   * Nasce +0, grau I. Arma nasce já na regra weapon-v1 (nível 1, 1 estrela); o resto na forge-v2 de antes.
+   * Devolve o id_instance.
+   */
+  static async createInstance(c, idUser, itemId, origin = null, rules = "forge-v2") {
+    const r = await c.query(`INSERT INTO tb_mm_gear_instance (id_user, item_id, origin, rules) VALUES ($1, $2, $3, $4) RETURNING id_instance`, [idUser, itemId, origin, rules]);
     await MeuMundoGearStorage.discover(c, idUser, itemId);
     return r.rows[0].id_instance;
   }
@@ -153,6 +158,49 @@ class MeuMundoGearStorage {
       [idUser]
     );
     return r.rowCount;
+  }
+
+  /**
+   * weapon-v1 (mig 466): toda cópia de ARMA ainda em outra regra passa ao nível novo. O +N vira
+   * 1 + ceil(N × 89 / 15) (nunca rebaixa o bônus; rules/weaponProgress.levelFromPlus) e o grau vira estrela.
+   * O que havia fica em `legacy`. Rodar de novo não faz nada.
+   */
+  static async convertWeapons(c, idUser, weaponItems, maxLevel = 90) {
+    const r = await c.query(
+      `UPDATE tb_mm_gear_instance
+          SET weapon_level = LEAST($3::int, 1 + CEIL(LEAST(15, GREATEST(0, plus)) * 89 / 15.0)::int),
+              legacy = jsonb_build_object('plus', plus, 'grade', grade, 'rules', rules, 'conv', 'weapon-v1'),
+              rules = 'weapon-v1', version = version + 1
+        WHERE id_user = $1 AND item_id = ANY($2::text[]) AND rules <> 'weapon-v1'`,
+      [idUser, weaponItems, maxLevel]
+    );
+    return r.rowCount;
+  }
+
+  /**
+   * weapon-v1: a pilha APOSENTADA (catalog/retired.js) vira a compensação (`compensate(id, qty)` → { id, qty }),
+   * com as duas linhas no livro. Rodar de novo não faz nada (a pilha fica em 0). Pilha cheia: o excedente
+   * acima de 9.999 não entra (mesma regra de toda entrega).
+   */
+  static async convertRetired(c, idUser, retiredItems, compensate) {
+    const r = await c.query(`SELECT item_id, qty FROM tb_mm_gear WHERE id_user = $1 AND qty > 0 AND item_id = ANY($2::text[]) ORDER BY item_id FOR UPDATE`, [idUser, retiredItems]);
+    const out = [];
+    for (const row of r.rows) {
+      const to = compensate(row.item_id, row.qty);
+      if ((await MeuMundoGearStorage.addStack(c, idUser, row.item_id, -row.qty)) == null) continue;
+      if (to) await MeuMundoGearStorage.addStack(c, idUser, to.id, to.qty, null, 9999);
+      out.push({ from: row.item_id, qty: row.qty, to });
+    }
+    return out;
+  }
+
+  static async setWeaponLevel(c, idUser, idInstance, level) {
+    await c.query(`UPDATE tb_mm_gear_instance SET weapon_level = $3, version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance, level]);
+  }
+
+  /** Versão sobe mesmo sem mudar nada (falha no refino: a tentativa consumiu a prévia). */
+  static async bumpVersion(c, idUser, idInstance) {
+    await c.query(`UPDATE tb_mm_gear_instance SET version = version + 1 WHERE id_user = $1 AND id_instance = $2`, [idUser, idInstance]);
   }
 
   /** Todas as instâncias da pessoa, com quem as segura. Ordem: equipada pelo vivo, maior plus, mais antiga. */
@@ -261,11 +309,11 @@ class MeuMundoGearStorage {
   /** { slot: { instance, item, plus } } do personagem vivo. */
   static async loadoutLive(c, idUser) {
     const r = await c.query(
-      `SELECT l.slot, i.id_instance, i.item_id, i.plus, i.grade, i.sockets, i.ascended, i.awakened, i.affixes FROM tb_mm_loadout l JOIN tb_mm_gear_instance i ON i.id_instance = l.id_instance
+      `SELECT l.slot, i.id_instance, i.item_id, i.plus, i.grade, i.sockets, i.ascended, i.awakened, i.affixes, i.weapon_level FROM tb_mm_loadout l JOIN tb_mm_gear_instance i ON i.id_instance = l.id_instance
         WHERE l.id_character = ${LIVE} AND i.id_user = $1`,
       [idUser]
     );
-    return Object.fromEntries(r.rows.map((x) => [x.slot, { instance: x.id_instance, item: x.item_id, plus: x.plus, grade: x.grade, sockets: x.sockets || [], ascended: !!x.ascended, awakened: !!x.awakened, affixes: x.affixes || {} }]));
+    return Object.fromEntries(r.rows.map((x) => [x.slot, { instance: x.id_instance, item: x.item_id, plus: x.plus, grade: x.grade, sockets: x.sockets || [], ascended: !!x.ascended, awakened: !!x.awakened, affixes: x.affixes || {}, weaponLevel: x.weapon_level == null ? 1 : Number(x.weapon_level) }]));
   }
 
   /** Põe a instância no slot do personagem; ela sai de qualquer outro slot/personagem da pessoa. */

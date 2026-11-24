@@ -16,7 +16,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const key = () => crypto.randomUUID();
 let checks = 0;
-function check(name, condition) { assert.ok(condition, name); checks++; console.log(`✓ ${name}`); }
+function check(name, condition, info = "") { assert.ok(condition, name + (info ? " — " + info : "")); checks++; console.log(`✓ ${name}`); }
 
 async function bootstrap(pool) {
   await pool.query(`DROP TABLE IF EXISTS tb_mm_loadout, tb_mm_item_ledger, tb_mm_gear_instance, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear,
@@ -66,7 +66,10 @@ async function main() {
       [id, Gear.GEAR.filter(Service.isInstanceItem).map((g) => g.id)])).rows[0].count);
     // bônus de antes, pela regra pura e pelo tb_mm_equip
     // E9 (A2): a pilha antiga é forge-v1 — +4 vira +6 e +2 vira +3 ao materializar
-    const bonusBefore = Gear.gearBonus({ weapon: { id: "espada_latao", level: 6 }, acc1: { id: acc.id, level: 0 }, armor: { id: armor.id, level: 3 } });
+    // weapon-v1 (24/11): a arma ainda passa de +6 para o nível 37; a régua lê o nível como "plus" equivalente
+    const WP = require("../src/utils/mmItems/rules/weaponProgress");
+    const lv = (plus) => WP.plusEquiv(WP.levelFromPlus(plus));
+    const bonusBefore = Gear.gearBonus({ weapon: { id: "espada_latao", level: lv(6) }, acc1: { id: acc.id, level: 0 }, armor: { id: armor.id, level: 3 } }, { noBase: true }); // R3 (17/11): a luta não soma a base
     const clan = "vampiro";
 
     const c = await pool.connect();
@@ -81,11 +84,13 @@ async function main() {
     const inst = async (u = id) => (await pool.query(`SELECT * FROM tb_mm_gear_instance WHERE id_user=$1 ORDER BY item_id, plus`, [u])).rows;
     check("materialize: uma instância por linha de equipamento com qty > 0", (await inst()).length === legacyRows && legacyRows === 4);
     check("materialize duas vezes não duplica", moved2 === 0 && (await inst()).length === legacyRows);
-    check("level vira plus (convertido pela A2: +4 → +6, +2 → +3)", (await inst()).find((x) => x.item_id === "espada_latao").plus === 6 && (await inst()).find((x) => x.item_id === armor.id).plus === 3
-      && (await inst()).every((x) => x.rules === "forge-v2"));
-    check("pilha antiga de equipamento zerada; material segue em pilha", Number((await pool.query(`SELECT qty FROM tb_mm_gear WHERE id_user=$1 AND item_id='espada_latao'`, [id])).rows[0].qty) === 0
-      && Number((await pool.query(`SELECT qty FROM tb_mm_gear WHERE id_user=$1 AND item_id='fragmento_lamina'`, [id])).rows[0].qty) === 37);
-    check("bônus da luta = o das peças convertidas", JSON.stringify(bonusAfter) === JSON.stringify(bonusBefore));
+    check("level vira plus (A2: +4 → +6, +2 → +3) e a arma vira nível 37 (weapon-v1)", (await inst()).find((x) => x.item_id === "espada_latao").plus === 6 && (await inst()).find((x) => x.item_id === armor.id).plus === 3
+      && (await inst()).filter((x) => x.item_id.startsWith("espada_")).every((x) => x.rules === "weapon-v1") && (await inst()).find((x) => x.item_id === "espada_latao").weapon_level === 37
+      && (await inst()).find((x) => x.item_id === armor.id).rules === "forge-v2");
+    check("pilha antiga de equipamento zerada; material aposentado vira pó novo", Number((await pool.query(`SELECT qty FROM tb_mm_gear WHERE id_user=$1 AND item_id='espada_latao'`, [id])).rows[0].qty) === 0
+      && Number((await pool.query(`SELECT qty FROM tb_mm_gear WHERE id_user=$1 AND item_id='fragmento_lamina'`, [id])).rows[0].qty) === 0
+      && Number((await pool.query(`SELECT qty FROM tb_mm_gear WHERE id_user=$1 AND item_id='po_ref_d'`, [id])).rows[0].qty) > 0);
+    check("bônus da luta = o das peças convertidas", JSON.stringify(bonusAfter) === JSON.stringify(bonusBefore), JSON.stringify([bonusAfter, bonusBefore]));
     const live = (await pool.query(`SELECT id_character FROM tb_mm_character WHERE id_user=$1 AND status='alive'`, [id])).rows[0].id_character;
     const lo = await Store.loadout(pool, live);
     // E6: e já nos 8 slots (acc1 → slot da peça, armor → chest)
@@ -108,13 +113,13 @@ async function main() {
     } finally { c2.release(); }
     const bag1 = (await Service.get(id)).bag;
     const swords = bag1.instances.filter((x) => x.item === "espada_latao");
-    check("duas espadas iguais com plus diferente", swords.length === 2 && swords.map((x) => x.plus).sort().join() === "6,7");
+    check("duas espadas iguais com nível diferente (+7 → 43)", swords.length === 2 && swords.map((x) => x.weaponLevel).sort().join() === "37,43");
     check("representante é a equipada (não a de maior plus)", bag1.owned.espada_latao.level === 6 && bag1.owned.espada_latao.qty === 2 && swords.find((x) => x.plus === 6).equippedHere);
-    check("cada instância tem o seu próximo passo (E9)", bag1.forge[second].upgrade.to === 8 && bag1.forge[swords.find((x) => x.plus === 6).id].upgrade.to === 7);
+    check("cada instância tem a sua próxima tentativa de refino", bag1.forge[second].refine.to === 44 && bag1.forge[swords.find((x) => x.plus === 6).id].refine.to === 38);
     const eq2 = await Service.equip(id, { slot: "weapon", item: "espada_latao", instance: second });
     check("equipar escolhe a cópia", eq2.bag.equippedInstances.weapon === second && eq2.bag.owned.espada_latao.level === 7);
     const c3 = await pool.connect();
-    try { check("a luta usa o plus da cópia equipada", (await Service.fightGear(c3, id, clan)).dmg === Gear.gearBonus({ weapon: { id: "espada_latao", level: 7 }, acc1: { id: acc.id, level: 0 }, armor: { id: armor.id, level: 3 } }).dmg); } finally { c3.release(); }
+    try { check("a luta usa o plus da cópia equipada", (await Service.fightGear(c3, id, clan)).dmg === Gear.gearBonus({ weapon: { id: "espada_latao", level: lv(7) }, acc1: { id: acc.id, level: 0 }, armor: { id: armor.id, level: 3 } }, { noBase: true }).dmg); } finally { c3.release(); }
 
     // ── mesma chave duas vezes cobra uma ──
     const buyable = Gear.GEAR_BY_ID.get("espada_aco");
@@ -130,21 +135,24 @@ async function main() {
     const strangerInst = await Store.createInstance(pool, stranger, "espada_latao", "teste");
     const steal = await Service.equip(id, { slot: "weapon", item: "espada_latao", instance: strangerInst });
     check("instância de outra conta dá 404 (equipar)", steal.code === "instance" && steal.statusCode === 404);
-    const stealR = await Service.upgrade(id, { item: "espada_latao", instance: strangerInst, key: key() });
-    check("instância de outra conta dá 404 (aprimorar)", stealR.code === "instance" && stealR.statusCode === 404);
+    const stealR = await Service.refineWeapon(id, { instance: strangerInst, key: key() });
+    check("instância de outra conta dá 404 (refinar)", stealR.code === "instance" && stealR.statusCode === 404);
     const stealX = await Service.recycle(id, { item: "espada_latao", instance: strangerInst, key: key() });
     check("instância de outra conta dá 404 (reciclar)", stealX.code === "instance");
 
-    // ── aprimoramento por instância (E9: garantido) ──
-    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty,level) VALUES ($1,'pedra_aprimoramento',20,0)`, [id]);
-    const ref = await Service.upgrade(id, { item: "espada_latao", instance: second, key: key() });
-    check("aprimoramento aponta a instância", ref.receipt && ref.receipt.result.instance === second && ref.receipt.result.from === 7 && ref.receipt.result.to === 8);
+    // ── refino por instância (weapon-v1: 1 pó da faixa do destino; 43 → 44 é pó S) ──
+    await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty,level) VALUES ($1,'po_ref_s',20,0)`, [id]);
+    const R0 = Service.R;
+    Service.R = () => 0;
+    const ref = await Service.refineWeapon(id, { instance: second, key: key() });
+    Service.R = R0;
+    check("refino aponta a instância", ref.receipt && ref.receipt.result.instance === second && ref.receipt.result.from === 43 && ref.receipt.result.to === 44 && ref.receipt.result.success);
     const after = await inst();
-    check("aprimorar muda só a cópia escolhida", after.find((x) => x.id_instance === second).plus === 8
-      && after.filter((x) => x.item_id === "espada_latao" && x.id_instance !== second).every((x) => x.plus === 6));
+    check("refinar muda só a cópia escolhida", after.find((x) => x.id_instance === second).weapon_level === 44
+      && after.filter((x) => x.item_id === "espada_latao" && x.id_instance !== second).every((x) => x.weapon_level === 37));
     check("livro fecha depois do refino e da compra", await ledgerOk());
-    const linked = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_item_ledger WHERE id_user=$1 AND id_receipt IS NOT NULL AND item_id='pedra_aprimoramento'`, [id])).rows[0].count);
-    check("linhas do livro das operações levam o recibo (a pedra gasta no aprimoramento)", linked === 1);
+    const linked = Number((await pool.query(`SELECT COUNT(*) FROM tb_mm_item_ledger WHERE id_user=$1 AND id_receipt IS NOT NULL AND item_id='po_ref_s'`, [id])).rows[0].count);
+    check("linhas do livro das operações levam o recibo (o pó gasto no refino)", linked === 1);
 
     // ── reciclar: só cópia solta ──
     const free = (await inst()).find((x) => x.item_id === "espada_latao" && x.id_instance !== second);
@@ -176,7 +184,7 @@ async function main() {
     // conta antiga: espada + escudo + luvas (acc1) + relógio (acc2) + colete (armor)
     await pool.query(`INSERT INTO tb_mm_gear (id_user,item_id,qty,level) VALUES ($1,'pesada_ferreiro',1,0),($1,'escudo_ferro',1,0),($1,'luvas_precisao',1,0),($1,'relogio_bolso',1,0),($1,'colete_couro',1,0),($1,'medalhao_lunar',1,0)`, [h]);
     await pool.query(`INSERT INTO tb_mm_equip (id_user,slot,item_id) VALUES ($1,'shield','escudo_ferro'),($1,'acc1','luvas_precisao'),($1,'acc2','relogio_bolso'),($1,'armor','colete_couro')`, [h]);
-    const bonusOld = Gear.gearBonus({ acc1: { id: "luvas_precisao", level: 0 }, acc2: { id: "relogio_bolso", level: 0 }, armor: { id: "colete_couro", level: 0 } });
+    const bonusOld = Gear.gearBonus({ acc1: { id: "luvas_precisao", level: 0 }, acc2: { id: "relogio_bolso", level: 0 }, armor: { id: "colete_couro", level: 0 } }, { noBase: true });
     const bagH = (await Service.get(h)).bag;
     check("E6: slots antigos viram os 8 (acc1 luvas → gloves, acc2 relógio → amulet, armor → chest, shield → offhand)",
       bagH.equipped.gloves === "luvas_precisao" && bagH.equipped.amulet === "relogio_bolso" && bagH.equipped.chest === "colete_couro" && bagH.equipped.offhand === "escudo_ferro" && !bagH.equipped.acc1 && !bagH.equipped.shield);

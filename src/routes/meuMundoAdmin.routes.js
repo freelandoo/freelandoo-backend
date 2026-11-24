@@ -117,6 +117,10 @@ router.post("/gear/forge", ...admin, asyncHandler(MeuMundoController.gearForge))
 router.post("/gear/upgrade", ...admin, asyncHandler(MeuMundoController.gearUpgrade));
 router.post("/gear/refine", ...admin, rateLimit.checkout, asyncHandler(MeuMundoController.gearRefine));
 router.post("/gear/refine/resolve", ...admin, rateLimit.checkout, asyncHandler(MeuMundoController.gearRefineResolve));
+// weapon-v1: armas por nível (pó), estrelas (cópia idêntica) e forja por fragmento de classe
+router.post("/gear/weapon/refine", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearWeaponRefine));
+router.post("/gear/weapon/stars", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearWeaponStars));
+router.post("/gear/weapon/assemble", ...admin, rateLimit.mmItems, asyncHandler(MeuMundoController.gearWeaponAssemble));
 router.post("/gear/use", ...admin, asyncHandler(MeuMundoController.gearUse));
 router.post("/gear/recycle", ...admin, asyncHandler(MeuMundoController.gearRecycle));
 router.post("/gear/fragment/convert", ...admin, asyncHandler(MeuMundoController.gearFragmentConvert));
