@@ -143,8 +143,10 @@ function summary(row, s, k, now) {
  * Entrega os personagens pendentes (tb_mm_character_grant) direto na cápsula. Chamado
  * pelo withLife (toda leitura/ação), dentro da transação e do lock da pessoa. Grants da
  * conversão da mig 340 e prêmios entram mesmo com a cápsula cheia (nada se perde).
+ * `avoid` = a personalidade de quem a pessoa está jogando agora: o novo nasce com outra
+ * (25/11, Alex: "pegou outro personagem, outra personalidade").
  */
-async function claimGrants(c, idUser, now) {
+async function claimGrants(c, idUser, now, avoid = null) {
   const grants = await LS.openGrants(c, idUser);
   const created = [];
   for (const g of grants) {
@@ -154,6 +156,7 @@ async function claimGrants(c, idUser, now) {
     }
     const n = Life.birth(newSeed(), now);
     n.status = "capsule";
+    n.soul = Soul.bornSoul(n.seed, avoid);
     const origin = ORIGIN_OF_SOURCE[g.source] || "gift";
     const row = await LS.insert(c, idUser, await LS.nextGeneration(c, idUser), n, {
       species: g.species,
@@ -232,6 +235,10 @@ class MeuMundoCharacterService {
       const target = await LS.lockCharacter(c, idUser, rawId);
       if (!target) return fail("notFound");
       if (target.status !== "capsule") return fail("notCapsule");
+      // 25/11 (Alex): pegou outro = outra personalidade. Quem ainda nunca saiu da cápsula (nasceu
+      // congelado e nunca foi jogado) e veio com a MESMA de quem está jogando agora é sorteado de
+      // novo sem ela; a certidão acompanha. Quem já foi jogado é ele mesmo (não muda).
+      const before = Soul.soulOf(s).temper;
       if (s.status === "alive") {
         if (s.activity.kind === "hospital" || s.activity.kind === "jail") return fail("busy");
         Life.freeze(s, ctx.now);
@@ -244,6 +251,12 @@ class MeuMundoCharacterService {
         await LS.markDeathSeen(c, ctx.row.id_character);
       }
       const ts = rowToState(target);
+      const neverPlayed = !!target.frozen_at && !!target.born_at && ms(target.frozen_at) === ms(target.born_at);
+      if (neverPlayed && Soul.soulOf(ts).temper === before) {
+        const petName = ts.soul.petName || null;
+        ts.soul = { ...Soul.bornSoul(ts.seed, before), petName };
+        await LS.setBirthTemper(c, target.id_character, ts.soul.temper);
+      }
       Soul.soulOf(ts);
       const shift = Life.thaw(ts, ctx.now);
       ts.status = "alive";
@@ -451,7 +464,7 @@ class MeuMundoCharacterService {
       if (!(await MeuMundoStorage.isAdmin(c, idUser))) return fail("admin");
       if ((await LS.capsuleCount(c, idUser)) >= Chars.CAPSULE.SLOTS) return fail("full");
       await LS.addGrant(c, idUser, { species, sex: Chars.speciesSex(species, body.sex), source: "admin_test", ref: crypto.randomUUID() });
-      const created = await claimGrants(c, idUser, ctx.now);
+      const created = await claimGrants(c, idUser, ctx.now, Soul.soulOf(s).temper);
       return { granted: created };
     }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
   }
@@ -477,7 +490,7 @@ class MeuMundoCharacterService {
       if (ctx.coins < price) return fail("coins");
       ctx.coins -= price;
       ctx.what = `embryo:${species}`;
-      const created = await claimGrants(c, idUser, ctx.now);
+      const created = await claimGrants(c, idUser, ctx.now, Soul.soulOf(s).temper);
       return { granted: created, paid: price };
     }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
   }
@@ -508,7 +521,7 @@ class MeuMundoCharacterService {
       if (have < 1) return fail("noCapsule");
       if ((await GearStore.addStack(c, idUser, item, -1)) == null) return fail("noCapsule");
       ctx.what = `capsule:${species}`;
-      const created = await claimGrants(c, idUser, ctx.now);
+      const created = await claimGrants(c, idUser, ctx.now, Soul.soulOf(s).temper);
       return { granted: created, used: item, species };
     }).then((out) => (out && !out.error ? MeuMundoCharacterService.withList(idUser, out) : out));
   }

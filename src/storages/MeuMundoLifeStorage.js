@@ -212,6 +212,14 @@ class MeuMundoLifeStorage {
     await c.query(`UPDATE tb_mm_character SET frozen_at = $2 WHERE id_character = $1`, [idCharacter, iso(at)]);
   }
 
+  /** 25/11: a personalidade de nascença na certidão (o primeiro sorteio repetia a de quem estava jogando). */
+  static async setBirthTemper(c, idCharacter, temper) {
+    await c.query(
+      `UPDATE tb_mm_character SET genetics = jsonb_set(genetics, '{temper}', to_jsonb($2::text)) WHERE id_character = $1 AND genetics IS NOT NULL`,
+      [idCharacter, temper]
+    );
+  }
+
   static async markThawed(c, idCharacter) {
     await c.query(`UPDATE tb_mm_character SET frozen_at = NULL WHERE id_character = $1`, [idCharacter]);
   }

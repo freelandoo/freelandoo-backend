@@ -14,7 +14,10 @@ const MOB_BODIES = Object.freeze(["brutamontes"]);
 // 2026-11-14: o personagem padrão (normal/slim/fat/strong) e a feminina pintável saíram; "ekaterina" = a personagem Ekaterina.
 // mm3d-50 (mig 313): os deuses — corpo = id do personagem.
 // mm3d-58: os corpos das classes (calculados, nunca gravados em avatar_pref).
-const BODIES = ["sergio", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "varkos", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES, ...MOB_BODIES];
+// 25/11: + os corpos JOVENS (`<espécie>_jovem`, meuMundoCharacters.js YOUNG_SPECIES) — até a virada para adulto.
+const { YOUNG_SPECIES, YOUNG_SUFFIX } = require("../utils/meuMundoCharacters");
+const YOUNG_BODIES = YOUNG_SPECIES.map((s) => s + YOUNG_SUFFIX);
+const BODIES = ["sergio", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "varkos", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES, ...MOB_BODIES, ...YOUNG_BODIES];
 
 // Uma chave só para TODA alocação de residência. É ela que impede dois
 // pedidos simultâneos de pegarem a mesma casa e — o caso mais sutil — de cada

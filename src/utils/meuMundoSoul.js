@@ -76,8 +76,14 @@ function rng(seed) {
   };
 }
 
-/** Sorteio da alma (mesma semente = mesma alma; não mexe no sorteio da vida). */
-function bornSoul(seed) {
+/**
+ * Sorteio da alma (mesma semente = mesma alma; não mexe no sorteio da vida).
+ * `avoid` (25/11, pedido do Alex): a personalidade do personagem com quem a pessoa está jogando
+ * sai do sorteio — pegou outro, ele vem com OUTRA personalidade ("eu estava com um vampiro
+ * covarde, mudei pro Varkos e ele também era covarde: não faz sentido"). Sem `avoid` o sorteio é
+ * o de sempre (quem já existe não muda).
+ */
+function bornSoul(seed, avoid = null) {
   const r = rng((seed ^ 0x5f3759df) >>> 0);
   const pick = (list, not) => {
     let x;
@@ -85,7 +91,11 @@ function bornSoul(seed) {
     while (x === not);
     return x;
   };
-  const temper = TEMPERS[Math.floor(r() * TEMPERS.length)];
+  let temper = TEMPERS[Math.floor(r() * TEMPERS.length)];
+  if (avoid && temper === avoid && TEMPERS.includes(avoid)) {
+    const rest = TEMPERS.filter((t) => t !== avoid);
+    temper = rest[Math.floor(r() * rest.length)];
+  }
   const likeFood = pick(FOODS);
   const hateFood = pick(FOODS, likeFood);
   // o psicopata e o competitivo gostam de lutar/minijogo; o covarde odeia lutar

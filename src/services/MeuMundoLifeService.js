@@ -299,7 +299,7 @@ class MeuMundoLifeService {
         events.push({ at: now, kind: "born", data: { generation: row.generation } });
       }
       // B3: personagens a entregar (conversão da mig 340, prêmios, presentes) vão para a cápsula.
-      await CharacterService().claimGrants(c, idUser, now);
+      await CharacterService().claimGrants(c, idUser, now, row ? Soul.soulOf(rowToState(row)).temper : null);
       const s = rowToState(row);
       // mm3d-72: a alma antes da simulação (o comilão tem o apetite do corpo no alto)
       Soul.soulOf(s);
@@ -641,7 +641,7 @@ class MeuMundoLifeService {
         const sp = g.type === "skin" ? Chars.LEGACY_SPECIES[g.id] : { species: g.id, sex: Chars.speciesSex(g.id, g.sex) };
         if (!sp || !Chars.speciesById(sp.species)) return fail("mail");
         await MeuMundoLifeStorage.addGrant(ctx.client, idUser, { species: sp.species, sex: sp.sex, source: "gift", ref: `mail:${mail.id}` });
-        const created = await CharacterService().claimGrants(ctx.client, idUser, ctx.now);
+        const created = await CharacterService().claimGrants(ctx.client, idUser, ctx.now, Soul.soulOf(s).temper);
         result = { type: "character", id: sp.species, qty: 1, where: "capsule", character: created[0] || null };
       } else if (g.type === "coins") {
         ctx.coins += g.qty;
@@ -729,6 +729,8 @@ class MeuMundoLifeService {
         ctx.coins -= funeral.coins;
       }
       const n = Life.applyInheritance(Life.birth(crypto.randomInt(1, 2 ** 31 - 1), ctx.now), after.inherit);
+      // 25/11: o herdeiro é outro — nunca com a personalidade de quem se foi
+      n.soul = Soul.bornSoul(n.seed, Soul.soulOf(s).temper);
       // B3: o herdeiro é da mesma espécie, filho de quem morreu (linhagem do certificado).
       ctx.newRow = await MeuMundoLifeStorage.insert(ctx.client, idUser, await MeuMundoLifeStorage.nextGeneration(ctx.client, idUser), n, {
         species: ctx.row.species || null,

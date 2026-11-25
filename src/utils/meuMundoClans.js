@@ -21,22 +21,27 @@ const CLAN_BODIES = Object.freeze(
   CLANS.flatMap((c) => SEXES.flatMap((s) => [BODY[c][s].young, BODY[c][s].adult]))
 );
 
+// 25/11: o corpo JOVEM (`<espécie>_jovem`, meuMundoCharacters.js YOUNG_SPECIES) luta e usa as
+// armas do adulto — cada lista abaixo leva junto os jovens das espécies dela.
+const { YOUNG_SPECIES, YOUNG_SUFFIX } = require("./meuMundoCharacters");
+const withYoung = (list) => Object.freeze([...list, ...list.filter((b) => YOUNG_SPECIES.includes(b)).map((b) => b + YOUNG_SUFFIX)]);
+
 // mm3d-66 (regra do Alex): os personagens que usam espada, além dos vampiros — eles
 // lutam com o kit de espada (a pasta de golpes do vampiro) em qualquer conta.
-const SWORD_BODIES = Object.freeze(["aurion", "morkhan", "zephyra"]);
+const SWORD_BODIES = withYoung(["aurion", "morkhan", "zephyra"]);
 
 // mm3d-67 (regra do Alex): Soldado de Pedra (corpo golem), Marú e Kragor lutam com
 // os golpes do Brutamontes e usam os machados, martelos e tridentes da aba Hammers.
 // O Brutamontes (personagem de teste) é o dono desses golpes e entra na mesma lista.
-const HAMMER_BODIES = Object.freeze(["golem", "maru", "kragor", "brutamontes"]);
+const HAMMER_BODIES = withYoung(["golem", "maru", "kragor", "brutamontes"]);
 
 // mm3d-69 (regra do Alex): Íris e Aeryn são as arqueiras: usam só os arcos da loja e
 // atiram flechas de luz (a regra do tiro é a da maga; o desenho é outro).
-const ARCHER_BODIES = Object.freeze(["iris", "aeryn"]);
+const ARCHER_BODIES = withYoung(["iris", "aeryn"]);
 
 // mm3d-70 (regra do Alex): Ciborgue e Noctis usam só as armas de fogo da aba Guns e
 // atiram luz (a regra do tiro é a da maga; o desenho é outro).
-const GUN_BODIES = Object.freeze(["ciborgue", "noctis"]);
+const GUN_BODIES = withYoung(["ciborgue", "noctis"]);
 
 const ARTIFACT = Object.freeze({ KIND: "troca_classe", COOLDOWN_DAYS: 30 });
 

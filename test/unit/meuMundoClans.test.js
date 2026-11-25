@@ -25,7 +25,8 @@ test("todo corpo de classe é aceito pela sala", () => {
 test("prioridade (B3): espécie do personagem > classe > Sergio", () => {
   assert.equal(characterBody({ species: null, clan: "vampiro", clanSex: "f", stage: "young" }), "vampira");
   assert.equal(characterBody({ species: "sergio", clan: "raposa" }), "sergio");
-  assert.equal(characterBody({ species: "aurion", clan: "raposa" }), "aurion");
+  assert.equal(characterBody({ species: "aurion", clan: "raposa" }), "aurion_jovem");
+  assert.equal(characterBody({ species: "aurion", stage: "adult", clan: "raposa" }), "aurion");
   // o personagem padrão (corpo pela condição física) saiu em 2026-11-14
   assert.equal(characterBody({ species: null, clan: null, condition: "fat" }), "sergio");
   // as classes viraram espécies: o corpo segue sexo e fase

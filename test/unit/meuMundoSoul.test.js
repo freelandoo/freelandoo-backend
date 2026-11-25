@@ -141,3 +141,22 @@ test("VS5: o Vampiro gosta e odeia pelo PAR de sangue da comida", () => {
   Soul.applyEvents(s, [{ at: T0, kind: "consume", data: { item: "caldo_ralo" } }], T0);
   assert.ok(so.affection < a1, "o caldo ralo é o miojo que ele odeia");
 });
+
+test("25/11: pegou outro personagem = outra personalidade (a de quem está jogando sai do sorteio)", () => {
+  for (const avoid of Soul.TEMPERS) {
+    const seen = new Set();
+    for (let seed = 1; seed <= 400; seed++) {
+      const t = Soul.bornSoul(seed, avoid).temper;
+      assert.notEqual(t, avoid);
+      seen.add(t);
+    }
+    assert.equal(seen.size, Soul.TEMPERS.length - 1, `as outras quatro aparecem (sem ${avoid})`);
+  }
+  // sem `avoid` o sorteio é o de sempre; com um `avoid` diferente do sorteado, nada muda
+  for (let seed = 1; seed <= 100; seed++) {
+    const base = Soul.bornSoul(seed);
+    assert.deepEqual(Soul.bornSoul(seed, null), base);
+    const other = Soul.TEMPERS.find((t) => t !== base.temper);
+    assert.deepEqual(Soul.bornSoul(seed, other), base);
+  }
+});

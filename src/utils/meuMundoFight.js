@@ -972,7 +972,8 @@ const levelRate = (level        ) => (900 * (Math.max(1, Math.round(Number(level
  * e quase nada no 500); agora multiplica — no teto de tudo a troca de golpes vale ×2,11 em qualquer nível.
  */
 function heroSheet(body                           , level        , stats                                                   , gear                     , prep                     , cls            ) {
-  const [hp, atk, def, acc, spd] = BODY_SHEETS[body ?? ""] ?? BASE_SHEET
+  // 25/11: o corpo jovem (`<espécie>_jovem`) luta com a ficha do adulto (golpes e identidade são do personagem)
+  const [hp, atk, def, acc, spd] = BODY_SHEETS[body ?? ""] ?? BODY_SHEETS[String(body ?? "").replace(/_jovem$/, "")] ?? BASE_SHEET
   const h = heroLevelScale(level)
   const f = heroStats({ ...stats, dexterity: stats.dexterity ?? 0 }, level)
   const g = withPrep(clampGear(gear), prep)

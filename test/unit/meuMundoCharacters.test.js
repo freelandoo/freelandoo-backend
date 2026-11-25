@@ -85,7 +85,13 @@ test("deuses nascem com 1,40 m (25/11) e nunca ficam abaixo da conta antiga", ()
 });
 
 test("corpo: espécie do personagem > classe do jogador > condição física", () => {
-  assert.equal(characterBody({ species: "aurion", clan: "raposa" }), "aurion");
+  // 25/11: todos ficam adultos — o deus jovem tem corpo próprio até a virada
+  assert.equal(characterBody({ species: "aurion", clan: "raposa" }), "aurion_jovem");
+  assert.equal(characterBody({ species: "aurion", stage: "adult", clan: "raposa" }), "aurion");
+  assert.equal(characterBody({ species: "garras", stage: "young" }), "garras_jovem");
+  assert.equal(characterBody({ species: "cavaleiro", stage: "young" }), "cavaleiro");
+  assert.equal(C.adultBody("varkos_jovem"), "varkos");
+  for (const s of C.YOUNG_SPECIES) assert.ok(require("../../src/storages/MeuMundoStorage").BODIES.includes(s + C.YOUNG_SUFFIX), s);
   assert.equal(characterBody({ species: "vampiro", sex: "f", stage: "adult", clan: "raposa" }), "vampira_adulta");
   assert.equal(characterBody({ species: null, clan: "raposa", clanSex: "f", stage: "young" }), "raposa_f");
   // sem espécie nem classe (ninguém entra assim): Sergio — o personagem padrão saiu (2026-11-14)

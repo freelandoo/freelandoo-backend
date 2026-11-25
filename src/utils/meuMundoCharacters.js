@@ -78,6 +78,22 @@ const CLAN_BODY                                                                 
   vampiro: { m: { young: "vampiro", adult: "vampiro_adulto" }, f: { young: "vampira", adult: "vampira_adulta" } },
 }
 
+/**
+ * 25/11 (Alex: "não tem skin — todos ficam adultos, assim como a raposa e o vampiro"): espécies de
+ * corpo único que têm o modelo JOVEM. Até virar adulto (GROWTH da vida) a cena desenha
+ * `<espécie>_jovem`; na virada troca para o adulto, a mesma transição das classes. Os deuses e os
+ * dois monstros que eram Raposas (Ciborgue, Dama das Garras). Quem não está aqui tem um corpo só.
+ */
+const YOUNG_SUFFIX = "_jovem"
+const YOUNG_SPECIES                    = Object.freeze(["aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "varkos", "ciborgue", "garras"])
+/** Corpo jovem → o corpo adulto da espécie (o resto volta igual). Fichas de luta, armas e golpes valem pelo adulto. */
+function adultBody(body                           )         {
+  const b = body || ""
+  if (b.length <= YOUNG_SUFFIX.length || b.slice(-YOUNG_SUFFIX.length) !== YOUNG_SUFFIX) return b
+  const base = b.slice(0, -YOUNG_SUFFIX.length)
+  return YOUNG_SPECIES.includes(base) ? base : b
+}
+
 /** Sexo que vale para a espécie (a espécie de sexo fixo manda; senão o do personagem; padrão m). */
 function speciesSex(species                           , sex                           )            {
   const d = speciesById(species)
@@ -90,6 +106,7 @@ function speciesBody(species                           , sex                    
   const d = speciesById(species)
   if (!d) return null
   if (d.kind === "clan") return CLAN_BODY[d.id][speciesSex(d.id, sex)][stage === "adult" ? "adult" : "young"]
+  if (stage !== "adult" && YOUNG_SPECIES.includes(d.id)) return d.id + YOUNG_SUFFIX
   return d.id
 }
 
@@ -316,4 +333,4 @@ const LEGACY_SPECIES                                                            
   "vampira-adulta": { species: "vampiro", sex: "f" },
 })
 
-module.exports = { SPECIES, SPECIES_IDS, speciesById, speciesSex, speciesBody, GROW, birthHeight, speciesHeight, activeDays, CAPSULE, FUSION, FUSION_ATTRS, fusionInherit, fusionSpecies, fusionSeed, fusionPersonality, fusionTemper, MIX, genePrice, mixInherit, mixSpecies, mixCount, LAB, embryoPrice, canAccelerate, accelerated, serialText, LEGACY_SPECIES };
+module.exports = { SPECIES, SPECIES_IDS, speciesById, YOUNG_SUFFIX, YOUNG_SPECIES, adultBody, speciesSex, speciesBody, GROW, birthHeight, speciesHeight, activeDays, CAPSULE, FUSION, FUSION_ATTRS, fusionInherit, fusionSpecies, fusionSeed, fusionPersonality, fusionTemper, MIX, genePrice, mixInherit, mixSpecies, mixCount, LAB, embryoPrice, canAccelerate, accelerated, serialText, LEGACY_SPECIES };

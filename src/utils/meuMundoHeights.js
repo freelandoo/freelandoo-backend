@@ -31,6 +31,18 @@ const HEIGHT = Object.freeze({
   golem: 4.0,
   garras: 2.0,
   brutamontes: 4.0,
+  // 25/11: os JOVENS (modelo na altura de jovem da espécie: 1,7/2,4 do adulto)
+  aurion_jovem: 2.27,
+  morkhan_jovem: 2.27,
+  kragor_jovem: 2.27,
+  zephyra_jovem: 2.27,
+  maru_jovem: 2.27,
+  iris_jovem: 2.27,
+  noctis_jovem: 2.27,
+  aeryn_jovem: 2.27,
+  varkos_jovem: 2.27,
+  ciborgue_jovem: 1.91,
+  garras_jovem: 1.42,
 });
 
 /** Altura de referência das velocidades de MOTION (os avatares do bairro). */
