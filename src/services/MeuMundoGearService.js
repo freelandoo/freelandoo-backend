@@ -218,8 +218,17 @@ async function wornClan(c, idUser) {
  * Arma que o personagem vestido não usa. Espada e escudo da loja são de guerreiro; arma
  * pesada é das skins de martelo, e essas skins só usam arma pesada.
  */
-function weaponBlocked(it, body) {
-  if (it.shop === "weapons" || it.shop === "shields") return !usesSword(body);
+/**
+ * 25/11/2026 (Alex: "ué, mas ele está com espada nas lutas"): guerreiro = quem LUTA de espada, pela mesma regra da
+ * luta (MeuMundoAdventureService: raposa/arco/arma de fogo = maga; skin de martelo = martelo; o resto = espada), com a
+ * classe da skin vestida ou, sem ela, a da conta. Antes só a skin contava: skin sem classe lutava de espada e a loja
+ * dizia "só guerreiros".
+ */
+function swordUser(body, clan) {
+  return usesSword(body) || (!usesHammer(body) && !usesBow(body) && !usesGun(body) && (clanOfBody(body) ?? clan) !== "raposa");
+}
+function weaponBlocked(it, body, clan) {
+  if (it.shop === "weapons" || it.shop === "shields") return !swordUser(body, clan);
   if (it.shop === "hammers") return !usesHammer(body);
   if (it.shop === "bows") return !usesBow(body);
   if (it.shop === "guns") return !usesGun(body);
@@ -233,7 +242,7 @@ async function equippedFull(c, idUser, clan) {
   const out = {};
   for (const [slot, x] of Object.entries(live)) {
     const it = Gear.GEAR_BY_ID.get(x.item);
-    if (!it || (it.clan && it.clan !== clan) || weaponBlocked(it, body)) continue;
+    if (!it || (it.clan && it.clan !== clan) || weaponBlocked(it, body, clan)) continue;
     out[slot] = { id: x.item, level: plusOf(it, x), weaponLevel: x.weaponLevel, grade: x.grade, sockets: x.sockets || [], awakened: !!x.awakened, enchant: (x.affixes && x.affixes.enchant) || null };
   }
   return out;
@@ -264,7 +273,7 @@ async function bagState(c, idUser, coins, now = Date.now()) {
   for (const [id, row] of Object.entries(owned)) if (!isInstanceItem(Gear.GEAR_BY_ID.get(id))) stacks[id] = row.qty;
   const unlocks = await GearStore.unlocks(c, idUser);
   const body = await MeuMundoStorage.getBody(c, idUser);
-  return { clan, warrior: usesSword(body), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full, { noBase: true }),
+  return { clan, warrior: swordUser(body, clan), hammer: usesHammer(body), archer: usesBow(body), gunner: usesGun(body), level, coins: Math.floor(coins), owned, equipped, bonus: Gear.gearBonus(full, { noBase: true }),
     // R3: status da classe somados das peças vestidas (número + %); o `bonus` acima é só o que se faz na peça
     classGear: ClassStats.classGearOf(Object.values(full).map((e) => Gear.GEAR_BY_ID.get(e.id))),
     // E7: bônus de cada slot pela régua (plus e grau da cópia vestida), para a tela de equipar
@@ -409,7 +418,7 @@ class MeuMundoGearService {
     return withReceipt(idUser, "shop", body.key, async (s, ctx) => {
       const c = ctx.client;
       if ((await levelOf(c, idUser)) < it.level) return fail("level");
-      if (weaponBlocked(it, await MeuMundoStorage.getBody(c, idUser))) return fail("clan");
+      if (weaponBlocked(it, await MeuMundoStorage.getBody(c, idUser), await wornClan(c, idUser))) return fail("clan");
       const owned = await GearStore.owned(c, idUser);
       if (!it.stack && owned[it.id]) return fail("max");
       if (ctx.coins < it.price) return fail("coins");
@@ -459,7 +468,7 @@ class MeuMundoGearService {
       if (why) return fail(why);
       // E6 (A5): arma de duas mãos ocupa também o offhand (avisa isso antes do "outra classe")
       if (slot === "offhand" && live.weapon && Gear.GEAR_BY_ID.get(live.weapon.item)?.twoHanded) return fail("twohanded");
-      if (weaponBlocked(it, await MeuMundoStorage.getBody(c, idUser))) return fail("clan");
+      if (weaponBlocked(it, await MeuMundoStorage.getBody(c, idUser), clan)) return fail("clan");
       if (slot === "weapon" && it.twoHanded && live.offhand) {
         if (await hasPending(c, idUser, [live.offhand.instance], ctx.now)) return fail("locked");
         await GearStore.unequipSlot(c, idCharacter, "offhand");
@@ -814,6 +823,7 @@ MeuMundoGearService.R = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
 /** E19: a loja de evento só abre com o evento ligado pelo admin. */
 MeuMundoGearService.eventOpen = (c, event, now) => require("./MeuMundoEventService").isOpen(c, event, now);
 MeuMundoGearService.isInstanceItem = isInstanceItem;
+MeuMundoGearService.swordUser = swordUser;
 MeuMundoGearService.prepare = prepare;
 // gacha-v1 (24/11/2026): as Convocações gravam o giro pelo mesmo recibo idempotente da Forja
 MeuMundoGearService.withReceipt = withReceipt;
