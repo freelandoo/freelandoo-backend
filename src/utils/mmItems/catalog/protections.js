@@ -8,9 +8,13 @@
 // Fragmentos para fabricar, pela classe da peça: E 20 · D 30 · C 40 · B 50 · A 70 · S 90 · SS 120 ·
 // SSR 150 · Lendária 180 · Divina 200. O que sobrar vira Pó de Refino (como os fragmentos de amuleto).
 // As linhas de saque entram no FIM de cada lista das tabelas (catalog/loot.js): os sorteios de antes não mudam.
+// 24/11/2026 (Alex, "quero tudo pra poder comprar"): toda proteção também se COMPRA — com o Forjador, pelo preço
+// da classe (rules/classStats PRICE, a mesma régua das espadas e cajados). Reciclar segue sem moeda (a Forja monta
+// por poucas moedas: pagar a reciclagem viraria lucro). A Forja segue igual.
 "use strict";
 
 const { G } = require("./_base");
+const { PRICE } = require("../rules/classStats");
 const { slotKeys } = require("../rules/budget");
 const { DOMAIN_NAME, powderPerFragment } = require("./lines");
 
@@ -49,7 +53,7 @@ function keysFor(focus, slot) {
 }
 
 const NEW_PIECES = NEW_SETS.flatMap((s) => SLOTS.map(([word, slot], n) => G(`${s.id}_${word}`, "armor", s.names[n], s.rarity, {
-  slot, rank: s.rank, keys: keysFor(s.focus, slot), level: LEVEL[s.rank], sell: 0, group: s.id,
+  slot, rank: s.rank, keys: keysFor(s.focus, slot), level: LEVEL[s.rank], price: PRICE[s.rank], sell: 0 /* reciclar não paga: a Forja monta por poucas moedas */, group: s.id,
 })));
 
 // ── as 17 peças de antes que a Forja passa a fazer (id → classe; a peça continua no catálogo dela) ──

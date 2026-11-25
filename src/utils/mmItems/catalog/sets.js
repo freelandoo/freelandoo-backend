@@ -10,6 +10,7 @@
 "use strict";
 
 const { G } = require("./_base");
+const { PRICE } = require("../rules/classStats");
 
 const SETS = Object.freeze([
   Object.freeze({ id: "vigilia", name: "Vigília", domain: "floresta", keys: Object.freeze(["def", "hp"]), pieces: Object.freeze(["vigilia_elmo", "vigilia_peitoral", "vigilia_luvas", "vigilia_botas"]) }),
@@ -25,7 +26,8 @@ const DOMAIN_LEVEL = Object.freeze({ floresta: 5, fabrica: 17, vulcao: 21 });
 
 const P = (id, name, slot, set, domain, keys) =>
   G(id, "armor", name, "rare", {
-    slot, set, domain, keys: Object.freeze(keys), level: DOMAIN_LEVEL[domain], sell: 0,
+    // 24/11/2026: à venda com o Forjador pelo preço da classe B (como as proteções novas)
+    slot, set, domain, keys: Object.freeze(keys), level: DOMAIN_LEVEL[domain], price: PRICE.B, sell: 0,
     source: Object.freeze([`Conjunto ${SETS.find((s) => s.id === set).name}: setores 7 a 10 do Domínio ${DOMAIN_NAME[domain]}.`]),
   });
 
