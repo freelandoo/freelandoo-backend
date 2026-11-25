@@ -169,7 +169,14 @@ const TABLES0 = {
   // E18: baús (conteúdo fixo, uma vez por conta)
   ...Chests.TABLES,
 };
-const TABLES = Object.freeze(Object.fromEntries(Object.entries(TABLES0).map(([id, t]) => [id, withProtections(id, t)])));
+/**
+ * 24/11/2026 (Alex: "não existe mais o Boxe, deixa esse item para tudo"): o fragmento do Pó de Garra só caía no Boxe
+ * (que virou o Coliseu, sem prêmio). Agora cai com chance em toda vitória — Lâminas, rua, minijogos e Domínios —
+ * sempre no FIM da lista de chance (os sorteios de antes não mudam). Hall (só ficha), baús e o Boxe ficam como estão.
+ */
+const GARRA = Object.freeze({ id: "frag_po_garra", qty: Object.freeze([1, 1]), p: 0.35, win: true });
+const garraEverywhere = (id, t) => (/^(fight:laminas|mob:|minigame:|domain:)/.test(id) ? { ...t, chance: Object.freeze([...(t.chance || []), GARRA]) } : t);
+const TABLES = Object.freeze(Object.fromEntries(Object.entries(TABLES0).map(([id, t]) => [id, garraEverywhere(id, withProtections(id, t))])));
 
 /** Atividade (Adv.ACTIVITIES) → tabela. Luta: Lâminas/rua/Domínio = laminas; Boxe = boxe. */
 const ACTIVITY_TABLE = Object.freeze({
