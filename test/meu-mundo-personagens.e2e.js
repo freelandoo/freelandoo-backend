@@ -73,7 +73,7 @@ async function main() {
   check("skins viram personagens na cápsula (feminina fica de fora)", caps.length === 2 && caps.some((c) => c.species === "aurion") && caps.some((c) => c.species === "vampiro" && c.sex === "f"), JSON.stringify(caps.map((c) => [c.species, c.sex])));
   check("o hóspede de antes é o ativo", l0.characters.list[0].status === "alive" && l0.characters.list[0].species === "raposa");
   check("vagas: 2 de 5", l0.characters.capsule.used === 2 && l0.characters.capsule.slots === 5);
-  check("nasce com 1 m", caps.every((c) => c.height === 1), JSON.stringify(caps.map((c) => c.height)));
+  check("nasce com 1 m (deus 1,40 m)", caps.every((c) => c.height === (c.species === "aurion" ? 1.4 : 1)), JSON.stringify(caps.map((c) => c.height)));
   check("número de série e código do certificado", caps.every((c) => /^MM-\d{6}$/.test(c.serialText) && /^[0-9a-f]{12}$/.test(c.certCode)));
 
   // ── trocar: o ativo congela, o outro descongela

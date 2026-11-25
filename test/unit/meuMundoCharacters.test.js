@@ -68,6 +68,22 @@ test("crescer: 1,00 m ao nascer → jovem em 30 dias ativos → altura final em 
   assert.equal(C.speciesHeight(null, null, adult, t0), 1.8, "sem espécie: a altura dos avatares do bairro");
 });
 
+test("deuses nascem com 1,40 m (25/11) e nunca ficam abaixo da conta antiga", () => {
+  const t0 = Date.UTC(2026, 10, 8);
+  const young = { stage: "young", from: t0 };
+  assert.equal(C.birthHeight("varkos"), 1.4);
+  assert.equal(C.birthHeight("aurion"), 1.4);
+  assert.equal(C.birthHeight("raposa"), 1.0);
+  assert.equal(C.birthHeight("golem"), 1.0, "especial segue com 1,00 m");
+  assert.equal(C.birthHeight(null), 1.0);
+  assert.equal(C.speciesHeight("varkos", "m", young, t0), 1.4);
+  assert.equal(C.speciesHeight("varkos", "m", young, t0 + 30 * DAY), 2.27);
+  for (const d of [0, 1, 5, 15, 29]) {
+    const old = Math.round((1 + (2.27 - 1) * (d / 30)) * 100) / 100;
+    assert.ok(C.speciesHeight("varkos", "m", young, t0 + d * DAY) >= old);
+  }
+});
+
 test("corpo: espécie do personagem > classe do jogador > condição física", () => {
   assert.equal(characterBody({ species: "aurion", clan: "raposa" }), "aurion");
   assert.equal(characterBody({ species: "vampiro", sex: "f", stage: "adult", clan: "raposa" }), "vampira_adulta");

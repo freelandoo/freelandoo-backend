@@ -79,15 +79,15 @@ function withTemper(soul, temper) {
 /** Maior valor já alcançado em cada atributo (o que a fusão e a herança olham). */
 const peaksOf = (s) => Object.fromEntries(Life.ATTRS.map((k) => [k, Math.max(Number(s[k]) || 0, Number(s.peaks && s.peaks[k]) || 0)]));
 
-/** Genética de nascença (certificado): semente, personalidade, temperamento, atributos e altura. */
-function geneticsOf(s, extra = {}) {
+/** Genética de nascença (certificado): semente, personalidade, temperamento, atributos e altura (pela espécie: deus 1,40). */
+function geneticsOf(s, extra = {}, species = null) {
   const so = Soul.soulOf(s);
   return {
     seed: s.seed,
     personality: s.personality,
     temper: so.temper,
     attrs: Object.fromEntries(Life.ATTRS.map((k) => [k, r2(s[k])])),
-    birthHeight: Chars.GROW.BIRTH,
+    birthHeight: Chars.birthHeight(species),
     ...extra,
   };
 }
@@ -159,7 +159,7 @@ async function claimGrants(c, idUser, now) {
       species: g.species,
       sex: Chars.speciesSex(g.species, g.sex),
       origin,
-      genetics: geneticsOf(n),
+      genetics: geneticsOf(n, {}, g.species),
       ownerReason: origin === "prize" ? "prize" : origin === "gift" ? "gift" : origin === "lab" ? "market" : "origin",
     });
     await LS.claimGrant(c, g.id_grant, row.id_character);
@@ -380,7 +380,7 @@ class MeuMundoCharacterService {
         parentA: A.kind === "character" ? A.row.id_character : null,
         parentB: B.kind === "character" ? B.row.id_character : null,
         origin: "fusion",
-        genetics: geneticsOf(child, { inherited: inherit, mix }),
+        genetics: geneticsOf(child, { inherited: inherit, mix }, species),
       });
       for (const p of parents) {
         if (p.kind === "genetics") {

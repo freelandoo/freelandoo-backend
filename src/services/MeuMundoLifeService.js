@@ -294,7 +294,7 @@ class MeuMundoLifeService {
         row = await MeuMundoLifeStorage.insert(c, idUser, await MeuMundoLifeStorage.nextGeneration(c, idUser), s0, {
           species: clan0.clan || null,
           sex: clan0.sex || null,
-          genetics: CharacterService().geneticsOf(s0),
+          genetics: CharacterService().geneticsOf(s0, {}, clan0.clan || null),
         });
         events.push({ at: now, kind: "born", data: { generation: row.generation } });
       }
@@ -736,7 +736,7 @@ class MeuMundoLifeService {
         lineageGen: (ctx.row.lineage_gen || 1) + 1,
         parentA: ctx.row.id_character,
         origin: "heir",
-        genetics: CharacterService().geneticsOf(n, after.inherit ? { inherited: after.inherit } : {}),
+        genetics: CharacterService().geneticsOf(n, after.inherit ? { inherited: after.inherit } : {}, ctx.row.species || null),
       });
       ctx.newState = n;
       // O funeral é do hóspede que se foi (fica no histórico dele).
