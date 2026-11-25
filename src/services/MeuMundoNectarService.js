@@ -120,7 +120,7 @@ class MeuMundoNectarService {
             kind: "life",
             code: "legend_week",
             priority: 3,
-            data: { week: w, game: g.id, items },
+            data: { week: w, game: g.id, items, qty: items.reduce((n, x) => n + (x.id === "frag_classe_legendary" ? x.qty : 0), 0) },
             dedupeKey: `legend:${w}:${g.id}`,
           });
           if (n) notices.push([top.idUser, n]);
