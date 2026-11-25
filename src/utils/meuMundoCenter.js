@@ -30,7 +30,7 @@ const path = require("path");
 const { HOSPITAL_INTERIOR } = require("./meuMundoHospital");
 const { CENTER_INTERIORS } = require("./meuMundoCenterInteriors");
 
-const CENTER_VERSION = 23; // (23 = a Fonte do Éter no canto nordeste da praça, no lugar da árvore, as Convocações; 22 = a caixa da igreja na largura do modelo, 13 m (sobrava 1,5 m invisível de cada lado); 21 = o Cavaleiro Dourado na calçada do portal dos Bairros, de noite, lore v2 C6; 20 = Pipa na porta do Boxe, lore v2 C5; 19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
+const CENTER_VERSION = 24; // (24 = a Fonte do Éter saiu do centro (foi para o bairro) e a árvore do canto nordeste voltou; 23 = a Fonte do Éter no canto nordeste da praça; 22 = a caixa da igreja na largura do modelo, 13 m (sobrava 1,5 m invisível de cada lado); 21 = o Cavaleiro Dourado na calçada do portal dos Bairros, de noite, lore v2 C6; 20 = Pipa na porta do Boxe, lore v2 C5; 19 = o Portal dos Domínios no lado leste da praça, lore v2 D1; 18 = Fulvo no pedestal e o Ciborgue no fundo da Arena, lore v2 C4) sobe quando a planta muda: salas e posições de versões diferentes não se misturam (17 = o Arauto da Lua no pedestal de Morkhan, lore v2 C2; 16 = os dois velhos da praça, lore v2 F4; 15 = sem o Salão do Hall da Fama (a Arena das Lâminas virou o Hall); 14 = Laboratório de Criogenia atrás da academia; 13 = vão supermercado × corrida; 12 = Rua dos Ofícios no nordeste + caminhos até os prédios dos fundos; 11 = Forja e Arsenal atrás da academia; 10 = Morkhan na praça)
 const CENTER_CAPACITY = 20;
 
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -209,7 +209,7 @@ const PLAZA_PLACE = Object.freeze({ id: "praca", zone: "praca", nameKey: "center
 // para quem chega pelo portal do oeste) — a única estátua do centro.
 const MONUMENT = Object.freeze({ x: 0, z: 0, radius: 4.5, h: 1.6 });
 const PLAZA_STATUES = Object.freeze([statue("morkhan", 0, 0, Math.PI / 2, 10, { kind: "pedestal", r: MONUMENT.radius, h: MONUMENT.h })]);
-const PLAZA_TREES = Object.freeze([[-13.4, 13.4], [13.4, -13.4], [-13.4, -13.4]].map(([x, z]) => Object.freeze([x, z, 1.05])));
+const PLAZA_TREES = Object.freeze([[13.4, 13.4], [-13.4, 13.4], [13.4, -13.4], [-13.4, -13.4]].map(([x, z]) => Object.freeze([x, z, 1.05])));
 const PLAZA_BENCHES = Object.freeze(
   [
     [13.6, 6], [13.6, -6], [-13.6, 6], [-13.6, -6],
@@ -322,11 +322,6 @@ const PORTAL = Object.freeze({ id: "portal-bairros", x: PORTAL_X, z: 0, radius: 
 // (a entrada leste da praça passa por baixo do arco). Leva só ao primeiro Domínio
 // aberto; a tela escolhe entre os já atravessados. Dois pilares com colisão; o vão
 // de 3,5 m entre eles fica livre; o miolo (|x|, |z| <= 11) também. Fora do alcance da estátua (7,5 m).
-// gacha-v1b (24/11/2026): a Fonte do Éter no canto NORDESTE da praça (no lugar da árvore do canto), ao lado do
-// Portal dos Domínios. Fora do miolo livre (|x|,|z| ≤ 11) e dos eixos das travessias (o carro e quem anda passam).
-// Bacia redonda (r) de pedra, coluna no meio, água de éter; "Convocar" abre as Convocações.
-// Colisão = a bacia (dois quadrados, como o pedestal).
-const AETHER_FOUNTAIN = Object.freeze({ id: "fonte-eter", x: 13.1, z: 13.1, r: 1.8, h: 0.75, radius: 3.6, nameKey: "centerFountain" });
 const DOMAIN_PORTAL = Object.freeze({ id: "portal-dominios", x: 13.2, z: 0, facing: round(-Math.PI / 2), radius: 2.8, span: 2.2, h: 4.6, nameKey: "centerDomains" });
 
 // ═══ HOSPITAL (mm3d-26) ═══ — pátio, baia da ambulância e o caminho até o anel.
@@ -441,9 +436,6 @@ function buildObstacles() {
   for (const [x, z, s] of PLAZA_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
   for (const [x, z] of STREET_LAMPS) push(x, z, 0.2, 0.2, 0, 3.6);
   for (const [x, z, s] of STREET_TREES) push(x, z, 0.35 * s, 0.35 * s, 0, 3.4 * s);
-  // Fonte do Éter (gacha-v1b): a bacia.
-  push(AETHER_FOUNTAIN.x, AETHER_FOUNTAIN.z, AETHER_FOUNTAIN.r * 0.88, AETHER_FOUNTAIN.r * 0.88, 0, AETHER_FOUNTAIN.h);
-  push(AETHER_FOUNTAIN.x, AETHER_FOUNTAIN.z, AETHER_FOUNTAIN.r * 0.88, AETHER_FOUNTAIN.r * 0.88, Math.PI / 4, AETHER_FOUNTAIN.h);
   // Portal dos Domínios (D1): os dois pilares do arco.
   for (const s of [-1, 1]) push(DOMAIN_PORTAL.x, DOMAIN_PORTAL.z + s * DOMAIN_PORTAL.span, 0.45, 0.45, 0, DOMAIN_PORTAL.h);
   // Portal: dois pilares ladeando a avenida.
@@ -470,8 +462,6 @@ const VISIT_POINTS = Object.freeze(
     { id: "portal", x: PORTAL_X, z: 0, r: 7 },
     // D1: debaixo do arco dos Domínios
     { id: "portal_dominios", x: DOMAIN_PORTAL.x, z: DOMAIN_PORTAL.z, r: 3 },
-    // gacha-v1b: em volta da Fonte do Éter
-    { id: "fonte_eter", x: AETHER_FOUNTAIN.x, z: AETHER_FOUNTAIN.z, r: AETHER_FOUNTAIN.radius },
     // C4: o canto do Ciborgue, atrás da porta da Arena (talk:ciborgue vale daqui ou da porta)
     { id: "laminas_fundo", x: 25, z: -60.6, r: 3 },
     // C5: o lugar da Pipa, ao lado da porta do Boxe (talk:pipa vale daqui ou da porta)
@@ -583,7 +573,6 @@ function buildCenterPayload() {
     arrival: ARRIVAL,
     portal: PORTAL,
     domainPortal: DOMAIN_PORTAL,
-    fountain: AETHER_FOUNTAIN,
     npcs: STREET_NPCS,
     obstacles: OBSTACLES,
     limit: LIMIT,
@@ -604,7 +593,6 @@ module.exports = {
   PARKING,
   PORTAL,
   DOMAIN_PORTAL,
-  AETHER_FOUNTAIN,
   MONUMENT,
   STREET_NPCS,
   VISIT_POINTS,

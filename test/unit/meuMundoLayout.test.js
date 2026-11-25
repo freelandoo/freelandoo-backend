@@ -292,3 +292,27 @@ test("C2: a Sacerdotisa fica em cima do pedestal do Aurion, de lado, sem caixa p
   // nunca na Cidade Baixa
   assert.ok(!nbOf("vampiro").npcs.some((n) => n.id === "sacerdotisa"));
 });
+
+// gacha-v1b: a Fonte do Éter no bairro (pedido do Alex), no meio da pracinha sudeste, no lugar da caldeira
+test("Fonte do Éter no bairro: meio de uma pracinha, mesma caixa da caldeira, entorno andável, no payload", () => {
+  const F = L.AETHER_FOUNTAIN;
+  assert.equal(F.id, "fonte-eter");
+  assert.ok(L.DIMS.squares.some(([x, z]) => x === F.x && z === F.z), "no meio de uma pracinha");
+  // a caldeira continua sendo a colisão (a lista não muda: LAYOUT_VERSION fica e ninguém perde o carro)
+  const bed = L.OBSTACLES.filter((b) => b.x === F.x && b.z === F.z);
+  assert.equal(bed.length, 1);
+  assert.ok(Math.abs(bed[0].hx - L.DIMS.square.bed * 0.85) < 1e-6);
+  assert.ok(F.r <= L.DIMS.square.bed * 0.85 * Math.SQRT2 + 0.05, "a bacia desenhada não passa muito da caixa");
+  assert.ok(!L.isSafeSpot(F.x, F.z, resolveCircle, MOTION.RADIUS));
+  // dá para chegar ao "Convocar" pelos 4 lados (entre os bancos das diagonais)
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const d = F.r + 0.8;
+    assert.ok(d < F.radius);
+    assert.ok(L.isSafeSpot(F.x + dx * d, F.z + dz * d, resolveCircle, MOTION.RADIUS), `lado ${dx},${dz}`);
+  }
+  for (const clan of [undefined, "vampiro", "raposa"]) {
+    const p = L.buildNeighborhoodPayload({ code: "b", name: "B", residents: 1, houses: [], clan });
+    assert.deepEqual(p.dims.fountain, F, `payload (${clan})`);
+  }
+  assert.ok(L.VISIT_POINTS.some((v) => v.id === "fonte_eter"));
+});

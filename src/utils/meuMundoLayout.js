@@ -224,9 +224,19 @@ function signsFor(clan) {
   if (clan === "vampiro") return [Object.freeze({ id: "pedestal", text: "qw_pedestal", x: 0, z: -4.4, radius: 2.2 })];
   return clan === "raposa" ? [NINHO_SIGN] : [];
 }
+// gacha-v1b (24/11/2026, pedido do Alex: "a fonte no bairro"): a Fonte do Éter no MEIO da pracinha sudeste, no
+// lugar da caldeira. Usa a MESMA caixa de colisão da caldeira (bed): a lista de obstáculos não muda, então o
+// LAYOUT_VERSION fica (subir zera os carros estacionados). Igual nos dois bairros. "Convocar" (alcance
+// `radius`) abre as Convocações; r/h = bacia desenhada.
+const AETHER_FOUNTAIN = Object.freeze({ id: "fonte-eter", x: 19, z: -19 /* = SQUARES[2] (pracinha sudeste) */, r: 1.05, h: 0.55, radius: 3 });
 // Lore v2 F4 — pontos de visita do bairro (visit:<id>; meuMundoPlaces.js). "bairro"
 // e "casa" a sala grava na entrada (titular / dono da casa). C3: a pracinha do Ninho.
-const VISIT_POINTS = Object.freeze([Object.freeze({ id: "estatua_aurion", x: 0, z: 0, r: 7 }), Object.freeze({ id: "ninho", x: NINHO.x, z: NINHO.z, r: 5 })]);
+const VISIT_POINTS = Object.freeze([
+  Object.freeze({ id: "estatua_aurion", x: 0, z: 0, r: 7 }),
+  Object.freeze({ id: "ninho", x: NINHO.x, z: NINHO.z, r: 5 }),
+  // gacha-v1b: a pracinha da Fonte do Éter
+  Object.freeze({ id: "fonte_eter", x: AETHER_FOUNTAIN.x, z: AETHER_FOUNTAIN.z, r: 4 }),
+]);
 // Quatro pracinhas no gramado, nas diagonais: piso redondo, canteiro no meio,
 // quatro bancos virados para ele e um poste.
 const SQUARE = Object.freeze({ r: 5, bed: 1.1, bench: 3.3 });
@@ -258,6 +268,7 @@ const DIMS = Object.freeze({
   statues: PLAZA_STATUES,
   square: SQUARE,
   squares: SQUARES,
+  fountain: AETHER_FOUNTAIN,
 });
 
 const SLOTS = [-2, -1, 0, 1, 2].map((i) => i * LOT_PLAN.width);
@@ -513,6 +524,7 @@ function buildNeighborhoodPayload({ code, name, houses, residents, clan = null }
 module.exports = {
   MEU_MUNDO_RELEASE,
   LAYOUT_VERSION,
+  AETHER_FOUNTAIN,
   VISIT_POINTS,
   LOTS_PER_NEIGHBORHOOD,
   LOT_PLAN,

@@ -282,23 +282,10 @@ test("C2: o Arauto da Lua fica em cima do pedestal de Morkhan, só de noite, sem
   assert.ok(C.CENTER_VERSION >= 17);
 });
 
-// gacha-v1b: a Fonte do Éter no lado norte da praça
-test("Fonte do Éter: canto nordeste da praça, fora do miolo e dos eixos, bacia com colisão e o entorno andável", () => {
-  const F = C.AETHER_FOUNTAIN;
-  assert.equal(F.id, "fonte-eter");
-  assert.ok(Math.abs(F.x) + F.r < 17 && Math.abs(F.z) + F.r < 17, "dentro da praça");
-  assert.ok(Math.hypot(F.x - C.MONUMENT.x, F.z - C.MONUMENT.z) - F.r - C.MONUMENT.radius > 4, "passagem larga até o pedestal");
-  const basin = C.OBSTACLES.filter((b) => b.x === F.x && b.z === F.z);
-  assert.equal(basin.length, 2);
-  assert.ok(!C.isSafeSpot(F.x, F.z, resolveCircle, 0.35), "não se anda dentro da bacia");
-  // dá para chegar perto pelo lado do miolo e pelos dois lados (o botão aparece a até `radius`)
-  for (const [dx, dz] of [[-Math.SQRT1_2, -Math.SQRT1_2], [-1, 0], [0, -1]]) {
-    const d = F.r + 0.9;
-    assert.ok(d < F.radius);
-    assert.ok(C.isSafeSpot(F.x + dx * d, F.z + dz * d, resolveCircle, 0.35), `lado ${dx},${dz}`);
-  }
-  const pay = C.buildCenterPayload();
-  assert.deepEqual(pay.fountain, F);
-  assert.ok(C.VISIT_POINTS.some((v) => v.id === "fonte_eter"));
-  assert.ok(C.CENTER_VERSION >= 23);
+// gacha-v1b: a Fonte do Éter foi para o BAIRRO (pedido do Alex); o centro voltou à praça de antes
+test("centro sem a Fonte do Éter (ela mora no bairro) e com a árvore do canto nordeste", () => {
+  assert.equal(C.buildCenterPayload().fountain, undefined);
+  assert.equal(C.VISIT_POINTS.some((v) => v.id === "fonte_eter"), false);
+  assert.ok(C.OBSTACLES.some((b) => b.x === 13.4 && b.z === 13.4), "árvore do canto nordeste");
+  assert.ok(C.CENTER_VERSION >= 24);
 });
