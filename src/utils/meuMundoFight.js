@@ -187,6 +187,8 @@ const SKILLS = {
                                             
                  
                 
+                                                                                                          
+                      
                 
                                               
               
@@ -1016,8 +1018,16 @@ function gearMind(s       , g           , rated         )        {
              
  
 const DODGE_MAX = 0.9
+/**
+ * 25/11/2026 (Alex: "com o mesmo status meu personagem desviava sozinho de todos; isso deveria acontecer se eu
+ * tivesse 3× mais, o dobro ainda seria 50%"): o desvio SOZINHO pela razão esquiva ÷ acerto — igual ou menos = 0%,
+ * o dobro = 50%, o triplo ou mais = desvia de todos (linear no meio). Antes: 1 − acerto ÷ esquiva (3× = 67%).
+ */
+function autoDodgeChance(acc        , spd        ) {
+  return clamp((Math.max(0, spd) / Math.max(1, acc) - 1) / 2, 0, 1)
+}
 function hitChance(acc        , spd        ) {
-  return clamp(acc / Math.max(1, spd), 0, 1)
+  return 1 - autoDodgeChance(acc, spd)
 }
 function dodgeChance(acc        , spd        ) {
   return Math.max(1 - hitChance(acc, spd), Math.min(DODGE_MAX, spd / Math.max(1, acc)))
@@ -1526,6 +1536,7 @@ class Fight {
       const l = Math.hypot(dx, dz) || 1
       p.dodgeX = dx / l
       p.dodgeZ = dz / l
+      p.autoDodged = false
       this.setPlayer("dodge")
       this.events.push({ t: "dodge" })
     }
@@ -2010,6 +2021,7 @@ class Fight {
     p.dodgeX = ex
     p.dodgeZ = ez
     p.queued = false
+    p.autoDodged = true
     this.setPlayer("dodge")
     this.events.push({ t: "dodge" })
   }
@@ -2040,7 +2052,10 @@ class Fight {
     m.struck = true
     if (this.rated) {
       const chance = hitChance(m.rate.acc, this.rate.spd)
-      const evaded = (chance < 0.5 && m.landed) || this.R() < (dodging ? dodgeChance(m.rate.acc, this.rate.spd) : 1 - chance)
+      // 25/11: só a esquiva do BOTÃO usa a chance do botão; a sozinha (autoDodge) segue a regra sozinha — antes um
+      // desvio de sorte abria a janela de 90% e os golpes seguintes (a matilha, a 2ª mordida) caíam em corrente
+      const manual = dodging && !p.autoDodged
+      const evaded = (chance < 0.5 && m.landed) || this.R() < (manual ? dodgeChance(m.rate.acc, this.rate.spd) : 1 - chance)
       m.landed = !evaded
       if (evaded) {
         this.events.push({ t: "miss", on: "me", x: p.x, y: 0, z: p.z, auto: !dodging })
@@ -2252,4 +2267,4 @@ function replayFight(setup            , frames         )               {
   return { ok: true, win: fight.over.win, steps, activeSteps, hits, hitsTaken, mobHpLeft: left / hpMax }
 }
 
-module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, BOSS_IDS, BOSS_ROAR, BOSSES, bossIdOf, GOD_IDS, GOD_PEER, GOD_KINDS, godIdOf, SOUL_FIGHT, MOBS, GEAR_MAX, PREP_MAX, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, CLASS_RANKS, CLASS_NUMBER, CLASS_PERCENT, classByLevel, STRIKE_FLOOR, strike, strikeWeighted, mobKit, MOB_SHEETS_V2, heroSheet, DODGE_MAX, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };
+module.exports = { DT, ARENA_R, PLAYER_R, MOB_KINDS, LEGACY_MOB_KIND, mobKindOf, COMBO, MAGE_COMBO, SHOT, RANKS, RANK, rankOdds, POWER, SKILLS, MOB_SKILL_KINDS, MOB_SKILLS, MOB_SHIELD, BOSS_IDS, BOSS_ROAR, BOSSES, bossIdOf, GOD_IDS, GOD_PEER, GOD_KINDS, godIdOf, SOUL_FIGHT, MOBS, GEAR_MAX, PREP_MAX, mobLevelScale, HERO_LEVEL, DEF_MAX, heroLevelScale, heroStats, PEER_ELITE, peerOf, BASE_SHEET, BODY_SHEETS, MOB_SHEETS, mobBase, CLASS_RANKS, CLASS_NUMBER, CLASS_PERCENT, classByLevel, STRIKE_FLOOR, strike, strikeWeighted, mobKit, MOB_SHEETS_V2, heroSheet, DODGE_MAX, autoDodgeChance, hitChance, dodgeChance, damageRatio, rng, statEffects, Fight, mobAttack, REPLAY_MAX_STEPS, REPLAY_IDLE_S, quantizeInput, pushFrame, replayFight };

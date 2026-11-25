@@ -158,7 +158,7 @@ test("D2: níveis da Floresta calibrados com robô (sobem, nunca descem; o deus 
 
 test("S14: robô com o herói do dia-alvo vence quase sempre o setor 1 e cerca de metade contra Noctis", () => {
   const W = require("../../scripts/mm-boss-wall");
-  const at = (s) => W.sectorWinRate("floresta", s, 24);
+  const at = (s) => W.sectorWinRate("floresta", s, 48); // 25/11: 24 lutas oscilavam ±4 pontos
   const first = at(1);
   const last = at(10);
   assert.ok(first >= 0.8, `setor 1: ${first}`);

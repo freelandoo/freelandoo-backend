@@ -90,12 +90,16 @@ test("sem peer (prólogo), o monstro segue pelo nível", () => {
 });
 
 test("acuracidade contra velocidade, ataque contra defesa", () => {
-  assert.equal(F.hitChance(100, 1000), 0.1);
+  // 25/11 (Alex): desvio sozinho = (esquiva ÷ acerto − 1) ÷ 2 — igual 0%, o dobro 50%, o triplo 100%
+  assert.equal(F.hitChance(100, 1000), 0);
+  assert.equal(F.hitChance(100, 300), 0);
+  assert.equal(F.hitChance(100, 200), 0.5);
+  assert.equal(F.hitChance(100, 150), 0.75);
   assert.equal(F.hitChance(1000, 100), 1);
   assert.equal(F.hitChance(500, 500), 1);
-  assert.equal(F.hitChance(500, 1000) * 2, F.hitChance(1000, 1000));
-  // apertar esquivar: 90% com muita velocidade, quase nada contra muita acuracidade
-  assert.equal(F.dodgeChance(100, 1000), 0.9);
+  assert.equal(F.autoDodgeChance(200, 200), 0);
+  // apertar esquivar: 90% com esquiva ≥ acerto (100% quando a sozinha já é 100%), quase nada contra muita acuracidade
+  assert.equal(F.dodgeChance(100, 1000), 1);
   assert.equal(F.dodgeChance(1000, 100), 0.1);
   assert.equal(F.dodgeChance(500, 500), 0.9);
   assert.equal(F.damageRatio(100, 1000), 0.1);
@@ -104,7 +108,7 @@ test("acuracidade contra velocidade, ataque contra defesa", () => {
   // o exemplo do Alex: golpe de 200
   assert.equal(200 * F.damageRatio(50, 100), 100);
   assert.equal(200 * F.damageRatio(50, 1000), 10);
-  assert.equal(F.hitChance(10, 1000), 0.01);
+  assert.equal(F.hitChance(10, 1000), 0); // 25/11: 100× de esquiva = desvia de todos
   // nível 1 sem equipamento: 100 contra 100; status baixos ficam como são
   const f = new F.Fight({ kind: "cavaleiro", seed: 1, peer: 1, stats: { strength: 50, speed: 30 } });
   assert.equal(f.rate.atk, 100);
@@ -184,7 +188,7 @@ test("ringue não usa a curva dos monstros: o adversário segue espelho", () => 
 test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", () => {
   const f = new F.Fight({ kind: "cavaleiro", seed: 11, peer: 1, stats: { strength: 1000, speed: 1000 } });
   const m = f.mobs[0];
-  m.rate.acc = 100;
+  m.rate.acc = f.rate.spd / 2.5; // 25/11: 2,5× de esquiva = 75% de desvio sozinho
   const a = F.MOBS.cavaleiro.attacks[0];
   let landed = 0;
   let row = 0;
@@ -205,7 +209,7 @@ test("quem tem muita velocidade escapa sozinho e o golpe não pega 2 seguidos", 
     row = hit ? 1 : 0;
   }
   assert.equal(twice, 0);
-  assert.ok(landed / 4000 > 0.05 && landed / 4000 < 0.12, `pegou ${landed}`);
+  assert.ok(landed / 4000 > 0.15 && landed / 4000 < 0.25, `pegou ${landed}`);
 });
 
 test("monstro nasce sem nível; o PRIMEIRO que o vê define e fica para a sala", () => {
@@ -233,4 +237,35 @@ test("monstro nasce sem nível; o PRIMEIRO que o vê define e fica para a sala",
   const m2 = d2.spawn(Date.now(), []);
   d2.tick(Date.now(), [{ sid: "x", x: m2.x + 3, z: m2.z, lv: 0 }], 0.05);
   assert.equal(m2.level, 0);
+});
+
+test("25/11: status igual = não desvia sozinho, e um desvio sozinho não abre a janela de 90% do botão", () => {
+  const f = new F.Fight({ kind: "cavaleiro", seed: 7, peer: 1, stats: { strength: 300, speed: 300 } });
+  const m = f.mobs[0];
+  const a = F.MOBS.cavaleiro.attacks[0];
+  const tryHit = (state, auto) => {
+    m.struck = false;
+    m.x = f.me.x;
+    m.z = f.me.z + 1;
+    m.facing = Math.PI;
+    m.t = 0;
+    m.landed = false;
+    f.me.state = state;
+    f.me.t = 0.1;
+    f.me.autoDodged = auto;
+    f.me.hp = f.me.hpMax;
+    f.mobHit(m, a);
+    return f.me.hp < f.me.hpMax;
+  };
+  m.rate.acc = f.rate.spd; // igual
+  let landed = 0;
+  for (let i = 0; i < 1000; i++) if (tryHit("idle", false)) landed++;
+  assert.equal(landed, 1000, "status igual: nenhum desvio sozinho");
+  m.rate.acc = f.rate.spd / 1.2; // 1,2× de esquiva = 10% sozinho
+  let inAuto = 0;
+  for (let i = 0; i < 2000; i++) if (!tryHit("dodge", true)) inAuto++;
+  assert.ok(inAuto / 2000 < 0.16, `dentro da esquiva sozinha desviou ${inAuto}`);
+  let inManual = 0;
+  for (let i = 0; i < 2000; i++) if (!tryHit("dodge", false)) inManual++;
+  assert.ok(inManual / 2000 > 0.8, `com o botão desviou ${inManual}`);
 });
