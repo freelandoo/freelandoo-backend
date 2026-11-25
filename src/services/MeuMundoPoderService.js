@@ -15,6 +15,7 @@ const RankingStorage = require("../storages/RankingStorage");
 
 const TABS = Object.freeze(["poder", "nivel", "freelandoo"]);
 const Scores = require("../utils/meuMundoScores");
+const WeekPrize = require("../utils/mmItems/catalog/weekPrize");
 const ScoreStore = require("../storages/MeuMundoScoreStorage");
 const Nectar = require("../utils/meuMundoNectar");
 // N2: cada linha do placar semanal diz quanto néctar a posição vale
@@ -54,6 +55,9 @@ class MeuMundoPoderService {
     if (!Scores.isWeekId(w) || w > current) return { error: "Semana inválida", statusCode: 400 };
     const range = Scores.weekRange(w);
     const head = { tab: "semana", game, kind: g.kind, dir: g.dir, unit: g.unit, week: w, current: w === current, endsAt: new Date(range.end).toISOString(), scope: "br", games: Scores.GAMES.map((x) => x.id) };
+    // legend-v1: minijogo = só disputa conta, e o 1º lugar da semana leva o prêmio Lendário
+    const prize = WeekPrize.prizeOf(game);
+    if (prize) Object.assign(head, { multiOnly: Scores.MULTI_MIN_PLAYERS, prize: { position: 1, items: prize, fromWeek: WeekPrize.PRIZE_START_WEEK, active: w >= WeekPrize.PRIZE_START_WEEK } });
     if (g.kind === "live") {
       const r = await MeuMundoPoderService.ranking(idUser, "poder");
       return { ...head, top: r.top.map(withMl), me: r.me ? withMl({ ...r.me, parts: undefined }) : null };

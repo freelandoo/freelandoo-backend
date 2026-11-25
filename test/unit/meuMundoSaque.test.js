@@ -60,13 +60,29 @@ test("E3 + weapon-v1: a fachada antiga (rollLoot) sorteia o mesmo que a tabela d
     }
   }
 });
-test("E3: o saque não depende do nível", () => {
+test("E3: o saque não depende do nível (legend-v1: só o Lendário da rua/Lâminas pede monstro nível 27+)", () => {
   for (const table of Object.keys(Items.LOOT_TABLES)) {
     for (const win of [true, false]) {
       const base = Items.lootExpectation(table, { win, activeMs: 240000, level: 1 });
-      for (const level of [5, 30, 100, 500]) assert.deepEqual(Items.lootExpectation(table, { win, activeMs: 240000, level }), base, `${table} ${level}`);
+      for (const level of [5, 26]) assert.deepEqual(Items.lootExpectation(table, { win, activeMs: 240000, level }), base, `${table} ${level}`);
+      const high = Items.lootExpectation(table, { win, activeMs: 240000, level: 27 });
+      for (const level of [30, 100, 500]) assert.deepEqual(Items.lootExpectation(table, { win, activeMs: 240000, level }), high, `${table} ${level}`);
     }
   }
+});
+
+test("legend-v1: nada Lendário cai abaixo do nível 27 fora dos Domínios; minijogo nunca solta Lendário", () => {
+  const legend = (id) => ["legendary", "divine"].includes(Items.GEAR_BY_ID.get(id)?.rank) || /_legendary$|_divine$/.test(id);
+  for (const [table, t] of Object.entries(Items.LOOT_TABLES)) {
+    if (t.domain || t.chest) continue;
+    for (const e of [...(t.sure || []), ...(t.chance || []), ...(t.first || [])]) {
+      if (!legend(e.id)) continue;
+      assert.ok(!table.startsWith("minigame:"), `${table}: ${e.id}`);
+      assert.ok(e.minLevel >= 27, `${table}: ${e.id} sem nível mínimo`);
+    }
+  }
+  const P = require("../../src/utils/mmItems/catalog/weekPrize");
+  for (const g of ["jetpack", "noturno", "corrida", "gincana", "paint"]) assert.deepEqual(P.prizeOf(g)[0], { id: "frag_classe_legendary", qty: 180 });
 });
 
 test("E3: todo item do catálogo tem 'onde conseguir' não vazio", () => {
@@ -86,7 +102,8 @@ test("E3: esperado por vitória confere com a regra (lâminas, 4 min, vitória)"
   assert.deepEqual(e.po_ref_d, { expected: 3, min: 3, max: 3 });
   assert.equal(e.po_ref_c.expected, 0.35);
   assert.equal(e.frag_classe_e.expected, 0.75);
-  assert.equal(e.frag_classe_legendary.min, 0);
+  assert.equal(e.frag_classe_legendary, undefined); // legend-v1: sem nível 27, nada Lendário
+  assert.equal(Items.lootExpectation("fight:laminas", { win: true, activeMs: 240000, level: 27 }).frag_classe_legendary.min, 0);
   const lost = Items.lootExpectation("fight:laminas", { win: false, activeMs: 240000 });
   assert.deepEqual(Object.keys(lost), ["po_ref_d", "po_ref_e", "frag_oleo_lamina"]); // E17: o Pó de Forja garantido (24/11: o fragmento do Óleo de Lâmina) · weapon-v2: o Pó E
 });

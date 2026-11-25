@@ -257,7 +257,7 @@ class MeuMundoAdventureService {
    * Prática (orçamento do dia, janela máxima por partida), XP e o material da
    * família. Sem custo de energia (a vida já cobra o tempo acordado).
    */
-  static async creditMinigame(idUser, { activity, actionKey, segments, win = false, score = null }) {
+  static async creditMinigame(idUser, { activity, actionKey, segments, win = false, score = null, players = 1 }) {
     const def = Adv.ACTIVITIES[activity];
     if (!def || !actionKey) return fail("origin");
     const source = `minigame:${activity}`;
@@ -293,13 +293,14 @@ class MeuMundoAdventureService {
         actionKey: String(actionKey),
         rules: Adv.RULES_VERSION,
         activeMs: practice.activeMs,
-        result: { activity, win: !!win, condition, ...(score != null && Number.isFinite(Number(score)) ? { score: Number(score) } : {}) },
+        result: { activity, win: !!win, condition, players: Math.max(1, Number(players) || 1), ...(score != null && Number.isFinite(Number(score)) ? { score: Number(score) } : {}) },
         deltas: { xp: level, trainer, attrs: practice.attrs, coins: coins + drops.reduce((a, d) => a + (d.overflowCoins || 0), 0) || undefined },
         items: drops,
       });
       ctx.events.push({ at: ctx.now, kind: "minigame", data: { activity, activeMs: practice.activeMs } });
       // N1: a marca da partida (medida pela sala) no placar da semana
-      if (receipt && score != null) await recordScore(c, idUser, activity, score, ctx.now);
+      // legend-v1 (Alex: "só em disputa multiplayer"): só partida com 2 ou mais pessoas jogando conta
+      if (receipt && score != null && Scores.isMulti(players)) await recordScore(c, idUser, activity, score, ctx.now);
       return { receipt, replay: false };
     });
   }

@@ -23,6 +23,7 @@ function qtyOf(q, { win, activeMs }, R) {
 /**
  * Sorteia a tabela: [{ id, qty, rarity }] (mesmo id somado, na ordem em que apareceu).
  * `ctx` = { win, activeMs, level, first }; `level` não muda a quantidade (I: saque não depende do nível).
+ * legend-v1: a linha com `minLevel` (o que é Lendário na rua e nas Lâminas) só entra com `level` (o do monstro) ≥ ele.
  * `rarityOf(id)` vem do catálogo (o index injeta).
  */
 function rollTable(tableId, ctx, R, rarityOf) {
@@ -31,12 +32,13 @@ function rollTable(tableId, ctx, R, rarityOf) {
   const win = !!ctx.win;
   const out = new Map();
   const add = (id, n) => id && n > 0 && out.set(id, (out.get(id) || 0) + n);
-  for (const e of t.sure || []) if (!(e.win && !win)) add(e.id, qtyOf(e.qty, ctx, R));
+  const lv = (e) => !e.minLevel || Number(ctx.level) >= e.minLevel;
+  for (const e of t.sure || []) if (!(e.win && !win) && lv(e)) add(e.id, qtyOf(e.qty, ctx, R));
   for (const e of t.chance || []) {
-    if (e.win && !win) continue;
+    if ((e.win && !win) || !lv(e)) continue;
     if (R() < e.p) add(e.id, qtyOf(e.qty, ctx, R));
   }
-  if (win && ctx.first) for (const e of t.first || []) add(e.id, qtyOf(e.qty, ctx, R));
+  if (win && ctx.first) for (const e of t.first || []) if (lv(e)) add(e.id, qtyOf(e.qty, ctx, R));
   return [...out.entries()].map(([id, qty]) => ({ id, qty, rarity: rarityOf ? rarityOf(id) : "common" }));
 }
 
@@ -65,9 +67,10 @@ function expectation(tableId, ctx) {
     if (p >= 1) o.min += a;
     o.max += b;
   };
-  for (const e of t.sure || []) if (!(e.win && !win)) put(e.id, 1, rangeOf(e.qty, ctx));
-  for (const e of t.chance || []) if (!(e.win && !win)) put(e.id, e.p, rangeOf(e.qty, ctx));
-  if (win && ctx.first) for (const e of t.first || []) put(e.id, 1, rangeOf(e.qty, ctx));
+  const lv = (e) => !e.minLevel || Number(ctx.level) >= e.minLevel;
+  for (const e of t.sure || []) if (!(e.win && !win) && lv(e)) put(e.id, 1, rangeOf(e.qty, ctx));
+  for (const e of t.chance || []) if (!(e.win && !win) && lv(e)) put(e.id, e.p, rangeOf(e.qty, ctx));
+  if (win && ctx.first) for (const e of t.first || []) if (lv(e)) put(e.id, 1, rangeOf(e.qty, ctx));
   for (const o of Object.values(out)) o.expected = Math.round(o.expected * 1000) / 1000;
   return out;
 }

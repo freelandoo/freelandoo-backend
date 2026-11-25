@@ -14,6 +14,8 @@
 // (assíncrono, erro só registrado) — a partida nunca espera o banco.
 
 const GAP_MS = 2000;
+/** legend-v1: quem conta como jogador da disputa (o placar do minijogo só grava partida com 2 ou mais). */
+const MULTI_MIN_MS = 20000;
 
 class PracticeMeter {
   /** `activity` = id em meuMundoAdventure.js ACTIVITIES; `matchKey` = id único da partida. */
@@ -54,6 +56,8 @@ class PracticeMeter {
    */
   settle(userId = null, wins = null, scores = null) {
     const ids = userId ? [userId] : [...this.users.keys()];
+    // legend-v1: quantas pessoas jogaram de verdade a partida (inclusive quem já saiu)
+    const players = [...this.users.keys()].filter((k) => this.activeMs(k) >= MULTI_MIN_MS).length;
     for (const id of ids) {
       const u = this.users.get(id);
       if (!u || u.settled) continue;
@@ -61,7 +65,7 @@ class PracticeMeter {
       if (!u.segs.some((g) => g.to > g.from)) continue;
       const Adv = require("../services/MeuMundoAdventureService");
       const score = scores && scores.has(id) ? scores.get(id) : null;
-      Adv.creditMinigame(id, { activity: this.activity, actionKey: `${this.matchKey}:${id}`, segments: u.segs, win: !!(wins && wins.has(id)), score })
+      Adv.creditMinigame(id, { activity: this.activity, actionKey: `${this.matchKey}:${id}`, segments: u.segs, win: !!(wins && wins.has(id)), score, players })
         .then((out) => {
           if (out && out.receipt && !out.replay) require("./meuMundoPresence").send(id, "receipt", out.receipt);
         })
@@ -83,4 +87,4 @@ function signature(msg) {
   return out.join("|");
 }
 
-module.exports = { PracticeMeter, GAP_MS, signature };
+module.exports = { PracticeMeter, GAP_MS, MULTI_MIN_MS, signature };

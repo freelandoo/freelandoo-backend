@@ -138,9 +138,12 @@ test("E17 — tabela da luta: Hall só ficha; rua comum × elite pela régua (fa
     const lv = [0.1, 0.4, 0.6, 0.8, 0.95].map((r) => A.rollMobLevel(L, () => r));
     assert.deepStrictEqual(lv.map((M) => Reward.fightTableOf("mob", { level: M, hero: L })), ["mob:common", "mob:common", "mob:common", "mob:elite", "mob:elite"], `nível ${L}`);
   }
-  // weapon-v1: o elite paga fragmento de classe C e pó B garantidos; a primeira vitória, 3 fragmentos Lendários
-  const elite = Items.lootExpectation("mob:elite", { win: true, activeMs: 240000, first: true });
-  assert.ok(elite.frag_classe_c.min >= 2 && elite.po_ref_b.min === 1 && elite.frag_classe_legendary.min >= 3);
+  // weapon-v1: o elite paga fragmento de classe C e pó B garantidos; legend-v1: a primeira vitória, 5 fragmentos B,
+  // e o fragmento Lendário só entra contra monstro de nível 27 ou mais
+  const elite = Items.lootExpectation("mob:elite", { win: true, activeMs: 240000, first: true, level: 10 });
+  assert.ok(elite.frag_classe_c.min >= 2 && elite.po_ref_b.min === 1 && elite.frag_classe_b.min >= 5);
+  assert.ok(!elite.frag_classe_legendary);
+  assert.ok(Items.lootExpectation("mob:elite", { win: true, activeMs: 240000, level: 27 }).frag_classe_legendary.expected > 0);
   assert.ok(!Items.lootExpectation("mob:common", { win: true, activeMs: 240000 }).frag_classe_c);
 });
 

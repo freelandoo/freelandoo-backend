@@ -82,7 +82,13 @@ function better(gameId, next, prev) {
   return g && g.dir === "asc" ? next < prev : next > prev;
 }
 
+/** legend-v1: o placar dos minijogos só conta disputa (2 ou mais pessoas jogando a partida). */
+const MULTI_MIN_PLAYERS = 2;
+const isMulti = (players) => Number(players) >= MULTI_MIN_PLAYERS;
+
 module.exports = {
+  MULTI_MIN_PLAYERS,
+  isMulti,
   BRT_OFFSET_MS,
   GAMES,
   GAME_BY_ID,

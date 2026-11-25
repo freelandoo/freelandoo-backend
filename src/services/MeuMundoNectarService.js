@@ -24,6 +24,8 @@ const TrainerStore = require("../storages/MeuMundoTrainerStorage");
 const Trainer = require("../utils/meuMundoTrainer");
 const Adv = require("../utils/meuMundoAdventure");
 const { createLogger } = require("../utils/logger");
+const WeekPrize = require("../utils/mmItems/catalog/weekPrize");
+const GearService = () => require("./MeuMundoGearService");
 
 const log = createLogger("meuMundo.nectar");
 
@@ -104,11 +106,31 @@ class MeuMundoNectarService {
         });
         if (n) notices.push([idUser, n]);
       }
+      // legend-v1 (24/11/2026): o 1º lugar de cada minijogo leva o prêmio Lendário (uma vez: chave conta × semana × jogo)
+      let prizes = 0;
+      if (w >= WeekPrize.PRIZE_START_WEEK) {
+        for (const [g, rows] of boards) {
+          const items = WeekPrize.prizeOf(g.id);
+          const top = items && rows.find((r) => r.position === 1);
+          if (!top) continue;
+          if (!(await Store.insertPrize(c, { idUser: top.idUser, week: w, game: g.id, value: top.value, items }))) continue;
+          await GearService().deliver(c, top.idUser, items.map((x) => ({ ...x })), null);
+          prizes++;
+          const n = await Inbox.insertNotice(c, top.idUser, {
+            kind: "life",
+            code: "legend_week",
+            priority: 3,
+            data: { week: w, game: g.id, items },
+            dedupeKey: `legend:${w}:${g.id}`,
+          });
+          if (n) notices.push([top.idUser, n]);
+        }
+      }
       await Store.markClosed(c, { week: w, accounts: byUser.size, totalMl: total });
       await c.query("COMMIT");
       for (const [idUser, n] of notices) push(idUser, n);
-      log.info("week_closed", { week: w, accounts: byUser.size, totalMl: total });
-      return { week: w, accounts: byUser.size, totalMl: total };
+      log.info("week_closed", { week: w, accounts: byUser.size, totalMl: total, prizes });
+      return { week: w, accounts: byUser.size, totalMl: total, prizes };
     } catch (err) {
       await c.query("ROLLBACK").catch(() => {});
       throw err;

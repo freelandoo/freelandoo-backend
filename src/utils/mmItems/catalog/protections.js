@@ -35,10 +35,10 @@ const NEW_SETS = Object.freeze([
   { id: "gelo", rank: "S", rarity: "epic", focus: ["hp", "def", "stam", "warn", "spd"], names: ["Elmo do Gelo Eterno", "Peitoral do Gelo Eterno", "Luvas do Gelo Eterno", "Botas do Gelo Eterno"], where: "Mar de Gelo, setores 6 a 10" },
   { id: "orbital", rank: "SS", rarity: "epic", focus: ["int", "acc", "spd", "warn", "stam"], names: ["Elmo Orbital", "Peitoral Orbital", "Luvas Orbital", "Botas Orbital"], where: "chefe final da Cidade Orbital (setor 10)" },
   { id: "dragao", rank: "SSR", rarity: "epic", focus: ["dmg", "hp", "def", "acc", "stam"], names: ["Elmo do Dragão Rubro", "Peitoral do Dragão Rubro", "Luvas do Dragão Rubro", "Botas do Dragão Rubro"], where: "Kragor, chefe final do Vulcão (setor 10)" },
-  { id: "aurion", rank: "legendary", rarity: "legendary", focus: ["dmg", "acc", "hp", "dex", "spd"], names: ["Elmo da Primeira Chama", "Peitoral da Primeira Chama", "Luvas da Primeira Chama", "Botas da Primeira Chama"], where: "Arena das Lâminas e troca do Hall" },
-  { id: "morkhan", rank: "legendary", rarity: "legendary", focus: ["dmg", "dex", "warn", "stam", "def"], names: ["Elmo das Correntes", "Peitoral das Correntes", "Luvas das Correntes", "Botas das Correntes"], where: "elites da rua" },
+  { id: "aurion", rank: "legendary", rarity: "legendary", focus: ["dmg", "acc", "hp", "dex", "spd"], names: ["Elmo da Primeira Chama", "Peitoral da Primeira Chama", "Luvas da Primeira Chama", "Botas da Primeira Chama"], where: "Arena das Lâminas (monstro nível 27+) e troca do Hall" },
+  { id: "morkhan", rank: "legendary", rarity: "legendary", focus: ["dmg", "dex", "warn", "stam", "def"], names: ["Elmo das Correntes", "Peitoral das Correntes", "Luvas das Correntes", "Botas das Correntes"], where: "elites da rua de nível 27+" },
   { id: "zephyra", rank: "legendary", rarity: "legendary", focus: ["spd", "dex", "stam", "acc", "int"], names: ["Elmo do Vendaval", "Peitoral do Vendaval", "Luvas do Vendaval", "Botas do Vendaval"], where: "Zéphyra, deusa do Cânion (setor 10)" },
-  { id: "bastor", rank: "legendary", rarity: "legendary", focus: ["hp", "stam", "dex", "int", "def"], names: ["Elmo dos Moldes", "Peitoral dos Moldes", "Luvas dos Moldes", "Botas dos Moldes"], where: "Paint" },
+  { id: "bastor", rank: "legendary", rarity: "legendary", focus: ["hp", "stam", "dex", "int", "def"], names: ["Elmo dos Moldes", "Peitoral dos Moldes", "Luvas dos Moldes", "Botas dos Moldes"], where: "chefão da Fábrica (setor 10) e 1º lugar da semana no Paint" },
   { id: "ceu", rank: "divine", rarity: "mythic", focus: ["int", "warn", "hp", "spd", "acc"], names: ["Elmo do Céu", "Peitoral do Céu", "Luvas do Céu", "Botas do Céu"], where: "deuses de todos os Domínios (setor 10)" },
   { id: "pira", rank: "divine", rarity: "mythic", focus: ["dmg", "def", "hp", "dex", "stam"], names: ["Elmo da Pira", "Peitoral da Pira", "Luvas da Pira", "Botas da Pira"], where: "chefes finais de todos os Domínios (setor 10)" },
 ]);
@@ -106,7 +106,9 @@ const DESCRIPTIONS = Object.freeze({
 
 // ── origem dos fragmentos (linhas no FIM das listas; `p` = chance por vitória, por peça) ──
 const ids = (set) => SLOTS.map(([w]) => `frag_${set}_${w}`);
-const chanceOf = (set, p, qty) => ids(set).map((id) => ({ id, qty: Object.freeze(qty), p, win: true }));
+const chanceOf = (set, p, qty, extra = {}) => ids(set).map((id) => ({ id, qty: Object.freeze(qty), p, win: true, ...extra }));
+// legend-v1: Lendário fora dos Domínios só contra monstro de nível 27+ (catalog/weekPrize.js)
+const LEGEND = Object.freeze({ minLevel: 27, note: "só contra monstro de nível 27 ou mais" });
 const sureOf = (set, qty) => ids(set).map((id) => ({ id, qty: Object.freeze(qty), win: true }));
 const firstOf = (set, n) => ids(set).map((id) => ({ id, qty: Object.freeze([n, n]) }));
 const one = (id, p, qty) => ({ id: `frag_${id}`, qty: Object.freeze(qty), p, win: true });
@@ -114,10 +116,9 @@ const one = (id, p, qty) => ({ id: `frag_${id}`, qty: Object.freeze(qty), p, win
 /** Tabelas fora dos Domínios: o que cada uma ganha no fim. */
 const TABLE_ADDS = Object.freeze({
   "mob:common": { chance: chanceOf("aprendiz", 0.35, [1, 3]) },
-  "mob:elite": { chance: [...chanceOf("aprendiz", 0.35, [1, 3]), ...chanceOf("latao", 0.25, [1, 2]), ...chanceOf("morkhan", 0.04, [1, 2])] },
-  "fight:laminas": { chance: chanceOf("aurion", 0.04, [1, 2]) },
+  "mob:elite": { chance: [...chanceOf("aprendiz", 0.35, [1, 3]), ...chanceOf("latao", 0.25, [1, 2]), ...chanceOf("morkhan", 0.04, [1, 2], LEGEND)] },
+  "fight:laminas": { chance: chanceOf("aurion", 0.04, [1, 2], LEGEND) },
   "fight:boxe": { chance: [one("colete_couro", 0.25, [1, 2]), one("couraca_rebitada", 0.2, [1, 2])] },
-  "minigame:paint": { chance: chanceOf("bastor", 0.05, [1, 2]) },
   "minigame:gincana": { chance: [one("luvas_precisao", 0.25, [1, 2])] },
   "minigame:corrida": { chance: [one("botas_explorador", 0.25, [1, 2])] },
   "minigame:noturno": { chance: [one("oculos_engenheiro", 0.25, [1, 2])] },
@@ -136,6 +137,8 @@ function domainAdds(domain, sector) {
     if (domain === "orbital") { sure.push(...sureOf("orbital", [3, 5])); first.push(...firstOf("orbital", 10)); }
     if (domain === "vulcao") { chance.push(...chanceOf("dragao", 0.5, [3, 5])); first.push(...firstOf("dragao", 10)); }
     if (domain === "canion") { chance.push(...chanceOf("zephyra", 0.25, [1, 2])); first.push(...firstOf("zephyra", 5)); }
+    // legend-v1: o Bastor saiu da partida do Paint — cai no chefão da Fábrica e vai para o 1º lugar da semana do Paint
+    if (domain === "fabrica") chance.push(...chanceOf("bastor", 0.25, [1, 2]));
     chance.push(...chanceOf("ceu", 0.06, [1, 1]), ...chanceOf("pira", 0.04, [1, 2]));
     first.push(...firstOf("ceu", 3));
   }

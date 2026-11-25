@@ -33,6 +33,7 @@ const { KEYS_BY_ID } = require("./catalog/keys");
 const Bonus = require("./rules/bonus");
 const { LOOT, TABLES: LOOT_TABLES, ACTIVITY_TABLE, FAMILY_TABLE, domainTableId } = require("./catalog/loot");
 const LootRule = require("./rules/loot");
+const WeekPrize = require("./catalog/weekPrize");
 const Exchange = require("./catalog/exchange");
 const chests = require("./catalog/chests");
 // weapon-v1 (24/11/2026): pós e fragmentos de classe; o que saiu do jogo (catalog/retired.js)
@@ -96,6 +97,7 @@ function sourcesOf(item) {
   if (Array.isArray(item.source)) source.push(...item.source); // origem declarada (ex.: conjunto antes da E12)
   if (item.price != null) source.push(`${item.shop ? "Loja de Armas do Arsenal" : "Loja de equipamentos"}: ${item.price} moedas.`);
   source.push(...LootRule.lootSourceLines(item.id)); // E3: derivado das tabelas
+  source.push(...WeekPrize.prizeSourceLines(item.id)); // legend-v1: 1º lugar da semana dos minijogos
   // E17: Loja de troca (fichas)
   for (const o of Exchange.OFFERS) if (o.gives[item.id]) source.push(`Loja de troca: ${o.gives[item.id]} por ${o.cost} fichas do ${Exchange.GAME_NAME[o.token.replace("ficha_", "")]}.`);
   for (const r of RECIPES) if (r.out === item.id) source.push(`Ferreiro: produzir ${item.name} (${r.coins} moedas e ingredientes da receita).`);

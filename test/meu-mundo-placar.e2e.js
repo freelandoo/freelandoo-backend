@@ -76,13 +76,16 @@ async function main() {
   const K = await mk("kid", true);
   const week = S.weekOf(Date.now());
   const segs = () => [{ from: Date.now() - 90000, to: Date.now() - 1000 }];
-  const play = (id, activity, key, score, win = false) => Adv.creditMinigame(id, { activity, actionKey: key, segments: segs(), win, score });
+  // legend-v1: o placar dos minijogos só conta disputa (2+ pessoas na partida; a sala manda `players`)
+  const play = (id, activity, key, score, win = false, players = 2) => Adv.creditMinigame(id, { activity, actionKey: key, segments: segs(), win, score, players });
   const rowOf = async (id, game) => (await pool.query(`SELECT best, plays FROM tb_mm_score WHERE id_user = $1 AND game = $2 AND week = $3`, [id, game, week])).rows[0];
 
   // ── Jetpack: maior pontuação da semana
   const r1 = await play(A, "jetpack", "jp:1:A", 500);
   check("partida com marca gera recibo com a marca", r1.receipt && r1.receipt.result && r1.receipt.result.score === 500, JSON.stringify(r1.receipt && r1.receipt.result));
   check("placar da semana gravado (500, 1 partida)", JSON.stringify(await rowOf(A, "jetpack")) === JSON.stringify({ best: 500, plays: 1 }));
+  const solo = await play(A, "jetpack", "jp:solo:A", 9999, false, 1);
+  check("legend-v1: partida sozinho rende o recibo mas não entra no placar", !!solo.receipt && (await rowOf(A, "jetpack")).best === 500 && solo.receipt.result.players === 1, JSON.stringify(solo.receipt && solo.receipt.result));
   const again = await play(A, "jetpack", "jp:1:A", 500);
   check("a MESMA partida de novo não conta (recibo repetido)", again.replay === true && (await rowOf(A, "jetpack")).plays === 1);
   await play(A, "jetpack", "jp:2:A", 300);

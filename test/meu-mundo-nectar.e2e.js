@@ -31,7 +31,7 @@ function check(label, cond, extra = "") {
 }
 
 async function bootstrap(pool) {
-  await pool.query(`DROP TABLE IF EXISTS tb_mm_domain_pact, tb_mm_nectar_award, tb_mm_nectar_wallet, tb_mm_nectar_week, tb_mm_score, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
+  await pool.query(`DROP TABLE IF EXISTS tb_mm_week_prize, tb_mm_domain_pact, tb_mm_nectar_award, tb_mm_nectar_wallet, tb_mm_nectar_week, tb_mm_score, tb_mm_refine_proposal, tb_mm_gear_unlock, tb_mm_quest, tb_mm_equip, tb_mm_gear, tb_mm_fight, tb_mm_receipt, tb_mm_char_adventure, tb_mm_adventure, tb_mm_artifact, tb_mm_clan,
                     tb_mm_car_paint_owned, tb_mm_consume_key, tb_mm_pantry, tb_mm_skin_owned, tb_mm_character_event,
                     tb_mm_character_day, tb_mm_character, tb_mm_wallet, tb_mm_notice, tb_mm_mail,
                     tb_mm_visit, tb_mm_avatar_pref, tb_mm_residence, tb_mm_house, tb_mm_lot,
@@ -224,6 +224,40 @@ async function main() {
     await pool.query(mig);
     await pool.query(mig);
     check("mig 445 idempotente", true);
+  }
+
+  // ── legend-v1 (mig 471): o 1º lugar de cada minijogo leva o prêmio Lendário no fechamento ──
+  {
+    const Poder = require("../src/services/MeuMundoPoderService");
+    const W3 = "2026-11-29";
+    const AFTER3 = Date.parse("2026-12-06T03:05:00Z");
+    const t3 = Date.parse("2026-12-01T12:00:00Z");
+    const score3 = (id, game, best, atMs) =>
+      pool.query(`INSERT INTO tb_mm_score (id_user, game, week, best, plays, best_at) VALUES ($1, $2, $3, $4, 1, $5)`, [id, game, W3, best, new Date(atMs)]);
+    await score3(P[0], "jetpack", 500, t3);
+    await score3(P[1], "jetpack", 900, t3);
+    await score3(P[0], "paint", 300, t3);
+    await score3(P[0], "laminas", 9, t3); // luta não tem prêmio Lendário
+    const qty = async (id, item) => Number((await pool.query(`SELECT COALESCE(SUM(qty), 0) q FROM tb_mm_gear WHERE id_user = $1 AND item_id = $2`, [id, item])).rows[0].q);
+    const before1 = await qty(P[1], "frag_classe_legendary");
+    const before0 = await qty(P[0], "frag_classe_legendary");
+    const done3 = await Nectar.closeWeek(W3, AFTER3);
+    check("legend-v1: 2 prêmios (Jetpack e Paint)", done3.prizes === 2, JSON.stringify(done3));
+    check("legend-v1: o 1º do Jetpack leva 180 fragmentos Lendários", (await qty(P[1], "frag_classe_legendary")) === before1 + 180);
+    check("legend-v1: o 1º do Paint leva 180 + 45 de cada peça do Bastor", (await qty(P[0], "frag_classe_legendary")) === before0 + 180 && (await qty(P[0], "frag_bastor_elmo")) === 45);
+    const n3 = (await pool.query(`SELECT data FROM tb_mm_notice WHERE id_user = $1 AND code = 'legend_week'`, [P[1]])).rows;
+    check("legend-v1: aviso no sino do prêmio", n3.length === 1 && n3[0].data.game === "jetpack", JSON.stringify(n3));
+    await pool.query(`DELETE FROM tb_mm_nectar_week WHERE week = $1`, [W3]); // forçar reabrir: o recibo do prêmio segura
+    await pool.query(`DELETE FROM tb_mm_nectar_award WHERE week = $1`, [W3]);
+    await Nectar.closeWeek(W3, AFTER3 + 7200e3);
+    check("legend-v1: fechar de novo não entrega de novo", (await qty(P[1], "frag_classe_legendary")) === before1 + 180);
+    const rk3 = await Poder.weekly(P[0], "jetpack", W3, AFTER3);
+    check("legend-v1: o ranking do minijogo diz o prêmio e que só disputa conta", !!rk3.prize && rk3.prize.active && rk3.prize.items[0].qty === 180 && rk3.multiOnly === 2, JSON.stringify(rk3.prize));
+    const rkL = await Poder.weekly(P[0], "laminas", W3, AFTER3);
+    check("legend-v1: luta sem prêmio Lendário", !rkL.prize);
+    const mig = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/471_meu_mundo_premio_lendario.sql"), "utf8");
+    await pool.query(mig);
+    check("mig 471 idempotente", true);
   }
 
   console.log(`\n${PASS} ok, ${FAIL} falha(s)`);

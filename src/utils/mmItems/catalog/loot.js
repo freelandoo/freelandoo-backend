@@ -22,6 +22,7 @@ const WP = require("../rules/weaponProgress");
 const Chests = require("./chests");
 const Bestiary = require("./bestiary");
 const Protections = require("./protections");
+const WeekPrize = require("./weekPrize");
 const { MAT_TO_FRAGMENT } = require("./consumables");
 
 // ── E12: o Domínio como masmorra (GDD, tabela L) ──
@@ -112,13 +113,17 @@ const LAMINAS_CHANCE = [
   { id: "po_ref_c", qty: [1, 1], p: 0.35, win: true },
   { id: "frag_classe_d", qty: [1, 1], p: 0.25, win: true },
 ];
+// legend-v1 (24/11/2026, Alex: "por que está dropando lendária pra mim? monstro em qual nível já pode"): o que é
+// Lendário na rua e nas Lâminas só cai de monstro de nível LEGEND_LEVEL (27, o da arma Lendária) ou mais —
+// `minLevel` na linha (rules/loot.js pula sem sortear). A primeira vitória contra elite paga fragmento B.
+const LEGEND = Object.freeze({ minLevel: WeekPrize.LEGEND_LEVEL, note: "só contra monstro de nível 27 ou mais" });
 /** E17 (A9): o elite da rua é o monstro sorteado com fator ≥ 1,40 da régua (A15). */
 const ELITE_FACTOR = 1.4;
 const mobTable = (elite) => ({
   label: elite ? "Monstros de elite da rua" : "Monstros da rua", winLabel: elite ? "Vitórias contra elites da rua" : "Vitórias na rua",
   sure: [...LAMINAS_SURE, ...(elite ? [{ id: "frag_classe_c", qty: [2, 3], win: true }, { id: "po_ref_b", qty: [1, 1], win: true }] : [])],
-  chance: [...LAMINAS_CHANCE, { id: "po_ref_e", qty: [1, 1], p: 0.3 }, ...(elite ? [{ id: "frag_classe_legendary", qty: [1, 1], p: 0.08, win: true }] : [])],
-  ...(elite ? { first: [{ id: "frag_classe_legendary", qty: [3, 3] }] } : {}),
+  chance: [...LAMINAS_CHANCE, { id: "po_ref_e", qty: [1, 1], p: 0.3 }, ...(elite ? [{ id: "frag_classe_legendary", qty: [1, 1], p: 0.08, win: true, ...LEGEND }] : [])],
+  ...(elite ? { first: [{ id: "frag_classe_b", qty: [5, 5] }] } : {}),
 });
 /** Minijogo: ficha, Pó D, chance de fragmento D e de Pó E (o lugar do Pó de Forja e da Madeira de antes). */
 const minigame = (label, game, base, extra = {}) => ({
@@ -142,7 +147,7 @@ const TABLES0 = {
     label: "Lâminas e monstros", winLabel: "Vitórias da família forja",
     // E17: o Pó de Forja garantido (quantidade fixa: não sorteia) — 24/11/2026: virou o fragmento do Óleo de Lâmina
     sure: [...LAMINAS_SURE, { id: "frag_oleo_lamina", qty: [1, 1] }],
-    chance: [...LAMINAS_CHANCE, { id: "frag_classe_legendary", qty: [1, 1], p: 0.05, win: true }],
+    chance: [...LAMINAS_CHANCE, { id: "frag_classe_legendary", qty: [1, 1], p: 0.05, win: true, ...LEGEND }],
     first: [{ id: "frag_classe_c", qty: [5, 5] }],
   },
   "fight:boxe": {

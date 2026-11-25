@@ -13,6 +13,16 @@ const { BEST_POWER } = require("./MeuMundoPoderStorage");
 const num = (x) => ({ idUser: x.id_user, position: Number(x.position), value: Number(x.value), scored: x.scored !== false });
 
 class MeuMundoNectarStorage {
+  /** legend-v1 (mig 471): recibo do prêmio Lendário do 1º lugar. true = novo (rodar de novo não entrega de novo). */
+  static async insertPrize(c, { idUser, week, game, value, items }) {
+    const r = await c.query(
+      `INSERT INTO tb_mm_week_prize (id_user, week, game, value, items) VALUES ($1, $2, $3, $4, $5::jsonb)
+       ON CONFLICT (week, game) DO NOTHING RETURNING id_user`,
+      [idUser, week, game, value, JSON.stringify(items)]
+    );
+    return r.rowCount > 0;
+  }
+
   /** Placar completo de `game` na `week`: [{ idUser, position, value, scored }]. */
   static async standings(c, game, week) {
     const g = S.GAME_BY_ID.get(game);
