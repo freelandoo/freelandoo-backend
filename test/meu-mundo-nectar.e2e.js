@@ -243,16 +243,16 @@ async function main() {
     const before0 = await qty(P[0], "frag_classe_legendary");
     const done3 = await Nectar.closeWeek(W3, AFTER3);
     check("legend-v1: 2 prêmios (Jetpack e Paint)", done3.prizes === 2, JSON.stringify(done3));
-    check("legend-v1: o 1º do Jetpack leva 180 fragmentos Lendários", (await qty(P[1], "frag_classe_legendary")) === before1 + 180);
-    check("legend-v1: o 1º do Paint leva 180 + 45 de cada peça do Bastor", (await qty(P[0], "frag_classe_legendary")) === before0 + 180 && (await qty(P[0], "frag_bastor_elmo")) === 45);
+    check("legend-v1: o 1º do Jetpack leva 10 fragmentos Lendários", (await qty(P[1], "frag_classe_legendary")) === before1 + 10);
+    check("legend-v1: o 1º do Paint leva os mesmos 10 (sem Bastor)", (await qty(P[0], "frag_classe_legendary")) === before0 + 10 && (await qty(P[0], "frag_bastor_elmo")) === 0);
     const n3 = (await pool.query(`SELECT data FROM tb_mm_notice WHERE id_user = $1 AND code = 'legend_week'`, [P[1]])).rows;
     check("legend-v1: aviso no sino do prêmio", n3.length === 1 && n3[0].data.game === "jetpack", JSON.stringify(n3));
     await pool.query(`DELETE FROM tb_mm_nectar_week WHERE week = $1`, [W3]); // forçar reabrir: o recibo do prêmio segura
     await pool.query(`DELETE FROM tb_mm_nectar_award WHERE week = $1`, [W3]);
     await Nectar.closeWeek(W3, AFTER3 + 7200e3);
-    check("legend-v1: fechar de novo não entrega de novo", (await qty(P[1], "frag_classe_legendary")) === before1 + 180);
+    check("legend-v1: fechar de novo não entrega de novo", (await qty(P[1], "frag_classe_legendary")) === before1 + 10);
     const rk3 = await Poder.weekly(P[0], "jetpack", W3, AFTER3);
-    check("legend-v1: o ranking do minijogo diz o prêmio e que só disputa conta", !!rk3.prize && rk3.prize.active && rk3.prize.items[0].qty === 180 && rk3.multiOnly === 2, JSON.stringify(rk3.prize));
+    check("legend-v1: o ranking do minijogo diz o prêmio e que só disputa conta", !!rk3.prize && rk3.prize.active && rk3.prize.items[0].qty === 10 && rk3.multiOnly === 2, JSON.stringify(rk3.prize));
     const rkL = await Poder.weekly(P[0], "laminas", W3, AFTER3);
     check("legend-v1: luta sem prêmio Lendário", !rkL.prize);
     const mig = fs.readFileSync(path.join(__dirname, "../src/databases/migrations/471_meu_mundo_premio_lendario.sql"), "utf8");

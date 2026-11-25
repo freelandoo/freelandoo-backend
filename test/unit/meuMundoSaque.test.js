@@ -82,7 +82,7 @@ test("legend-v1: nada Lendário cai abaixo do nível 27 fora dos Domínios; mini
     }
   }
   const P = require("../../src/utils/mmItems/catalog/weekPrize");
-  for (const g of ["jetpack", "noturno", "corrida", "gincana", "paint"]) assert.deepEqual(P.prizeOf(g)[0], { id: "frag_classe_legendary", qty: 180 });
+  for (const g of ["jetpack", "noturno", "corrida", "gincana", "paint"]) assert.deepEqual(P.prizeOf(g)[0], { id: "frag_classe_legendary", qty: 10 });
 });
 
 test("E3: todo item do catálogo tem 'onde conseguir' não vazio", () => {

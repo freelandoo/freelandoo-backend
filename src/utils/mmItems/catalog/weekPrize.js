@@ -3,9 +3,8 @@
 // Pedido do Alex: "nos minijogos, só em disputa multiplayer e ficar em primeiro no ranking; aí na virada da semana
 // tem prêmio e recebe uma lendária". Minijogo não dropa nada Lendário na partida: quem fecha a semana em 1º no
 // ranking do jogo (só partidas com 2 ou mais pessoas contam, utils/meuMundoScores.js) recebe, no fechamento da
-// semana (MeuMundoNectarService.closeWeek, mesma transação do néctar), 180 fragmentos de classe Lendária = uma
-// arma Lendária à escolha na Forja. O Paint também paga 45 fragmentos de cada peça do conjunto dos Moldes (Bastor),
-// que antes caía com chance na partida (4 semanas em 1º = o conjunto inteiro).
+// semana (MeuMundoNectarService.closeWeek, mesma transação do néctar), 10 fragmentos de classe Lendária (25/11, Alex:
+// "não tem 180 frags toda semana não, 10 frag lendário se fechar a semana em primeiro"). O Bastor cai no chefão da Fábrica.
 "use strict";
 
 const WP = require("../rules/weaponProgress");
@@ -16,12 +15,12 @@ const LEGEND_LEVEL = 27;
 const PRIZE_START_WEEK = "2026-11-29";
 const GAME_NAME = Object.freeze({ jetpack: "Jetpack", noturno: "Rolê Noturno", corrida: "Antigravidade", gincana: "Gincana", paint: "Paint" });
 const LEGEND_FRAG = WP.fragmentOf("legendary");
-const BASTOR = Object.freeze(["elmo", "peitoral", "luvas", "botas"].map((w) => `frag_bastor_${w}`));
+/** Fragmentos de classe Lendária do 1º lugar da semana (a arma pede WP.FRAGMENT_NEED.legendary = 180). */
+const WEEK_QTY = 10;
 
 /** O que o 1º lugar da semana de cada minijogo recebe: [{ id, qty }]. */
 const PRIZES = Object.freeze(Object.fromEntries(Object.keys(GAME_NAME).map((g) => [g, Object.freeze([
-  Object.freeze({ id: LEGEND_FRAG, qty: WP.FRAGMENT_NEED.legendary }),
-  ...(g === "paint" ? BASTOR.map((id) => Object.freeze({ id, qty: 45 })) : []),
+  Object.freeze({ id: LEGEND_FRAG, qty: WEEK_QTY }),
 ])])));
 
 const PRIZE_GAMES = Object.freeze(Object.keys(PRIZES));

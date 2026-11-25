@@ -38,7 +38,7 @@ const NEW_SETS = Object.freeze([
   { id: "aurion", rank: "legendary", rarity: "legendary", focus: ["dmg", "acc", "hp", "dex", "spd"], names: ["Elmo da Primeira Chama", "Peitoral da Primeira Chama", "Luvas da Primeira Chama", "Botas da Primeira Chama"], where: "Arena das Lâminas (monstro nível 27+) e troca do Hall" },
   { id: "morkhan", rank: "legendary", rarity: "legendary", focus: ["dmg", "dex", "warn", "stam", "def"], names: ["Elmo das Correntes", "Peitoral das Correntes", "Luvas das Correntes", "Botas das Correntes"], where: "elites da rua de nível 27+" },
   { id: "zephyra", rank: "legendary", rarity: "legendary", focus: ["spd", "dex", "stam", "acc", "int"], names: ["Elmo do Vendaval", "Peitoral do Vendaval", "Luvas do Vendaval", "Botas do Vendaval"], where: "Zéphyra, deusa do Cânion (setor 10)" },
-  { id: "bastor", rank: "legendary", rarity: "legendary", focus: ["hp", "stam", "dex", "int", "def"], names: ["Elmo dos Moldes", "Peitoral dos Moldes", "Luvas dos Moldes", "Botas dos Moldes"], where: "chefão da Fábrica (setor 10) e 1º lugar da semana no Paint" },
+  { id: "bastor", rank: "legendary", rarity: "legendary", focus: ["hp", "stam", "dex", "int", "def"], names: ["Elmo dos Moldes", "Peitoral dos Moldes", "Luvas dos Moldes", "Botas dos Moldes"], where: "chefão da Fábrica (setor 10)" },
   { id: "ceu", rank: "divine", rarity: "mythic", focus: ["int", "warn", "hp", "spd", "acc"], names: ["Elmo do Céu", "Peitoral do Céu", "Luvas do Céu", "Botas do Céu"], where: "deuses de todos os Domínios (setor 10)" },
   { id: "pira", rank: "divine", rarity: "mythic", focus: ["dmg", "def", "hp", "dex", "stam"], names: ["Elmo da Pira", "Peitoral da Pira", "Luvas da Pira", "Botas da Pira"], where: "chefes finais de todos os Domínios (setor 10)" },
 ]);
