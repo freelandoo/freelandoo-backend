@@ -2,7 +2,7 @@
 // NOVOS, FICHAS E RECEITAS POR FRAGMENTO (GDD `MEU MUNDO 3D/gdd/economia-e-equipamentos.md`, H/I/J).
 //
 // • 9 armas de linha (uma por deus, formas da A11), lendárias, que se fabricam com 60 fragmentos + os
-//   materiais do Domínio (ou da fonte da A9) + universais. Golpes vêm da skin, nunca da arma.
+//   materiais do Domínio (ou da fonte da A9) + universais. Golpes vêm do personagem, nunca da arma.
 // • 12 fragmentos: um por arma (60 para fabricar) e um por conjunto (20 por peça).
 // • 24 materiais (9 universais + 15 de Domínio/deus) e 2 fichas (Pó de Refino, Selo de Domínio).
 // • 12 projetos (9 receitas de arma + 3 de conjunto) e as 21 receitas `kind: "fragment"`.

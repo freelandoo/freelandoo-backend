@@ -9,7 +9,7 @@
 // a caixa do jogo só as lista, não guarda cópia.
 //
 // O resgate de presente mora no MeuMundoLifeService (precisa da transação da
-// vida: geladeira, skins e moedas são travados juntos).
+// vida: geladeira, personagens e moedas são travados juntos).
 
 const pool = require("../databases");
 const Inbox = require("../storages/MeuMundoInboxStorage");
@@ -50,7 +50,7 @@ function push(idUser, notice) {
   }
 }
 
-/** Presente aceito pelo correio: item do catálogo, skin ou moedas do jogo. */
+/** Presente aceito pelo correio: item do catálogo, personagem ou moedas do jogo. */
 function normalizeGift(raw) {
   if (!raw || typeof raw !== "object") return null;
   const qty = Number(raw.qty ?? 1);
@@ -59,9 +59,9 @@ function normalizeGift(raw) {
     if (!it || !Number.isInteger(qty) || qty < 1 || qty > Life.FRIDGE.MAX_STACK) return null;
     return { type: "item", id: it.id, qty };
   }
-  // B3: presente de personagem (espécie); "skin" de antes vira a espécie dela.
+  // presente de personagem (espécie); o tipo "skin" de carta antiga traz o id de antes, que vira a espécie.
   if (raw.type === "character" || raw.type === "skin") {
-    const sp = raw.type === "skin" ? Chars.SKIN_SPECIES[String(raw.id || "")] : Chars.speciesById(String(raw.id || "")) && { species: String(raw.id) };
+    const sp = raw.type === "skin" ? Chars.LEGACY_SPECIES[String(raw.id || "")] : Chars.speciesById(String(raw.id || "")) && { species: String(raw.id) };
     if (!sp) return null;
     return { type: "character", id: sp.species, qty: 1 };
   }

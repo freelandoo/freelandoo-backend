@@ -2,7 +2,7 @@
 //
 // Só DUAS, em pedra cinza (MEU MUNDO 3D/pipeline/build_estatuas.py): Aurion
 // com 10 m no meio de cada bairro (onde se nasce) e Morkhan com 10 m no meio
-// da praça do centro. Os outros deuses são só skins. QUEM fica ONDE é da
+// da praça do centro. Os outros deuses são só personagens. QUEM fica ONDE é da
 // planta de cada lugar (meuMundoLayout.js e
 // meuMundoCenter.js); aqui mora só o catálogo dos modelos publicados e a forma
 // de cada entrada:

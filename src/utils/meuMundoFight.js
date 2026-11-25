@@ -257,7 +257,7 @@ const SKILLS = {
                         
                                      
                  
-                                                                                                               
+                                                                                                                     
                                                   
  
 
@@ -321,7 +321,7 @@ const BOSSES                                       = {
     },
   ],
   // lore v2 D5: Zéphyra, a Deusa-Chacal das Tempestades (historia/v2/04-mundo-exploravel.md §2: "a luta
-  // é em movimento, num trilho de pista"). Espada (a regra do Cavaleiro, como a skin). Fase 2 (Vento que
+  // é em movimento, num trilho de pista"). Espada (a regra do Cavaleiro, como o personagem). Fase 2 (Vento que
   // Derruba): o Corte de Vento, uma rajada reta e larga que sai da lâmina (todo tiro é reto). Fase 3
   // (Rastro de Raio): ela corre o trilho — avanço longo que arrasta quem pega — e gira a lâmina de perto.
   zephyra: [
@@ -421,7 +421,7 @@ const BOSSES                                       = {
     },
   ],
   // 22/11: Varkos, o Leão da Guerra (o 7º Domínio, a Floresta Vermelha; o último e o mais forte). Lança-estandarte
-  // (regra do Cavaleiro, como a skin). Fase 2 (Estandarte em Chamas): a estocada reta e longa da lança, que
+  // (regra do Cavaleiro, como o personagem). Fase 2 (Estandarte em Chamas): a estocada reta e longa da lança, que
   // solta a brasa da bandeira (todo tiro é reto). Fase 3 (Rugido da Guerra): a investida do leão que arrasta e a
   // juba de lâminas girando de perto. Descansa menos que os outros seis.
   varkos: [
@@ -530,7 +530,7 @@ const MOBS                          = {
       { id: "swipe", windup: 0.95, active: 0.3, recover: 1.0, range: 3.0, arc: 2.2, dmg: 18, lunge: 0.8, weight: 2, minD: 0, maxD: 3.3, heavy: true },
       { id: "slam", windup: 1.3, active: 0.2, recover: 1.5, range: 0, arc: 0, area: 2.6, reach: 2.2, dmg: 28, lunge: 0, weight: 2, minD: 0, maxD: 4.4, heavy: true },
     ],
-    // regra do Alex (2026-11-06): o Ciborgue encontrado é o da skin: atira, reto, de longe
+    // regra do Alex (2026-11-06): o Ciborgue encontrado é o do personagem: atira, reto, de longe
     arena: {
       engage: 6,
       attacks: [
@@ -870,7 +870,7 @@ const BODY_SHEETS                        = {
  * Monstros: ficha sobre os status do nível (mobBase). `stone` = o Golem de Pedra; o
  * bando divide a vida. Regra do Alex (2026-11-06): todas as raças na dificuldade do Brutamontes,
  * cada uma com o seu jeito. Números medidos com robô lutando (vitórias próximas às do Brutamontes
- * com os mesmos heróis). Esta ficha é da LUTA; a de quem veste a skin é BODY_SHEETS.
+ * com os mesmos heróis). Esta ficha é da LUTA; a de quem joga com o personagem é BODY_SHEETS.
  */
 const MOB_SHEETS                         = {
   cavaleiro: [170, 130, 170, 90, 70],

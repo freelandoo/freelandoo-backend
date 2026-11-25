@@ -226,7 +226,7 @@ const ATTR = Object.freeze({
   // Todas as fontes do mesmo atributo (academia, universidade, minijogos,
   // lutas) gastam o mesmo saldo; os multiplicadores (disciplina, suplementos,
   // anabolizante, universidade) aumentam o base e por isso batem o teto antes,
-  // nunca passam dele. Trocar de jogo/classe/skin ou reconectar não reinicia.
+  // nunca passam dele. Trocar de jogo/classe/personagem ou reconectar não reinicia.
   BUDGET: { strength: 12, intelligence: 12, dexterity: 12, speed: 8, accuracy: 12 },
 });
 /** Os três que crescem com o adulto (+20%) e entram na régua do crescer. */

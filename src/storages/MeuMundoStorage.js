@@ -6,13 +6,13 @@
 const { LOTS_PER_NEIGHBORHOOD, houseVariant } = require("../utils/meuMundoLayout");
 const { characterBody } = require("../utils/meuMundoSpecies");
 const { CLAN_BODIES, ARTIFACT, clanBody } = require("../utils/meuMundoClans");
-// Monstros com corpo de avatar (2026-11-02: o Brutamontes), também skin de teste de
-// administrador. Como os das classes, o corpo sai da skin e nunca é gravado em
+// Monstros com corpo de avatar (2026-11-02: o Brutamontes), também personagem de teste de
+// administrador. Como os das classes, o corpo sai do personagem e nunca é gravado em
 // tb_mm_avatar_pref.body (coluna legada da condição física; nada grava desde 2026-11-14) — fora do CHECK.
 const MOB_BODIES = Object.freeze(["brutamontes"]);
 
-// 2026-11-14: o personagem padrão (normal/slim/fat/strong) e a feminina pintável saíram; "ekaterina" = skin "ekaterina".
-// mm3d-50 (mig 313): os deuses — corpo = id da skin.
+// 2026-11-14: o personagem padrão (normal/slim/fat/strong) e a feminina pintável saíram; "ekaterina" = a personagem Ekaterina.
+// mm3d-50 (mig 313): os deuses — corpo = id do personagem.
 // mm3d-58: os corpos das classes (calculados, nunca gravados em avatar_pref).
 const BODIES = ["sergio", "ekaterina", "aurion", "morkhan", "kragor", "zephyra", "maru", "iris", "noctis", "aeryn", "varkos", "ciborgue", "cavaleiro", "golem", "garras", ...CLAN_BODIES, ...MOB_BODIES];
 
@@ -268,7 +268,6 @@ class MeuMundoStorage {
         [idUser, clan]
       );
       await MeuMundoStorage.moveToClan(c, idUser, clan);
-      await MeuMundoStorage.setSkin(c, idUser, "standard");
       await c.query("COMMIT");
       return { ok: true };
     } catch (err) {
@@ -377,14 +376,13 @@ class MeuMundoStorage {
 
   /**
    * Corpo que a sala desenha (B3): o do personagem ATIVO — a espécie dele (com o sexo e a
-   * fase da vida); sem espécie, o corpo da classe (mm3d-58) ou a condição física. O
-   * vestuário (skins, mig 300) saiu do jogo: as skins viraram espécies de personagem.
+   * fase da vida); sem espécie, o corpo da classe (mm3d-58). Não existe vestuário: o corpo
+   * é sempre o do personagem, que tem certidão e vida próprias.
    */
   static async getBody(db, idUser) {
     const r = await db.query(
-      `SELECT p.body, k.clan, k.sex AS clan_sex, a.species, a.sex, a.stage
+      `SELECT k.clan, k.sex AS clan_sex, a.species, a.sex, a.stage
          FROM (SELECT $1::uuid AS id_user) u
-         LEFT JOIN tb_mm_avatar_pref p ON p.id_user = u.id_user
          LEFT JOIN tb_mm_clan k ON k.id_user = u.id_user
          LEFT JOIN LATERAL (${ACTIVE_CHARACTER_SQL("u.id_user")}) a ON TRUE`,
       [idUser]
@@ -406,7 +404,7 @@ class MeuMundoStorage {
     return row ? clanBody(row.clan, row.sex, row.stage) : null;
   }
 
-  /** Administrador adquire skin de graça (mesma regra do roleMiddleware). */
+  /** Administrador (mesma regra do roleMiddleware): Laboratório de graça e testes. */
   static async isAdmin(db, idUser) {
     const r = await db.query(
       `SELECT 1 FROM tb_user_role ur JOIN tb_role ro ON ro.id_role = ur.id_role
@@ -415,15 +413,6 @@ class MeuMundoStorage {
       [idUser]
     );
     return r.rows.length > 0;
-  }
-
-  static async setSkin(db, idUser, skin) {
-    await db.query(
-      `INSERT INTO tb_mm_avatar_pref (id_user, skin) VALUES ($1, $2)
-       ON CONFLICT (id_user) DO UPDATE SET skin = EXCLUDED.skin, updated_at = NOW()
-       WHERE tb_mm_avatar_pref.skin IS DISTINCT FROM EXCLUDED.skin`,
-      [idUser, skin]
-    );
   }
 
   /**

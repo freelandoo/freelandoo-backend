@@ -3,7 +3,7 @@
 // • Escala completa de CAJADOS da Raposa (aba Cajados da Loja de Armas): níveis 1–10 (E…SSR), mais
 //   Lendária e Divina para os mais ornamentados.
 // • Espadas, pesadas e as primeiras armas DIVINAS (rank explícito): espada, pesada, arco, arma de fogo e escudo.
-// Preço pela classe (rules/classStats.js PRICE, aplicado em _base.G); golpes vêm da skin, nunca da arma.
+// Preço pela classe (rules/classStats.js PRICE, aplicado em _base.G); golpes vêm do personagem, nunca da arma.
 "use strict";
 
 const { C, S, H, B, F, E } = require("./_base");

@@ -8,8 +8,8 @@
 // Item novo = arquivo de catalog/. Prova de que nada mudou: test/unit/meuMundoItensCatalogo.test.js.
 //
 // Princípios (pedido do Alex, valem para o catálogo inteiro):
-//  • Classe mecânica, arma equipada e aparência são INDEPENDENTES; os golpes vêm do PERSONAGEM (skin
-//    vestida), nunca da arma (mm3d-66). A arma muda só o modelo na mão e o bônus.
+//  • Classe mecânica, arma equipada e aparência são INDEPENDENTES; os golpes vêm do PERSONAGEM (o corpo
+//    dele), nunca da arma (mm3d-66). A arma muda só o modelo na mão e o bônus.
 //  • Bônus de equipamento têm TETO somado. Moeda: as moedas do jogo (tb_mm_wallet), sem carteira nova.
 "use strict";
 

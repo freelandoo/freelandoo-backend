@@ -383,7 +383,7 @@ class BairroRoom extends Room {
   /** Mensagens, simulação e vida: iguais na rua do bairro e no centro (CentroRoom). */
   startLoop() {
     // Teste de carga (MM_TEST_BOTS=1, pedido do Alex em 2026-11-01): robôs com
-    // todas as skins andando na sala. Sem a variável, nada disto existe.
+    // todas os personagens andando na sala. Sem a variável, nada disto existe.
     if (testBotsOn()) this.testBots = new TestBots(this, { Player, step });
     this.onMessage("in", (client, msg) => this.onIntent(client, msg));
     this.onMessage("car", (client, msg) => this.onCar(client, msg));

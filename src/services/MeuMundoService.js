@@ -50,7 +50,6 @@ const { kindOfId, spotFor } = require("../utils/meuMundoCars");
 const { buildCenterPayload, PLACES: CENTER_PLACES, ARRIVAL: CENTER_ARRIVAL } = require("../utils/meuMundoCenter");
 const MeuMundoLifeService = require("./MeuMundoLifeService");
 const MeuMundoLifeStorage = require("../storages/MeuMundoLifeStorage");
-const Inbox = require("../storages/MeuMundoInboxStorage");
 const { createLogger } = require("../utils/logger");
 
 const log = createLogger("meuMundo.service");
@@ -307,13 +306,6 @@ class MeuMundoService {
     if (out.me) {
       out.me.newResidence = created;
       out.me.clan = { clan: mine.clan, sex: mine.sex };
-    }
-    // Cores do personagem (mm3d-36): um aviso no sino, uma vez por conta.
-    try {
-      const n = await Inbox.insertNotice(pool, idUser, { kind: "life", code: "colors_hint", priority: 4, data: {}, dedupeKey: "colors-hint" });
-      if (n) require("./MeuMundoInboxService").push(idUser, n);
-    } catch (err) {
-      log.warn("colors_hint_fail", { message: err.message });
     }
     return out;
   }
@@ -580,7 +572,7 @@ class MeuMundoService {
    * Lugar numa sala do jetpack do centro em que a pessoa está, só perto da
    * porta. `solo` = sala só dela (larga na hora; a sala mede a prática); sem
    * ele, a próxima largada em grupo (até 6). A pessoa continua no centro. O
-   * corpo é o da conta (skin vestida ou condição), nunca o que o aparelho diz.
+   * corpo é o do personagem ativo, nunca o que o aparelho diz.
    * `phase` (mm3d-75): a fase escolhida; a sala é por fase (desconhecida = a original).
    */
   static async joinJetpack(idUser, { solo = false, phase } = {}) {

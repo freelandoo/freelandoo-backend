@@ -229,7 +229,7 @@ class MeuMundoLifeStorage {
     await c.query(`UPDATE tb_mm_character SET species = $2, sex = $3 WHERE id_user = $1 AND species IS NULL`, [idUser, species, sex]);
   }
 
-  /** Personagem a entregar (conversão de skin, prêmio, presente). Idempotente pela referência. */
+  /** Personagem a entregar (conversão da mig 340, prêmio, presente). Idempotente pela referência. */
   static async addGrant(c, idUser, { species, sex, source, ref }) {
     const r = await c.query(
       `INSERT INTO tb_mm_character_grant (id_user, species, sex, source, ref) VALUES ($1, $2, $3, $4, $5)

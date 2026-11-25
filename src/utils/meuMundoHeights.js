@@ -26,7 +26,7 @@ const HEIGHT = Object.freeze({
   noctis: 3.2,
   aeryn: 3.2,
   varkos: 3.2,
-  ciborgue: 2.7, // 2026-11-07 (Alex): todos os ciborgues, skin e monstro
+  ciborgue: 2.7, // 2026-11-07 (Alex): todos os ciborgues, personagem e monstro
   cavaleiro: 2.0,
   golem: 4.0,
   garras: 2.0,
@@ -48,7 +48,7 @@ function bodyHeight(body) {
  *  • Adulto: 1,80 m no dia em que vira adulto → 2,40 m (TODOS os adultos) em
  *    mais 1 mês (ADULT_DAYS).
  * Quando vira adulto é da vida (meuMundoLife.js GROWTH: idade + força +
- * inteligência). Os outros corpos (skins, deuses, padrão) ficam na altura do modelo.
+ * inteligência). Os outros corpos (personagens, deuses, padrão) ficam na altura do modelo.
  */
 const GROW = Object.freeze({ YOUNG_FROM: 1.4, YOUNG_DAYS: 30, ADULT_FROM: 1.8, ADULT_TO: 2.4, ADULT_DAYS: 30 });
 const YOUNG = new Set(["raposa", "vampiro", "raposa_f", "vampira"]);

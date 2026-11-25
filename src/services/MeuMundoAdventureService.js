@@ -396,7 +396,7 @@ class MeuMundoAdventureService {
     if (origin === "boxe" || origin === "laminas") level = 1;
     if (domain) level = domain.level;
     // Kit da luta (2026-11-03, Alex: "a raposa está com espada e golpes de vampira"):
-    // vestindo o personagem de uma classe (skin de classe, hoje só de admin), a
+    // vestindo o personagem de uma classe (personagem de classe, hoje só de admin), a
     // luta é a DELE — arma, golpes e equipamento; senão, a classe da conta.
     const db = require("../databases");
     const worn = await MeuMundoStorage.getBody(db, idUser);

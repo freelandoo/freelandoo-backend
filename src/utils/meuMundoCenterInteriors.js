@@ -533,7 +533,7 @@ function arsenal() {
 }
 
 // B12 — LABORATÓRIO DE CRIOGENIA (pedido do Alex, 08/11): à esquerda as cápsulas de gelo
-// e o console da cápsula dos personagens (a tela que era das skins, agora "congelada");
+// e o console da cápsula dos personagens (a tela da cápsula, agora "congelada");
 // no fundo o balcão da criogenista (conversa); à direita o tanque dos embriões (comprar)
 // e o acelerador (leva o embrião aos 15 anos, a idade de jovem).
 function criolab() {

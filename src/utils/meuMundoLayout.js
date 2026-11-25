@@ -189,7 +189,7 @@ function lawnPositions() {
 
 // ═══ O DEUS SOL (mm3d-50) ═══ — Aurion, o Titã Solar, com 10 m no lugar do
 // antigo canteiro, de frente para o ponto de chegada (sul). É a ÚNICA estátua
-// do bairro (os outros deuses são só skins; pedido do Alex). Os quatro bancos
+// do bairro (os outros deuses são só personagens; pedido do Alex). Os quatro bancos
 // da praça continuam nas diagonais, virados para ele.
 const PLAZA_STATUES = Object.freeze([statue("aurion", 0, 0, 0, 10, { kind: "pedestal", r: 3.6, h: 1.4 })]);
 // Lore v2 C1 (cap. 2, "O Bairro"): no bairro dos Vampiros o pedestal fica VAZIO

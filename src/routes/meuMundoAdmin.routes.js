@@ -184,7 +184,7 @@ router.get("/shop", ...admin, asyncHandler(MeuMundoController.shopCatalog));
 router.post("/shop/house", ...admin, asyncHandler(MeuMundoController.shopHouse));
 router.post("/shop/paint", ...admin, asyncHandler(MeuMundoController.shopPaint));
 router.post("/life/newcomer", ...admin, asyncHandler(MeuMundoController.lifeNewcomer));
-// B3 (mig 340): personagens no lugar das skins — o ativo + a cápsula, trocar e fundir.
+// B3 (mig 340): personagens no lugar dos personagens — o ativo + a cápsula, trocar e fundir.
 router.get("/characters", ...admin, asyncHandler(MeuMundoController.characters));
 router.post("/characters/fuse", ...admin, asyncHandler(MeuMundoController.characterFuse));
 router.post("/characters/test-grant", ...ferramenta, asyncHandler(MeuMundoController.characterTestGrant));

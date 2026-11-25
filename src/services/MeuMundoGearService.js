@@ -206,7 +206,7 @@ async function hasPending(c, idUser, ids, now) {
 }
 
 /**
- * A classe que VALE agora: a do personagem vestido; sem skin de classe, a da
+ * A classe que VALE agora: a do personagem ativo; sem personagem de classe, a da
  * conta. É a mesma conta da luta (fightStart): loja, mochila e luta nunca
  * discordam sobre quem é guerreiro (mm3d-66).
  */
@@ -216,12 +216,12 @@ async function wornClan(c, idUser) {
 
 /**
  * Arma que o personagem vestido não usa. Espada e escudo da loja são de guerreiro; arma
- * pesada é das skins de martelo, e essas skins só usam arma pesada.
+ * pesada é dos personagens de martelo, e essos personagens só usam arma pesada.
  */
 /**
  * 25/11/2026 (Alex: "ué, mas ele está com espada nas lutas"): guerreiro = quem LUTA de espada, pela mesma regra da
- * luta (MeuMundoAdventureService: raposa/arco/arma de fogo = maga; skin de martelo = martelo; o resto = espada), com a
- * classe da skin vestida ou, sem ela, a da conta. Antes só a skin contava: skin sem classe lutava de espada e a loja
+ * luta (MeuMundoAdventureService: raposa/arco/arma de fogo = maga; personagem de martelo = martelo; o resto = espada), com a
+ * classe do personagem ativo ou, sem ela, a da conta. Antes só o personagem contava: personagem sem classe lutava de espada e a loja
  * dizia "só guerreiros".
  */
 function swordUser(body, clan) {

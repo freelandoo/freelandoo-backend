@@ -90,7 +90,7 @@ const KINDS_BY_DOMAIN = Object.freeze({
 });
 
 /**
- * Quem o monstro do setor É (lore) e o corpo que o desenha. `body` = skin que existe;
+ * Quem o monstro do setor É (lore) e o corpo que o desenha. `body` = corpo que existe;
  * `rig` = luta com os golpes/arma do tipo (espada, arma de fogo); sem `rig` = de mão,
  * como o desafio do Hall. `art: false` = placeholder até a arte do Alex.
  */

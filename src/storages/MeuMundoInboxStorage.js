@@ -22,7 +22,7 @@ const NOTICE_FILTERS = Object.freeze({
  * LEITURA: nada é apagado, e mudar a lista não pede migration.
  */
 const NEED_HISTORY = Object.freeze(["hospital", "unwell", "exhausted", "starving"]);
-const LIFE_INTERACTION = Object.freeze(["wish", "wish_ok", "wish_fail", "colors_hint"]);
+const LIFE_INTERACTION = Object.freeze(["wish", "wish_ok", "wish_fail"]);
 const sqlList = (l) => l.map((c) => `'${c}'`).join(", ");
 const historySql = (a) =>
   `(${a}kind NOT IN ('need', 'life')

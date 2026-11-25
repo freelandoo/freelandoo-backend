@@ -298,7 +298,7 @@ class MeuMundoLifeService {
         });
         events.push({ at: now, kind: "born", data: { generation: row.generation } });
       }
-      // B3: personagens a entregar (conversão das skins, prêmios, presentes) vão para a cápsula.
+      // B3: personagens a entregar (conversão da mig 340, prêmios, presentes) vão para a cápsula.
       await CharacterService().claimGrants(c, idUser, now);
       const s = rowToState(row);
       // mm3d-72: a alma antes da simulação (o comilão tem o apetite do corpo no alto)
@@ -618,7 +618,7 @@ class MeuMundoLifeService {
 
   /**
    * Resgatar o presente de uma carta. Dentro da transação da vida: a carta é
-   * travada, o presente vai para a geladeira / vestuário / carteira do jogo e
+   * travada, o presente vai para a geladeira / cápsula / carteira do jogo e
    * `claimed_at` é gravado UMA vez. Já resgatado = devolve o resultado gravado
    * (clique duplo, outra aba, reconexão) sem entregar de novo.
    */
@@ -637,8 +637,8 @@ class MeuMundoLifeService {
         ctx.pantry[g.id] = have + g.qty;
         result = { type: "item", id: g.id, qty: g.qty, where: "fridge" };
       } else if (g.type === "character" || g.type === "skin") {
-        // B3: presente de personagem (e skin de correio antigo → a espécie dela) vai para a cápsula.
-        const sp = g.type === "skin" ? Chars.SKIN_SPECIES[g.id] : { species: g.id, sex: Chars.speciesSex(g.id, g.sex) };
+        // presente de personagem (carta antiga com o id de antes → a espécie) nasce na cápsula.
+        const sp = g.type === "skin" ? Chars.LEGACY_SPECIES[g.id] : { species: g.id, sex: Chars.speciesSex(g.id, g.sex) };
         if (!sp || !Chars.speciesById(sp.species)) return fail("mail");
         await MeuMundoLifeStorage.addGrant(ctx.client, idUser, { species: sp.species, sex: sp.sex, source: "gift", ref: `mail:${mail.id}` });
         const created = await CharacterService().claimGrants(ctx.client, idUser, ctx.now);

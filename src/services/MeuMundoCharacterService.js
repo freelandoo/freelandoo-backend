@@ -7,7 +7,7 @@
 // público por link. A regra das espécies, da altura e da fusão é a GERADA do front
 // (utils/meuMundoCharacters.js). Sem cápsula sorteada paga (loot box é proibida para
 // menores — ECA Digital, Lei 15.211/2025): personagem novo vem de fusão, prêmio (B9),
-// mercado (B4) ou da conversão das skins (mig 340), sempre por tb_mm_character_grant.
+// mercado (B4) ou da conversão da mig 340, sempre por tb_mm_character_grant.
 //
 // Tudo que mexe na vida passa pelo núcleo MeuMundoLifeService.withLife (mesma transação,
 // mesmo lock da pessoa): trocar = congelar o ativo e descongelar outro.
@@ -53,6 +53,7 @@ const fail = (code) => {
   return { error, statusCode, code };
 };
 
+// "skin" = valor gravado na mig 340 (os primeiros personagens, "fundadores"); não existe skin no jogo.
 const ORIGIN_OF_SOURCE = { skin: "skin", prize: "prize", gift: "gift", admin_test: "admin_test", lab: "lab" };
 const KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -141,7 +142,7 @@ function summary(row, s, k, now) {
 /**
  * Entrega os personagens pendentes (tb_mm_character_grant) direto na cápsula. Chamado
  * pelo withLife (toda leitura/ação), dentro da transação e do lock da pessoa. Grants da
- * conversão das skins e prêmios entram mesmo com a cápsula cheia (nada se perde).
+ * conversão da mig 340 e prêmios entram mesmo com a cápsula cheia (nada se perde).
  */
 async function claimGrants(c, idUser, now) {
   const grants = await LS.openGrants(c, idUser);

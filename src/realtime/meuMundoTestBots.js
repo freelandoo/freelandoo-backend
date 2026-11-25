@@ -1,6 +1,6 @@
 // src/realtime/meuMundoTestBots.js — TESTE DE CARGA do Meu Mundo (2026-11-01).
 //
-// Pedido do Alex: robôs com TODAS as skins andando ao mesmo tempo nos bairros
+// Pedido do Alex: robôs com TODAS os personagens andando ao mesmo tempo nos bairros
 // e no centro (ele joga com a vampira adulta, que fica de fora), e todos os
 // monstros na rua a qualquer hora — até ele mandar voltar ao normal.
 //

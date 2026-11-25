@@ -21,22 +21,22 @@ const CLAN_BODIES = Object.freeze(
   CLANS.flatMap((c) => SEXES.flatMap((s) => [BODY[c][s].young, BODY[c][s].adult]))
 );
 
-// mm3d-66 (regra do Alex): as skins que usam espada, além dos vampiros — elas
+// mm3d-66 (regra do Alex): os personagens que usam espada, além dos vampiros — eles
 // lutam com o kit de espada (a pasta de golpes do vampiro) em qualquer conta.
-const SWORD_SKINS = Object.freeze(["aurion", "morkhan", "zephyra"]);
+const SWORD_BODIES = Object.freeze(["aurion", "morkhan", "zephyra"]);
 
 // mm3d-67 (regra do Alex): Soldado de Pedra (corpo golem), Marú e Kragor lutam com
 // os golpes do Brutamontes e usam os machados, martelos e tridentes da aba Hammers.
-// O Brutamontes (skin de teste) é o dono desses golpes e entra na mesma lista.
-const HAMMER_SKINS = Object.freeze(["golem", "maru", "kragor", "brutamontes"]);
+// O Brutamontes (personagem de teste) é o dono desses golpes e entra na mesma lista.
+const HAMMER_BODIES = Object.freeze(["golem", "maru", "kragor", "brutamontes"]);
 
 // mm3d-69 (regra do Alex): Íris e Aeryn são as arqueiras: usam só os arcos da loja e
 // atiram flechas de luz (a regra do tiro é a da maga; o desenho é outro).
-const ARCHER_SKINS = Object.freeze(["iris", "aeryn"]);
+const ARCHER_BODIES = Object.freeze(["iris", "aeryn"]);
 
 // mm3d-70 (regra do Alex): Ciborgue e Noctis usam só as armas de fogo da aba Guns e
 // atiram luz (a regra do tiro é a da maga; o desenho é outro).
-const GUN_SKINS = Object.freeze(["ciborgue", "noctis"]);
+const GUN_BODIES = Object.freeze(["ciborgue", "noctis"]);
 
 const ARTIFACT = Object.freeze({ KIND: "troca_classe", COOLDOWN_DAYS: 30 });
 
@@ -49,22 +49,22 @@ function clanBody(clan, sex, stage) {
   return BODY[clan][isSex(sex) ? sex : "m"][stage === "adult" ? "adult" : "young"];
 }
 
-/** O kit que o corpo vestido impõe (raposa/vampiro); null = o corpo não decide. */
+/** O kit que o corpo do personagem impõe (raposa/vampiro); null = o corpo não decide. */
 function clanOfBody(body) {
   if (CLAN_BODIES.includes(body)) return String(body).startsWith("raposa") ? "raposa" : "vampiro";
-  return SWORD_SKINS.includes(body) ? "vampiro" : null;
+  return SWORD_BODIES.includes(body) ? "vampiro" : null;
 }
 
-/** Guerreiro = quem veste vampiro ou uma skin de espada. Só ele compra e usa as espadas da loja. */
+/** Guerreiro = o personagem vampiro ou um personagem de espada. Só ele compra e usa as espadas da loja. */
 const usesSword = (body) => clanOfBody(body) === "vampiro";
 
 /** Quem luta com armas pesadas (kit do Brutamontes) e compra na aba Hammers. */
-const usesHammer = (body) => HAMMER_SKINS.includes(body);
+const usesHammer = (body) => HAMMER_BODIES.includes(body);
 
 /** Quem atira com arco e compra na aba Arcos. */
-const usesBow = (body) => ARCHER_SKINS.includes(body);
+const usesBow = (body) => ARCHER_BODIES.includes(body);
 
 /** Quem atira com arma de fogo e compra na aba Guns. */
-const usesGun = (body) => GUN_SKINS.includes(body);
+const usesGun = (body) => GUN_BODIES.includes(body);
 
-module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_SKINS, HAMMER_SKINS, ARCHER_SKINS, GUN_SKINS, usesBow, usesGun, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword, usesHammer };
+module.exports = { CLANS, SEXES, CLAN_BODIES, SWORD_BODIES, HAMMER_BODIES, ARCHER_BODIES, GUN_BODIES, usesBow, usesGun, ARTIFACT, isClan, isSex, clanBody, clanOfBody, usesSword, usesHammer };

@@ -12,7 +12,7 @@
 //         + equipamento (trilha E4, A13: o que ele soma DE VERDADE à ficha naquele nível)
 //         + status da classe das peças (2026-11-17: classPower, o que o número + % somam à ficha da luta nova)
 //
-// Equipamento (A13, §6.3 do plano da trilha E), sem o peso da skin:
+// Equipamento (A13, §6.3 do plano da trilha E), sem o peso do personagem:
 //   g.dmg·base(L) + g.def·base(L) + g.hp·vida(L) + g.acc·(100 + força + 3(L−1))
 //   + g.spd·(100 + velocidade + 3(L−1)) + g.int·inteligência + g.dex·destreza
 //   + 1.000·(g.stam + g.warn + g.power)
@@ -20,7 +20,7 @@
 //
 // Soma simples, SÓ do permanente: os atributos como a vida guarda (sem suplemento, fome, sono
 // ou efeito temporário; sem o bônus de nível que só vale na luta), o HP máx do nível
-// (heroLevelScale: 100 + 9 por nível, sem o peso da skin) e o equipamento equipado.
+// (heroLevelScale: 100 + 9 por nível, sem o peso do personagem) e o equipamento equipado.
 // Substitui a fórmula do T3 (HP×0,5 + ataque×3 + …, suplemento multiplicando), que estava errada.
 //
 // FONTE ÚNICA: o back roda a cópia GERADA (freelandoo-backend/src/utils/meuMundoPower.js,

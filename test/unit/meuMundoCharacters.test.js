@@ -49,7 +49,7 @@ test("personagens — ESPELHO: o TS do front e o back dão o mesmo resultado", a
     assert.deepEqual(C.fusionPersonality(p, null, C.fusionSeed(a, b)), F.fusionPersonality(p, null, F.fusionSeed(a, b)));
     assert.equal(C.fusionTemper("psicopata", "covarde", a), F.fusionTemper("psicopata", "covarde", a));
   }
-  assert.deepEqual(C.SKIN_SPECIES, F.SKIN_SPECIES);
+  assert.deepEqual(C.LEGACY_SPECIES, F.LEGACY_SPECIES);
 });
 
 test("crescer: 1,00 m ao nascer → jovem em 30 dias ativos → altura final em mais 30", () => {
@@ -131,22 +131,22 @@ test("fusão: espécie entre as dos pais (sem sorteio), semente sem ordem, tempe
 });
 
 test("skins → espécies: toda skin vendida vira uma espécie conhecida; a feminina fica de fora", () => {
-  for (const [skin, v] of Object.entries(C.SKIN_SPECIES)) {
+  for (const [skin, v] of Object.entries(C.LEGACY_SPECIES)) {
     assert.ok(C.speciesById(v.species), `${skin} → ${v.species}`);
     assert.ok(v.sex === "m" || v.sex === "f");
   }
-  assert.equal(C.SKIN_SPECIES.feminina, undefined);
-  assert.equal(C.SKIN_SPECIES["vampira-adulta"].species, "vampiro");
-  assert.equal(C.SKIN_SPECIES["vampira-adulta"].sex, "f");
+  assert.equal(C.LEGACY_SPECIES.feminina, undefined);
+  assert.equal(C.LEGACY_SPECIES["vampira-adulta"].species, "vampiro");
+  assert.equal(C.LEGACY_SPECIES["vampira-adulta"].sex, "f");
   assert.equal(C.CAPSULE.SLOTS, 5);
   assert.equal(C.serialText(123), "MM-000123");
 });
 
-test("mig 340: a tabela skin → espécie do SQL é a mesma de SKIN_SPECIES", () => {
+test("mig 340: a tabela skin → espécie do SQL é a mesma de LEGACY_SPECIES", () => {
   const sql = fs.readFileSync(path.join(__dirname, "../../src/databases/migrations/340_meu_mundo_personagens.sql"), "utf8");
   const block = sql.slice(sql.indexOf("JOIN (VALUES"), sql.indexOf(") AS m(skin, species, sex)"));
   const rows = [...block.matchAll(/\('([a-z0-9-]+)', '([a-z0-9_]+)', '([mf])'\)/g)].map((m) => [m[1], { species: m[2], sex: m[3] }]);
-  assert.deepEqual(Object.fromEntries(rows), { ...C.SKIN_SPECIES });
+  assert.deepEqual(Object.fromEntries(rows), { ...C.LEGACY_SPECIES });
 });
 
 test("mistura do laboratório (09/11): resultado fixo — o primeiro passa 20% dos atributos, a espécie é escolhida", () => {

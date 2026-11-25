@@ -3,7 +3,7 @@
 // A regra das espécies mora em meuMundoCharacters.js (GERADO do front). Aqui só a ponte
 // com o que o servidor já tinha: o personagem sem espécie (quem ainda não escolheu a
 // classe) segue a classe do jogador e, sem classe, a condição física (magro/normal/…).
-// Substitui o avatarBody das skins (o vestuário saiu do jogo no B3).
+// Substitui o avatarBody dos personagens (o vestuário saiu do jogo no B3).
 
 const Chars = require("./meuMundoCharacters");
 const { clanBody, isClan } = require("./meuMundoClans");
